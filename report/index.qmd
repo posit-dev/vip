@@ -1,0 +1,101 @@
+---
+title: "VIP Report"
+format:
+  html:
+    code-fold: true
+jupyter: python3
+---
+
+# Verified Installation of Posit
+
+```{python}
+#| echo: false
+
+from pathlib import Path
+from IPython.display import Markdown, display
+from vip.reporting import load_results
+
+data = load_results(Path("results.json"))
+
+if data.total == 0:
+    display(Markdown("> **No results found.** Run: `pytest --vip-report=report/results.json`"))
+```
+
+**Deployment:** `{python} data.deployment_name`
+**Generated:** `{python} data.generated_at_display`
+
+## Products Under Test
+
+```{python}
+#| echo: false
+
+configured = data.configured_products()
+if not configured:
+    display(Markdown("No products configured. Set product URLs in `vip.toml`."))
+else:
+    rows = []
+    for p in configured:
+        name = p.name.replace("_", " ").title()
+        ver = p.version or "—"
+        rows.append(f"| {name} | {p.url} | {ver} |")
+    header = "| Product | URL | Version |\n|---|---|---|"
+    display(Markdown(header + "\n" + "\n".join(rows)))
+```
+
+## Summary
+
+```{python}
+#| echo: false
+
+status = "PASS" if data.failed == 0 and data.total > 0 else "FAIL" if data.failed > 0 else "NO RESULTS"
+color = "green" if status == "PASS" else "red" if status == "FAIL" else "gray"
+
+display(Markdown(f"""
+| Metric | Count |
+|--------|-------|
+| **Total** | {data.total} |
+| **Passed** | {data.passed} |
+| **Failed** | {data.failed} |
+| **Skipped** | {data.skipped} |
+| **Status** | **<span style="color:{color}">{status}</span>** |
+"""))
+```
+
+## Results by Category
+
+```{python}
+#| echo: false
+
+categories = data.by_category()
+if not categories:
+    display(Markdown("No test results to display."))
+else:
+    rows = []
+    for cat, items in sorted(categories.items()):
+        cat_passed = sum(1 for i in items if i.outcome == "passed")
+        cat_failed = sum(1 for i in items if i.outcome == "failed")
+        cat_skipped = sum(1 for i in items if i.outcome == "skipped")
+        cat_total = len(items)
+        cat_status = "PASS" if cat_failed == 0 else "FAIL"
+        rows.append(f"| {cat} | {cat_total} | {cat_passed} | {cat_failed} | {cat_skipped} | {cat_status} |")
+
+    header = "| Category | Total | Passed | Failed | Skipped | Status |\n|---|---|---|---|---|---|"
+    display(Markdown(header + "\n" + "\n".join(rows)))
+```
+
+## Failed Tests
+
+```{python}
+#| echo: false
+
+failures = [r for r in data.results if r.outcome == "failed"]
+if not failures:
+    display(Markdown("No failures."))
+else:
+    lines = []
+    for f in failures:
+        lines.append(f"### `{f.nodeid}`\n")
+        if f.longrepr:
+            lines.append(f"```\n{f.longrepr}\n```\n")
+    display(Markdown("\n".join(lines)))
+```

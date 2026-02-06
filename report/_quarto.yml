@@ -1,0 +1,18 @@
+project:
+  type: website
+  output-dir: _output
+
+website:
+  title: "VIP - Verified Installation of Posit"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Summary
+      - href: details.qmd
+        text: Detailed Results
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-fold: true

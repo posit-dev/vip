@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/ruff-action@v3
+        name: Ruff lint
+        with:
+          version: "0.15.0"
+          args: check src/ tests/ selftests/ examples/
+
+      - uses: astral-sh/ruff-action@v3
+        name: Ruff format
+        with:
+          version: "0.15.0"
+          args: format --check src/ tests/ selftests/ examples/
+
+  selftest:
+    name: Selftests (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --python ${{ matrix.python-version }}
+
+      - name: Verify import
+        run: uv run python -c "import vip; print(vip.__version__)"
+
+      - name: Run selftests
+        run: uv run pytest selftests/ -v --junitxml=selftest-results.xml
+
+      - name: Collect VIP tests (dry run)
+        run: uv run pytest tests/ --collect-only --quiet
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-results-py${{ matrix.python-version }}
+          path: selftest-results.xml
