@@ -15,11 +15,13 @@ jobs:
       - uses: astral-sh/ruff-action@v3
         name: Ruff lint
         with:
+          version: "0.15.0"
           args: check src/ tests/ selftests/
 
       - uses: astral-sh/ruff-action@v3
         name: Ruff format
         with:
+          version: "0.15.0"
           args: format --check src/ tests/ selftests/
 
   selftest:
