@@ -1,0 +1,64 @@
+# VIP Configuration
+# Copy this file to vip.toml and fill in your deployment details.
+# Secrets should be set via environment variables (see comments below).
+
+[general]
+# Human-readable name for this deployment (appears in reports)
+deployment_name = "My Posit Team"
+
+# Additional directories containing custom test cases.
+# These are collected and run alongside the built-in test suite.
+extension_dirs = []
+
+[connect]
+# Set enabled = false to skip all Connect tests.
+enabled = true
+url = "https://connect.example.com"
+
+# API key for a Connect admin user.
+# Prefer setting the VIP_CONNECT_API_KEY environment variable.
+# api_key = "..."
+
+[workbench]
+enabled = true
+url = "https://workbench.example.com"
+
+[package_manager]
+enabled = true
+url = "https://packagemanager.example.com"
+
+[auth]
+# Authentication provider in use: "password", "ldap", "saml", "oidc"
+provider = "password"
+
+# Test user credentials.
+# Prefer setting VIP_TEST_USERNAME and VIP_TEST_PASSWORD environment variables.
+# username = "..."
+# password = "..."
+
+[email]
+# Set enabled = true if email delivery is configured on Connect.
+enabled = false
+# smtp_server = "smtp.example.com"
+
+[data_sources]
+# External data sources to verify connectivity against.
+# Each entry is a name and connection string (or env var reference).
+# Example:
+# [data_sources.postgres]
+# type = "postgres"
+# connection_string_env = "VIP_POSTGRES_CONN"
+
+[runtimes]
+# Expected R and Python versions.  Used to verify that the correct
+# versions are available on Connect and Workbench.
+# r_versions = ["4.3.2", "4.4.0"]
+# python_versions = ["3.11.8", "3.12.2"]
+
+[monitoring]
+# Set enabled = true if monitoring / logging is configured.
+enabled = false
+
+[security]
+# Set enabled = true to run security-policy compliance tests.
+policy_checks_enabled = false

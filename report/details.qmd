@@ -1,0 +1,45 @@
+---
+title: "Detailed Results"
+format:
+  html:
+    code-fold: true
+jupyter: python3
+---
+
+# All Test Results
+
+```{python}
+#| echo: false
+
+import json
+from pathlib import Path
+from IPython.display import Markdown
+
+results_path = Path("results.json")
+if not results_path.exists():
+    Markdown("⚠ No results.json found. Run: `pytest --vip-report=report/results.json`")
+else:
+    data = json.loads(results_path.read_text())
+    results = data.get("results", [])
+
+    categories = {}
+    for r in results:
+        parts = r["nodeid"].split("/")
+        cat = parts[1] if len(parts) >= 2 else "other"
+        categories.setdefault(cat, []).append(r)
+
+    lines = []
+    for cat, items in sorted(categories.items()):
+        lines.append(f"## {cat.replace('_', ' ').title()}\n")
+        lines.append("| Test | Outcome | Duration |")
+        lines.append("|---|---|---|")
+        for item in items:
+            # Shorten the nodeid for display.
+            short = item["nodeid"].split("::")[-1] if "::" in item["nodeid"] else item["nodeid"]
+            duration = f"{item.get('duration', 0):.2f}s"
+            icon = {"passed": "PASS", "failed": "FAIL", "skipped": "SKIP"}.get(item["outcome"], item["outcome"])
+            lines.append(f"| `{short}` | {icon} | {duration} |")
+        lines.append("")
+
+    Markdown("\n".join(lines))
+```

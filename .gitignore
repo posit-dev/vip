@@ -1,3 +1,8 @@
+# VIP-specific
+vip.toml
+report/results.json
+report/_output/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
