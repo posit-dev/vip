@@ -7,13 +7,25 @@ VIP uses **BDD-style tests** (pytest-bdd + Playwright) to verify Connect,
 Workbench, and Package Manager.  Results are compiled into a **Quarto report**
 that can be published to a Connect server.
 
+## Prerequisites
+
+- **Python 3.10+**
+- **[uv](https://docs.astral.sh/uv/)** (recommended) or pip
+- **[just](https://just.systems/)** (optional, for running common tasks)
+
 ## Quick start
 
 ```bash
-# Clone and install
+# Clone the repo
 git clone https://github.com/posit-dev/vip.git
 cd vip
-pip install -e .
+
+# Set up with uv (recommended)
+uv sync                          # install all dependencies
+uv run playwright install chromium
+
+# Or set up with pip
+pip install -e ".[dev]"
 playwright install chromium
 
 # Configure
@@ -26,15 +38,16 @@ export VIP_TEST_USERNAME="test-user"
 export VIP_TEST_PASSWORD="test-password"
 
 # Run all tests
-pytest
+uv run pytest              # with uv
+pytest                     # with pip
 
 # Run tests for a single product
-pytest -m connect
-pytest -m workbench
-pytest -m package_manager
+uv run pytest -m connect
+uv run pytest -m workbench
+uv run pytest -m package_manager
 
 # Generate the Quarto report
-pytest --vip-report=report/results.json
+uv run pytest --vip-report=report/results.json
 cd report && quarto render
 ```
 
@@ -140,10 +153,48 @@ quarto publish connect --server https://connect.example.com
 
 ## Development
 
+### Setup
+
 ```bash
+# Install uv (if you don't have it)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install all dependencies (including dev tools like ruff)
+uv sync
+
+# Or with pip
 pip install -e ".[dev]"
-ruff check src/ tests/
-mypy src/
+```
+
+### Linting and formatting
+
+VIP uses [ruff](https://docs.astral.sh/ruff/) for both linting and code
+formatting.  The easiest way to run checks is with [just](https://just.systems/):
+
+```bash
+just check          # run both lint and format checks
+just fix            # auto-fix lint issues and reformat
+
+# Or individually
+just lint           # ruff check
+just format-check   # ruff format --check
+just lint-fix       # ruff check --fix
+just format         # ruff format
+```
+
+Without just, run ruff directly:
+
+```bash
+uv run ruff check src/ tests/        # lint
+uv run ruff format --check src/ tests/  # format check
+uv run ruff check --fix src/ tests/  # auto-fix lint
+uv run ruff format src/ tests/       # reformat
+```
+
+### Type checking
+
+```bash
+uv run mypy src/
 ```
 
 ## License

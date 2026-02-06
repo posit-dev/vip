@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-from pytest_bdd import scenario, given, when, then
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_packages.feature", "R repos.conf points to the expected repository")

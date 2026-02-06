@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-from pytest_bdd import scenario, given, when, then
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_auth.feature", "User can log in to Workbench via the web UI")

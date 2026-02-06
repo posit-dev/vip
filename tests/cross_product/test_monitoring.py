@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-from pytest_bdd import scenario, given, when, then
-
 import httpx
+import pytest
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_monitoring.feature", "Monitoring is configured")
@@ -38,7 +37,13 @@ def check_health(vip_config):
         url = f"{cfg.url}{health_paths[name]}"
         try:
             resp = httpx.get(url, timeout=15)
-            results.append({"product": name, "status": resp.status_code, "ok": resp.status_code < 400})
+            results.append(
+                {
+                    "product": name,
+                    "status": resp.status_code,
+                    "ok": resp.status_code < 400,
+                }
+            )
         except Exception as exc:
             results.append({"product": name, "status": None, "ok": False, "error": str(exc)})
     return results

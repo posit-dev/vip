@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-from pytest_bdd import scenario, given, when, then
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_auth.feature", "User can log in via the web UI")
@@ -19,6 +18,7 @@ def test_connect_login_api():
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
+
 
 @given("Connect is accessible at the configured URL")
 def connect_accessible(connect_client):

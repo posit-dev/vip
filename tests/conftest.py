@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import pytest
 
-from vip.config import VIPConfig, load_config
 from vip.clients.connect import ConnectClient
-from vip.clients.workbench import WorkbenchClient
 from vip.clients.packagemanager import PackageManagerClient
+from vip.clients.workbench import WorkbenchClient
+from vip.config import VIPConfig
 from vip.plugin import _vip_config_key
-
 
 # ---------------------------------------------------------------------------
 # Configuration fixture
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def vip_config(request: pytest.FixtureRequest) -> VIPConfig:
@@ -24,6 +24,7 @@ def vip_config(request: pytest.FixtureRequest) -> VIPConfig:
 # ---------------------------------------------------------------------------
 # Product client fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def connect_client(vip_config: VIPConfig) -> ConnectClient | None:
@@ -71,6 +72,7 @@ def pm_url(vip_config: VIPConfig) -> str:
 # Auth fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def test_username(vip_config: VIPConfig) -> str:
     return vip_config.auth.username
@@ -90,6 +92,7 @@ def auth_provider(vip_config: VIPConfig) -> str:
 # Runtime fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def expected_r_versions(vip_config: VIPConfig) -> list[str]:
     return vip_config.runtimes.r_versions
@@ -104,6 +107,7 @@ def expected_python_versions(vip_config: VIPConfig) -> list[str]:
 # Data source fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
 def data_sources(vip_config: VIPConfig):
     return vip_config.data_sources
@@ -112,6 +116,7 @@ def data_sources(vip_config: VIPConfig):
 # ---------------------------------------------------------------------------
 # Feature flags
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def email_enabled(vip_config: VIPConfig) -> bool:

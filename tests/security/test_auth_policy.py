@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-from pytest_bdd import scenario, given, when, then
-
 import httpx
+import pytest
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_auth_policy.feature", "Auth provider matches expected configuration")
@@ -54,6 +53,5 @@ def unauth_request(vip_config):
 @then("the request is rejected with 401 or 403")
 def request_rejected(unauth_response):
     assert unauth_response.status_code in (401, 403), (
-        f"Unauthenticated request returned HTTP {unauth_response.status_code}; "
-        "expected 401 or 403"
+        f"Unauthenticated request returned HTTP {unauth_response.status_code}; expected 401 or 403"
     )

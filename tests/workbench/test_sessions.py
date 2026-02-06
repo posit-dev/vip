@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import time
 
-import pytest
-from pytest_bdd import scenario, given, when, then
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_sessions.feature", "A new session starts and persists")

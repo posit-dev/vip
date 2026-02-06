@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import time
 
-import pytest
-from pytest_bdd import scenario, given, when, then
-
 import httpx
+import pytest
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_login_load_times.feature", "Connect login page loads within acceptable time")
@@ -28,6 +27,7 @@ def test_pm_load_time():
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
+
 
 @given("Connect is configured in vip.toml")
 def connect_configured(vip_config):

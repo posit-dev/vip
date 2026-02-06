@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from pytest_bdd import scenario, given, when, then
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_repos.feature", "CRAN mirror is accessible")
@@ -25,6 +25,7 @@ def test_repo_exists():
 # Steps
 # ---------------------------------------------------------------------------
 
+
 @given("Package Manager is running")
 def pm_running(pm_client):
     assert pm_client is not None, "Package Manager client not configured"
@@ -38,7 +39,9 @@ def pm_running(pm_client):
 )
 def query_cran(pm_client):
     repos = pm_client.list_repos()
-    cran_repos = [r for r in repos if r.get("type") == "cran" or "cran" in r.get("name", "").lower()]
+    cran_repos = [
+        r for r in repos if r.get("type") == "cran" or "cran" in r.get("name", "").lower()
+    ]
     if not cran_repos:
         pytest.skip("No CRAN repository configured in Package Manager")
     repo_name = cran_repos[0]["name"]
@@ -51,7 +54,9 @@ def query_cran(pm_client):
 )
 def query_pypi(pm_client):
     repos = pm_client.list_repos()
-    pypi_repos = [r for r in repos if r.get("type") == "pypi" or "pypi" in r.get("name", "").lower()]
+    pypi_repos = [
+        r for r in repos if r.get("type") == "pypi" or "pypi" in r.get("name", "").lower()
+    ]
     if not pypi_repos:
         pytest.skip("No PyPI repository configured in Package Manager")
     repo_name = pypi_repos[0]["name"]

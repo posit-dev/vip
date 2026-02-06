@@ -10,7 +10,7 @@ from __future__ import annotations
 import shutil
 
 import pytest
-from pytest_bdd import scenario, given, when, then
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_resources.feature", "System resource usage is within limits")
@@ -66,6 +66,4 @@ def memory_ok(resource_info):
     if resource_info["mem_total_kb"] == 0:
         pytest.skip("Memory info not available (non-Linux host)")
     available_pct = (resource_info["mem_available_kb"] / resource_info["mem_total_kb"]) * 100
-    assert available_pct > 10, (
-        f"Only {available_pct:.1f}% memory available (threshold: 10%)"
-    )
+    assert available_pct > 10, f"Only {available_pct:.1f}% memory available (threshold: 10%)"

@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-from urllib.parse import urlparse
-
-import pytest
-from pytest_bdd import scenario, given, when, then
-
 import httpx
-
+import pytest
+from pytest_bdd import given, scenario, then, when
 
 # ---------------------------------------------------------------------------
 # Scenarios
 # ---------------------------------------------------------------------------
+
 
 @scenario("test_https.feature", "Connect enforces HTTPS")
 def test_connect_https():
@@ -47,6 +44,7 @@ def test_pm_headers():
 # ---------------------------------------------------------------------------
 # Steps - HTTPS enforcement
 # ---------------------------------------------------------------------------
+
 
 @given("Connect is configured with an HTTPS URL", target_fixture="product_url")
 def connect_https(vip_config):
@@ -85,7 +83,11 @@ def make_http_request(product_url):
     http_url = product_url.replace("https://", "http://")
     try:
         resp = httpx.get(http_url, follow_redirects=False, timeout=10)
-        return {"status": resp.status_code, "location": resp.headers.get("location", ""), "refused": False}
+        return {
+            "status": resp.status_code,
+            "location": resp.headers.get("location", ""),
+            "refused": False,
+        }
     except httpx.ConnectError:
         return {"status": None, "location": "", "refused": True}
     except Exception:
@@ -98,8 +100,7 @@ def https_enforced(http_result):
         return  # HTTP port closed - good.
     status = http_result["status"]
     assert status in (301, 302, 307, 308), (
-        f"HTTP request was not refused or redirected (got HTTP {status}). "
-        "HTTPS is not enforced."
+        f"HTTP request was not refused or redirected (got HTTP {status}). HTTPS is not enforced."
     )
     assert http_result["location"].startswith("https://"), (
         f"Redirect does not point to HTTPS: {http_result['location']}"
@@ -109,6 +110,7 @@ def https_enforced(http_result):
 # ---------------------------------------------------------------------------
 # Steps - header exposure
 # ---------------------------------------------------------------------------
+
 
 @given("Connect is configured in vip.toml", target_fixture="product_url")
 def connect_configured(vip_config):
@@ -148,6 +150,7 @@ def no_version_headers(response_headers):
         # Having the header is OK, but it shouldn't contain version numbers.
         if value:
             import re
+
             version_pattern = re.compile(r"\d+\.\d+")
             if version_pattern.search(value):
                 pytest.skip(

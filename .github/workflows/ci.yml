@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/ruff-action@v3
+        name: Ruff lint
+        with:
+          args: check src/ tests/
+
+      - uses: astral-sh/ruff-action@v3
+        name: Ruff format
+        with:
+          args: format --check src/ tests/
+
+  validate:
+    name: Validate package (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --python ${{ matrix.python-version }}
+
+      - name: Verify import
+        run: uv run python -c "import vip; print(vip.__version__)"
+
+      - name: Collect tests (dry run)
+        run: uv run pytest --collect-only --quiet 2>&1 | tail -5

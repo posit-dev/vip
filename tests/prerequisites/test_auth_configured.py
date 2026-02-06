@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-from pytest_bdd import scenario, given, then
+from pytest_bdd import given, scenario, then
 
 
 @scenario("test_auth_configured.feature", "Test credentials are provided")

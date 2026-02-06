@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 import pytest
-from pytest_bdd import scenario, given, when, then
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_secrets.feature", "API keys are not stored in the VIP config file")

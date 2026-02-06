@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import os
-import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-import pytest
-from pytest_bdd import scenario, given, when, then
-
 import httpx
+import pytest
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_resource_usage.feature", "CPU and memory stay within limits during API activity")
@@ -89,6 +87,4 @@ def memory_ok(resource_snapshot):
     if resource_snapshot["mem_total_kb"] == 0:
         pytest.skip("Memory info not available (non-Linux host)")
     avail_pct = (resource_snapshot["mem_available_kb"] / resource_snapshot["mem_total_kb"]) * 100
-    assert avail_pct > 10, (
-        f"Only {avail_pct:.1f}% memory available (threshold: 10%)"
-    )
+    assert avail_pct > 10, f"Only {avail_pct:.1f}% memory available (threshold: 10%)"

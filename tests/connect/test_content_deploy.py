@@ -12,10 +12,9 @@ import json
 import tarfile
 import time
 
-import pytest
-from pytest_bdd import scenario, given, when, then
-
 import httpx
+import pytest
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_content_deploy.feature", "Deploy and execute a Quarto document")
@@ -42,6 +41,7 @@ def test_deploy_dash():
 # Shared state for the current scenario
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def deploy_state():
     """Mutable dict to carry state across steps within a single scenario."""
@@ -51,6 +51,7 @@ def deploy_state():
 # ---------------------------------------------------------------------------
 # Bundle helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_tar_gz(files: dict[str, str]) -> bytes:
     """Create an in-memory tar.gz archive from a dict of {filename: content}."""
@@ -66,50 +67,54 @@ def _make_tar_gz(files: dict[str, str]) -> bytes:
 
 _QUARTO_BUNDLE = {
     "index.qmd": "---\ntitle: VIP Test\n---\n\nHello from VIP.\n",
-    "manifest.json": json.dumps({
-        "version": 1,
-        "metadata": {"appmode": "quarto-static", "primary_document": "index.qmd"},
-        "quarto": {"engines": ["markdown"]},
-    }),
+    "manifest.json": json.dumps(
+        {
+            "version": 1,
+            "metadata": {"appmode": "quarto-static", "primary_document": "index.qmd"},
+            "quarto": {"engines": ["markdown"]},
+        }
+    ),
 }
 
 _PLUMBER_BUNDLE = {
-    "plumber.R": (
-        '#* @get /\nfunction() {\n  list(message = "VIP test OK")\n}\n'
+    "plumber.R": ('#* @get /\nfunction() {\n  list(message = "VIP test OK")\n}\n'),
+    "manifest.json": json.dumps(
+        {
+            "version": 1,
+            "metadata": {"appmode": "api", "primary_rmd": None, "primary_document": "plumber.R"},
+            "packages": {"plumber": {"Source": "CRAN"}},
+        }
     ),
-    "manifest.json": json.dumps({
-        "version": 1,
-        "metadata": {"appmode": "api", "primary_rmd": None, "primary_document": "plumber.R"},
-        "packages": {"plumber": {"Source": "CRAN"}},
-    }),
 }
 
 _SHINY_BUNDLE = {
     "app.R": (
-        'library(shiny)\n'
+        "library(shiny)\n"
         'ui <- fluidPage("VIP test")\n'
-        'server <- function(input, output, session) {}\n'
-        'shinyApp(ui, server)\n'
+        "server <- function(input, output, session) {}\n"
+        "shinyApp(ui, server)\n"
     ),
-    "manifest.json": json.dumps({
-        "version": 1,
-        "metadata": {"appmode": "shiny", "primary_document": "app.R"},
-        "packages": {"shiny": {"Source": "CRAN"}},
-    }),
+    "manifest.json": json.dumps(
+        {
+            "version": 1,
+            "metadata": {"appmode": "shiny", "primary_document": "app.R"},
+            "packages": {"shiny": {"Source": "CRAN"}},
+        }
+    ),
 }
 
 _DASH_BUNDLE = {
     "app.py": (
-        'from dash import Dash, html\n'
-        'app = Dash(__name__)\n'
-        'app.layout = html.Div("VIP test")\n'
+        'from dash import Dash, html\napp = Dash(__name__)\napp.layout = html.Div("VIP test")\n'
     ),
-    "manifest.json": json.dumps({
-        "version": 1,
-        "metadata": {"appmode": "python-dash", "primary_document": "app.py"},
-        "python": {"version": "3.11"},
-        "packages": {"dash": {"source": "pip"}},
-    }),
+    "manifest.json": json.dumps(
+        {
+            "version": 1,
+            "metadata": {"appmode": "python-dash", "primary_document": "app.py"},
+            "python": {"version": "3.11"},
+            "packages": {"dash": {"source": "pip"}},
+        }
+    ),
 }
 
 _BUNDLES: dict[str, dict[str, str]] = {
@@ -123,6 +128,7 @@ _BUNDLES: dict[str, dict[str, str]] = {
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
+
 
 @given("Connect is accessible at the configured URL")
 def connect_accessible(connect_client):
@@ -139,10 +145,18 @@ def create_content(connect_client, request):
     for name in _BUNDLES:
         if name.replace("-", "_") in step_text or name in step_text:
             content = connect_client.create_content(name)
-            return {"guid": content["guid"], "name": name, "content_url": content.get("content_url", "")}
+            return {
+                "guid": content["guid"],
+                "name": name,
+                "content_url": content.get("content_url", ""),
+            }
     # Fallback
     content = connect_client.create_content("vip-test")
-    return {"guid": content["guid"], "name": "vip-test", "content_url": content.get("content_url", "")}
+    return {
+        "guid": content["guid"],
+        "name": "vip-test",
+        "content_url": content.get("content_url", ""),
+    }
 
 
 @when("I upload and deploy a minimal Quarto bundle")

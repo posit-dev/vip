@@ -8,19 +8,18 @@ These tests specifically target common misconfigurations:
 
 from __future__ import annotations
 
-import ssl
 import socket
+import ssl
 from urllib.parse import urlparse
 
-import pytest
-from pytest_bdd import scenario, given, when, then
-
 import httpx
-
+import pytest
+from pytest_bdd import given, scenario, then, when
 
 # ---------------------------------------------------------------------------
 # Scenarios
 # ---------------------------------------------------------------------------
+
 
 @scenario("test_ssl.feature", "SSL certificate is valid for Connect")
 def test_ssl_connect():
@@ -55,6 +54,7 @@ def test_https_redirect_package_manager():
 # ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def ssl_state():
@@ -134,6 +134,7 @@ def cert_chain_complete(cert_info):
 # Steps - HTTPS redirect
 # ---------------------------------------------------------------------------
 
+
 @when("I request the HTTP URL for Connect", target_fixture="http_response")
 @when("I request the HTTP URL for Workbench", target_fixture="http_response")
 @when("I request the HTTP URL for Package Manager", target_fixture="http_response")
@@ -144,7 +145,11 @@ def request_http(product_url):
         http_url = f"http://{parsed.hostname}"
     try:
         resp = httpx.get(http_url, follow_redirects=False, timeout=10)
-        return {"status": resp.status_code, "location": resp.headers.get("location", ""), "error": None}
+        return {
+            "status": resp.status_code,
+            "location": resp.headers.get("location", ""),
+            "error": None,
+        }
     except httpx.ConnectError:
         return {"status": None, "location": "", "error": "port_closed"}
     except Exception as exc:

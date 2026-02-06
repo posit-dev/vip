@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import time
 
-import pytest
-from pytest_bdd import scenario, given, when, then
-
 import httpx
+import pytest
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_package_install_speed.feature", "CRAN package downloads within acceptable time")

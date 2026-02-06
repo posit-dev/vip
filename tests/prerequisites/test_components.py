@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
-from pytest_bdd import scenario, given, when, then, parsers
-
 import httpx
-
+import pytest
+from pytest_bdd import given, scenario, then, when
 
 # ---------------------------------------------------------------------------
 # Scenarios
 # ---------------------------------------------------------------------------
+
 
 @scenario("test_components.feature", "Connect server is reachable")
 def test_connect_reachable():
@@ -30,6 +29,7 @@ def test_package_manager_reachable():
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
+
 
 @given("Connect is configured in vip.toml")
 def connect_configured(vip_config):

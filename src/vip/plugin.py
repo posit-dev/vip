@@ -27,6 +27,7 @@ from vip.config import VIPConfig, load_config
 # Plugin hooks
 # ---------------------------------------------------------------------------
 
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("vip", "Verified Installation of Posit")
     group.addoption(
@@ -155,9 +156,7 @@ def _maybe_skip_for_version(item: pytest.Item, cfg: VIPConfig) -> None:
 
     if _version_tuple(pc.version) < _version_tuple(version):
         item.add_marker(
-            pytest.mark.skip(
-                reason=f"{product} version {pc.version} < required {version}"
-            )
+            pytest.mark.skip(reason=f"{product} version {pc.version} < required {version}")
         )
 
 
@@ -184,13 +183,19 @@ _results: list[dict[str, Any]] = []
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     if report.when == "call" or (report.when == "setup" and report.skipped):
-        _results.append({
-            "nodeid": report.nodeid,
-            "outcome": report.outcome,
-            "duration": report.duration,
-            "longrepr": str(report.longrepr) if report.longrepr else None,
-            "markers": [m.name for m in report.item.iter_markers()] if hasattr(report, "item") else [],  # type: ignore[attr-defined]
-        })
+        _results.append(
+            {
+                "nodeid": report.nodeid,
+                "outcome": report.outcome,
+                "duration": report.duration,
+                "longrepr": str(report.longrepr) if report.longrepr else None,
+                "markers": (
+                    [m.name for m in report.item.iter_markers()]  # type: ignore[attr-defined]
+                    if hasattr(report, "item")
+                    else []
+                ),
+            }
+        )
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:

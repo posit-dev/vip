@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-from pytest_bdd import scenario, given, when, then
-
 import httpx
+import pytest
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_private_repos.feature", "Private repositories are reachable")
@@ -22,7 +21,9 @@ def pm_running(pm_client):
 def private_repos_configured(pm_client):
     repos = pm_client.list_repos()
     # Heuristic: repos that are not the built-in CRAN/PyPI mirrors.
-    private = [r for r in repos if r.get("private", False) or "internal" in r.get("name", "").lower()]
+    private = [
+        r for r in repos if r.get("private", False) or "internal" in r.get("name", "").lower()
+    ]
     if not private:
         pytest.skip("No private repositories configured")
     return private

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from pytest_bdd import scenario, given, when, then
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_packages.feature", "Connect is configured to use the expected package repository")
@@ -39,9 +39,10 @@ def query_server_settings(connect_client):
 def r_repo_present(server_settings):
     # The exact key varies by Connect version; look for common patterns.
     settings_str = str(server_settings).lower()
-    assert "cran" in settings_str or "repository" in settings_str or "packagemanager" in settings_str, (
-        "No R package repository information found in Connect server settings"
+    has_repo_info = (
+        "cran" in settings_str or "repository" in settings_str or "packagemanager" in settings_str
     )
+    assert has_repo_info, "No R package repository information found in Connect server settings"
 
 
 @then("the Package Manager URL appears as a configured repository")

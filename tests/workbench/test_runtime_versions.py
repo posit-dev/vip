@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from pytest_bdd import scenario, given, when, then
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_runtime_versions.feature", "Expected R versions are available on Workbench")
@@ -61,9 +61,7 @@ def r_versions_found(expected_r_versions, available_r):
     if not available_r:
         pytest.skip("Could not detect available R versions from the Workbench UI")
     missing = [v for v in expected_r_versions if v not in available_r]
-    assert not missing, (
-        f"Missing R versions on Workbench: {missing}. Available: {available_r}"
-    )
+    assert not missing, f"Missing R versions on Workbench: {missing}. Available: {available_r}"
 
 
 @then("all expected Python versions are found")

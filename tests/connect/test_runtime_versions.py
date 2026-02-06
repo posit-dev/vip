@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from pytest_bdd import scenario, given, when, then
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_runtime_versions.feature", "Expected R versions are available on Connect")
@@ -46,9 +46,7 @@ def query_python_versions(connect_client):
 @then("all expected R versions are present")
 def r_versions_present(expected_r_versions, available_r):
     missing = [v for v in expected_r_versions if v not in available_r]
-    assert not missing, (
-        f"Missing R versions on Connect: {missing}. Available: {available_r}"
-    )
+    assert not missing, f"Missing R versions on Connect: {missing}. Available: {available_r}"
 
 
 @then("all expected Python versions are present")

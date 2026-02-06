@@ -8,7 +8,7 @@ changes by using multiple selector strategies.
 from __future__ import annotations
 
 import pytest
-from pytest_bdd import scenario, given, when, then
+from pytest_bdd import given, scenario, then, when
 
 
 @scenario("test_ide_launch.feature", "RStudio IDE session can be launched")
@@ -30,6 +30,7 @@ def test_launch_jupyter():
 # Shared state
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def session_state():
     return {}
@@ -38,6 +39,7 @@ def session_state():
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
+
 
 @given("the user is logged in to Workbench")
 def user_logged_in(page, workbench_url, test_username, test_password):
