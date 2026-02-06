@@ -15,15 +15,15 @@ jobs:
       - uses: astral-sh/ruff-action@v3
         name: Ruff lint
         with:
-          args: check src/ tests/
+          args: check src/ tests/ selftests/
 
       - uses: astral-sh/ruff-action@v3
         name: Ruff format
         with:
-          args: format --check src/ tests/
+          args: format --check src/ tests/ selftests/
 
-  validate:
-    name: Validate package (${{ matrix.python-version }})
+  selftest:
+    name: Selftests (${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -39,5 +39,8 @@ jobs:
       - name: Verify import
         run: uv run python -c "import vip; print(vip.__version__)"
 
-      - name: Collect tests (dry run)
-        run: uv run pytest --collect-only --quiet 2>&1 | tail -5
+      - name: Run selftests
+        run: uv run pytest selftests/ -v
+
+      - name: Collect VIP tests (dry run)
+        run: uv run pytest tests/ --collect-only --quiet 2>&1 | tail -5

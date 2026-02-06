@@ -1,0 +1,48 @@
+name: Report Preview
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+concurrency: preview-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  preview:
+    if: github.event.action != 'closed'
+    name: Build & deploy report preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Run selftests and generate results
+        run: uv run pytest selftests/ -v --vip-report=report/results.json
+
+      - name: Render Quarto report
+        run: cd report && uv run quarto render
+
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: report/_output/
+
+  cleanup:
+    if: github.event.action == 'closed'
+    name: Clean up report preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: report/_output/
+          action: remove

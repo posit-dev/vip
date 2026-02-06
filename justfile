@@ -11,19 +11,19 @@ setup:
 
 # Run ruff linter
 lint:
-    uv run ruff check src/ tests/
+    uv run ruff check src/ tests/ selftests/
 
 # Run ruff formatter check (fails if files would change)
 format-check:
-    uv run ruff format --check src/ tests/
+    uv run ruff format --check src/ tests/ selftests/
 
 # Auto-fix lint issues
 lint-fix:
-    uv run ruff check --fix src/ tests/
+    uv run ruff check --fix src/ tests/ selftests/
 
 # Format code in place
 format:
-    uv run ruff format src/ tests/
+    uv run ruff format src/ tests/ selftests/
 
 # Run all checks (lint + format)
 check: lint format-check
@@ -31,15 +31,19 @@ check: lint format-check
 # Auto-fix everything (lint fixes + formatting)
 fix: lint-fix format
 
-# Run the full test suite
+# Run selftests (no products required)
+selftest *ARGS:
+    uv run pytest selftests/ {{ ARGS }}
+
+# Run the full VIP test suite against configured products
 test *ARGS:
-    uv run pytest {{ ARGS }}
+    uv run pytest tests/ {{ ARGS }}
 
 # Run tests for a specific product (connect, workbench, package_manager)
 test-product PRODUCT:
-    uv run pytest -m {{ PRODUCT }}
+    uv run pytest tests/ -m {{ PRODUCT }}
 
-# Run tests and generate the Quarto report data
+# Run selftests and generate the Quarto report
 report:
-    uv run pytest --vip-report=report/results.json
+    uv run pytest selftests/ --vip-report=report/results.json
     cd report && quarto render
