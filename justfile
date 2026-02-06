@@ -43,7 +43,12 @@ test *ARGS:
 test-product PRODUCT:
     uv run pytest tests/ -m {{ PRODUCT }}
 
-# Run selftests and generate the Quarto report
-report:
+# Generate the Quarto report from product test results
+report *ARGS:
+    uv run pytest tests/ --vip-report=report/results.json {{ ARGS }}
+    cd report && quarto render
+
+# Generate a Quarto report from selftests (for CI / demo purposes)
+report-selftest:
     uv run pytest selftests/ --vip-report=report/results.json
     cd report && quarto render

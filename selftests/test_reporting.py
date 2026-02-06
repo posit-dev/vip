@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vip.reporting import ReportData, TestResult, load_results
+from vip.reporting import ProductInfo, ReportData, TestResult, load_results
 
 
 class TestTestResult:
@@ -81,3 +81,54 @@ class TestLoadResults:
         rd = load_results(sample_results_json)
         connect_tests = [r for r in rd.results if "connect" in r.markers]
         assert len(connect_tests) == 2
+
+    def test_products_loaded(self, sample_results_json):
+        rd = load_results(sample_results_json)
+        assert len(rd.products) == 3
+        names = {p.name for p in rd.products}
+        assert names == {"connect", "workbench", "package_manager"}
+
+    def test_configured_products(self, sample_results_json):
+        rd = load_results(sample_results_json)
+        configured = rd.configured_products()
+        assert len(configured) == 2
+        names = {p.name for p in configured}
+        assert names == {"connect", "package_manager"}
+
+    def test_product_version(self, sample_results_json):
+        rd = load_results(sample_results_json)
+        connect = next(p for p in rd.products if p.name == "connect")
+        assert connect.version == "2024.09.0"
+        assert connect.url == "https://connect.example.com"
+
+    def test_generated_at_display(self, sample_results_json):
+        rd = load_results(sample_results_json)
+        display = rd.generated_at_display
+        assert "2026" in display
+        assert "N/A" not in display
+
+    def test_missing_file_returns_empty(self, tmp_path):
+        rd = load_results(tmp_path / "nonexistent.json")
+        assert rd.total == 0
+        assert rd.deployment_name == "Posit Team"
+        assert rd.products == []
+
+
+class TestProductInfo:
+    def test_defaults(self):
+        p = ProductInfo()
+        assert p.name == ""
+        assert not p.configured
+        assert p.version is None
+
+    def test_from_data(self):
+        p = ProductInfo(
+            name="connect",
+            enabled=True,
+            url="https://connect.example.com",
+            version="2024.09.0",
+            configured=True,
+        )
+        assert p.name == "connect"
+        assert p.configured
+        assert p.version == "2024.09.0"

@@ -36,6 +36,26 @@ def sample_results_json(tmp_path: Path) -> Path:
         "generated_at": "2026-01-15T12:00:00+00:00",
         "deployment_name": "Selftest Deployment",
         "exit_status": 0,
+        "products": {
+            "connect": {
+                "enabled": True,
+                "url": "https://connect.example.com",
+                "version": "2024.09.0",
+                "configured": True,
+            },
+            "workbench": {
+                "enabled": False,
+                "url": "",
+                "version": None,
+                "configured": False,
+            },
+            "package_manager": {
+                "enabled": True,
+                "url": "https://pm.example.com",
+                "version": None,
+                "configured": True,
+            },
+        },
         "results": [
             {
                 "nodeid": "tests/connect/test_auth.py::test_connect_login_ui",

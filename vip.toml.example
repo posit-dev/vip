@@ -14,6 +14,8 @@ extension_dirs = []
 # Set enabled = false to skip all Connect tests.
 enabled = true
 url = "https://connect.example.com"
+# Product version - used by @min_version markers to skip version-specific tests.
+# version = "2024.09.0"
 
 # API key for a Connect admin user.
 # Prefer setting the VIP_CONNECT_API_KEY environment variable.
@@ -22,10 +24,12 @@ url = "https://connect.example.com"
 [workbench]
 enabled = true
 url = "https://workbench.example.com"
+# version = "2024.09.0"
 
 [package_manager]
 enabled = true
 url = "https://packagemanager.example.com"
+# version = "2024.09.0"
 
 [auth]
 # Authentication provider in use: "password", "ldap", "saml", "oidc"

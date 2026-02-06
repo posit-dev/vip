@@ -21,7 +21,7 @@ report = [
     "ipykernel",
 ]
 dev = [
-    "ruff>=0.4",
+    "ruff>=0.15.0,<0.16",
     "mypy>=1.10",
 ]
 

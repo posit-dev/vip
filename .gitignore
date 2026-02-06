@@ -2,6 +2,8 @@
 vip.toml
 report/results.json
 report/_output/
+report/_freeze/
+report/.quarto/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -150,15 +150,18 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         connect=ConnectConfig(
             enabled=connect_raw.get("enabled", True),
             url=connect_raw.get("url", ""),
+            version=connect_raw.get("version"),
             api_key=connect_raw.get("api_key", ""),
         ),
         workbench=ProductConfig(
             enabled=workbench_raw.get("enabled", True),
             url=workbench_raw.get("url", ""),
+            version=workbench_raw.get("version"),
         ),
         package_manager=ProductConfig(
             enabled=pm_raw.get("enabled", True),
             url=pm_raw.get("url", ""),
+            version=pm_raw.get("version"),
         ),
         auth=AuthConfig(
             provider=auth_raw.get("provider", "password"),
