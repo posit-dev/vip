@@ -33,7 +33,7 @@ jobs:
         run: uv run pytest selftests/ -v --vip-report=report/results.json
 
       - name: Render Quarto report
-        run: cd report && quarto render
+        run: cd report && uv run quarto render
 
       - uses: rossjrw/pr-preview-action@v1
         with:

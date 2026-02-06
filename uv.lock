@@ -2221,6 +2221,8 @@ report = [
     { name = "ipykernel" },
     { name = "jinja2" },
     { name = "jupyter" },
+    { name = "nbclient" },
+    { name = "nbformat" },
 ]
 
 [package.metadata]
@@ -2230,6 +2232,8 @@ requires-dist = [
     { name = "jinja2", marker = "extra == 'report'", specifier = ">=3.1" },
     { name = "jupyter", marker = "extra == 'report'" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
+    { name = "nbclient", marker = "extra == 'report'", specifier = ">=0.8" },
+    { name = "nbformat", marker = "extra == 'report'", specifier = ">=5.7" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "pytest-bdd", specifier = ">=7.0" },
