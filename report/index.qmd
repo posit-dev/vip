@@ -40,12 +40,12 @@ skipped = sum(1 for r in results if r["outcome"] == "skipped")
 ```{python}
 #| echo: false
 
-from IPython.display import Markdown
+from IPython.display import Markdown, display
 
 status = "PASS" if failed == 0 and total > 0 else "FAIL" if failed > 0 else "NO RESULTS"
 color = "green" if status == "PASS" else "red" if status == "FAIL" else "gray"
 
-Markdown(f"""
+display(Markdown(f"""
 | Metric | Count |
 |--------|-------|
 | **Total** | {total} |
@@ -53,7 +53,7 @@ Markdown(f"""
 | **Failed** | {failed} |
 | **Skipped** | {skipped} |
 | **Status** | **<span style="color:{color}">{status}</span>** |
-""")
+"""))
 ```
 
 ## Results by Category
@@ -77,7 +77,7 @@ for cat, items in sorted(categories.items()):
     rows.append(f"| {cat} | {cat_total} | {cat_passed} | {cat_failed} | {cat_skipped} | {cat_status} |")
 
 header = "| Category | Total | Passed | Failed | Skipped | Status |\n|---|---|---|---|---|---|"
-Markdown(header + "\n" + "\n".join(rows))
+display(Markdown(header + "\n" + "\n".join(rows)))
 ```
 
 ## Failed Tests
@@ -87,12 +87,12 @@ Markdown(header + "\n" + "\n".join(rows))
 
 failures = [r for r in results if r["outcome"] == "failed"]
 if not failures:
-    Markdown("No failures.")
+    display(Markdown("No failures."))
 else:
     lines = []
     for f in failures:
         lines.append(f"### `{f['nodeid']}`\n")
         if f.get("longrepr"):
             lines.append(f"```\n{f['longrepr']}\n```\n")
-    Markdown("\n".join(lines))
+    display(Markdown("\n".join(lines)))
 ```

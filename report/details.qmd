@@ -13,11 +13,11 @@ jupyter: python3
 
 import json
 from pathlib import Path
-from IPython.display import Markdown
+from IPython.display import Markdown, display
 
 results_path = Path("results.json")
 if not results_path.exists():
-    Markdown("⚠ No results.json found. Run: `pytest --vip-report=report/results.json`")
+    display(Markdown("⚠ No results.json found. Run: `pytest --vip-report=report/results.json`"))
 else:
     data = json.loads(results_path.read_text())
     results = data.get("results", [])
@@ -34,12 +34,13 @@ else:
         lines.append("| Test | Outcome | Duration |")
         lines.append("|---|---|---|")
         for item in items:
-            # Shorten the nodeid for display.
             short = item["nodeid"].split("::")[-1] if "::" in item["nodeid"] else item["nodeid"]
             duration = f"{item.get('duration', 0):.2f}s"
-            icon = {"passed": "PASS", "failed": "FAIL", "skipped": "SKIP"}.get(item["outcome"], item["outcome"])
+            icon = {"passed": "PASS", "failed": "FAIL", "skipped": "SKIP"}.get(
+                item["outcome"], item["outcome"]
+            )
             lines.append(f"| `{short}` | {icon} | {duration} |")
         lines.append("")
 
-    Markdown("\n".join(lines))
+    display(Markdown("\n".join(lines)))
 ```
