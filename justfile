@@ -11,19 +11,19 @@ setup:
 
 # Run ruff linter
 lint:
-    uv run ruff check src/ tests/ selftests/
+    uv run ruff check src/ tests/ selftests/ examples/
 
 # Run ruff formatter check (fails if files would change)
 format-check:
-    uv run ruff format --check src/ tests/ selftests/
+    uv run ruff format --check src/ tests/ selftests/ examples/
 
 # Auto-fix lint issues
 lint-fix:
-    uv run ruff check --fix src/ tests/ selftests/
+    uv run ruff check --fix src/ tests/ selftests/ examples/
 
 # Format code in place
 format:
-    uv run ruff format src/ tests/ selftests/
+    uv run ruff format src/ tests/ selftests/ examples/
 
 # Run all checks (lint + format)
 check: lint format-check

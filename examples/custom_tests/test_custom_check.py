@@ -16,11 +16,9 @@ etc.) and can use any pytest-bdd or Playwright features.
 
 from __future__ import annotations
 
-import pytest
-from pytest_bdd import scenario, given, when, then
-
 import httpx
-
+import pytest
+from pytest_bdd import given, scenario, then, when
 
 # The URL to check - replace with your own endpoint.
 CUSTOM_ENDPOINT = "https://example.com/health"

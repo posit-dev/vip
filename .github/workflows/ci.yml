@@ -16,13 +16,13 @@ jobs:
         name: Ruff lint
         with:
           version: "0.15.0"
-          args: check src/ tests/ selftests/
+          args: check src/ tests/ selftests/ examples/
 
       - uses: astral-sh/ruff-action@v3
         name: Ruff format
         with:
           version: "0.15.0"
-          args: format --check src/ tests/ selftests/
+          args: format --check src/ tests/ selftests/ examples/
 
   selftest:
     name: Selftests (${{ matrix.python-version }})

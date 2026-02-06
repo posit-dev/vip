@@ -52,7 +52,7 @@ bdd_features_base_dir = "tests/"
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests", "selftests"]
+src = ["src", "tests", "selftests", "examples"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
