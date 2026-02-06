@@ -48,7 +48,6 @@ markers = [
     "min_version(product, version): only run when product meets minimum version",
     "if_applicable: test is skipped when the feature is not configured",
 ]
-bdd_features_base_dir = "tests/"
 
 [tool.ruff]
 line-length = 100

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
 from pytest_bdd import given, scenario, then, when
 
 
+@pytest.mark.skip(reason="Not yet implemented: needs Workbench admin API or repos.conf inspection")
 @scenario("test_packages.feature", "R repos.conf points to the expected repository")
 def test_r_repo_configured():
     pass
@@ -25,19 +27,16 @@ def user_logged_in(page, workbench_url, test_username, test_password):
     target_fixture="repo_check_url",
 )
 def check_r_repos(page, workbench_url):
-    # This is a placeholder - the actual implementation will depend on the
-    # Workbench version and how repos are exposed.  One approach is to
-    # inspect the Workbench admin settings API if available.
-    return workbench_url
+    # TODO: Implement actual repos.conf / admin API inspection.
+    # Options:
+    #   A) Query Workbench admin settings API (if available).
+    #   B) Start a session, run getOption("repos") in the R console.
+    #   C) Use Playwright to inspect the admin panel repo config page.
+    pytest.skip("Not yet implemented")
 
 
 @then("the expected package repository URL is present")
 def repo_url_present(repo_check_url, vip_config):
-    # When Package Manager is configured, its URL should appear in the
-    # Workbench repository configuration.
-    if vip_config.package_manager.is_configured:
-        # Detailed verification would inspect Workbench's repos.conf or
-        # admin API.  For now, confirm the config expectation is set.
-        assert vip_config.package_manager.url, (
-            "Package Manager URL should be configured as the repository source"
-        )
+    # TODO: Verify the Package Manager URL actually appears in Workbench's
+    # repository configuration, not just that the config expectation is set.
+    pytest.skip("Not yet implemented")
