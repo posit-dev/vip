@@ -56,7 +56,7 @@ def _concurrent_requests(url: str, n: int) -> list[dict]:
     target_fixture="concurrent_results",
 )
 def concurrent_connect(vip_config):
-    url = f"{vip_config.connect.url}/__api__/v1/server_settings"
+    url = f"{vip_config.connect.url}/__api__/server_settings"
     return _concurrent_requests(url, 10)
 
 

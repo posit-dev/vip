@@ -43,7 +43,7 @@ def navigate_to_login(page, connect_url):
 def enter_credentials(page, test_username, test_password):
     page.fill("[name='username'], #username", test_username)
     page.fill("[name='password'], #password", test_password)
-    page.click("button[type='submit']")
+    page.click("[data-automation='login-panel-submit']")
     page.wait_for_load_state("networkidle")
 
 

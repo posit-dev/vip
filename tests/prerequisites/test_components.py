@@ -51,7 +51,7 @@ def package_manager_configured(vip_config):
 
 @when("I request the Connect health endpoint", target_fixture="health_response")
 def request_connect_health(vip_config):
-    resp = httpx.get(f"{vip_config.connect.url}/__api__/v1/server_settings", timeout=15)
+    resp = httpx.get(f"{vip_config.connect.url}/__api__/server_settings", timeout=15)
     return resp
 
 
