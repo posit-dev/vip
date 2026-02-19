@@ -32,7 +32,7 @@ url = "https://packagemanager.example.com"
 # version = "2024.09.0"
 
 [auth]
-# Authentication provider in use: "password", "ldap", "saml", "oidc"
+# Authentication provider in use: "password", "ldap", "saml", "oidc", "oauth2"
 provider = "password"
 
 # Test user credentials.
