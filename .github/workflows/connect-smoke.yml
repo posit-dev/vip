@@ -1,0 +1,66 @@
+name: Connect Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  connect-smoke:
+    name: Smoke test against Connect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Start Connect in Docker
+      - name: Start Connect
+        id: connect
+        uses: posit-dev/with-connect@main
+        with:
+          version: "2024.08.0"
+          license: ${{ secrets.CONNECT_LICENSE }}
+
+      # Set up Python and install VIP
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install Playwright browsers
+        run: uv run playwright install chromium
+
+      # Generate vip.toml from with-connect outputs
+      - name: Configure VIP for CI Connect
+        run: |
+          cat > vip.toml << EOF
+          [general]
+          deployment_name = "CI Connect"
+
+          [connect]
+          enabled = true
+          url = "${{ steps.connect.outputs.CONNECT_SERVER }}"
+          api_key = "${{ steps.connect.outputs.CONNECT_API_KEY }}"
+
+          [auth]
+          provider = "password"
+          EOF
+
+      # Run the subset of tests that work against Docker Connect
+      - name: Run Connect smoke tests
+        run: |
+          uv run pytest \
+            tests/prerequisites/test_components.py \
+            tests/connect/test_auth.py \
+            -v -k "reachable or api" \
+            --vip-config=vip.toml
+        env:
+          VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
+
+      # Stop Connect
+      - name: Stop Connect
+        if: always()
+        uses: posit-dev/with-connect@main
+        with:
+          stop: ${{ steps.connect.outputs.CONTAINER_ID }}
