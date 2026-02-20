@@ -57,3 +57,9 @@ src = ["src", "tests", "selftests", "examples"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/connect/test_content_deploy.py" = ["E501"]
+
+[tool.ruff.format]
+exclude = ["tests/connect/test_content_deploy.py"]
