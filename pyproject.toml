@@ -39,6 +39,11 @@ packages = ["src/vip"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+    # gherkin-official 29.0.0 passes maxsplit positionally to re.split;
+    # fixed upstream but pulled transitively via pytest-bdd.
+    "ignore:'maxsplit' is passed as positional argument:DeprecationWarning:gherkin",
+]
 markers = [
     "connect: tests for Posit Connect",
     "workbench: tests for Posit Workbench",
