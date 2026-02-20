@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import pathlib
 import tarfile
 import time
 
@@ -78,13 +79,7 @@ _QUARTO_BUNDLE = {
 
 _PLUMBER_BUNDLE = {
     "plumber.R": ('#* @get /\nfunction() {\n  list(message = "VIP test OK")\n}\n'),
-    "manifest.json": json.dumps(
-        {
-            "version": 1,
-            "metadata": {"appmode": "api", "primary_rmd": None, "primary_document": "plumber.R"},
-            "packages": {"plumber": {"Source": "CRAN"}},
-        }
-    ),
+    "manifest.json": (pathlib.Path(__file__).parent / "plumber_manifest.json").read_text(),
 }
 
 _SHINY_BUNDLE = {
@@ -97,7 +92,7 @@ _SHINY_BUNDLE = {
     "manifest.json": json.dumps(
         {
             "version": 1,
-            "metadata": {"appmode": "shiny", "primary_document": "app.R"},
+            "metadata": {"appmode": "shiny", "entrypoint": "app.R"},
             "packages": {"shiny": {"Source": "CRAN"}},
         }
     ),
@@ -110,7 +105,7 @@ _DASH_BUNDLE = {
     "manifest.json": json.dumps(
         {
             "version": 1,
-            "metadata": {"appmode": "python-dash", "primary_document": "app.py"},
+            "metadata": {"appmode": "python-dash", "entrypoint": "app.py"},
             "python": {"version": "3.11"},
             "packages": {"dash": {"source": "pip"}},
         }
@@ -140,23 +135,20 @@ def connect_accessible(connect_client):
 @when('I create a VIP test content item named "vip-shiny-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-dash-test"', target_fixture="deploy_state")
 def create_content(connect_client, request):
-    # Extract content name from the step text via the scenario name.
-    step_text = request.node.name
+    # Extract content name by matching the content type keyword (e.g., "plumber")
+    # from the bundle name against the test function name (e.g., "test_deploy_plumber").
+    test_name = request.node.name
     for name in _BUNDLES:
-        if name.replace("-", "_") in step_text or name in step_text:
+        # "vip-plumber-test" → "plumber", "vip-shiny-test" → "shiny", etc.
+        content_type = name.split("-")[1]
+        if content_type in test_name:
             content = connect_client.create_content(name)
             return {
                 "guid": content["guid"],
                 "name": name,
                 "content_url": content.get("content_url", ""),
             }
-    # Fallback
-    content = connect_client.create_content("vip-test")
-    return {
-        "guid": content["guid"],
-        "name": "vip-test",
-        "content_url": content.get("content_url", ""),
-    }
+    pytest.fail(f"No bundle configuration found matching test: {test_name}")
 
 
 @when("I upload and deploy a minimal Quarto bundle")

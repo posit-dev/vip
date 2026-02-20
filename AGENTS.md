@@ -149,7 +149,7 @@ These are defined in `tests/conftest.py` and available to all tests:
 - `connect_client` / `workbench_client` / `pm_client` -- httpx API clients (or `None` if not configured)
 - `connect_url` / `workbench_url` / `pm_url` -- product URLs from config
 - `test_username` / `test_password` -- auth credentials
-- `auth_provider` -- e.g. `"password"`, `"saml"`, `"oidc"`
+- `auth_provider` -- e.g. `"password"`, `"saml"`, `"oidc"`, `"oauth2"`
 - `expected_r_versions` / `expected_python_versions` -- version lists from config
 - `data_sources` -- list of `DataSourceEntry` objects
 - `email_enabled` / `monitoring_enabled` -- feature flags

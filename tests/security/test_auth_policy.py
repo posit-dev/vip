@@ -30,7 +30,7 @@ def check_auth(vip_config):
 
 @then("the configured provider matches expectations")
 def provider_matches(auth_info):
-    assert auth_info["provider"] in ("password", "ldap", "saml", "oidc"), (
+    assert auth_info["provider"] in ("password", "ldap", "saml", "oidc", "oauth2"), (
         f"Unexpected auth provider: {auth_info['provider']}"
     )
 

@@ -33,7 +33,7 @@ class ConnectClient:
 
     def server_status(self) -> int:
         """Return the HTTP status code for the server health endpoint."""
-        resp = self._client.get("/v1/server_settings")
+        resp = self._client.get("/server_settings")
         return resp.status_code
 
     # -- Users --------------------------------------------------------------
@@ -51,14 +51,32 @@ class ConnectClient:
         return resp.json()
 
     def create_content(self, name: str, **kwargs: Any) -> dict[str, Any]:
-        """Create a new content item tagged for VIP cleanup."""
+        """Create a new content item tagged for VIP cleanup.
+
+        If content with the same name already exists (409 Conflict), the
+        existing item is deleted and creation is retried.
+        """
         payload: dict[str, Any] = {"name": name, **kwargs}
         resp = self._client.post("/v1/content", json=payload)
+        if resp.status_code == 409:
+            # Content with this name already exists — clean it up and retry.
+            existing = self._find_content_by_name(name)
+            if existing:
+                self.delete_content(existing["guid"])
+            resp = self._client.post("/v1/content", json=payload)
         resp.raise_for_status()
         content = resp.json()
         # Tag the content so we can identify and clean it up later.
         self._tag_content(content["guid"], _VIP_CONTENT_TAG)
         return content
+
+    def _find_content_by_name(self, name: str) -> dict[str, Any] | None:
+        """Return the first content item matching *name*, or ``None``."""
+        resp = self._client.get("/v1/content", params={"name": name})
+        if resp.status_code == 200:
+            items = resp.json()
+            return items[0] if items else None
+        return None
 
     def delete_content(self, guid: str) -> None:
         resp = self._client.delete(f"/v1/content/{guid}")
