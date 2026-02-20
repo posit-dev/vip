@@ -10,8 +10,12 @@ permissions:
 
 jobs:
   connect-smoke:
-    name: Smoke test against Connect
+    name: Smoke test against Connect ${{ matrix.connect-version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        connect-version: ["2024.08.0", "release"]
     steps:
       - uses: actions/checkout@v4
 
@@ -20,7 +24,7 @@ jobs:
         id: connect
         uses: posit-dev/with-connect@main
         with:
-          version: "2024.08.0"
+          version: ${{ matrix.connect-version }}
           license: ${{ secrets.CONNECT_LICENSE }}
 
       # Set up Python and install VIP
@@ -57,9 +61,18 @@ jobs:
             tests/prerequisites/test_components.py \
             tests/connect/test_auth.py \
             -v -k "reachable or api" \
-            --vip-config=vip.toml
+            --vip-config=vip.toml \
+            --junitxml=smoke-results.xml
         env:
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
+
+      # Upload test results for debugging failures
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: connect-smoke-results-${{ matrix.connect-version }}
+          path: smoke-results.xml
 
       # Stop Connect
       - name: Stop Connect
