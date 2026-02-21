@@ -30,8 +30,9 @@ Posit publishes official Workbench container images:
 |---|---|
 | Docker Hub | `rstudio/rstudio-workbench` |
 
-Image tags include specific release versions (e.g., `2024.09.0`) as well as
-`daily` for the most recent nightly build.
+Image tags combine an OS suffix with a release version, e.g.
+`ubuntu2204-2024.09.1` or its alias `jammy-2024.09.1`.  The mutable
+`ubuntu2204` (and `jammy`) tags always point to the latest release.
 
 ### Key environment variables
 
@@ -82,7 +83,7 @@ VERSION=$(curl -sf http://localhost:8787/api/server-info | jq -r '.version')
 pytest tests/prerequisites/test_components.py tests/workbench/test_auth.py ...
 
 # Cleanup
-docker stop workbench && docker rm workbench
+docker stop workbench && docker rm workbench || true
 ```
 
 ## What VIP tests can run in Docker Workbench
@@ -132,7 +133,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["2024.09.0", "daily"]') || fromJSON('["2024.09.0"]') }}
+        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2024.09.1", "ubuntu2204"]') || fromJSON('["ubuntu2204-2024.09.1"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -144,8 +145,6 @@ jobs:
             -p 8787:8787 \
             -e RSP_LICENSE="${{ secrets.WORKBENCH_LICENSE }}" \
             rstudio/rstudio-workbench:${{ matrix.workbench-version }}
-
-      # Create a PAM test user inside the container
       - name: Create test user
         run: |
           timeout 180 bash -c '
@@ -292,7 +291,7 @@ jobs:
       # Stop and remove Workbench container
       - name: Stop Workbench
         if: always()
-        run: docker stop workbench && docker rm workbench
+        run: docker stop workbench && docker rm workbench || true
 ```
 
 **Key decisions:**

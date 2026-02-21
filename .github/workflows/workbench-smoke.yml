@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["2024.09.0", "daily"]') || fromJSON('["2024.09.0"]') }}
+        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2024.09.1", "ubuntu2204"]') || fromJSON('["ubuntu2204-2024.09.1"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -180,4 +180,4 @@ jobs:
       # Stop and remove the Workbench container
       - name: Stop Workbench
         if: always()
-        run: docker stop workbench && docker rm workbench
+        run: docker stop workbench && docker rm workbench || true
