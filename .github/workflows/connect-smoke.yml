@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  checks: write
 
 jobs:
   connect-smoke:
@@ -42,6 +43,29 @@ jobs:
           fi
           echo "Resolved Connect version: ${VERSION}"
           echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # Rename the check run so the job title shows the resolved version
+      - name: Update job title with resolved version
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const resolvedVersion = '${{ steps.version.outputs.resolved }}';
+            const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            const currentJob = jobs.find(
+              j => j.status === 'in_progress' && j.name.includes('${{ matrix.connect-version }}')
+            );
+            if (currentJob) {
+              await github.rest.checks.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                check_run_id: currentJob.id,
+                name: `Smoke test against Connect ${resolvedVersion}`,
+              });
+            }
 
       # Set up Python and install VIP
       - uses: astral-sh/setup-uv@v5
@@ -90,6 +114,53 @@ jobs:
         with:
           name: connect-smoke-results-${{ steps.version.outputs.resolved }}
           path: smoke-results.xml
+
+      # Write a rich job summary with test details and emoji
+      - name: Write workflow summary
+        if: always()
+        run: |
+          RESOLVED="${{ steps.version.outputs.resolved }}"
+          CONNECT_URL="${{ steps.connect.outputs.CONNECT_SERVER }}"
+          REQUESTED="${{ matrix.connect-version }}"
+          RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+          {
+            echo "## 🧪 Connect Smoke Tests — v${RESOLVED}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| 🏷️ **Requested version** | \`${REQUESTED}\` |"
+            echo "| ✅ **Resolved version** | \`${RESOLVED}\` |"
+            echo "| 🌐 **Connect URL** | \`${CONNECT_URL}\` |"
+            echo "| 📅 **Run date** | ${RUN_DATE} |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f smoke-results.xml ]; then
+            TESTS=$(grep -oP '(?<=tests=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            FAILURES=$(grep -oP '(?<=failures=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            ERRORS=$(grep -oP '(?<=errors=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            SKIPPED=$(grep -oP '(?<=skipped=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            TESTS=${TESTS:-0}; FAILURES=${FAILURES:-0}; ERRORS=${ERRORS:-0}; SKIPPED=${SKIPPED:-0}
+            PASSED=$(( TESTS - FAILURES - ERRORS - SKIPPED ))
+            {
+              echo "### 📊 Test Results"
+              echo ""
+              echo "| Result | Count |"
+              echo "|--------|-------|"
+              echo "| ✅ Passed | ${PASSED} |"
+              echo "| ❌ Failed | ${FAILURES:-0} |"
+              echo "| ⚠️ Errors | ${ERRORS:-0} |"
+              echo "| ⏭️ Skipped | ${SKIPPED:-0} |"
+              echo "| 📝 **Total** | **${TESTS:-0}** |"
+              echo ""
+              if [ "${FAILURES:-0}" = "0" ] && [ "${ERRORS:-0}" = "0" ]; then
+                echo "🎉 **All tests passed!**"
+              else
+                echo "💥 **Some tests failed — check the logs for details.**"
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "> ⚠️ Test results file not found — tests may have been skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # Stop Connect
       - name: Stop Connect
