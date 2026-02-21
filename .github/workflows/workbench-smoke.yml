@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2024.09.1", "ubuntu2204"]') || fromJSON('["ubuntu2204-2024.09.1"]') }}
+        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2026.01.1", "ubuntu2204"]') || fromJSON('["ubuntu2204-2026.01.1"]') }}
     steps:
       - uses: actions/checkout@v4
 

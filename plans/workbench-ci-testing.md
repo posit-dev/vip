@@ -31,7 +31,7 @@ Posit publishes official Workbench container images:
 | Docker Hub | `rstudio/rstudio-workbench` |
 
 Image tags combine an OS suffix with a release version, e.g.
-`ubuntu2204-2024.09.1` or its alias `jammy-2024.09.1`.  The mutable
+`ubuntu2204-2026.01.1` or its alias `jammy-2026.01.1`.  The mutable
 `ubuntu2204` (and `jammy`) tags always point to the latest release.
 
 ### Key environment variables
@@ -71,7 +71,7 @@ docker run -d \
   --name workbench \
   -p 8787:8787 \
   -e RSP_LICENSE="${LICENSE_KEY}" \
-  rstudio/rstudio-workbench:2024.09.0
+  rstudio/rstudio-workbench:ubuntu2204-2026.01.1
 
 # Wait for ready
 timeout 180 bash -c 'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
@@ -133,7 +133,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2024.09.1", "ubuntu2204"]') || fromJSON('["ubuntu2204-2024.09.1"]') }}
+        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2026.01.1", "ubuntu2204"]') || fromJSON('["ubuntu2204-2026.01.1"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -300,8 +300,9 @@ jobs:
   action exists yet.
 - **PAM user creation**: A test user `rstudio`/`rstudio` is created with
   `useradd` + `chpasswd` inside the container.
-- **Single version on PRs**: Only `2024.09.0` is tested on push/PR to keep CI
-  fast.  The `daily` tag is added on scheduled runs to catch regressions.
+- **Single version on PRs**: Only `ubuntu2204-2026.01.1` is tested on push/PR
+  to keep CI fast.  The `ubuntu2204` (latest) tag is added on scheduled runs
+  to catch regressions.
 - **Offline schedule offset**: The cron runs at 7am UTC, one hour after the
   Connect smoke run (6am), to avoid resource contention.
 - **Generous timeouts**: 180 seconds for container readiness, vs. 60–120 for
