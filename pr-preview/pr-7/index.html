@@ -147,18 +147,33 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="verified-installation-of-posit" class="level1">
 <h1>Verified Installation of Posit</h1>
-<p><strong>Deployment:</strong> Posit Team <strong>Generated:</strong> 2026-02-21 02:37:43 UTC</p>
+<p><strong>Deployment:</strong> CI Connect 2026.01.1 <strong>Generated:</strong> 2026-02-21 02:43:03 UTC</p>
 <section id="products-under-test" class="level2">
 <h2 class="anchored" data-anchor-id="products-under-test">Products Under Test</h2>
-<div id="123c7d1a" class="cell" data-execution_count="2">
+<div id="6c8329c0" class="cell" data-execution_count="2">
 <div class="cell-output cell-output-display cell-output-markdown">
-<p>No products configured. Set product URLs in <code>vip.toml</code>.</p>
+<table class="caption-top table table-sm table-striped small">
+<thead>
+<tr class="header">
+<th>Product</th>
+<th>URL</th>
+<th>Version</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Connect</td>
+<td>http://localhost:3939</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
 </div>
 </div>
 </section>
 <section id="summary" class="level2">
 <h2 class="anchored" data-anchor-id="summary">Summary</h2>
-<div id="28bf4db9" class="cell" data-execution_count="3">
+<div id="f355f083" class="cell" data-execution_count="3">
 <div class="cell-output cell-output-display cell-output-markdown">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -170,11 +185,11 @@ ul.task-list li input[type="checkbox"] {
 <tbody>
 <tr class="odd">
 <td><strong>Total</strong></td>
-<td>24</td>
+<td>4</td>
 </tr>
 <tr class="even">
 <td><strong>Passed</strong></td>
-<td>24</td>
+<td>2</td>
 </tr>
 <tr class="odd">
 <td><strong>Failed</strong></td>
@@ -182,7 +197,7 @@ ul.task-list li input[type="checkbox"] {
 </tr>
 <tr class="even">
 <td><strong>Skipped</strong></td>
-<td>0</td>
+<td>2</td>
 </tr>
 <tr class="odd">
 <td><strong>Status</strong></td>
@@ -195,17 +210,9 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="results-by-category" class="level2">
 <h2 class="anchored" data-anchor-id="results-by-category">Results by Category</h2>
-<div id="13bba16d" class="cell" data-execution_count="4">
+<div id="049ba636" class="cell" data-execution_count="4">
 <div class="cell-output cell-output-display cell-output-markdown">
 <table class="caption-top table table-sm table-striped small">
-<colgroup>
-<col style="width: 16%">
-<col style="width: 16%">
-<col style="width: 16%">
-<col style="width: 16%">
-<col style="width: 16%">
-<col style="width: 16%">
-</colgroup>
 <thead>
 <tr class="header">
 <th>Category</th>
@@ -218,7 +225,7 @@ ul.task-list li input[type="checkbox"] {
 </thead>
 <tbody>
 <tr class="odd">
-<td>test_config.py::TestConnectConfig::test_api_key_from_env</td>
+<td>connect</td>
 <td>1</td>
 <td>1</td>
 <td>0</td>
@@ -226,187 +233,11 @@ ul.task-list li input[type="checkbox"] {
 <td>PASS</td>
 </tr>
 <tr class="even">
-<td>test_config.py::TestConnectConfig::test_explicit_api_key_takes_precedence</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="odd">
-<td>test_config.py::TestLoadConfig::test_data_source_env_var</td>
-<td>1</td>
+<td>prerequisites</td>
+<td>3</td>
 <td>1</td>
 <td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="even">
-<td>test_config.py::TestLoadConfig::test_data_sources</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="odd">
-<td>test_config.py::TestLoadConfig::test_disabled_product</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="even">
-<td>test_config.py::TestLoadConfig::test_email_and_monitoring_flags</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="odd">
-<td>test_config.py::TestLoadConfig::test_env_var_config_path</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="even">
-<td>test_config.py::TestLoadConfig::test_extension_dirs</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="odd">
-<td>test_config.py::TestLoadConfig::test_full_config</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="even">
-<td>test_config.py::TestLoadConfig::test_minimal_toml</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="odd">
-<td>test_config.py::TestLoadConfig::test_missing_file_returns_defaults</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="even">
-<td>test_config.py::TestLoadConfig::test_runtimes</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="odd">
-<td>test_config.py::TestProductConfig::test_is_configured_when_enabled_and_url_set</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="even">
-<td>test_config.py::TestProductConfig::test_not_configured_by_default</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="odd">
-<td>test_config.py::TestProductConfig::test_not_configured_when_disabled</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="even">
-<td>test_config.py::TestProductConfig::test_not_configured_when_url_empty</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="odd">
-<td>test_config.py::TestVIPConfig::test_defaults</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="even">
-<td>test_config.py::TestVIPConfig::test_product_config_lookup</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="odd">
-<td>test_config.py::TestVIPConfig::test_product_config_unknown_raises</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="even">
-<td>test_plugin.py::TestVersionTuple::test_comparison</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="odd">
-<td>test_plugin.py::TestVersionTuple::test_prerelease_suffix</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="even">
-<td>test_plugin.py::TestVersionTuple::test_simple</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="odd">
-<td>test_plugin.py::TestVersionTuple::test_single_number</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
-<td>PASS</td>
-</tr>
-<tr class="even">
-<td>test_plugin.py::TestVersionTuple::test_two_part</td>
-<td>1</td>
-<td>1</td>
-<td>0</td>
-<td>0</td>
+<td>2</td>
 <td>PASS</td>
 </tr>
 </tbody>
@@ -416,7 +247,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="failed-tests" class="level2">
 <h2 class="anchored" data-anchor-id="failed-tests">Failed Tests</h2>
-<div id="038bbda6" class="cell" data-execution_count="5">
+<div id="ba3920a7" class="cell" data-execution_count="5">
 <div class="cell-output cell-output-display cell-output-markdown">
 <p>No failures.</p>
 </div>
