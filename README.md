@@ -1,5 +1,7 @@
 # VIP - Verified Installation of Posit
 
+![VIP mascot](https://github.com/user-attachments/assets/f28c5cb5-701a-4491-99f9-102ff6fb6283)
+
 An open-source, extensible test suite that validates Posit Team deployments are
 installed correctly and functioning properly.
 
