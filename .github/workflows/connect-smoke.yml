@@ -27,6 +27,21 @@ jobs:
           version: ${{ matrix.connect-version }}
           license: ${{ secrets.CONNECT_LICENSE }}
 
+      # Resolve the actual Connect version for unambiguous job records
+      - name: Resolve Connect version
+        id: version
+        run: |
+          VERSION=$(curl -sf \
+            -H "Authorization: Key ${{ steps.connect.outputs.CONNECT_API_KEY }}" \
+            "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings" \
+            | jq -r '.version')
+          if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
+            echo "ERROR: Could not resolve Connect version from server_settings"
+            exit 1
+          fi
+          echo "Resolved Connect version: ${VERSION}"
+          echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
+
       # Set up Python and install VIP
       - uses: astral-sh/setup-uv@v5
         with:
@@ -71,7 +86,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: connect-smoke-results-${{ matrix.connect-version }}
+          name: connect-smoke-results-${{ steps.version.outputs.resolved }}
           path: smoke-results.xml
 
       # Stop Connect
