@@ -65,6 +65,7 @@ jobs:
           enabled = true
           url = "${{ steps.connect.outputs.CONNECT_SERVER }}"
           api_key = "${{ steps.connect.outputs.CONNECT_API_KEY }}"
+          version = "${{ steps.version.outputs.resolved }}"
 
           [auth]
           provider = "password"
