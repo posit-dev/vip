@@ -18,6 +18,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Start Connect in Docker
+      - name: Start Connect
+        id: connect
+        uses: posit-dev/with-connect@main
+        with:
+          version: release
+          license: ${{ secrets.CONNECT_LICENSE }}
+
+      # Resolve the actual Connect version for unambiguous job records
+      - name: Resolve Connect version
+        id: version
+        run: |
+          RESPONSE=$(curl -sf \
+            -H "Authorization: Key ${{ steps.connect.outputs.CONNECT_API_KEY }}" \
+            "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings")
+          VERSION=$(echo "${RESPONSE}" | jq -r '.version')
+          if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
+            echo "ERROR: Could not resolve Connect version from server_settings"
+            echo "Response body: ${RESPONSE}"
+            exit 1
+          fi
+          echo "Resolved Connect version: ${VERSION}"
+          echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
+
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -29,8 +53,31 @@ jobs:
         with:
           cache: true
 
-      - name: Run selftests and generate results
-        run: uv run pytest selftests/ -v --vip-report=report/results.json
+      # Generate vip.toml from with-connect outputs
+      - name: Configure VIP for CI Connect
+        run: |
+          cat > vip.toml << EOF
+          [general]
+          deployment_name = "CI Connect ${{ steps.version.outputs.resolved }}"
+
+          [connect]
+          enabled = true
+          url = "${{ steps.connect.outputs.CONNECT_SERVER }}"
+          api_key = "${{ steps.connect.outputs.CONNECT_API_KEY }}"
+          version = "${{ steps.version.outputs.resolved }}"
+
+          [auth]
+          provider = "password"
+          EOF
+
+      - name: Run Connect smoke tests and generate results
+        run: |
+          uv run pytest \
+            tests/prerequisites/test_components.py \
+            tests/connect/test_auth.py \
+            -v -k "reachable or api" \
+            --vip-config=vip.toml \
+            --vip-report=report/results.json
 
       - name: Render Quarto report
         run: cd report && uv run quarto render
@@ -38,6 +85,13 @@ jobs:
       - uses: rossjrw/pr-preview-action@v1
         with:
           source-dir: report/_output/
+
+      # Stop Connect
+      - name: Stop Connect
+        if: always()
+        uses: posit-dev/with-connect@main
+        with:
+          stop: ${{ steps.connect.outputs.CONTAINER_ID }}
 
   cleanup:
     if: github.event.action == 'closed'
