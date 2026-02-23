@@ -2,6 +2,7 @@
 .github
 .vscode
 *.md
+!README.md
 plans/
 selftests/
 examples/
