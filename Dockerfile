@@ -26,5 +26,5 @@ RUN uv run playwright install --with-deps chromium
 # Config file should be mounted at /app/vip.toml
 ENTRYPOINT ["uv", "run", "pytest"]
 
-# Default args: run all tests with verbose output and JSON report
+# Default args: run all tests with short tracebacks and verbose output
 CMD ["--tb=short", "-v"]
