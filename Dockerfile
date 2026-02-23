@@ -22,9 +22,9 @@ RUN uv sync --frozen
 # Install playwright browsers (chromium is already in the base image, but ensure deps)
 RUN uv run playwright install --with-deps chromium
 
-# Create non-root user and ensure /app is owned by that user
-RUN useradd -m -u 1000 vip && chown -R vip:vip /app
-USER vip
+# Run as the existing non-root user from the base image (ubuntu, UID 1000)
+RUN chown -R ubuntu:ubuntu /app
+USER ubuntu
 # Default entrypoint runs pytest
 # Config file should be mounted at /app/vip.toml
 ENTRYPOINT ["uv", "run", "pytest"]
