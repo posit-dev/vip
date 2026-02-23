@@ -8,3 +8,4 @@ selftests/
 examples/
 .gitignore
 .gitattributes
+vip.toml
