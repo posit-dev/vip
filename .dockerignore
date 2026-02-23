@@ -1,0 +1,9 @@
+.git
+.github
+.vscode
+*.md
+plans/
+selftests/
+examples/
+.gitignore
+.gitattributes
