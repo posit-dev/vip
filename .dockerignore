@@ -1,0 +1,11 @@
+.git
+.github
+.vscode
+*.md
+!README.md
+plans/
+selftests/
+examples/
+.gitignore
+.gitattributes
+vip.toml
