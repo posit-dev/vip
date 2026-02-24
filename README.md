@@ -106,8 +106,13 @@ This will:
 
 1. Open a Chromium window and navigate to the Connect login page
 2. Wait for you to complete the OIDC login flow (Okta, Azure AD, etc.)
-3. Capture the browser session state (cookies, localStorage)
-4. Run all remaining tests headlessly using the authenticated session
+3. Navigate the Connect UI to mint a temporary API key (`_vip_interactive`)
+4. Capture the browser session state (cookies, localStorage)
+5. Close the browser and run all tests headlessly
+6. Delete the API key when the session finishes
+
+Both Playwright browser tests (using the saved session state) and httpx API
+tests (using the minted key) work with a single interactive login.
 
 > **Note**: `--interactive-auth` is not available in container/CI
 > environments.  For automated runs against OIDC deployments, pre-provision
