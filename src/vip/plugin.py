@@ -167,9 +167,7 @@ def _maybe_skip_credential_check(item: pytest.Item, using_interactive_auth: bool
     """Skip the credential prerequisite test when using interactive auth."""
     if using_interactive_auth and "test_credentials_provided" in item.nodeid:
         item.add_marker(
-            pytest.mark.skip(
-                reason="--interactive-auth is active, credential check not needed"
-            )
+            pytest.mark.skip(reason="--interactive-auth is active, credential check not needed")
         )
 
 
