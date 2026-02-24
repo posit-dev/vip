@@ -73,6 +73,57 @@ You can also point to the config file explicitly:
 pytest --vip-config=/path/to/vip.toml
 ```
 
+## Authentication
+
+VIP tests that verify login flows and authenticated functionality need user
+credentials.  How you provide them depends on the deployment's identity
+provider.
+
+### Password / LDAP / Keycloak (headless)
+
+Set credentials via environment variables and run normally:
+
+```bash
+export VIP_TEST_USERNAME="test-user"
+export VIP_TEST_PASSWORD="test-password"
+uv run pytest
+```
+
+For PTD deployments with Keycloak, `ptd verify` handles this automatically —
+it provisions a test user and passes credentials to VIP.
+
+### Okta / external OIDC provider (interactive)
+
+External identity providers require a real browser login.  Use
+`--interactive-auth` to launch a visible browser, authenticate through the
+IdP, and then run the remaining tests headlessly with the captured session:
+
+```bash
+uv run pytest --interactive-auth
+```
+
+This will:
+
+1. Open a Chromium window and navigate to the Connect login page
+2. Wait for you to complete the OIDC login flow (Okta, Azure AD, etc.)
+3. Capture the browser session state (cookies, localStorage)
+4. Run all remaining tests headlessly using the authenticated session
+
+> **Note**: `--interactive-auth` is not available in container/CI
+> environments.  For automated runs against OIDC deployments, pre-provision
+> credentials and set the environment variables above.
+
+### PTD integration
+
+When using `ptd verify`, auth mode is selected automatically based on the
+Site CR:
+
+| Deployment auth | ptd verify mode | What happens |
+|-----------------|-----------------|--------------|
+| Keycloak | `ptd verify <target>` (K8s Job) | Test user auto-provisioned |
+| Okta / OIDC | `ptd verify <target> --local --interactive-auth` | Browser popup for login |
+| Any | `ptd verify <target> --local` | Uses pre-existing credentials from Secret or env vars |
+
 ## Test categories
 
 | Category | Marker | Description |
