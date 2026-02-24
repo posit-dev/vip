@@ -36,6 +36,7 @@ _vip_config_key = pytest.StashKey[VIPConfig]()
 _ext_dirs_key = pytest.StashKey[list[str]]()
 _results_key = pytest.StashKey[list[dict[str, Any]]]()
 _auth_state_key = pytest.StashKey[str | None]()
+_auth_session_key = pytest.StashKey[Any]()
 
 # Module-level reference to the active pytest.Config, set in pytest_configure.
 # Safe because pytester runs in a subprocess (fresh import each time).
@@ -112,16 +113,20 @@ def pytest_configure(config: pytest.Config) -> None:
     ext_dirs.extend(config.getoption("--vip-extensions") or [])
     config.stash[_ext_dirs_key] = ext_dirs
 
-    # Handle interactive auth
+    # Handle interactive auth — browser stays open for the session
+    config.stash[_auth_session_key] = None
     if config.getoption("--interactive-auth"):
         if not vip_cfg.connect.url:
             raise pytest.UsageError(
                 "--interactive-auth requires Connect URL to be configured in vip.toml"
             )
-        from vip.auth import run_interactive_auth
+        from vip.auth import start_interactive_auth
 
-        state_path = run_interactive_auth(vip_cfg.connect.url)
-        config.stash[_auth_state_key] = str(state_path)
+        session = start_interactive_auth(vip_cfg.connect.url)
+        config.stash[_auth_session_key] = session
+        config.stash[_auth_state_key] = str(session.storage_state_path)
+        if session.api_key:
+            vip_cfg.connect.api_key = session.api_key
     else:
         config.stash[_auth_state_key] = None
 
@@ -253,6 +258,11 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    # Clean up interactive auth session (delete API key, close browser)
+    auth_session = session.config.stash.get(_auth_session_key, None)
+    if auth_session is not None:
+        auth_session.cleanup()
+
     report_path = session.config.getoption("--vip-report")
     if not report_path:
         return
