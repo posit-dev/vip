@@ -4,7 +4,7 @@
     "href": "index.html",
     "title": "VIP Report",
     "section": "",
-    "text": "Deployment: CI Connect 2026.01.1 Generated: 2026-02-24 21:12:11 UTC\n\n\n\n\n\n\n\nProduct\nURL\nVersion\n\n\n\n\nConnect\nhttp://localhost:3939\n2026.01.1\n\n\n\n\n\n\n\n\n\n\n\n\n\nMetric\nCount\n\n\n\n\nTotal\n4\n\n\nPassed\n2\n\n\nFailed\n0\n\n\nSkipped\n2\n\n\nStatus\nPASS\n\n\n\n\n\n\n\n\n\n\n\n\n\nCategory\nTotal\nPassed\nFailed\nSkipped\nStatus\n\n\n\n\nconnect\n1\n1\n0\n0\nPASS\n\n\nprerequisites\n3\n1\n0\n2\nPASS\n\n\n\n\n\n\n\n\n\n\nNo failures."
+    "text": "Deployment: CI Connect 2026.01.1 Generated: 2026-02-24 21:14:20 UTC\n\n\n\n\n\n\n\nProduct\nURL\nVersion\n\n\n\n\nConnect\nhttp://localhost:3939\n2026.01.1\n\n\n\n\n\n\n\n\n\n\n\n\n\nMetric\nCount\n\n\n\n\nTotal\n4\n\n\nPassed\n2\n\n\nFailed\n0\n\n\nSkipped\n2\n\n\nStatus\nPASS\n\n\n\n\n\n\n\n\n\n\n\n\n\nCategory\nTotal\nPassed\nFailed\nSkipped\nStatus\n\n\n\n\nconnect\n1\n1\n0\n0\nPASS\n\n\nprerequisites\n3\n1\n0\n2\nPASS\n\n\n\n\n\n\n\n\n\n\nNo failures."
   },
   {
     "objectID": "index.html#products-under-test",
