@@ -4,28 +4,28 @@
     "href": "details.html",
     "title": "Detailed Results",
     "section": "",
-    "text": "Test\nOutcome\nDuration\n\n\n\n\ntest_connect_login_api\nPASS\n0.28s\n\n\n\n\n\n\n\n\n\nTest\nOutcome\nDuration\n\n\n\n\ntest_connect_reachable\nPASS\n0.08s\n\n\ntest_workbench_reachable\nSKIP\n0.00s\n\n\ntest_package_manager_reachable\nSKIP\n0.00s"
+    "text": "Test\nOutcome\nDuration\n\n\n\n\ntest_connect_login_api\nPASS\n0.32s\n\n\n\n\n\n\n\n\n\nTest\nOutcome\nDuration\n\n\n\n\ntest_connect_reachable\nPASS\n0.09s\n\n\ntest_workbench_reachable\nSKIP\n0.00s\n\n\ntest_package_manager_reachable\nSKIP\n0.00s"
   },
   {
     "objectID": "details.html#connect",
     "href": "details.html#connect",
     "title": "Detailed Results",
     "section": "",
-    "text": "Test\nOutcome\nDuration\n\n\n\n\ntest_connect_login_api\nPASS\n0.28s"
+    "text": "Test\nOutcome\nDuration\n\n\n\n\ntest_connect_login_api\nPASS\n0.32s"
   },
   {
     "objectID": "details.html#prerequisites",
     "href": "details.html#prerequisites",
     "title": "Detailed Results",
     "section": "",
-    "text": "Test\nOutcome\nDuration\n\n\n\n\ntest_connect_reachable\nPASS\n0.08s\n\n\ntest_workbench_reachable\nSKIP\n0.00s\n\n\ntest_package_manager_reachable\nSKIP\n0.00s"
+    "text": "Test\nOutcome\nDuration\n\n\n\n\ntest_connect_reachable\nPASS\n0.09s\n\n\ntest_workbench_reachable\nSKIP\n0.00s\n\n\ntest_package_manager_reachable\nSKIP\n0.00s"
   },
   {
     "objectID": "index.html",
     "href": "index.html",
     "title": "VIP Report",
     "section": "",
-    "text": "Deployment: CI Connect 2026.01.1 Generated: 2026-02-25 19:27:10 UTC\n\n\n\n\n\n\n\nProduct\nURL\nVersion\n\n\n\n\nConnect\nhttp://localhost:3939\n2026.01.1\n\n\n\n\n\n\n\n\n\n\n\n\n\nMetric\nCount\n\n\n\n\nTotal\n4\n\n\nPassed\n2\n\n\nFailed\n0\n\n\nSkipped\n2\n\n\nStatus\nPASS\n\n\n\n\n\n\n\n\n\n\n\n\n\nCategory\nTotal\nPassed\nFailed\nSkipped\nStatus\n\n\n\n\nconnect\n1\n1\n0\n0\nPASS\n\n\nprerequisites\n3\n1\n0\n2\nPASS\n\n\n\n\n\n\n\n\n\n\nNo failures."
+    "text": "Deployment: CI Connect 2026.01.1 Generated: 2026-02-25 20:01:09 UTC\n\n\n\n\n\n\n\nProduct\nURL\nVersion\n\n\n\n\nConnect\nhttp://localhost:3939\n2026.01.1\n\n\n\n\n\n\n\n\n\n\n\n\n\nMetric\nCount\n\n\n\n\nTotal\n4\n\n\nPassed\n2\n\n\nFailed\n0\n\n\nSkipped\n2\n\n\nStatus\nPASS\n\n\n\n\n\n\n\n\n\n\n\n\n\nCategory\nTotal\nPassed\nFailed\nSkipped\nStatus\n\n\n\n\nconnect\n1\n1\n0\n0\nPASS\n\n\nprerequisites\n3\n1\n0\n2\nPASS\n\n\n\n\n\n\n\n\n\n\nNo failures."
   },
   {
     "objectID": "index.html#products-under-test",
