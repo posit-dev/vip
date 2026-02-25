@@ -35,7 +35,6 @@ from vip.config import VIPConfig, load_config
 _vip_config_key = pytest.StashKey[VIPConfig]()
 _ext_dirs_key = pytest.StashKey[list[str]]()
 _results_key = pytest.StashKey[list[dict[str, Any]]]()
-_auth_state_key = pytest.StashKey[str | None]()
 _auth_session_key = pytest.StashKey[Any]()
 
 # Module-level reference to the active pytest.Config, set in pytest_configure.
@@ -124,11 +123,14 @@ def pytest_configure(config: pytest.Config) -> None:
 
         session = start_interactive_auth(vip_cfg.connect.url)
         config.stash[_auth_session_key] = session
-        config.stash[_auth_state_key] = str(session.storage_state_path)
         if session.api_key:
             vip_cfg.connect.api_key = session.api_key
-    else:
-        config.stash[_auth_state_key] = None
+        else:
+            warnings.warn(
+                "VIP: --interactive-auth could not mint an API key. "
+                "API-based tests will likely fail. Set VIP_CONNECT_API_KEY to fix.",
+                stacklevel=1,
+            )
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
@@ -152,7 +154,7 @@ def pytest_collection_modifyitems(
     """Skip tests whose product is not configured or whose version
     requirement is not met, and ensure prerequisites run first."""
     vip_cfg: VIPConfig = config.stash[_vip_config_key]
-    using_interactive_auth = config.stash.get(_auth_state_key, None) is not None
+    using_interactive_auth = config.stash.get(_auth_session_key, None) is not None
 
     # Sort so prerequisites run before everything else.
     prerequisites: list[pytest.Item] = []
@@ -170,7 +172,15 @@ def pytest_collection_modifyitems(
 
 def _maybe_skip_credential_check(item: pytest.Item, using_interactive_auth: bool) -> None:
     """Skip the credential prerequisite test when using interactive auth."""
-    if using_interactive_auth and "test_credentials_provided" in item.nodeid:
+    if not using_interactive_auth:
+        return
+    # Match precisely to avoid skipping unrelated tests with similar names.
+    fspath = Path(str(getattr(item, "fspath", "")))
+    if (
+        fspath.name == "test_auth_configured.py"
+        and fspath.parent.name == "prerequisites"
+        and item.name == "test_credentials_provided"
+    ):
         item.add_marker(
             pytest.mark.skip(reason="--interactive-auth is active, credential check not needed")
         )

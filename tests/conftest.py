@@ -8,7 +8,7 @@ from vip.clients.connect import ConnectClient
 from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
 from vip.config import VIPConfig
-from vip.plugin import _auth_state_key, _vip_config_key
+from vip.plugin import _auth_session_key, _vip_config_key
 
 # ---------------------------------------------------------------------------
 # Configuration fixture
@@ -76,15 +76,20 @@ def pm_url(vip_config: VIPConfig) -> str:
 @pytest.fixture(scope="session")
 def interactive_auth(request: pytest.FixtureRequest) -> bool:
     """Whether interactive auth was used for this session."""
-    return request.config.stash.get(_auth_state_key, None) is not None
+    session = request.config.stash.get(_auth_session_key, None)
+    return session is not None
 
 
 @pytest.fixture(scope="session")
 def browser_context_args(browser_context_args, request: pytest.FixtureRequest):
-    """Inject interactive auth storage state into all browser contexts."""
-    state_path = request.config.stash.get(_auth_state_key, None)
-    if state_path:
-        browser_context_args["storage_state"] = state_path
+    """Inject interactive auth storage state into all browser contexts.
+
+    Overrides the pytest-playwright fixture of the same name.  The parameter
+    name *must* match to receive the base fixture value.
+    """
+    session = request.config.stash.get(_auth_session_key, None)
+    if session is not None:
+        browser_context_args["storage_state"] = str(session.storage_state_path)
     return browser_context_args
 
 
