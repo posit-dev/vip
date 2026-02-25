@@ -5,12 +5,14 @@ when the ``vip`` package is installed.
 
 Responsibilities:
 - Register custom markers.
-- Add CLI options (``--vip-config``, ``--vip-extensions``, ``--vip-report``).
+- Add CLI options (``--vip-config``, ``--vip-extensions``, ``--vip-report``,
+  ``--interactive-auth``).
 - Auto-skip tests whose product is not configured.
 - Auto-skip tests whose product version doesn't meet ``min_version``.
 - Ensure prerequisites run before other tests.
 - Collect extension directories.
 - Write a JSON results file for the Quarto report.
+- Handle interactive OIDC authentication for external identity providers.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from vip.config import VIPConfig, load_config
 _vip_config_key = pytest.StashKey[VIPConfig]()
 _ext_dirs_key = pytest.StashKey[list[str]]()
 _results_key = pytest.StashKey[list[dict[str, Any]]]()
+_auth_session_key = pytest.StashKey[Any]()
 
 # Module-level reference to the active pytest.Config, set in pytest_configure.
 # Safe because pytester runs in a subprocess (fresh import each time).
@@ -67,6 +70,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--vip-report",
         default=None,
         help="Write a JSON results file at this path for Quarto report generation.",
+    )
+    group.addoption(
+        "--interactive-auth",
+        action="store_true",
+        default=False,
+        help="Launch a browser for manual OIDC login before running tests.",
     )
 
 
@@ -103,6 +112,26 @@ def pytest_configure(config: pytest.Config) -> None:
     ext_dirs.extend(config.getoption("--vip-extensions") or [])
     config.stash[_ext_dirs_key] = ext_dirs
 
+    # Handle interactive auth — login via browser, then close before tests
+    config.stash[_auth_session_key] = None
+    if config.getoption("--interactive-auth"):
+        if not vip_cfg.connect.url:
+            raise pytest.UsageError(
+                "--interactive-auth requires Connect URL to be configured in vip.toml"
+            )
+        from vip.auth import start_interactive_auth
+
+        session = start_interactive_auth(vip_cfg.connect.url)
+        config.stash[_auth_session_key] = session
+        if session.api_key:
+            vip_cfg.connect.api_key = session.api_key
+        else:
+            warnings.warn(
+                "VIP: --interactive-auth could not mint an API key. "
+                "API-based tests will likely fail. Set VIP_CONNECT_API_KEY to fix.",
+                stacklevel=1,
+            )
+
 
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Add extension directories to sys.path so their conftest / modules
@@ -125,6 +154,7 @@ def pytest_collection_modifyitems(
     """Skip tests whose product is not configured or whose version
     requirement is not met, and ensure prerequisites run first."""
     vip_cfg: VIPConfig = config.stash[_vip_config_key]
+    using_interactive_auth = config.stash.get(_auth_session_key, None) is not None
 
     # Sort so prerequisites run before everything else.
     prerequisites: list[pytest.Item] = []
@@ -132,11 +162,28 @@ def pytest_collection_modifyitems(
     for item in items:
         _maybe_skip_for_product(item, vip_cfg)
         _maybe_skip_for_version(item, vip_cfg)
+        _maybe_skip_credential_check(item, using_interactive_auth)
         if item.get_closest_marker("prerequisites"):
             prerequisites.append(item)
         else:
             rest.append(item)
     items[:] = prerequisites + rest
+
+
+def _maybe_skip_credential_check(item: pytest.Item, using_interactive_auth: bool) -> None:
+    """Skip the credential prerequisite test when using interactive auth."""
+    if not using_interactive_auth:
+        return
+    # Match precisely to avoid skipping unrelated tests with similar names.
+    fspath = Path(str(getattr(item, "fspath", "")))
+    if (
+        fspath.name == "test_auth_configured.py"
+        and fspath.parent.name == "prerequisites"
+        and item.name == "test_credentials_provided"
+    ):
+        item.add_marker(
+            pytest.mark.skip(reason="--interactive-auth is active, credential check not needed")
+        )
 
 
 def _maybe_skip_for_product(item: pytest.Item, cfg: VIPConfig) -> None:
@@ -221,6 +268,11 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    # Clean up interactive auth session (delete API key, remove temp files)
+    auth_session = session.config.stash.get(_auth_session_key, None)
+    if auth_session is not None:
+        auth_session.cleanup()
+
     report_path = session.config.getoption("--vip-report")
     if not report_path:
         return
