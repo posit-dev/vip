@@ -113,7 +113,7 @@ def pytest_configure(config: pytest.Config) -> None:
     ext_dirs.extend(config.getoption("--vip-extensions") or [])
     config.stash[_ext_dirs_key] = ext_dirs
 
-    # Handle interactive auth — browser stays open for the session
+    # Handle interactive auth — login via browser, then close before tests
     config.stash[_auth_session_key] = None
     if config.getoption("--interactive-auth"):
         if not vip_cfg.connect.url:
@@ -258,7 +258,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    # Clean up interactive auth session (delete API key, close browser)
+    # Clean up interactive auth session (delete API key, remove temp files)
     auth_session = session.config.stash.get(_auth_session_key, None)
     if auth_session is not None:
         auth_session.cleanup()

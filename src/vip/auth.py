@@ -1,7 +1,14 @@
-"""Interactive browser authentication for OIDC providers."""
+"""Interactive browser authentication for OIDC providers.
+
+Opens a headed Chromium browser for the user to complete an OIDC login
+flow, mints a temporary Connect API key via the UI, saves the browser
+storage state, then closes the browser before tests start.
+"""
 
 from __future__ import annotations
 
+import os
+import shutil
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -12,35 +19,42 @@ from playwright.sync_api import Page, sync_playwright
 
 @dataclass
 class InteractiveAuthSession:
-    """Manages a browser session for interactive OIDC authentication.
+    """Result of an interactive OIDC authentication flow.
 
-    The browser stays open for the entire pytest session so we can
-    clean up the API key after tests complete.
+    Holds the saved browser storage state (for Playwright tests) and a
+    minted Connect API key (for httpx API tests).  Call ``cleanup()``
+    after the test session to delete the temporary API key.
     """
 
     storage_state_path: Path
     api_key: str | None = None
 
     _connect_url: str = field(default="", repr=False)
-    _key_id: str | None = field(default=None, repr=False)
+    _tmpdir: str = field(default="", repr=False)
 
     def cleanup(self) -> None:
-        """Delete the minted API key."""
+        """Delete the minted API key and remove the temp directory."""
         if self.api_key and self._connect_url:
             try:
                 _delete_api_key(self._connect_url, self.api_key)
             except Exception as exc:
                 print(f">>> Warning: Could not delete API key: {exc}")
 
+        if self._tmpdir and os.path.isdir(self._tmpdir):
+            shutil.rmtree(self._tmpdir, ignore_errors=True)
+
 
 def start_interactive_auth(connect_url: str) -> InteractiveAuthSession:
     """Launch a headed browser, authenticate via OIDC, and mint a
     Connect API key through the UI.
 
-    The returned session keeps the browser open.  Call ``cleanup()``
-    after tests to delete the key and close the browser.
+    The browser is closed before this function returns.  pytest-playwright
+    creates its own browser instance using the saved storage state.
     """
-    storage_state_path = Path(tempfile.mkdtemp()) / "vip-auth-state.json"
+    tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
+    storage_state_path = Path(tmpdir) / "vip-auth-state.json"
+    # Restrict permissions on the temp dir (contains session cookies).
+    os.chmod(tmpdir, 0o700)
 
     pw = sync_playwright().start()
     browser = pw.chromium.launch(headless=False)
@@ -52,25 +66,35 @@ def start_interactive_auth(connect_url: str) -> InteractiveAuthSession:
 
     print(f"\n>>> A browser window has opened at {connect_url}")
     print(">>> Please log in through your identity provider.")
-    print(">>> The browser will close automatically once testing is done.\n")
+    print(">>> The browser will close automatically after login.\n")
 
     # Poll until login completes (back on Connect, not on login page)
     base = connect_url.rstrip("/")
     deadline = time.monotonic() + 300
+    login_completed = False
     while time.monotonic() < deadline:
         try:
             url = page.url
         except Exception:
             break
-        if base in url and "/__login__" not in url and "login" not in url.split(base)[-1].lower():
+        if base in url and "/__login__" not in url:
+            login_completed = True
             break
         try:
             page.wait_for_timeout(500)
         except Exception:
             break
 
+    if not login_completed:
+        browser.close()
+        pw.stop()
+        raise RuntimeError(
+            "Login did not complete within 5 minutes. "
+            "Please rerun and complete authentication in the browser window."
+        )
+
     # Mint an API key through the Connect UI
-    api_key, key_id = _create_api_key_via_ui(page, connect_url)
+    api_key = _create_api_key_via_ui(page, connect_url)
 
     # Save storage state for Playwright test contexts
     context.storage_state(path=str(storage_state_path))
@@ -86,27 +110,28 @@ def start_interactive_auth(connect_url: str) -> InteractiveAuthSession:
         storage_state_path=storage_state_path,
         api_key=api_key,
         _connect_url=connect_url,
-        _key_id=key_id,
+        _tmpdir=tmpdir,
     )
 
 
-def _create_api_key_via_ui(page: Page, connect_url: str) -> tuple[str | None, str | None]:
+def _create_api_key_via_ui(page: Page, connect_url: str) -> str | None:
     """Navigate the Connect UI to create an API key.
 
-    Returns (api_key, key_id) or (None, None) on failure.
+    Returns the API key string, or None on failure.
     """
     base = connect_url.rstrip("/")
 
     try:
-        # Navigate to dashboard, then find the API Keys page through the UI
+        # Navigate to the Connect dashboard
         page.goto(f"{base}/connect/#/")
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(2_000)
 
         # Open user dropdown by clicking the user panel area (top-right).
-        # Use evaluate to find the clickable element reliably.
-        page.evaluate("""() => {
-            // Find and click the user avatar/name area in the header
+        # Uses JS to find the element by position since Connect versions
+        # vary in their markup.
+        page.evaluate(
+            """() => {
             const els = document.querySelectorAll('a, button, [role="button"], span');
             for (const el of els) {
                 const rect = el.getBoundingClientRect();
@@ -118,7 +143,8 @@ def _create_api_key_via_ui(page: Page, connect_url: str) -> tuple[str | None, st
                     }
                 }
             }
-        }""")
+        }"""
+        )
         page.wait_for_timeout(1_000)
 
         page.get_by_text("Manage Your API Keys").click(timeout=5_000)
@@ -128,17 +154,15 @@ def _create_api_key_via_ui(page: Page, connect_url: str) -> tuple[str | None, st
         # Click "+ New API Key"
         page.locator("text=New API Key").first.click(timeout=5_000)
         page.wait_for_timeout(1_000)
-        page.screenshot(path="/tmp/vip-new-key-dialog.png")
 
-        # Fill in the key name input
+        # Fill in the key name
         name_input = page.locator("input[type='text']").first
         name_input.fill("_vip_interactive")
         page.wait_for_timeout(300)
 
-        # Click Create button in the dialog
+        # Click Create button
         page.locator("button:has-text('Create'),button[type='submit']").first.click(timeout=5_000)
         page.wait_for_timeout(1_000)
-        page.screenshot(path="/tmp/vip-key-created.png")
 
         # Extract the generated key — Connect shows it in a read-only
         # input, a code block, or a text element in the dialog
@@ -165,7 +189,7 @@ def _create_api_key_via_ui(page: Page, connect_url: str) -> tuple[str | None, st
         if not api_key:
             print(">>> Warning: Could not read API key from UI.")
             print(">>> API-based tests may fail. Set VIP_CONNECT_API_KEY.\n")
-            return None, None
+            return None
 
         print(">>> Connect API key created via UI.\n")
 
@@ -180,26 +204,11 @@ def _create_api_key_via_ui(page: Page, connect_url: str) -> tuple[str | None, st
         except Exception:
             page.keyboard.press("Escape")
 
-        key_id = None
-
-        return api_key, key_id
+        return api_key
     except Exception as exc:
         print(f">>> Warning: Could not create API key via UI: {exc}")
         print(">>> API-based tests may fail. Set VIP_CONNECT_API_KEY.\n")
-        return None, None
-
-
-def _find_key_id(page: Page, api_key: str) -> str | None:
-    """Try to find the key ID from the current page state."""
-    # The key ID might be in the URL or visible in the key list
-    try:
-        url = page.url
-        # Some Connect versions include the key ID in the URL hash
-        if "/api_keys/" in url:
-            return url.split("/api_keys/")[-1].split("/")[0].split("#")[0]
-    except Exception:
-        pass
-    return None
+        return None
 
 
 def _delete_api_key(connect_url: str, api_key: str) -> None:
@@ -212,7 +221,6 @@ def _delete_api_key(connect_url: str, api_key: str) -> None:
         headers={"Authorization": f"Key {api_key}"},
         timeout=10.0,
     ) as client:
-        # Try v1 endpoint, fall back to legacy
         for keys_path in ("/v1/user/api_keys", "/keys"):
             resp = client.get(keys_path)
             if resp.status_code == 404:
