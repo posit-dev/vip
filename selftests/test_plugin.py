@@ -128,3 +128,18 @@ class TestPluginIntegration:
                 "*min_version*",
             ]
         )
+
+    def test_interactive_auth_option(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            """
+            def test_reads_interactive_auth(request):
+                val = request.config.getoption("--interactive-auth")
+                assert val is True
+            """
+        )
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            "--interactive-auth",
+            "-v",
+        )
+        result.stdout.fnmatch_lines(["*test_reads_interactive_auth*PASSED*"])

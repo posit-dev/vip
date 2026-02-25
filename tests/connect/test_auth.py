@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from pytest_bdd import given, scenario, then, when
 
 
@@ -40,7 +41,17 @@ def navigate_to_login(page, connect_url):
 
 
 @when("enters valid credentials")
-def enter_credentials(page, test_username, test_password):
+def enter_credentials(page, test_username, test_password, auth_provider, interactive_auth):
+    if auth_provider != "password":
+        if not interactive_auth:
+            pytest.skip(
+                f"Login form not available for auth provider {auth_provider!r}. "
+                "Pass --interactive-auth when browser storage state is pre-loaded."
+            )
+        # With --interactive-auth the browser is already authenticated via storage
+        # state - just wait for any redirect away from the login page to complete.
+        page.wait_for_load_state("networkidle")
+        return
     page.fill("[name='username'], #username", test_username)
     page.fill("[name='password'], #password", test_password)
     page.click("[data-automation='login-panel-submit']")

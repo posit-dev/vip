@@ -88,6 +88,12 @@ def auth_provider(vip_config: VIPConfig) -> str:
     return vip_config.auth.provider
 
 
+@pytest.fixture(scope="session")
+def interactive_auth(request: pytest.FixtureRequest) -> bool:
+    """True when --interactive-auth is passed (browser storage state is pre-loaded)."""
+    return request.config.getoption("--interactive-auth", default=False)
+
+
 # ---------------------------------------------------------------------------
 # Runtime fixtures
 # ---------------------------------------------------------------------------
