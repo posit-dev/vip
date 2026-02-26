@@ -191,6 +191,23 @@ silently swallowed inside conditionals.
   PR preview to gh-pages via `rossjrw/pr-preview-action@v1`. Uses uv
   and Quarto caches.
 
+## Showboat demo requirement for agent-authored PRs
+
+When opening or updating a PR from Claude Code or Copilot, always
+record a short demo with Showboat and include it in the PR.
+
+Minimum requirement per PR:
+
+1. Record one Showboat demo covering the behavior changed by the PR.
+2. Add a **Showboat demo** section in the PR description with either:
+   - an embedded media attachment, or
+   - a link to the published Showboat demo.
+3. Include the exact command(s) used in the demo so reviewers can
+   replay locally.
+
+If the change is non-UI, demo the relevant CLI flow (for example:
+targeted test execution or lint output showing the changed behavior).
+
 ## Common mistakes to avoid
 
 - Forgetting to include `examples/` in ruff check paths.
