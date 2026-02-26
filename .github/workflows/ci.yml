@@ -55,3 +55,27 @@ jobs:
         with:
           name: selftest-results-py${{ matrix.python-version }}
           path: selftest-results.xml
+
+  verify-demo:
+    name: Verify showboat demo
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync
+      - name: Check for demo
+        id: check
+        run: |
+          if [ -f demo.md ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No demo.md found — skipping verification"
+          fi
+      - name: Verify demo
+        if: steps.check.outputs.found == 'true'
+        run: uvx showboat verify demo.md

@@ -191,6 +191,51 @@ silently swallowed inside conditionals.
   PR preview to gh-pages via `rossjrw/pr-preview-action@v1`. Uses uv
   and Quarto caches.
 
+## Showboat demos
+
+After completing work on a branch, create a showboat demo that proves
+your changes work. The demo file is committed to the branch and its
+contents are pasted into the PR body under a `## Demo` heading.
+
+### Getting started
+
+Run `uvx showboat --help` at the start of a session to learn the tool.
+
+### Creating a demo
+
+```bash
+uvx showboat init demo.md "Feature: <title>"
+uvx showboat note demo.md "Explanation of what was done..."
+uvx showboat exec demo.md bash "uv run pytest selftests/ -v"
+uvx showboat exec demo.md bash "just check"
+```
+
+Use `uvx showboat image demo.md <path>` if screenshots are relevant.
+
+### What to demonstrate
+
+- **New tests:** run the new tests and show them passing
+- **New features:** exercise the feature with concrete examples
+- **Bug fixes:** show the fix in action (before/after if feasible)
+- **Refactors:** show that existing tests still pass
+- **Always** include `just check` (lint/format) output
+
+### Before committing
+
+```bash
+uvx showboat verify demo.md
+```
+
+Verification re-runs all `exec` blocks and confirms output matches.
+If it fails, fix the demo before committing.
+
+### PR workflow
+
+1. Commit `demo.md` to the branch root
+2. Paste the contents of `demo.md` into the PR body under `## Demo`
+
+CI will run `showboat verify demo.md` on PRs that include the file.
+
 ## Common mistakes to avoid
 
 - Forgetting to include `examples/` in ruff check paths.

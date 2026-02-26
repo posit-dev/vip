@@ -1,6 +1,7 @@
 # VIP-specific
 vip.toml
 report/results.json
+demo.md
 report/_output/
 report/_freeze/
 report/.quarto/
