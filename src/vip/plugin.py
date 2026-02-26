@@ -68,6 +68,16 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         help="Write a JSON results file at this path for Quarto report generation.",
     )
+    group.addoption(
+        "--interactive-auth",
+        action="store_true",
+        default=False,
+        help=(
+            "Use pre-loaded browser storage state for authentication. "
+            "Required for OIDC/federated login flows where credentials cannot be "
+            "entered programmatically."
+        ),
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
