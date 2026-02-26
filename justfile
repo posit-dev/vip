@@ -48,6 +48,14 @@ report *ARGS:
     uv run pytest tests/ --vip-report=report/results.json {{ ARGS }}
     cd report && uv run quarto render
 
+# Create a new showboat demo document
+demo-init TITLE:
+    uvx showboat init demo.md "{{ TITLE }}"
+
+# Verify an existing demo document
+demo-verify:
+    uvx showboat verify demo.md
+
 # Generate a Quarto report from selftests (for CI / demo purposes)
 report-selftest:
     uv run pytest selftests/ --vip-report=report/results.json

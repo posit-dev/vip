@@ -24,3 +24,5 @@ jobs:
         uses: github/gh-aw/actions/setup-cli@v0.48.1
         with:
           version: v0.48.1
+      - name: Install showboat
+        run: pip install showboat
