@@ -42,7 +42,13 @@ def session_state():
 
 
 @given("the user is logged in to Workbench")
-def user_logged_in(page, workbench_url, test_username, test_password):
+def user_logged_in(page, workbench_url, test_username, test_password, auth_provider, interactive_auth):
+    # For non-password auth, skip unless interactive auth provided storage state.
+    if auth_provider != "password" and not interactive_auth:
+        pytest.skip(
+            f"Login form not available for auth provider {auth_provider!r}. "
+            "Pass --interactive-auth when browser storage state is pre-loaded."
+        )
     page.goto(workbench_url)
     # If we land on a login page, authenticate.
     if "sign-in" in page.url.lower() or "login" in page.url.lower():
