@@ -147,4 +147,3 @@ class TestPluginIntegration:
             "--interactive-auth",
         )
         result.stderr.fnmatch_lines(["*--interactive-auth requires Connect URL*"])
-
