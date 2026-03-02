@@ -129,17 +129,21 @@ class TestPluginIntegration:
             ]
         )
 
-    def test_interactive_auth_option(self, selftest_pytester):
+    def test_interactive_auth_option_registered(self, selftest_pytester):
+        """--interactive-auth appears in help output."""
+        result = selftest_pytester.runpytest("--help")
+        result.stdout.fnmatch_lines(["*--interactive-auth*"])
+
+    def test_interactive_auth_requires_connect_url(self, selftest_pytester):
+        """--interactive-auth fails fast when Connect URL is not configured."""
         selftest_pytester.makepyfile(
             """
-            def test_reads_interactive_auth(request):
-                val = request.config.getoption("--interactive-auth")
-                assert val is True
+            def test_placeholder():
+                assert True
             """
         )
         result = selftest_pytester.runpytest(
             "--vip-config=vip.toml",
             "--interactive-auth",
-            "-v",
         )
-        result.stdout.fnmatch_lines(["*test_reads_interactive_auth*PASSED*"])
+        result.stderr.fnmatch_lines(["*--interactive-auth requires Connect URL*"])
