@@ -14,7 +14,14 @@ def test_r_repo_configured():
 
 
 @given("the user is logged in to Workbench")
-def user_logged_in(page, workbench_url, test_username, test_password, auth_provider, interactive_auth):
+def user_logged_in(
+    page,
+    workbench_url,
+    test_username,
+    test_password,
+    auth_provider,
+    interactive_auth,
+):
     # For non-password auth without interactive auth, skip immediately.
     if auth_provider != "password" and not interactive_auth:
         pytest.skip(

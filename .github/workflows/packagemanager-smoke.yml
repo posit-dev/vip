@@ -22,8 +22,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Skip the entire job if the license secret is not configured
+      - name: Check for RSPM_LICENSE
+        id: license
+        run: |
+          if [ -z "${{ secrets.RSPM_LICENSE }}" ]; then
+            echo "RSPM_LICENSE secret not configured — skipping PM smoke tests"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # Start Package Manager in Docker
       - name: Start Package Manager
+        if: steps.license.outputs.available == 'true'
         id: pm
         run: |
           docker run -d \
@@ -35,6 +47,7 @@ jobs:
 
       # Wait for health check
       - name: Wait for Package Manager to be ready
+        if: steps.license.outputs.available == 'true'
         run: |
           echo "Waiting for Package Manager to start..."
           for i in $(seq 1 60); do
@@ -50,6 +63,7 @@ jobs:
 
       # Resolve the actual Package Manager version
       - name: Resolve Package Manager version
+        if: steps.license.outputs.available == 'true'
         id: version
         run: |
           RESPONSE=$(curl -sf http://localhost:4242/__api__/status)
@@ -63,6 +77,7 @@ jobs:
 
       # Rename the check run to show the resolved version
       - name: Update job title with resolved version
+        if: steps.license.outputs.available == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -86,16 +101,19 @@ jobs:
 
       # Set up Python and install VIP
       - uses: astral-sh/setup-uv@v5
+        if: steps.license.outputs.available == 'true'
         with:
           enable-cache: true
 
       - name: Install dependencies
+        if: steps.license.outputs.available == 'true'
         run: uv sync
 
       # No Playwright needed — PM tests are API-only
 
       # Generate vip.toml for CI Package Manager
       - name: Configure VIP for CI Package Manager
+        if: steps.license.outputs.available == 'true'
         run: |
           cat > vip.toml << EOF
           [general]
@@ -112,6 +130,7 @@ jobs:
 
       # Run the Package Manager smoke tests
       - name: Run Package Manager smoke tests
+        if: steps.license.outputs.available == 'true'
         run: |
           uv run pytest \
             tests/prerequisites/test_components.py::test_package_manager_reachable \
@@ -122,7 +141,7 @@ jobs:
 
       # Upload test results for debugging failures
       - name: Upload test results
-        if: always()
+        if: always() && steps.license.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: pm-smoke-results-${{ steps.version.outputs.resolved }}
@@ -132,6 +151,12 @@ jobs:
       - name: Write workflow summary
         if: always()
         run: |
+          if [ "${{ steps.license.outputs.available }}" != "true" ]; then
+            echo "## Package Manager Smoke Tests — Skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "> RSPM_LICENSE secret is not configured. Add it to run PM smoke tests." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           RESOLVED="${{ steps.version.outputs.resolved }}"
           PM_URL="${{ steps.pm.outputs.PM_URL }}"
           REQUESTED="${{ matrix.pm-version }}"
@@ -177,5 +202,5 @@ jobs:
 
       # Stop Package Manager
       - name: Stop Package Manager
-        if: always()
+        if: always() && steps.license.outputs.available == 'true'
         run: docker stop packagemanager && docker rm packagemanager || true
