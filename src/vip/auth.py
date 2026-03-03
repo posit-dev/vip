@@ -144,39 +144,76 @@ def start_interactive_auth(
                 pass
 
 
+_LOGIN_KEYWORDS = ("sign-in", "login", "auth-sign-in")
+
+
+def _on_login_page(url: str) -> bool:
+    """Return True if *url* looks like a login or IdP page."""
+    lower = url.lower()
+    return any(kw in lower for kw in _LOGIN_KEYWORDS)
+
+
 def _authenticate_workbench(page: Page, workbench_url: str) -> None:
     """Navigate to Workbench to establish an SSO session.
 
     After the user authenticated to Connect via OIDC, the identity provider
-    already has an active session.  Visiting Workbench triggers a redirect
-    to the IdP which should auto-authenticate and redirect back.
+    already has an active session.  The typical redirect chain is:
 
-    If SSO does not resolve automatically (e.g. the IdP requires consent),
-    the headed browser is still visible and the user can complete the flow
-    manually.
+    1. Workbench ``/`` → 302 to ``/auth-sign-in``
+    2. ``/auth-sign-in`` → (auto-redirect or click) → IdP
+    3. IdP (active session) → redirect back to Workbench with token
+    4. Workbench sets session cookie → dashboard
+
+    ``networkidle`` may fire at step 2 before the IdP redirect completes,
+    so we poll until the URL is on the Workbench domain *and* is no longer
+    a login page.
+
+    If SSO does not resolve automatically (e.g. the auth-sign-in page
+    requires a click), we attempt to click through.  The headed browser is
+    still visible so the user can also intervene manually.
     """
-    wb_base = workbench_url.rstrip("/")
+    wb_base = workbench_url.rstrip("/").lower()
     print(f"\n>>> Authenticating to Workbench at {workbench_url} ...")
 
     page.goto(workbench_url)
     page.wait_for_load_state("networkidle")
 
-    # Check if we landed back on Workbench (SSO resolved automatically).
-    if page.url.rstrip("/").startswith(wb_base):
+    # Quick check — already on the Workbench dashboard?
+    url = page.url
+    if url.lower().startswith(wb_base) and not _on_login_page(url):
         print(">>> Workbench authenticated via SSO.\n")
         return
 
-    # Still on the IdP — wait for the user or for SSO to finish redirecting.
-    print(">>> Waiting for Workbench authentication to complete ...")
-    print(">>> If prompted, please log in through the browser window.\n")
+    # We're likely on /auth-sign-in.  Try clicking a sign-in button to
+    # trigger the OIDC redirect (some Workbench configs don't auto-redirect).
+    for selector in (
+        "a:has-text('Sign in')",
+        "button:has-text('Sign in')",
+        "a:has-text('Log in')",
+        "button:has-text('Log in')",
+        "#auth-sign-in-link",
+    ):
+        try:
+            page.click(selector, timeout=2_000)
+            break
+        except Exception:
+            continue
+
+    # Wait for the OIDC redirect chain to complete.
+    print(">>> Waiting for Workbench SSO redirect chain ...")
+    print(">>> If prompted, please complete authentication in the browser.\n")
 
     deadline = time.monotonic() + 120  # 2-minute timeout
     while time.monotonic() < deadline:
         try:
-            url = page.url.rstrip("/")
+            page.wait_for_load_state("networkidle", timeout=5_000)
+        except Exception:
+            pass
+        try:
+            url = page.url
         except Exception:
             break
-        if url.startswith(wb_base):
+        if url.lower().startswith(wb_base) and not _on_login_page(url):
             print(">>> Workbench authenticated.\n")
             return
         try:
