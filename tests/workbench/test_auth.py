@@ -33,7 +33,7 @@ def enter_credentials(page, test_username, test_password, auth_provider, interac
             )
         # With --interactive-auth the browser is already authenticated via storage state.
         # Wait and check if storage state successfully logged us in.
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("load")
         on_login = any(kw in page.url.lower() for kw in ("sign-in", "login", "auth"))
         if on_login:
             pytest.skip(
@@ -44,7 +44,7 @@ def enter_credentials(page, test_username, test_password, auth_provider, interac
     page.fill("#username, [name='username']", test_username)
     page.fill("#password, [name='password']", test_password)
     page.click("button[type='submit'], #sign-in")
-    page.wait_for_load_state("networkidle")
+    page.wait_for_load_state("load")
 
 
 @then("the user is redirected to the Workbench home page")

@@ -29,7 +29,7 @@ def user_logged_in(
             "Pass --interactive-auth when browser storage state is pre-loaded."
         )
     page.goto(workbench_url)
-    page.wait_for_load_state("networkidle")
+    page.wait_for_load_state("load")
     # Check if we ended up on a login page.
     on_login = any(kw in page.url.lower() for kw in ("sign-in", "login", "auth"))
     if on_login:
@@ -41,7 +41,7 @@ def user_logged_in(
         page.fill("#username, [name='username']", test_username)
         page.fill("#password, [name='password']", test_password)
         page.click("button[type='submit'], #sign-in")
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("load")
 
 
 @when("the user starts a new session")
@@ -64,7 +64,7 @@ def wait_for_session(page):
 def session_in_list(page, workbench_url):
     # Navigate back to the home page to see the sessions list.
     page.goto(workbench_url)
-    page.wait_for_load_state("networkidle")
+    page.wait_for_load_state("load")
     sessions = page.query_selector_all(".session-row, tr.session, [data-session-id]")
     assert len(sessions) > 0, "No sessions found in the active sessions list"
 

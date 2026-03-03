@@ -57,7 +57,7 @@ def user_logged_in(
             "Pass --interactive-auth when browser storage state is pre-loaded."
         )
     page.goto(workbench_url)
-    page.wait_for_load_state("networkidle")
+    page.wait_for_load_state("load")
     # Check if we ended up on a login page.
     on_login = any(kw in page.url.lower() for kw in ("sign-in", "login", "auth"))
     if on_login:
@@ -70,7 +70,7 @@ def user_logged_in(
         page.fill("#username, [name='username']", test_username)
         page.fill("#password, [name='password']", test_password)
         page.click("button[type='submit'], #sign-in")
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("load")
 
 
 @when("the user launches an RStudio session")
