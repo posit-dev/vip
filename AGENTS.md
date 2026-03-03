@@ -191,6 +191,57 @@ silently swallowed inside conditionals.
   PR preview to gh-pages via `rossjrw/pr-preview-action@v1`. Uses uv
   and Quarto caches.
 
+## Showboat demos
+
+After completing work on a branch, create a showboat demo that proves
+your changes work. The demo file is committed to the branch and its
+contents are pasted into the PR body under a `## Demo` heading.
+
+### Getting started
+
+Run `uvx showboat --help` at the start of a session to learn the tool.
+
+### Creating a demo
+
+```bash
+uvx showboat init demo.md "Feature: <title>"
+uvx showboat note demo.md "Explanation of what was done..."
+uvx showboat exec demo.md bash "uv run pytest selftests/ -v"
+uvx showboat exec demo.md bash "just check"
+```
+
+Use `uvx showboat image demo.md <path>` if screenshots are relevant.
+
+### What to demonstrate
+
+- **New tests:** run the new tests and show them passing
+- **New features:** exercise the feature with concrete examples
+- **Bug fixes:** show the fix in action (before/after if feasible)
+- **Refactors:** show that existing tests still pass
+- **Always** include `just check` (lint/format) output
+
+### Before committing
+
+Use `just demo-save` to verify and move the demo in one step:
+
+```bash
+just demo-save my-feature-name
+```
+
+This runs `showboat verify demo.md`, then moves it to
+`validation_docs/demo-my-feature-name.md`. The root `demo.md` is
+gitignored and should never be committed directly -- it is a working
+file only.
+
+### PR workflow
+
+1. Run `just demo-save <name>` to verify and archive the demo
+2. Commit `validation_docs/demo-<name>.md` with your branch
+3. Paste the contents into the PR body under `## Demo`
+
+CI will run `showboat verify` on any new or changed files in
+`validation_docs/` for PRs that include them.
+
 ## Common mistakes to avoid
 
 - Forgetting to include `examples/` in ruff check paths.
