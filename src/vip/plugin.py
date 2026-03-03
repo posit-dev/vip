@@ -121,7 +121,8 @@ def pytest_configure(config: pytest.Config) -> None:
             )
         from vip.auth import start_interactive_auth
 
-        session = start_interactive_auth(vip_cfg.connect.url)
+        wb_url = vip_cfg.workbench.url if vip_cfg.workbench.is_configured else None
+        session = start_interactive_auth(vip_cfg.connect.url, workbench_url=wb_url)
         config.stash[_auth_session_key] = session
         if session.api_key:
             vip_cfg.connect.api_key = session.api_key
