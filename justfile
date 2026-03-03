@@ -56,6 +56,12 @@ demo-init TITLE:
 demo-verify:
     uvx showboat verify demo.md
 
+# Verify and move demo.md to validation_docs/ with a descriptive name
+demo-save NAME:
+    uvx showboat verify demo.md
+    mv demo.md validation_docs/demo-{{ NAME }}.md
+    @echo "Saved to validation_docs/demo-{{ NAME }}.md"
+
 # Generate a Quarto report from selftests (for CI / demo purposes)
 report-selftest:
     uv run pytest selftests/ --vip-report=report/results.json

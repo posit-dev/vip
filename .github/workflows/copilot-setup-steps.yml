@@ -24,5 +24,7 @@ jobs:
         uses: github/gh-aw/actions/setup-cli@v0.48.1
         with:
           version: v0.48.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
       - name: Install showboat
-        run: pip install showboat
+        run: uv tool install showboat

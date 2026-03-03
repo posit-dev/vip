@@ -222,19 +222,25 @@ Use `uvx showboat image demo.md <path>` if screenshots are relevant.
 
 ### Before committing
 
+Use `just demo-save` to verify and move the demo in one step:
+
 ```bash
-uvx showboat verify demo.md
+just demo-save my-feature-name
 ```
 
-Verification re-runs all `exec` blocks and confirms output matches.
-If it fails, fix the demo before committing.
+This runs `showboat verify demo.md`, then moves it to
+`validation_docs/demo-my-feature-name.md`. The root `demo.md` is
+gitignored and should never be committed directly -- it is a working
+file only.
 
 ### PR workflow
 
-1. Commit `demo.md` to the branch root
-2. Paste the contents of `demo.md` into the PR body under `## Demo`
+1. Run `just demo-save <name>` to verify and archive the demo
+2. Commit `validation_docs/demo-<name>.md` with your branch
+3. Paste the contents into the PR body under `## Demo`
 
-CI will run `showboat verify demo.md` on PRs that include the file.
+CI will run `showboat verify` on any new or changed files in
+`validation_docs/` for PRs that include them.
 
 ## Common mistakes to avoid
 
