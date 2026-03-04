@@ -234,8 +234,25 @@ def wait_for_deploy(connect_client, deploy_state):
                 pytest.fail(f"Deployment failed: {error}\n\n--- Task output ---\n{output}")
             return
         time.sleep(3)
-    # On timeout, fetch final task state for logs.
-    task = connect_client.get_task(task_id)
+    # On timeout, fetch final task state for logs (with limited retries for
+    # the same transient errors handled in the loop above).
+    task = None
+    for _ in range(3):
+        try:
+            task = connect_client.get_task(task_id)
+            break
+        except httpx.ReadTimeout:
+            time.sleep(3)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (404, 502, 503, 504):
+                time.sleep(3)
+                continue
+            raise
+    if task is None:
+        pytest.fail(
+            "Deployment did not complete within 300 seconds and final task "
+            "state could not be retrieved due to repeated transient errors."
+        )
     output = "\n".join(task.get("output", []))
     pytest.fail(f"Deployment did not complete within 300 seconds\n\n--- Task output ---\n{output}")
 

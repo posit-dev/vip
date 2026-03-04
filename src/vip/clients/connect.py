@@ -18,6 +18,7 @@ class ConnectClient:
 
     def __init__(self, base_url: str, api_key: str, *, timeout: float = 30.0) -> None:
         self.base_url = base_url.rstrip("/")
+        api_key = (api_key or "").strip()
         headers = {"Authorization": f"Key {api_key}"} if api_key else {}
         self._client = httpx.Client(
             base_url=f"{self.base_url}/__api__",

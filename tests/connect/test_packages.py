@@ -114,6 +114,13 @@ def deploy_r_content(connect_client):
             break
         time.sleep(3)
 
+    if not task.get("finished"):
+        output_lines = task.get("output", []) or []
+        pytest.fail(
+            "Deployment did not complete within 300 seconds\n\n"
+            "--- Task output (last 30 lines) ---\n" + "\n".join(output_lines[-30:])
+        )
+
     return {"guid": guid, "task": task}
 
 
