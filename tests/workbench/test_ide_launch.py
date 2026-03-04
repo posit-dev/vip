@@ -75,24 +75,23 @@ def user_logged_in(
 
 @when("the user launches an RStudio session")
 def launch_rstudio(page):
-    # Look for a "New Session" button and select RStudio.
-    page.click("text=New Session", timeout=15000)
-    page.click("text=RStudio", timeout=5000)
-    page.click("button:has-text('Start')", timeout=5000)
+    page.get_by_role("button", name="New Session").click(timeout=15000)
+    page.get_by_role("tab", name="RStudio Pro").click(timeout=5000)
+    page.get_by_role("button", name="Launch").click(timeout=5000)
 
 
 @when("the user launches a VS Code session")
 def launch_vscode(page):
-    page.click("text=New Session", timeout=15000)
-    page.click("text=VS Code", timeout=5000)
-    page.click("button:has-text('Start')", timeout=5000)
+    page.get_by_role("button", name="New Session").click(timeout=15000)
+    page.get_by_role("tab", name="VS Code").click(timeout=5000)
+    page.get_by_role("button", name="Launch").click(timeout=5000)
 
 
 @when("the user launches a JupyterLab session")
 def launch_jupyter(page):
-    page.click("text=New Session", timeout=15000)
-    page.click("text=JupyterLab", timeout=5000)
-    page.click("button:has-text('Start')", timeout=5000)
+    page.get_by_role("button", name="New Session").click(timeout=15000)
+    page.get_by_role("tab", name="JupyterLab").click(timeout=5000)
+    page.get_by_role("button", name="Launch").click(timeout=5000)
 
 
 @then("the session starts within a reasonable time")

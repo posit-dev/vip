@@ -46,8 +46,8 @@ def user_logged_in(
 
 @when("the user starts a new session")
 def start_session(page):
-    page.click("text=New Session", timeout=15000)
-    page.click("button:has-text('Start')", timeout=5000)
+    page.get_by_role("button", name="New Session").click(timeout=15000)
+    page.get_by_role("button", name="Launch").click(timeout=5000)
 
 
 @when("waits for the session to be ready")
