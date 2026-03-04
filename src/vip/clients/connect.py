@@ -106,7 +106,7 @@ class ConnectClient:
         return resp.json()
 
     def get_task(self, task_id: str) -> dict[str, Any]:
-        resp = self._client.get(f"/v1/tasks/{task_id}")
+        resp = self._client.get(f"/v1/tasks/{task_id}", params={"first": 0, "wait": 1})
         resp.raise_for_status()
         return resp.json()
 
@@ -167,6 +167,13 @@ class ConnectClient:
         if resp.status_code == 200:
             installations = resp.json().get("installations", [])
             return [i["version"] for i in installations]
+        return []
+
+    def quarto_versions(self) -> list[str]:
+        resp = self._client.get("/v1/server_settings/quarto")
+        if resp.status_code == 200:
+            installations = resp.json().get("installations", [])
+            return [i.get("version", i.get("path", "")) for i in installations]
         return []
 
     def r_repos(self) -> list[str]:

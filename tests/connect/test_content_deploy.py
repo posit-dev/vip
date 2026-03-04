@@ -87,15 +87,22 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         return _STATIC_BUNDLES[name]
 
     if name == "vip-quarto-test":
-        # Quarto with markdown engine — no R/Python required.
+        quarto_versions = connect_client.quarto_versions()
+        if not quarto_versions:
+            pytest.skip("No Quarto installations available on Connect")
         r_versions = connect_client.r_versions()
         manifest: dict = {
             "version": 1,
             "metadata": {
                 "appmode": "quarto-static",
                 "primary_document": "index.qmd",
+                "content_category": "",
+                "has_parameters": False,
             },
-            "quarto": {"engines": ["markdown"]},
+            "quarto": {
+                "version": quarto_versions[0],
+                "engines": ["markdown"],
+            },
         }
         if r_versions:
             manifest["platform"] = r_versions[0]
@@ -140,16 +147,19 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
             pytest.skip("No Python versions available on Connect — cannot deploy Dash")
         return {
             "app.py": (
-                "from dash import Dash, html\n"
-                "app = Dash(__name__)\n"
-                'app.layout = html.Div("VIP test")\n'
+                "import dash\n"
+                "app = dash.Dash(__name__)\n"
+                'app.layout = dash.html.Div("VIP test")\n'
             ),
+            "requirements.txt": "dash\n",
             "manifest.json": json.dumps(
                 {
                     "version": 1,
-                    "metadata": {"appmode": "python-dash", "entrypoint": "app.py"},
-                    "python": {"version": py_versions[0]},
-                    "packages": {"dash": {"source": "pip", "version": "2.18.2"}},
+                    "metadata": {"appmode": "python-dash", "entrypoint": "app"},
+                    "python": {
+                        "version": py_versions[0],
+                        "package_manager": {"name": "pip", "version": "24.0"},
+                    },
                 }
             ),
         }
@@ -213,15 +223,25 @@ def upload_and_deploy(connect_client, deploy_state):
 @when("I wait for the deployment to complete")
 def wait_for_deploy(connect_client, deploy_state):
     task_id = deploy_state["task_id"]
-    deadline = time.time() + 120  # 2-minute timeout
+    deadline = time.time() + 300  # 5-minute timeout (package installs can be slow)
     while time.time() < deadline:
         task = connect_client.get_task(task_id)
         if task.get("finished"):
             deploy_state["task_result"] = task
-            assert task.get("code") == 0, f"Deployment failed: {task.get('error', 'unknown error')}"
+            if task.get("code") != 0:
+                output = "\n".join(task.get("output", []))
+                error = task.get("error", "unknown error")
+                pytest.fail(
+                    f"Deployment failed: {error}\n\n--- Task output ---\n{output}"
+                )
             return
         time.sleep(3)
-    pytest.fail("Deployment did not complete within 120 seconds")
+    # On timeout, fetch final task state for logs.
+    task = connect_client.get_task(task_id)
+    output = "\n".join(task.get("output", []))
+    pytest.fail(
+        f"Deployment did not complete within 300 seconds\n\n--- Task output ---\n{output}"
+    )
 
 
 @then("the content is accessible via HTTP")
