@@ -169,6 +169,41 @@ class ConnectClient:
             return [i["version"] for i in installations]
         return []
 
+    def r_repos(self) -> list[str]:
+        """Return configured R repository URLs from the Connect admin API.
+
+        Tries multiple endpoints across Connect versions.  Returns an empty
+        list if the information is unavailable.
+        """
+        urls: list[str] = []
+        # Try the v1 server_settings endpoint (Connect 2024+).
+        for path in ("/v1/server_settings", "/server_settings"):
+            try:
+                resp = self._client.get(path)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    urls.extend(
+                        v for v in self._extract_strings(data)
+                        if v.startswith("http")
+                    )
+            except Exception:
+                continue
+        return urls
+
+    @staticmethod
+    def _extract_strings(obj: Any) -> list[str]:
+        """Recursively collect all string leaf values."""
+        results: list[str] = []
+        if isinstance(obj, str):
+            results.append(obj)
+        elif isinstance(obj, dict):
+            for v in obj.values():
+                results.extend(ConnectClient._extract_strings(v))
+        elif isinstance(obj, list):
+            for item in obj:
+                results.extend(ConnectClient._extract_strings(item))
+        return results
+
     # -- Email --------------------------------------------------------------
 
     def send_test_email(self, to: str) -> dict[str, Any]:

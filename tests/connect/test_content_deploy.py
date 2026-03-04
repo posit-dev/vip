@@ -66,58 +66,95 @@ def _make_tar_gz(files: dict[str, str]) -> bytes:
     return buf.getvalue()
 
 
-_QUARTO_BUNDLE = {
-    "index.qmd": "---\ntitle: VIP Test\n---\n\nHello from VIP.\n",
-    "manifest.json": json.dumps(
-        {
-            "version": 1,
-            "metadata": {"appmode": "quarto-static", "primary_document": "index.qmd"},
-            "quarto": {"engines": ["markdown"]},
-        }
-    ),
-}
-
 _PLUMBER_BUNDLE = {
     "plumber.R": ('#* @get /\nfunction() {\n  list(message = "VIP test OK")\n}\n'),
     "manifest.json": (pathlib.Path(__file__).parent / "plumber_manifest.json").read_text(),
 }
 
-_SHINY_BUNDLE = {
-    "app.R": (
-        "library(shiny)\n"
-        'ui <- fluidPage("VIP test")\n'
-        "server <- function(input, output, session) {}\n"
-        "shinyApp(ui, server)\n"
-    ),
-    "manifest.json": json.dumps(
-        {
-            "version": 1,
-            "metadata": {"appmode": "shiny", "entrypoint": "app.R"},
-            "packages": {"shiny": {"Source": "CRAN"}},
-        }
-    ),
-}
-
-_DASH_BUNDLE = {
-    "app.py": (
-        'from dash import Dash, html\napp = Dash(__name__)\napp.layout = html.Div("VIP test")\n'
-    ),
-    "manifest.json": json.dumps(
-        {
-            "version": 1,
-            "metadata": {"appmode": "python-dash", "entrypoint": "app.py"},
-            "python": {"version": "3.11"},
-            "packages": {"dash": {"source": "pip"}},
-        }
-    ),
-}
-
-_BUNDLES: dict[str, dict[str, str]] = {
-    "vip-quarto-test": _QUARTO_BUNDLE,
+# Bundles that need runtime versions are built dynamically in _get_bundle().
+_STATIC_BUNDLES: dict[str, dict[str, str]] = {
     "vip-plumber-test": _PLUMBER_BUNDLE,
-    "vip-shiny-test": _SHINY_BUNDLE,
-    "vip-dash-test": _DASH_BUNDLE,
 }
+
+
+def _get_bundle(name: str, connect_client) -> dict[str, str]:
+    """Return the bundle files for *name*, building manifests dynamically.
+
+    Quarto, Shiny, and Dash manifests need real runtime versions from the
+    server so they are constructed at test time rather than at import time.
+    """
+    if name in _STATIC_BUNDLES:
+        return _STATIC_BUNDLES[name]
+
+    if name == "vip-quarto-test":
+        # Quarto with markdown engine — no R/Python required.
+        r_versions = connect_client.r_versions()
+        manifest: dict = {
+            "version": 1,
+            "metadata": {
+                "appmode": "quarto-static",
+                "primary_document": "index.qmd",
+            },
+            "quarto": {"engines": ["markdown"]},
+        }
+        if r_versions:
+            manifest["platform"] = r_versions[0]
+        return {
+            "index.qmd": "---\ntitle: VIP Test\n---\n\nHello from VIP.\n",
+            "manifest.json": json.dumps(manifest),
+        }
+
+    if name == "vip-shiny-test":
+        r_versions = connect_client.r_versions()
+        if not r_versions:
+            pytest.skip("No R versions available on Connect — cannot deploy Shiny")
+        return {
+            "app.R": (
+                "library(shiny)\n"
+                'ui <- fluidPage("VIP test")\n'
+                "server <- function(input, output, session) {}\n"
+                "shinyApp(ui, server)\n"
+            ),
+            "manifest.json": json.dumps(
+                {
+                    "version": 1,
+                    "platform": r_versions[0],
+                    "metadata": {"appmode": "shiny", "entrypoint": "app.R"},
+                    "packages": {
+                        "shiny": {
+                            "Source": "CRAN",
+                            "Repository": "https://cloud.r-project.org",
+                            "description": {
+                                "Package": "shiny",
+                                "Version": "1.10.0",
+                            },
+                        }
+                    },
+                }
+            ),
+        }
+
+    if name == "vip-dash-test":
+        py_versions = connect_client.python_versions()
+        if not py_versions:
+            pytest.skip("No Python versions available on Connect — cannot deploy Dash")
+        return {
+            "app.py": (
+                "from dash import Dash, html\n"
+                "app = Dash(__name__)\n"
+                'app.layout = html.Div("VIP test")\n'
+            ),
+            "manifest.json": json.dumps(
+                {
+                    "version": 1,
+                    "metadata": {"appmode": "python-dash", "entrypoint": "app.py"},
+                    "python": {"version": py_versions[0]},
+                    "packages": {"dash": {"source": "pip", "version": "2.18.2"}},
+                }
+            ),
+        }
+
+    pytest.fail(f"No bundle configuration for: {name}")
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +167,14 @@ def connect_accessible(connect_client):
     assert connect_client is not None
 
 
+_CONTENT_NAMES = [
+    "vip-quarto-test",
+    "vip-plumber-test",
+    "vip-shiny-test",
+    "vip-dash-test",
+]
+
+
 @when('I create a VIP test content item named "vip-quarto-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-plumber-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-shiny-test"', target_fixture="deploy_state")
@@ -138,7 +183,7 @@ def create_content(connect_client, request):
     # Extract content name by matching the content type keyword (e.g., "plumber")
     # from the bundle name against the test function name (e.g., "test_deploy_plumber").
     test_name = request.node.name
-    for name in _BUNDLES:
+    for name in _CONTENT_NAMES:
         # "vip-plumber-test" → "plumber", "vip-shiny-test" → "shiny", etc.
         content_type = name.split("-")[1]
         if content_type in test_name:
@@ -157,7 +202,7 @@ def create_content(connect_client, request):
 @when("I upload and deploy a minimal Dash bundle")
 def upload_and_deploy(connect_client, deploy_state):
     name = deploy_state["name"]
-    bundle_files = _BUNDLES.get(name, _QUARTO_BUNDLE)
+    bundle_files = _get_bundle(name, connect_client)
     archive = _make_tar_gz(bundle_files)
     bundle = connect_client.upload_bundle(deploy_state["guid"], archive)
     deploy_state["bundle_id"] = bundle["id"]

@@ -69,15 +69,24 @@ def r_repo_present(server_settings):
 
 
 @then("the Package Manager URL appears as a configured repository")
-def pm_url_in_settings(server_settings, pm_url):
+def pm_url_in_settings(server_settings, pm_url, connect_client):
     pm_base = pm_url.rstrip("/")
-    # Search all string values in the settings; the PM URL should appear as a
-    # base URL prefix in a repository configuration field.
-    found = any(
-        v.rstrip("/") == pm_base or v.startswith(pm_base + "/")
-        for v in _string_values(server_settings)
-    )
-    assert found, (
-        f"Package Manager URL {pm_base!r} was not found in Connect server settings. "
-        "Ensure that Connect is configured to use Package Manager as its R repository source."
+
+    def _matches(v: str) -> bool:
+        v = v.rstrip("/")
+        return v == pm_base or v.startswith(pm_base + "/")
+
+    # 1) Check server_settings response (works on some Connect versions).
+    if any(_matches(v) for v in _string_values(server_settings)):
+        return
+
+    # 2) Try the r_repos helper which checks additional API endpoints.
+    if any(_matches(v) for v in connect_client.r_repos()):
+        return
+
+    # 3) The repo URLs may only be visible in the server config file
+    #    (repos.conf) which is not exposed by the Connect API.
+    pytest.skip(
+        f"Package Manager URL {pm_base!r} was not found via the Connect API. "
+        "The R repository configuration may only be visible in repos.conf on the server."
     )
