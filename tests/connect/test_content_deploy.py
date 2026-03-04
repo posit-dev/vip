@@ -115,6 +115,11 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         r_versions = connect_client.r_versions()
         if not r_versions:
             pytest.skip("No R versions available on Connect — cannot deploy Shiny")
+        # Use the pre-built manifest with full dependency tree (like plumber).
+        manifest = json.loads(
+            (pathlib.Path(__file__).parent / "shiny_manifest.json").read_text()
+        )
+        manifest["platform"] = r_versions[0]
         return {
             "app.R": (
                 "library(shiny)\n"
@@ -122,23 +127,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
                 "server <- function(input, output, session) {}\n"
                 "shinyApp(ui, server)\n"
             ),
-            "manifest.json": json.dumps(
-                {
-                    "version": 1,
-                    "platform": r_versions[0],
-                    "metadata": {"appmode": "shiny", "entrypoint": "app.R"},
-                    "packages": {
-                        "shiny": {
-                            "Source": "CRAN",
-                            "Repository": "https://cloud.r-project.org",
-                            "description": {
-                                "Package": "shiny",
-                                "Version": "1.10.0",
-                            },
-                        }
-                    },
-                }
-            ),
+            "manifest.json": json.dumps(manifest),
         }
 
     if name == "vip-dash-test":
@@ -158,7 +147,11 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
                     "metadata": {"appmode": "python-dash", "entrypoint": "app"},
                     "python": {
                         "version": py_versions[0],
-                        "package_manager": {"name": "pip", "version": "24.0"},
+                        "package_manager": {
+                            "name": "pip",
+                            "version": "24.0",
+                            "package_file": "requirements.txt",
+                        },
                     },
                 }
             ),
