@@ -54,9 +54,17 @@ class InteractiveAuthSession:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
 
-def start_interactive_auth(connect_url: str) -> InteractiveAuthSession:
+def start_interactive_auth(
+    connect_url: str,
+    workbench_url: str | None = None,
+) -> InteractiveAuthSession:
     """Launch a headed browser, authenticate via OIDC, and mint a
     Connect API key through the UI.
+
+    If *workbench_url* is provided, the browser also visits Workbench
+    after Connect login so that the saved storage state contains session
+    cookies for both products (they typically share the same IdP, so SSO
+    handles the second authentication automatically).
 
     The browser is closed before this function returns.  pytest-playwright
     creates its own browser instance using the saved storage state.
@@ -105,6 +113,11 @@ def start_interactive_auth(connect_url: str) -> InteractiveAuthSession:
             )
 
         api_key = _create_api_key_via_ui(page, connect_url, key_name)
+
+        # Visit Workbench so the storage state includes its session cookies.
+        if workbench_url:
+            _authenticate_workbench(page, workbench_url)
+
         context.storage_state(path=str(storage_state_path))
 
         return InteractiveAuthSession(
@@ -129,6 +142,89 @@ def start_interactive_auth(connect_url: str) -> InteractiveAuthSession:
                 pw.stop()
             except Exception:
                 pass
+
+
+_LOGIN_KEYWORDS = ("sign-in", "login", "auth-sign-in")
+
+
+def _on_login_page(url: str) -> bool:
+    """Return True if *url* looks like a login or IdP page."""
+    lower = url.lower()
+    return any(kw in lower for kw in _LOGIN_KEYWORDS)
+
+
+def _authenticate_workbench(page: Page, workbench_url: str) -> None:
+    """Navigate to Workbench to establish an SSO session.
+
+    After the user authenticated to Connect via OIDC, the identity provider
+    already has an active session.  The typical redirect chain is:
+
+    1. Workbench ``/`` → 302 to ``/auth-sign-in``
+    2. ``/auth-sign-in`` → (auto-redirect or click) → IdP
+    3. IdP (active session) → redirect back to Workbench with token
+    4. Workbench sets session cookie → dashboard
+
+    ``networkidle`` may fire at step 2 before the IdP redirect completes,
+    so we poll until the URL is on the Workbench domain *and* is no longer
+    a login page.
+
+    If SSO does not resolve automatically (e.g. the auth-sign-in page
+    requires a click), we attempt to click through.  The headed browser is
+    still visible so the user can also intervene manually.
+    """
+    wb_base = workbench_url.rstrip("/").lower()
+    print(f"\n>>> Authenticating to Workbench at {workbench_url} ...")
+
+    page.goto(workbench_url)
+    page.wait_for_load_state("networkidle")
+
+    # Quick check — already on the Workbench dashboard?
+    url = page.url
+    if url.lower().startswith(wb_base) and not _on_login_page(url):
+        print(">>> Workbench authenticated via SSO.\n")
+        return
+
+    # We're likely on /auth-sign-in.  Try clicking a sign-in button to
+    # trigger the OIDC redirect (some Workbench configs don't auto-redirect).
+    for selector in (
+        "a:has-text('Sign in')",
+        "button:has-text('Sign in')",
+        "a:has-text('Log in')",
+        "button:has-text('Log in')",
+        "#auth-sign-in-link",
+    ):
+        try:
+            page.click(selector, timeout=2_000)
+            break
+        except Exception:
+            continue
+
+    # Wait for the OIDC redirect chain to complete.
+    print(">>> Waiting for Workbench SSO redirect chain ...")
+    print(">>> If prompted, please complete authentication in the browser.\n")
+
+    deadline = time.monotonic() + 120  # 2-minute timeout
+    while time.monotonic() < deadline:
+        try:
+            page.wait_for_load_state("networkidle", timeout=5_000)
+        except Exception:
+            pass
+        try:
+            url = page.url
+        except Exception:
+            break
+        if url.lower().startswith(wb_base) and not _on_login_page(url):
+            print(">>> Workbench authenticated.\n")
+            return
+        try:
+            page.wait_for_timeout(500)
+        except Exception:
+            break
+
+    print(
+        ">>> Warning: Workbench authentication did not complete within 2 minutes.\n"
+        ">>> Workbench browser tests may skip.\n"
+    )
 
 
 def _create_api_key_via_ui(page: Page, connect_url: str, key_name: str) -> str | None:

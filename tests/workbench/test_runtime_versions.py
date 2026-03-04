@@ -17,13 +17,34 @@ def test_python_versions():
 
 
 @given("the user is logged in to Workbench")
-def user_logged_in(page, workbench_url, test_username, test_password):
+def user_logged_in(
+    page,
+    workbench_url,
+    test_username,
+    test_password,
+    auth_provider,
+    interactive_auth,
+):
+    # For non-password auth without interactive auth, skip immediately.
+    if auth_provider != "password" and not interactive_auth:
+        pytest.skip(
+            f"Login form not available for auth provider {auth_provider!r}. "
+            "Pass --interactive-auth when browser storage state is pre-loaded."
+        )
     page.goto(workbench_url)
-    if "sign-in" in page.url.lower() or "login" in page.url.lower():
+    page.wait_for_load_state("load")
+    # Check if we ended up on a login page.
+    on_login = any(kw in page.url.lower() for kw in ("sign-in", "login", "auth"))
+    if on_login:
+        if auth_provider != "password":
+            pytest.skip(
+                "Interactive auth storage state did not authenticate Workbench. "
+                "The OIDC session may not be shared between Connect and Workbench."
+            )
         page.fill("#username, [name='username']", test_username)
         page.fill("#password, [name='password']", test_password)
         page.click("button[type='submit'], #sign-in")
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("load")
 
 
 @given("expected R versions are specified in vip.toml")

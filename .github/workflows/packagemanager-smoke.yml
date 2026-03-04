@@ -1,0 +1,224 @@
+name: Package Manager Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * *" # daily at 6am UTC
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  packagemanager-smoke:
+    name: Smoke test against Package Manager ${{ matrix.pm-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pm-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2024.08.0", "ubuntu2204"]') || fromJSON('["ubuntu2204-2024.08.0"]') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Skip the entire job if the license secret is not configured
+      - name: Check for RSPM_LICENSE
+        id: license
+        run: |
+          if [ -z "${{ secrets.RSPM_LICENSE }}" ]; then
+            echo "RSPM_LICENSE secret not configured — skipping PM smoke tests"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Start Package Manager in Docker
+      - name: Start Package Manager
+        if: steps.license.outputs.available == 'true'
+        id: pm
+        run: |
+          docker run -d \
+            --name packagemanager \
+            -p 4242:4242 \
+            -e RSPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
+            rstudio/rstudio-package-manager:${{ matrix.pm-version }}
+          echo "PM_URL=http://localhost:4242" >> "$GITHUB_OUTPUT"
+
+      # Wait for health check
+      - name: Wait for Package Manager to be ready
+        if: steps.license.outputs.available == 'true'
+        run: |
+          echo "Waiting for Package Manager to start..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:4242/__api__/status > /dev/null 2>&1; then
+              echo "Package Manager is ready (attempt ${i})"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Package Manager failed to start within 120 seconds"
+          docker logs packagemanager
+          exit 1
+
+      # Provision CRAN and PyPI repositories for smoke testing
+      - name: Provision smoke test repositories
+        if: steps.license.outputs.available == 'true'
+        run: |
+          echo "Creating CRAN repository..."
+          docker exec packagemanager /opt/rstudio-pm/bin/rspm create repo \
+            --name=cran-all --type=r --description="CRAN mirror"
+          docker exec packagemanager /opt/rstudio-pm/bin/rspm create source \
+            --name=cran-mirror --type=cran-snapshot
+          docker exec packagemanager /opt/rstudio-pm/bin/rspm subscribe \
+            --repo=cran-all --source=cran-mirror
+
+          echo "Creating PyPI repository..."
+          docker exec packagemanager /opt/rstudio-pm/bin/rspm create repo \
+            --name=pypi-all --type=python --description="PyPI mirror"
+
+          echo "Repositories provisioned successfully"
+
+      # Resolve the actual Package Manager version
+      - name: Resolve Package Manager version
+        if: steps.license.outputs.available == 'true'
+        id: version
+        run: |
+          RESPONSE=$(curl -sf http://localhost:4242/__api__/status)
+          VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty')
+          if [ -z "${VERSION}" ]; then
+            # Fall back to the matrix version if API doesn't report it
+            VERSION="${{ matrix.pm-version }}"
+          fi
+          echo "Resolved Package Manager version: ${VERSION}"
+          echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # Rename the check run to show the resolved version
+      - name: Update job title with resolved version
+        if: steps.license.outputs.available == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const resolvedVersion = '${{ steps.version.outputs.resolved }}';
+            const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            const currentJob = jobs.find(
+              j => j.status === 'in_progress' && j.name.includes('${{ matrix.pm-version }}')
+            );
+            if (currentJob) {
+              await github.rest.checks.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                check_run_id: currentJob.id,
+                name: `Smoke test against Package Manager ${resolvedVersion}`,
+              });
+            }
+
+      # Set up Python and install VIP
+      - uses: astral-sh/setup-uv@v5
+        if: steps.license.outputs.available == 'true'
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        if: steps.license.outputs.available == 'true'
+        run: uv sync
+
+      # No Playwright needed — PM tests are API-only
+
+      # Generate vip.toml for CI Package Manager
+      - name: Configure VIP for CI Package Manager
+        if: steps.license.outputs.available == 'true'
+        run: |
+          cat > vip.toml << EOF
+          [general]
+          deployment_name = "CI Package Manager"
+
+          [package_manager]
+          enabled = true
+          url = "${{ steps.pm.outputs.PM_URL }}"
+          version = "${{ steps.version.outputs.resolved }}"
+
+          [auth]
+          provider = "password"
+          EOF
+
+      # Run the Package Manager smoke tests
+      - name: Run Package Manager smoke tests
+        if: steps.license.outputs.available == 'true'
+        run: |
+          uv run pytest \
+            tests/prerequisites/test_components.py::test_package_manager_reachable \
+            tests/package_manager/test_repos.py \
+            -v \
+            --vip-config=vip.toml \
+            --junitxml=smoke-results.xml
+
+      # Upload test results for debugging failures
+      - name: Upload test results
+        if: always() && steps.license.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pm-smoke-results-${{ steps.version.outputs.resolved }}
+          path: smoke-results.xml
+
+      # Write a rich job summary with test details
+      - name: Write workflow summary
+        if: always()
+        run: |
+          if [ "${{ steps.license.outputs.available }}" != "true" ]; then
+            echo "## Package Manager Smoke Tests — Skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "> RSPM_LICENSE secret is not configured. Add it to run PM smoke tests." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          RESOLVED="${{ steps.version.outputs.resolved }}"
+          PM_URL="${{ steps.pm.outputs.PM_URL }}"
+          REQUESTED="${{ matrix.pm-version }}"
+          RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+          {
+            echo "## 🧪 Package Manager Smoke Tests — v${RESOLVED}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| 🏷️ **Requested version** | \`${REQUESTED}\` |"
+            echo "| ✅ **Resolved version** | \`${RESOLVED}\` |"
+            echo "| 🌐 **Package Manager URL** | \`${PM_URL}\` |"
+            echo "| 📅 **Run date** | ${RUN_DATE} |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f smoke-results.xml ]; then
+            TESTS=$(grep -oP '(?<=tests=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            FAILURES=$(grep -oP '(?<=failures=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            ERRORS=$(grep -oP '(?<=errors=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            SKIPPED=$(grep -oP '(?<=skipped=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            TESTS=${TESTS:-0}; FAILURES=${FAILURES:-0}; ERRORS=${ERRORS:-0}; SKIPPED=${SKIPPED:-0}
+            PASSED=$(( TESTS - FAILURES - ERRORS - SKIPPED ))
+            {
+              echo "### 📊 Test Results"
+              echo ""
+              echo "| Result | Count |"
+              echo "|--------|-------|"
+              echo "| ✅ Passed | ${PASSED} |"
+              echo "| ❌ Failed | ${FAILURES:-0} |"
+              echo "| ⚠️ Errors | ${ERRORS:-0} |"
+              echo "| ⏭️ Skipped | ${SKIPPED:-0} |"
+              echo "| 📝 **Total** | **${TESTS:-0}** |"
+              echo ""
+              if [ "${FAILURES:-0}" = "0" ] && [ "${ERRORS:-0}" = "0" ]; then
+                echo "🎉 **All tests passed!**"
+              else
+                echo "💥 **Some tests failed — check the logs for details.**"
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "> ⚠️ Test results file not found — tests may have been skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Stop Package Manager
+      - name: Stop Package Manager
+        if: always() && steps.license.outputs.available == 'true'
+        run: docker stop packagemanager && docker rm packagemanager || true

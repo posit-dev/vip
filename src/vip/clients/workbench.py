@@ -34,12 +34,30 @@ class WorkbenchClient:
 
     # -- Sessions -----------------------------------------------------------
 
-    def list_sessions(self, cookies: dict[str, str]) -> list[dict[str, Any]]:
+    def set_cookies(self, cookies: dict[str, str]) -> None:
+        """Set cookies on the client instance for authenticated requests."""
+        self._client.cookies.update(cookies)
+
+    def list_sessions(self) -> list[dict[str, Any]]:
         """List active sessions for the authenticated user."""
-        resp = self._client.get("/api/sessions", cookies=cookies)
+        resp = self._client.get("/api/sessions")
         if resp.status_code == 200:
             return resp.json()
         return []
+
+    def quit_session(self, session_id: str) -> bool:
+        """Attempt to quit/suspend a session.  Returns True on success."""
+        for method, path in (
+            ("DELETE", f"/api/sessions/{session_id}"),
+            ("POST", f"/api/sessions/{session_id}/suspend"),
+        ):
+            try:
+                resp = self._client.request(method, path)
+                if resp.status_code < 400:
+                    return True
+            except Exception:
+                continue
+        return False
 
     # -- Lifecycle ----------------------------------------------------------
 

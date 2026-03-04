@@ -66,58 +66,94 @@ def _make_tar_gz(files: dict[str, str]) -> bytes:
     return buf.getvalue()
 
 
-_QUARTO_BUNDLE = {
-    "index.qmd": "---\ntitle: VIP Test\n---\n\nHello from VIP.\n",
-    "manifest.json": json.dumps(
-        {
-            "version": 1,
-            "metadata": {"appmode": "quarto-static", "primary_document": "index.qmd"},
-            "quarto": {"engines": ["markdown"]},
-        }
-    ),
-}
-
 _PLUMBER_BUNDLE = {
     "plumber.R": ('#* @get /\nfunction() {\n  list(message = "VIP test OK")\n}\n'),
     "manifest.json": (pathlib.Path(__file__).parent / "plumber_manifest.json").read_text(),
 }
 
-_SHINY_BUNDLE = {
-    "app.R": (
-        "library(shiny)\n"
-        'ui <- fluidPage("VIP test")\n'
-        "server <- function(input, output, session) {}\n"
-        "shinyApp(ui, server)\n"
-    ),
-    "manifest.json": json.dumps(
-        {
-            "version": 1,
-            "metadata": {"appmode": "shiny", "entrypoint": "app.R"},
-            "packages": {"shiny": {"Source": "CRAN"}},
-        }
-    ),
-}
-
-_DASH_BUNDLE = {
-    "app.py": (
-        'from dash import Dash, html\napp = Dash(__name__)\napp.layout = html.Div("VIP test")\n'
-    ),
-    "manifest.json": json.dumps(
-        {
-            "version": 1,
-            "metadata": {"appmode": "python-dash", "entrypoint": "app.py"},
-            "python": {"version": "3.11"},
-            "packages": {"dash": {"source": "pip"}},
-        }
-    ),
-}
-
-_BUNDLES: dict[str, dict[str, str]] = {
-    "vip-quarto-test": _QUARTO_BUNDLE,
+# Bundles that need runtime versions are built dynamically in _get_bundle().
+_STATIC_BUNDLES: dict[str, dict[str, str]] = {
     "vip-plumber-test": _PLUMBER_BUNDLE,
-    "vip-shiny-test": _SHINY_BUNDLE,
-    "vip-dash-test": _DASH_BUNDLE,
 }
+
+
+def _get_bundle(name: str, connect_client) -> dict[str, str]:
+    """Return the bundle files for *name*, building manifests dynamically.
+
+    Quarto, Shiny, and Dash manifests need real runtime versions from the
+    server so they are constructed at test time rather than at import time.
+    """
+    if name in _STATIC_BUNDLES:
+        return _STATIC_BUNDLES[name]
+
+    if name == "vip-quarto-test":
+        quarto_versions = connect_client.quarto_versions()
+        if not quarto_versions:
+            pytest.skip("No Quarto installations available on Connect")
+        r_versions = connect_client.r_versions()
+        manifest: dict = {
+            "version": 1,
+            "metadata": {
+                "appmode": "quarto-static",
+                "primary_document": "index.qmd",
+                "content_category": "",
+                "has_parameters": False,
+            },
+            "quarto": {
+                "version": quarto_versions[0],
+                "engines": ["markdown"],
+            },
+        }
+        if r_versions:
+            manifest["platform"] = r_versions[0]
+        return {
+            "index.qmd": "---\ntitle: VIP Test\n---\n\nHello from VIP.\n",
+            "manifest.json": json.dumps(manifest),
+        }
+
+    if name == "vip-shiny-test":
+        r_versions = connect_client.r_versions()
+        if not r_versions:
+            pytest.skip("No R versions available on Connect — cannot deploy Shiny")
+        # Use the pre-built manifest with full dependency tree (like plumber).
+        manifest = json.loads((pathlib.Path(__file__).parent / "shiny_manifest.json").read_text())
+        manifest["platform"] = r_versions[0]
+        return {
+            "app.R": (
+                "library(shiny)\n"
+                'ui <- fluidPage("VIP test")\n'
+                "server <- function(input, output, session) {}\n"
+                "shinyApp(ui, server)\n"
+            ),
+            "manifest.json": json.dumps(manifest),
+        }
+
+    if name == "vip-dash-test":
+        py_versions = connect_client.python_versions()
+        if not py_versions:
+            pytest.skip("No Python versions available on Connect — cannot deploy Dash")
+        return {
+            "app.py": (
+                'import dash\napp = dash.Dash(__name__)\napp.layout = dash.html.Div("VIP test")\n'
+            ),
+            "requirements.txt": "dash\n",
+            "manifest.json": json.dumps(
+                {
+                    "version": 1,
+                    "metadata": {"appmode": "python-dash", "entrypoint": "app"},
+                    "python": {
+                        "version": py_versions[0],
+                        "package_manager": {
+                            "name": "pip",
+                            "version": "24.0",
+                            "package_file": "requirements.txt",
+                        },
+                    },
+                }
+            ),
+        }
+
+    pytest.fail(f"No bundle configuration for: {name}")
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +166,14 @@ def connect_accessible(connect_client):
     assert connect_client is not None
 
 
+_CONTENT_NAMES = [
+    "vip-quarto-test",
+    "vip-plumber-test",
+    "vip-shiny-test",
+    "vip-dash-test",
+]
+
+
 @when('I create a VIP test content item named "vip-quarto-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-plumber-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-shiny-test"', target_fixture="deploy_state")
@@ -138,7 +182,7 @@ def create_content(connect_client, request):
     # Extract content name by matching the content type keyword (e.g., "plumber")
     # from the bundle name against the test function name (e.g., "test_deploy_plumber").
     test_name = request.node.name
-    for name in _BUNDLES:
+    for name in _CONTENT_NAMES:
         # "vip-plumber-test" → "plumber", "vip-shiny-test" → "shiny", etc.
         content_type = name.split("-")[1]
         if content_type in test_name:
@@ -157,7 +201,7 @@ def create_content(connect_client, request):
 @when("I upload and deploy a minimal Dash bundle")
 def upload_and_deploy(connect_client, deploy_state):
     name = deploy_state["name"]
-    bundle_files = _BUNDLES.get(name, _QUARTO_BUNDLE)
+    bundle_files = _get_bundle(name, connect_client)
     archive = _make_tar_gz(bundle_files)
     bundle = connect_client.upload_bundle(deploy_state["guid"], archive)
     deploy_state["bundle_id"] = bundle["id"]
@@ -168,15 +212,49 @@ def upload_and_deploy(connect_client, deploy_state):
 @when("I wait for the deployment to complete")
 def wait_for_deploy(connect_client, deploy_state):
     task_id = deploy_state["task_id"]
-    deadline = time.time() + 120  # 2-minute timeout
+    deadline = time.time() + 300  # 5-minute timeout (package installs can be slow)
     while time.time() < deadline:
-        task = connect_client.get_task(task_id)
+        try:
+            task = connect_client.get_task(task_id)
+        except httpx.ReadTimeout:
+            # Transient timeout during long deployments (e.g. R package
+            # installs); retry as long as the overall deadline hasn't expired.
+            time.sleep(3)
+            continue
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (404, 502, 503, 504):
+                time.sleep(3)
+                continue
+            raise
         if task.get("finished"):
             deploy_state["task_result"] = task
-            assert task.get("code") == 0, f"Deployment failed: {task.get('error', 'unknown error')}"
+            if task.get("code") != 0:
+                output = "\n".join(task.get("output", []))
+                error = task.get("error", "unknown error")
+                pytest.fail(f"Deployment failed: {error}\n\n--- Task output ---\n{output}")
             return
         time.sleep(3)
-    pytest.fail("Deployment did not complete within 120 seconds")
+    # On timeout, fetch final task state for logs (with limited retries for
+    # the same transient errors handled in the loop above).
+    task = None
+    for _ in range(3):
+        try:
+            task = connect_client.get_task(task_id)
+            break
+        except httpx.ReadTimeout:
+            time.sleep(3)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (404, 502, 503, 504):
+                time.sleep(3)
+                continue
+            raise
+    if task is None:
+        pytest.fail(
+            "Deployment did not complete within 300 seconds and final task "
+            "state could not be retrieved due to repeated transient errors."
+        )
+    output = "\n".join(task.get("output", []))
+    pytest.fail(f"Deployment did not complete within 300 seconds\n\n--- Task output ---\n{output}")
 
 
 @then("the content is accessible via HTTP")

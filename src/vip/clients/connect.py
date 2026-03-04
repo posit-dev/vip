@@ -18,9 +18,11 @@ class ConnectClient:
 
     def __init__(self, base_url: str, api_key: str, *, timeout: float = 30.0) -> None:
         self.base_url = base_url.rstrip("/")
+        api_key = (api_key or "").strip()
+        headers = {"Authorization": f"Key {api_key}"} if api_key else {}
         self._client = httpx.Client(
             base_url=f"{self.base_url}/__api__",
-            headers={"Authorization": f"Key {api_key}"},
+            headers=headers,
             timeout=timeout,
         )
 
@@ -105,7 +107,7 @@ class ConnectClient:
         return resp.json()
 
     def get_task(self, task_id: str) -> dict[str, Any]:
-        resp = self._client.get(f"/v1/tasks/{task_id}")
+        resp = self._client.get(f"/v1/tasks/{task_id}", params={"first": 0, "wait": 1})
         resp.raise_for_status()
         return resp.json()
 
@@ -167,6 +169,45 @@ class ConnectClient:
             installations = resp.json().get("installations", [])
             return [i["version"] for i in installations]
         return []
+
+    def quarto_versions(self) -> list[str]:
+        resp = self._client.get("/v1/server_settings/quarto")
+        if resp.status_code == 200:
+            installations = resp.json().get("installations", [])
+            return [i.get("version", i.get("path", "")) for i in installations]
+        return []
+
+    def r_repos(self) -> list[str]:
+        """Return configured R repository URLs from the Connect admin API.
+
+        Tries multiple endpoints across Connect versions.  Returns an empty
+        list if the information is unavailable.
+        """
+        urls: list[str] = []
+        # Try the v1 server_settings endpoint (Connect 2024+).
+        for path in ("/v1/server_settings", "/server_settings"):
+            try:
+                resp = self._client.get(path)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    urls.extend(v for v in self._extract_strings(data) if v.startswith("http"))
+            except Exception:
+                continue
+        return urls
+
+    @staticmethod
+    def _extract_strings(obj: Any) -> list[str]:
+        """Recursively collect all string leaf values."""
+        results: list[str] = []
+        if isinstance(obj, str):
+            results.append(obj)
+        elif isinstance(obj, dict):
+            for v in obj.values():
+                results.extend(ConnectClient._extract_strings(v))
+        elif isinstance(obj, list):
+            for item in obj:
+                results.extend(ConnectClient._extract_strings(item))
+        return results
 
     # -- Email --------------------------------------------------------------
 

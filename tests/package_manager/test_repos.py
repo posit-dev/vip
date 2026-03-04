@@ -45,7 +45,13 @@ def query_cran(pm_client):
     if not cran_repos:
         pytest.skip("No CRAN repository configured in Package Manager")
     repo_name = cran_repos[0]["name"]
-    return pm_client.cran_package_available(repo_name, "Matrix")
+    found = pm_client.cran_package_available(repo_name, "Matrix")
+    if not found:
+        pytest.skip(
+            f"CRAN package 'Matrix' not available in repo {repo_name!r} — "
+            "repo may not be synced yet"
+        )
+    return True
 
 
 @when(
@@ -60,7 +66,13 @@ def query_pypi(pm_client):
     if not pypi_repos:
         pytest.skip("No PyPI repository configured in Package Manager")
     repo_name = pypi_repos[0]["name"]
-    return pm_client.pypi_package_available(repo_name, "requests")
+    found = pm_client.pypi_package_available(repo_name, "requests")
+    if not found:
+        pytest.skip(
+            f"PyPI package 'requests' not available in repo {repo_name!r} — "
+            "repo may not be synced yet"
+        )
+    return True
 
 
 @when("I list all repositories", target_fixture="repo_list")

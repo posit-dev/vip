@@ -112,16 +112,23 @@ def pytest_configure(config: pytest.Config) -> None:
     ext_dirs.extend(config.getoption("--vip-extensions") or [])
     config.stash[_ext_dirs_key] = ext_dirs
 
-    # Handle interactive auth — login via browser, then close before tests
+    # Handle interactive auth — login via browser, then close before tests.
+    # With pytest-xdist the browser auth happens once in the controller;
+    # credentials are forwarded to workers via pytest_configure_node.
     config.stash[_auth_session_key] = None
-    if config.getoption("--interactive-auth"):
+
+    if hasattr(config, "workerinput") and config.workerinput.get("vip_interactive_auth"):
+        # xdist worker — restore auth data shared by the controller.
+        _restore_worker_auth(config, vip_cfg)
+    elif config.getoption("--interactive-auth"):
         if not vip_cfg.connect.url:
             raise pytest.UsageError(
                 "--interactive-auth requires Connect URL to be configured in vip.toml"
             )
         from vip.auth import start_interactive_auth
 
-        session = start_interactive_auth(vip_cfg.connect.url)
+        wb_url = vip_cfg.workbench.url if vip_cfg.workbench.is_configured else None
+        session = start_interactive_auth(vip_cfg.connect.url, workbench_url=wb_url)
         config.stash[_auth_session_key] = session
         if session.api_key:
             vip_cfg.connect.api_key = session.api_key
@@ -131,6 +138,38 @@ def pytest_configure(config: pytest.Config) -> None:
                 "API-based tests will likely fail. Set VIP_CONNECT_API_KEY to fix.",
                 stacklevel=1,
             )
+
+
+def _restore_worker_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
+    """Reconstruct an auth session in an xdist worker from controller data."""
+    from vip.auth import InteractiveAuthSession
+
+    wi = config.workerinput
+    api_key = wi.get("vip_api_key") or None
+    storage_state = wi.get("vip_storage_state", "")
+
+    if api_key:
+        vip_cfg.connect.api_key = api_key
+
+    session = InteractiveAuthSession(
+        storage_state_path=Path(storage_state) if storage_state else Path("/dev/null"),
+        api_key=api_key,
+        key_name=wi.get("vip_key_name", ""),
+        _connect_url=wi.get("vip_connect_url", ""),
+        _tmpdir="",  # Workers don't own the temp dir; controller cleans up.
+    )
+    config.stash[_auth_session_key] = session
+
+
+def pytest_configure_node(node) -> None:
+    """xdist controller hook: share interactive-auth credentials with workers."""
+    auth = node.config.stash.get(_auth_session_key, None)
+    if auth is not None:
+        node.workerinput["vip_interactive_auth"] = True
+        node.workerinput["vip_api_key"] = auth.api_key or ""
+        node.workerinput["vip_storage_state"] = str(auth.storage_state_path)
+        node.workerinput["vip_key_name"] = auth.key_name
+        node.workerinput["vip_connect_url"] = auth._connect_url
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
@@ -156,18 +195,38 @@ def pytest_collection_modifyitems(
     vip_cfg: VIPConfig = config.stash[_vip_config_key]
     using_interactive_auth = config.stash.get(_auth_session_key, None) is not None
 
-    # Sort so prerequisites run before everything else.
+    # Sort so prerequisites run before everything else, and assign xdist
+    # groups so that each product's tests land on a dedicated worker.
     prerequisites: list[pytest.Item] = []
     rest: list[pytest.Item] = []
     for item in items:
         _maybe_skip_for_product(item, vip_cfg)
         _maybe_skip_for_version(item, vip_cfg)
         _maybe_skip_credential_check(item, using_interactive_auth)
+        _assign_xdist_group(item)
         if item.get_closest_marker("prerequisites"):
             prerequisites.append(item)
         else:
             rest.append(item)
     items[:] = prerequisites + rest
+
+
+# Directories whose tests get a dedicated xdist worker.
+_PRODUCT_DIRS = {"connect", "workbench", "package_manager"}
+
+
+def _assign_xdist_group(item: pytest.Item) -> None:
+    """Assign an ``xdist_group`` marker so each product runs on its own worker.
+
+    Tests under ``tests/connect/``, ``tests/workbench/``, or
+    ``tests/package_manager/`` are grouped by directory name.  Everything
+    else (prerequisites, cross_product, performance, security) lands in a
+    shared ``general`` group.
+    """
+    fspath = Path(str(getattr(item, "fspath", "")))
+    dir_name = fspath.parent.name
+    group = dir_name if dir_name in _PRODUCT_DIRS else "general"
+    item.add_marker(pytest.mark.xdist_group(group))
 
 
 def _maybe_skip_credential_check(item: pytest.Item, using_interactive_auth: bool) -> None:
@@ -268,13 +327,17 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    # Clean up interactive auth session (delete API key, remove temp files)
-    auth_session = session.config.stash.get(_auth_session_key, None)
-    if auth_session is not None:
-        auth_session.cleanup()
+    # xdist workers skip all session-end cleanup (controller handles it).
+    is_worker = hasattr(session.config, "workerinput")
+
+    if not is_worker:
+        # Clean up interactive auth session (delete API key, remove temp files)
+        auth_session = session.config.stash.get(_auth_session_key, None)
+        if auth_session is not None:
+            auth_session.cleanup()
 
     report_path = session.config.getoption("--vip-report")
-    if not report_path:
+    if not report_path or is_worker:
         return
 
     cfg: VIPConfig = session.config.stash[_vip_config_key]
