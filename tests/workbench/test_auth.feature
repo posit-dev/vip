@@ -8,4 +8,5 @@ Feature: Workbench authentication
     Given Workbench is accessible at the configured URL
     When a user navigates to the Workbench login page
     And enters valid Workbench credentials
-    Then the user is redirected to the Workbench home page
+    Then the Workbench homepage is displayed
+    And the current user is shown in the header
