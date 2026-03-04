@@ -218,7 +218,18 @@ def wait_for_deploy(connect_client, deploy_state):
     task_id = deploy_state["task_id"]
     deadline = time.time() + 300  # 5-minute timeout (package installs can be slow)
     while time.time() < deadline:
-        task = connect_client.get_task(task_id)
+        try:
+            task = connect_client.get_task(task_id)
+        except httpx.ReadTimeout:
+            # Transient timeout during long deployments (e.g. R package
+            # installs); retry as long as the overall deadline hasn't expired.
+            time.sleep(3)
+            continue
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (404, 502, 503, 504):
+                time.sleep(3)
+                continue
+            raise
         if task.get("finished"):
             deploy_state["task_result"] = task
             if task.get("code") != 0:
