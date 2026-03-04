@@ -11,6 +11,7 @@ dependencies = [
     "pytest>=8.0",
     "pytest-bdd>=7.0",
     "pytest-playwright>=0.5",
+    "pytest-xdist>=3.0",
     "tomli>=2.0;python_version<'3.11'",
 ]
 
@@ -39,6 +40,7 @@ packages = ["src/vip"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--dist loadgroup"
 filterwarnings = [
     # gherkin-official 29.0.0 passes maxsplit positionally to re.split;
     # fixed upstream but pulled transitively via pytest-bdd.
