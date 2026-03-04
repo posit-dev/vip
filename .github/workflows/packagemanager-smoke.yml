@@ -61,6 +61,24 @@ jobs:
           docker logs packagemanager
           exit 1
 
+      # Provision CRAN and PyPI repositories for smoke testing
+      - name: Provision smoke test repositories
+        if: steps.license.outputs.available == 'true'
+        run: |
+          echo "Creating CRAN repository..."
+          docker exec packagemanager /opt/rstudio-pm/bin/rspm create repo \
+            --name=cran-all --type=r --description="CRAN mirror"
+          docker exec packagemanager /opt/rstudio-pm/bin/rspm create source \
+            --name=cran-mirror --type=cran-snapshot
+          docker exec packagemanager /opt/rstudio-pm/bin/rspm subscribe \
+            --repo=cran-all --source=cran-mirror
+
+          echo "Creating PyPI repository..."
+          docker exec packagemanager /opt/rstudio-pm/bin/rspm create repo \
+            --name=pypi-all --type=python --description="PyPI mirror"
+
+          echo "Repositories provisioned successfully"
+
       # Resolve the actual Package Manager version
       - name: Resolve Package Manager version
         if: steps.license.outputs.available == 'true'
