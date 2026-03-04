@@ -44,16 +44,36 @@ def user_logged_in(
         page.wait_for_load_state("load")
 
 
+@pytest.fixture()
+def _url_before_launch():
+    """Stash for the URL before clicking Launch."""
+    return {}
+
+
 @when("the user starts a new session")
-def start_session(page):
-    page.get_by_role("button", name="New Session").click(timeout=15000)
+def start_session(page, _url_before_launch):
+    _url_before_launch["url"] = page.url
+    # When already inside a session, the UI renders two "New Session" buttons
+    # (one disabled in sidebar, one enabled).  Target the enabled one.
+    page.locator(
+        "button:not([disabled])", has_text="New Session"
+    ).first.click(timeout=15000)
     page.get_by_role("button", name="Launch").click(timeout=5000)
 
 
 @when("waits for the session to be ready")
-def wait_for_session(page):
-    # All IDE sessions navigate to a /s/<session-id>/ URL when ready.
-    page.wait_for_url("**/s/**", timeout=60000)
+def wait_for_session(page, _url_before_launch):
+    # Wait for navigation to a *new* /s/<id>/ URL (may already be on one).
+    url_before = _url_before_launch.get("url", "")
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if "/s/" in page.url and page.url != url_before:
+            break
+        page.wait_for_timeout(500)
+    else:
+        raise TimeoutError(
+            f"Session did not start within 60 s.  URL stayed at {page.url}"
+        )
     # Allow a brief settle time.
     time.sleep(3)
 

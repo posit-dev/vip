@@ -7,6 +7,8 @@ changes by using multiple selector strategies.
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from pytest_bdd import given, scenario, then, when
 
@@ -73,32 +75,56 @@ def user_logged_in(
         page.wait_for_load_state("load")
 
 
+def _click_new_session(page, session_state):
+    """Click the enabled 'New Session' button.
+
+    When the user is already inside a session the Workbench UI renders two
+    buttons with the same name — one disabled in the sidebar and one enabled
+    as the primary action.  Using :not([disabled]) avoids the strict-mode
+    violation.
+    """
+    # Record the current URL so session_starts can detect a real navigation.
+    session_state["url_before_launch"] = page.url
+    page.locator(
+        "button:not([disabled])", has_text="New Session"
+    ).first.click(timeout=15000)
+
+
 @when("the user launches an RStudio session")
-def launch_rstudio(page):
-    page.get_by_role("button", name="New Session").click(timeout=15000)
+def launch_rstudio(page, session_state):
+    _click_new_session(page, session_state)
     page.get_by_role("tab", name="RStudio Pro").click(timeout=5000)
     page.get_by_role("button", name="Launch").click(timeout=5000)
 
 
 @when("the user launches a VS Code session")
-def launch_vscode(page):
-    page.get_by_role("button", name="New Session").click(timeout=15000)
+def launch_vscode(page, session_state):
+    _click_new_session(page, session_state)
     page.get_by_role("tab", name="VS Code").click(timeout=5000)
     page.get_by_role("button", name="Launch").click(timeout=5000)
 
 
 @when("the user launches a JupyterLab session")
-def launch_jupyter(page):
-    page.get_by_role("button", name="New Session").click(timeout=15000)
+def launch_jupyter(page, session_state):
+    _click_new_session(page, session_state)
     page.get_by_role("tab", name="JupyterLab").click(timeout=5000)
     page.get_by_role("button", name="Launch").click(timeout=5000)
 
 
 @then("the session starts within a reasonable time")
-def session_starts(page):
+def session_starts(page, session_state):
     # All IDE sessions navigate to a /s/<session-id>/ URL when ready.
-    # This is the most reliable cross-IDE signal that the session started.
-    page.wait_for_url("**/s/**", timeout=60000)
+    # If the browser was already at a /s/ URL (from a previous session),
+    # we need to wait for the URL to actually change.
+    url_before = session_state.get("url_before_launch", "")
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if "/s/" in page.url and page.url != url_before:
+            return
+        page.wait_for_timeout(500)
+    raise TimeoutError(
+        f"Session did not start within 60 s.  URL stayed at {page.url}"
+    )
 
 
 @then("the RStudio IDE is displayed")
