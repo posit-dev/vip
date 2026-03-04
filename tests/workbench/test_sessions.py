@@ -52,13 +52,8 @@ def start_session(page):
 
 @when("waits for the session to be ready")
 def wait_for_session(page):
-    # IDE iframes may carry aria-hidden="true" while initialising;
-    # check DOM attachment rather than visibility.
-    page.wait_for_selector(
-        "iframe#rstudio, iframe.webview, iframe[src*='/s/'], iframe[src*='jupyter']",
-        timeout=60000,
-        state="attached",
-    )
+    # All IDE sessions navigate to a /s/<session-id>/ URL when ready.
+    page.wait_for_url("**/s/**", timeout=60000)
     # Allow a brief settle time.
     time.sleep(3)
 
@@ -68,7 +63,13 @@ def session_in_list(page, workbench_url):
     # Navigate back to the home page to see the sessions list.
     page.goto(workbench_url)
     page.wait_for_load_state("load")
-    sessions = page.query_selector_all(".session-row, tr.session, [data-session-id]")
+    # The Workbench React app renders sessions as links to /s/<id>/ URLs.
+    # Wait for the list to render before querying.
+    try:
+        page.wait_for_selector("a[href*='/s/']", timeout=15000)
+    except Exception:
+        pass
+    sessions = page.query_selector_all("a[href*='/s/']")
     assert len(sessions) > 0, "No sessions found in the active sessions list"
 
 

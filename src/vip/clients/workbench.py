@@ -41,6 +41,20 @@ class WorkbenchClient:
             return resp.json()
         return []
 
+    def quit_session(self, session_id: str, cookies: dict[str, str]) -> bool:
+        """Attempt to quit/suspend a session.  Returns True on success."""
+        for method, path in (
+            ("DELETE", f"/api/sessions/{session_id}"),
+            ("POST", f"/api/sessions/{session_id}/suspend"),
+        ):
+            try:
+                resp = self._client.request(method, path, cookies=cookies)
+                if resp.status_code < 400:
+                    return True
+            except Exception:
+                continue
+        return False
+
     # -- Lifecycle ----------------------------------------------------------
 
     def close(self) -> None:

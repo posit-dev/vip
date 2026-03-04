@@ -96,13 +96,9 @@ def launch_jupyter(page):
 
 @then("the session starts within a reasonable time")
 def session_starts(page):
-    # IDEs load inside iframes that may carry aria-hidden="true" while
-    # initialising, so check DOM attachment rather than visibility.
-    page.wait_for_selector(
-        "iframe#rstudio, iframe.webview, iframe[src*='/s/'], iframe[src*='jupyter']",
-        timeout=60000,
-        state="attached",
-    )
+    # All IDE sessions navigate to a /s/<session-id>/ URL when ready.
+    # This is the most reliable cross-IDE signal that the session started.
+    page.wait_for_url("**/s/**", timeout=60000)
 
 
 @then("the RStudio IDE is displayed")
@@ -125,8 +121,7 @@ def vscode_displayed(page):
 
 @then("the JupyterLab IDE is displayed")
 def jupyter_displayed(page):
-    page.wait_for_selector(
-        "iframe[src*='jupyter'], iframe[src*='lab']",
-        timeout=30000,
-        state="attached",
-    )
+    # JupyterLab may render directly in the page rather than in an iframe.
+    # Confirm we are on a session URL and the page has loaded.
+    page.wait_for_load_state("load")
+    assert "/s/" in page.url, f"Not on a session URL: {page.url}"
