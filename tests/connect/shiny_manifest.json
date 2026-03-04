@@ -20,7 +20,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "R6",
-        "Version": "2.6.1"
+        "Version": "2.6.1",
+        "Depends": "R (>= 3.6)"
       }
     },
     "Rcpp": {
@@ -28,7 +29,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "Rcpp",
-        "Version": "1.0.14"
+        "Version": "1.0.14",
+        "Imports": "methods, utils"
       }
     },
     "base64enc": {
@@ -36,7 +38,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "base64enc",
-        "Version": "0.1-3"
+        "Version": "0.1-3",
+        "Depends": "R (>= 2.9.0)"
       }
     },
     "bslib": {
@@ -44,7 +47,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "bslib",
-        "Version": "0.8.0"
+        "Version": "0.8.0",
+        "Imports": "base64enc, cachem, fastmap (>= 1.1.1), grDevices, htmltools (>= 0.5.7), jquerylib (>= 0.1.3), jsonlite (>= 0.9.16), lifecycle (>= 1.0.1), memoise (>= 2.0.1), mime (>= 0.1), rlang (>= 1.0.0), sass (>= 0.4.9)"
       }
     },
     "cachem": {
@@ -52,7 +56,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "cachem",
-        "Version": "1.1.0"
+        "Version": "1.1.0",
+        "Imports": "fastmap, rlang"
       }
     },
     "cli": {
@@ -60,7 +65,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "cli",
-        "Version": "3.6.4"
+        "Version": "3.6.4",
+        "Imports": "utils"
       }
     },
     "commonmark": {
@@ -76,7 +82,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "crayon",
-        "Version": "1.5.3"
+        "Version": "1.5.3",
+        "Imports": "grDevices, methods, utils"
       }
     },
     "digest": {
@@ -84,7 +91,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "digest",
-        "Version": "0.6.37"
+        "Version": "0.6.37",
+        "Imports": "utils"
       }
     },
     "ellipsis": {
@@ -92,7 +100,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "ellipsis",
-        "Version": "0.3.2"
+        "Version": "0.3.2",
+        "Imports": "rlang (>= 0.2.0)"
       }
     },
     "fastmap": {
@@ -108,7 +117,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "fontawesome",
-        "Version": "0.5.3"
+        "Version": "0.5.3",
+        "Imports": "htmltools (>= 0.5.1.1), rlang (>= 1.0.0)"
       }
     },
     "fs": {
@@ -116,7 +126,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "fs",
-        "Version": "1.6.5"
+        "Version": "1.6.5",
+        "Imports": "methods"
       }
     },
     "glue": {
@@ -124,7 +135,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "glue",
-        "Version": "1.8.0"
+        "Version": "1.8.0",
+        "Imports": "methods"
       }
     },
     "htmltools": {
@@ -132,7 +144,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "htmltools",
-        "Version": "0.5.8.1"
+        "Version": "0.5.8.1",
+        "Imports": "base64enc, digest (>= 0.6), ellipsis, fastmap (>= 1.1.0), grDevices, rlang (>= 1.0.0), utils"
       }
     },
     "httpuv": {
@@ -140,7 +153,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "httpuv",
-        "Version": "1.6.15"
+        "Version": "1.6.15",
+        "Imports": "R6, Rcpp (>= 1.0.7), later (>= 0.8.0), promises, utils"
       }
     },
     "jquerylib": {
@@ -148,7 +162,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "jquerylib",
-        "Version": "0.1.4"
+        "Version": "0.1.4",
+        "Imports": "htmltools"
       }
     },
     "jsonlite": {
@@ -156,7 +171,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "jsonlite",
-        "Version": "1.9.1"
+        "Version": "1.9.1",
+        "Imports": "methods"
       }
     },
     "later": {
@@ -164,7 +180,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "later",
-        "Version": "1.4.1"
+        "Version": "1.4.1",
+        "Imports": "Rcpp (>= 0.12.9), rlang"
       }
     },
     "lifecycle": {
@@ -172,7 +189,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "lifecycle",
-        "Version": "1.0.4"
+        "Version": "1.0.4",
+        "Imports": "cli (>= 3.4.0), glue, rlang (>= 1.1.0)"
       }
     },
     "magrittr": {
@@ -188,7 +206,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "memoise",
-        "Version": "2.0.1"
+        "Version": "2.0.1",
+        "Imports": "cachem, rlang"
       }
     },
     "mime": {
@@ -196,7 +215,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "mime",
-        "Version": "0.12"
+        "Version": "0.12",
+        "Imports": "tools"
       }
     },
     "promises": {
@@ -204,7 +224,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "promises",
-        "Version": "1.3.2"
+        "Version": "1.3.2",
+        "Imports": "fastmap, later, magrittr, R6, Rcpp, rlang"
       }
     },
     "rappdirs": {
@@ -220,7 +241,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "rlang",
-        "Version": "1.1.4"
+        "Version": "1.1.4",
+        "Imports": "utils"
       }
     },
     "sass": {
@@ -228,7 +250,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "sass",
-        "Version": "0.4.9"
+        "Version": "0.4.9",
+        "Imports": "fs, htmltools (>= 0.5.1), R6, rlang (>= 0.4.0)"
       }
     },
     "shiny": {
@@ -236,7 +259,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "shiny",
-        "Version": "1.10.0"
+        "Version": "1.10.0",
+        "Imports": "bslib (>= 0.6.0), cachem, commonmark (>= 1.7), crayon, fastmap (>= 1.1.1), fontawesome (>= 0.4.0), glue (>= 1.3.2), grDevices, htmltools (>= 0.5.4), httpuv (>= 1.5.2), jsonlite (>= 0.9.16), later (>= 1.0.0), lifecycle (>= 0.2.0), methods, mime (>= 0.3), promises (>= 1.1.0), R6 (>= 2.0), rlang (>= 0.4.10), sourcetools, tools, utils, withr, xtable"
       }
     },
     "sourcetools": {
@@ -252,7 +276,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "withr",
-        "Version": "3.0.2"
+        "Version": "3.0.2",
+        "Imports": "graphics, grDevices"
       }
     },
     "xtable": {
@@ -260,7 +285,8 @@
       "Repository": "https://cloud.r-project.org",
       "description": {
         "Package": "xtable",
-        "Version": "1.8-4"
+        "Version": "1.8-4",
+        "Imports": "stats, utils"
       }
     }
   }
