@@ -96,24 +96,37 @@ def launch_jupyter(page):
 
 @then("the session starts within a reasonable time")
 def session_starts(page):
-    # Wait for the IDE frame / container to appear.
+    # IDEs load inside iframes that may carry aria-hidden="true" while
+    # initialising, so check DOM attachment rather than visibility.
     page.wait_for_selector(
-        "iframe, .session-frame, #rstudio-frame, .code-server",
+        "iframe#rstudio, iframe.webview, iframe[src*='/s/'], iframe[src*='jupyter']",
         timeout=60000,
+        state="attached",
     )
 
 
 @then("the RStudio IDE is displayed")
 def rstudio_displayed(page):
-    # RStudio loads inside an iframe; verify it appears.
-    page.wait_for_selector("iframe[src*='s/'], iframe[src*='rstudio']", timeout=30000)
+    # RStudio loads inside an iframe with id="rstudio"; it carries
+    # aria-hidden="true" during init so check attachment not visibility.
+    page.wait_for_selector("iframe#rstudio", timeout=30000, state="attached")
 
 
 @then("the VS Code IDE is displayed")
 def vscode_displayed(page):
-    page.wait_for_selector("iframe[src*='code-server'], iframe[src*='vscode']", timeout=30000)
+    # VS Code embeds multiple hidden iframes (webview, web-worker-ext-host).
+    # Check for the webview iframe that hosts the editor.
+    page.wait_for_selector(
+        "iframe.webview, iframe[src*='code-server'], iframe[src*='vscode']",
+        timeout=30000,
+        state="attached",
+    )
 
 
 @then("the JupyterLab IDE is displayed")
 def jupyter_displayed(page):
-    page.wait_for_selector("iframe[src*='jupyter'], iframe[src*='lab']", timeout=30000)
+    page.wait_for_selector(
+        "iframe[src*='jupyter'], iframe[src*='lab']",
+        timeout=30000,
+        state="attached",
+    )

@@ -52,9 +52,12 @@ def start_session(page):
 
 @when("waits for the session to be ready")
 def wait_for_session(page):
+    # IDE iframes may carry aria-hidden="true" while initialising;
+    # check DOM attachment rather than visibility.
     page.wait_for_selector(
-        "iframe, .session-frame",
+        "iframe#rstudio, iframe.webview, iframe[src*='/s/'], iframe[src*='jupyter']",
         timeout=60000,
+        state="attached",
     )
     # Allow a brief settle time.
     time.sleep(3)
