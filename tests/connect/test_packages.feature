@@ -12,5 +12,6 @@ Feature: Connect package installation source
   Scenario: Package Manager URL is the default repository source
     Given Connect is accessible at the configured URL
     And Package Manager is configured in vip.toml
-    When I query the Connect server settings for package repositories
-    Then the Package Manager URL appears as a configured repository
+    When I deploy a content item that installs R packages
+    Then the deployment logs show packages installed from Package Manager
+    And I clean up the deployed content
