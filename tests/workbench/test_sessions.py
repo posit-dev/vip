@@ -55,9 +55,7 @@ def start_session(page, _url_before_launch):
     _url_before_launch["url"] = page.url
     # When already inside a session, the UI renders two "New Session" buttons
     # (one disabled in sidebar, one enabled).  Target the enabled one.
-    page.locator(
-        "button:not([disabled])", has_text="New Session"
-    ).first.click(timeout=15000)
+    page.locator("button:not([disabled])", has_text="New Session").first.click(timeout=15000)
     page.get_by_role("button", name="Launch").click(timeout=5000)
 
 
@@ -71,9 +69,7 @@ def wait_for_session(page, _url_before_launch):
             break
         page.wait_for_timeout(500)
     else:
-        raise TimeoutError(
-            f"Session did not start within 60 s.  URL stayed at {page.url}"
-        )
+        raise TimeoutError(f"Session did not start within 60 s.  URL stayed at {page.url}")
     # Allow a brief settle time.
     time.sleep(3)
 

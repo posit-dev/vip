@@ -189,10 +189,7 @@ class ConnectClient:
                 resp = self._client.get(path)
                 if resp.status_code == 200:
                     data = resp.json()
-                    urls.extend(
-                        v for v in self._extract_strings(data)
-                        if v.startswith("http")
-                    )
+                    urls.extend(v for v in self._extract_strings(data) if v.startswith("http"))
             except Exception:
                 continue
         return urls

@@ -85,9 +85,7 @@ def _click_new_session(page, session_state):
     """
     # Record the current URL so session_starts can detect a real navigation.
     session_state["url_before_launch"] = page.url
-    page.locator(
-        "button:not([disabled])", has_text="New Session"
-    ).first.click(timeout=15000)
+    page.locator("button:not([disabled])", has_text="New Session").first.click(timeout=15000)
 
 
 @when("the user launches an RStudio session")
@@ -122,9 +120,7 @@ def session_starts(page, session_state):
         if "/s/" in page.url and page.url != url_before:
             return
         page.wait_for_timeout(500)
-    raise TimeoutError(
-        f"Session did not start within 60 s.  URL stayed at {page.url}"
-    )
+    raise TimeoutError(f"Session did not start within 60 s.  URL stayed at {page.url}")
 
 
 @then("the RStudio IDE is displayed")

@@ -64,9 +64,7 @@ def connect_has_key(vip_config):
 @then("the API key was loaded from the VIP_CONNECT_API_KEY environment variable")
 def key_from_env(interactive_auth):
     if interactive_auth:
-        pytest.skip(
-            "API key was minted via interactive auth, not from an environment variable"
-        )
+        pytest.skip("API key was minted via interactive auth, not from an environment variable")
     env_key = os.environ.get("VIP_CONNECT_API_KEY", "")
     assert env_key, (
         "VIP_CONNECT_API_KEY environment variable is not set. "

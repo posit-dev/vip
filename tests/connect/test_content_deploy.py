@@ -116,9 +116,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         if not r_versions:
             pytest.skip("No R versions available on Connect — cannot deploy Shiny")
         # Use the pre-built manifest with full dependency tree (like plumber).
-        manifest = json.loads(
-            (pathlib.Path(__file__).parent / "shiny_manifest.json").read_text()
-        )
+        manifest = json.loads((pathlib.Path(__file__).parent / "shiny_manifest.json").read_text())
         manifest["platform"] = r_versions[0]
         return {
             "app.R": (
@@ -136,9 +134,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
             pytest.skip("No Python versions available on Connect — cannot deploy Dash")
         return {
             "app.py": (
-                "import dash\n"
-                "app = dash.Dash(__name__)\n"
-                'app.layout = dash.html.Div("VIP test")\n'
+                'import dash\napp = dash.Dash(__name__)\napp.layout = dash.html.Div("VIP test")\n'
             ),
             "requirements.txt": "dash\n",
             "manifest.json": json.dumps(
@@ -235,17 +231,13 @@ def wait_for_deploy(connect_client, deploy_state):
             if task.get("code") != 0:
                 output = "\n".join(task.get("output", []))
                 error = task.get("error", "unknown error")
-                pytest.fail(
-                    f"Deployment failed: {error}\n\n--- Task output ---\n{output}"
-                )
+                pytest.fail(f"Deployment failed: {error}\n\n--- Task output ---\n{output}")
             return
         time.sleep(3)
     # On timeout, fetch final task state for logs.
     task = connect_client.get_task(task_id)
     output = "\n".join(task.get("output", []))
-    pytest.fail(
-        f"Deployment did not complete within 300 seconds\n\n--- Task output ---\n{output}"
-    )
+    pytest.fail(f"Deployment did not complete within 300 seconds\n\n--- Task output ---\n{output}")
 
 
 @then("the content is accessible via HTTP")
