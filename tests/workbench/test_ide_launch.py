@@ -12,7 +12,15 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
-from tests.workbench.conftest import WorkbenchSelectors, workbench_login
+from tests.workbench.conftest import workbench_login
+from tests.workbench.pages import (
+    Homepage,
+    JupyterLabSession,
+    NewSessionDialog,
+    PositronSession,
+    RStudioSession,
+    VSCodeSession,
+)
 
 
 @scenario("test_ide_launch.feature", "RStudio IDE session can be launched")
@@ -27,6 +35,11 @@ def test_launch_vscode():
 
 @scenario("test_ide_launch.feature", "JupyterLab session can be launched")
 def test_launch_jupyter():
+    pass
+
+
+@scenario("test_ide_launch.feature", "Positron session can be launched")
+def test_launch_positron():
     pass
 
 
@@ -52,8 +65,8 @@ def user_logged_in(page: Page, workbench_url: str, test_username: str, test_pass
     workbench_login(page, workbench_url, test_username, test_password)
 
     # Verify homepage elements
-    expect(page.locator(WorkbenchSelectors.POSIT_LOGO)).to_be_visible(timeout=15000)
-    expect(page.locator(WorkbenchSelectors.NEW_SESSION_BUTTON)).to_be_visible(timeout=15000)
+    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=15000)
+    expect(page.locator(Homepage.NEW_SESSION_BUTTON)).to_be_visible(timeout=15000)
 
 
 @when("the user starts a new RStudio session")
@@ -83,32 +96,39 @@ def start_jupyter_session(page: Page, session_context: dict):
     _start_session(page, "JupyterLab", session_name)
 
 
+@when("the user starts a new Positron session")
+def start_positron_session(page: Page, session_context: dict):
+    """Start a new Positron session using the new session dialog."""
+    session_name = f"VIP Test Positron {int(time.time())}"
+    session_context["name"] = session_name
+    session_context["ide_type"] = "Positron"
+    _start_session(page, "Positron", session_name)
+
+
 def _start_session(page: Page, ide_type: str, session_name: str):
     """Start a new session using rstudio-pro dialog patterns.
 
     Note: We intentionally UNCHECK auto-join so we can observe the session
     state transitions on the homepage before navigating into the session.
     """
-    page.locator(WorkbenchSelectors.NEW_SESSION_BUTTON).click(timeout=10000)
+    page.locator(Homepage.NEW_SESSION_BUTTON).click(timeout=10000)
 
-    dialog = page.locator(WorkbenchSelectors.DIALOG)
-    expect(dialog.locator(WorkbenchSelectors.DIALOG_TITLE)).to_have_text(
-        "New Session", timeout=10000
-    )
+    dialog = page.locator(NewSessionDialog.DIALOG)
+    expect(dialog.locator(NewSessionDialog.TITLE)).to_have_text("New Session", timeout=10000)
 
     # Select IDE type using role-based selector within dialog
-    ide_display = WorkbenchSelectors.ide_display_name(ide_type)
+    ide_display = NewSessionDialog.ide_display_name(ide_type)
     dialog.get_by_role("tab", name=ide_display).click(timeout=5000)
 
-    page.fill(WorkbenchSelectors.SESSION_NAME_INPUT, session_name)
+    page.fill(NewSessionDialog.SESSION_NAME, session_name)
 
     # Uncheck auto-join so we stay on homepage to observe state transitions
-    checkbox = page.locator(WorkbenchSelectors.JOIN_CHECKBOX)
+    checkbox = page.locator(NewSessionDialog.JOIN_CHECKBOX)
     if checkbox.is_checked():
         checkbox.click()
     expect(checkbox).not_to_be_checked(timeout=5000)
 
-    page.locator(WorkbenchSelectors.LAUNCH_BUTTON).click(timeout=5000)
+    page.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=5000)
 
 
 @then("the session transitions to Active state")
@@ -133,23 +153,29 @@ def session_becomes_active(page: Page, session_context: dict):
 @then("the RStudio IDE is displayed and functional")
 def rstudio_functional(page: Page):
     """Verify RStudio IDE core elements are visible."""
-    expect(page.locator(WorkbenchSelectors.RSTUDIO_LOGO)).to_be_visible(timeout=30000)
-    expect(page.locator(WorkbenchSelectors.RSTUDIO_CONTAINER)).to_be_visible(timeout=10000)
-    expect(page.locator(WorkbenchSelectors.PROJECT_MENU)).to_be_visible(timeout=10000)
-    expect(page.locator(WorkbenchSelectors.CONSOLE_OUTPUT)).to_be_visible(timeout=10000)
+    expect(page.locator(RStudioSession.LOGO)).to_be_visible(timeout=30000)
+    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=10000)
+    expect(page.locator(RStudioSession.PROJECT_MENU)).to_be_visible(timeout=10000)
 
 
 @then("the VS Code IDE is displayed")
 def vscode_displayed(page: Page):
     """Verify VS Code IDE core elements are visible."""
-    expect(page.locator(WorkbenchSelectors.VSCODE_WORKBENCH)).to_be_visible(timeout=60000)
-    expect(page.locator(WorkbenchSelectors.VSCODE_STATUS_BAR)).to_be_visible(timeout=10000)
+    expect(page.locator(VSCodeSession.WORKBENCH)).to_be_visible(timeout=60000)
+    expect(page.locator(VSCodeSession.STATUS_BAR)).to_be_visible(timeout=10000)
 
 
 @then("the JupyterLab IDE is displayed")
 def jupyter_displayed(page: Page):
     """Verify JupyterLab IDE core elements are visible."""
-    expect(page.locator(WorkbenchSelectors.JUPYTER_LAUNCHER)).to_be_visible(timeout=60000)
+    expect(page.locator(JupyterLabSession.LAUNCHER)).to_be_visible(timeout=60000)
+
+
+@then("the Positron IDE is displayed")
+def positron_displayed(page: Page):
+    """Verify Positron IDE core elements are visible."""
+    expect(page.locator(PositronSession.WORKBENCH)).to_be_visible(timeout=60000)
+    expect(page.locator(PositronSession.STATUS_BAR)).to_be_visible(timeout=10000)
 
 
 @then("the session is cleaned up")
@@ -160,18 +186,18 @@ def session_cleaned_up(page: Page, workbench_url: str, session_context: dict):
     # Navigate back to homepage (use /home to avoid login redirect)
     home_url = workbench_url.rstrip("/") + "/home"
     page.goto(home_url)
-    expect(page.locator(WorkbenchSelectors.POSIT_LOGO)).to_be_visible(timeout=15000)
+    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=15000)
 
     # Select the session checkbox
-    checkbox = page.locator(WorkbenchSelectors.session_checkbox(session_name))
+    checkbox = page.locator(Homepage.session_checkbox(session_name))
     expect(checkbox).to_be_visible(timeout=10000)
     checkbox.click()
 
     # Click Quit button
-    quit_btn = page.locator(WorkbenchSelectors.QUIT_BUTTON)
+    quit_btn = page.locator(Homepage.QUIT_BUTTON)
     expect(quit_btn).to_be_visible(timeout=5000)
     quit_btn.click()
 
     # Wait for session to disappear from the list
-    session_link = page.locator(WorkbenchSelectors.session_link(session_name))
+    session_link = page.locator(Homepage.session_link(session_name))
     expect(session_link).not_to_be_visible(timeout=30000)

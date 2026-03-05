@@ -24,3 +24,10 @@ Feature: Workbench IDE launch
     Then the session transitions to Active state
     And the JupyterLab IDE is displayed
     And the session is cleaned up
+
+  Scenario: Positron session can be launched
+    Given the user is logged in to Workbench
+    When the user starts a new Positron session
+    Then the session transitions to Active state
+    And the Positron IDE is displayed
+    And the session is cleaned up

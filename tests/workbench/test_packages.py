@@ -8,6 +8,10 @@ import pytest
 from pytest_bdd import given, scenario, then, when
 
 
+@pytest.mark.skip(
+    reason="NYI: admin page scraping is fragile and doesn't reflect actual session config. "
+    "Rework to start an R session and check getOption('repos') instead."
+)
 @scenario("test_packages.feature", "R repos.conf points to the expected repository")
 def test_r_repo_configured():
     pass

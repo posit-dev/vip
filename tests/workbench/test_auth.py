@@ -5,7 +5,8 @@ from __future__ import annotations
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
-from tests.workbench.conftest import WorkbenchSelectors, workbench_login
+from tests.workbench.conftest import workbench_login
+from tests.workbench.pages import Homepage, LoginPage
 
 
 @scenario("test_auth.feature", "User can log in to Workbench via the web UI")
@@ -24,7 +25,7 @@ def workbench_accessible(workbench_client):
 def navigate_to_login(page: Page, workbench_url: str):
     page.goto(workbench_url)
     # Workbench redirects to login automatically; wait for login form
-    page.wait_for_selector(WorkbenchSelectors.LOGIN_USERNAME, timeout=15000)
+    page.wait_for_selector(LoginPage.USERNAME, timeout=15000)
 
 
 @when("enters valid Workbench credentials")
@@ -34,12 +35,12 @@ def enter_credentials(page: Page, workbench_url: str, test_username: str, test_p
 
 @then("the Workbench homepage is displayed")
 def homepage_displayed(page: Page):
-    expect(page.locator(WorkbenchSelectors.POSIT_LOGO)).to_be_visible(timeout=15000)
-    expect(page.locator(WorkbenchSelectors.NEW_SESSION_BUTTON)).to_be_visible(timeout=15000)
+    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=15000)
+    expect(page.locator(Homepage.NEW_SESSION_BUTTON)).to_be_visible(timeout=15000)
 
 
 @then("the current user is shown in the header")
 def current_user_displayed(page: Page, test_username: str):
-    current_user = page.locator(WorkbenchSelectors.CURRENT_USER)
+    current_user = page.locator(Homepage.CURRENT_USER)
     expect(current_user).to_be_visible(timeout=10000)
     expect(current_user).to_have_text(test_username)
