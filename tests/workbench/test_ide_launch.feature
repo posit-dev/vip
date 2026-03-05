@@ -6,18 +6,21 @@ Feature: Workbench IDE launch
 
   Scenario: RStudio IDE session can be launched
     Given the user is logged in to Workbench
-    When the user launches an RStudio session
-    Then the session starts within a reasonable time
-    And the RStudio IDE is displayed
+    When the user starts a new RStudio session
+    Then the session transitions to Active state
+    And the RStudio IDE is displayed and functional
+    And the session is cleaned up
 
   Scenario: VS Code session can be launched
     Given the user is logged in to Workbench
-    When the user launches a VS Code session
-    Then the session starts within a reasonable time
+    When the user starts a new VS Code session
+    Then the session transitions to Active state
     And the VS Code IDE is displayed
+    And the session is cleaned up
 
   Scenario: JupyterLab session can be launched
     Given the user is logged in to Workbench
-    When the user launches a JupyterLab session
-    Then the session starts within a reasonable time
+    When the user starts a new JupyterLab session
+    Then the session transitions to Active state
     And the JupyterLab IDE is displayed
+    And the session is cleaned up

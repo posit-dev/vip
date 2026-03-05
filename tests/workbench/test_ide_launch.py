@@ -1,8 +1,7 @@
 """Step definitions for Workbench IDE launch tests.
 
-These tests use Playwright to walk through the Workbench UI and verify that
-each IDE type can be started.  They are intentionally resilient to UI layout
-changes by using multiple selector strategies.
+These tests verify that each IDE type can be started and becomes functional.
+Patterns adapted from rstudio-pro/e2e tests.
 """
 
 from __future__ import annotations
@@ -10,7 +9,10 @@ from __future__ import annotations
 import time
 
 import pytest
+from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
+
+from tests.workbench.conftest import WorkbenchSelectors, workbench_login
 
 
 @scenario("test_ide_launch.feature", "RStudio IDE session can be launched")
@@ -33,9 +35,10 @@ def test_launch_jupyter():
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
-def session_state():
-    return {}
+@pytest.fixture
+def session_context():
+    """Holds session name across steps."""
+    return {"name": None, "ide_type": None}
 
 
 # ---------------------------------------------------------------------------
@@ -44,106 +47,131 @@ def session_state():
 
 
 @given("the user is logged in to Workbench")
-def user_logged_in(
-    page,
-    workbench_url,
-    test_username,
-    test_password,
-    auth_provider,
-    interactive_auth,
-):
-    # For non-password auth without interactive auth, skip immediately.
-    if auth_provider != "password" and not interactive_auth:
-        pytest.skip(
-            f"Login form not available for auth provider {auth_provider!r}. "
-            "Pass --interactive-auth when browser storage state is pre-loaded."
-        )
-    page.goto(workbench_url)
-    page.wait_for_load_state("load")
-    # Check if we ended up on a login page.
-    on_login = any(kw in page.url.lower() for kw in ("sign-in", "login", "auth"))
-    if on_login:
-        if auth_provider != "password":
-            # Interactive auth storage state didn't authenticate Workbench.
-            pytest.skip(
-                "Interactive auth storage state did not authenticate Workbench. "
-                "The OIDC session may not be shared between Connect and Workbench."
-            )
-        page.fill("#username, [name='username']", test_username)
-        page.fill("#password, [name='password']", test_password)
-        page.click("button[type='submit'], #sign-in")
-        page.wait_for_load_state("load")
+def user_logged_in(page: Page, workbench_url: str, test_username: str, test_password: str):
+    """Log in to Workbench and verify homepage loads."""
+    workbench_login(page, workbench_url, test_username, test_password)
+
+    # Verify homepage elements
+    expect(page.locator(WorkbenchSelectors.POSIT_LOGO)).to_be_visible(timeout=15000)
+    expect(page.locator(WorkbenchSelectors.NEW_SESSION_BUTTON)).to_be_visible(timeout=15000)
 
 
-def _click_new_session(page, session_state):
-    """Click the enabled 'New Session' button.
+@when("the user starts a new RStudio session")
+def start_rstudio_session(page: Page, session_context: dict):
+    """Start a new RStudio session using the new session dialog."""
+    session_name = f"VIP Test RStudio {int(time.time())}"
+    session_context["name"] = session_name
+    session_context["ide_type"] = "RStudio"
+    _start_session(page, "RStudio", session_name)
 
-    When the user is already inside a session the Workbench UI renders two
-    buttons with the same name — one disabled in the sidebar and one enabled
-    as the primary action.  Using :not([disabled]) avoids the strict-mode
-    violation.
+
+@when("the user starts a new VS Code session")
+def start_vscode_session(page: Page, session_context: dict):
+    """Start a new VS Code session using the new session dialog."""
+    session_name = f"VIP Test VS Code {int(time.time())}"
+    session_context["name"] = session_name
+    session_context["ide_type"] = "VS Code"
+    _start_session(page, "VS Code", session_name)
+
+
+@when("the user starts a new JupyterLab session")
+def start_jupyter_session(page: Page, session_context: dict):
+    """Start a new JupyterLab session using the new session dialog."""
+    session_name = f"VIP Test JupyterLab {int(time.time())}"
+    session_context["name"] = session_name
+    session_context["ide_type"] = "JupyterLab"
+    _start_session(page, "JupyterLab", session_name)
+
+
+def _start_session(page: Page, ide_type: str, session_name: str):
+    """Start a new session using rstudio-pro dialog patterns.
+
+    Note: We intentionally UNCHECK auto-join so we can observe the session
+    state transitions on the homepage before navigating into the session.
     """
-    # Record the current URL so session_starts can detect a real navigation.
-    session_state["url_before_launch"] = page.url
-    page.locator("button:not([disabled])", has_text="New Session").first.click(timeout=15000)
+    page.locator(WorkbenchSelectors.NEW_SESSION_BUTTON).click(timeout=10000)
+
+    dialog = page.locator(WorkbenchSelectors.DIALOG)
+    expect(dialog.locator(WorkbenchSelectors.DIALOG_TITLE)).to_have_text(
+        "New Session", timeout=10000
+    )
+
+    # Select IDE type using role-based selector within dialog
+    ide_display = WorkbenchSelectors.ide_display_name(ide_type)
+    dialog.get_by_role("tab", name=ide_display).click(timeout=5000)
+
+    page.fill(WorkbenchSelectors.SESSION_NAME_INPUT, session_name)
+
+    # Uncheck auto-join so we stay on homepage to observe state transitions
+    checkbox = page.locator(WorkbenchSelectors.JOIN_CHECKBOX)
+    if checkbox.is_checked():
+        checkbox.click()
+    expect(checkbox).not_to_be_checked(timeout=5000)
+
+    page.locator(WorkbenchSelectors.LAUNCH_BUTTON).click(timeout=5000)
 
 
-@when("the user launches an RStudio session")
-def launch_rstudio(page, session_state):
-    _click_new_session(page, session_state)
-    page.get_by_role("tab", name="RStudio Pro").click(timeout=5000)
-    page.get_by_role("button", name="Launch").click(timeout=5000)
+@then("the session transitions to Active state")
+def session_becomes_active(page: Page, session_context: dict):
+    """Verify session transitions from Starting to Active."""
+    session_name = session_context["name"]
+
+    # Verify our session appears on the homepage
+    session_text = page.get_by_text(session_name, exact=True)
+    expect(session_text).to_be_visible(timeout=15000)
+
+    # Wait for session to reach Active state (may skip Starting if fast)
+    # Using .first() since there may be multiple Active sessions from prior tests
+    expect(page.get_by_role("button", name="Active").first).to_be_visible(timeout=90000)
+
+    # Navigate into the session
+    session_link = page.get_by_role("link", name=session_name)
+    expect(session_link).to_be_visible(timeout=10000)
+    session_link.click()
 
 
-@when("the user launches a VS Code session")
-def launch_vscode(page, session_state):
-    _click_new_session(page, session_state)
-    page.get_by_role("tab", name="VS Code").click(timeout=5000)
-    page.get_by_role("button", name="Launch").click(timeout=5000)
-
-
-@when("the user launches a JupyterLab session")
-def launch_jupyter(page, session_state):
-    _click_new_session(page, session_state)
-    page.get_by_role("tab", name="JupyterLab").click(timeout=5000)
-    page.get_by_role("button", name="Launch").click(timeout=5000)
-
-
-@then("the session starts within a reasonable time")
-def session_starts(page, session_state):
-    # All IDE sessions navigate to a /s/<session-id>/ URL when ready.
-    # If the browser was already at a /s/ URL (from a previous session),
-    # we need to wait for the URL to actually change.
-    url_before = session_state.get("url_before_launch", "")
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline:
-        if "/s/" in page.url and page.url != url_before:
-            return
-        page.wait_for_timeout(500)
-    raise TimeoutError(f"Session did not start within 60 s.  URL stayed at {page.url}")
-
-
-@then("the RStudio IDE is displayed")
-def rstudio_displayed(page):
-    # RStudio loads inside an iframe with id="rstudio"; it carries
-    # aria-hidden="true" during init so check attachment not visibility.
-    page.wait_for_selector("iframe#rstudio", timeout=30000, state="attached")
+@then("the RStudio IDE is displayed and functional")
+def rstudio_functional(page: Page):
+    """Verify RStudio IDE core elements are visible."""
+    expect(page.locator(WorkbenchSelectors.RSTUDIO_LOGO)).to_be_visible(timeout=30000)
+    expect(page.locator(WorkbenchSelectors.RSTUDIO_CONTAINER)).to_be_visible(timeout=10000)
+    expect(page.locator(WorkbenchSelectors.PROJECT_MENU)).to_be_visible(timeout=10000)
+    expect(page.locator(WorkbenchSelectors.CONSOLE_OUTPUT)).to_be_visible(timeout=10000)
 
 
 @then("the VS Code IDE is displayed")
-def vscode_displayed(page):
-    # VS Code embeds multiple hidden iframes (webview, web-worker-ext-host).
-    # Check for the webview iframe that hosts the editor.
-    page.wait_for_selector(
-        "iframe.webview, iframe[src*='code-server'], iframe[src*='vscode']",
-        timeout=30000,
-        state="attached",
-    )
+def vscode_displayed(page: Page):
+    """Verify VS Code IDE core elements are visible."""
+    expect(page.locator(WorkbenchSelectors.VSCODE_WORKBENCH)).to_be_visible(timeout=60000)
+    expect(page.locator(WorkbenchSelectors.VSCODE_STATUS_BAR)).to_be_visible(timeout=10000)
 
 
 @then("the JupyterLab IDE is displayed")
-def jupyter_displayed(page):
-    # JupyterLab renders directly in the page (no iframe) and loads
-    # progressively — the "load" event may not fire within the default
-    # timeout.  Just verify we are on a session URL.
-    assert "/s/" in page.url, f"Not on a session URL: {page.url}"
+def jupyter_displayed(page: Page):
+    """Verify JupyterLab IDE core elements are visible."""
+    expect(page.locator(WorkbenchSelectors.JUPYTER_LAUNCHER)).to_be_visible(timeout=60000)
+
+
+@then("the session is cleaned up")
+def session_cleaned_up(page: Page, workbench_url: str, session_context: dict):
+    """Navigate back to homepage and quit the session."""
+    session_name = session_context["name"]
+
+    # Navigate back to homepage (use /home to avoid login redirect)
+    home_url = workbench_url.rstrip("/") + "/home"
+    page.goto(home_url)
+    expect(page.locator(WorkbenchSelectors.POSIT_LOGO)).to_be_visible(timeout=15000)
+
+    # Select the session checkbox
+    checkbox = page.locator(WorkbenchSelectors.session_checkbox(session_name))
+    expect(checkbox).to_be_visible(timeout=10000)
+    checkbox.click()
+
+    # Click Quit button
+    quit_btn = page.locator(WorkbenchSelectors.QUIT_BUTTON)
+    expect(quit_btn).to_be_visible(timeout=5000)
+    quit_btn.click()
+
+    # Wait for session to disappear from the list
+    session_link = page.locator(WorkbenchSelectors.session_link(session_name))
+    expect(session_link).not_to_be_visible(timeout=30000)
