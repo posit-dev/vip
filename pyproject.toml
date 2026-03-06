@@ -28,6 +28,9 @@ dev = [
     "mypy>=1.10",
 ]
 
+[project.scripts]
+vip = "vip.cli:main"
+
 [project.entry-points.pytest11]
 vip = "vip.plugin"
 
