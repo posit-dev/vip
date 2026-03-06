@@ -6,19 +6,22 @@ Page selectors are in the pages/ subpackage, organized to mirror rstudio-pro/e2e
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
-
-from __future__ import annotations
 
 import pytest
 from playwright.sync_api import Page, expect
 
 from tests.workbench.pages import Homepage, LoginPage, NewSessionDialog
 
-if TYPE_CHECKING:
-    pass
-
 pytestmark = pytest.mark.workbench
+
+# Keywords indicating the URL is a login/auth page (used for OIDC detection)
+_LOGIN_KEYWORDS = ("sign-in", "login", "auth")
+
+
+def _on_login_page(url: str) -> bool:
+    """Return True if *url* looks like a login or IdP page."""
+    lower = url.lower()
+    return any(kw in lower for kw in _LOGIN_KEYWORDS)
 
 
 # ---------------------------------------------------------------------------
@@ -31,6 +34,8 @@ def workbench_login(
     workbench_url: str,
     username: str,
     password: str,
+    auth_provider: str = "password",
+    interactive_auth: bool = False,
     *,
     max_retries: int = 3,
     retry_delay: float = 2.0,
@@ -39,7 +44,8 @@ def workbench_login(
 
     This function:
     - Navigates directly to /home to reuse existing sessions
-    - Only logs in if redirected to the login page
+    - Handles OIDC/SSO via --interactive-auth storage state
+    - Only fills login form for password auth
     - Retries on transient server errors (e.g., too many logins)
 
     Args:
@@ -47,29 +53,68 @@ def workbench_login(
         workbench_url: Base URL for Workbench (e.g., http://localhost:8787)
         username: Login username
         password: Login password
+        auth_provider: Auth type (e.g., "password", "oidc", "saml")
+        interactive_auth: True if --interactive-auth was used (browser has storage state)
         max_retries: Max login attempts on transient errors (default 3)
         retry_delay: Seconds to wait between retries (default 2.0)
+
+    Raises:
+        pytest.skip: For non-password auth without interactive_auth, or when
+            interactive_auth storage state doesn't cover Workbench
+        AssertionError: When password login fails after retries
     """
     home_url = workbench_url.rstrip("/") + "/home"
     homepage_logo = page.locator(Homepage.POSIT_LOGO)
+
+    # For non-password auth without interactive auth, skip immediately
+    if auth_provider != "password" and not interactive_auth:
+        pytest.skip(
+            f"Login form not available for auth provider {auth_provider!r}. "
+            "Pass --interactive-auth when browser storage state is pre-loaded."
+        )
+
+    page.goto(home_url)
+    page.wait_for_load_state("load")
+
+    # Fast path: already logged in (common with interactive_auth)?
+    if homepage_logo.is_visible():
+        return
+
+    # Check if we landed on a login/IdP page
+    if _on_login_page(page.url):
+        if auth_provider != "password":
+            # Interactive auth storage state didn't authenticate Workbench
+            pytest.skip(
+                "Interactive auth storage state did not authenticate Workbench. "
+                "The OIDC session may not be shared between Connect and Workbench."
+            )
+        # Password auth - proceed with form login below
+    else:
+        # Not on homepage, not on login page - unexpected state
+        # Give it one more check in case page is still loading
+        try:
+            homepage_logo.wait_for(state="visible", timeout=5000)
+            return
+        except Exception:
+            pass
+
+    # Password authentication with retry logic
     login_form = page.locator(LoginPage.USERNAME)
     error_panel = page.locator(LoginPage.ERROR_PANEL)
 
     for attempt in range(max_retries):
         if attempt > 0:
             time.sleep(retry_delay)
+            page.goto(home_url)
 
-        page.goto(home_url)
-
-        # Fast path: already logged in?
+        # Fast path check on retry
         if homepage_logo.is_visible():
             return
 
-        # Need to login - wait for form to be ready
+        # Wait for login form to be ready
         try:
             login_form.wait_for(state="visible", timeout=5000)
         except Exception:
-            # Neither homepage nor login visible - unexpected state, retry
             continue
 
         # Fill and submit
@@ -109,19 +154,49 @@ def workbench_login(
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _cleanup_sessions(page, workbench_client):
+    """Quit any Workbench sessions created during the test."""
+    yield
+    if workbench_client is None:
+        return
+    try:
+        cookies = {c["name"]: c["value"] for c in page.context.cookies()}
+        workbench_client.set_cookies(cookies)
+        sessions = workbench_client.list_sessions()
+        for session in sessions:
+            sid = session.get("id") or session.get("session_id", "")
+            if sid:
+                workbench_client.quit_session(sid)
+    except Exception:
+        # Best-effort cleanup; don't mask test failures.
+        pass
+
+
 @pytest.fixture
-def wb_login(page: Page, workbench_url: str, test_username: str, test_password: str):
+def wb_login(
+    page: Page,
+    workbench_url: str,
+    test_username: str,
+    test_password: str,
+    auth_provider: str,
+    interactive_auth: bool,
+):
     """Log in to Workbench and verify homepage loads.
 
     This fixture handles the complete login flow using rstudio-pro patterns.
-    Handles both fresh login and already-authenticated sessions.
+    Handles password auth, OIDC via --interactive-auth, and skips gracefully
+    when auth type is unsupported.
+
     Returns the page for further interactions.
     """
-    workbench_login(page, workbench_url, test_username, test_password)
+    workbench_login(
+        page, workbench_url, test_username, test_password, auth_provider, interactive_auth
+    )
 
-    # Verify homepage elements
+    # Verify homepage elements (use .first for NEW_SESSION_BUTTON as there can be two)
     expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=15000)
-    expect(page.locator(Homepage.NEW_SESSION_BUTTON)).to_be_visible(timeout=15000)
+    expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=15000)
 
     return page
 
@@ -142,7 +217,7 @@ def wb_start_session(page: Page, wb_login):
         if session_name is None:
             session_name = f"VIP Test {ide_type} {int(time.time())}"
 
-        page.locator(Homepage.NEW_SESSION_BUTTON).click(timeout=10000)
+        page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=10000)
 
         # Wait for dialog to appear
         dialog = page.locator(NewSessionDialog.DIALOG)

@@ -60,13 +60,22 @@ def session_context():
 
 
 @given("the user is logged in to Workbench")
-def user_logged_in(page: Page, workbench_url: str, test_username: str, test_password: str):
+def user_logged_in(
+    page: Page,
+    workbench_url: str,
+    test_username: str,
+    test_password: str,
+    auth_provider: str,
+    interactive_auth: bool,
+):
     """Log in to Workbench and verify homepage loads."""
-    workbench_login(page, workbench_url, test_username, test_password)
+    workbench_login(
+        page, workbench_url, test_username, test_password, auth_provider, interactive_auth
+    )
 
-    # Verify homepage elements
+    # Verify homepage elements (use .first for NEW_SESSION_BUTTON as there can be two)
     expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=15000)
-    expect(page.locator(Homepage.NEW_SESSION_BUTTON)).to_be_visible(timeout=15000)
+    expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=15000)
 
 
 @when("the user starts a new RStudio session")
@@ -111,7 +120,7 @@ def _start_session(page: Page, ide_type: str, session_name: str):
     Note: We intentionally UNCHECK auto-join so we can observe the session
     state transitions on the homepage before navigating into the session.
     """
-    page.locator(Homepage.NEW_SESSION_BUTTON).click(timeout=10000)
+    page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=10000)
 
     dialog = page.locator(NewSessionDialog.DIALOG)
     expect(dialog.locator(NewSessionDialog.TITLE)).to_have_text("New Session", timeout=10000)

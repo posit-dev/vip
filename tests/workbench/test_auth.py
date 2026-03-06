@@ -22,19 +22,31 @@ def workbench_accessible(workbench_client):
 
 
 @when("a user navigates to the Workbench login page and enters valid credentials")
-def navigate_and_login(page: Page, workbench_url: str, test_username: str, test_password: str):
+def navigate_and_login(
+    page: Page,
+    workbench_url: str,
+    test_username: str,
+    test_password: str,
+    auth_provider: str,
+    interactive_auth: bool,
+):
     """Use the shared workbench_login helper for consistency with other tests."""
-    workbench_login(page, workbench_url, test_username, test_password)
+    workbench_login(
+        page, workbench_url, test_username, test_password, auth_provider, interactive_auth
+    )
 
 
 @then("the Workbench homepage is displayed")
 def homepage_displayed(page: Page):
     expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=15000)
-    expect(page.locator(Homepage.NEW_SESSION_BUTTON)).to_be_visible(timeout=15000)
+    expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=15000)
 
 
 @then("the current user is shown in the header")
-def current_user_displayed(page: Page, test_username: str):
+def current_user_displayed(page: Page, test_username: str, auth_provider: str):
     current_user = page.locator(Homepage.CURRENT_USER)
     expect(current_user).to_be_visible(timeout=10000)
-    expect(current_user).to_have_text(test_username)
+    # For password auth, verify exact username match
+    # For OIDC/SAML, the IdP provides display name which won't match linux username
+    if auth_provider == "password":
+        expect(current_user).to_have_text(test_username)
