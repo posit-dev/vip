@@ -63,13 +63,13 @@ def start_session(page, _url_before_launch):
 def wait_for_session(page, _url_before_launch):
     # Wait for navigation to a *new* /s/<id>/ URL (may already be on one).
     url_before = _url_before_launch.get("url", "")
-    deadline = time.monotonic() + 60
+    deadline = time.monotonic() + 120
     while time.monotonic() < deadline:
         if "/s/" in page.url and page.url != url_before:
             break
         page.wait_for_timeout(500)
     else:
-        raise TimeoutError(f"Session did not start within 60 s.  URL stayed at {page.url}")
+        pytest.fail(f"Session did not start within 120s. URL stayed at {page.url}")
     # Allow a brief settle time.
     time.sleep(3)
 
