@@ -1,11 +1,15 @@
 @performance
-Feature: System resource usage during workloads
+Feature: Remote product performance under load
   As a Posit Team administrator
-  I want to verify that resource usage stays within limits during typical use
-  So that the system has adequate capacity
+  I want to verify that products respond quickly under moderate load
+  So that users experience acceptable performance
 
-  Scenario: CPU and memory stay within limits during API activity
+  Scenario: Products respond within acceptable time under moderate load
     Given at least one product is configured
     When I generate moderate API traffic for 10 seconds
-    Then system load average is below the CPU count
-    And available memory stays above 10 percent
+    Then the p95 response time is under 5 seconds
+    And the error rate is below 10 percent
+
+  Scenario: Prometheus metrics endpoint is enabled
+    Given at least one product is configured
+    Then each product has a working Prometheus metrics endpoint
