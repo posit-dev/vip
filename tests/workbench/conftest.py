@@ -40,7 +40,7 @@ def workbench_login(
     This function:
     - Navigates directly to /home to reuse existing sessions
     - Only logs in if redirected to the login page
-    - Retries on transient server errors
+    - Retries on transient server errors (e.g., too many logins)
 
     Args:
         page: Playwright page object
@@ -50,51 +50,56 @@ def workbench_login(
         max_retries: Max login attempts on transient errors (default 3)
         retry_delay: Seconds to wait between retries (default 2.0)
     """
-    # Navigate directly to /home to reuse existing session
     home_url = workbench_url.rstrip("/") + "/home"
-
-    login_form = page.locator(LoginPage.USERNAME)
     homepage_logo = page.locator(Homepage.POSIT_LOGO)
-    either_visible = login_form.or_(homepage_logo)
+    login_form = page.locator(LoginPage.USERNAME)
+    error_panel = page.locator(LoginPage.ERROR_PANEL)
 
     for attempt in range(max_retries):
         if attempt > 0:
             time.sleep(retry_delay)
 
         page.goto(home_url)
-        either_visible.wait_for(timeout=15000)
 
-        # Already logged in - done
+        # Fast path: already logged in?
         if homepage_logo.is_visible():
             return
 
-        # Not on login page either - something unexpected, retry
-        if not login_form.is_visible():
+        # Need to login - wait for form to be ready
+        try:
+            login_form.wait_for(state="visible", timeout=5000)
+        except Exception:
+            # Neither homepage nor login visible - unexpected state, retry
             continue
 
-        # Redirected to login - need to authenticate
+        # Fill and submit
         page.fill(LoginPage.USERNAME, username)
         page.fill(LoginPage.PASSWORD, password)
 
-        # Check "stay signed in" to preserve session between tests
         stay_signed_in = page.locator(LoginPage.STAY_SIGNED_IN)
         if stay_signed_in.is_visible() and not stay_signed_in.is_checked():
             stay_signed_in.click()
 
         page.click(LoginPage.BUTTON)
 
-        either_visible.wait_for(timeout=15000)
+        # Wait for either homepage (success) or error panel (failure)
+        homepage_or_error = homepage_logo.or_(error_panel)
+        try:
+            homepage_or_error.wait_for(state="visible", timeout=15000)
+        except Exception:
+            if attempt == max_retries - 1:
+                raise AssertionError(f"Login failed after {max_retries} attempts: no response")
+            continue
 
+        # Check which one appeared
         if homepage_logo.is_visible():
-            return  # Success
+            return  # Success!
 
-        # Still on login page - capture error on final attempt
+        # Error appeared - extract message and maybe retry
         if attempt == max_retries - 1:
-            error_panel = page.locator(LoginPage.ERROR_PANEL)
-            if error_panel.is_visible():
-                error_text = page.locator(LoginPage.ERROR_TEXT).text_content()
-                raise AssertionError(f"Login failed: {error_text or 'Unknown error'}")
-            raise AssertionError(f"Login failed after {max_retries} attempts")
+            error_text = page.locator(LoginPage.ERROR_TEXT).text_content()
+            raise AssertionError(f"Login failed: {error_text or 'Unknown error'}")
+        # Transient error (e.g., rate limit) - retry
 
     raise AssertionError(f"Login failed after {max_retries} attempts")
 

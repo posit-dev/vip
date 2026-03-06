@@ -6,7 +6,7 @@ from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
 from tests.workbench.conftest import workbench_login
-from tests.workbench.pages import Homepage, LoginPage
+from tests.workbench.pages import Homepage
 
 
 @scenario("test_auth.feature", "User can log in to Workbench via the web UI")
@@ -21,15 +21,9 @@ def workbench_accessible(workbench_client):
     assert status < 400, f"Workbench health-check returned HTTP {status}"
 
 
-@when("a user navigates to the Workbench login page")
-def navigate_to_login(page: Page, workbench_url: str):
-    page.goto(workbench_url)
-    # Workbench redirects to login automatically; wait for login form
-    page.wait_for_selector(LoginPage.USERNAME, timeout=15000)
-
-
-@when("enters valid Workbench credentials")
-def enter_credentials(page: Page, workbench_url: str, test_username: str, test_password: str):
+@when("a user navigates to the Workbench login page and enters valid credentials")
+def navigate_and_login(page: Page, workbench_url: str, test_username: str, test_password: str):
+    """Use the shared workbench_login helper for consistency with other tests."""
     workbench_login(page, workbench_url, test_username, test_password)
 
 
