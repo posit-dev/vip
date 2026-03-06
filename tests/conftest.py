@@ -44,7 +44,7 @@ def connect_url(vip_config: VIPConfig) -> str:
 def workbench_client(vip_config: VIPConfig) -> WorkbenchClient | None:
     if not vip_config.workbench.is_configured:
         return None
-    client = WorkbenchClient(vip_config.workbench.url)
+    client = WorkbenchClient(vip_config.workbench.url, vip_config.workbench.api_key)
     yield client
     client.close()
 
@@ -58,7 +58,7 @@ def workbench_url(vip_config: VIPConfig) -> str:
 def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
     if not vip_config.package_manager.is_configured:
         return None
-    client = PackageManagerClient(vip_config.package_manager.url)
+    client = PackageManagerClient(vip_config.package_manager.url, vip_config.package_manager.token)
     yield client
     client.close()
 
