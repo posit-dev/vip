@@ -89,6 +89,42 @@ class AuthConfig:
 
 
 @dataclass
+class ClusterConfig:
+    """Kubernetes cluster access configuration."""
+
+    provider: str = ""  # "aws" or "azure"
+    name: str = ""  # Cluster name (e.g., "ganso01-staging-20260101")
+    region: str = ""  # Cloud region
+    namespace: str = "posit-team"  # K8s namespace for Posit products
+    site: str = "main"  # Site CR name
+
+    # AWS-specific
+    profile: str = ""  # AWS profile name
+
+    # Azure-specific
+    subscription_id: str = ""  # Azure subscription ID
+    resource_group: str = ""  # Azure resource group
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.provider and self.name)
+
+    def __post_init__(self) -> None:
+        if not self.provider:
+            self.provider = os.environ.get("VIP_CLUSTER_PROVIDER", "")
+        if not self.name:
+            self.name = os.environ.get("VIP_CLUSTER_NAME", "")
+        if not self.region:
+            self.region = os.environ.get("VIP_CLUSTER_REGION", "")
+        if not self.namespace or self.namespace == "posit-team":
+            env_ns = os.environ.get("VIP_CLUSTER_NAMESPACE", "")
+            if env_ns:
+                self.namespace = env_ns
+        if not self.profile:
+            self.profile = os.environ.get("VIP_AWS_PROFILE", "")
+
+
+@dataclass
 class DataSourceEntry:
     """A single external data source to verify."""
 
@@ -117,6 +153,7 @@ class VIPConfig:
     package_manager: PackageManagerConfig = field(default_factory=PackageManagerConfig)
 
     auth: AuthConfig = field(default_factory=AuthConfig)
+    cluster: ClusterConfig = field(default_factory=ClusterConfig)
     runtimes: RuntimesConfig = field(default_factory=RuntimesConfig)
     data_sources: list[DataSourceEntry] = field(default_factory=list)
 
@@ -164,6 +201,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     workbench_raw = raw.get("workbench", {})
     pm_raw = raw.get("package_manager", {})
     auth_raw = raw.get("auth", {})
+    cluster_raw = raw.get("cluster", {})
     runtimes_raw = raw.get("runtimes", {})
     email_raw = raw.get("email", {})
     monitoring_raw = raw.get("monitoring", {})
@@ -206,6 +244,16 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
             provider=auth_raw.get("provider", "password"),
             username=auth_raw.get("username", ""),
             password=auth_raw.get("password", ""),
+        ),
+        cluster=ClusterConfig(
+            provider=cluster_raw.get("provider", ""),
+            name=cluster_raw.get("name", ""),
+            region=cluster_raw.get("region", ""),
+            namespace=cluster_raw.get("namespace", "posit-team"),
+            site=cluster_raw.get("site", "main"),
+            profile=cluster_raw.get("profile", ""),
+            subscription_id=cluster_raw.get("subscription_id", ""),
+            resource_group=cluster_raw.get("resource_group", ""),
         ),
         runtimes=RuntimesConfig(
             r_versions=runtimes_raw.get("r_versions", []),
