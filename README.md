@@ -66,6 +66,11 @@ than stored in the configuration file:
 | `VIP_CONNECT_API_KEY` | Connect admin API key |
 | `VIP_TEST_USERNAME` | Test user login name |
 | `VIP_TEST_PASSWORD` | Test user login password |
+| `VIP_CLUSTER_PROVIDER` | Cloud provider (`aws` or `azure`) |
+| `VIP_CLUSTER_NAME` | EKS/AKS cluster name |
+| `VIP_CLUSTER_REGION` | Cloud region |
+| `VIP_AWS_PROFILE` | AWS profile name |
+| `VIP_AWS_ROLE_ARN` | IAM role for cross-account access |
 
 You can also point to the config file explicitly:
 
@@ -128,6 +133,88 @@ Site CR:
 | Keycloak | `ptd verify <target>` (K8s Job) | Test user auto-provisioned |
 | Okta / OIDC | `ptd verify <target> --local --interactive-auth` | Browser popup for login |
 | Any | `ptd verify <target> --local` | Uses pre-existing credentials from Secret or env vars |
+
+### Cluster connection
+
+VIP can connect to Kubernetes clusters to run tests or manage credentials:
+
+```bash
+# Connect to a cluster (standalone, for debugging)
+vip cluster connect my-target
+```
+
+The cluster configuration comes from the `[cluster]` section in `vip.toml` or
+can be overridden via CLI flags. See the Configuration section below for
+details.
+
+## Deployment verification
+
+VIP can verify Posit Team deployments running in Kubernetes. The `vip verify`
+command connects to a cluster, reads the Site custom resource, generates a
+configuration, provisions credentials, and runs the test suite.
+
+### Basic usage
+
+```bash
+# Connect to cluster and run all tests as a K8s Job
+vip verify ganso01-staging
+
+# Use interactive auth for OIDC deployments
+vip verify ganso01-staging --interactive-auth
+
+# Run locally instead of K8s Job
+vip verify ganso01-staging --local
+
+# Just generate and print the vip.toml config
+vip verify ganso01-staging --config-only
+
+# Run specific test categories
+vip verify ganso01-staging --categories prerequisites
+
+# Clean up test credentials
+vip verify cleanup ganso01-staging
+```
+
+### Cluster configuration
+
+To use `vip verify`, add a `[cluster]` section to `vip.toml`:
+
+```toml
+[cluster]
+provider = "aws"                     # "aws" or "azure"
+name = "my-cluster-20260101"         # EKS/AKS cluster name
+region = "us-east-1"                 # Cloud region
+profile = "ptd-staging"              # AWS: profile name
+role_arn = "arn:aws:iam::123:role/admin"  # AWS: cross-account role (optional)
+```
+
+**AWS EKS:**
+- Requires `profile`, `region`, and cluster `name`
+- Optional `role_arn` for cross-account access
+- Uses boto3 to generate a kubeconfig with EKS token authentication
+
+**Azure AKS:**
+- Requires `subscription_id`, `resource_group`, and cluster `name`
+- Uses Azure SDK to retrieve kubeconfig with managed identity auth
+
+**Network access:**
+VIP assumes the Kubernetes API is reachable (via Tailscale, VPN, or direct
+access). If the `[cluster]` section is omitted, VIP uses the current
+`KUBECONFIG`.
+
+### Authentication modes for verify
+
+How credentials are provisioned depends on the deployment's auth provider:
+
+| Deployment auth | Command | What happens |
+|-----------------|---------|--------------|
+| Keycloak | `vip verify <target>` | Test user auto-provisioned |
+| Okta/OIDC | `vip verify <target> --interactive-auth` | Browser login + token minting |
+| Pre-existing | `vip verify <target>` | Uses credentials from Secret or env vars |
+
+Interactive auth requires the VIP CLI to be available in the Job container.
+For Keycloak deployments, a test user is created automatically with a
+cryptographically random password.
 
 ## Test categories
 

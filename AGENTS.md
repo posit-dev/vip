@@ -131,12 +131,20 @@ Key rules:
 
 | File | Purpose |
 |---|---|
+| `src/vip/cli.py` | CLI entry point: verify, cluster, auth commands |
 | `src/vip/config.py` | TOML config loader, dataclasses for all settings |
 | `src/vip/plugin.py` | pytest plugin: markers, auto-skip, JSON report output |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
 | `src/vip/clients/connect.py` | httpx client for Connect API |
 | `src/vip/clients/workbench.py` | httpx client for Workbench API |
 | `src/vip/clients/packagemanager.py` | httpx client for Package Manager API |
+| `src/vip/cluster/aws.py` | AWS EKS kubeconfig generation |
+| `src/vip/cluster/azure.py` | Azure AKS kubeconfig generation |
+| `src/vip/cluster/kubeconfig.py` | Cloud-agnostic kubeconfig writer |
+| `src/vip/cluster/target.py` | Cluster config validation |
+| `src/vip/verify/site.py` | Site CR parsing, vip.toml generation |
+| `src/vip/verify/credentials.py` | Keycloak + interactive credential provisioning |
+| `src/vip/verify/job.py` | K8s Job creation, log streaming, cleanup |
 | `tests/conftest.py` | Root fixtures: clients, auth, runtimes, data sources |
 | `report/index.qmd` | Quarto summary page |
 | `report/details.qmd` | Quarto detailed results page |
@@ -153,6 +161,10 @@ These are defined in `tests/conftest.py` and available to all tests:
 - `expected_r_versions` / `expected_python_versions` -- version lists from config
 - `data_sources` -- list of `DataSourceEntry` objects
 - `email_enabled` / `monitoring_enabled` -- feature flags
+
+**Note:** When using `vip verify`, the configuration is auto-generated from
+Site CRs, so all fixtures are populated automatically. Manual `vip.toml`
+editing is not required for `vip verify` workflows.
 
 ## API clients
 
