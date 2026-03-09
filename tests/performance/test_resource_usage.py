@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import statistics
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -39,7 +40,7 @@ def generate_traffic_and_measure_response_times(vip_config):
     # Collect health check URLs from configured products
     urls = []
     if vip_config.connect.is_configured:
-        urls.append(f"{vip_config.connect.url}/__api__/v1/server_settings")
+        urls.append(f"{vip_config.connect.url}/__api__/server_settings")
     if vip_config.workbench.is_configured:
         urls.append(f"{vip_config.workbench.url}/health-check")
     if vip_config.package_manager.is_configured:
@@ -78,8 +79,14 @@ def check_p95_response_time(load_test_results):
         pytest.fail("No load test results collected")
 
     elapsed_times = sorted(r["elapsed"] for r in load_test_results)
-    p95_index = int(len(elapsed_times) * 0.95)
-    p95_time = elapsed_times[p95_index]
+
+    # Use statistics.quantiles for accurate p95 calculation.
+    # For n < 2, fall back to max value (edge case).
+    if len(elapsed_times) < 2:
+        p95_time = elapsed_times[0]
+    else:
+        quantiles = statistics.quantiles(elapsed_times, n=100, method="inclusive")
+        p95_time = quantiles[94]  # 95th percentile
 
     assert p95_time < 5, f"p95 response time was {p95_time:.2f}s (threshold: 5s)"
 
