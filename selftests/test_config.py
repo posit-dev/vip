@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from vip.config import (
+    ClusterConfig,
     ConnectConfig,
     ProductConfig,
     VIPConfig,
@@ -40,6 +41,67 @@ class TestConnectConfig:
         monkeypatch.setenv("VIP_CONNECT_API_KEY", "env-key")
         cc = ConnectConfig(url="https://connect.example.com", api_key="explicit-key")
         assert cc.api_key == "explicit-key"
+
+
+class TestClusterConfig:
+    def test_defaults(self):
+        cc = ClusterConfig()
+        assert cc.provider == ""
+        assert cc.name == ""
+        assert cc.region == ""
+        assert cc.namespace == "posit-team"
+        assert cc.site == "main"
+        assert cc.profile == ""
+        assert cc.subscription_id == ""
+        assert cc.resource_group == ""
+
+    def test_is_configured_when_provider_and_name_set(self):
+        cc = ClusterConfig(provider="aws", name="test-cluster")
+        assert cc.is_configured is True
+
+    def test_not_configured_when_provider_missing(self):
+        cc = ClusterConfig(name="test-cluster")
+        assert cc.is_configured is False
+
+    def test_not_configured_when_name_missing(self):
+        cc = ClusterConfig(provider="aws")
+        assert cc.is_configured is False
+
+    def test_not_configured_by_default(self):
+        cc = ClusterConfig()
+        assert cc.is_configured is False
+
+    def test_env_var_fallback_for_provider(self, monkeypatch):
+        monkeypatch.setenv("VIP_CLUSTER_PROVIDER", "azure")
+        cc = ClusterConfig()
+        assert cc.provider == "azure"
+
+    def test_env_var_fallback_for_name(self, monkeypatch):
+        monkeypatch.setenv("VIP_CLUSTER_NAME", "prod-cluster")
+        cc = ClusterConfig()
+        assert cc.name == "prod-cluster"
+
+    def test_env_var_fallback_for_region(self, monkeypatch):
+        monkeypatch.setenv("VIP_CLUSTER_REGION", "us-west-2")
+        cc = ClusterConfig()
+        assert cc.region == "us-west-2"
+
+    def test_env_var_fallback_for_namespace(self, monkeypatch):
+        monkeypatch.setenv("VIP_CLUSTER_NAMESPACE", "custom-namespace")
+        cc = ClusterConfig()
+        assert cc.namespace == "custom-namespace"
+
+    def test_env_var_fallback_for_aws_profile(self, monkeypatch):
+        monkeypatch.setenv("VIP_AWS_PROFILE", "my-profile")
+        cc = ClusterConfig()
+        assert cc.profile == "my-profile"
+
+    def test_explicit_values_take_precedence(self, monkeypatch):
+        monkeypatch.setenv("VIP_CLUSTER_PROVIDER", "aws")
+        monkeypatch.setenv("VIP_CLUSTER_NAME", "env-cluster")
+        cc = ClusterConfig(provider="azure", name="explicit-cluster")
+        assert cc.provider == "azure"
+        assert cc.name == "explicit-cluster"
 
 
 class TestVIPConfig:
@@ -228,3 +290,55 @@ policy_checks_enabled = true
         assert cfg.email_enabled is True
         assert cfg.monitoring_enabled is True
         assert cfg.security_policy_checks_enabled is True
+
+    def test_cluster_config_from_toml(self, tmp_toml):
+        path = tmp_toml(
+            """
+[cluster]
+provider = "aws"
+name = "ganso01-staging-20260101"
+region = "us-east-1"
+namespace = "posit-team"
+site = "main"
+profile = "ptd-staging"
+"""
+        )
+        cfg = load_config(path)
+        assert cfg.cluster.provider == "aws"
+        assert cfg.cluster.name == "ganso01-staging-20260101"
+        assert cfg.cluster.region == "us-east-1"
+        assert cfg.cluster.namespace == "posit-team"
+        assert cfg.cluster.site == "main"
+        assert cfg.cluster.profile == "ptd-staging"
+        assert cfg.cluster.is_configured is True
+
+    def test_cluster_config_azure(self, tmp_toml):
+        path = tmp_toml(
+            """
+[cluster]
+provider = "azure"
+name = "aks-prod"
+region = "eastus"
+resource_group = "posit-rg"
+subscription_id = "123e4567-e89b-12d3-a456-426614174000"
+"""
+        )
+        cfg = load_config(path)
+        assert cfg.cluster.provider == "azure"
+        assert cfg.cluster.name == "aks-prod"
+        assert cfg.cluster.region == "eastus"
+        assert cfg.cluster.resource_group == "posit-rg"
+        assert cfg.cluster.subscription_id == "123e4567-e89b-12d3-a456-426614174000"
+        assert cfg.cluster.is_configured is True
+
+    def test_missing_cluster_section_uses_defaults(self, tmp_toml):
+        path = tmp_toml(
+            """
+[general]
+deployment_name = "No Cluster"
+"""
+        )
+        cfg = load_config(path)
+        assert cfg.cluster.is_configured is False
+        assert cfg.cluster.namespace == "posit-team"
+        assert cfg.cluster.site == "main"

@@ -40,6 +40,17 @@ provider = "password"
 # username = "..."
 # password = "..."
 
+# Kubernetes cluster access (optional, for vip verify)
+# [cluster]
+# provider = "aws"                    # "aws" or "azure"
+# name = "my-cluster-20260101"        # EKS/AKS cluster name
+# region = "us-east-1"                # Cloud region
+# namespace = "posit-team"            # K8s namespace (default: posit-team)
+# site = "main"                       # Site CR name (default: main)
+# profile = "ptd-staging"             # AWS: profile name
+# subscription_id = ""                # Azure: subscription ID
+# resource_group = ""                 # Azure: resource group
+
 [email]
 # Set enabled = true if email delivery is configured on Connect.
 enabled = false
