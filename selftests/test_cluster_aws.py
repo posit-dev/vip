@@ -5,7 +5,10 @@ from __future__ import annotations
 import base64
 from unittest.mock import MagicMock, patch
 
-import yaml
+import pytest
+
+yaml = pytest.importorskip("yaml", reason="pyyaml not installed (install vip[cluster])")
+pytest.importorskip("boto3", reason="boto3 not installed (install vip[cluster])")
 
 
 def test_write_kubeconfig():
