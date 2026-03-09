@@ -14,6 +14,7 @@ def get_eks_kubeconfig(
     cluster_name: str,
     region: str,
     profile: str | None = None,
+    role_arn: str | None = None,
 ) -> Path:
     """Generate a kubeconfig for an EKS cluster.
 
@@ -22,11 +23,25 @@ def get_eks_kubeconfig(
     2. Generate an EKS bearer token via STS presigned URL
     3. Write kubeconfig to a temp file
 
+    If *role_arn* is provided, assumes that IAM role before making
+    API calls (cross-account access pattern).
+
     Returns the path to the kubeconfig file.
     """
     import boto3
 
     session = boto3.Session(profile_name=profile, region_name=region)
+
+    if role_arn:
+        sts = session.client("sts")
+        assumed = sts.assume_role(RoleArn=role_arn, RoleSessionName="vip-verify")
+        creds = assumed["Credentials"]
+        session = boto3.Session(
+            aws_access_key_id=creds["AccessKeyId"],
+            aws_secret_access_key=creds["SecretAccessKey"],
+            aws_session_token=creds["SessionToken"],
+            region_name=region,
+        )
 
     # 1. Describe cluster
     eks = session.client("eks")
