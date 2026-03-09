@@ -192,6 +192,51 @@ def stream_logs(job_name: str, namespace: str, timeout: int = 900) -> None:
     if not pod_name:
         raise TimeoutError(f"Pod for job {job_name} not found within {timeout}s")
 
+    # Wait for the container to be running (or already completed).
+    # Without this, `kubectl logs -f` fails with "container is waiting
+    # to start: ContainerCreating".
+    while time.time() - start_time < timeout:
+        result = subprocess.run(
+            [
+                "kubectl",
+                "get",
+                "pod",
+                pod_name,
+                "-n",
+                namespace,
+                "-o",
+                "jsonpath={.status.phase}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        phase = result.stdout.strip()
+        if phase in ("Running", "Succeeded", "Failed"):
+            break
+
+        # Fast-fail on image pull errors
+        reason_result = subprocess.run(
+            [
+                "kubectl",
+                "get",
+                "pod",
+                pod_name,
+                "-n",
+                namespace,
+                "-o",
+                "jsonpath={.status.containerStatuses[0].state.waiting.reason}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        reason = reason_result.stdout.strip()
+        if reason in ("ImagePullBackOff", "ErrImagePull"):
+            raise RuntimeError(f"Image pull failed for job {job_name}: {reason}")
+
+        time.sleep(2)
+
     # Stream logs (this will block until the pod completes or fails)
     cmd = ["kubectl", "logs", "-n", namespace, "-f", pod_name]
     subprocess.run(cmd, check=False)
