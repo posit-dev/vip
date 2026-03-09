@@ -12,6 +12,37 @@ import tempfile
 from pathlib import Path
 
 
+def _connect_cluster(cluster_config) -> Path:
+    """Generate kubeconfig and set KUBECONFIG env var. Returns the path."""
+    from vip.cluster.target import validate_cluster_config
+
+    validate_cluster_config(cluster_config)
+
+    if cluster_config.provider == "aws":
+        from vip.cluster.aws import get_eks_kubeconfig
+
+        kubeconfig_path = get_eks_kubeconfig(
+            cluster_config.name,
+            cluster_config.region,
+            cluster_config.profile or None,
+            cluster_config.role_arn or None,
+        )
+    elif cluster_config.provider == "azure":
+        from vip.cluster.azure import get_aks_kubeconfig
+
+        kubeconfig_path = get_aks_kubeconfig(
+            cluster_config.name,
+            cluster_config.resource_group,
+            cluster_config.subscription_id,
+        )
+    else:
+        raise ValueError(f"Unknown provider: {cluster_config.provider!r}")
+
+    os.environ["KUBECONFIG"] = str(kubeconfig_path)
+    print(f"Connected to cluster: {cluster_config.name}", file=sys.stderr)
+    return kubeconfig_path
+
+
 def mint_connect_key(args: argparse.Namespace) -> None:
     """Launch interactive browser auth and mint a Connect API key."""
     from vip.auth import start_interactive_auth
@@ -34,7 +65,6 @@ def mint_connect_key(args: argparse.Namespace) -> None:
 
 def connect_to_cluster(args: argparse.Namespace) -> None:
     """Generate kubeconfig for a cluster and print the path."""
-    from vip.cluster.target import validate_cluster_config
     from vip.config import load_config
 
     config = load_config()
@@ -53,28 +83,7 @@ def connect_to_cluster(args: argparse.Namespace) -> None:
     if args.profile:
         config.cluster.profile = args.profile
 
-    validate_cluster_config(config.cluster)
-
-    if config.cluster.provider == "aws":
-        from vip.cluster.aws import get_eks_kubeconfig
-
-        kubeconfig_path = get_eks_kubeconfig(
-            config.cluster.name,
-            config.cluster.region,
-            config.cluster.profile or None,
-        )
-    elif config.cluster.provider == "azure":
-        from vip.cluster.azure import get_aks_kubeconfig
-
-        kubeconfig_path = get_aks_kubeconfig(
-            config.cluster.name,
-            config.cluster.resource_group,
-            config.cluster.subscription_id,
-        )
-    else:
-        print(f"Unsupported provider: {config.cluster.provider}", file=sys.stderr)
-        sys.exit(1)
-
+    kubeconfig_path = _connect_cluster(config.cluster)
     print(str(kubeconfig_path))
 
 
@@ -85,31 +94,8 @@ def run_verify(args: argparse.Namespace) -> None:
     config = load_config()
 
     # 1. Connect to cluster (if cluster is configured)
-    kubeconfig_path = None
     if config.cluster.is_configured:
-        from vip.cluster.target import validate_cluster_config
-
-        validate_cluster_config(config.cluster)
-
-        if config.cluster.provider == "aws":
-            from vip.cluster.aws import get_eks_kubeconfig
-
-            kubeconfig_path = get_eks_kubeconfig(
-                config.cluster.name,
-                config.cluster.region,
-                config.cluster.profile or None,
-            )
-        elif config.cluster.provider == "azure":
-            from vip.cluster.azure import get_aks_kubeconfig
-
-            kubeconfig_path = get_aks_kubeconfig(
-                config.cluster.name,
-                config.cluster.resource_group,
-                config.cluster.subscription_id,
-            )
-
-        os.environ["KUBECONFIG"] = str(kubeconfig_path)
-        print(f"Connected to cluster: {config.cluster.name}")
+        _connect_cluster(config.cluster)
 
     # 2. Fetch Site CR and generate vip.toml
     from vip.verify.site import fetch_site_cr, generate_vip_config
@@ -270,28 +256,7 @@ def run_cleanup(args: argparse.Namespace) -> None:
 
     # Connect to cluster if needed
     if config.cluster.is_configured:
-        from vip.cluster.target import validate_cluster_config
-
-        validate_cluster_config(config.cluster)
-
-        if config.cluster.provider == "aws":
-            from vip.cluster.aws import get_eks_kubeconfig
-
-            kubeconfig_path = get_eks_kubeconfig(
-                config.cluster.name,
-                config.cluster.region,
-                config.cluster.profile or None,
-            )
-        elif config.cluster.provider == "azure":
-            from vip.cluster.azure import get_aks_kubeconfig
-
-            kubeconfig_path = get_aks_kubeconfig(
-                config.cluster.name,
-                config.cluster.resource_group,
-                config.cluster.subscription_id,
-            )
-
-        os.environ["KUBECONFIG"] = str(kubeconfig_path)
+        _connect_cluster(config.cluster)
 
     # Fetch Site CR to get Connect URL
     site_cr = fetch_site_cr(args.site, args.namespace)
