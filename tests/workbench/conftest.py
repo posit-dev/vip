@@ -63,7 +63,7 @@ def workbench_login(
             interactive_auth storage state doesn't cover Workbench
         AssertionError: When password login fails after retries
     """
-    home_url = workbench_url.rstrip("/") + "/home"
+    home_url = workbench_url
     homepage_logo = page.locator(Homepage.POSIT_LOGO)
 
     # For non-password auth without interactive auth, skip immediately

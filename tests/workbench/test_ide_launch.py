@@ -7,6 +7,7 @@ Patterns adapted from rstudio-pro/e2e tests.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -21,6 +22,9 @@ from tests.workbench.pages import (
     RStudioSession,
     VSCodeSession,
 )
+
+# Get filename for session naming
+_FILENAME = Path(__file__).name
 
 
 @scenario("test_ide_launch.feature", "RStudio IDE session can be launched")
@@ -81,7 +85,7 @@ def user_logged_in(
 @when("the user starts a new RStudio session")
 def start_rstudio_session(page: Page, session_context: dict):
     """Start a new RStudio session using the new session dialog."""
-    session_name = f"VIP Test RStudio {int(time.time())}"
+    session_name = f"VIP {_FILENAME} - {int(time.time())}"
     session_context["name"] = session_name
     session_context["ide_type"] = "RStudio"
     _start_session(page, "RStudio", session_name)
@@ -90,7 +94,7 @@ def start_rstudio_session(page: Page, session_context: dict):
 @when("the user starts a new VS Code session")
 def start_vscode_session(page: Page, session_context: dict):
     """Start a new VS Code session using the new session dialog."""
-    session_name = f"VIP Test VS Code {int(time.time())}"
+    session_name = f"VIP {_FILENAME} - {int(time.time())}"
     session_context["name"] = session_name
     session_context["ide_type"] = "VS Code"
     _start_session(page, "VS Code", session_name)
@@ -99,7 +103,7 @@ def start_vscode_session(page: Page, session_context: dict):
 @when("the user starts a new JupyterLab session")
 def start_jupyter_session(page: Page, session_context: dict):
     """Start a new JupyterLab session using the new session dialog."""
-    session_name = f"VIP Test JupyterLab {int(time.time())}"
+    session_name = f"VIP {_FILENAME} - {int(time.time())}"
     session_context["name"] = session_name
     session_context["ide_type"] = "JupyterLab"
     _start_session(page, "JupyterLab", session_name)
@@ -108,7 +112,7 @@ def start_jupyter_session(page: Page, session_context: dict):
 @when("the user starts a new Positron session")
 def start_positron_session(page: Page, session_context: dict):
     """Start a new Positron session using the new session dialog."""
-    session_name = f"VIP Test Positron {int(time.time())}"
+    session_name = f"VIP {_FILENAME} - {int(time.time())}"
     session_context["name"] = session_name
     session_context["ide_type"] = "Positron"
     _start_session(page, "Positron", session_name)
@@ -145,16 +149,16 @@ def session_becomes_active(page: Page, session_context: dict):
     """Verify session transitions from Starting to Active."""
     session_name = session_context["name"]
 
-    # Verify our session appears on the homepage
-    session_text = page.get_by_text(session_name, exact=True)
-    expect(session_text).to_be_visible(timeout=15000)
+    # Verify our session row appears on the homepage
+    session_row = page.locator(Homepage.session_row(session_name))
+    expect(session_row).to_be_visible(timeout=15000)
 
-    # Wait for session to reach Active state (may skip Starting if fast)
-    # Using .first() since there may be multiple Active sessions from prior tests
-    expect(page.get_by_role("button", name="Active").first).to_be_visible(timeout=90000)
+    # Wait for our session to reach Active state
+    session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
+    expect(session_active).to_be_visible(timeout=90000)
 
-    # Navigate into the session
-    session_link = page.get_by_role("link", name=session_name)
+    # Navigate into the session (link only appears when Active)
+    session_link = session_row.locator(f"a[title='join {session_name}']")
     expect(session_link).to_be_visible(timeout=10000)
     session_link.click()
 

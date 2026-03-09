@@ -159,3 +159,17 @@ class Homepage:
     def session_state(state: str) -> str:
         """Selector for session state button (Starting, Active, etc.)."""
         return f"button:text-is('{state}')"
+
+    @staticmethod
+    def session_row(name: str) -> str:
+        """Selector for session row by session name using aria-label."""
+        return f"tr[aria-label*='{name}']"
+
+    @staticmethod
+    def session_row_status(name: str, status: str) -> str:
+        """Selector for session row with specific status.
+
+        Finds the row containing the session name, then matches if
+        that row's status cell contains the given status.
+        """
+        return f"tr[aria-label*='{name}'] div[aria-label='{status}']"
