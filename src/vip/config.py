@@ -64,6 +64,7 @@ class ClusterConfig:
 
     # AWS-specific
     profile: str = ""  # AWS profile name
+    role_arn: str = ""  # IAM role ARN for cross-account access
 
     # Azure-specific
     subscription_id: str = ""  # Azure subscription ID
@@ -86,6 +87,8 @@ class ClusterConfig:
                 self.namespace = env_ns
         if not self.profile:
             self.profile = os.environ.get("VIP_AWS_PROFILE", "")
+        if not self.role_arn:
+            self.role_arn = os.environ.get("VIP_AWS_ROLE_ARN", "")
 
 
 @dataclass
@@ -213,6 +216,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
             namespace=cluster_raw.get("namespace", "posit-team"),
             site=cluster_raw.get("site", "main"),
             profile=cluster_raw.get("profile", ""),
+            role_arn=cluster_raw.get("role_arn", ""),
             subscription_id=cluster_raw.get("subscription_id", ""),
             resource_group=cluster_raw.get("resource_group", ""),
         ),
