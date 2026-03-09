@@ -1,6 +1,6 @@
 """Workbench-specific fixtures and helpers.
 
-Page selectors are in the pages/ subpackage, organized to mirror rstudio-pro/e2e/pages/.
+Page selectors are in the pages/ subpackage
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def workbench_login(
     """Navigate to Workbench homepage, logging in only if required.
 
     This function:
-    - Navigates directly to /home to reuse existing sessions
+    - Navigates directly to Workbench's URL
     - Handles OIDC/SSO via --interactive-auth storage state
     - Only fills login form for password auth
     - Retries on transient server errors (e.g., too many logins)
@@ -63,7 +63,6 @@ def workbench_login(
             interactive_auth storage state doesn't cover Workbench
         AssertionError: When password login fails after retries
     """
-    home_url = workbench_url
     homepage_logo = page.locator(Homepage.POSIT_LOGO)
 
     # For non-password auth without interactive auth, skip immediately
@@ -73,7 +72,7 @@ def workbench_login(
             "Pass --interactive-auth when browser storage state is pre-loaded."
         )
 
-    page.goto(home_url)
+    page.goto(workbench_url)
     page.wait_for_load_state("load")
 
     # Fast path: already logged in (common with interactive_auth)?
@@ -105,7 +104,7 @@ def workbench_login(
     for attempt in range(max_retries):
         if attempt > 0:
             time.sleep(retry_delay)
-            page.goto(home_url)
+            page.goto(workbench_url)
 
         # Fast path check on retry
         if homepage_logo.is_visible():
