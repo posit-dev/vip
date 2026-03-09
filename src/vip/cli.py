@@ -14,7 +14,7 @@ def mint_connect_key(args: argparse.Namespace) -> None:
     session = start_interactive_auth(args.url)
 
     if not session.api_key:
-        print(json.dumps({"error": "Failed to mint API key"}), file=sys.stderr)
+        print(json.dumps({"error": "Failed to mint API key", "url": args.url}), file=sys.stderr)
         sys.exit(1)
 
     # Output JSON with key and key_name for cleanup.
@@ -46,7 +46,10 @@ def main() -> None:
 
     args = parser.parse_args()
     if not hasattr(args, "func"):
-        parser.print_help()
+        if args.command == "auth" and not getattr(args, "auth_command", None):
+            auth_parser.print_help()
+        else:
+            parser.print_help()
         sys.exit(1)
     args.func(args)
 
