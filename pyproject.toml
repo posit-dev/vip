@@ -23,6 +23,12 @@ report = [
     "nbformat>=5.7",
     "nbclient>=0.8",
 ]
+cluster = [
+    "boto3>=1.26",
+    "azure-identity>=1.12",
+    "azure-mgmt-containerservice>=20.0",
+    "pyyaml>=6.0",
+]
 dev = [
     "ruff>=0.15.0,<0.16",
     "mypy>=1.10",
