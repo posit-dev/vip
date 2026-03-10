@@ -210,9 +210,10 @@ def upload_and_deploy(connect_client, deploy_state):
 
 
 @when("I wait for the deployment to complete")
-def wait_for_deploy(connect_client, deploy_state):
+def wait_for_deploy(connect_client, deploy_state, vip_config):
     task_id = deploy_state["task_id"]
-    deadline = time.time() + 300  # 5-minute timeout (package installs can be slow)
+    timeout = vip_config.connect.deploy_timeout
+    deadline = time.time() + timeout
     while time.time() < deadline:
         try:
             task = connect_client.get_task(task_id)
@@ -250,11 +251,13 @@ def wait_for_deploy(connect_client, deploy_state):
             raise
     if task is None:
         pytest.fail(
-            "Deployment did not complete within 300 seconds and final task "
+            f"Deployment did not complete within {timeout} seconds and final task "
             "state could not be retrieved due to repeated transient errors."
         )
     output = "\n".join(task.get("output", []))
-    pytest.fail(f"Deployment did not complete within 300 seconds\n\n--- Task output ---\n{output}")
+    pytest.fail(
+        f"Deployment did not complete within {timeout} seconds\n\n--- Task output ---\n{output}"
+    )
 
 
 @then("the content is accessible via HTTP")
