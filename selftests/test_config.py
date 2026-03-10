@@ -41,13 +41,10 @@ class TestConnectConfig:
         cc = ConnectConfig(url="https://connect.example.com", api_key="explicit-key")
         assert cc.api_key == "explicit-key"
 
-<<<<<<< copilot/sub-pr-42
     def test_url_normalized_when_scheme_missing(self):
         cc = ConnectConfig(url="connect.example.com")
         assert cc.url == "http://connect.example.com"
 
-=======
->>>>>>> main
     def test_default_deploy_timeout(self):
         cc = ConnectConfig(url="https://connect.example.com")
         assert cc.deploy_timeout == 600
