@@ -85,6 +85,8 @@ jobs:
       - uses: rossjrw/pr-preview-action@v1
         with:
           source-dir: report/_output/
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
 
       # Stop Connect
       - name: Stop Connect
@@ -103,4 +105,6 @@ jobs:
       - uses: rossjrw/pr-preview-action@v1
         with:
           source-dir: report/_output/
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
           action: remove
