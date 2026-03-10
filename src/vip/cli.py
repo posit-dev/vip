@@ -344,9 +344,21 @@ def main() -> None:
     connect_parser.add_argument("--profile", help="AWS profile name")
     connect_parser.set_defaults(func=connect_to_cluster)
 
+    # Map command names to their parsers for context-appropriate help
+    subcommand_parsers = {
+        "auth": auth_parser,
+        "verify": verify_parser,
+        "cluster": cluster_parser,
+    }
+
     args = parser.parse_args()
     if not hasattr(args, "func"):
-        parser.print_help()
+        # Show help for the subcommand the user navigated to, not top-level
+        sub = subcommand_parsers.get(args.command)
+        if sub:
+            sub.print_help()
+        else:
+            parser.print_help()
         sys.exit(1)
     args.func(args)
 
