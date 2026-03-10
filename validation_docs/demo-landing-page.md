@@ -32,15 +32,16 @@ export default defineConfig({
 ```
 
 ```bash
-ls website/dist/ && ls website/dist/getting-started/
+head -6 website/package.json
 ```
 
 ```output
-_astro
-favicon.svg
-getting-started
-index.html
-index.html
+{
+  "name": "vip-website",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
 ```
 
 ```bash
