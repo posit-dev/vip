@@ -91,20 +91,35 @@ docker stop workbench && docker rm workbench || true
 | Test file | Feasibility | Notes |
 |---|---|---|
 | `prerequisites/test_components` | ✅ Yes | Health-check only — no auth required |
-| `workbench/test_auth` | ✅ Yes | Web UI login with PAM user created in container |
-| `workbench/test_runtime_versions` | ❌ No | No R/Python runtimes in the minimal image |
-| `workbench/test_sessions` | ❌ No | Requires runtimes; session launch fails without them |
+| `workbench/test_auth` | ✅ Yes | Password form login; uses page objects from `tests/workbench/pages/` |
 | `workbench/test_ide_launch` | ❌ No | Requires R/Python; not in minimal image |
 | `workbench/test_packages` | ❌ No | Requires R runtime |
 | `workbench/test_data_sources` | ❌ No | Requires external databases |
+
+> **Note:** `test_runtime_versions` and `test_sessions` were removed from the
+> workbench test suite (commit `f45d242` on main). Runtime and session fixtures
+> now live in `tests/workbench/conftest.py` and are consumed by `test_ide_launch`.
 
 ### Recommended initial test scope
 
 1. **`prerequisites/test_components`** — Workbench health check (no credentials)
 2. **`workbench/test_auth`** — Web UI login with the PAM test user
 
-These cover the core "is Workbench up and can a user log in?" path with no
-external dependencies.
+`test_auth` now uses the page-object selectors in `tests/workbench/pages/`
+(e.g. `#posit-logo`, `#current-user`, `button:text-is('New Session')`) — the
+same selectors used by rstudio-pro's own end-to-end suite.  It also verifies
+that `#current-user` text matches `auth.username` (`rstudio` in the Docker
+setup).
+
+Also note: `WorkbenchConfig` (added in `d92a365` on main) now supports an
+optional `api_key` field backed by the `VIP_WORKBENCH_API_KEY` environment
+variable.  The Docker smoke test uses PAM/password auth, so `api_key` is left
+unset.  For deployments with a Workbench API key, set it in `[workbench]`:
+
+```toml
+[workbench]
+api_key = "..."   # or via VIP_WORKBENCH_API_KEY env var
+```
 
 ## Implementation plan
 
@@ -314,11 +329,11 @@ jobs:
 Once Phase 1 is stable:
 
 1. **Add a version matrix** for additional stable releases.
-2. **Add `workbench/test_sessions`** using a Workbench image that ships
+2. **Add `workbench/test_ide_launch`** using a Workbench image that ships
    R/Python runtimes, or build a custom image on top of the official one.
-3. **Add `workbench/test_runtime_versions`** once runtimes are available.
-4. **Add `workbench/test_ide_launch`** to verify RStudio, VS Code, and
-   JupyterLab launch correctly.
+   The `wb_start_session` fixture in `tests/workbench/conftest.py` already
+   provides the session-launch helper.
+3. **Add `workbench/test_packages`** once R runtime is available in the image.
 
 ### Phase 3: Version matrix and nightly runs (future)
 

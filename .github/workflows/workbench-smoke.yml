@@ -101,10 +101,16 @@ jobs:
           [general]
           deployment_name = "CI Workbench"
 
+          [connect]
+          enabled = false
+
           [workbench]
           enabled = true
           url = "http://localhost:8787"
           version = "${{ steps.version.outputs.resolved }}"
+
+          [package_manager]
+          enabled = false
 
           [auth]
           provider = "password"
