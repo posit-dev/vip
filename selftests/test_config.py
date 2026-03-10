@@ -45,6 +45,14 @@ class TestConnectConfig:
         cc = ConnectConfig(url="connect.example.com")
         assert cc.url == "http://connect.example.com"
 
+    def test_default_deploy_timeout(self):
+        cc = ConnectConfig(url="https://connect.example.com")
+        assert cc.deploy_timeout == 600
+
+    def test_explicit_deploy_timeout(self):
+        cc = ConnectConfig(url="https://connect.example.com", deploy_timeout=1200)
+        assert cc.deploy_timeout == 1200
+
 
 class TestVIPConfig:
     def test_product_config_lookup(self):
@@ -180,6 +188,27 @@ policy_checks_enabled = true
         assert cfg.email_enabled is True
         assert cfg.monitoring_enabled is True
         assert cfg.security_policy_checks_enabled is True
+
+    def test_deploy_timeout_from_toml(self, tmp_toml):
+        path = tmp_toml(
+            """
+[connect]
+url = "https://connect.example.com"
+deploy_timeout = 1200
+"""
+        )
+        cfg = load_config(path)
+        assert cfg.connect.deploy_timeout == 1200
+
+    def test_deploy_timeout_defaults_when_missing(self, tmp_toml):
+        path = tmp_toml(
+            """
+[connect]
+url = "https://connect.example.com"
+"""
+        )
+        cfg = load_config(path)
+        assert cfg.connect.deploy_timeout == 600
 
     def test_full_config(self, tmp_toml):
         path = tmp_toml(
