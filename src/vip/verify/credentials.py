@@ -115,6 +115,12 @@ def mint_interactive_credentials(
         subprocess.CalledProcessError: If kubectl exec commands fail
         RuntimeError: If interactive auth fails
     """
+    existing = get_credentials_from_secret(namespace)
+    if existing and existing.get("connect-api-key"):
+        print("Credentials already exist in K8s Secret.")
+        print("Run 'vip verify cleanup' first to re-mint credentials.")
+        return
+
     print("Minting Connect API key via interactive auth...")
     auth_session = start_interactive_auth(connect_url)
 
