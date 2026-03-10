@@ -10,7 +10,7 @@ resolution-markers = [
 [[package]]
 name = "anyio"
 version = "4.12.1"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
     { name = "idna" },
@@ -33,7 +33,7 @@ wheels = [
 [[package]]
 name = "argon2-cffi"
 version = "25.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "argon2-cffi-bindings" },
 ]
@@ -45,7 +45,7 @@ wheels = [
 [[package]]
 name = "argon2-cffi-bindings"
 version = "25.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "cffi" },
 ]
@@ -81,7 +81,7 @@ wheels = [
 [[package]]
 name = "arrow"
 version = "1.4.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "python-dateutil" },
     { name = "tzdata" },
@@ -103,7 +103,7 @@ wheels = [
 [[package]]
 name = "async-lru"
 version = "2.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
@@ -133,7 +133,7 @@ wheels = [
 [[package]]
 name = "beautifulsoup4"
 version = "4.14.3"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "soupsieve" },
     { name = "typing-extensions" },
@@ -146,7 +146,7 @@ wheels = [
 [[package]]
 name = "bleach"
 version = "6.3.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "webencodings" },
 ]
@@ -172,7 +172,7 @@ wheels = [
 [[package]]
 name = "cffi"
 version = "2.0.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "pycparser", marker = "implementation_name != 'PyPy'" },
 ]
@@ -408,7 +408,7 @@ wheels = [
 [[package]]
 name = "exceptiongroup"
 version = "1.3.1"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
@@ -534,7 +534,7 @@ wheels = [
 [[package]]
 name = "httpcore"
 version = "1.0.9"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "certifi" },
     { name = "h11" },
@@ -547,7 +547,7 @@ wheels = [
 [[package]]
 name = "httpx"
 version = "0.28.1"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "anyio" },
     { name = "certifi" },
@@ -580,13 +580,13 @@ wheels = [
 [[package]]
 name = "ipykernel"
 version = "7.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "appnope", marker = "sys_platform == 'darwin'" },
     { name = "comm" },
     { name = "debugpy" },
-    { name = "ipython", version = "8.38.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "ipython", version = "9.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "ipython", version = "8.38.0", source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }, marker = "python_full_version < '3.11'" },
+    { name = "ipython", version = "9.10.0", source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }, marker = "python_full_version >= '3.11'" },
     { name = "jupyter-client" },
     { name = "jupyter-core" },
     { name = "matplotlib-inline" },
@@ -605,7 +605,7 @@ wheels = [
 [[package]]
 name = "ipython"
 version = "8.38.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 resolution-markers = [
     "python_full_version < '3.11'",
 ]
@@ -630,7 +630,7 @@ wheels = [
 [[package]]
 name = "ipython"
 version = "9.10.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 resolution-markers = [
     "python_full_version >= '3.14'",
     "python_full_version >= '3.11' and python_full_version < '3.14'",
@@ -656,7 +656,7 @@ wheels = [
 [[package]]
 name = "ipython-pygments-lexers"
 version = "1.1.1"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "pygments", marker = "python_full_version >= '3.11'" },
 ]
@@ -668,11 +668,11 @@ wheels = [
 [[package]]
 name = "ipywidgets"
 version = "8.1.8"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "comm" },
-    { name = "ipython", version = "8.38.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "ipython", version = "9.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "ipython", version = "8.38.0", source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }, marker = "python_full_version < '3.11'" },
+    { name = "ipython", version = "9.10.0", source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }, marker = "python_full_version >= '3.11'" },
     { name = "jupyterlab-widgets" },
     { name = "traitlets" },
     { name = "widgetsnbextension" },
@@ -685,7 +685,7 @@ wheels = [
 [[package]]
 name = "isoduration"
 version = "20.11.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "arrow" },
 ]
@@ -697,7 +697,7 @@ wheels = [
 [[package]]
 name = "jedi"
 version = "0.19.2"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "parso" },
 ]
@@ -709,7 +709,7 @@ wheels = [
 [[package]]
 name = "jinja2"
 version = "3.1.6"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "markupsafe" },
 ]
@@ -739,7 +739,7 @@ wheels = [
 [[package]]
 name = "jsonschema"
 version = "4.26.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "attrs" },
     { name = "jsonschema-specifications" },
@@ -767,7 +767,7 @@ format-nongpl = [
 [[package]]
 name = "jsonschema-specifications"
 version = "2025.9.1"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "referencing" },
 ]
@@ -779,7 +779,7 @@ wheels = [
 [[package]]
 name = "jupyter"
 version = "1.1.1"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "ipykernel" },
     { name = "ipywidgets" },
@@ -796,7 +796,7 @@ wheels = [
 [[package]]
 name = "jupyter-client"
 version = "8.8.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "jupyter-core" },
     { name = "python-dateutil" },
@@ -812,11 +812,11 @@ wheels = [
 [[package]]
 name = "jupyter-console"
 version = "6.6.3"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "ipykernel" },
-    { name = "ipython", version = "8.38.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "ipython", version = "9.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "ipython", version = "8.38.0", source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }, marker = "python_full_version < '3.11'" },
+    { name = "ipython", version = "9.10.0", source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }, marker = "python_full_version >= '3.11'" },
     { name = "jupyter-client" },
     { name = "jupyter-core" },
     { name = "prompt-toolkit" },
@@ -832,7 +832,7 @@ wheels = [
 [[package]]
 name = "jupyter-core"
 version = "5.9.1"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "platformdirs" },
     { name = "traitlets" },
@@ -845,7 +845,7 @@ wheels = [
 [[package]]
 name = "jupyter-events"
 version = "0.12.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "jsonschema", extra = ["format-nongpl"] },
     { name = "packaging" },
@@ -864,7 +864,7 @@ wheels = [
 [[package]]
 name = "jupyter-lsp"
 version = "2.3.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "jupyter-server" },
 ]
@@ -876,7 +876,7 @@ wheels = [
 [[package]]
 name = "jupyter-server"
 version = "2.17.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "anyio" },
     { name = "argon2-cffi" },
@@ -906,7 +906,7 @@ wheels = [
 [[package]]
 name = "jupyter-server-terminals"
 version = "0.5.4"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "pywinpty", marker = "os_name == 'nt'" },
     { name = "terminado" },
@@ -919,7 +919,7 @@ wheels = [
 [[package]]
 name = "jupyterlab"
 version = "4.5.3"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "async-lru" },
     { name = "httpx" },
@@ -953,7 +953,7 @@ wheels = [
 [[package]]
 name = "jupyterlab-server"
 version = "2.28.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "babel" },
     { name = "jinja2" },
@@ -1062,7 +1062,7 @@ wheels = [
 [[package]]
 name = "mako"
 version = "1.3.10"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "markupsafe" },
 ]
@@ -1159,7 +1159,7 @@ wheels = [
 [[package]]
 name = "matplotlib-inline"
 version = "0.2.1"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "traitlets" },
 ]
@@ -1171,7 +1171,7 @@ wheels = [
 [[package]]
 name = "mistune"
 version = "3.2.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
@@ -1183,7 +1183,7 @@ wheels = [
 [[package]]
 name = "mypy"
 version = "1.19.1"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "librt", marker = "platform_python_implementation != 'PyPy'" },
     { name = "mypy-extensions" },
@@ -1238,7 +1238,7 @@ wheels = [
 [[package]]
 name = "nbclient"
 version = "0.10.4"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "jupyter-client" },
     { name = "jupyter-core" },
@@ -1253,7 +1253,7 @@ wheels = [
 [[package]]
 name = "nbconvert"
 version = "7.17.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "bleach", extra = ["css"] },
@@ -1278,7 +1278,7 @@ wheels = [
 [[package]]
 name = "nbformat"
 version = "5.10.4"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "fastjsonschema" },
     { name = "jsonschema" },
@@ -1302,7 +1302,7 @@ wheels = [
 [[package]]
 name = "notebook"
 version = "7.5.3"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "jupyter-server" },
     { name = "jupyterlab" },
@@ -1318,7 +1318,7 @@ wheels = [
 [[package]]
 name = "notebook-shim"
 version = "0.2.4"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "jupyter-server" },
 ]
@@ -1366,7 +1366,7 @@ wheels = [
 [[package]]
 name = "parse-type"
 version = "0.6.6"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "parse" },
     { name = "six" },
@@ -1397,7 +1397,7 @@ wheels = [
 [[package]]
 name = "pexpect"
 version = "4.9.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "ptyprocess" },
 ]
@@ -1418,7 +1418,7 @@ wheels = [
 [[package]]
 name = "playwright"
 version = "1.58.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "greenlet" },
     { name = "pyee" },
@@ -1455,7 +1455,7 @@ wheels = [
 [[package]]
 name = "prompt-toolkit"
 version = "3.0.52"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "wcwidth" },
 ]
@@ -1522,7 +1522,7 @@ wheels = [
 [[package]]
 name = "pyee"
 version = "13.0.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "typing-extensions" },
 ]
@@ -1543,7 +1543,7 @@ wheels = [
 [[package]]
 name = "pytest"
 version = "9.0.2"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
@@ -1561,7 +1561,7 @@ wheels = [
 [[package]]
 name = "pytest-base-url"
 version = "2.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "pytest" },
     { name = "requests" },
@@ -1574,7 +1574,7 @@ wheels = [
 [[package]]
 name = "pytest-bdd"
 version = "8.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "gherkin-official" },
     { name = "mako" },
@@ -1592,7 +1592,7 @@ wheels = [
 [[package]]
 name = "pytest-playwright"
 version = "0.7.2"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "playwright" },
     { name = "pytest" },
@@ -1620,7 +1620,7 @@ wheels = [
 [[package]]
 name = "python-dateutil"
 version = "2.9.0.post0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "six" },
 ]
@@ -1641,7 +1641,7 @@ wheels = [
 [[package]]
 name = "python-slugify"
 version = "8.0.4"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "text-unidecode" },
 ]
@@ -1739,7 +1739,7 @@ wheels = [
 [[package]]
 name = "pyzmq"
 version = "27.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "cffi", marker = "implementation_name == 'pypy'" },
 ]
@@ -1812,7 +1812,7 @@ wheels = [
 [[package]]
 name = "referencing"
 version = "0.37.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "attrs" },
     { name = "rpds-py" },
@@ -1826,7 +1826,7 @@ wheels = [
 [[package]]
 name = "requests"
 version = "2.32.5"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "certifi" },
     { name = "charset-normalizer" },
@@ -1841,7 +1841,7 @@ wheels = [
 [[package]]
 name = "rfc3339-validator"
 version = "0.1.4"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "six" },
 ]
@@ -1862,7 +1862,7 @@ wheels = [
 [[package]]
 name = "rfc3987-syntax"
 version = "1.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "lark" },
 ]
@@ -2057,7 +2057,7 @@ wheels = [
 [[package]]
 name = "stack-data"
 version = "0.6.3"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "asttokens" },
     { name = "executing" },
@@ -2071,7 +2071,7 @@ wheels = [
 [[package]]
 name = "terminado"
 version = "0.18.1"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "ptyprocess", marker = "os_name != 'nt'" },
     { name = "pywinpty", marker = "os_name == 'nt'" },
@@ -2094,7 +2094,7 @@ wheels = [
 [[package]]
 name = "tinycss2"
 version = "1.4.0"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://dl.posit.co/basic/internal/python/simple/" }
 dependencies = [
     { name = "webencodings" },
 ]

@@ -30,10 +30,18 @@ enabled = true
 url = "https://workbench.example.com"
 # version = "2024.09.0"
 
+# API key for a Workbench admin user.
+# Prefer setting the VIP_WORKBENCH_API_KEY environment variable.
+# api_key = "..."
+
 [package_manager]
 enabled = true
 url = "https://packagemanager.example.com"
 # version = "2024.09.0"
+
+# Token for a Package Manager user.
+# Prefer setting the VIP_PM_TOKEN environment variable.
+# token = "..."
 
 [auth]
 # Authentication provider in use: "password", "ldap", "saml", "oidc", "oauth2"

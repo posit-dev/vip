@@ -13,6 +13,15 @@ else:
     import tomli as tomllib
 
 
+def _normalize_url(url: str) -> str:
+    """Ensure a URL has a scheme (default to http if missing)."""
+    if not url:
+        return url
+    if not url.startswith(("http://", "https://")):
+        return f"http://{url}"
+    return url
+
+
 @dataclass
 class ProductConfig:
     """Configuration for a single Posit product."""
@@ -20,6 +29,9 @@ class ProductConfig:
     enabled: bool = True
     url: str = ""
     version: str | None = None
+
+    def __post_init__(self) -> None:
+        self.url = _normalize_url(self.url)
 
     @property
     def is_configured(self) -> bool:
@@ -36,6 +48,28 @@ class ConnectConfig(ProductConfig):
     def __post_init__(self) -> None:
         if not self.api_key:
             self.api_key = os.environ.get("VIP_CONNECT_API_KEY", "")
+
+
+@dataclass
+class WorkbenchConfig(ProductConfig):
+    """Workbench-specific configuration."""
+
+    api_key: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.api_key:
+            self.api_key = os.environ.get("VIP_WORKBENCH_API_KEY", "")
+
+
+@dataclass
+class PackageManagerConfig(ProductConfig):
+    """Package Manager-specific configuration."""
+
+    token: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.token:
+            self.token = os.environ.get("VIP_PM_TOKEN", "")
 
 
 @dataclass
@@ -78,8 +112,8 @@ class VIPConfig:
     extension_dirs: list[str] = field(default_factory=list)
 
     connect: ConnectConfig = field(default_factory=ConnectConfig)
-    workbench: ProductConfig = field(default_factory=ProductConfig)
-    package_manager: ProductConfig = field(default_factory=ProductConfig)
+    workbench: WorkbenchConfig = field(default_factory=WorkbenchConfig)
+    package_manager: PackageManagerConfig = field(default_factory=PackageManagerConfig)
 
     auth: AuthConfig = field(default_factory=AuthConfig)
     runtimes: RuntimesConfig = field(default_factory=RuntimesConfig)
@@ -155,15 +189,17 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
             api_key=connect_raw.get("api_key", ""),
             deploy_timeout=connect_raw.get("deploy_timeout", 600),
         ),
-        workbench=ProductConfig(
+        workbench=WorkbenchConfig(
             enabled=workbench_raw.get("enabled", True),
             url=workbench_raw.get("url", ""),
             version=workbench_raw.get("version"),
+            api_key=workbench_raw.get("api_key", ""),
         ),
-        package_manager=ProductConfig(
+        package_manager=PackageManagerConfig(
             enabled=pm_raw.get("enabled", True),
             url=pm_raw.get("url", ""),
             version=pm_raw.get("version"),
+            token=pm_raw.get("token", ""),
         ),
         auth=AuthConfig(
             provider=auth_raw.get("provider", "password"),

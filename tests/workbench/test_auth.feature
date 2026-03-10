@@ -6,6 +6,6 @@ Feature: Workbench authentication
 
   Scenario: User can log in to Workbench via the web UI
     Given Workbench is accessible at the configured URL
-    When a user navigates to the Workbench login page
-    And enters valid Workbench credentials
-    Then the user is redirected to the Workbench home page
+    When a user navigates to the Workbench login page and enters valid credentials
+    Then the Workbench homepage is displayed
+    And the current user is shown in the header

@@ -7,6 +7,10 @@ import pytest
 from pytest_bdd import given, scenario, then, when
 
 
+@pytest.mark.skip(
+    reason="NYI: currently tests connectivity from test runner, not from Workbench. "
+    "Rework to run connectivity check inside a Workbench session."
+)
 @scenario("test_data_sources.feature", "External data sources are reachable from Workbench")
 def test_data_sources_reachable():
     pass
