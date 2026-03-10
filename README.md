@@ -64,6 +64,8 @@ than stored in the configuration file:
 | Variable | Purpose |
 |---|---|
 | `VIP_CONNECT_API_KEY` | Connect admin API key |
+| `VIP_WORKBENCH_API_KEY` | Workbench admin API key |
+| `VIP_PM_TOKEN` | Package Manager token |
 | `VIP_TEST_USERNAME` | Test user login name |
 | `VIP_TEST_PASSWORD` | Test user login password |
 
