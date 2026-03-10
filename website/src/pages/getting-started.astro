@@ -1,0 +1,375 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+---
+
+<Layout title="Getting Started - VIP">
+  <Header />
+
+  <div class="page-header">
+    <div class="container">
+      <h1>Getting Started</h1>
+      <p>Set up VIP and run your first validation in minutes.</p>
+    </div>
+  </div>
+
+  <main class="content">
+    <div class="container">
+      <aside class="toc">
+        <h4>On this page</h4>
+        <ul>
+          <li><a href="#prerequisites">Prerequisites</a></li>
+          <li><a href="#installation">Installation</a></li>
+          <li><a href="#configuration">Configuration</a></li>
+          <li><a href="#authentication">Authentication</a></li>
+          <li><a href="#running-tests">Running tests</a></li>
+          <li><a href="#generating-reports">Generating reports</a></li>
+          <li><a href="#extending-vip">Extending VIP</a></li>
+        </ul>
+      </aside>
+
+      <article class="docs">
+        <section id="prerequisites">
+          <h2>Prerequisites</h2>
+          <ul>
+            <li><strong>Python 3.10+</strong></li>
+            <li>
+              <strong><a href="https://docs.astral.sh/uv/">uv</a></strong> (recommended) or pip
+            </li>
+            <li>
+              <strong><a href="https://just.systems/">just</a></strong> (optional, for running
+              common tasks)
+            </li>
+          </ul>
+        </section>
+
+        <section id="installation">
+          <h2>Installation</h2>
+          <p>Clone the repository and install dependencies:</p>
+          <pre><code>git clone https://github.com/posit-dev/vip.git
+cd vip
+
+# Set up with uv (recommended)
+uv sync
+uv run playwright install chromium
+
+# Or set up with pip
+pip install -e ".[dev]"
+playwright install chromium</code></pre>
+        </section>
+
+        <section id="configuration">
+          <h2>Configuration</h2>
+          <p>Copy the example config and edit it for your deployment:</p>
+          <pre><code>cp vip.toml.example vip.toml</code></pre>
+          <p>
+            Each product section (Connect, Workbench, Package Manager) can be enabled or disabled
+            individually. Secrets should be set via environment variables:
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Variable</th>
+                  <th>Purpose</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>VIP_CONNECT_API_KEY</code></td>
+                  <td>Connect admin API key</td>
+                </tr>
+                <tr>
+                  <td><code>VIP_WORKBENCH_API_KEY</code></td>
+                  <td>Workbench admin API key</td>
+                </tr>
+                <tr>
+                  <td><code>VIP_PM_TOKEN</code></td>
+                  <td>Package Manager token</td>
+                </tr>
+                <tr>
+                  <td><code>VIP_TEST_USERNAME</code></td>
+                  <td>Test user login name</td>
+                </tr>
+                <tr>
+                  <td><code>VIP_TEST_PASSWORD</code></td>
+                  <td>Test user login password</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>You can also point to the config file explicitly:</p>
+          <pre><code>pytest --vip-config=/path/to/vip.toml</code></pre>
+        </section>
+
+        <section id="authentication">
+          <h2>Authentication</h2>
+
+          <h3>Password / LDAP / Keycloak</h3>
+          <p>Set credentials via environment variables and run normally:</p>
+          <pre><code>export VIP_TEST_USERNAME="test-user"
+export VIP_TEST_PASSWORD="test-password"
+uv run pytest</code></pre>
+
+          <h3>Okta / external OIDC provider</h3>
+          <p>
+            External identity providers require an interactive browser login. Use
+            <code>--interactive-auth</code> to launch a visible browser, authenticate through the
+            IdP, then run the remaining tests headlessly:
+          </p>
+          <pre><code>uv run pytest --interactive-auth</code></pre>
+          <p>This opens a Chromium window, waits for you to complete the OIDC flow, captures the
+            session, and runs all tests headlessly with the authenticated state.</p>
+        </section>
+
+        <section id="running-tests">
+          <h2>Running tests</h2>
+          <p>Run the full suite or target specific products:</p>
+          <pre><code># Run all tests
+uv run pytest
+
+# Run tests for a single product
+uv run pytest -m connect
+uv run pytest -m workbench
+uv run pytest -m package_manager
+
+# Combine markers
+uv run pytest -m "performance and connect"</code></pre>
+
+          <h3>Test categories</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Marker</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Prerequisites</td>
+                  <td><code>prerequisites</code></td>
+                  <td>Server reachability, auth, admin onboarding</td>
+                </tr>
+                <tr>
+                  <td>Package Manager</td>
+                  <td><code>package_manager</code></td>
+                  <td>CRAN/PyPI mirrors, repos, private packages</td>
+                </tr>
+                <tr>
+                  <td>Connect</td>
+                  <td><code>connect</code></td>
+                  <td>Login, deploy, data sources, packages, email</td>
+                </tr>
+                <tr>
+                  <td>Workbench</td>
+                  <td><code>workbench</code></td>
+                  <td>Login, IDE launch, sessions, packages</td>
+                </tr>
+                <tr>
+                  <td>Cross-product</td>
+                  <td><code>cross_product</code></td>
+                  <td>SSL, monitoring, system resources</td>
+                </tr>
+                <tr>
+                  <td>Performance</td>
+                  <td><code>performance</code></td>
+                  <td>Load times, concurrency, resource usage</td>
+                </tr>
+                <tr>
+                  <td>Security</td>
+                  <td><code>security</code></td>
+                  <td>HTTPS, auth policy, secrets storage</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Version gating</h3>
+          <p>Tests can target specific product versions. Tests are skipped automatically if the
+            deployment is older than required:</p>
+          <pre><code>@pytest.mark.min_version(product="connect", version="2024.05.0")
+def test_new_api_feature():
+    ...</code></pre>
+        </section>
+
+        <section id="generating-reports">
+          <h2>Generating reports</h2>
+          <p>After running tests, generate and optionally publish a Quarto report:</p>
+          <pre><code># Generate results JSON
+uv run pytest --vip-report=report/results.json
+
+# Render the report
+cd report && quarto render
+
+# Publish to Connect (optional)
+quarto publish connect --server https://connect.example.com</code></pre>
+        </section>
+
+        <section id="extending-vip">
+          <h2>Extending VIP</h2>
+          <p>
+            Add site-specific tests without modifying the VIP source tree. Create a directory with
+            <code>.feature</code> and <code>.py</code> files following the same conventions:
+          </p>
+          <pre><code># vip.toml
+[general]
+extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
+          <pre><code># Or via CLI
+pytest --vip-extensions=/opt/vip-custom-tests</code></pre>
+          <p>
+            See <code>examples/custom_tests/</code> in the repository for a working example.
+          </p>
+        </section>
+      </article>
+    </div>
+  </main>
+
+  <Footer />
+</Layout>
+
+<style>
+  .page-header {
+    background: var(--posit-navy);
+    color: white;
+    padding: 3rem 1.5rem;
+  }
+
+  .page-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+
+  .page-header p {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 1.0625rem;
+  }
+
+  .container {
+    max-width: var(--max-width);
+    margin: 0 auto;
+  }
+
+  .content .container {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    gap: 3rem;
+    padding: 2.5rem 1.5rem;
+  }
+
+  .toc {
+    position: sticky;
+    top: 80px;
+    align-self: start;
+    order: 1;
+  }
+
+  .toc h4 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--posit-gray-600);
+    margin-bottom: 0.75rem;
+    font-family: var(--font-mono);
+  }
+
+  .toc ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .toc li {
+    margin-bottom: 0.375rem;
+  }
+
+  .toc a {
+    font-size: 0.8125rem;
+    color: var(--posit-gray-600);
+  }
+
+  .toc a:hover {
+    color: var(--posit-teal);
+  }
+
+  .docs {
+    order: 0;
+    min-width: 0;
+  }
+
+  .docs section {
+    margin-bottom: 3rem;
+  }
+
+  .docs h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--posit-navy);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--posit-gray-200);
+  }
+
+  .docs h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--posit-navy);
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .docs p {
+    margin-bottom: 1rem;
+    color: var(--posit-gray-900);
+  }
+
+  .docs ul {
+    margin-bottom: 1rem;
+    padding-left: 1.5rem;
+  }
+
+  .docs li {
+    margin-bottom: 0.375rem;
+  }
+
+  .docs pre {
+    margin-bottom: 1rem;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    margin-bottom: 1rem;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid var(--posit-gray-200);
+  }
+
+  th {
+    font-weight: 600;
+    color: var(--posit-navy);
+    background: var(--posit-gray-50);
+  }
+
+  @media (max-width: 768px) {
+    .content .container {
+      grid-template-columns: 1fr;
+    }
+
+    .toc {
+      display: none;
+    }
+  }
+</style>
