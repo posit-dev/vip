@@ -23,22 +23,17 @@ jobs:
       - uses: actions/checkout@v4
 
       # Start Workbench in Docker
+      # RSW_TESTUSER/RSW_TESTUSER_PASSWD provision the default test user automatically.
+      # Using RSW_LICENSE (not RSP_LICENSE) for license key activation.
       - name: Start Workbench
         run: |
           docker run -d \
             --name workbench \
             -p 8787:8787 \
-            -e RSP_LICENSE="${{ secrets.WORKBENCH_LICENSE }}" \
+            -e RSW_LICENSE="${{ secrets.WORKBENCH_LICENSE }}" \
+            -e RSW_TESTUSER=rstudio \
+            -e RSW_TESTUSER_PASSWD="Rstudio123!" \
             rstudio/rstudio-workbench:${{ matrix.workbench-version }}
-
-      # Create a PAM test user while the server is initialising
-      - name: Create test user
-        run: |
-          timeout 180 bash -c '
-            until docker exec workbench sh -c "true" 2>/dev/null; do sleep 3; done
-          '
-          docker exec workbench useradd -m -s /bin/bash rstudio
-          docker exec workbench sh -c "echo 'rstudio:rstudio' | chpasswd"
 
       # Wait for the server health endpoint to respond
       - name: Wait for Workbench to be ready
@@ -115,7 +110,7 @@ jobs:
           [auth]
           provider = "password"
           username = "rstudio"
-          password = "rstudio"
+          password = "Rstudio123!"
           EOF
 
       # Run the subset of tests that work against Docker Workbench

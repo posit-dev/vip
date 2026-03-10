@@ -38,7 +38,15 @@ Image tags combine an OS suffix with a release version, e.g.
 
 | Variable | Purpose |
 |---|---|
-| `RSP_LICENSE` | License activation key (required) |
+| `RSW_LICENSE` | License activation key (required) |
+| `RSW_TESTUSER` | Username of the auto-provisioned test user (default: `rstudio`) |
+| `RSW_TESTUSER_PASSWD` | Password for the test user — must be ≥ 8 chars to satisfy PAM |
+| `RSW_TESTUSER_UID` | UID for the test user (optional) |
+
+The container automatically creates the test user on startup via these env
+vars — **no manual `useradd`/`chpasswd` needed**.  Passwords shorter than 8
+characters trigger a `BAD PASSWORD: The password is shorter than 8 characters`
+PAM error, so always set `RSW_TESTUSER_PASSWD` to a value of 8+ characters.
 
 ### Health check and version endpoints
 
@@ -46,16 +54,6 @@ Image tags combine an OS suffix with a release version, e.g.
 |---|---|
 | `GET /health-check` | Returns `200 OK` when the server is ready |
 | `GET /api/server-info` | Returns JSON with `version`, `mode`, etc. |
-
-### User setup
-
-Workbench uses PAM authentication by default in Docker.  Users must exist in
-the container's OS.  A test user can be created with standard Linux tools:
-
-```bash
-docker exec workbench useradd -m -s /bin/bash rstudio
-docker exec workbench sh -c "echo 'rstudio:rstudio' | chpasswd"
-```
 
 ### Startup time
 
@@ -66,11 +64,13 @@ endpoint with a generous timeout.
 ### Proven usage pattern
 
 ```bash
-# Start container
+# Start container (RSW_TESTUSER_PASSWD must be >= 8 chars)
 docker run -d \
   --name workbench \
   -p 8787:8787 \
-  -e RSP_LICENSE="${LICENSE_KEY}" \
+  -e RSW_LICENSE="${LICENSE_KEY}" \
+  -e RSW_TESTUSER=rstudio \
+  -e RSW_TESTUSER_PASSWD="Rstudio123!" \
   rstudio/rstudio-workbench:ubuntu2204-2026.01.1
 
 # Wait for ready
@@ -354,22 +354,22 @@ Once Phase 1 is stable:
 
 ## Open questions
 
-1. **License format**: Is the Workbench license available as a plain activation
-   key string (for `RSP_LICENSE`) or only as a file?  If only a file, the
-   workflow must write the secret to disk before mounting it.
+1. **License format**: The license key is passed as the `RSW_LICENSE` env var
+   (plain activation key string).  If only a license file is available, mount
+   it at `/var/lib/rstudio-server/*.lic` and use `RSW_LICENSE_FILE_PATH` instead.
 
 2. **Image availability**: Are all required version tags available on Docker
    Hub for `rstudio/rstudio-workbench`?  Some older versions may only exist in
    a private registry.
 
-3. **UI selector accuracy**: The Playwright selectors in `test_auth.py`
-   (`#username`, `#password`, `button[type='submit']`) were written without
-   running against the real Workbench UI.  They may need adjustment once
-   tested against a live Docker container.
+3. **UI selector accuracy**: The Playwright selectors in `test_auth.py` use the
+   page-object classes in `tests/workbench/pages/` — mirroring the rstudio-pro
+   e2e selectors (`#posit-logo`, `#current-user`, etc.).  They should be accurate
+   for the 2026.01 image but may need adjustment for older releases.
 
-4. **Session support**: The minimal Workbench Docker image may not include R
-   or Python runtimes.  Session-based tests will fail unless a custom image
-   or additional setup installs them.
+4. **Session support**: The Workbench Docker image includes two versions of R
+   and two versions of Python (per Docker Hub docs), so IDE launch tests should
+   work once Phase 2 is implemented.
 
 5. **`/api/server-info` format**: The JSON key for the version string in
    `/api/server-info` needs to be verified against a running instance (assumed
