@@ -45,6 +45,7 @@ class ConnectConfig(ProductConfig):
     api_key: str = ""
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if not self.api_key:
             self.api_key = os.environ.get("VIP_CONNECT_API_KEY", "")
 

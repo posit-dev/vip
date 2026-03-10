@@ -41,6 +41,10 @@ class TestConnectConfig:
         cc = ConnectConfig(url="https://connect.example.com", api_key="explicit-key")
         assert cc.api_key == "explicit-key"
 
+    def test_url_normalized_when_scheme_missing(self):
+        cc = ConnectConfig(url="connect.example.com")
+        assert cc.url == "http://connect.example.com"
+
 
 class TestVIPConfig:
     def test_product_config_lookup(self):
