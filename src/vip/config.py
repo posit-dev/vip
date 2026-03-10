@@ -46,6 +46,7 @@ class ConnectConfig(ProductConfig):
     deploy_timeout: int = 600
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if not self.api_key:
             self.api_key = os.environ.get("VIP_CONNECT_API_KEY", "")
 
