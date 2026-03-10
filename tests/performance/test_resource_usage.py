@@ -1,8 +1,8 @@
-"""Step definitions for resource usage under workload tests."""
+"""Step definitions for remote product performance under load tests."""
 
 from __future__ import annotations
 
-import os
+import statistics
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -11,8 +11,15 @@ import pytest
 from pytest_bdd import given, scenario, then, when
 
 
-@scenario("test_resource_usage.feature", "CPU and memory stay within limits during API activity")
-def test_resources_under_load():
+@scenario(
+    "test_resource_usage.feature", "Products respond within acceptable time under moderate load"
+)
+def test_response_time_under_load():
+    pass
+
+
+@scenario("test_resource_usage.feature", "Prometheus metrics endpoint is enabled")
+def test_prometheus_metrics():
     pass
 
 
@@ -27,64 +34,104 @@ def product_configured(vip_config):
         pytest.skip("No products configured")
 
 
-@when("I generate moderate API traffic for 10 seconds", target_fixture="resource_snapshot")
-def generate_traffic(vip_config):
-    # Pick the first configured product endpoint for traffic generation.
+@when("I generate moderate API traffic for 10 seconds", target_fixture="load_test_results")
+def generate_traffic_and_measure_response_times(vip_config):
+    """Generate concurrent API traffic and collect response times."""
+    # Collect health check URLs from configured products
     urls = []
     if vip_config.connect.is_configured:
-        urls.append(f"{vip_config.connect.url}/__api__/v1/server_settings")
+        urls.append(f"{vip_config.connect.url}/__api__/server_settings")
+    if vip_config.workbench.is_configured:
+        urls.append(f"{vip_config.workbench.url}/health-check")
     if vip_config.package_manager.is_configured:
         urls.append(f"{vip_config.package_manager.url}/__api__/status")
 
-    stop_at = time.monotonic() + 10
+    if not urls:
+        pytest.skip("No product URLs available for load testing")
 
-    def _loop(url):
+    stop_at = time.monotonic() + 10
+    results = []
+
+    def _fetch_loop(url: str):
+        """Continuously fetch URL until stop_at, collecting timing and status."""
         while time.monotonic() < stop_at:
+            start = time.monotonic()
             try:
-                httpx.get(url, timeout=10)
-            except Exception:
-                pass
+                resp = httpx.get(url, timeout=10)
+                elapsed = time.monotonic() - start
+                results.append({"elapsed": elapsed, "status": resp.status_code, "error": None})
+            except Exception as exc:
+                elapsed = time.monotonic() - start
+                results.append({"elapsed": elapsed, "status": None, "error": str(exc)})
             time.sleep(0.1)
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         for url in urls:
-            pool.submit(_loop, url)
+            pool.submit(_fetch_loop, url)
 
-    # Snapshot system state after the traffic burst.
-    load_avg = os.getloadavg()[0]  # 1-minute load average
-    cpu_count = os.cpu_count() or 1
-
-    mem_total = 0
-    mem_available = 0
-    try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if line.startswith("MemTotal:"):
-                    mem_total = int(line.split()[1])
-                elif line.startswith("MemAvailable:"):
-                    mem_available = int(line.split()[1])
-    except FileNotFoundError:
-        pass
-
-    return {
-        "load_avg": load_avg,
-        "cpu_count": cpu_count,
-        "mem_total_kb": mem_total,
-        "mem_available_kb": mem_available,
-    }
+    return results
 
 
-@then("system load average is below the CPU count")
-def load_ok(resource_snapshot):
-    assert resource_snapshot["load_avg"] < resource_snapshot["cpu_count"] * 2, (
-        f"Load average {resource_snapshot['load_avg']:.2f} exceeds "
-        f"2x CPU count ({resource_snapshot['cpu_count']})"
+@then("the p95 response time is under 5 seconds")
+def check_p95_response_time(load_test_results):
+    """Assert that the 95th percentile response time is under 5 seconds."""
+    if not load_test_results:
+        pytest.fail("No load test results collected")
+
+    elapsed_times = sorted(r["elapsed"] for r in load_test_results)
+
+    # Use statistics.quantiles for accurate p95 calculation.
+    # For n < 2, fall back to max value (edge case).
+    if len(elapsed_times) < 2:
+        p95_time = elapsed_times[0]
+    else:
+        quantiles = statistics.quantiles(elapsed_times, n=100, method="inclusive")
+        p95_time = quantiles[94]  # 95th percentile
+
+    assert p95_time < 5, f"p95 response time was {p95_time:.2f}s (threshold: 5s)"
+
+
+@then("the error rate is below 10 percent")
+def check_error_rate(load_test_results):
+    """Assert that fewer than 10% of requests failed or timed out."""
+    if not load_test_results:
+        pytest.fail("No load test results collected")
+
+    total = len(load_test_results)
+    errors = sum(
+        1
+        for r in load_test_results
+        if r["error"] is not None or (r["status"] is not None and r["status"] >= 400)
     )
+    error_rate = (errors / total) * 100
+
+    assert error_rate < 10, f"Error rate was {error_rate:.1f}% (threshold: 10%)"
 
 
-@then("available memory stays above 10 percent")
-def memory_ok(resource_snapshot):
-    if resource_snapshot["mem_total_kb"] == 0:
-        pytest.skip("Memory info not available (non-Linux host)")
-    avail_pct = (resource_snapshot["mem_available_kb"] / resource_snapshot["mem_total_kb"]) * 100
-    assert avail_pct > 10, f"Only {avail_pct:.1f}% memory available (threshold: 10%)"
+@then("each product has a working Prometheus metrics endpoint")
+def check_prometheus_endpoints(vip_config):
+    """Verify that each configured product exposes a /metrics endpoint."""
+    products_to_check = []
+
+    if vip_config.connect.is_configured:
+        products_to_check.append(("Connect", f"{vip_config.connect.url}/metrics"))
+    if vip_config.workbench.is_configured:
+        products_to_check.append(("Workbench", f"{vip_config.workbench.url}/metrics"))
+    if vip_config.package_manager.is_configured:
+        products_to_check.append(("Package Manager", f"{vip_config.package_manager.url}/metrics"))
+
+    if not products_to_check:
+        pytest.skip("No products configured for Prometheus check")
+
+    failures = []
+    for product_name, metrics_url in products_to_check:
+        try:
+            resp = httpx.get(metrics_url, timeout=10)
+            if resp.status_code != 200:
+                failures.append(
+                    f"{product_name}: /metrics returned {resp.status_code} (expected 200)"
+                )
+        except Exception as exc:
+            failures.append(f"{product_name}: /metrics request failed ({exc})")
+
+    assert not failures, "Prometheus metrics endpoint check failed:\n" + "\n".join(failures)

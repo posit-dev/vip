@@ -43,6 +43,7 @@ class ConnectConfig(ProductConfig):
     """Connect-specific configuration."""
 
     api_key: str = ""
+    deploy_timeout: int = 600
 
     def __post_init__(self) -> None:
         if not self.api_key:
@@ -186,6 +187,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
             url=connect_raw.get("url", ""),
             version=connect_raw.get("version"),
             api_key=connect_raw.get("api_key", ""),
+            deploy_timeout=connect_raw.get("deploy_timeout", 600),
         ),
         workbench=WorkbenchConfig(
             enabled=workbench_raw.get("enabled", True),
