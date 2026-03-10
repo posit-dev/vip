@@ -1,0 +1,57 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer class="footer">
+  <div class="footer-inner">
+    <p class="copyright">
+      &copy; {year} <a href="https://posit.co" target="_blank" rel="noopener">Posit, PBC</a>.
+      VIP is open source under the
+      <a href="https://github.com/posit-dev/vip/blob/main/LICENSE" target="_blank" rel="noopener"
+        >MIT License</a
+      >.
+    </p>
+    <div class="footer-links">
+      <a href="https://github.com/posit-dev/vip" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://posit.co" target="_blank" rel="noopener">posit.co</a>
+      <a href="https://docs.posit.co" target="_blank" rel="noopener">Posit Docs</a>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    background: var(--posit-navy-dark);
+    color: rgba(255, 255, 255, 0.7);
+    padding: 2rem 1.5rem;
+    margin-top: 4rem;
+    font-size: 0.875rem;
+  }
+
+  .footer-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .footer a {
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .footer a:hover {
+    color: white;
+  }
+
+  .footer-links {
+    display: flex;
+    gap: 1.5rem;
+  }
+
+  .copyright {
+    margin: 0;
+  }
+</style>

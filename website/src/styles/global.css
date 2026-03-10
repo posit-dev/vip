@@ -1,0 +1,76 @@
+@import url("https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;600&family=Open+Sans:wght@300;400;600;700&display=swap");
+
+:root {
+  --posit-navy: #213d4f;
+  --posit-navy-dark: #17212b;
+  --posit-teal: #297075;
+  --posit-blue: #447099;
+  --posit-light-blue: #e5f0fc;
+  --posit-green: #72994e;
+  --posit-burgundy: #9a4665;
+  --posit-gray-50: #f9f9f9;
+  --posit-gray-100: #f5f5f5;
+  --posit-gray-200: #e5e7eb;
+  --posit-gray-600: #6b7280;
+  --posit-gray-900: #111827;
+
+  --font-body: "Open Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "Source Code Pro", ui-monospace, monospace;
+
+  --max-width: 1140px;
+  --radius: 8px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--posit-gray-900);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--posit-teal);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--posit-gray-100);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  background: var(--posit-navy-dark);
+  color: #e2e8f0;
+  padding: 1.25rem 1.5rem;
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}

@@ -1,0 +1,413 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+
+const base = import.meta.env.BASE_URL;
+
+const products = [
+  {
+    name: "Connect",
+    marker: "connect",
+    description: "Authentication, content deployment, data sources, packages, email, and runtimes",
+    color: "var(--posit-teal)",
+  },
+  {
+    name: "Workbench",
+    marker: "workbench",
+    description: "Login, IDE launch, sessions, package installation, data sources, and runtimes",
+    color: "var(--posit-blue)",
+  },
+  {
+    name: "Package Manager",
+    marker: "package_manager",
+    description: "CRAN/PyPI mirrors, repository configuration, and private package access",
+    color: "var(--posit-green)",
+  },
+];
+
+const categories = [
+  { name: "Prerequisites", description: "Server reachability, auth configuration, admin onboarding" },
+  { name: "Cross-product", description: "SSL certificates, monitoring, system resources" },
+  { name: "Performance", description: "Load times, concurrency, package install speed" },
+  { name: "Security", description: "HTTPS enforcement, auth policy, secrets storage" },
+];
+---
+
+<Layout title="VIP - Verified Installation of Posit">
+  <Header />
+
+  <section class="hero">
+    <div class="hero-inner">
+      <p class="hero-label">Open Source</p>
+      <h1>Verified Installation<br />of Posit</h1>
+      <p class="hero-subtitle">
+        An extensible BDD test suite that validates your Posit Team deployment is installed correctly
+        and functioning properly.
+      </p>
+      <div class="hero-actions">
+        <a href={`${base}getting-started/`} class="btn btn-primary">Get Started</a>
+        <a href="https://github.com/posit-dev/vip" class="btn btn-secondary" target="_blank" rel="noopener">
+          View on GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2 class="section-title">What VIP validates</h2>
+      <p class="section-subtitle">
+        VIP tests Connect, Workbench, and Package Manager using pytest-bdd with Gherkin feature
+        files and Playwright for browser automation.
+      </p>
+
+      <div class="product-grid">
+        {
+          products.map((product) => (
+            <div class="product-card">
+              <div class="product-accent" style={`background: ${product.color}`} />
+              <h3>{product.name}</h3>
+              <p>{product.description}</p>
+              <code class="marker">pytest -m {product.marker}</code>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="container">
+      <h2 class="section-title">Cross-cutting test categories</h2>
+      <div class="category-grid">
+        {
+          categories.map((cat) => (
+            <div class="category-card">
+              <h4>{cat.name}</h4>
+              <p>{cat.description}</p>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2 class="section-title">How it works</h2>
+      <div class="steps">
+        <div class="step">
+          <span class="step-number">1</span>
+          <div>
+            <h4>Configure</h4>
+            <p>Point VIP at your deployment with a simple <code>vip.toml</code> file.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">2</span>
+          <div>
+            <h4>Run tests</h4>
+            <p>Execute the full suite or target specific products with pytest markers.</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">3</span>
+          <div>
+            <h4>Review report</h4>
+            <p>Generate a Quarto report with detailed results you can publish to Connect.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="container">
+      <h2 class="section-title">Design principles</h2>
+      <div class="principles-grid">
+        <div class="principle">
+          <h4>Non-destructive</h4>
+          <p>Tests create, verify, and clean up their own content. They never modify existing customer data.</p>
+        </div>
+        <div class="principle">
+          <h4>Diagnostic</h4>
+          <p>Tests are sequenced so failures localize problems. Prerequisites run first; product tests follow.</p>
+        </div>
+        <div class="principle">
+          <h4>Loosely coupled</h4>
+          <p>The suite avoids tight coupling to product client libraries. API calls use plain HTTP.</p>
+        </div>
+        <div class="principle">
+          <h4>Extensible</h4>
+          <p>Add site-specific tests without modifying the VIP source tree using extension directories.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section cta-section">
+    <div class="container" style="text-align: center">
+      <h2>Ready to validate your deployment?</h2>
+      <p class="cta-subtitle">Get up and running in minutes.</p>
+      <a href={`${base}getting-started/`} class="btn btn-primary btn-lg">Get Started</a>
+    </div>
+  </section>
+
+  <Footer />
+</Layout>
+
+<style>
+  .hero {
+    background: var(--posit-navy);
+    color: white;
+    padding: 5rem 1.5rem;
+  }
+
+  .hero-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+  }
+
+  .hero-label {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 1rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.25rem, 5vw, 3.5rem);
+    font-weight: 700;
+    line-height: 1.15;
+    margin-bottom: 1.25rem;
+  }
+
+  .hero-subtitle {
+    font-size: 1.125rem;
+    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.8);
+    max-width: 540px;
+    margin-bottom: 2rem;
+  }
+
+  .hero-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.625rem 1.25rem;
+    border-radius: 6px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  .btn:hover {
+    text-decoration: none;
+    transform: translateY(-1px);
+  }
+
+  .btn-primary {
+    background: var(--posit-teal);
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background: #1e5a5f;
+  }
+
+  .btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .btn-lg {
+    padding: 0.75rem 2rem;
+    font-size: 1rem;
+  }
+
+  .section {
+    padding: 4rem 1.5rem;
+  }
+
+  .section-alt {
+    background: var(--posit-gray-50);
+  }
+
+  .container {
+    max-width: var(--max-width);
+    margin: 0 auto;
+  }
+
+  .section-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    color: var(--posit-navy);
+  }
+
+  .section-subtitle {
+    font-size: 1.0625rem;
+    color: var(--posit-gray-600);
+    max-width: 600px;
+    margin-bottom: 2.5rem;
+  }
+
+  .product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .product-card {
+    background: white;
+    border: 1px solid var(--posit-gray-200);
+    border-radius: var(--radius);
+    padding: 1.75rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .product-accent {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+  }
+
+  .product-card h3 {
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+    color: var(--posit-navy);
+  }
+
+  .product-card p {
+    color: var(--posit-gray-600);
+    font-size: 0.9375rem;
+    margin-bottom: 1rem;
+  }
+
+  .marker {
+    font-size: 0.8125rem;
+    color: var(--posit-teal);
+    background: var(--posit-light-blue);
+  }
+
+  .category-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .category-card {
+    background: white;
+    border: 1px solid var(--posit-gray-200);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+  }
+
+  .category-card h4 {
+    font-size: 1rem;
+    margin-bottom: 0.375rem;
+    color: var(--posit-navy);
+  }
+
+  .category-card p {
+    color: var(--posit-gray-600);
+    font-size: 0.875rem;
+  }
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    max-width: 600px;
+  }
+
+  .step {
+    display: flex;
+    gap: 1.25rem;
+    align-items: flex-start;
+  }
+
+  .step-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    background: var(--posit-navy);
+    color: white;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 1rem;
+  }
+
+  .step h4 {
+    font-size: 1.0625rem;
+    margin-bottom: 0.25rem;
+    color: var(--posit-navy);
+  }
+
+  .step p {
+    color: var(--posit-gray-600);
+    font-size: 0.9375rem;
+  }
+
+  .principles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .principle {
+    background: white;
+    border: 1px solid var(--posit-gray-200);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+  }
+
+  .principle h4 {
+    font-size: 1rem;
+    margin-bottom: 0.375rem;
+    color: var(--posit-navy);
+  }
+
+  .principle p {
+    color: var(--posit-gray-600);
+    font-size: 0.875rem;
+  }
+
+  .cta-section {
+    padding: 5rem 1.5rem;
+  }
+
+  .cta-section h2 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--posit-navy);
+    margin-bottom: 0.5rem;
+  }
+
+  .cta-subtitle {
+    color: var(--posit-gray-600);
+    font-size: 1.0625rem;
+    margin-bottom: 1.5rem;
+  }
+</style>
