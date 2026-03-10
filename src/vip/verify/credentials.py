@@ -118,32 +118,29 @@ def mint_interactive_credentials(
     print("Minting Connect API key via interactive auth...")
     auth_session = start_interactive_auth(connect_url)
 
-    try:
-        if not auth_session.api_key:
-            raise RuntimeError("Interactive auth did not produce an API key")
+    if not auth_session.api_key:
+        raise RuntimeError("Interactive auth did not produce an API key")
 
-        print(f"Connect API key created: {auth_session.key_name}")
+    print(f"Connect API key created: {auth_session.key_name}")
 
-        print("Generating Workbench token via kubectl exec...")
-        workbench_token = generate_workbench_token(site_name, username, namespace)
+    print("Generating Workbench token via kubectl exec...")
+    workbench_token = generate_workbench_token(site_name, username, namespace)
 
-        print("Generating Package Manager token via kubectl exec...")
-        pm_token = generate_pm_token(site_name, namespace)
+    print("Generating Package Manager token via kubectl exec...")
+    pm_token = generate_pm_token(site_name, username, namespace)
 
-        credentials = {
-            "connect-api-key": auth_session.api_key,
-            "connect-key-name": auth_session.key_name,
-            "workbench-token": workbench_token,
-            "pm-token": pm_token,
-        }
+    credentials = {
+        "connect-api-key": auth_session.api_key,
+        "connect-key-name": auth_session.key_name,
+        "workbench-token": workbench_token,
+        "pm-token": pm_token,
+    }
 
-        print("Saving credentials to K8s Secret...")
-        save_credentials_secret(namespace, credentials)
+    print("Saving credentials to K8s Secret...")
+    save_credentials_secret(namespace, credentials)
 
-        print("All credentials minted and saved successfully")
-    finally:
-        # Clean up the auth session (deletes the API key)
-        auth_session.cleanup()
+    print("All credentials minted and saved successfully")
+    print("Run 'vip verify cleanup' to delete credentials when done")
 
 
 def generate_workbench_token(
@@ -184,12 +181,14 @@ def generate_workbench_token(
 
 def generate_pm_token(
     site_name: str,
+    username: str,
     namespace: str = "posit-team",
 ) -> str:
     """Generate a Package Manager token via kubectl exec.
 
     Args:
         site_name: Site name suffix for the deployment
+        username: Audit label for the token (stored in JWT sub claim)
         namespace: Kubernetes namespace
 
     Returns:
@@ -209,6 +208,7 @@ def generate_pm_token(
         "rspm",
         "create",
         "token",
+        f"--user={username}",
         "--scope=repos:read",
         "--quiet",
     ]
