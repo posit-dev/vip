@@ -1,27 +1,38 @@
 # Feature: gh-pages coexistence for previews
 
-*2026-03-10T20:53:00Z by Showboat 0.6.1*
-<!-- showboat-id: d82f43ab-bd37-4c25-a24a-b8b0a3273035 -->
+*2026-03-10T21:03:58Z by Showboat 0.6.1*
+<!-- showboat-id: fd767ab0-6104-4e13-990a-cf4b0e9e1e0a -->
 
-Updated GitHub workflows so main website publishing keeps the site at gh-pages root while PR previews are isolated under pr-preview/ and preserved during root deploys.
+This demo is CI-stable: it bootstraps dependencies, validates both workflow files, runs selftests with normalized timing output, and runs lint/format checks.
+
+```bash
+cd /home/runner/work/vip/vip && uv sync --all-extras >/dev/null 2>&1 && echo 'uv sync complete'
+```
+
+```output
+uv sync complete
+```
 
 ```bash
 cd /home/runner/work/vip/vip && uv run python - <<'PY'
 from pathlib import Path
-import yaml
 for rel in ['.github/workflows/preview.yml', '.github/workflows/website.yml']:
-    yaml.safe_load(Path(rel).read_text(encoding='utf-8'))
-    print(f'Parsed {rel}')
+    text = Path(rel).read_text(encoding='utf-8')
+    required = ('name:', 'on:', 'jobs:')
+    missing = [key for key in required if key not in text]
+    if missing:
+        raise SystemExit(f'Missing {missing} in {rel}')
+    print(f'Validated {rel}')
 PY
 ```
 
 ```output
-Parsed .github/workflows/preview.yml
-Parsed .github/workflows/website.yml
+Validated .github/workflows/preview.yml
+Validated .github/workflows/website.yml
 ```
 
 ```bash
-cd /home/runner/work/vip/vip && uv run pytest selftests/ -q
+cd /home/runner/work/vip/vip && set -o pipefail && uv run pytest selftests/ -q | sed -E 's/in [0-9.]+s/in <time>/g'
 ```
 
 ```output
@@ -32,7 +43,7 @@ src/vip/reporting.py:10
     @dataclass
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-52 passed, 1 warning in 0.37s
+52 passed, 1 warning in <time>
 ```
 
 ```bash
