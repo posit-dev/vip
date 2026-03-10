@@ -10,9 +10,12 @@ import httpx
 class PackageManagerClient:
     """Minimal Package Manager HTTP wrapper."""
 
-    def __init__(self, base_url: str, *, timeout: float = 30.0) -> None:
+    def __init__(self, base_url: str, token: str = "", *, timeout: float = 30.0) -> None:
         self.base_url = base_url.rstrip("/")
-        self._client = httpx.Client(base_url=self.base_url, timeout=timeout)
+        headers = {}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        self._client = httpx.Client(base_url=self.base_url, headers=headers, timeout=timeout)
 
     # -- Health / status ----------------------------------------------------
 
