@@ -13,6 +13,15 @@ else:
     import tomli as tomllib
 
 
+def _normalize_url(url: str) -> str:
+    """Ensure a URL has a scheme (default to http if missing)."""
+    if not url:
+        return url
+    if not url.startswith(("http://", "https://")):
+        return f"http://{url}"
+    return url
+
+
 @dataclass
 class ProductConfig:
     """Configuration for a single Posit product."""
@@ -20,6 +29,9 @@ class ProductConfig:
     enabled: bool = True
     url: str = ""
     version: str | None = None
+
+    def __post_init__(self) -> None:
+        self.url = _normalize_url(self.url)
 
     @property
     def is_configured(self) -> bool:
