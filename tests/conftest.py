@@ -30,7 +30,7 @@ def vip_config(request: pytest.FixtureRequest) -> VIPConfig:
 def connect_client(vip_config: VIPConfig) -> ConnectClient | None:
     if not vip_config.connect.is_configured:
         return None
-    client = ConnectClient(vip_config.connect.url, vip_config.connect.api_key)
+    client = ConnectClient(vip_config.connect.url, api_key=vip_config.connect.api_key)
     yield client
     client.close()
 
@@ -44,7 +44,7 @@ def connect_url(vip_config: VIPConfig) -> str:
 def workbench_client(vip_config: VIPConfig) -> WorkbenchClient | None:
     if not vip_config.workbench.is_configured:
         return None
-    client = WorkbenchClient(vip_config.workbench.url)
+    client = WorkbenchClient(vip_config.workbench.url, api_key=vip_config.workbench.api_key)
     yield client
     client.close()
 
@@ -58,7 +58,9 @@ def workbench_url(vip_config: VIPConfig) -> str:
 def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
     if not vip_config.package_manager.is_configured:
         return None
-    client = PackageManagerClient(vip_config.package_manager.url)
+    client = PackageManagerClient(
+        vip_config.package_manager.url, token=vip_config.package_manager.token
+    )
     yield client
     client.close()
 

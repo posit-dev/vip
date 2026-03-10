@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import pytest
+from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
+
+from tests.workbench.conftest import workbench_login
+from tests.workbench.pages import Homepage
 
 
 @scenario("test_auth.feature", "User can log in to Workbench via the web UI")
@@ -12,43 +16,37 @@ def test_workbench_login():
 
 
 @given("Workbench is accessible at the configured URL")
-def workbench_accessible(workbench_client):
+def workbench_accessible(workbench_client, auth_provider: str, interactive_auth: bool):
+    # This test only validates password-based login form flow
+    if auth_provider != "password":
+        pytest.skip(f"test_auth only supports password auth, not {auth_provider!r}")
+    if interactive_auth:
+        pytest.skip("test_auth is not compatible with --interactive-auth")
+
     assert workbench_client is not None, "Workbench client not configured"
     status = workbench_client.health()
     assert status < 400, f"Workbench health-check returned HTTP {status}"
 
 
-@when("a user navigates to the Workbench login page")
-def navigate_to_login(page, workbench_url):
-    page.goto(workbench_url)
+@when("a user navigates to the Workbench login page and enters valid credentials")
+def navigate_and_login(
+    page: Page,
+    workbench_url: str,
+    test_username: str,
+    test_password: str,
+):
+    """Log in using password auth form."""
+    workbench_login(page, workbench_url, test_username, test_password)
 
 
-@when("enters valid Workbench credentials")
-def enter_credentials(page, test_username, test_password, auth_provider, interactive_auth):
-    if auth_provider != "password":
-        if not interactive_auth:
-            pytest.skip(
-                f"Login form not available for auth provider {auth_provider!r}. "
-                "Pass --interactive-auth when browser storage state is pre-loaded."
-            )
-        # With --interactive-auth the browser is already authenticated via storage state.
-        # Wait and check if storage state successfully logged us in.
-        page.wait_for_load_state("load")
-        on_login = any(kw in page.url.lower() for kw in ("sign-in", "login", "auth"))
-        if on_login:
-            pytest.skip(
-                "Interactive auth storage state did not authenticate Workbench. "
-                "The OIDC session may not be shared between Connect and Workbench."
-            )
-        return
-    page.fill("#username, [name='username']", test_username)
-    page.fill("#password, [name='password']", test_password)
-    page.click("button[type='submit'], #sign-in")
-    page.wait_for_load_state("load")
+@then("the Workbench homepage is displayed")
+def homepage_displayed(page: Page):
+    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=15000)
+    expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=15000)
 
 
-@then("the user is redirected to the Workbench home page")
-def home_page_displayed(page, workbench_url):
-    # After login the URL should no longer be the sign-in page.
-    on_login = any(kw in page.url.lower() for kw in ("sign-in", "login", "auth"))
-    assert not on_login, f"Still on the login page: {page.url}"
+@then("the current user is shown in the header")
+def current_user_displayed(page: Page, test_username: str):
+    current_user = page.locator(Homepage.CURRENT_USER)
+    expect(current_user).to_be_visible(timeout=10000)
+    expect(current_user).to_have_text(test_username)

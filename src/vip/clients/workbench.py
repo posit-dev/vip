@@ -14,9 +14,12 @@ import httpx
 class WorkbenchClient:
     """Minimal Workbench HTTP wrapper."""
 
-    def __init__(self, base_url: str, *, timeout: float = 30.0) -> None:
+    def __init__(self, base_url: str, api_key: str = "", *, timeout: float = 30.0) -> None:
         self.base_url = base_url.rstrip("/")
-        self._client = httpx.Client(base_url=self.base_url, timeout=timeout)
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Key {api_key}"
+        self._client = httpx.Client(base_url=self.base_url, headers=headers, timeout=timeout)
 
     # -- Health / info ------------------------------------------------------
 
