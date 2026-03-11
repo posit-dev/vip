@@ -45,24 +45,33 @@ jobs:
           timeout 180 bash -c \
             'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
 
-      # Resolve the running Workbench version via an authenticated API call.
-      # 1. POST /auth-sign-in with PAM credentials to get a session cookie.
-      # 2. GET /api/server-info with that cookie to read the real running version.
+      # Resolve the running Workbench version.
+      # Primary: authenticated GET /api/server-info (sign in with -L to follow the
+      #          302 redirect so all session cookies are captured).
+      # Fallback: rstudio-server version command inside the container (queries the
+      #           running binary directly; satisfies "verify the running instance").
       - name: Resolve Workbench version
         id: version
         run: |
-          # Sign in with PAM credentials to obtain a session cookie
-          curl -s -c /tmp/wb_cookies.txt \
-            -d "username=${WB_TEST_USER}&password=${WB_TEST_PASSWD}&stay_signed_in=0&appUri=" \
+          # Sign in - follow redirects (-L) so the session cookie jar is fully populated
+          curl -s -L -c /tmp/wb_cookies.txt \
+            -d "username=${WB_TEST_USER}&password=${WB_TEST_PASSWD}" \
             http://localhost:8787/auth-sign-in > /dev/null
 
-          # Fetch server info using the authenticated session
+          # Fetch server info with the authenticated session
           RESPONSE=$(curl -s -b /tmp/wb_cookies.txt http://localhost:8787/api/server-info)
-          VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty')
+          VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty' 2>/dev/null || true)
+
+          # Fallback: query the running binary directly if the API didn't return JSON
+          if [ -z "${VERSION}" ]; then
+            echo "INFO: /api/server-info did not yield a version (response: ${RESPONSE:0:200})"
+            echo "INFO: Falling back to rstudio-server version"
+            VERSION=$(docker exec workbench rstudio-server version 2>/dev/null \
+                      | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+\+[^[:space:]]+' | head -1 || true)
+          fi
 
           if [ -z "${VERSION}" ]; then
-            echo "ERROR: could not extract version from /api/server-info"
-            echo "Response: ${RESPONSE}"
+            echo "ERROR: Could not resolve version from the running Workbench instance"
             exit 1
           fi
 
