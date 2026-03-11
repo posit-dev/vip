@@ -226,7 +226,6 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             cm_name,
             image=args.image,
             categories=args.categories,
-            interactive_auth=args.interactive_auth,
             timeout_seconds=args.timeout - 60,
         )
 
