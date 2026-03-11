@@ -335,12 +335,15 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
             return
         markers: list[str] = []
         scenario_meta: dict[str, str | None] = {}
-        if hasattr(report, "item"):
+        item = getattr(report, "item", None)
+        if item is not None:
             try:
-                markers = [m.name for m in report.item.iter_markers()]  # type: ignore[attr-defined]
+                markers = [m.name for m in item.iter_markers()]  # type: ignore[attr-defined]
             except Exception:
                 pass
-            scenario_meta = report.item.stash.get(_scenario_stash_key, {})  # type: ignore[attr-defined]
+            item_stash = getattr(item, "stash", None)
+            if item_stash is not None:
+                scenario_meta = item_stash.get(_scenario_stash_key, {})
         results.append(
             {
                 "nodeid": report.nodeid,
