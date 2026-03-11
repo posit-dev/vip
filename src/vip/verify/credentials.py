@@ -116,7 +116,7 @@ def mint_interactive_credentials(
         RuntimeError: If interactive auth fails
     """
     existing = get_credentials_from_secret(namespace)
-    if existing and existing.get("connect-api-key"):
+    if existing and existing.get("VIP_CONNECT_API_KEY"):
         print("Credentials already exist in K8s Secret.")
         print("Run 'vip verify cleanup' first to re-mint credentials.")
         return
@@ -136,10 +136,10 @@ def mint_interactive_credentials(
     pm_token = generate_pm_token(site_name, username, namespace)
 
     credentials = {
-        "connect-api-key": auth_session.api_key,
-        "connect-key-name": auth_session.key_name,
-        "workbench-token": workbench_token,
-        "pm-token": pm_token,
+        "VIP_CONNECT_API_KEY": auth_session.api_key,
+        "VIP_CONNECT_KEY_NAME": auth_session.key_name,
+        "VIP_WORKBENCH_API_KEY": workbench_token,
+        "VIP_PM_TOKEN": pm_token,
     }
 
     print("Saving credentials to K8s Secret...")
@@ -340,8 +340,8 @@ def cleanup_credentials(
     credentials = get_credentials_from_secret(namespace)
 
     if credentials and connect_url:
-        api_key = credentials.get("connect-api-key")
-        key_name = credentials.get("connect-key-name")
+        api_key = credentials.get("VIP_CONNECT_API_KEY")
+        key_name = credentials.get("VIP_CONNECT_KEY_NAME")
 
         if api_key and key_name:
             try:
@@ -624,8 +624,8 @@ def _create_credentials_secret(username: str, password: str, namespace: str) -> 
         },
         "type": "Opaque",
         "data": {
-            "username": base64.b64encode(username.encode()).decode(),
-            "password": base64.b64encode(password.encode()).decode(),
+            "VIP_TEST_USERNAME": base64.b64encode(username.encode()).decode(),
+            "VIP_TEST_PASSWORD": base64.b64encode(password.encode()).decode(),
         },
     }
 
