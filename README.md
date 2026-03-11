@@ -96,7 +96,7 @@ export VIP_TEST_PASSWORD="test-password"
 uv run pytest
 ```
 
-For PTD deployments with Keycloak, `ptd verify` handles this automatically —
+For deployments with Keycloak, `vip verify` handles this automatically —
 it provisions a test user and passes credentials to VIP.
 
 ### Okta / external OIDC provider (interactive)
@@ -124,17 +124,6 @@ tests (using the minted key) work with a single interactive login.
 > **Note**: `--interactive-auth` is not available in container/CI
 > environments.  For automated runs against OIDC deployments, pre-provision
 > credentials and set the environment variables above.
-
-### PTD integration
-
-When using `ptd verify`, auth mode is selected automatically based on the
-Site CR:
-
-| Deployment auth | ptd verify mode | What happens |
-|-----------------|-----------------|--------------|
-| Keycloak | `ptd verify <target>` (K8s Job) | Test user auto-provisioned |
-| Okta / OIDC | `ptd verify <target> --local --interactive-auth` | Browser popup for login |
-| Any | `ptd verify <target> --local` | Uses pre-existing credentials from Secret or env vars |
 
 ### Cluster connection
 
@@ -186,7 +175,7 @@ To use `vip verify`, add a `[cluster]` section to `vip.toml`:
 provider = "aws"                     # "aws" or "azure"
 name = "my-cluster-20260101"         # EKS/AKS cluster name
 region = "us-east-1"                 # Cloud region
-profile = "ptd-staging"              # AWS: profile name
+profile = "my-staging"              # AWS: profile name
 role_arn = "arn:aws:iam::123:role/admin"  # AWS: cross-account role (optional)
 ```
 

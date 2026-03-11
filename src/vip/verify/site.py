@@ -1,7 +1,4 @@
-"""Site CR parsing and VIP config generation.
-
-Transfused from PTD's cmd/internal/verify/config.go.
-"""
+"""Site CR parsing and VIP config generation."""
 
 from __future__ import annotations
 

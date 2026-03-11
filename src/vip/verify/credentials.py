@@ -32,8 +32,6 @@ def ensure_keycloak_test_user(
 ) -> None:
     """Create or reset a test user in Keycloak and store credentials in a K8s Secret.
 
-    Transfused from PTD's keycloak.go:EnsureTestUser.
-
     This function performs the following steps:
     1. Check if vip-test-credentials Secret exists (skip if present)
     2. Fetch Keycloak admin credentials from K8s Secret

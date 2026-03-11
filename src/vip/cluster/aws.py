@@ -65,8 +65,8 @@ def get_eks_kubeconfig(
 def _generate_eks_token(session, cluster_name: str) -> str:
     """Generate an EKS bearer token using STS presigned URL.
 
-    This is the same technique used by ``aws eks get-token`` and PTD's
-    Go implementation.  The token is a base64url-encoded presigned STS
+    This is the same technique used by ``aws eks get-token``.
+    The token is a base64url-encoded presigned STS
     GetCallerIdentity URL, prefixed with ``k8s-aws-v1.``.
 
     The presigned URL places all auth parameters in query strings (not
