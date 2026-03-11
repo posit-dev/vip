@@ -190,6 +190,22 @@ silently swallowed inside conditionals.
 - **`preview.yml`** -- runs selftests, renders Quarto report, publishes
   PR preview to gh-pages via `rossjrw/pr-preview-action@v1`. Uses uv
   and Quarto caches.
+- **`pr-title.yml`** -- validates PR titles follow conventional commit
+  format. Squash merges use the PR title as the commit message.
+
+## PR titles
+
+PR titles must use conventional commit format. CI enforces this via
+`amannn/action-semantic-pull-request`. Format:
+
+```
+<type>: <description>
+<type>(scope): <description>
+```
+
+Valid types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
+`test`, `build`, `ci`, `chore`, `revert`. Scope is optional. A `!`
+after the type or scope marks a breaking change (e.g. `feat!: ...`).
 
 ## Showboat demos
 
@@ -254,3 +270,4 @@ CI will run `showboat verify` on any new or changed files in
   vice versa).
 - Forgetting the `@connect`/`@workbench`/`@package_manager` tag in
   feature files (breaks auto-skip).
+- Using non-conventional PR titles (must be `type: description`).
