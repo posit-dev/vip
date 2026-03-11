@@ -132,7 +132,7 @@ Key rules:
 | File | Purpose |
 |---|---|
 | `src/vip/cli.py` | CLI entry point: verify, cluster, auth commands |
-| `src/vip/config.py` | TOML config loader, dataclasses for all settings |
+| `src/vip/config.py` | TOML config loader, dataclasses, `Mode` enum, per-mode validation |
 | `src/vip/plugin.py` | pytest plugin: markers, auto-skip, JSON report output |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
 | `src/vip/clients/connect.py` | httpx client for Connect API |
