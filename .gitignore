@@ -12,6 +12,7 @@ demo.md
 website/node_modules/
 website/dist/
 website/.astro/
+website/src/data/test-catalog.json
 report/_output/
 report/_freeze/
 report/.quarto/

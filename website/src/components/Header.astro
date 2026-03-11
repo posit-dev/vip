@@ -5,6 +5,7 @@ const { pathname } = Astro.url;
 const links = [
   { href: `${base}`, label: "Home" },
   { href: `${base}getting-started/`, label: "Getting Started" },
+  { href: `${base}tests/`, label: "Tests" },
 ];
 
 function isActive(href: string): boolean {

@@ -1,0 +1,353 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import catalog from "../data/test-catalog.json";
+
+const categories = catalog.categories;
+const totalFeatures = categories.reduce((sum, c) => sum + c.feature_count, 0);
+const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
+---
+
+<Layout title="Test Inventory - VIP">
+  <Header />
+
+  <div class="page-header">
+    <div class="container">
+      <h1>Test Inventory</h1>
+      <p>
+        {totalFeatures} feature files &middot; {totalScenarios} scenarios across {categories.length} categories
+      </p>
+    </div>
+  </div>
+
+  <main class="content">
+    <div class="container">
+      <aside class="toc">
+        <h4>Categories</h4>
+        <ul>
+          {categories.map((cat) => (
+            <li>
+              <a href={`#${cat.id}`}>
+                {cat.label}
+                <span class="toc-count">{cat.scenario_count}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </aside>
+
+      <article class="docs">
+        <section class="start-here">
+          <div class="callout">
+            <div class="callout-header">
+              <span class="callout-icon">&#9654;</span>
+              <strong>Start here</strong>
+            </div>
+            <p>
+              Run <strong>Prerequisites</strong> first. These tests verify connectivity
+              and authentication before testing product features.
+            </p>
+            <a href="#prerequisites" class="callout-link">Jump to Prerequisites &darr;</a>
+          </div>
+        </section>
+
+        {categories.map((cat) => (
+          <section id={cat.id}>
+            <h2>{cat.label}</h2>
+            <p class="category-meta">
+              {cat.feature_count} {cat.feature_count === 1 ? "feature" : "features"} &middot;{" "}
+              {cat.scenario_count} {cat.scenario_count === 1 ? "scenario" : "scenarios"} &middot;{" "}
+              marker: <code>{cat.id}</code>
+            </p>
+
+            {cat.features.map((feature) => (
+              <details class="feature-card">
+                <summary>
+                  <span class="feature-title">{feature.title}</span>
+                  <span class="feature-count">
+                    {feature.scenarios.length} {feature.scenarios.length === 1 ? "scenario" : "scenarios"}
+                  </span>
+                </summary>
+                <div class="feature-body">
+                  {feature.description && (
+                    <p class="feature-desc">{feature.description}</p>
+                  )}
+                  <p class="feature-file">
+                    <code>{feature.file}</code>
+                  </p>
+                  <ul class="scenario-list">
+                    {feature.scenarios.map((scenario) => (
+                      <li>
+                        <details class="scenario-card">
+                          <summary class="scenario-title">{scenario.title}</summary>
+                          <ol class="steps">
+                            {scenario.steps.map((step) => (
+                              <li class="step">{step}</li>
+                            ))}
+                          </ol>
+                        </details>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </details>
+            ))}
+          </section>
+        ))}
+      </article>
+    </div>
+  </main>
+
+  <Footer />
+</Layout>
+
+<style>
+  .page-header {
+    background: var(--posit-navy);
+    color: white;
+    padding: 3rem 1.5rem;
+  }
+
+  .page-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+
+  .page-header p {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 1.0625rem;
+  }
+
+  .container {
+    max-width: var(--max-width);
+    margin: 0 auto;
+  }
+
+  .content .container {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    gap: 3rem;
+    padding: 2.5rem 1.5rem;
+  }
+
+  /* TOC sidebar */
+  .toc {
+    position: sticky;
+    top: 80px;
+    align-self: start;
+    order: 1;
+  }
+
+  .toc h4 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--posit-gray-600);
+    margin-bottom: 0.75rem;
+    font-family: var(--font-mono);
+  }
+
+  .toc ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .toc li {
+    margin-bottom: 0.375rem;
+  }
+
+  .toc a {
+    font-size: 0.8125rem;
+    color: var(--posit-gray-600);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .toc a:hover {
+    color: var(--posit-teal);
+  }
+
+  .toc-count {
+    font-size: 0.75rem;
+    color: var(--posit-gray-600);
+    background: var(--posit-gray-100);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+  }
+
+  /* Main content area */
+  .docs {
+    order: 0;
+    min-width: 0;
+  }
+
+  .docs section {
+    margin-bottom: 3rem;
+  }
+
+  .docs h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--posit-navy);
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--posit-gray-200);
+  }
+
+  .category-meta {
+    font-size: 0.875rem;
+    color: var(--posit-gray-600);
+    margin-bottom: 1rem;
+  }
+
+  /* Start here callout */
+  .start-here {
+    margin-bottom: 2rem;
+  }
+
+  .callout {
+    background: var(--posit-light-blue);
+    border: 1px solid var(--posit-blue);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+  }
+
+  .callout-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+  }
+
+  .callout-icon {
+    color: var(--posit-blue);
+  }
+
+  .callout p {
+    margin: 0 0 0.75rem;
+    font-size: 0.9375rem;
+    color: var(--posit-gray-900);
+  }
+
+  .callout-link {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  /* Feature cards */
+  .feature-card {
+    border: 1px solid var(--posit-gray-200);
+    border-radius: var(--radius);
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+  }
+
+  .feature-card summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.875rem 1rem;
+    cursor: pointer;
+    background: var(--posit-gray-50);
+    font-size: 0.9375rem;
+  }
+
+  .feature-card summary:hover {
+    background: var(--posit-gray-100);
+  }
+
+  .feature-card summary::marker {
+    color: var(--posit-gray-600);
+  }
+
+  .feature-title {
+    font-weight: 600;
+    color: var(--posit-navy);
+  }
+
+  .feature-count {
+    font-size: 0.75rem;
+    color: var(--posit-gray-600);
+    white-space: nowrap;
+    margin-left: 1rem;
+  }
+
+  .feature-body {
+    padding: 1rem;
+    border-top: 1px solid var(--posit-gray-200);
+  }
+
+  .feature-desc {
+    color: var(--posit-gray-600);
+    font-size: 0.875rem;
+    margin-bottom: 0.75rem;
+    white-space: pre-line;
+  }
+
+  .feature-file {
+    font-size: 0.8125rem;
+    margin-bottom: 1rem;
+  }
+
+  .feature-file code {
+    font-size: 0.8125rem;
+  }
+
+  /* Scenario list */
+  .scenario-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .scenario-list > li {
+    margin-bottom: 0.5rem;
+  }
+
+  .scenario-card {
+    border: 1px solid var(--posit-gray-200);
+    border-radius: 6px;
+  }
+
+  .scenario-title {
+    padding: 0.625rem 0.875rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--posit-gray-900);
+  }
+
+  .scenario-title:hover {
+    background: var(--posit-gray-50);
+  }
+
+  .steps {
+    padding: 0.75rem 1rem 0.75rem 2rem;
+    border-top: 1px solid var(--posit-gray-200);
+    margin: 0;
+  }
+
+  .step {
+    font-size: 0.8125rem;
+    font-family: var(--font-mono);
+    color: var(--posit-gray-900);
+    margin-bottom: 0.25rem;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 768px) {
+    .content .container {
+      grid-template-columns: 1fr;
+    }
+
+    .toc {
+      display: none;
+    }
+  }
+</style>

@@ -62,6 +62,10 @@ demo-save NAME:
     mv demo.md validation_docs/demo-{{ NAME }}.md
     @echo "Saved to validation_docs/demo-{{ NAME }}.md"
 
+# Generate test catalog JSON for the website
+website-data:
+    uv run python scripts/generate-test-catalog.py
+
 # Generate a Quarto report from selftests (for CI / demo purposes)
 report-selftest:
     uv run pytest selftests/ --vip-report=report/results.json
