@@ -41,20 +41,26 @@ jobs:
           timeout 180 bash -c \
             'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
 
-      # Resolve the actual Workbench version from the installed package.
-      # Falls back to the image tag if dpkg-query returns nothing (e.g. package
-      # uses the legacy rstudio-server name in some builds).
+      # Resolve the actual Workbench version.
+      # For pinned tags (ubuntu2204-2026.01.1) the version is embedded in the tag.
+      # For rolling tags (ubuntu2204) fall back to dpkg-query inside the container.
       - name: Resolve Workbench version
         id: version
         run: |
-          VERSION=$(docker exec workbench dpkg-query -W -f='${Version}\n' rstudio-workbench 2>/dev/null \
-                    || docker exec workbench dpkg-query -W -f='${Version}\n' rstudio-server 2>/dev/null \
-                    || echo "")
-          # Strip any surrounding whitespace / newlines
-          VERSION=$(echo "${VERSION}" | xargs)
-          if [ -z "${VERSION}" ]; then
-            echo "WARNING: dpkg-query could not resolve package version; falling back to image tag"
-            VERSION="${{ matrix.workbench-version }}"
+          IMAGE_TAG="${{ matrix.workbench-version }}"
+          if [[ "$IMAGE_TAG" == *-* ]]; then
+            # e.g. ubuntu2204-2026.01.1 → 2026.01.1
+            VERSION="${IMAGE_TAG#*-}"
+          else
+            # Rolling tag (e.g. ubuntu2204) — query the installed package
+            VERSION=$(docker exec workbench sh -c \
+              "dpkg-query -W -f='\${Version}' rstudio-workbench 2>/dev/null || \
+               dpkg-query -W -f='\${Version}' rstudio-server 2>/dev/null || \
+               echo ''" || echo "")
+            VERSION=$(echo "$VERSION" | tr -d '[:space:]')
+            if [ -z "$VERSION" ]; then
+              VERSION="$IMAGE_TAG"
+            fi
           fi
           echo "Resolved Workbench version: ${VERSION}"
           echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
