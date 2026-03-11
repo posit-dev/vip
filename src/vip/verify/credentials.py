@@ -63,12 +63,20 @@ def ensure_keycloak_test_user(
         namespace,
         "--ignore-not-found",
         "-o",
-        "jsonpath={.metadata.name}",
+        "json",
     ]
     result = subprocess.run(check_cmd, capture_output=True, text=True, check=True)
 
-    if result.stdout.strip() == _VIP_TEST_CREDENTIALS_SECRET:
-        print("Test user credentials secret already exists, skipping creation")
+    if result.stdout.strip():
+        secret_data = json.loads(result.stdout).get("data", {})
+        if "username" in secret_data or "password" in secret_data:
+            print(
+                "Warning: Test credentials secret uses old key names ('username'/'password'). "
+                "Run 'vip verify cleanup' to regenerate it with the current key names "
+                "('VIP_TEST_USERNAME'/'VIP_TEST_PASSWORD')."
+            )
+        else:
+            print("Test user credentials secret already exists, skipping creation")
         return
 
     print("Creating test user in Keycloak")

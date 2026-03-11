@@ -161,7 +161,7 @@ def run_verify(args: argparse.Namespace) -> None:
     config.validate_for_mode(mode)
 
     # Connect to cluster for modes that need it
-    if config.cluster.is_configured:
+    if mode != Mode.local and config.cluster.is_configured:
         _connect_cluster(config.cluster)
 
     vip_config_toml, site_cr = _phase_generate_config(args)
