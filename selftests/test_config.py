@@ -5,7 +5,9 @@ from __future__ import annotations
 import pytest
 
 from vip.config import (
+    ClusterConfig,
     ConnectConfig,
+    Mode,
     ProductConfig,
     VIPConfig,
     load_config,
@@ -261,3 +263,33 @@ policy_checks_enabled = true
         assert cfg.email_enabled is True
         assert cfg.monitoring_enabled is True
         assert cfg.security_policy_checks_enabled is True
+
+
+class TestMode:
+    def test_enum_values(self):
+        assert Mode.local.value == "local"
+        assert Mode.k8s_job.value == "k8s_job"
+        assert Mode.config_only.value == "config_only"
+
+    def test_str_comparison(self):
+        assert Mode.local == "local"
+
+
+class TestVIPConfigValidateForMode:
+    def test_local_mode_no_cluster_required(self):
+        cfg = VIPConfig()  # no cluster configured
+        cfg.validate_for_mode(Mode.local)  # must not raise
+
+    def test_k8s_job_requires_cluster(self):
+        cfg = VIPConfig()
+        with pytest.raises(ValueError, match="cluster configuration"):
+            cfg.validate_for_mode(Mode.k8s_job)
+
+    def test_k8s_job_passes_with_cluster(self):
+        cfg = VIPConfig(cluster=ClusterConfig(provider="aws", name="my-cluster"))
+        cfg.validate_for_mode(Mode.k8s_job)  # must not raise
+
+    def test_config_only_requires_cluster(self):
+        cfg = VIPConfig()
+        with pytest.raises(ValueError, match="cluster configuration"):
+            cfg.validate_for_mode(Mode.config_only)

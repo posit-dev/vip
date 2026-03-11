@@ -52,7 +52,6 @@ def create_job(
     config_map_name: str,
     image: str = "ghcr.io/posit-dev/vip:latest",
     categories: str | None = None,
-    interactive_auth: bool = False,
     timeout_seconds: int = 840,
 ) -> None:
     """Create a K8s Job to run VIP tests.
@@ -63,7 +62,6 @@ def create_job(
         config_map_name: Name of the ConfigMap containing vip.toml
         image: VIP container image
         categories: Test categories to run (pytest -m marker)
-        interactive_auth: Whether interactive auth was used
         timeout_seconds: Job timeout in seconds
 
     Raises:
@@ -74,19 +72,18 @@ def create_job(
     if categories:
         pytest_args.extend(["-m", categories])
 
-    # Build container command
-    # If interactive auth was used, credentials are already in the Secret
-    # Otherwise, we need to set env vars from the Secret
-    env_from = []
-    if not interactive_auth:
-        env_from.append(
-            {
-                "secretRef": {
-                    "name": "vip-test-credentials",
-                    "optional": True,
-                }
+    # Always mount the vip-test-credentials Secret via envFrom so that
+    # credentials written by either credential path (Keycloak or interactive)
+    # are available as environment variables.  optional=True means the Job
+    # starts even when no Secret exists (credentials come from elsewhere).
+    env_from = [
+        {
+            "secretRef": {
+                "name": "vip-test-credentials",
+                "optional": True,
             }
-        )
+        }
+    ]
 
     job_spec = {
         "apiVersion": "batch/v1",
