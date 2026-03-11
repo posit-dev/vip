@@ -19,6 +19,10 @@ jobs:
       fail-fast: false
       matrix:
         workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2026.01.1", "ubuntu2204"]') || fromJSON('["ubuntu2204-2026.01.1"]') }}
+    # Throwaway PAM credentials created inside the ephemeral Docker container
+    env:
+      WB_TEST_USER: rstudio
+      WB_TEST_PASSWD: Rstudio123!
     steps:
       - uses: actions/checkout@v4
 
@@ -31,8 +35,8 @@ jobs:
             --name workbench \
             -p 8787:8787 \
             -e RSW_LICENSE="${{ secrets.WORKBENCH_LICENSE }}" \
-            -e RSW_TESTUSER=rstudio \
-            -e RSW_TESTUSER_PASSWD="Rstudio123!" \
+            -e RSW_TESTUSER="${WB_TEST_USER}" \
+            -e RSW_TESTUSER_PASSWD="${WB_TEST_PASSWD}" \
             rstudio/rstudio-workbench:${{ matrix.workbench-version }}
 
       # Wait for the server health endpoint to respond
@@ -41,27 +45,27 @@ jobs:
           timeout 180 bash -c \
             'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
 
-      # Resolve the actual Workbench version.
-      # For pinned tags (ubuntu2204-2026.01.1) the version is embedded in the tag.
-      # For rolling tags (ubuntu2204) fall back to dpkg-query inside the container.
+      # Resolve the running Workbench version via an authenticated API call.
+      # 1. POST /auth-sign-in with PAM credentials to get a session cookie.
+      # 2. GET /api/server-info with that cookie to read the real running version.
       - name: Resolve Workbench version
         id: version
         run: |
-          IMAGE_TAG="${{ matrix.workbench-version }}"
-          if [[ "$IMAGE_TAG" == *-* ]]; then
-            # e.g. ubuntu2204-2026.01.1 → 2026.01.1
-            VERSION="${IMAGE_TAG#*-}"
-          else
-            # Rolling tag (e.g. ubuntu2204) — query the installed package
-            VERSION=$(docker exec workbench sh -c \
-              "dpkg-query -W -f='\${Version}' rstudio-workbench 2>/dev/null || \
-               dpkg-query -W -f='\${Version}' rstudio-server 2>/dev/null || \
-               echo ''" || echo "")
-            VERSION=$(echo "$VERSION" | tr -d '[:space:]')
-            if [ -z "$VERSION" ]; then
-              VERSION="$IMAGE_TAG"
-            fi
+          # Sign in with PAM credentials to obtain a session cookie
+          curl -s -c /tmp/wb_cookies.txt \
+            -d "username=${WB_TEST_USER}&password=${WB_TEST_PASSWD}&stay_signed_in=0&appUri=" \
+            http://localhost:8787/auth-sign-in > /dev/null
+
+          # Fetch server info using the authenticated session
+          RESPONSE=$(curl -s -b /tmp/wb_cookies.txt http://localhost:8787/api/server-info)
+          VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty')
+
+          if [ -z "${VERSION}" ]; then
+            echo "ERROR: could not extract version from /api/server-info"
+            echo "Response: ${RESPONSE}"
+            exit 1
           fi
+
           echo "Resolved Workbench version: ${VERSION}"
           echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -119,8 +123,8 @@ jobs:
 
           [auth]
           provider = "password"
-          username = "rstudio"
-          password = "Rstudio123!"
+          username = "${WB_TEST_USER}"
+          password = "${WB_TEST_PASSWD}"
           EOF
 
       # Run the subset of tests that work against Docker Workbench

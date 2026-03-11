@@ -76,8 +76,13 @@ docker run -d \
 # Wait for ready
 timeout 180 bash -c 'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
 
-# Resolve version via dpkg (the /api/server-info endpoint requires authentication)
-VERSION=$(docker exec workbench dpkg-query -W -f='${Version}\n' rstudio-workbench)
+# Resolve version from the running instance via authenticated API call.
+# POST /auth-sign-in to get a session cookie, then GET /api/server-info.
+curl -s -c /tmp/wb_cookies.txt \
+  -d "username=rstudio&password=Rstudio123!&stay_signed_in=0&appUri=" \
+  http://localhost:8787/auth-sign-in > /dev/null
+RESPONSE=$(curl -s -b /tmp/wb_cookies.txt http://localhost:8787/api/server-info)
+VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty')
 
 # Run tests
 pytest tests/prerequisites/test_components.py tests/workbench/test_auth.py ...
@@ -372,6 +377,6 @@ Once Phase 1 is stable:
    work once Phase 2 is implemented.
 
 5. **`/api/server-info` authentication**: The Workbench `/api/server-info` endpoint
-   requires authentication in the Docker image (returns 4xx without credentials).
-   Version resolution in the workflow uses `dpkg-query` inside the container
-   instead, which is reliable and auth-free.
+   requires authentication. Version resolution uses `POST /auth-sign-in` to get a
+   session cookie, then `GET /api/server-info` with that cookie.  This also
+   validates that password auth is working before the Playwright tests run.
