@@ -67,6 +67,18 @@ markers = [
     "if_applicable: test is skipped when the feature is not configured",
 ]
 
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+version_variables = ["src/vip/__init__.py:__version__"]
+major_on_zero = false
+branch = "main"
+commit_message = "chore(release): {version}"
+tag_format = "v{version}"
+
+[tool.semantic_release.changelog]
+generate = true
+file = "CHANGELOG.md"
+
 [tool.ruff]
 line-length = 100
 src = ["src", "tests", "selftests", "examples"]
