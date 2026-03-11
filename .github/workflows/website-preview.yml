@@ -1,0 +1,61 @@
+name: Website Preview
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+concurrency: website-preview-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  preview:
+    if: github.event.action != 'closed'
+    name: Build & deploy website preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Generate test catalog
+        run: |
+          if [ -f scripts/generate-test-catalog.py ]; then
+            uv run python scripts/generate-test-catalog.py
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Build website
+        run: |
+          cd website
+          npm ci
+          npm run build
+
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: website/dist/
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview-site
+
+  cleanup:
+    if: github.event.action == 'closed'
+    name: Clean up website preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: website/dist/
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview-site
+          action: remove
