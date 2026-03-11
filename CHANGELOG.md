@@ -1,6 +1,53 @@
 # CHANGELOG
 
 
+## v0.1.2 (2026-03-11)
+
+### Bug Fixes
+
+- Separate execution modes and fix credential wiring
+  ([#59](https://github.com/posit-dev/vip/pull/59),
+  [`c086dce`](https://github.com/posit-dev/vip/commit/c086dce6dbc5fd83dfea33d092e92164f708ea4a))
+
+* Fix credential Secret key names to match expected env vars
+
+Both credential paths wrote K8s Secret keys that did not match the env var names config.py reads via
+  envFrom. Keycloak wrote "username"/ "password"; interactive wrote
+  "connect-api-key"/"pm-token"/etc. Rename all keys to VIP_TEST_USERNAME, VIP_TEST_PASSWORD,
+  VIP_CONNECT_API_KEY, VIP_WORKBENCH_API_KEY, VIP_PM_TOKEN so the Secret mounts correctly as
+  environment variables.
+
+* Always mount credentials Secret in K8s Job
+
+The envFrom mount was conditionally skipped when interactive_auth=True, meaning credentials written
+  by the interactive path were never exposed to the Job container. Both credential paths write to
+  the same Secret, so always mount it. Remove the interactive_auth parameter from create_job.
+
+* Add Mode enum and per-mode config validation
+
+Introduce Mode(str, Enum) with local, k8s_job, and config_only values and a
+  VIPConfig.validate_for_mode() method that raises ValueError when required fields are missing for
+  the requested mode. k8s_job and config_only modes require cluster configuration.
+
+* Split run_verify into named phase functions
+
+Break the monolithic run_verify into _resolve_mode, _phase_generate_config,
+  _phase_provision_credentials, and _phase_run_tests. run_verify becomes a thin orchestrator that
+  resolves the mode, validates config, and delegates to each phase. Update CLI help text to document
+  execution and credential modes.
+
+* Document execution modes and credential approaches
+
+Add mode/credential matrix to vip.toml.example explaining the three execution modes and two
+  credential approaches. Update cluster section comments to clarify when it is required. Update key
+  source files table to reflect Mode enum in config.py.
+
+* Address PR review: gate cluster connect by mode, detect stale Secret keys
+
+Skip cluster connection in local mode since it's unnecessary. Detect old-format Secret key names
+  (username/password) and warn users to run `vip verify cleanup` to regenerate.
+
+
 ## v0.1.1 (2026-03-11)
 
 ### Bug Fixes
