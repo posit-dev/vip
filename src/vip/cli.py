@@ -10,6 +10,10 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from vip.config import Mode
 
 
 def _connect_cluster(cluster_config) -> Path:
@@ -87,43 +91,38 @@ def connect_to_cluster(args: argparse.Namespace) -> None:
     print(str(kubeconfig_path))
 
 
-def run_verify(args: argparse.Namespace) -> None:
-    """Main verification flow."""
-    from vip.config import load_config
+def _resolve_mode(args: argparse.Namespace) -> Mode:
+    """Convert boolean CLI flags to a Mode enum value."""
+    from vip.config import Mode
 
-    config = load_config()
+    if args.config_only:
+        return Mode.config_only
+    if args.local:
+        return Mode.local
+    return Mode.k8s_job
 
-    # 1. Connect to cluster (if cluster is configured)
-    if config.cluster.is_configured:
-        _connect_cluster(config.cluster)
 
-    # 2. Fetch Site CR and generate vip.toml
+def _phase_generate_config(args: argparse.Namespace) -> tuple[str, dict]:
+    """Fetch Site CR and return (vip_config_toml, site_cr) tuple."""
     from vip.verify.site import fetch_site_cr, generate_vip_config
 
     print(f"Fetching Site CR: {args.site} (namespace: {args.namespace})")
     site_cr = fetch_site_cr(args.site, args.namespace)
-    vip_config_toml = generate_vip_config(site_cr, args.target)
+    return generate_vip_config(site_cr, args.target), site_cr
 
-    # 3. If --config-only, print and exit
-    if args.config_only:
-        print(vip_config_toml)
-        return
 
-    # Extract Connect URL from site CR for credential operations
-    connect_url = _extract_connect_url(site_cr)
-
-    # 4. Handle credentials
+def _phase_provision_credentials(site_cr: dict, args: argparse.Namespace) -> None:
+    """Provision test credentials in the K8s cluster."""
     if args.interactive_auth:
         from vip.verify.credentials import mint_interactive_credentials
 
+        connect_url = _extract_connect_url(site_cr)
         if not connect_url:
             print("Error: Connect URL not found in Site CR", file=sys.stderr)
             sys.exit(1)
-
         print("Minting credentials via interactive auth...")
         mint_interactive_credentials(connect_url, args.site, args.namespace)
     else:
-        # Try to ensure Keycloak test user (only if Keycloak is configured)
         keycloak_url = _extract_keycloak_url(site_cr)
         if keycloak_url:
             from vip.verify.credentials import ensure_keycloak_test_user
@@ -142,11 +141,37 @@ def run_verify(args: argparse.Namespace) -> None:
                 print(f"Warning: Could not create Keycloak test user: {e}", file=sys.stderr)
                 print("Continuing without Keycloak credentials...", file=sys.stderr)
 
-    # 5. Run tests
-    if args.local:
+
+def _phase_run_tests(vip_config_toml: str, mode: Mode, args: argparse.Namespace) -> None:
+    """Run tests locally or as a K8s Job depending on mode."""
+    from vip.config import Mode
+
+    if mode == Mode.local:
         _run_local_tests(vip_config_toml, args)
     else:
         _run_k8s_job(vip_config_toml, args)
+
+
+def run_verify(args: argparse.Namespace) -> None:
+    """Main verification flow."""
+    from vip.config import Mode, load_config
+
+    config = load_config()
+    mode = _resolve_mode(args)
+    config.validate_for_mode(mode)
+
+    # Connect to cluster for modes that need it
+    if config.cluster.is_configured:
+        _connect_cluster(config.cluster)
+
+    vip_config_toml, site_cr = _phase_generate_config(args)
+
+    if mode == Mode.config_only:
+        print(vip_config_toml)
+        return
+
+    _phase_provision_credentials(site_cr, args)
+    _phase_run_tests(vip_config_toml, mode, args)
 
 
 def _extract_connect_url(site_cr: dict) -> str | None:
@@ -286,7 +311,22 @@ def main() -> None:
     mint_parser.set_defaults(func=mint_connect_key)
 
     # vip verify
-    verify_parser = subparsers.add_parser("verify", help="Verify a Posit Team deployment")
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help="Verify a Posit Team deployment",
+        description=(
+            "Verify a Posit Team deployment by fetching its Site CR, generating "
+            "a vip.toml, provisioning test credentials, and running the test suite.\n\n"
+            "Execution modes:\n"
+            "  (default)           Submit a Kubernetes Job and stream its logs\n"
+            "  --local             Run pytest on this machine\n"
+            "  --config-only       Generate vip.toml only, print and exit\n\n"
+            "Credential modes:\n"
+            "  (default)           Create a Keycloak test user (requires Keycloak OIDC)\n"
+            "  --interactive-auth  Mint credentials via browser login"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     verify_parser.add_argument(
         "target", help="Target name (informational, used for naming resources)"
     )
