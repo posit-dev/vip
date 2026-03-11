@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import os
 import sys
 from dataclasses import dataclass, field
@@ -11,6 +12,19 @@ if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
+
+
+class Mode(str, enum.Enum):
+    """Execution mode for a VIP verification run.
+
+    local       -- run pytest directly on the caller's machine
+    k8s_job     -- submit a Kubernetes Job and stream its logs
+    config_only -- generate vip.toml from the Site CR and print it; no tests run
+    """
+
+    local = "local"
+    k8s_job = "k8s_job"
+    config_only = "config_only"
 
 
 def _normalize_url(url: str) -> str:
@@ -163,6 +177,25 @@ class VIPConfig:
     email_enabled: bool = False
     monitoring_enabled: bool = False
     security_policy_checks_enabled: bool = False
+
+    def validate_for_mode(self, mode: Mode) -> None:
+        """Raise ValueError if required fields are missing for *mode*.
+
+        Call this after loading config from file and after CLI overrides
+        have been applied, before executing any I/O.
+
+        Fields required by mode:
+          local:       none beyond product URLs (config.py defaults are fine)
+          k8s_job:     cluster.is_configured (provider + name)
+          config_only: cluster.is_configured (need to reach the API server)
+        """
+        if mode in (Mode.k8s_job, Mode.config_only):
+            if not self.cluster.is_configured:
+                raise ValueError(
+                    f"mode={mode.value!r} requires cluster configuration "
+                    "(set [cluster] provider and name in vip.toml or via env vars "
+                    "VIP_CLUSTER_PROVIDER and VIP_CLUSTER_NAME)"
+                )
 
     def product_config(self, product: str) -> ProductConfig:
         """Look up a product configuration by name."""
