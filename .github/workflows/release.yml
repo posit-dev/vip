@@ -7,10 +7,10 @@ on:
 jobs:
   release:
     name: Semantic Release
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write
     concurrency:
       group: release
       cancel-in-progress: false
@@ -25,7 +25,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install python-semantic-release
-        run: pip install python-semantic-release
+        run: pip install python-semantic-release==9.21.0
 
       - name: Run semantic-release
         env:
