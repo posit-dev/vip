@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 
 @dataclass
@@ -14,6 +20,8 @@ class TestResult:
     duration: float = 0.0
     longrepr: str | None = None
     markers: list[str] = field(default_factory=list)
+    scenario_title: str | None = None
+    feature_description: str | None = None
 
     @property
     def category(self) -> str:
@@ -97,6 +105,8 @@ def load_results(path: str | Path) -> ReportData:
             duration=r.get("duration", 0.0),
             longrepr=r.get("longrepr"),
             markers=r.get("markers", []),
+            scenario_title=r.get("scenario_title"),
+            feature_description=r.get("feature_description"),
         )
         for r in raw.get("results", [])
     ]
@@ -120,3 +130,17 @@ def load_results(path: str | Path) -> ReportData:
         products=products,
         results=results,
     )
+
+
+def load_troubleshooting(path: str | Path) -> dict[str, dict]:
+    """Load troubleshooting hints from a TOML file.
+
+    Returns a dict keyed by scenario title.  Each value contains
+    ``summary``, ``likely_causes``, ``suggested_steps``, and optionally
+    ``docs_url``.  Returns an empty dict if the file does not exist.
+    """
+    p = Path(path)
+    if not p.exists():
+        return {}
+    with p.open("rb") as f:
+        return tomllib.load(f)
