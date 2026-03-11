@@ -75,6 +75,9 @@ branch = "main"
 commit_message = "chore(release): {version}"
 tag_format = "v{version}"
 
+[tool.semantic_release.remote]
+ignore_token_for_push = true
+
 [tool.semantic_release.changelog]
 generate = true
 file = "CHANGELOG.md"
