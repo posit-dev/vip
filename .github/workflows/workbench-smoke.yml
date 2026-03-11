@@ -1,0 +1,207 @@
+name: Workbench Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 7 * * *" # daily at 7am UTC
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  workbench-smoke:
+    name: Smoke test against Workbench ${{ matrix.workbench-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2026.01.1", "ubuntu2204"]') || fromJSON('["ubuntu2204-2026.01.1"]') }}
+    # Throwaway PAM credentials created inside the ephemeral Docker container
+    env:
+      WB_TEST_USER: rstudio
+      WB_TEST_PASSWD: Rstudio123!
+    steps:
+      - uses: actions/checkout@v4
+
+      # Start Workbench in Docker
+      # RSW_TESTUSER/RSW_TESTUSER_PASSWD provision the default test user automatically.
+      # Using RSW_LICENSE (not RSP_LICENSE) for license key activation.
+      - name: Start Workbench
+        run: |
+          docker run -d \
+            --name workbench \
+            -p 8787:8787 \
+            -e RSW_LICENSE="${{ secrets.WORKBENCH_LICENSE }}" \
+            -e RSW_TESTUSER="${WB_TEST_USER}" \
+            -e RSW_TESTUSER_PASSWD="${WB_TEST_PASSWD}" \
+            rstudio/rstudio-workbench:${{ matrix.workbench-version }}
+
+      # Wait for the server health endpoint to respond
+      - name: Wait for Workbench to be ready
+        run: |
+          timeout 180 bash -c \
+            'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
+
+      # Resolve the running Workbench version.
+      # Primary: authenticated GET /api/server-info (sign in with -L to follow the
+      #          302 redirect so all session cookies are captured).
+      # Fallback: rstudio-server version command inside the container (queries the
+      #           running binary directly; satisfies "verify the running instance").
+      - name: Resolve Workbench version
+        id: version
+        run: |
+          # Sign in - follow redirects (-L) so the session cookie jar is fully populated
+          curl -s -L -c /tmp/wb_cookies.txt \
+            -d "username=${WB_TEST_USER}&password=${WB_TEST_PASSWD}" \
+            http://localhost:8787/auth-sign-in > /dev/null
+
+          # Fetch server info with the authenticated session
+          RESPONSE=$(curl -s -b /tmp/wb_cookies.txt http://localhost:8787/api/server-info)
+          VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty' 2>/dev/null || true)
+
+          # Fallback: query the running binary directly if the API didn't return JSON
+          if [ -z "${VERSION}" ]; then
+            echo "INFO: /api/server-info did not yield a version (response: ${RESPONSE:0:200})"
+            echo "INFO: Falling back to rstudio-server version"
+            VERSION=$(docker exec workbench rstudio-server version 2>/dev/null \
+                      | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+\+[^[:space:]]+' | head -1 || true)
+          fi
+
+          if [ -z "${VERSION}" ]; then
+            echo "ERROR: Could not resolve version from the running Workbench instance"
+            exit 1
+          fi
+
+          echo "Resolved Workbench version: ${VERSION}"
+          echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # Rename the check run so the job title shows the resolved version
+      - name: Update job title with resolved version
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const resolvedVersion = '${{ steps.version.outputs.resolved }}';
+            const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            const currentJob = jobs.find(
+              j => j.status === 'in_progress' && j.name.includes('${{ matrix.workbench-version }}')
+            );
+            if (currentJob) {
+              await github.rest.checks.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                check_run_id: currentJob.id,
+                name: `Smoke test against Workbench ${resolvedVersion}`,
+              });
+            }
+
+      # Set up Python and install VIP
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Install Playwright browsers
+        run: uv run playwright install chromium
+
+      # Generate vip.toml from Docker container outputs
+      - name: Configure VIP for CI Workbench
+        run: |
+          cat > vip.toml << EOF
+          [general]
+          deployment_name = "CI Workbench"
+
+          [connect]
+          enabled = false
+
+          [workbench]
+          enabled = true
+          url = "http://localhost:8787"
+          version = "${{ steps.version.outputs.resolved }}"
+
+          [package_manager]
+          enabled = false
+
+          [auth]
+          provider = "password"
+          username = "${WB_TEST_USER}"
+          password = "${WB_TEST_PASSWD}"
+          EOF
+
+      # Run the subset of tests that work against Docker Workbench
+      - name: Run Workbench smoke tests
+        run: |
+          uv run pytest \
+            tests/prerequisites/test_components.py \
+            tests/workbench/test_auth.py \
+            -v -k "workbench" \
+            --vip-config=vip.toml \
+            --junitxml=smoke-results.xml
+
+      # Upload test results for debugging failures
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workbench-smoke-results-${{ steps.version.outputs.resolved }}
+          path: smoke-results.xml
+
+      # Write a rich job summary with test details and emoji
+      - name: Write workflow summary
+        if: always()
+        run: |
+          RESOLVED="${{ steps.version.outputs.resolved }}"
+          WB_URL="http://localhost:8787"
+          REQUESTED="${{ matrix.workbench-version }}"
+          RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+          {
+            echo "## 🧪 Workbench Smoke Tests — v${RESOLVED}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| 🏷️ **Requested version** | \`${REQUESTED}\` |"
+            echo "| ✅ **Resolved version** | \`${RESOLVED}\` |"
+            echo "| 🌐 **Workbench URL** | \`${WB_URL}\` |"
+            echo "| 📅 **Run date** | ${RUN_DATE} |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f smoke-results.xml ]; then
+            TESTS=$(grep -oP '(?<=tests=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            FAILURES=$(grep -oP '(?<=failures=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            ERRORS=$(grep -oP '(?<=errors=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            SKIPPED=$(grep -oP '(?<=skipped=")[^"]+' smoke-results.xml | head -1 || echo 0)
+            TESTS=${TESTS:-0}; FAILURES=${FAILURES:-0}; ERRORS=${ERRORS:-0}; SKIPPED=${SKIPPED:-0}
+            PASSED=$(( TESTS - FAILURES - ERRORS - SKIPPED ))
+            {
+              echo "### 📊 Test Results"
+              echo ""
+              echo "| Result | Count |"
+              echo "|--------|-------|"
+              echo "| ✅ Passed | ${PASSED} |"
+              echo "| ❌ Failed | ${FAILURES:-0} |"
+              echo "| ⚠️ Errors | ${ERRORS:-0} |"
+              echo "| ⏭️ Skipped | ${SKIPPED:-0} |"
+              echo "| 📝 **Total** | **${TESTS:-0}** |"
+              echo ""
+              if [ "${FAILURES:-0}" = "0" ] && [ "${ERRORS:-0}" = "0" ]; then
+                echo "🎉 **All tests passed!**"
+              else
+                echo "💥 **Some tests failed — check the logs for details.**"
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "> ⚠️ Test results file not found — tests may have been skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Stop and remove the Workbench container
+      - name: Stop Workbench
+        if: always()
+        run: docker stop workbench && docker rm workbench || true
