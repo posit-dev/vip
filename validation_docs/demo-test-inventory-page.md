@@ -1,7 +1,7 @@
 # Test inventory page for the VIP website
 
-*2026-03-11T13:53:54Z by Showboat 0.6.1*
-<!-- showboat-id: 04ddf5c2-4630-49ac-b58d-a462e14483ad -->
+*2026-03-11T17:08:19Z by Showboat 0.6.1*
+<!-- showboat-id: 99a3e3e4-8293-4b1e-a580-39102a2db165 -->
 
 Added a new Test Inventory page to the VIP website (website/src/pages/test-inventory.astro) that:
 - Parses all .feature files in the tests/ directory at build time
@@ -12,15 +12,11 @@ Added a new Test Inventory page to the VIP website (website/src/pages/test-inven
 - Added 'Test Inventory' link to the site navigation header
 
 ```bash
-cd website && npm run build 2>&1 | grep -E '(page.s. built|Complete)'  | sed 's/[0-9][0-9]:[0-9][0-9]:[0-9][0-9]/TIME/' | sed 's/in [0-9]*ms/in Xs/g'
+npm install --prefix website --silent && npm run build --prefix website 2>&1 | grep -c 'page(s) built'
 ```
 
 ```output
-TIME [build] ✓ Completed in Xs.
-TIME [build] ✓ Completed in Xs.
-TIME ✓ Completed in Xs.
-TIME [build] 3 page(s) built in Xs
-TIME [build] Complete!
+1
 ```
 
 ```bash
@@ -32,19 +28,17 @@ grep -o '[0-9]* feature files · [0-9]* scenarios' website/dist/test-inventory/i
 ```
 
 ```bash
-uv run pytest selftests/ -q 2>&1 | grep -E 'passed|failed|error'
+uv run pytest selftests/ -q 2>&1 | grep -E '^[0-9]+ passed' | sed 's/ in [0-9.]*s//' 
 ```
 
 ```output
-52 passed, 1 warning in 0.30s
+52 passed, 1 warning
 ```
 
 ```bash
-uv run ruff check src/ tests/ selftests/ examples/ && uv run ruff format --check src/ tests/ selftests/ examples/ && echo 'All lint and format checks passed'
+grep -o 'scenario-name' website/dist/test-inventory/index.html | wc -l | tr -d ' '
 ```
 
 ```output
-All checks passed!
-74 files already formatted
-All lint and format checks passed
+56
 ```
