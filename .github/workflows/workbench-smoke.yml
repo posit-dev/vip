@@ -41,15 +41,15 @@ jobs:
           timeout 180 bash -c \
             'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
 
-      # Resolve the actual Workbench version for unambiguous job records
+      # Resolve the actual Workbench version from the installed package
+      # Using dpkg-query is more reliable than /api/server-info (which requires auth)
       - name: Resolve Workbench version
         id: version
         run: |
-          RESPONSE=$(curl -sf http://localhost:8787/api/server-info)
-          VERSION=$(echo "${RESPONSE}" | jq -r '.version')
-          if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
-            echo "ERROR: Could not resolve Workbench version from server-info"
-            echo "Response body: ${RESPONSE}"
+          VERSION=$(docker exec workbench dpkg-query -W -f='${Version}\n' rstudio-workbench 2>/dev/null)
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: Could not resolve Workbench version from installed packages"
+            docker exec workbench dpkg-query -l 'rstudio*' || true
             exit 1
           fi
           echo "Resolved Workbench version: ${VERSION}"

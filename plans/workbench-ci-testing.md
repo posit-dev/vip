@@ -76,8 +76,8 @@ docker run -d \
 # Wait for ready
 timeout 180 bash -c 'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
 
-# Resolve version
-VERSION=$(curl -sf http://localhost:8787/api/server-info | jq -r '.version')
+# Resolve version via dpkg (the /api/server-info endpoint requires authentication)
+VERSION=$(docker exec workbench dpkg-query -W -f='${Version}\n' rstudio-workbench)
 
 # Run tests
 pytest tests/prerequisites/test_components.py tests/workbench/test_auth.py ...
@@ -371,6 +371,7 @@ Once Phase 1 is stable:
    and two versions of Python (per Docker Hub docs), so IDE launch tests should
    work once Phase 2 is implemented.
 
-5. **`/api/server-info` format**: The JSON key for the version string in
-   `/api/server-info` needs to be verified against a running instance (assumed
-   to be `version` based on the Workbench client code in `src/vip/clients/workbench.py`).
+5. **`/api/server-info` authentication**: The Workbench `/api/server-info` endpoint
+   requires authentication in the Docker image (returns 4xx without credentials).
+   Version resolution in the workflow uses `dpkg-query` inside the container
+   instead, which is reliable and auth-free.
