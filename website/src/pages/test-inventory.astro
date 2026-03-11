@@ -1,0 +1,596 @@
+---
+import { readFileSync, readdirSync, statSync } from "fs";
+import { join, resolve } from "path";
+import Layout from "../layouts/Layout.astro";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+
+// ---------------------------------------------------------------------------
+// Feature file parser
+// ---------------------------------------------------------------------------
+
+interface Scenario {
+  name: string;
+  steps: string[];
+}
+
+interface FeatureFile {
+  path: string;
+  tags: string[];
+  featureName: string;
+  description: string[];
+  scenarios: Scenario[];
+}
+
+function collectFeatureFiles(dir: string, results: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      collectFeatureFiles(full, results);
+    } else if (entry.endsWith(".feature")) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+function parseFeatureFile(filePath: string): FeatureFile {
+  const content = readFileSync(filePath, "utf-8");
+  const lines = content.split("\n");
+
+  const tags: string[] = [];
+  let featureName = "";
+  const description: string[] = [];
+  const scenarios: Scenario[] = [];
+
+  let lineIndex = 0;
+
+  // Collect leading tag lines
+  while (lineIndex < lines.length) {
+    const line = lines[lineIndex].trim();
+    if (line.startsWith("@")) {
+      tags.push(
+        ...line
+          .split(/\s+/)
+          .filter((t) => t.startsWith("@"))
+          .map((t) => t.slice(1))
+      );
+      lineIndex++;
+    } else {
+      break;
+    }
+  }
+
+  // Feature line
+  while (lineIndex < lines.length) {
+    const line = lines[lineIndex].trim();
+    if (line.startsWith("Feature:")) {
+      featureName = line.slice("Feature:".length).trim();
+      lineIndex++;
+      break;
+    }
+    lineIndex++;
+  }
+
+  // Feature description (lines until first Scenario / Background / @)
+  while (lineIndex < lines.length) {
+    const line = lines[lineIndex];
+    const trimmed = line.trim();
+    if (
+      trimmed.startsWith("Scenario:") ||
+      trimmed.startsWith("Scenario Outline:") ||
+      trimmed.startsWith("Background:") ||
+      trimmed.startsWith("@")
+    ) {
+      break;
+    }
+    if (trimmed !== "") {
+      description.push(trimmed);
+    }
+    lineIndex++;
+  }
+
+  // Scenarios
+  while (lineIndex < lines.length) {
+    const trimmed = lines[lineIndex].trim();
+
+    // Skip blank lines and inline tag lines
+    if (trimmed === "" || trimmed.startsWith("@")) {
+      lineIndex++;
+      continue;
+    }
+
+    if (trimmed.startsWith("Scenario:") || trimmed.startsWith("Scenario Outline:")) {
+      const prefix = trimmed.startsWith("Scenario Outline:") ? "Scenario Outline:" : "Scenario:";
+      const scenarioName = trimmed.slice(prefix.length).trim();
+      const steps: string[] = [];
+      lineIndex++;
+
+      while (lineIndex < lines.length) {
+        const stepLine = lines[lineIndex].trim();
+        if (
+          stepLine === "" ||
+          stepLine.startsWith("Scenario:") ||
+          stepLine.startsWith("Scenario Outline:") ||
+          stepLine.startsWith("@") ||
+          stepLine.startsWith("Examples:")
+        ) {
+          break;
+        }
+        if (
+          stepLine.startsWith("Given ") ||
+          stepLine.startsWith("When ") ||
+          stepLine.startsWith("Then ") ||
+          stepLine.startsWith("And ") ||
+          stepLine.startsWith("But ")
+        ) {
+          steps.push(stepLine);
+        }
+        lineIndex++;
+      }
+
+      scenarios.push({ name: scenarioName, steps });
+    } else {
+      lineIndex++;
+    }
+  }
+
+  return { path: filePath, tags, featureName, description, scenarios };
+}
+
+// ---------------------------------------------------------------------------
+// Load and group all feature files
+// ---------------------------------------------------------------------------
+
+// Resolve the tests directory relative to the repo root (one level up from website/)
+const repoRoot = resolve(process.cwd(), "..");
+const testsDir = join(repoRoot, "tests");
+
+const featureFiles = collectFeatureFiles(testsDir).map(parseFeatureFile);
+
+// Define display groups in priority order
+interface Group {
+  id: string;
+  label: string;
+  description: string;
+  color: string;
+  isStartingPoint?: boolean;
+  features: FeatureFile[];
+}
+
+const groupDefs = [
+  {
+    id: "prerequisites",
+    label: "Prerequisites",
+    description:
+      "Run these first. They verify that servers are reachable and credentials are available — prerequisites for all other tests.",
+    color: "var(--posit-navy)",
+    isStartingPoint: true,
+  },
+  {
+    id: "connect",
+    label: "Connect",
+    description:
+      "Tests for Posit Connect: authentication, content deployment, data sources, packages, email, and runtime versions.",
+    color: "var(--posit-teal)",
+  },
+  {
+    id: "workbench",
+    label: "Workbench",
+    description:
+      "Tests for Posit Workbench: login, IDE launch (RStudio, VS Code, JupyterLab, Positron), packages, and data sources.",
+    color: "var(--posit-blue)",
+  },
+  {
+    id: "package_manager",
+    label: "Package Manager",
+    description:
+      "Tests for Posit Package Manager: CRAN/PyPI mirrors, repository configuration, and private package access.",
+    color: "var(--posit-green)",
+  },
+  {
+    id: "cross_product",
+    label: "Cross-product",
+    description: "Tests that span multiple products: SSL certificates, monitoring, and system resources.",
+    color: "#7c5cbf",
+  },
+  {
+    id: "performance",
+    label: "Performance",
+    description: "Load time, concurrency, and package install speed tests.",
+    color: "#c0872a",
+  },
+  {
+    id: "security",
+    label: "Security",
+    description: "HTTPS enforcement, authentication policy, and secrets storage validation.",
+    color: "#b83232",
+  },
+];
+
+const groups: Group[] = groupDefs.map((def) => ({
+  ...def,
+  features: featureFiles.filter((f) => f.tags.includes(def.id)),
+}));
+
+const totalScenarios = featureFiles.reduce((n, f) => n + f.scenarios.length, 0);
+const base = import.meta.env.BASE_URL;
+---
+
+<Layout
+  title="Test Inventory - VIP"
+  description="Full inventory of all VIP test scenarios, grouped by product and category."
+>
+  <Header />
+
+  <div class="page-header">
+    <div class="container">
+      <h1>Test Inventory</h1>
+      <p>
+        {featureFiles.length} feature files · {totalScenarios} scenarios, grouped by product and category.
+      </p>
+    </div>
+  </div>
+
+  <main class="content">
+    <div class="container-wide">
+      <aside class="toc">
+        <h4>Jump to</h4>
+        <ul>
+          {groups.map((g) => (
+            <li>
+              <a href={`#${g.id}`} style={`--dot: ${g.color}`}>
+                <span class="toc-dot" />
+                {g.label}
+                <span class="toc-count">({g.features.reduce((n, f) => n + f.scenarios.length, 0)})</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </aside>
+
+      <article class="inventory">
+        <!-- Where to start callout -->
+        <div class="callout">
+          <div class="callout-icon">★</div>
+          <div>
+            <strong>Where to start:</strong> Run the <a href="#prerequisites">Prerequisites</a> group first.
+            These tests confirm that every configured server is reachable and that your credentials work.
+            Once prerequisites pass, run the product tests for whatever you have deployed — Connect,
+            Workbench, or Package Manager. The cross-cutting Security and Performance tests are optional
+            but recommended before sign-off.
+          </div>
+        </div>
+
+        {
+          groups.map((group) => (
+            <section id={group.id} class="group-section">
+              <div class="group-header">
+                <span class="group-accent" style={`background: ${group.color}`} />
+                <div>
+                  <h2>
+                    {group.label}
+                    {group.isStartingPoint && <span class="badge-start">Start here</span>}
+                  </h2>
+                  <p class="group-desc">{group.description}</p>
+                  <code class="marker">pytest -m {group.id}</code>
+                </div>
+              </div>
+
+              {group.features.length === 0 ? (
+                <p class="no-features">No feature files found for this group.</p>
+              ) : (
+                <div class="feature-list">
+                  {group.features.map((feature) => (
+                    <div class="feature-card">
+                      <div class="feature-card-header">
+                        <h3>{feature.featureName}</h3>
+                        <div class="feature-tags">
+                          {feature.tags.map((tag) => (
+                            <span class="tag">{tag}</span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {feature.description.length > 0 && (
+                        <p class="feature-desc">{feature.description.join(" ")}</p>
+                      )}
+
+                      {feature.scenarios.length > 0 && (
+                        <ul class="scenario-list">
+                          {feature.scenarios.map((scenario) => (
+                            <li class="scenario-item">
+                              <span class="scenario-name">{scenario.name}</span>
+                              {scenario.steps.length > 0 && (
+                                <ol class="step-list">
+                                  {scenario.steps.map((step) => (
+                                    <li>{step}</li>
+                                  ))}
+                                </ol>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          ))
+        }
+      </article>
+    </div>
+  </main>
+
+  <Footer />
+</Layout>
+
+<style>
+  .page-header {
+    background: var(--posit-navy);
+    color: white;
+    padding: 3rem 1.5rem;
+  }
+
+  .page-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+
+  .page-header p {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 1.0625rem;
+  }
+
+  .content {
+    padding: 2.5rem 1.5rem;
+  }
+
+  .container-wide {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 3rem;
+    align-items: start;
+  }
+
+  /* Table of contents */
+  .toc {
+    position: sticky;
+    top: 80px;
+    align-self: start;
+  }
+
+  .toc h4 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--posit-gray-600);
+    margin-bottom: 0.75rem;
+    font-family: var(--font-mono);
+  }
+
+  .toc ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .toc li {
+    margin-bottom: 0.5rem;
+  }
+
+  .toc a {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--posit-gray-600);
+    text-decoration: none;
+  }
+
+  .toc a:hover {
+    color: var(--posit-teal);
+    text-decoration: none;
+  }
+
+  .toc-dot {
+    width: 8px;
+    height: 8px;
+    min-width: 8px;
+    border-radius: 50%;
+    background: var(--dot);
+  }
+
+  .toc-count {
+    color: var(--posit-gray-400);
+    font-size: 0.75rem;
+  }
+
+  /* Callout */
+  .callout {
+    display: flex;
+    gap: 1rem;
+    background: #f0f7ff;
+    border: 1px solid #b6d4fe;
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 2.5rem;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+
+  .callout-icon {
+    font-size: 1.25rem;
+    line-height: 1.6;
+    color: var(--posit-teal);
+    flex-shrink: 0;
+  }
+
+  .callout a {
+    color: var(--posit-teal);
+    font-weight: 600;
+  }
+
+  /* Group sections */
+  .group-section {
+    margin-bottom: 3.5rem;
+  }
+
+  .group-header {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .group-accent {
+    width: 4px;
+    min-width: 4px;
+    border-radius: 2px;
+    align-self: stretch;
+  }
+
+  .group-header h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--posit-navy);
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .badge-start {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background: var(--posit-teal);
+    color: white;
+    padding: 0.175rem 0.5rem;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    vertical-align: middle;
+  }
+
+  .group-desc {
+    color: var(--posit-gray-600);
+    font-size: 0.9375rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .marker {
+    font-size: 0.8125rem;
+    color: var(--posit-teal);
+    background: var(--posit-light-blue);
+  }
+
+  .no-features {
+    color: var(--posit-gray-400);
+    font-size: 0.875rem;
+    font-style: italic;
+  }
+
+  /* Feature cards */
+  .feature-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .feature-card {
+    background: white;
+    border: 1px solid var(--posit-gray-200);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+  }
+
+  .feature-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .feature-card h3 {
+    font-size: 1.0625rem;
+    font-weight: 600;
+    color: var(--posit-navy);
+    margin: 0;
+  }
+
+  .feature-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    flex-shrink: 0;
+  }
+
+  .tag {
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    background: var(--posit-gray-50);
+    border: 1px solid var(--posit-gray-200);
+    color: var(--posit-gray-600);
+    padding: 0.125rem 0.5rem;
+    border-radius: 20px;
+  }
+
+  .feature-desc {
+    font-size: 0.875rem;
+    color: var(--posit-gray-600);
+    margin-bottom: 1rem;
+    font-style: italic;
+  }
+
+  /* Scenario list */
+  .scenario-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+  }
+
+  .scenario-item {
+    border-left: 3px solid var(--posit-gray-200);
+    padding-left: 0.875rem;
+  }
+
+  .scenario-name {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--posit-navy);
+    display: block;
+    margin-bottom: 0.375rem;
+  }
+
+  .step-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .step-list li {
+    font-size: 0.8125rem;
+    color: var(--posit-gray-600);
+    padding: 0.1rem 0;
+    font-family: var(--font-mono);
+  }
+
+  @media (max-width: 800px) {
+    .container-wide {
+      grid-template-columns: 1fr;
+    }
+
+    .toc {
+      display: none;
+    }
+  }
+</style>

@@ -85,3 +85,8 @@ src = ["src", "tests", "selftests", "examples"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[dependency-groups]
+dev = [
+    "ruff==0.15.0",
+]
