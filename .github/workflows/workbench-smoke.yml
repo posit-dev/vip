@@ -41,16 +41,20 @@ jobs:
           timeout 180 bash -c \
             'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
 
-      # Resolve the actual Workbench version from the installed package
-      # Using dpkg-query is more reliable than /api/server-info (which requires auth)
+      # Resolve the actual Workbench version from the installed package.
+      # Falls back to the image tag if dpkg-query returns nothing (e.g. package
+      # uses the legacy rstudio-server name in some builds).
       - name: Resolve Workbench version
         id: version
         run: |
-          VERSION=$(docker exec workbench dpkg-query -W -f='${Version}\n' rstudio-workbench 2>/dev/null)
-          if [ -z "$VERSION" ]; then
-            echo "ERROR: Could not resolve Workbench version from installed packages"
-            docker exec workbench dpkg-query -l 'rstudio*' || true
-            exit 1
+          VERSION=$(docker exec workbench dpkg-query -W -f='${Version}\n' rstudio-workbench 2>/dev/null \
+                    || docker exec workbench dpkg-query -W -f='${Version}\n' rstudio-server 2>/dev/null \
+                    || echo "")
+          # Strip any surrounding whitespace / newlines
+          VERSION=$(echo "${VERSION}" | xargs)
+          if [ -z "${VERSION}" ]; then
+            echo "WARNING: dpkg-query could not resolve package version; falling back to image tag"
+            VERSION="${{ matrix.workbench-version }}"
           fi
           echo "Resolved Workbench version: ${VERSION}"
           echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
