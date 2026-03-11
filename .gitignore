@@ -3,6 +3,11 @@ vip.toml
 report/results.json
 demo.md
 
+# Agent tooling
+.positai/settings.json
+.claude/worktrees/
+.claude/settings.local.json
+
 # Website
 website/node_modules/
 website/dist/
