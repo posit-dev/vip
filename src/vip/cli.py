@@ -152,8 +152,8 @@ def _phase_run_tests(vip_config_toml: str, mode: Mode, args: argparse.Namespace)
         _run_k8s_job(vip_config_toml, args)
 
 
-def run_verify(args: argparse.Namespace) -> None:
-    """Main verification flow."""
+def run_verify_k8s(args: argparse.Namespace) -> None:
+    """Verify a K8s-hosted deployment by fetching its Site CR and running tests."""
     from vip.config import Mode, load_config
 
     config = load_config()
@@ -209,6 +209,29 @@ def _extract_keycloak_url(site_cr: dict) -> str | None:
             return f"https://key.{domain}"
 
     return None
+
+
+def run_verify(args: argparse.Namespace) -> None:
+    """Run VIP tests locally against an existing vip.toml config."""
+    config_path = args.config
+
+    cmd = [sys.executable, "-m", "pytest"]
+
+    if config_path:
+        cmd.append(f"--vip-config={config_path}")
+    if args.report:
+        cmd.append(f"--vip-report={args.report}")
+    if args.interactive_auth:
+        cmd.append("--interactive-auth")
+    for ext in args.extensions or []:
+        cmd.append(f"--vip-extensions={ext}")
+    if args.categories:
+        cmd.extend(["-m", args.categories])
+
+    cmd.extend(args.pytest_args)
+
+    result = subprocess.run(cmd)
+    sys.exit(result.returncode)
 
 
 def _run_local_tests(vip_config_toml: str, args: argparse.Namespace) -> None:
@@ -313,10 +336,63 @@ def main() -> None:
     # vip verify
     verify_parser = subparsers.add_parser(
         "verify",
-        help="Verify a Posit Team deployment",
+        help="Run VIP tests against a configured deployment",
         description=(
-            "Verify a Posit Team deployment by fetching its Site CR, generating "
-            "a vip.toml, provisioning test credentials, and running the test suite.\n\n"
+            "Run VIP tests locally using an existing vip.toml configuration file.\n\n"
+            "This command is the primary way to run tests. It reads your vip.toml,\n"
+            "invokes pytest with the VIP plugin, and exits with the pytest exit code.\n\n"
+            "Any arguments after -- are passed directly to pytest:\n"
+            "  vip verify -- -x --tb=long -k 'login'\n"
+            "  vip verify --categories connect -- -n4"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    verify_parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to vip.toml (default: VIP_CONFIG env var or ./vip.toml)",
+    )
+    verify_parser.add_argument(
+        "--categories",
+        default=None,
+        help="Test categories to run as a pytest marker expression (e.g. 'connect', "
+        "'performance and workbench')",
+    )
+    verify_parser.add_argument(
+        "--report",
+        default=None,
+        help="Write JSON results to this path for Quarto report generation",
+    )
+    verify_parser.add_argument(
+        "--extensions",
+        action="append",
+        default=[],
+        help="Additional directories containing custom test cases (repeatable)",
+    )
+    verify_parser.add_argument(
+        "--interactive-auth",
+        action="store_true",
+        default=False,
+        help="Launch a browser for manual OIDC login before running tests",
+    )
+    verify_parser.add_argument(
+        "pytest_args",
+        nargs="*",
+        default=[],
+        help="Additional arguments passed to pytest (place after --)",
+    )
+    verify_parser.set_defaults(func=run_verify)
+
+    # vip verify-k8s
+    verify_k8s_parser = subparsers.add_parser(
+        "verify-k8s",
+        help="Verify a Kubernetes-hosted Posit Team deployment",
+        description=(
+            "Verify a Kubernetes-hosted Posit Team deployment by fetching its\n"
+            "Site CR, generating a vip.toml, provisioning test credentials, and\n"
+            "running the test suite.\n\n"
+            "This command requires kubectl access to the target cluster.\n"
+            "For testing with an existing vip.toml, use 'vip verify' instead.\n\n"
             "Execution modes:\n"
             "  (default)           Submit a Kubernetes Job and stream its logs\n"
             "  --local             Run pytest on this machine\n"
@@ -327,38 +403,38 @@ def main() -> None:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    verify_parser.add_argument(
+    verify_k8s_parser.add_argument(
         "target", help="Target name (informational, used for naming resources)"
     )
-    verify_parser.add_argument("--site", default="main", help="Site CR name (default: main)")
-    verify_parser.add_argument(
+    verify_k8s_parser.add_argument("--site", default="main", help="Site CR name (default: main)")
+    verify_k8s_parser.add_argument(
         "--namespace", default="posit-team", help="Kubernetes namespace (default: posit-team)"
     )
-    verify_parser.add_argument("--categories", help="Test categories to run (pytest -m marker)")
-    verify_parser.add_argument(
+    verify_k8s_parser.add_argument("--categories", help="Test categories to run (pytest -m marker)")
+    verify_k8s_parser.add_argument(
         "--local", action="store_true", help="Run tests locally instead of in Kubernetes"
     )
-    verify_parser.add_argument(
+    verify_k8s_parser.add_argument(
         "--config-only", action="store_true", help="Generate config only, don't run tests"
     )
-    verify_parser.add_argument(
+    verify_k8s_parser.add_argument(
         "--image",
         default="ghcr.io/posit-dev/vip:latest",
         help="VIP container image to use (default: ghcr.io/posit-dev/vip:latest)",
     )
-    verify_parser.add_argument(
+    verify_k8s_parser.add_argument(
         "--interactive-auth",
         action="store_true",
         help="Mint credentials via interactive browser login (requires VIP CLI)",
     )
-    verify_parser.add_argument(
+    verify_k8s_parser.add_argument(
         "--timeout", type=int, default=900, help="Job timeout in seconds (default: 900)"
     )
-    verify_parser.set_defaults(func=run_verify)
+    verify_k8s_parser.set_defaults(func=run_verify_k8s)
 
-    # vip verify cleanup
-    verify_sub = verify_parser.add_subparsers(dest="verify_command")
-    cleanup_parser = verify_sub.add_parser(
+    # vip verify-k8s cleanup
+    verify_k8s_sub = verify_k8s_parser.add_subparsers(dest="verify_k8s_command")
+    cleanup_parser = verify_k8s_sub.add_parser(
         "cleanup", help="Delete VIP test credentials and resources"
     )
     cleanup_parser.add_argument("target", help="Target name (informational)")
@@ -385,8 +461,9 @@ def main() -> None:
 
     # Map command names to their parsers for context-appropriate help
     subcommand_parsers = {
-        "auth": auth_parser,
         "verify": verify_parser,
+        "verify-k8s": verify_k8s_parser,
+        "auth": auth_parser,
         "cluster": cluster_parser,
     }
 

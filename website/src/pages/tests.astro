@@ -60,10 +60,10 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
               {cat.scenario_count} {cat.scenario_count === 1 ? "scenario" : "scenarios"}
             </p>
             <div class="run-command">
-              <code>vip verify my-deployment --local --categories {cat.id}</code>
+              <code>vip verify --categories {cat.id}</code>
               <button
                 class="copy-btn"
-                data-command={`vip verify my-deployment --local --categories ${cat.id}`}
+                data-command={`vip verify --categories ${cat.id}`}
                 aria-label={`Copy command to run ${cat.label} tests`}
               >
                 Copy

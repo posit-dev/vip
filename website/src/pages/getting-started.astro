@@ -90,7 +90,7 @@ playwright install chromium</code></pre>
             </table>
           </div>
           <p>You can also point to the config file explicitly:</p>
-          <pre><code>vip verify my-deployment --local --vip-config=/path/to/vip.toml</code></pre>
+          <pre><code>vip verify --config /path/to/vip.toml</code></pre>
         </section>
 
         <section id="authentication">
@@ -100,7 +100,7 @@ playwright install chromium</code></pre>
           <p>Set credentials via environment variables and run normally:</p>
           <pre><code>export VIP_TEST_USERNAME="test-user"
 export VIP_TEST_PASSWORD="test-password"
-vip verify my-deployment --local</code></pre>
+vip verify</code></pre>
 
           <h3>Okta / external OIDC provider</h3>
           <p>
@@ -108,7 +108,7 @@ vip verify my-deployment --local</code></pre>
             <code>--interactive-auth</code> to launch a visible browser, authenticate through the
             IdP, then run the remaining tests headlessly:
           </p>
-          <pre><code>vip verify my-deployment --local --interactive-auth</code></pre>
+          <pre><code>vip verify --interactive-auth</code></pre>
           <p>This opens a Chromium window, waits for you to complete the OIDC flow, captures the
             session, and runs all tests headlessly with the authenticated state.</p>
         </section>
@@ -117,15 +117,15 @@ vip verify my-deployment --local</code></pre>
           <h2>Running tests</h2>
           <p>Run the full suite or target specific products:</p>
           <pre><code># Run all tests
-vip verify my-deployment --local
+vip verify
 
 # Run tests for a single product
-vip verify my-deployment --local --categories connect
-vip verify my-deployment --local --categories workbench
-vip verify my-deployment --local --categories package_manager
+vip verify --categories connect
+vip verify --categories workbench
+vip verify --categories package_manager
 
 # Combine markers
-vip verify my-deployment --local --categories "performance and connect"</code></pre>
+vip verify --categories "performance and connect"</code></pre>
 
           <h3>Test categories</h3>
           <div class="table-wrap">
@@ -189,7 +189,7 @@ def test_new_api_feature():
           <h2>Generating reports</h2>
           <p>After running tests, generate and optionally publish a Quarto report:</p>
           <pre><code># Generate results JSON
-vip verify my-deployment --local --vip-report=report/results.json
+vip verify --report report/results.json
 
 # Render the report
 cd report && quarto render
@@ -208,7 +208,7 @@ quarto publish connect --server https://connect.example.com</code></pre>
 [general]
 extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
           <pre><code># Or via CLI
-vip verify my-deployment --local --vip-extensions=/opt/vip-custom-tests</code></pre>
+vip verify --extensions /opt/vip-custom-tests</code></pre>
           <p>
             See <code>examples/custom_tests/</code> in the repository for a working example.
           </p>
