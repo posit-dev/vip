@@ -68,8 +68,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
     group.addoption(
         "--vip-report",
-        default=None,
-        help="Write a JSON results file at this path for Quarto report generation.",
+        default="report/results.json",
+        help="Write a JSON results file at this path for Quarto report generation."
+        " Set to empty string to disable. (default: report/results.json)",
     )
     group.addoption(
         "--interactive-auth",

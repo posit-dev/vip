@@ -190,7 +190,7 @@ If no config file exists, all product tests are skipped.
 ## Quarto report
 
 The report lives in `report/` and reads `report/results.json` (written
-by `pytest --vip-report=report/results.json`). The `.qmd` files use
+by pytest by default). The `.qmd` files use
 `IPython.display.Markdown` with `display()` to render content. Always
 wrap `Markdown()` calls with `display()` -- bare expressions are
 silently swallowed inside conditionals.

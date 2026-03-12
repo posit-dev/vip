@@ -407,8 +407,9 @@ def main() -> None:
     )
     verify_parser.add_argument(
         "--report",
-        default=None,
-        help="Write JSON results to this path for Quarto report generation",
+        default="report/results.json",
+        help="Write JSON results to this path for Quarto report generation"
+        " (default: report/results.json)",
     )
     verify_parser.add_argument(
         "--extensions",

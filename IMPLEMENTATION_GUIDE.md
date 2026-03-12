@@ -95,8 +95,8 @@ reporting module. All pass in CI.
   with `_vip_test` and deleted in teardown.
 - **Extensibility**: `--vip-extensions=/path/to/dir` adds a directory to
   pytest's collection at runtime.
-- **Quarto report**: `pytest --vip-report=report/results.json` writes JSON
-  that the Quarto templates read to render the HTML report.
+- **Quarto report**: pytest writes JSON to `report/results.json` by default,
+  which the Quarto templates read to render the HTML report.
 
 ---
 
@@ -114,7 +114,7 @@ environment.  This will immediately surface:
 ```bash
 cp vip.toml.example vip.toml
 # Fill in real URLs, set env vars for secrets
-pytest tests/ -v --vip-report=report/results.json 2>&1 | tee first-run.log
+pytest tests/ -v 2>&1 | tee first-run.log
 ```
 
 Start with prerequisites, then work outward:
@@ -302,7 +302,7 @@ The current report has two pages (summary and details).  Ideas for enhancement:
 - **Deployment topology**: Render a diagram of the product URLs and their
   connectivity status.
 
-The report reads `report/results.json` (written by `--vip-report`).  The
+The report reads `report/results.json` (written by default after each test run).  The
 Python code blocks in the `.qmd` files use only the standard library plus
 `IPython.display.Markdown` for rendering.
 
@@ -320,9 +320,7 @@ just selftest -- -k test_config   # Run a subset
 # Against a real deployment
 just test                         # All product tests
 just test-product connect         # Just Connect
-just test -- --vip-report=report/results.json  # With report
-
-# Generate and view the report
+# Generate and view the report (results.json is written by default)
 just report
 open report/_output/index.html
 ```

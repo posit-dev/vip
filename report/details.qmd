@@ -18,7 +18,7 @@ from vip.reporting import load_results
 data = load_results(Path("results.json"))
 
 if data.total == 0:
-    display(Markdown("> **No results found.** Run: `pytest --vip-report=report/results.json`"))
+    display(Markdown("> **No results found.** Run `pytest` to generate results."))
 else:
     categories = data.by_category()
     lines = []

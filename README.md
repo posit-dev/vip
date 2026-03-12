@@ -48,8 +48,8 @@ uv run pytest -m connect
 uv run pytest -m workbench
 uv run pytest -m package_manager
 
-# Generate the Quarto report
-uv run pytest --vip-report=report/results.json
+# Generate the Quarto report (results.json is written by default)
+uv run pytest
 cd report && quarto render
 ```
 
@@ -267,7 +267,7 @@ See `examples/custom_tests/` for a working example.
 After running the tests, generate a report:
 
 ```bash
-pytest --vip-report=report/results.json
+pytest
 cd report
 quarto render
 ```
