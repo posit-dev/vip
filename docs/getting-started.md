@@ -43,8 +43,8 @@ uv run pytest -m connect
 uv run pytest -m workbench
 uv run pytest -m package_manager
 
-# Generate the Quarto report
-uv run pytest --vip-report=report/results.json
+# Generate the Quarto report (results.json is written by default)
+uv run pytest
 cd report && quarto render
 ```
 

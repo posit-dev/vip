@@ -8,19 +8,19 @@ const base = import.meta.env.BASE_URL;
 const products = [
   {
     name: "Connect",
-    marker: "connect",
+    flag: "connect-url",
     description: "Authentication, content deployment, data sources, packages, email, and runtimes",
     color: "var(--posit-teal)",
   },
   {
     name: "Workbench",
-    marker: "workbench",
+    flag: "workbench-url",
     description: "Login, IDE launch, sessions, package installation, data sources, and runtimes",
     color: "var(--posit-blue)",
   },
   {
     name: "Package Manager",
-    marker: "package_manager",
+    flag: "pm-url",
     description: "CRAN/PyPI mirrors, repository configuration, and private package access",
     color: "var(--posit-green)",
   },
@@ -69,7 +69,7 @@ const categories = [
               <div class="product-accent" style={`background: ${product.color}`} />
               <h3>{product.name}</h3>
               <p>{product.description}</p>
-              <code class="marker">pytest -m {product.marker}</code>
+              <code class="marker">vip verify --{product.flag} https://...</code>
             </div>
           ))
         }
@@ -100,21 +100,21 @@ const categories = [
         <div class="step">
           <span class="step-number">1</span>
           <div>
-            <h4>Configure</h4>
-            <p>Point VIP at your deployment with a simple <code>vip.toml</code> file.</p>
+            <h4>Install</h4>
+            <p><code>uv pip install "vip @ git+https://github.com/posit-dev/vip.git"</code></p>
           </div>
         </div>
         <div class="step">
           <span class="step-number">2</span>
           <div>
-            <h4>Run tests</h4>
-            <p>Execute the full suite or target specific products with pytest markers.</p>
+            <h4>Run</h4>
+            <p><code>vip verify --connect-url https://connect.example.com</code></p>
           </div>
         </div>
         <div class="step">
           <span class="step-number">3</span>
           <div>
-            <h4>Review report</h4>
+            <h4>Review</h4>
             <p>Generate a Quarto report with detailed results you can publish to Connect.</p>
           </div>
         </div>

@@ -3,7 +3,7 @@
 After running the tests, generate a report:
 
 ```bash
-pytest --vip-report=report/results.json
+pytest
 cd report
 quarto render
 ```

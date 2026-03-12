@@ -45,7 +45,7 @@ test-product PRODUCT:
 
 # Generate the Quarto report from product test results
 report *ARGS:
-    uv run pytest tests/ --vip-report=report/results.json {{ ARGS }}
+    uv run pytest tests/ {{ ARGS }}
     cd report && uv run quarto render
 
 # Create a new showboat demo document
@@ -68,5 +68,5 @@ website-data:
 
 # Generate a Quarto report from selftests (for CI / demo purposes)
 report-selftest:
-    uv run pytest selftests/ --vip-report=report/results.json
+    uv run pytest selftests/
     cd report && uv run quarto render

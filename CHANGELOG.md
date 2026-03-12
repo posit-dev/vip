@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.5.0 (2026-03-12)
+
+### Features
+
+- **website**: Simplify install and test run instructions
+  ([#72](https://github.com/posit-dev/vip/pull/72),
+  [`12b7e3a`](https://github.com/posit-dev/vip/commit/12b7e3a57e89230307e760d723c6980040b05b8c))
+
+
 ## v0.4.0 (2026-03-12)
 
 ### Features

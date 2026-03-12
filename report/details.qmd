@@ -38,7 +38,7 @@ def _get_feature(nodeid: str) -> dict | None:
 
 
 if data.total == 0:
-    display(Markdown("> **No results found.** Run: `pytest --vip-report=report/results.json`"))
+    display(Markdown("> **No results found.** Run `pytest` to generate results."))
 else:
     categories = data.by_category()
     lines = []
