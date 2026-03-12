@@ -131,7 +131,7 @@ Key rules:
 
 | File | Purpose |
 |---|---|
-| `src/vip/cli.py` | CLI entry point: verify, cluster, auth commands |
+| `src/vip/cli.py` | CLI entry point: verify, cleanup, cluster, auth commands |
 | `src/vip/config.py` | TOML config loader, dataclasses, `Mode` enum, per-mode validation |
 | `src/vip/plugin.py` | pytest plugin: markers, auto-skip, JSON report output |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
@@ -162,9 +162,9 @@ These are defined in `tests/conftest.py` and available to all tests:
 - `data_sources` -- list of `DataSourceEntry` objects
 - `email_enabled` / `monitoring_enabled` -- feature flags
 
-**Note:** When using `vip verify`, the configuration is auto-generated from
-Site CRs, so all fixtures are populated automatically. Manual `vip.toml`
-editing is not required for `vip verify` workflows.
+**Note:** `vip verify --connect-url URL` generates configuration on
+the fly from CLI flags -- no `vip.toml` is needed. When `--k8s` is used,
+configuration is auto-generated from K8s Site CRs.
 
 ## API clients
 

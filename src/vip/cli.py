@@ -57,8 +57,6 @@ def mint_connect_key(args: argparse.Namespace) -> None:
         print(json.dumps({"error": "Failed to mint API key"}), file=sys.stderr)
         sys.exit(1)
 
-    # Output JSON with key and key_name for cleanup.
-    # The key_name can be used to find the key_id via the API later.
     result = {
         "api_key": session.api_key,
         "key_name": session.key_name,
@@ -73,7 +71,6 @@ def connect_to_cluster(args: argparse.Namespace) -> None:
 
     config = load_config()
 
-    # Override cluster config from CLI args if provided
     if args.provider:
         config.cluster.provider = args.provider
     if args.cluster_name:
@@ -91,14 +88,46 @@ def connect_to_cluster(args: argparse.Namespace) -> None:
     print(str(kubeconfig_path))
 
 
+# ---------------------------------------------------------------------------
+# Config generation from CLI URL args
+# ---------------------------------------------------------------------------
+
+
+def _generate_temp_config(args: argparse.Namespace) -> str:
+    """Write a minimal vip.toml from CLI URL arguments. Returns temp file path."""
+    lines = ["[general]", 'deployment_name = "Posit Team"', ""]
+
+    if args.connect_url:
+        lines.extend(["[connect]", f'url = "{args.connect_url}"', ""])
+    else:
+        lines.extend(["[connect]", "enabled = false", ""])
+
+    if args.workbench_url:
+        lines.extend(["[workbench]", f'url = "{args.workbench_url}"', ""])
+    else:
+        lines.extend(["[workbench]", "enabled = false", ""])
+
+    if args.pm_url:
+        lines.extend(["[package_manager]", f'url = "{args.pm_url}"', ""])
+    else:
+        lines.extend(["[package_manager]", "enabled = false", ""])
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+        f.write("\n".join(lines) + "\n")
+        return f.name
+
+
+# ---------------------------------------------------------------------------
+# vip verify (combined local + K8s)
+# ---------------------------------------------------------------------------
+
+
 def _resolve_mode(args: argparse.Namespace) -> Mode:
     """Convert boolean CLI flags to a Mode enum value."""
     from vip.config import Mode
 
     if args.config_only:
         return Mode.config_only
-    if args.local:
-        return Mode.local
     return Mode.k8s_job
 
 
@@ -106,9 +135,13 @@ def _phase_generate_config(args: argparse.Namespace) -> tuple[str, dict]:
     """Fetch Site CR and return (vip_config_toml, site_cr) tuple."""
     from vip.verify.site import fetch_site_cr, generate_vip_config
 
-    print(f"Fetching Site CR: {args.site} (namespace: {args.namespace})")
-    site_cr = fetch_site_cr(args.site, args.namespace)
-    return generate_vip_config(site_cr, args.target), site_cr
+    site = getattr(args, "site", "main")
+    namespace = getattr(args, "namespace", "posit-team")
+    name = getattr(args, "name", None) or "Posit Team"
+
+    print(f"Fetching Site CR: {site} (namespace: {namespace})")
+    site_cr = fetch_site_cr(site, namespace)
+    return generate_vip_config(site_cr, name), site_cr
 
 
 def _phase_provision_credentials(site_cr: dict, args: argparse.Namespace) -> None:
@@ -120,48 +153,85 @@ def _phase_provision_credentials(site_cr: dict, args: argparse.Namespace) -> Non
         if not connect_url:
             print("Error: Connect URL not found in Site CR", file=sys.stderr)
             sys.exit(1)
+        site = getattr(args, "site", "main")
+        namespace = getattr(args, "namespace", "posit-team")
         print("Minting credentials via interactive auth...")
-        mint_interactive_credentials(connect_url, args.site, args.namespace)
+        mint_interactive_credentials(connect_url, site, namespace)
     else:
         keycloak_url = _extract_keycloak_url(site_cr)
         if keycloak_url:
             from vip.verify.credentials import ensure_keycloak_test_user
 
-            admin_secret_name = f"{args.site}-keycloak-initial-admin"
+            site = getattr(args, "site", "main")
+            namespace = getattr(args, "namespace", "posit-team")
+            admin_secret_name = f"{site}-keycloak-initial-admin"
             print(f"Ensuring Keycloak test user exists (admin secret: {admin_secret_name})")
             try:
                 ensure_keycloak_test_user(
                     keycloak_url,
-                    "posit",  # realm
+                    "posit",
                     "vip-test-user",
                     admin_secret_name,
-                    args.namespace,
+                    namespace,
                 )
             except Exception as e:
-                print(f"Warning: Could not create Keycloak test user: {e}", file=sys.stderr)
+                print(
+                    f"Warning: Could not create Keycloak test user: {e}",
+                    file=sys.stderr,
+                )
                 print("Continuing without Keycloak credentials...", file=sys.stderr)
 
 
-def _phase_run_tests(vip_config_toml: str, mode: Mode, args: argparse.Namespace) -> None:
-    """Run tests locally or as a K8s Job depending on mode."""
-    from vip.config import Mode
+def run_verify(args: argparse.Namespace) -> None:
+    """Run VIP tests. Handles both local and K8s modes."""
+    if args.k8s or args.config_only:
+        _run_verify_k8s(args)
+        return
 
-    if mode == Mode.local:
-        _run_local_tests(vip_config_toml, args)
-    else:
-        _run_k8s_job(vip_config_toml, args)
+    _run_verify_local(args)
 
 
-def run_verify_k8s(args: argparse.Namespace) -> None:
-    """Verify a K8s-hosted deployment by fetching its Site CR and running tests."""
+def _run_verify_local(args: argparse.Namespace) -> None:
+    """Run VIP tests locally against URL args or a vip.toml config."""
+    config_path = args.config
+    temp_config = None
+
+    if not config_path and (args.connect_url or args.workbench_url or args.pm_url):
+        temp_config = _generate_temp_config(args)
+        config_path = temp_config
+
+    cmd = [sys.executable, "-m", "pytest"]
+
+    if config_path:
+        cmd.append(f"--vip-config={config_path}")
+    if args.report:
+        cmd.append(f"--vip-report={args.report}")
+    if args.interactive_auth:
+        cmd.append("--interactive-auth")
+    for ext in args.extensions or []:
+        cmd.append(f"--vip-extensions={ext}")
+    if args.categories:
+        cmd.extend(["-m", args.categories])
+
+    cmd.extend(args.pytest_args)
+
+    try:
+        result = subprocess.run(cmd)
+        sys.exit(result.returncode)
+    finally:
+        if temp_config:
+            Path(temp_config).unlink(missing_ok=True)
+
+
+def _run_verify_k8s(args: argparse.Namespace) -> None:
+    """K8s workflow: fetch Site CR, provision credentials, run as Job."""
     from vip.config import Mode, load_config
 
     config = load_config()
     mode = _resolve_mode(args)
     config.validate_for_mode(mode)
 
-    # Connect to cluster for modes that need it
-    if mode != Mode.local and config.cluster.is_configured:
+    if config.cluster.is_configured:
         _connect_cluster(config.cluster)
 
     vip_config_toml, site_cr = _phase_generate_config(args)
@@ -171,7 +241,7 @@ def run_verify_k8s(args: argparse.Namespace) -> None:
         return
 
     _phase_provision_credentials(site_cr, args)
-    _phase_run_tests(vip_config_toml, mode, args)
+    _run_k8s_job(vip_config_toml, args)
 
 
 def _extract_connect_url(site_cr: dict) -> str | None:
@@ -195,14 +265,12 @@ def _extract_keycloak_url(site_cr: dict) -> str | None:
     """Extract Keycloak URL from Site CR (if present)."""
     spec = site_cr.get("spec", {})
 
-    # Check if Keycloak is configured (either in connect or workbench auth)
     connect_spec = spec.get("connect", {})
     workbench_spec = spec.get("workbench", {})
 
     connect_auth = connect_spec.get("auth", {}) if connect_spec else {}
     workbench_auth = workbench_spec.get("auth", {}) if workbench_spec else {}
 
-    # Look for oidc auth type (which typically uses Keycloak)
     if connect_auth.get("type") == "oidc" or workbench_auth.get("type") == "oidc":
         domain = spec.get("domain", "")
         if domain:
@@ -211,66 +279,23 @@ def _extract_keycloak_url(site_cr: dict) -> str | None:
     return None
 
 
-def run_verify(args: argparse.Namespace) -> None:
-    """Run VIP tests locally against an existing vip.toml config."""
-    config_path = args.config
-
-    cmd = [sys.executable, "-m", "pytest"]
-
-    if config_path:
-        cmd.append(f"--vip-config={config_path}")
-    if args.report:
-        cmd.append(f"--vip-report={args.report}")
-    if args.interactive_auth:
-        cmd.append("--interactive-auth")
-    for ext in args.extensions or []:
-        cmd.append(f"--vip-extensions={ext}")
-    if args.categories:
-        cmd.extend(["-m", args.categories])
-
-    cmd.extend(args.pytest_args)
-
-    result = subprocess.run(cmd)
-    sys.exit(result.returncode)
-
-
-def _run_local_tests(vip_config_toml: str, args: argparse.Namespace) -> None:
-    """Run VIP tests locally using uv run pytest."""
-    # Write config to temp file
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-        f.write(vip_config_toml)
-        config_path = f.name
-
-    try:
-        cmd = ["uv", "run", "pytest", f"--vip-config={config_path}"]
-        if args.categories:
-            cmd.extend(["-m", args.categories])
-        cmd.extend(["-v", "--tb=short"])
-
-        print(f"Running tests locally: {' '.join(cmd)}")
-        result = subprocess.run(cmd)
-        sys.exit(result.returncode)
-    finally:
-        # Clean up temp file
-        Path(config_path).unlink(missing_ok=True)
-
-
 def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
     """Run VIP tests as a K8s Job."""
     from vip.verify.job import cleanup, create_config_map, create_job, stream_logs, wait_for_job
 
+    namespace = getattr(args, "namespace", "posit-team")
     suffix = secrets.token_hex(4)
     job_name = f"vip-verify-{suffix}"
     cm_name = f"vip-config-{suffix}"
 
     try:
         print(f"Creating ConfigMap: {cm_name}")
-        create_config_map(cm_name, args.namespace, vip_config_toml)
+        create_config_map(cm_name, namespace, vip_config_toml)
 
         print(f"Creating Job: {job_name}")
         create_job(
             job_name,
-            args.namespace,
+            namespace,
             cm_name,
             image=args.image,
             categories=args.categories,
@@ -278,10 +303,10 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
         )
 
         print(f"Streaming logs from Job: {job_name}")
-        stream_logs(job_name, args.namespace, timeout=args.timeout)
+        stream_logs(job_name, namespace, timeout=args.timeout)
 
         print(f"Waiting for Job to complete: {job_name}")
-        success = wait_for_job(job_name, args.namespace, timeout=args.timeout)
+        success = wait_for_job(job_name, namespace, timeout=args.timeout)
 
         if not success:
             print("Verification failed", file=sys.stderr)
@@ -290,7 +315,7 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             print("Verification completed successfully")
     finally:
         print(f"Cleaning up Job and ConfigMap: {job_name}, {cm_name}")
-        cleanup(job_name, cm_name, args.namespace)
+        cleanup(job_name, cm_name, namespace)
 
 
 def run_cleanup(args: argparse.Namespace) -> None:
@@ -301,11 +326,9 @@ def run_cleanup(args: argparse.Namespace) -> None:
 
     config = load_config()
 
-    # Connect to cluster if needed
     if config.cluster.is_configured:
         _connect_cluster(config.cluster)
 
-    # Fetch Site CR to get Connect URL
     site_cr = fetch_site_cr(args.site, args.namespace)
     connect_url = _extract_connect_url(site_cr)
 
@@ -336,27 +359,51 @@ def main() -> None:
     # vip verify
     verify_parser = subparsers.add_parser(
         "verify",
-        help="Run VIP tests against a configured deployment",
+        help="Run VIP tests against a Posit Team deployment",
         description=(
-            "Run VIP tests locally using an existing vip.toml configuration file.\n\n"
-            "This command is the primary way to run tests. It reads your vip.toml,\n"
-            "invokes pytest with the VIP plugin, and exits with the pytest exit code.\n\n"
+            "Run VIP tests against a Posit Team deployment.\n\n"
+            "Quick start (no config file needed):\n"
+            "  vip verify --connect-url https://connect.example.com\n\n"
+            "A browser window opens for authentication. After login,\n"
+            "tests run headlessly and the browser session is cleaned up.\n\n"
+            "With an existing config file:\n"
+            "  vip verify --config vip.toml --no-interactive-auth\n\n"
+            "Kubernetes mode (fetch config from Site CR, run as Job):\n"
+            "  vip verify --k8s --site main --namespace posit-team\n\n"
             "Any arguments after -- are passed directly to pytest:\n"
-            "  vip verify -- -x --tb=long -k 'login'\n"
-            "  vip verify --categories connect -- -n4"
+            "  vip verify --connect-url https://connect.example.com -- -x -k 'login'"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+
+    # URL args (no config file needed)
+    url_group = verify_parser.add_argument_group("product URLs (no config file needed)")
+    url_group.add_argument("--connect-url", default=None, help="Connect server URL")
+    url_group.add_argument("--workbench-url", default=None, help="Workbench server URL")
+    url_group.add_argument("--pm-url", default=None, help="Package Manager server URL")
+
+    # Config file
     verify_parser.add_argument(
         "--config",
         default=None,
         help="Path to vip.toml (default: VIP_CONFIG env var or ./vip.toml)",
     )
+
+    # Auth
+    verify_parser.add_argument(
+        "--interactive-auth",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Launch a browser for OIDC login (default: enabled, use "
+        "--no-interactive-auth to disable)",
+    )
+
+    # Test selection
     verify_parser.add_argument(
         "--categories",
         default=None,
-        help="Test categories to run as a pytest marker expression (e.g. 'connect', "
-        "'performance and workbench')",
+        help="Test categories as a pytest marker expression "
+        "(e.g. 'connect', 'performance and workbench')",
     )
     verify_parser.add_argument(
         "--report",
@@ -369,12 +416,45 @@ def main() -> None:
         default=[],
         help="Additional directories containing custom test cases (repeatable)",
     )
-    verify_parser.add_argument(
-        "--interactive-auth",
+
+    # K8s mode
+    k8s_group = verify_parser.add_argument_group("Kubernetes mode")
+    k8s_group.add_argument(
+        "--k8s",
         action="store_true",
         default=False,
-        help="Launch a browser for manual OIDC login before running tests",
+        help="Fetch config from a K8s Site CR and run tests as a Job",
     )
+    k8s_group.add_argument("--site", default="main", help="Site CR name (default: main)")
+    k8s_group.add_argument(
+        "--namespace",
+        default="posit-team",
+        help="Kubernetes namespace (default: posit-team)",
+    )
+    k8s_group.add_argument(
+        "--name",
+        default=None,
+        help="Deployment name for reports (default: Posit Team)",
+    )
+    k8s_group.add_argument(
+        "--image",
+        default="ghcr.io/posit-dev/vip:latest",
+        help="VIP container image (default: ghcr.io/posit-dev/vip:latest)",
+    )
+    k8s_group.add_argument(
+        "--timeout",
+        type=int,
+        default=900,
+        help="Job timeout in seconds (default: 900)",
+    )
+    k8s_group.add_argument(
+        "--config-only",
+        action="store_true",
+        default=False,
+        help="Generate config from Site CR and print it (no tests run)",
+    )
+
+    # Pytest passthrough
     verify_parser.add_argument(
         "pytest_args",
         nargs="*",
@@ -383,64 +463,15 @@ def main() -> None:
     )
     verify_parser.set_defaults(func=run_verify)
 
-    # vip verify-k8s
-    verify_k8s_parser = subparsers.add_parser(
-        "verify-k8s",
-        help="Verify a Kubernetes-hosted Posit Team deployment",
-        description=(
-            "Verify a Kubernetes-hosted Posit Team deployment by fetching its\n"
-            "Site CR, generating a vip.toml, provisioning test credentials, and\n"
-            "running the test suite.\n\n"
-            "This command requires kubectl access to the target cluster.\n"
-            "For testing with an existing vip.toml, use 'vip verify' instead.\n\n"
-            "Execution modes:\n"
-            "  (default)           Submit a Kubernetes Job and stream its logs\n"
-            "  --local             Run pytest on this machine\n"
-            "  --config-only       Generate vip.toml only, print and exit\n\n"
-            "Credential modes:\n"
-            "  (default)           Create a Keycloak test user (requires Keycloak OIDC)\n"
-            "  --interactive-auth  Mint credentials via browser login"
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    verify_k8s_parser.add_argument(
-        "target", help="Target name (informational, used for naming resources)"
-    )
-    verify_k8s_parser.add_argument("--site", default="main", help="Site CR name (default: main)")
-    verify_k8s_parser.add_argument(
-        "--namespace", default="posit-team", help="Kubernetes namespace (default: posit-team)"
-    )
-    verify_k8s_parser.add_argument("--categories", help="Test categories to run (pytest -m marker)")
-    verify_k8s_parser.add_argument(
-        "--local", action="store_true", help="Run tests locally instead of in Kubernetes"
-    )
-    verify_k8s_parser.add_argument(
-        "--config-only", action="store_true", help="Generate config only, don't run tests"
-    )
-    verify_k8s_parser.add_argument(
-        "--image",
-        default="ghcr.io/posit-dev/vip:latest",
-        help="VIP container image to use (default: ghcr.io/posit-dev/vip:latest)",
-    )
-    verify_k8s_parser.add_argument(
-        "--interactive-auth",
-        action="store_true",
-        help="Mint credentials via interactive browser login (requires VIP CLI)",
-    )
-    verify_k8s_parser.add_argument(
-        "--timeout", type=int, default=900, help="Job timeout in seconds (default: 900)"
-    )
-    verify_k8s_parser.set_defaults(func=run_verify_k8s)
-
-    # vip verify-k8s cleanup
-    verify_k8s_sub = verify_k8s_parser.add_subparsers(dest="verify_k8s_command")
-    cleanup_parser = verify_k8s_sub.add_parser(
+    # vip cleanup
+    cleanup_parser = subparsers.add_parser(
         "cleanup", help="Delete VIP test credentials and resources"
     )
-    cleanup_parser.add_argument("target", help="Target name (informational)")
     cleanup_parser.add_argument("--site", default="main", help="Site CR name (default: main)")
     cleanup_parser.add_argument(
-        "--namespace", default="posit-team", help="Kubernetes namespace (default: posit-team)"
+        "--namespace",
+        default="posit-team",
+        help="Kubernetes namespace (default: posit-team)",
     )
     cleanup_parser.set_defaults(func=run_cleanup)
 
@@ -450,7 +481,6 @@ def main() -> None:
 
     # vip cluster connect
     connect_parser = cluster_sub.add_parser("connect", help="Generate kubeconfig for a cluster")
-    connect_parser.add_argument("target", help="Target name (informational)")
     connect_parser.add_argument("--provider", help="Cloud provider (aws or azure)")
     connect_parser.add_argument("--cluster-name", help="Cluster name")
     connect_parser.add_argument("--region", help="Cloud region (AWS)")
@@ -462,14 +492,13 @@ def main() -> None:
     # Map command names to their parsers for context-appropriate help
     subcommand_parsers = {
         "verify": verify_parser,
-        "verify-k8s": verify_k8s_parser,
+        "cleanup": cleanup_parser,
         "auth": auth_parser,
         "cluster": cluster_parser,
     }
 
     args = parser.parse_args()
     if not hasattr(args, "func"):
-        # Show help for the subcommand the user navigated to, not top-level
         sub = subcommand_parsers.get(args.command)
         if sub:
             sub.print_help()
