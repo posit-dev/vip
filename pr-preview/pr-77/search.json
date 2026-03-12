@@ -1,0 +1,65 @@
+[
+  {
+    "objectID": "details.html",
+    "href": "details.html",
+    "title": "Detailed Results",
+    "section": "",
+    "text": "Test\nOutcome\nDuration\n\n\n\n\ntest_connect_login_api\nPASS\n0.27s\n\n\n\n\n\n\n\n\n\nTest\nOutcome\nDuration\n\n\n\n\ntest_cran_mirror\nPASS\n0.61s\n\n\ntest_pypi_mirror\nSKIP\n0.01s\n\n\ntest_repo_exists\nPASS\n0.01s\n\n\n\n\n\n\n\n\n\nTest\nOutcome\nDuration\n\n\n\n\ntest_connect_reachable\nPASS\n0.08s\n\n\ntest_workbench_reachable\nSKIP\n0.00s\n\n\ntest_package_manager_reachable\nPASS\n0.02s"
+  },
+  {
+    "objectID": "details.html#connect",
+    "href": "details.html#connect",
+    "title": "Detailed Results",
+    "section": "",
+    "text": "Test\nOutcome\nDuration\n\n\n\n\ntest_connect_login_api\nPASS\n0.27s"
+  },
+  {
+    "objectID": "details.html#package-manager",
+    "href": "details.html#package-manager",
+    "title": "Detailed Results",
+    "section": "",
+    "text": "Test\nOutcome\nDuration\n\n\n\n\ntest_cran_mirror\nPASS\n0.61s\n\n\ntest_pypi_mirror\nSKIP\n0.01s\n\n\ntest_repo_exists\nPASS\n0.01s"
+  },
+  {
+    "objectID": "details.html#prerequisites",
+    "href": "details.html#prerequisites",
+    "title": "Detailed Results",
+    "section": "",
+    "text": "Test\nOutcome\nDuration\n\n\n\n\ntest_connect_reachable\nPASS\n0.08s\n\n\ntest_workbench_reachable\nSKIP\n0.00s\n\n\ntest_package_manager_reachable\nPASS\n0.02s"
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "VIP Report",
+    "section": "",
+    "text": "Deployment: CI Connect 2026.02.0 + PM 2024.08.0-6 Generated: 2026-03-12 20:54:06 UTC\n\n\n\n\n\n\n\nProduct\nURL\nVersion\n\n\n\n\nConnect\nhttp://localhost:3939\n2026.02.0\n\n\nPackage Manager\nhttp://localhost:4242\n2024.08.0-6\n\n\n\n\n\n\n\n\n\n\n\n\n\nMetric\nCount\n\n\n\n\nTotal\n7\n\n\nPassed\n5\n\n\nFailed\n0\n\n\nSkipped\n2\n\n\nStatus\nPASS\n\n\n\n\n\n\n\n\n\n\n\n\n\nCategory\nTotal\nPassed\nFailed\nSkipped\nStatus\n\n\n\n\nconnect\n1\n1\n0\n0\nPASS\n\n\npackage_manager\n3\n2\n0\n1\nPASS\n\n\nprerequisites\n3\n2\n0\n1\nPASS\n\n\n\n\n\n\n\n\n\n\nNo failures."
+  },
+  {
+    "objectID": "index.html#products-under-test",
+    "href": "index.html#products-under-test",
+    "title": "VIP Report",
+    "section": "",
+    "text": "Product\nURL\nVersion\n\n\n\n\nConnect\nhttp://localhost:3939\n2026.02.0\n\n\nPackage Manager\nhttp://localhost:4242\n2024.08.0-6"
+  },
+  {
+    "objectID": "index.html#summary",
+    "href": "index.html#summary",
+    "title": "VIP Report",
+    "section": "",
+    "text": "Metric\nCount\n\n\n\n\nTotal\n7\n\n\nPassed\n5\n\n\nFailed\n0\n\n\nSkipped\n2\n\n\nStatus\nPASS"
+  },
+  {
+    "objectID": "index.html#results-by-category",
+    "href": "index.html#results-by-category",
+    "title": "VIP Report",
+    "section": "",
+    "text": "Category\nTotal\nPassed\nFailed\nSkipped\nStatus\n\n\n\n\nconnect\n1\n1\n0\n0\nPASS\n\n\npackage_manager\n3\n2\n0\n1\nPASS\n\n\nprerequisites\n3\n2\n0\n1\nPASS"
+  },
+  {
+    "objectID": "index.html#failed-tests",
+    "href": "index.html#failed-tests",
+    "title": "VIP Report",
+    "section": "",
+    "text": "No failures."
+  }
+]
