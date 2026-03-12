@@ -132,14 +132,14 @@ def _resolve_mode(args: argparse.Namespace) -> Mode:
 
 
 def _phase_generate_config(args: argparse.Namespace) -> tuple[str, dict]:
-    """Fetch Site CR and return (vip_config_toml, site_cr) tuple."""
+    """Fetch PTD Site CR and return (vip_config_toml, site_cr) tuple."""
     from vip.verify.site import fetch_site_cr, generate_vip_config
 
     site = getattr(args, "site", "main")
     namespace = getattr(args, "namespace", "posit-team")
     name = getattr(args, "name", None) or "Posit Team"
 
-    print(f"Fetching Site CR: {site} (namespace: {namespace})")
+    print(f"Fetching PTD Site CR: {site} (namespace: {namespace})")
     site_cr = fetch_site_cr(site, namespace)
     return generate_vip_config(site_cr, name), site_cr
 
@@ -151,7 +151,7 @@ def _phase_provision_credentials(site_cr: dict, args: argparse.Namespace) -> Non
 
         connect_url = _extract_connect_url(site_cr)
         if not connect_url:
-            print("Error: Connect URL not found in Site CR", file=sys.stderr)
+            print("Error: Connect URL not found in PTD Site CR", file=sys.stderr)
             sys.exit(1)
         site = getattr(args, "site", "main")
         namespace = getattr(args, "namespace", "posit-team")
@@ -224,7 +224,7 @@ def _run_verify_local(args: argparse.Namespace) -> None:
 
 
 def _run_verify_k8s(args: argparse.Namespace) -> None:
-    """K8s workflow: fetch Site CR, provision credentials, run as Job."""
+    """K8s workflow: fetch PTD Site CR, provision credentials, run as Job."""
     from vip.config import Mode, load_config
 
     config = load_config()
@@ -245,7 +245,7 @@ def _run_verify_k8s(args: argparse.Namespace) -> None:
 
 
 def _extract_connect_url(site_cr: dict) -> str | None:
-    """Extract Connect URL from Site CR."""
+    """Extract Connect URL from a PTD Site CR."""
     spec = site_cr.get("spec", {})
     connect_spec = spec.get("connect")
     if not connect_spec:
@@ -262,7 +262,7 @@ def _extract_connect_url(site_cr: dict) -> str | None:
 
 
 def _extract_keycloak_url(site_cr: dict) -> str | None:
-    """Extract Keycloak URL from Site CR (if present)."""
+    """Extract Keycloak URL from a PTD Site CR (if present)."""
     spec = site_cr.get("spec", {})
 
     connect_spec = spec.get("connect", {})
@@ -368,7 +368,7 @@ def main() -> None:
             "tests run headlessly and the browser session is cleaned up.\n\n"
             "With an existing config file:\n"
             "  vip verify --config vip.toml --no-interactive-auth\n\n"
-            "Kubernetes mode (fetch config from Site CR, run as Job):\n"
+            "Kubernetes mode (requires posit-dev/team-operator PTD Site CR):\n"
             "  vip verify --k8s --site main --namespace posit-team\n\n"
             "Any arguments after -- are passed directly to pytest:\n"
             "  vip verify --connect-url https://connect.example.com -- -x -k 'login'"
@@ -423,9 +423,10 @@ def main() -> None:
         "--k8s",
         action="store_true",
         default=False,
-        help="Fetch config from a K8s Site CR and run tests as a Job",
+        help="Fetch config from a PTD Site CR and run tests as a K8s Job "
+        "(requires posit-dev/team-operator)",
     )
-    k8s_group.add_argument("--site", default="main", help="Site CR name (default: main)")
+    k8s_group.add_argument("--site", default="main", help="PTD Site CR name (default: main)")
     k8s_group.add_argument(
         "--namespace",
         default="posit-team",
@@ -451,7 +452,7 @@ def main() -> None:
         "--config-only",
         action="store_true",
         default=False,
-        help="Generate config from Site CR and print it (no tests run)",
+        help="Generate config from PTD Site CR and print it (no tests run)",
     )
 
     # Pytest passthrough
@@ -467,7 +468,7 @@ def main() -> None:
     cleanup_parser = subparsers.add_parser(
         "cleanup", help="Delete VIP test credentials and resources"
     )
-    cleanup_parser.add_argument("--site", default="main", help="Site CR name (default: main)")
+    cleanup_parser.add_argument("--site", default="main", help="PTD Site CR name (default: main)")
     cleanup_parser.add_argument(
         "--namespace",
         default="posit-team",

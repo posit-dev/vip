@@ -142,7 +142,7 @@ Key rules:
 | `src/vip/cluster/azure.py` | Azure AKS kubeconfig generation |
 | `src/vip/cluster/kubeconfig.py` | Cloud-agnostic kubeconfig writer |
 | `src/vip/cluster/target.py` | Cluster config validation |
-| `src/vip/verify/site.py` | Site CR parsing, vip.toml generation |
+| `src/vip/verify/site.py` | PTD Site CR parsing, vip.toml generation |
 | `src/vip/verify/credentials.py` | Keycloak + interactive credential provisioning |
 | `src/vip/verify/job.py` | K8s Job creation, log streaming, cleanup |
 | `tests/conftest.py` | Root fixtures: clients, auth, runtimes, data sources |
@@ -164,7 +164,7 @@ These are defined in `tests/conftest.py` and available to all tests:
 
 **Note:** `vip verify --connect-url URL` generates configuration on
 the fly from CLI flags -- no `vip.toml` is needed. When `--k8s` is used,
-configuration is auto-generated from K8s Site CRs.
+configuration is auto-generated from PTD Site CRs (posit-dev/team-operator).
 
 ## API clients
 

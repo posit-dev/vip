@@ -8,7 +8,7 @@
 # With this config file:
 #   vip verify --config vip.toml --no-interactive-auth
 #
-# Kubernetes mode (auto-configure from Site CR):
+# Kubernetes mode (auto-configure from PTD Site CR, requires posit-dev/team-operator):
 #   vip verify --k8s --site main --namespace posit-team
 
 [general]
@@ -96,7 +96,7 @@ policy_checks_enabled = false
 # name = "my-cluster-20260101"        # EKS/AKS cluster name
 # region = "us-east-1"                # Cloud region
 # namespace = "posit-team"            # K8s namespace (default: posit-team)
-# site = "main"                       # Site CR name (default: main)
+# site = "main"                       # PTD Site CR name (default: main)
 # profile = "my-staging"              # AWS: profile name
 # role_arn = ""                       # AWS: IAM role ARN for cross-account access
 # subscription_id = ""                # Azure: subscription ID
