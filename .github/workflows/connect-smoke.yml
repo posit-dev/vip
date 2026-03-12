@@ -171,3 +171,17 @@ jobs:
         uses: posit-dev/with-connect@main
         with:
           stop: ${{ steps.connect.outputs.CONTAINER_ID }}
+
+  status:
+    name: Connect Smoke Tests Status
+    if: always()
+    needs: [connect-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check smoke test result
+        run: |
+          if [ "${{ needs.connect-smoke.result }}" = "failure" ] || [ "${{ needs.connect-smoke.result }}" = "cancelled" ]; then
+            echo "Connect smoke tests failed or were cancelled"
+            exit 1
+          fi
+          echo "Connect smoke tests passed or were skipped"
