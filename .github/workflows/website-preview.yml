@@ -45,6 +45,7 @@ jobs:
           source-dir: website/dist/
           preview-branch: gh-pages
           umbrella-dir: pr-preview-site
+          comment-tag: website-preview
 
   cleanup:
     if: github.event.action == 'closed'
@@ -58,4 +59,5 @@ jobs:
           source-dir: website/dist/
           preview-branch: gh-pages
           umbrella-dir: pr-preview-site
+          comment-tag: website-preview
           action: remove
