@@ -104,8 +104,8 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
 
 <style>
   .page-header {
-    background: var(--posit-navy);
-    color: white;
+    background: white;
+    border-bottom: 1px solid var(--posit-border);
     padding: 3rem 1.5rem;
   }
 
@@ -113,10 +113,11 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
     font-size: 2rem;
     font-weight: 700;
     margin-bottom: 0.5rem;
+    color: var(--posit-gray-900);
   }
 
   .page-header p {
-    color: rgba(255, 255, 255, 0.75);
+    color: var(--posit-text-muted);
     font-size: 1.0625rem;
   }
 
@@ -145,7 +146,7 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     margin-bottom: 0.75rem;
     font-family: var(--font-mono);
   }
@@ -161,19 +162,19 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
 
   .toc a {
     font-size: 0.8125rem;
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
 
   .toc a:hover {
-    color: var(--posit-teal);
+    color: var(--posit-blue);
   }
 
   .toc-count {
     font-size: 0.75rem;
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     background: var(--posit-gray-100);
     padding: 0.1rem 0.4rem;
     border-radius: 4px;
@@ -196,12 +197,12 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
     color: var(--posit-navy);
     margin-bottom: 0.5rem;
     padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--posit-gray-200);
+    border-bottom: 1px solid var(--posit-border);
   }
 
   .category-meta {
     font-size: 0.875rem;
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     margin-bottom: 1rem;
   }
 
@@ -242,7 +243,7 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
 
   /* Feature cards */
   .feature-card {
-    border: 1px solid var(--posit-gray-200);
+    border: 1px solid var(--posit-border);
     border-radius: var(--radius);
     margin-bottom: 0.75rem;
     overflow: hidden;
@@ -254,7 +255,7 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
     align-items: center;
     padding: 0.875rem 1rem;
     cursor: pointer;
-    background: var(--posit-gray-50);
+    background: var(--posit-gray-bg);
     font-size: 0.9375rem;
   }
 
@@ -263,7 +264,7 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
   }
 
   .feature-card summary::marker {
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
   }
 
   .feature-title {
@@ -273,18 +274,18 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
 
   .feature-count {
     font-size: 0.75rem;
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     white-space: nowrap;
     margin-left: 1rem;
   }
 
   .feature-body {
     padding: 1rem;
-    border-top: 1px solid var(--posit-gray-200);
+    border-top: 1px solid var(--posit-border);
   }
 
   .feature-desc {
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     font-size: 0.875rem;
     margin-bottom: 0.75rem;
     white-space: pre-line;
@@ -311,7 +312,7 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
   }
 
   .scenario-card {
-    border: 1px solid var(--posit-gray-200);
+    border: 1px solid var(--posit-border);
     border-radius: 6px;
   }
 
@@ -324,12 +325,12 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
   }
 
   .scenario-title:hover {
-    background: var(--posit-gray-50);
+    background: var(--posit-gray-bg);
   }
 
   .steps {
     padding: 0.75rem 1rem 0.75rem 2rem;
-    border-top: 1px solid var(--posit-gray-200);
+    border-top: 1px solid var(--posit-border);
     margin: 0;
   }
 

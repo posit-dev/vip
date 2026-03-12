@@ -1,4 +1,5 @@
 ---
+const base = import.meta.env.BASE_URL;
 const year = new Date().getFullYear();
 ---
 
@@ -11,18 +12,24 @@ const year = new Date().getFullYear();
         >MIT License</a
       >.
     </p>
-    <div class="footer-links">
-      <a href="https://github.com/posit-dev/vip" target="_blank" rel="noopener">GitHub</a>
-      <a href="https://posit.co" target="_blank" rel="noopener">posit.co</a>
-      <a href="https://docs.posit.co" target="_blank" rel="noopener">Posit Docs</a>
+    <div class="footer-right">
+      <div class="footer-links">
+        <a href="https://github.com/posit-dev/vip" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://posit.co" target="_blank" rel="noopener">posit.co</a>
+        <a href="https://docs.posit.co" target="_blank" rel="noopener">Posit Docs</a>
+      </div>
+      <a href="https://posit.co" target="_blank" rel="noopener" class="footer-logo">
+        <img src={`${base}logo-posit-light.svg`} height="19" alt="Posit" />
+      </a>
     </div>
   </div>
 </footer>
 
 <style>
   .footer {
-    background: var(--posit-navy-dark);
-    color: rgba(255, 255, 255, 0.7);
+    background: var(--posit-gray-bg);
+    border-top: 1px solid var(--posit-border);
+    color: var(--posit-text-muted);
     padding: 2rem 1.5rem;
     margin-top: 4rem;
     font-size: 0.875rem;
@@ -39,16 +46,32 @@ const year = new Date().getFullYear();
   }
 
   .footer a {
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--posit-text-muted);
   }
 
   .footer a:hover {
-    color: white;
+    color: var(--posit-link-hover);
+  }
+
+  .footer-right {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
   }
 
   .footer-links {
     display: flex;
     gap: 1.5rem;
+  }
+
+  .footer-logo {
+    display: flex;
+    align-items: center;
+  }
+
+  .footer-logo:hover {
+    text-decoration: none;
+    opacity: 0.8;
   }
 
   .copyright {

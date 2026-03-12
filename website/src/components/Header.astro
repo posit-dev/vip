@@ -18,8 +18,9 @@ function isActive(href: string): boolean {
 <header class="header">
   <div class="header-inner">
     <a href={base} class="logo">
-      <span class="logo-mark">V</span>
-      <span class="logo-text">VIP</span>
+      <img src={`${base}logo-posit-light.svg`} height="19" alt="Posit" />
+      <span class="logo-divider"></span>
+      <span class="product-name">VIP</span>
     </a>
     <nav>
       {
@@ -43,7 +44,7 @@ function isActive(href: string): boolean {
           width="16"
           height="16"
           viewBox="0 0 16 16"
-          fill="currentColor"
+          fill="var(--posit-gray-900)"
           aria-hidden="true"
         >
           <path
@@ -67,8 +68,8 @@ function isActive(href: string): boolean {
 
 <style>
   .header {
-    background: var(--posit-navy);
-    color: white;
+    background: white;
+    border-bottom: 1px solid var(--posit-border);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -87,27 +88,24 @@ function isActive(href: string): boolean {
   .logo {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    color: white;
+    gap: 0.625rem;
+    color: var(--posit-gray-900);
     font-weight: 700;
     font-size: 1.125rem;
     text-decoration: none;
   }
 
-  .logo-mark {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    background: var(--posit-teal);
-    border-radius: 6px;
-    font-family: var(--font-mono);
-    font-weight: 700;
-    font-size: 1rem;
+  .logo:hover {
+    text-decoration: none;
   }
 
-  .logo-text {
+  .logo-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--posit-border);
+  }
+
+  .product-name {
     font-family: var(--font-mono);
     letter-spacing: 0.05em;
   }
@@ -119,7 +117,7 @@ function isActive(href: string): boolean {
   }
 
   .nav-link {
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--posit-gray-900);
     padding: 0.5rem 0.75rem;
     border-radius: 6px;
     font-size: 0.875rem;
@@ -129,14 +127,14 @@ function isActive(href: string): boolean {
   }
 
   .nav-link:hover {
-    color: white;
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--posit-link-hover);
+    background: var(--posit-gray-bg);
     text-decoration: none;
   }
 
   .nav-link.active {
-    color: white;
-    background: rgba(255, 255, 255, 0.15);
+    color: var(--posit-blue);
+    font-weight: 700;
   }
 
   .github-link {

@@ -10,19 +10,19 @@ const products = [
     name: "Connect",
     marker: "connect",
     description: "Authentication, content deployment, data sources, packages, email, and runtimes",
-    color: "var(--posit-teal)",
+    logo: `${base}logo-connect.svg`,
   },
   {
     name: "Workbench",
     marker: "workbench",
     description: "Login, IDE launch, sessions, package installation, data sources, and runtimes",
-    color: "var(--posit-blue)",
+    logo: `${base}logo-workbench.svg`,
   },
   {
     name: "Package Manager",
     marker: "package_manager",
     description: "CRAN/PyPI mirrors, repository configuration, and private package access",
-    color: "var(--posit-green)",
+    logo: `${base}logo-packagemanager.svg`,
   },
 ];
 
@@ -66,8 +66,9 @@ const categories = [
         {
           products.map((product) => (
             <div class="product-card">
-              <div class="product-accent" style={`background: ${product.color}`} />
-              <h3>{product.name}</h3>
+              <div class="product-logo">
+                <img src={product.logo} height="24" alt={`Posit ${product.name}`} />
+              </div>
               <p>{product.description}</p>
               <code class="marker">pytest -m {product.marker}</code>
             </div>
@@ -159,7 +160,7 @@ const categories = [
 
 <style>
   .hero {
-    background: var(--posit-navy);
+    background: var(--posit-blue);
     color: white;
     padding: 5rem 1.5rem;
   }
@@ -217,12 +218,12 @@ const categories = [
   }
 
   .btn-primary {
-    background: var(--posit-teal);
-    color: white;
+    background: white;
+    color: var(--posit-blue);
   }
 
   .btn-primary:hover {
-    background: #1e5a5f;
+    background: #f0f4f8;
   }
 
   .btn-secondary {
@@ -245,7 +246,7 @@ const categories = [
   }
 
   .section-alt {
-    background: var(--posit-gray-50);
+    background: var(--posit-gray-bg);
   }
 
   .container {
@@ -262,7 +263,7 @@ const categories = [
 
   .section-subtitle {
     font-size: 1.0625rem;
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     max-width: 600px;
     margin-bottom: 2.5rem;
   }
@@ -275,36 +276,30 @@ const categories = [
 
   .product-card {
     background: white;
-    border: 1px solid var(--posit-gray-200);
+    border: 1px solid var(--posit-border);
     border-radius: var(--radius);
     padding: 1.75rem;
-    position: relative;
-    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
 
-  .product-accent {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
+  .product-card:hover {
+    border-color: var(--posit-link-hover);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
   }
 
-  .product-card h3 {
-    font-size: 1.25rem;
-    margin-bottom: 0.5rem;
-    color: var(--posit-navy);
+  .product-logo {
+    margin-bottom: 1rem;
   }
 
   .product-card p {
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     font-size: 0.9375rem;
     margin-bottom: 1rem;
   }
 
   .marker {
     font-size: 0.8125rem;
-    color: var(--posit-teal);
+    color: var(--posit-blue);
     background: var(--posit-light-blue);
   }
 
@@ -316,9 +311,15 @@ const categories = [
 
   .category-card {
     background: white;
-    border: 1px solid var(--posit-gray-200);
+    border: 1px solid var(--posit-border);
     border-radius: var(--radius);
     padding: 1.25rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .category-card:hover {
+    border-color: var(--posit-link-hover);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
   }
 
   .category-card h4 {
@@ -328,7 +329,7 @@ const categories = [
   }
 
   .category-card p {
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     font-size: 0.875rem;
   }
 
@@ -352,7 +353,7 @@ const categories = [
     width: 40px;
     height: 40px;
     min-width: 40px;
-    background: var(--posit-navy);
+    background: var(--posit-blue);
     color: white;
     border-radius: 50%;
     font-weight: 700;
@@ -366,7 +367,7 @@ const categories = [
   }
 
   .step p {
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     font-size: 0.9375rem;
   }
 
@@ -378,9 +379,15 @@ const categories = [
 
   .principle {
     background: white;
-    border: 1px solid var(--posit-gray-200);
+    border: 1px solid var(--posit-border);
     border-radius: var(--radius);
     padding: 1.25rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .principle:hover {
+    border-color: var(--posit-link-hover);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
   }
 
   .principle h4 {
@@ -390,7 +397,7 @@ const categories = [
   }
 
   .principle p {
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     font-size: 0.875rem;
   }
 
@@ -406,7 +413,7 @@ const categories = [
   }
 
   .cta-subtitle {
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     font-size: 1.0625rem;
     margin-bottom: 1.5rem;
   }
