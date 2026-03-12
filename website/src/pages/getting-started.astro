@@ -244,8 +244,8 @@ extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
 
 <style>
   .page-header {
-    background: var(--posit-navy);
-    color: white;
+    background: white;
+    border-bottom: 1px solid var(--posit-border);
     padding: 3rem 1.5rem;
   }
 
@@ -253,10 +253,11 @@ extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
     font-size: 2rem;
     font-weight: 700;
     margin-bottom: 0.5rem;
+    color: var(--posit-gray-900);
   }
 
   .page-header p {
-    color: rgba(255, 255, 255, 0.75);
+    color: var(--posit-text-muted);
     font-size: 1.0625rem;
   }
 
@@ -284,7 +285,7 @@ extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
     margin-bottom: 0.75rem;
     font-family: var(--font-mono);
   }
@@ -300,11 +301,11 @@ extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
 
   .toc a {
     font-size: 0.8125rem;
-    color: var(--posit-gray-600);
+    color: var(--posit-text-muted);
   }
 
   .toc a:hover {
-    color: var(--posit-teal);
+    color: var(--posit-blue);
   }
 
   .docs {
@@ -322,7 +323,7 @@ extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
     color: var(--posit-navy);
     margin-bottom: 1rem;
     padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--posit-gray-200);
+    border-bottom: 1px solid var(--posit-border);
   }
 
   .docs h3 {
@@ -393,13 +394,13 @@ extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
   td {
     text-align: left;
     padding: 0.625rem 0.75rem;
-    border-bottom: 1px solid var(--posit-gray-200);
+    border-bottom: 1px solid var(--posit-border);
   }
 
   th {
     font-weight: 600;
     color: var(--posit-navy);
-    background: var(--posit-gray-50);
+    background: var(--posit-gray-bg);
   }
 
   @media (max-width: 768px) {
