@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.4.0 (2026-03-12)
+
+### Features
+
+- **report**: Enhanced error reporting with troubleshooting hints
+  ([#68](https://github.com/posit-dev/vip/pull/68),
+  [`29d12ae`](https://github.com/posit-dev/vip/commit/29d12ae196b320112259dcc64c9f6634cfb9530f))
+
+
 ## v0.3.0 (2026-03-12)
 
 ### Features
