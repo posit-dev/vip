@@ -1,22 +1,28 @@
 :root {
-  --posit-navy: #213d4f;
-  --posit-navy-dark: #17212b;
-  --posit-teal: #297075;
+  /* Brand colors — aligned with Posit logomark */
   --posit-blue: #447099;
+  --posit-orange: #ee6331;
+  --posit-navy: #213d4f;
+  --posit-teal: #297075;
   --posit-light-blue: #e5f0fc;
-  --posit-green: #72994e;
-  --posit-burgundy: #9a4665;
-  --posit-gray-50: #f9f9f9;
+
+  /* Flightdeck tokens */
+  --posit-gray-bg: #f4f4f4;
+  --posit-border: #dedede;
+  --posit-text-muted: #7c7c7c;
+  --posit-link-hover: #3276b5;
+
+  /* Grays */
   --posit-gray-100: #f5f5f5;
-  --posit-gray-200: #e5e7eb;
-  --posit-gray-600: #6b7280;
   --posit-gray-900: #111827;
 
+  /* Typography */
   --font-body: "Open Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "Source Code Pro", ui-monospace, monospace;
 
-  --max-width: 1140px;
-  --radius: 8px;
+  /* Layout */
+  --max-width: 1280px;
+  --radius: 6px;
 }
 
 *,
@@ -35,15 +41,17 @@ body {
   font-family: var(--font-body);
   color: var(--posit-gray-900);
   line-height: 1.6;
+  background: var(--posit-gray-bg);
   -webkit-font-smoothing: antialiased;
 }
 
 a {
-  color: var(--posit-teal);
+  color: var(--posit-blue);
   text-decoration: none;
 }
 
 a:hover {
+  color: var(--posit-link-hover);
   text-decoration: underline;
 }
 
@@ -59,7 +67,7 @@ pre {
   font-family: var(--font-mono);
   font-size: 0.875rem;
   line-height: 1.7;
-  background: var(--posit-navy-dark);
+  background: #1e293b;
   color: #e2e8f0;
   padding: 1.25rem 1.5rem;
   border-radius: var(--radius);
