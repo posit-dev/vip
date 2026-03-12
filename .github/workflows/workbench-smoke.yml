@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   workbench-smoke:
+    if: github.actor != 'dependabot[bot]'
     name: Smoke test against Workbench ${{ matrix.workbench-version }}
     runs-on: ubuntu-latest
     strategy:
@@ -24,7 +25,7 @@ jobs:
       WB_TEST_USER: rstudio
       WB_TEST_PASSWD: Rstudio123!
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Start Workbench in Docker
       # RSW_TESTUSER/RSW_TESTUSER_PASSWD provision the default test user automatically.
@@ -80,7 +81,7 @@ jobs:
 
       # Rename the check run so the job title shows the resolved version
       - name: Update job title with resolved version
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const resolvedVersion = '${{ steps.version.outputs.resolved }}';
@@ -149,7 +150,7 @@ jobs:
       # Upload test results for debugging failures
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: workbench-smoke-results-${{ steps.version.outputs.resolved }}
           path: smoke-results.xml
@@ -205,3 +206,17 @@ jobs:
       - name: Stop Workbench
         if: always()
         run: docker stop workbench && docker rm workbench || true
+
+  status:
+    name: Workbench Smoke Tests Status
+    if: always()
+    needs: [workbench-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check smoke test result
+        run: |
+          if [ "${{ needs.workbench-smoke.result }}" = "failure" ] || [ "${{ needs.workbench-smoke.result }}" = "cancelled" ]; then
+            echo "Workbench smoke tests failed or were cancelled"
+            exit 1
+          fi
+          echo "Workbench smoke tests passed or were skipped"
