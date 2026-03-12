@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 # Keywords that terminate the feature description block.
-_KEYWORDS = frozenset(["Scenario:", "Scenario Outline:", "Background:", "Rule:", "Examples:", "@"])
+_KEYWORDS = frozenset(["Scenario:", "Scenario Outline:", "Background:", "Rule:", "Examples:"])
 
 # Step keywords (prefix match after stripping whitespace).
 _STEP_PREFIXES = ("Given ", "When ", "Then ", "And ", "But ")

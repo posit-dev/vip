@@ -27,6 +27,11 @@ jobs:
           persist-credentials: false
 
       - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync Python dependencies
+        run: uv sync --frozen
 
       - name: Generate test catalog
         run: uv run python scripts/generate-test-catalog.py

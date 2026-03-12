@@ -75,7 +75,7 @@ def generate_catalog(tests_dir: Path, output: Path) -> dict:
     }
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(catalog, indent=2) + "\n")
+    output.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
     print(f"Wrote {output} ({len(categories)} categories)")
     return catalog
 
