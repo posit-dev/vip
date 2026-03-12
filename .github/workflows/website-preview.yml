@@ -42,6 +42,7 @@ jobs:
           cd website
           npm ci
           npm run build -- --base /vip/pr-preview-site/pr-${{ github.event.pull_request.number }}/
+          touch dist/.nojekyll
 
       - uses: rossjrw/pr-preview-action@v1
         with:
