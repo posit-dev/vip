@@ -22,6 +22,9 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Sync Python dependencies
+        run: uv sync --frozen
+
       - name: Generate test catalog
         run: |
           if [ -f scripts/generate-test-catalog.py ]; then
@@ -38,7 +41,8 @@ jobs:
         run: |
           cd website
           npm ci
-          npm run build
+          npm run build -- --base /vip/pr-preview-site/pr-${{ github.event.pull_request.number }}/
+          touch dist/.nojekyll
 
       - uses: rossjrw/pr-preview-action@v1
         with:
