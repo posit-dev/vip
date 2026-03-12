@@ -1,6 +1,43 @@
 # CHANGELOG
 
 
+## v0.2.0 (2026-03-12)
+
+### Continuous Integration
+
+- Add status gate jobs to smoke test workflows ([#70](https://github.com/posit-dev/vip/pull/70),
+  [`9d7d441`](https://github.com/posit-dev/vip/commit/9d7d4412d79bc7995ff0682dd67a806f79905eb5))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+- Configure dependabot for conventional commits and skip smoke tests
+  ([#69](https://github.com/posit-dev/vip/pull/69),
+  [`4704324`](https://github.com/posit-dev/vip/commit/47043249e19c8ff079dd0ad5b902013cafff4008))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+- Workbench smoke test ([#10](https://github.com/posit-dev/vip/pull/10),
+  [`b433483`](https://github.com/posit-dev/vip/commit/b433483a244a52fafe9fc1086a95599dc9ab6bd0))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+### Features
+
+- Run RSPM tests in report preview and remove dependabot skip from smoke tests
+  ([#71](https://github.com/posit-dev/vip/pull/71),
+  [`934729d`](https://github.com/posit-dev/vip/commit/934729d55984e51cb16cf9f4be164ac6b1cb9450))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+
 ## v0.1.2 (2026-03-11)
 
 ### Bug Fixes
