@@ -103,10 +103,9 @@ else:
         # Look up troubleshooting hints by scenario title.
         hint = hints.get(f.scenario_title, {}) if f.scenario_title else {}
 
-        if f.scenario_title or hint:
-            if f.scenario_title:
-                desc = f" — {f.feature_description}" if f.feature_description else ""
-                lines.append(f"**What was tested:** {f.scenario_title}{desc}\n")
+        if f.scenario_title:
+            desc = f" — {f.feature_description}" if f.feature_description else ""
+            lines.append(f"**What was tested:** {f.scenario_title}{desc}\n")
 
         if f.longrepr:
             lines.append(f"**Error:**\n```\n{f.longrepr}\n```\n")
@@ -132,10 +131,8 @@ else:
 
 ```{python}
 #| echo: false
-#| output: false
 
 import json as _json
-from datetime import datetime as _dt, timezone as _tz
 
 if failures:
     _failure_export = {

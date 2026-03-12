@@ -196,6 +196,12 @@ class TestLoadTroubleshooting:
         assert "Scenario A" in hints
         assert "Scenario B" in hints
 
+    def test_malformed_toml_returns_empty(self, tmp_path):
+        toml_file = tmp_path / "bad.toml"
+        toml_file.write_text("this is not valid [[ toml {{")
+        hints = load_troubleshooting(toml_file)
+        assert hints == {}
+
 
 class TestProductInfo:
     def test_defaults(self):

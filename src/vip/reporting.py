@@ -137,10 +137,14 @@ def load_troubleshooting(path: str | Path) -> dict[str, dict]:
 
     Returns a dict keyed by scenario title.  Each value contains
     ``summary``, ``likely_causes``, ``suggested_steps``, and optionally
-    ``docs_url``.  Returns an empty dict if the file does not exist.
+    ``docs_url``.  Returns an empty dict if the file does not exist or
+    cannot be parsed.
     """
     p = Path(path)
     if not p.exists():
         return {}
-    with p.open("rb") as f:
-        return tomllib.load(f)
+    try:
+        with p.open("rb") as f:
+            return tomllib.load(f)
+    except tomllib.TOMLDecodeError:
+        return {}
