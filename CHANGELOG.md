@@ -1,6 +1,24 @@
 # CHANGELOG
 
 
+## v0.2.1 (2026-03-12)
+
+### Bug Fixes
+
+- **website**: Fix index page layout rendering ([#66](https://github.com/posit-dev/vip/pull/66),
+  [`4d8e0a8`](https://github.com/posit-dev/vip/commit/4d8e0a87235839893991a71f15c50e1ed00ddf77))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 9 updates
+  ([#64](https://github.com/posit-dev/vip/pull/64),
+  [`c7c5944`](https://github.com/posit-dev/vip/commit/c7c594426bfcbf4d3dd83765f87479ff606300d8))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
 ## v0.2.0 (2026-03-12)
 
 ### Continuous Integration
