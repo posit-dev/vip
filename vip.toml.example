@@ -2,28 +2,14 @@
 # Copy this file to vip.toml and fill in your deployment details.
 # Secrets should be set via environment variables (see comments below).
 #
-# Execution modes (set via CLI flags, not in this file):
+# Quick start (no config file needed):
+#   vip verify --connect-url https://connect.example.com
 #
-#   vip verify <target>               K8s Job mode  (default)
-#   vip verify <target> --local       Local mode
-#   vip verify <target> --config-only Config-only mode
+# With this config file:
+#   vip verify --config vip.toml --no-interactive-auth
 #
-# Field applicability:
-#   [general], [connect], [workbench], [package_manager], [auth],
-#   [email], [monitoring], [security], [runtimes], [data_sources]
-#       -- used in all modes that run tests (local, k8s_job)
-#       -- config_only also reads these to generate vip.toml
-#
-#   [cluster]
-#       -- required for k8s_job and config_only modes
-#       -- ignored when running locally (--local)
-#
-# Credential approaches (set via CLI flags, not in this file):
-#   (default)          Keycloak: creates a test user in Keycloak, stores
-#                      VIP_TEST_USERNAME + VIP_TEST_PASSWORD in K8s Secret
-#   --interactive-auth Browser: mints Connect/Workbench/PM tokens, stores
-#                      VIP_CONNECT_API_KEY + VIP_WORKBENCH_API_KEY + VIP_PM_TOKEN
-#                      in K8s Secret
+# Kubernetes mode (auto-configure from PTD Site CR, requires posit-dev/team-operator):
+#   vip verify --k8s --site main --namespace posit-team
 
 [general]
 # Human-readable name for this deployment (appears in reports)
@@ -110,7 +96,7 @@ policy_checks_enabled = false
 # name = "my-cluster-20260101"        # EKS/AKS cluster name
 # region = "us-east-1"                # Cloud region
 # namespace = "posit-team"            # K8s namespace (default: posit-team)
-# site = "main"                       # Site CR name (default: main)
+# site = "main"                       # PTD Site CR name (default: main)
 # profile = "my-staging"              # AWS: profile name
 # role_arn = ""                       # AWS: IAM role ARN for cross-account access
 # subscription_id = ""                # Azure: subscription ID

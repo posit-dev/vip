@@ -1,4 +1,8 @@
-"""Site CR parsing and VIP config generation."""
+"""PTD Site CR parsing and VIP config generation.
+
+The PTD Site CR is a custom resource managed by the Posit Team Deployer
+(team-operator): https://github.com/posit-dev/team-operator
+"""
 
 from __future__ import annotations
 
@@ -8,14 +12,16 @@ from typing import Any
 
 
 def fetch_site_cr(site_name: str, namespace: str = "posit-team") -> dict[str, Any]:
-    """Fetch a Site CR from the cluster via kubectl.
+    """Fetch a PTD Site CR from the cluster via kubectl.
+
+    The PTD Site CR is managed by posit-dev/team-operator.
 
     Args:
-        site_name: Name of the Site custom resource
+        site_name: Name of the PTD Site custom resource
         namespace: Kubernetes namespace (default: "posit-team")
 
     Returns:
-        Parsed Site CR as a dictionary
+        Parsed PTD Site CR as a dictionary
 
     Raises:
         subprocess.CalledProcessError: If kubectl command fails
@@ -27,10 +33,10 @@ def fetch_site_cr(site_name: str, namespace: str = "posit-team") -> dict[str, An
 
 
 def generate_vip_config(site_cr: dict[str, Any], deployment_name: str) -> str:
-    """Generate vip.toml content from a Site CR.
+    """Generate vip.toml content from a PTD Site CR.
 
     Args:
-        site_cr: Parsed Site custom resource dictionary
+        site_cr: Parsed PTD Site custom resource dictionary
         deployment_name: Human-readable deployment name for the config
 
     Returns:

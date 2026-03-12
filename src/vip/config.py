@@ -19,7 +19,7 @@ class Mode(str, enum.Enum):
 
     local       -- run pytest directly on the caller's machine
     k8s_job     -- submit a Kubernetes Job and stream its logs
-    config_only -- generate vip.toml from the Site CR and print it; no tests run
+    config_only -- generate vip.toml from the PTD Site CR and print it; no tests run
     """
 
     local = "local"
@@ -110,7 +110,7 @@ class ClusterConfig:
     name: str = ""  # Cluster name (e.g., "ganso01-staging-20260101")
     region: str = ""  # Cloud region
     namespace: str = "posit-team"  # K8s namespace for Posit products
-    site: str = "main"  # Site CR name
+    site: str = "main"  # PTD Site CR name (posit-dev/team-operator)
 
     # AWS-specific
     profile: str = ""  # AWS profile name

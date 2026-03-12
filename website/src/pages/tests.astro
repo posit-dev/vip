@@ -57,9 +57,18 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
             <h2>{cat.label}</h2>
             <p class="category-meta">
               {cat.feature_count} {cat.feature_count === 1 ? "feature" : "features"} &middot;{" "}
-              {cat.scenario_count} {cat.scenario_count === 1 ? "scenario" : "scenarios"} &middot;{" "}
-              marker: <code>{cat.id}</code>
+              {cat.scenario_count} {cat.scenario_count === 1 ? "scenario" : "scenarios"}
             </p>
+            <div class="run-command">
+              <code>vip verify --categories {cat.id}</code>
+              <button
+                class="copy-btn"
+                data-command={`vip verify --categories ${cat.id}`}
+                aria-label={`Copy command to run ${cat.label} tests`}
+              >
+                Copy
+              </button>
+            </div>
 
             {cat.features.map((feature) => (
               <details class="feature-card">
@@ -240,6 +249,52 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
     font-weight: 600;
   }
 
+  /* Run command block */
+  .run-command {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--posit-gray-900);
+    border-radius: 6px;
+    padding: 0.625rem 0.75rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.8125rem;
+    font-family: var(--font-mono);
+    overflow-x: auto;
+  }
+
+  .run-command code {
+    flex: 1;
+    color: #e2e8f0;
+    background: none;
+    padding: 0;
+    white-space: nowrap;
+  }
+
+  .copy-btn {
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .copy-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+  }
+
+  .copy-btn.copied {
+    background: var(--posit-teal);
+    color: white;
+    border-color: var(--posit-teal);
+  }
+
   /* Feature cards */
   .feature-card {
     border: 1px solid var(--posit-gray-200);
@@ -351,3 +406,19 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll(".copy-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const command = btn.getAttribute("data-command");
+      if (!command) return;
+      await navigator.clipboard.writeText(command);
+      btn.textContent = "Copied!";
+      btn.classList.add("copied");
+      setTimeout(() => {
+        btn.textContent = "Copy";
+        btn.classList.remove("copied");
+      }, 2000);
+    });
+  });
+</script>

@@ -48,8 +48,8 @@ uv run pytest -m connect
 uv run pytest -m workbench
 uv run pytest -m package_manager
 
-# Generate the Quarto report
-uv run pytest --vip-report=report/results.json
+# Generate the Quarto report (results.json is written by default)
+uv run pytest
 cd report && quarto render
 ```
 
@@ -140,9 +140,11 @@ details.
 
 ## Deployment verification
 
-VIP can verify Posit Team deployments running in Kubernetes. The `vip verify`
-command connects to a cluster, reads the Site custom resource, generates a
-configuration, provisions credentials, and runs the test suite.
+VIP can verify Posit Team deployments running in Kubernetes that are managed
+by [team-operator](https://github.com/posit-dev/team-operator). The
+`vip verify --k8s` command connects to a cluster, reads the PTD Site custom
+resource, generates a configuration, provisions credentials, and runs the
+test suite.
 
 ### Basic usage
 
@@ -265,7 +267,7 @@ See `examples/custom_tests/` for a working example.
 After running the tests, generate a report:
 
 ```bash
-pytest --vip-report=report/results.json
+pytest
 cd report
 quarto render
 ```

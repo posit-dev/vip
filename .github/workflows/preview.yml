@@ -137,8 +137,7 @@ jobs:
             tests/connect/test_auth.py \
             tests/package_manager/test_repos.py \
             -v -k "reachable or api or mirror or repo_exists" \
-            --vip-config=vip.toml \
-            --vip-report=report/results.json
+            --vip-config=vip.toml
 
       - name: Render Quarto report
         run: cd report && uv run quarto render
