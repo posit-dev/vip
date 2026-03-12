@@ -134,6 +134,27 @@ class TestPluginIntegration:
         result = selftest_pytester.runpytest("--help")
         result.stdout.fnmatch_lines(["*--interactive-auth*"])
 
+    def test_json_report_includes_scenario_fields(self, selftest_pytester):
+        """Results JSON includes scenario_title and feature_description keys."""
+        selftest_pytester.makepyfile(
+            """
+            def test_plain():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        result = data["results"][0]
+        # Non-BDD tests should have the keys present but set to None.
+        assert "scenario_title" in result
+        assert "feature_description" in result
+        assert result["scenario_title"] is None
+        assert result["feature_description"] is None
+
     def test_interactive_auth_requires_connect_url(self, selftest_pytester):
         """--interactive-auth fails fast when Connect URL is not configured."""
         selftest_pytester.makepyfile(

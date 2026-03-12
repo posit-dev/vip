@@ -204,6 +204,7 @@ def pytest_collection_modifyitems(
         _maybe_skip_for_version(item, vip_cfg)
         _maybe_skip_credential_check(item, using_interactive_auth)
         _assign_xdist_group(item)
+        _stash_scenario_metadata(item)
         if item.get_closest_marker("prerequisites"):
             prerequisites.append(item)
         else:
@@ -302,6 +303,29 @@ def _version_tuple(v: str) -> tuple[int, ...]:
 # ---------------------------------------------------------------------------
 
 
+_scenario_stash_key = pytest.StashKey[dict[str, str | None]]()
+
+
+def _stash_scenario_metadata(item: pytest.Item) -> None:
+    """Extract pytest-bdd scenario metadata and stash it on the item."""
+    scenario_title = None
+    feature_description = None
+
+    # pytest-bdd stores scenario info on the underlying function.
+    fn = getattr(item, "obj", None)
+    scenario_obj = getattr(fn, "_pytest_bdd_scenario", None) if fn else None
+    if scenario_obj is not None:
+        scenario_title = getattr(scenario_obj, "name", None)
+        feature_obj = getattr(scenario_obj, "feature", None)
+        if feature_obj is not None:
+            feature_description = getattr(feature_obj, "description", None)
+
+    item.stash[_scenario_stash_key] = {
+        "scenario_title": scenario_title,
+        "feature_description": feature_description,
+    }
+
+
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     if report.when == "call" or (report.when == "setup" and report.skipped):
         if _active_config is None:
@@ -310,11 +334,16 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
         if results is None:
             return
         markers: list[str] = []
-        if hasattr(report, "item"):
+        scenario_meta: dict[str, str | None] = {}
+        item = getattr(report, "item", None)
+        if item is not None:
             try:
-                markers = [m.name for m in report.item.iter_markers()]  # type: ignore[attr-defined]
+                markers = [m.name for m in item.iter_markers()]  # type: ignore[attr-defined]
             except Exception:
                 pass
+            item_stash = getattr(item, "stash", None)
+            if item_stash is not None:
+                scenario_meta = item_stash.get(_scenario_stash_key, {})
         results.append(
             {
                 "nodeid": report.nodeid,
@@ -322,6 +351,8 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
                 "duration": report.duration,
                 "longrepr": str(report.longrepr) if report.longrepr else None,
                 "markers": markers,
+                "scenario_title": scenario_meta.get("scenario_title"),
+                "feature_description": scenario_meta.get("feature_description"),
             }
         )
 

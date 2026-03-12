@@ -17,6 +17,26 @@ from vip.reporting import load_results
 
 data = load_results(Path("results.json"))
 
+from vip.gherkin import parse_feature_file
+
+# Build a lookup from nodeid prefix (file path) to parsed feature data.
+_feature_cache: dict[str, dict] = {}
+
+
+def _get_feature(nodeid: str) -> dict | None:
+    """Return parsed feature data for a test's nodeid, or None."""
+    # nodeid looks like "tests/connect/test_auth.py::test_login"
+    py_file = nodeid.split("::")[0] if "::" in nodeid else nodeid
+    feature_file = py_file.rsplit(".", 1)[0] + ".feature"
+    if feature_file not in _feature_cache:
+        p = Path("..") / feature_file
+        if p.exists():
+            _feature_cache[feature_file] = parse_feature_file(p)
+        else:
+            _feature_cache[feature_file] = {}
+    return _feature_cache[feature_file] or None
+
+
 if data.total == 0:
     display(Markdown("> **No results found.** Run: `pytest --vip-report=report/results.json`"))
 else:
@@ -34,6 +54,24 @@ else:
             )
             lines.append(f"| `{short}` | {icon} | {duration} |")
         lines.append("")
+
+        # Show BDD scenario steps per test in expandable details.
+        for item in items:
+            feature = _get_feature(item.nodeid)
+            if not feature or not feature.get("scenarios"):
+                continue
+            scenario_title = item.scenario_title
+            if not scenario_title:
+                continue
+            for sc in feature["scenarios"]:
+                if sc["title"] == scenario_title and sc.get("steps"):
+                    short = item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
+                    lines.append(f"<details><summary><code>{short}</code> — BDD steps</summary>\n")
+                    lines.append(f"**Scenario:** {sc['title']}\n")
+                    for step in sc["steps"]:
+                        lines.append(f"- `{step}`")
+                    lines.append("\n</details>\n")
+                    break
 
     display(Markdown("\n".join(lines)))
 ```

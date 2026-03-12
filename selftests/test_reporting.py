@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vip.reporting import ProductInfo, ReportData, TestResult, load_results
+from vip.reporting import ProductInfo, ReportData, TestResult, load_results, load_troubleshooting
 
 
 class TestTestResult:
@@ -20,6 +20,21 @@ class TestTestResult:
             outcome="skipped",
         )
         assert r.category == "workbench"
+
+    def test_optional_fields_default_none(self):
+        r = TestResult(nodeid="a", outcome="passed")
+        assert r.scenario_title is None
+        assert r.feature_description is None
+
+    def test_optional_fields_set(self):
+        r = TestResult(
+            nodeid="a",
+            outcome="passed",
+            scenario_title="User can log in",
+            feature_description="Connect authentication",
+        )
+        assert r.scenario_title == "User can log in"
+        assert r.feature_description == "Connect authentication"
 
 
 class TestReportData:
@@ -112,6 +127,80 @@ class TestLoadResults:
         assert rd.total == 0
         assert rd.deployment_name == "Posit Team"
         assert rd.products == []
+
+    def test_load_with_optional_fields(self, tmp_path):
+        import json
+
+        data = {
+            "deployment_name": "Test",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "exit_status": 0,
+            "products": {},
+            "results": [
+                {
+                    "nodeid": "tests/connect/test_auth.py::test_login",
+                    "outcome": "failed",
+                    "duration": 1.0,
+                    "longrepr": "AssertionError",
+                    "markers": ["connect"],
+                    "scenario_title": "User can log in via the web UI",
+                    "feature_description": "Connect authentication",
+                },
+                {
+                    "nodeid": "tests/connect/test_auth.py::test_api",
+                    "outcome": "passed",
+                    "duration": 0.5,
+                    "markers": ["connect"],
+                },
+            ],
+        }
+        p = tmp_path / "results.json"
+        p.write_text(json.dumps(data))
+        rd = load_results(p)
+        assert rd.results[0].scenario_title == "User can log in via the web UI"
+        assert rd.results[0].feature_description == "Connect authentication"
+        assert rd.results[1].scenario_title is None
+        assert rd.results[1].feature_description is None
+
+
+class TestLoadTroubleshooting:
+    def test_load_valid_toml(self, tmp_path):
+        toml_file = tmp_path / "troubleshooting.toml"
+        toml_file.write_text(
+            '["Connect server is reachable"]\n'
+            'summary = "Verifies HTTP connectivity"\n'
+            'likely_causes = ["Connect is not running", "Wrong URL"]\n'
+            'suggested_steps = ["Check systemctl status"]\n'
+            'docs_url = "https://docs.example.com"\n'
+        )
+        hints = load_troubleshooting(toml_file)
+        assert "Connect server is reachable" in hints
+        entry = hints["Connect server is reachable"]
+        assert entry["summary"] == "Verifies HTTP connectivity"
+        assert len(entry["likely_causes"]) == 2
+        assert len(entry["suggested_steps"]) == 1
+        assert entry["docs_url"] == "https://docs.example.com"
+
+    def test_missing_file_returns_empty(self, tmp_path):
+        hints = load_troubleshooting(tmp_path / "nonexistent.toml")
+        assert hints == {}
+
+    def test_multiple_scenarios(self, tmp_path):
+        toml_file = tmp_path / "troubleshooting.toml"
+        toml_file.write_text(
+            '["Scenario A"]\nsummary = "A"\nlikely_causes = []\nsuggested_steps = []\n\n'
+            '["Scenario B"]\nsummary = "B"\nlikely_causes = []\nsuggested_steps = []\n'
+        )
+        hints = load_troubleshooting(toml_file)
+        assert len(hints) == 2
+        assert "Scenario A" in hints
+        assert "Scenario B" in hints
+
+    def test_malformed_toml_returns_empty(self, tmp_path):
+        toml_file = tmp_path / "bad.toml"
+        toml_file.write_text("this is not valid [[ toml {{")
+        hints = load_troubleshooting(toml_file)
+        assert hints == {}
 
 
 class TestProductInfo:

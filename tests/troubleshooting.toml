@@ -1,0 +1,89 @@
+# Troubleshooting hints for VIP test failures.
+#
+# Each section is keyed by the exact scenario title from the .feature file.
+# The report renders these hints alongside tracebacks when tests fail.
+# Tests without a matching entry here still show the standard traceback.
+
+["Connect server is reachable"]
+summary = "Verifies HTTP connectivity to the Connect server"
+likely_causes = [
+    "Connect is not running",
+    "Wrong URL in vip.toml",
+    "Network or firewall blocking access",
+]
+suggested_steps = [
+    "Check that Connect is running: `systemctl status rstudio-connect` or check pod status",
+    "Verify the URL in vip.toml matches your Connect host",
+    "Try `curl <connect-url>/__api__/server_settings` from this machine",
+]
+docs_url = "https://docs.posit.co/connect/admin/server-management/"
+
+["Workbench server is reachable"]
+summary = "Verifies HTTP connectivity to the Workbench server"
+likely_causes = [
+    "Workbench is not running",
+    "Wrong URL in vip.toml",
+    "Network or firewall blocking access",
+]
+suggested_steps = [
+    "Check that Workbench is running: `systemctl status rstudio-server` or check pod status",
+    "Verify the URL in vip.toml matches your Workbench host",
+    "Try `curl <workbench-url>` from this machine",
+]
+docs_url = "https://docs.posit.co/ide/server-pro/getting_started/installation.html"
+
+["Package Manager server is reachable"]
+summary = "Verifies HTTP connectivity to the Package Manager server"
+likely_causes = [
+    "Package Manager is not running",
+    "Wrong URL in vip.toml",
+    "Network or firewall blocking access",
+]
+suggested_steps = [
+    "Check that Package Manager is running or check pod status",
+    "Verify the URL in vip.toml matches your Package Manager host",
+    "Try `curl <pm-url>/__api__/status` from this machine",
+]
+docs_url = "https://docs.posit.co/rspm/admin/"
+
+["Test credentials are provided"]
+summary = "Checks that VIP_TEST_USERNAME and VIP_TEST_PASSWORD are set"
+likely_causes = [
+    "Environment variables not exported",
+    "Credentials not in .envrc or shell profile",
+]
+suggested_steps = [
+    "Export credentials: `export VIP_TEST_USERNAME=... VIP_TEST_PASSWORD=...`",
+    "Or add them to your .envrc and run `direnv allow`",
+    "If using Okta/OIDC, use `--interactive-auth` instead of credentials",
+]
+
+["User can log in via the web UI"]
+summary = "Verifies browser-based login to Connect"
+likely_causes = [
+    "Incorrect test credentials",
+    "Auth provider misconfiguration (SAML, OIDC, LDAP)",
+    "Connect login page has changed or is unreachable",
+    "Playwright browser not installed",
+]
+suggested_steps = [
+    "Verify credentials work by logging in manually at the Connect URL",
+    "Check auth provider settings in Connect admin panel",
+    "Run `uv run playwright install chromium` to ensure browser is available",
+    "If using external IdP, try `--interactive-auth`",
+]
+docs_url = "https://docs.posit.co/connect/admin/authentication/"
+
+["API key authentication works"]
+summary = "Verifies API key access to the Connect API"
+likely_causes = [
+    "VIP_CONNECT_API_KEY not set or invalid",
+    "API key expired or revoked",
+    "Connect API is not accessible",
+]
+suggested_steps = [
+    "Verify the API key: `curl -H 'Authorization: Key <key>' <connect-url>/__api__/v1/user`",
+    "Generate a new API key from the Connect UI if needed",
+    "Check that the VIP_CONNECT_API_KEY environment variable is exported",
+]
+docs_url = "https://docs.posit.co/connect/user/api-keys/"
