@@ -25,7 +25,7 @@ jobs:
       WB_TEST_USER: rstudio
       WB_TEST_PASSWD: Rstudio123!
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Start Workbench in Docker
       # RSW_TESTUSER/RSW_TESTUSER_PASSWD provision the default test user automatically.
@@ -81,7 +81,7 @@ jobs:
 
       # Rename the check run so the job title shows the resolved version
       - name: Update job title with resolved version
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const resolvedVersion = '${{ steps.version.outputs.resolved }}';
@@ -150,7 +150,7 @@ jobs:
       # Upload test results for debugging failures
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: workbench-smoke-results-${{ steps.version.outputs.resolved }}
           path: smoke-results.xml
