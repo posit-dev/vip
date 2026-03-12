@@ -45,7 +45,13 @@ jobs:
           source-dir: website/dist/
           preview-branch: gh-pages
           umbrella-dir: pr-preview-site
-          comment-tag: website-preview
+          comment: false
+
+      - uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: website-preview
+          message: |
+            **Website Preview** · [View preview](https://posit-dev.github.io/vip/pr-preview-site/pr-${{ github.event.pull_request.number }}/)
 
   cleanup:
     if: github.event.action == 'closed'
@@ -59,5 +65,10 @@ jobs:
           source-dir: website/dist/
           preview-branch: gh-pages
           umbrella-dir: pr-preview-site
-          comment-tag: website-preview
+          comment: false
           action: remove
+
+      - uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: website-preview
+          delete: true

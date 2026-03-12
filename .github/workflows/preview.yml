@@ -87,7 +87,6 @@ jobs:
           source-dir: report/_output/
           preview-branch: gh-pages
           umbrella-dir: pr-preview
-          comment-tag: report-preview
 
       # Stop Connect
       - name: Stop Connect
@@ -108,5 +107,4 @@ jobs:
           source-dir: report/_output/
           preview-branch: gh-pages
           umbrella-dir: pr-preview
-          comment-tag: report-preview
           action: remove
