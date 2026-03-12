@@ -67,8 +67,9 @@ const categories = [
           products.map((product) => (
             <div class="product-card">
               <div class="product-logo">
-                <img src={product.logo} height="24" alt={`Posit ${product.name}`} />
+                <img src={product.logo} width="120" height="24" alt={`Posit ${product.name}`} />
               </div>
+              <h3 class="product-title">{product.name}</h3>
               <p>{product.description}</p>
               <code class="marker">pytest -m {product.marker}</code>
             </div>
@@ -289,6 +290,12 @@ const categories = [
 
   .product-logo {
     margin-bottom: 1rem;
+  }
+
+  .product-title {
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+    color: var(--posit-navy);
   }
 
   .product-card p {
