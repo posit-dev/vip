@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   workbench-smoke:
+    if: github.actor != 'dependabot[bot]'
     name: Smoke test against Workbench ${{ matrix.workbench-version }}
     runs-on: ubuntu-latest
     strategy:
