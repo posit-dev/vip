@@ -10,7 +10,6 @@
   [`4530266`](https://github.com/posit-dev/vip/commit/4530266ba2b7584864a1cc1ffa76c5d79c8bb4d9))
 
 
-
 ## v0.5.0 (2026-03-12)
 
 ### Features
