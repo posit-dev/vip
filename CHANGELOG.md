@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.3.0 (2026-03-12)
+
+### Features
+
+- **website**: Add test inventory page ([#67](https://github.com/posit-dev/vip/pull/67),
+  [`b9161a2`](https://github.com/posit-dev/vip/commit/b9161a2e6d657cca7f3ed9511659f7463c189b2a))
+
+
 ## v0.2.1 (2026-03-12)
 
 ### Bug Fixes
