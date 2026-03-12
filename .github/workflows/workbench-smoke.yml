@@ -206,3 +206,17 @@ jobs:
       - name: Stop Workbench
         if: always()
         run: docker stop workbench && docker rm workbench || true
+
+  status:
+    name: Workbench Smoke Tests Status
+    if: always()
+    needs: [workbench-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check smoke test result
+        run: |
+          if [ "${{ needs.workbench-smoke.result }}" = "failure" ] || [ "${{ needs.workbench-smoke.result }}" = "cancelled" ]; then
+            echo "Workbench smoke tests failed or were cancelled"
+            exit 1
+          fi
+          echo "Workbench smoke tests passed or were skipped"

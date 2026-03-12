@@ -223,3 +223,17 @@ jobs:
       - name: Stop Package Manager
         if: always() && steps.license.outputs.available == 'true'
         run: docker stop packagemanager && docker rm packagemanager || true
+
+  status:
+    name: Package Manager Smoke Tests Status
+    if: always()
+    needs: [packagemanager-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check smoke test result
+        run: |
+          if [ "${{ needs.packagemanager-smoke.result }}" = "failure" ] || [ "${{ needs.packagemanager-smoke.result }}" = "cancelled" ]; then
+            echo "Package Manager smoke tests failed or were cancelled"
+            exit 1
+          fi
+          echo "Package Manager smoke tests passed or were skipped"
