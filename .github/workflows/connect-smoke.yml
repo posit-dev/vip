@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   connect-smoke:
+    if: github.actor != 'dependabot[bot]'
     name: Smoke test against Connect ${{ matrix.connect-version }}
     runs-on: ubuntu-latest
     strategy:

@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   packagemanager-smoke:
+    if: github.actor != 'dependabot[bot]'
     name: Smoke test against Package Manager ${{ matrix.pm-version }}
     runs-on: ubuntu-latest
     strategy:
