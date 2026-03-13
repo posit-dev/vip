@@ -61,6 +61,27 @@ jobs:
           docker logs packagemanager
           exit 1
 
+      # Surface license errors as workflow annotations so expired keys
+      # are immediately visible on the Actions run page.
+      - name: Check for license errors
+        if: failure() && steps.license.outputs.available == 'true'
+        run: |
+          LOGS=$(docker logs packagemanager 2>&1 || true)
+          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable|not activated" | head -1 || true)
+          if [ -n "${LICENSE_MSG}" ]; then
+            echo "::error title=License Error::${LICENSE_MSG}"
+            {
+              echo "## License Error"
+              echo ""
+              echo "The Package Manager license key is expired or invalid. Update the \`RSPM_LICENSE\` repository secret."
+              echo ""
+              echo '```'
+              echo "${LICENSE_MSG}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
       # Provision CRAN and PyPI repositories for smoke testing
       - name: Provision smoke test repositories
         if: steps.license.outputs.available == 'true'
@@ -170,9 +191,11 @@ jobs:
         if: always()
         run: |
           if [ "${{ steps.license.outputs.available }}" != "true" ]; then
-            echo "## Package Manager Smoke Tests — Skipped" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "> RSPM_LICENSE secret is not configured. Add it to run PM smoke tests." >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "## Package Manager Smoke Tests — Skipped"
+              echo ""
+              echo "> RSPM_LICENSE secret is not configured. Add it to run PM smoke tests."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           RESOLVED="${{ steps.version.outputs.resolved }}"
