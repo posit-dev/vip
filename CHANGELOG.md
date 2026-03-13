@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.8.0 (2026-03-13)
+
+### Features
+
+- **website**: Add example validation report page ([#82](https://github.com/posit-dev/vip/pull/82),
+  [`46153b1`](https://github.com/posit-dev/vip/commit/46153b1ce0404664bcc644f08e9e4bd175fb8de5))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+
 ## v0.7.0 (2026-03-13)
 
 ### Features
