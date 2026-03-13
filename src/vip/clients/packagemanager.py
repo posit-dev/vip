@@ -32,11 +32,6 @@ class PackageManagerClient:
         resp.raise_for_status()
         return resp.json()
 
-    def get_repo(self, repo_id: int | str) -> dict[str, Any]:
-        resp = self._client.get(f"/__api__/repos/{repo_id}")
-        resp.raise_for_status()
-        return resp.json()
-
     # -- CRAN ---------------------------------------------------------------
 
     def cran_package_available(self, repo_name: str, package: str) -> bool:

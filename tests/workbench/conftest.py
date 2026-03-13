@@ -11,7 +11,7 @@ import httpx
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.workbench.pages import Homepage, LoginPage, NewSessionDialog
+from tests.workbench.pages import Homepage, LoginPage
 
 pytestmark = pytest.mark.workbench
 
@@ -218,67 +218,3 @@ def wb_login(
     return page
 
 
-@pytest.fixture
-def wb_start_session(page: Page, wb_login):
-    """Factory fixture to start a session of any IDE type.
-
-    Usage:
-        def test_example(wb_start_session):
-            session_name = wb_start_session("RStudio")
-
-            # Or with auto_join disabled to stay on homepage:
-            session_name = wb_start_session("RStudio", auto_join=False)
-    """
-
-    def _start(ide_type: str, session_name: str | None = None, *, auto_join: bool = True) -> str:
-        if session_name is None:
-            session_name = f"VIP Test {ide_type} {int(time.time())}"
-
-        page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=10000)
-
-        # Wait for dialog to appear
-        dialog = page.locator(NewSessionDialog.DIALOG)
-        expect(dialog.locator(NewSessionDialog.TITLE)).to_have_text("New Session", timeout=10000)
-
-        # Select IDE type using role-based selector within dialog
-        ide_display = NewSessionDialog.ide_display_name(ide_type)
-        dialog.get_by_role("tab", name=ide_display).click(timeout=5000)
-
-        # Set session name
-        page.fill(NewSessionDialog.SESSION_NAME, session_name)
-
-        # Set auto-join checkbox based on parameter
-        checkbox = page.locator(NewSessionDialog.JOIN_CHECKBOX)
-        if auto_join and not checkbox.is_checked():
-            checkbox.click()
-        elif not auto_join and checkbox.is_checked():
-            checkbox.click()
-
-        # Launch the session
-        page.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=5000)
-
-        # Wait for session to become active
-        expect(page.get_by_text(session_name, exact=True)).to_be_visible(timeout=15000)
-        expect(page.get_by_role("button", name="Active").first).to_be_visible(timeout=90000)
-
-        return session_name
-
-    return _start
-
-
-@pytest.fixture
-def wb_quit_session(page: Page):
-    """Factory fixture to quit a session by name."""
-
-    def _quit(session_name: str):
-        checkbox = page.locator(Homepage.session_checkbox(session_name))
-        checkbox.click()
-
-        quit_btn = page.locator(Homepage.QUIT_BUTTON)
-        expect(quit_btn).to_be_visible()
-        quit_btn.click()
-
-        # Wait for session to disappear
-        expect(page.locator(Homepage.session_link(session_name))).not_to_be_visible(timeout=30000)
-
-    return _quit

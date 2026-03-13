@@ -47,11 +47,6 @@ class ConnectClient:
 
     # -- Content ------------------------------------------------------------
 
-    def list_content(self) -> list[dict[str, Any]]:
-        resp = self._client.get("/v1/content")
-        resp.raise_for_status()
-        return resp.json()
-
     def create_content(self, name: str, **kwargs: Any) -> dict[str, Any]:
         """Create a new content item tagged for VIP cleanup.
 
@@ -132,28 +127,6 @@ class ConnectClient:
         except Exception:
             pass
 
-    def cleanup_vip_content(self) -> int:
-        """Delete all content items tagged as VIP test content.
-
-        Returns the number of items deleted.
-        """
-        deleted = 0
-        try:
-            resp = self._client.get("/v1/tags", params={"name": _VIP_CONTENT_TAG})
-            resp.raise_for_status()
-            tags = resp.json()
-            if not tags:
-                return 0
-            tag_id = tags[0]["id"]
-            resp = self._client.get(f"/v1/tags/{tag_id}/content")
-            resp.raise_for_status()
-            for item in resp.json():
-                self.delete_content(item["guid"])
-                deleted += 1
-        except Exception:
-            pass
-        return deleted
-
     # -- R / Python versions ------------------------------------------------
 
     def r_versions(self) -> list[str]:
@@ -176,38 +149,6 @@ class ConnectClient:
             installations = resp.json().get("installations", [])
             return [i.get("version", i.get("path", "")) for i in installations]
         return []
-
-    def r_repos(self) -> list[str]:
-        """Return configured R repository URLs from the Connect admin API.
-
-        Tries multiple endpoints across Connect versions.  Returns an empty
-        list if the information is unavailable.
-        """
-        urls: list[str] = []
-        # Try the v1 server_settings endpoint (Connect 2024+).
-        for path in ("/v1/server_settings", "/server_settings"):
-            try:
-                resp = self._client.get(path)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    urls.extend(v for v in self._extract_strings(data) if v.startswith("http"))
-            except Exception:
-                continue
-        return urls
-
-    @staticmethod
-    def _extract_strings(obj: Any) -> list[str]:
-        """Recursively collect all string leaf values."""
-        results: list[str] = []
-        if isinstance(obj, str):
-            results.append(obj)
-        elif isinstance(obj, dict):
-            for v in obj.values():
-                results.extend(ConnectClient._extract_strings(v))
-        elif isinstance(obj, list):
-            for item in obj:
-                results.extend(ConnectClient._extract_strings(item))
-        return results
 
     # -- Email --------------------------------------------------------------
 

@@ -24,19 +24,6 @@ def _decode_secret_data(data: dict[str, str]) -> dict[str, str]:
     return {k: base64.b64decode(v).decode() for k, v in data.items()}
 
 
-def _capture_kubectl_apply_payload(mock_run: MagicMock) -> dict:
-    """Extract the JSON payload passed to kubectl apply from a mock_run call."""
-    for c in mock_run.call_args_list:
-        args = c.args[0] if c.args else c.kwargs.get("args", [])
-        if "apply" in args:
-            secret_json = c.kwargs.get("input") or (c.args[1] if len(c.args) > 1 else None)
-            if secret_json is None:
-                # Try positional keyword
-                secret_json = c.kwargs.get("input")
-            return json.loads(secret_json)
-    raise AssertionError("No kubectl apply call found in mock_run calls")
-
-
 # ---------------------------------------------------------------------------
 # Tests for _create_credentials_secret (Keycloak path)
 # ---------------------------------------------------------------------------

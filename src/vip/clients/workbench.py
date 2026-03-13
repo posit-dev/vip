@@ -28,13 +28,6 @@ class WorkbenchClient:
         resp = self._client.get("/health-check")
         return resp.status_code
 
-    def server_info(self) -> dict[str, Any]:
-        """Return basic server information (unauthenticated)."""
-        resp = self._client.get("/api/server-info")
-        if resp.status_code == 200:
-            return resp.json()
-        return {}
-
     # -- Sessions -----------------------------------------------------------
 
     def set_cookies(self, cookies: dict[str, str]) -> None:

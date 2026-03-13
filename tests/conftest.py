@@ -143,8 +143,3 @@ def data_sources(vip_config: VIPConfig):
 @pytest.fixture(scope="session")
 def email_enabled(vip_config: VIPConfig) -> bool:
     return vip_config.email_enabled
-
-
-@pytest.fixture(scope="session")
-def monitoring_enabled(vip_config: VIPConfig) -> bool:
-    return vip_config.monitoring_enabled
