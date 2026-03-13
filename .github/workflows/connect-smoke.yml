@@ -30,6 +30,35 @@ jobs:
           version: ${{ matrix.connect-version }}
           license: ${{ secrets.CONNECT_LICENSE }}
 
+      # Surface license errors as workflow annotations so expired keys
+      # are immediately visible on the Actions run page.
+      - name: Check for license errors
+        if: failure() && steps.connect.outcome == 'failure'
+        run: |
+          # Find the Connect container even if with-connect failed partway
+          CID=$(docker ps -aq --filter "ancestor=rstudio/rstudio-connect" | head -1)
+          if [ -z "${CID}" ]; then
+            echo "::error title=Connect Startup Failed::Connect container not found. The with-connect action failed before creating a container."
+            exit 1
+          fi
+          LOGS=$(docker logs "${CID}" 2>&1 || true)
+          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable" | head -1 || true)
+          if [ -n "${LICENSE_MSG}" ]; then
+            echo "::error title=License Error::${LICENSE_MSG}"
+            {
+              echo "## License Error"
+              echo ""
+              echo "The Connect license key is expired or invalid. Update the \`CONNECT_LICENSE\` repository secret."
+              echo ""
+              echo '```'
+              echo "${LICENSE_MSG}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error title=Connect Startup Failed::Connect failed to start. Check the 'Start Connect' step logs for details."
+          fi
+          exit 1
+
       # Resolve the actual Connect version for unambiguous job records
       - name: Resolve Connect version
         id: version
