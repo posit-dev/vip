@@ -7,7 +7,17 @@ one failure, making it easy to verify how failures are displayed.
 
 from __future__ import annotations
 
+import os
+
+import pytest
 from pytest_bdd import given, scenario, then, when
+
+
+if not os.getenv("VIP_ENABLE_EXPECTED_FAILURE_DEMO"):
+    pytest.skip(
+        "Skipping demo expected-failure test; set VIP_ENABLE_EXPECTED_FAILURE_DEMO=1 to enable.",
+        allow_module_level=True,
+    )
 
 
 @scenario(
