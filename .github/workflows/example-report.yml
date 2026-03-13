@@ -1,22 +1,16 @@
-name: Report Preview
+name: Example Validation Report
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, closed]
-
-concurrency: preview-${{ github.ref }}
-
-permissions:
-  contents: write
-  pull-requests: write
+  workflow_call:
 
 jobs:
-  preview:
-    if: github.event.action != 'closed'
-    name: Build & deploy report preview
+  build:
+    name: Build example report
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       # Start Connect in Docker
       - name: Start Connect
@@ -142,13 +136,6 @@ jobs:
       - name: Render Quarto report
         run: cd report && uv run quarto render
 
-      - uses: rossjrw/pr-preview-action@v1
-        with:
-          source-dir: report/_output/
-          preview-branch: gh-pages
-          umbrella-dir: pr-preview
-          comment: false
-
       # Stop Connect
       - name: Stop Connect
         if: always()
@@ -161,16 +148,8 @@ jobs:
         if: always()
         run: docker stop packagemanager && docker rm packagemanager || true
 
-  cleanup:
-    if: github.event.action == 'closed'
-    name: Clean up report preview
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: rossjrw/pr-preview-action@v1
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
         with:
-          source-dir: report/_output/
-          preview-branch: gh-pages
-          umbrella-dir: pr-preview
-          action: remove
+          name: example-report
+          path: report/_output/
