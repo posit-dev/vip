@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import httpx
 import pytest
 from pytest_bdd import given, scenario, then, when
+
+from tests.helpers import check_data_source_connectivity
 
 
 @pytest.mark.skip(
@@ -29,21 +30,7 @@ def data_sources_configured(data_sources):
 
 @when("I verify data source connectivity", target_fixture="ds_results")
 def verify_connectivity(data_sources):
-    results = []
-    for ds in data_sources:
-        result = {"name": ds.name, "type": ds.type, "ok": False, "error": None}
-        try:
-            if ds.type in ("http", "api"):
-                resp = httpx.get(ds.connection_string, timeout=15)
-                result["ok"] = resp.status_code < 400
-            else:
-                result["ok"] = bool(ds.connection_string)
-                if not result["ok"]:
-                    result["error"] = "connection_string is empty"
-        except Exception as exc:
-            result["error"] = str(exc)
-        results.append(result)
-    return results
+    return check_data_source_connectivity(data_sources)
 
 
 @then("all data sources are reachable")

@@ -21,13 +21,6 @@ def test_connect_login_api():
 # ---------------------------------------------------------------------------
 
 
-@given("Connect is accessible at the configured URL")
-def connect_accessible(connect_client):
-    assert connect_client is not None, "Connect client not configured"
-    status = connect_client.server_status()
-    assert status < 400, f"Connect returned HTTP {status}"
-
-
 @given("a valid API key is configured")
 def api_key_configured(vip_config):
     assert vip_config.connect.api_key, (

@@ -35,12 +35,6 @@ def provider_matches(auth_info):
     )
 
 
-@given("Connect is configured in vip.toml")
-def connect_configured(vip_config):
-    if not vip_config.connect.is_configured:
-        pytest.skip("Connect is not configured")
-
-
 @when("I make an unauthenticated API request to Connect", target_fixture="unauth_response")
 def unauth_request(vip_config):
     resp = httpx.get(

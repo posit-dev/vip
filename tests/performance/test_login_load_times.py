@@ -5,8 +5,7 @@ from __future__ import annotations
 import time
 
 import httpx
-import pytest
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import scenario, then, when
 
 
 @scenario("test_login_load_times.feature", "Connect login page loads within acceptable time")
@@ -27,24 +26,6 @@ def test_pm_load_time():
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
-
-
-@given("Connect is configured in vip.toml")
-def connect_configured(vip_config):
-    if not vip_config.connect.is_configured:
-        pytest.skip("Connect is not configured")
-
-
-@given("Workbench is configured in vip.toml")
-def workbench_configured(vip_config):
-    if not vip_config.workbench.is_configured:
-        pytest.skip("Workbench is not configured")
-
-
-@given("Package Manager is configured in vip.toml")
-def pm_configured(vip_config):
-    if not vip_config.package_manager.is_configured:
-        pytest.skip("Package Manager is not configured")
 
 
 @when("I measure the Connect login page load time", target_fixture="load_time")

@@ -6,8 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import httpx
-import pytest
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import scenario, then, when
 
 
 @scenario("test_concurrency.feature", "Multiple concurrent API requests to Connect succeed")
@@ -18,18 +17,6 @@ def test_connect_concurrency():
 @scenario("test_concurrency.feature", "Multiple concurrent requests to Package Manager succeed")
 def test_pm_concurrency():
     pass
-
-
-@given("Connect is configured in vip.toml")
-def connect_configured(vip_config):
-    if not vip_config.connect.is_configured:
-        pytest.skip("Connect is not configured")
-
-
-@given("Package Manager is configured in vip.toml")
-def pm_configured(vip_config):
-    if not vip_config.package_manager.is_configured:
-        pytest.skip("Package Manager is not configured")
 
 
 def _concurrent_requests(url: str, n: int) -> list[dict]:

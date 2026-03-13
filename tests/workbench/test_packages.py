@@ -5,7 +5,10 @@ from __future__ import annotations
 import re
 
 import pytest
+from playwright.sync_api import Page
 from pytest_bdd import given, scenario, then, when
+
+from tests.workbench.conftest import workbench_login
 
 
 @pytest.mark.skip(
@@ -19,33 +22,17 @@ def test_r_repo_configured():
 
 @given("the user is logged in to Workbench")
 def user_logged_in(
-    page,
-    workbench_url,
-    test_username,
-    test_password,
-    auth_provider,
-    interactive_auth,
+    page: Page,
+    workbench_url: str,
+    test_username: str,
+    test_password: str,
+    auth_provider: str,
+    interactive_auth: bool,
 ):
-    # For non-password auth without interactive auth, skip immediately.
-    if auth_provider != "password" and not interactive_auth:
-        pytest.skip(
-            f"Login form not available for auth provider {auth_provider!r}. "
-            "Pass --interactive-auth when browser storage state is pre-loaded."
-        )
-    page.goto(workbench_url)
-    page.wait_for_load_state("load")
-    # Check if we ended up on a login page.
-    on_login = any(kw in page.url.lower() for kw in ("sign-in", "login", "auth"))
-    if on_login:
-        if auth_provider != "password":
-            pytest.skip(
-                "Interactive auth storage state did not authenticate Workbench. "
-                "The OIDC session may not be shared between Connect and Workbench."
-            )
-        page.fill("#username, [name='username']", test_username)
-        page.fill("#password, [name='password']", test_password)
-        page.click("button[type='submit'], #sign-in")
-        page.wait_for_load_state("load")
+    """Log in to Workbench and verify homepage loads."""
+    workbench_login(
+        page, workbench_url, test_username, test_password, auth_provider, interactive_auth
+    )
 
 
 @when(

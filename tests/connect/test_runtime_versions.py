@@ -16,11 +16,6 @@ def test_python_versions():
     pass
 
 
-@given("Connect is accessible at the configured URL")
-def connect_accessible(connect_client):
-    assert connect_client is not None
-
-
 @given("expected R versions are specified in vip.toml")
 def r_versions_specified(expected_r_versions):
     if not expected_r_versions:

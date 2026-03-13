@@ -216,5 +216,3 @@ def wb_login(
     expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=15000)
 
     return page
-
-

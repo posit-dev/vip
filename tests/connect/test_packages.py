@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import io
 import pathlib
-import tarfile
-import time
 
 import pytest
 from pytest_bdd import given, scenario, then, when
+
+from tests.connect.conftest import _make_tar_gz
 
 
 @scenario("test_packages.feature", "Connect is configured to use the expected package repository")
@@ -19,11 +18,6 @@ def test_package_repo_configured():
 @scenario("test_packages.feature", "Package Manager URL is the default repository source")
 def test_pm_is_default_repo():
     pass
-
-
-@given("Connect is accessible at the configured URL")
-def connect_accessible(connect_client):
-    assert connect_client is not None
 
 
 @given("Package Manager is configured in vip.toml")
@@ -81,17 +75,6 @@ _PLUMBER_R = '#* @get /\nfunction() {\n  list(message = "VIP PM test")\n}\n'
 _PLUMBER_MANIFEST = (pathlib.Path(__file__).parent / "plumber_manifest.json").read_text()
 
 
-def _make_tar_gz(files: dict[str, str]) -> bytes:
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        for name, content in files.items():
-            data = content.encode()
-            info = tarfile.TarInfo(name=name)
-            info.size = len(data)
-            tar.addfile(info, io.BytesIO(data))
-    return buf.getvalue()
-
-
 @when(
     "I deploy a content item that installs R packages",
     target_fixture="pm_deploy_state",
@@ -106,13 +89,7 @@ def deploy_r_content(connect_client):
 
     # Wait for deployment to finish (5 min max for package installs).
     task_id = result["task_id"]
-    deadline = time.time() + 300
-    task: dict = {}
-    while time.time() < deadline:
-        task = connect_client.get_task(task_id)
-        if task.get("finished"):
-            break
-        time.sleep(3)
+    task = connect_client.wait_for_task(task_id, timeout=300)
 
     if not task.get("finished"):
         output_lines = task.get("output", []) or []

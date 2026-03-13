@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import httpx
-import pytest
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import scenario, then, when
 
 # ---------------------------------------------------------------------------
 # Scenarios
@@ -29,24 +28,6 @@ def test_package_manager_reachable():
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
-
-
-@given("Connect is configured in vip.toml")
-def connect_configured(vip_config):
-    if not vip_config.connect.is_configured:
-        pytest.skip("Connect is not configured")
-
-
-@given("Workbench is configured in vip.toml")
-def workbench_configured(vip_config):
-    if not vip_config.workbench.is_configured:
-        pytest.skip("Workbench is not configured")
-
-
-@given("Package Manager is configured in vip.toml")
-def package_manager_configured(vip_config):
-    if not vip_config.package_manager.is_configured:
-        pytest.skip("Package Manager is not configured")
 
 
 @when("I request the Connect health endpoint", target_fixture="health_response")

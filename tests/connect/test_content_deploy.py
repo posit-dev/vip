@@ -7,15 +7,14 @@ easy identification and cleanup.
 
 from __future__ import annotations
 
-import io
 import json
 import pathlib
-import tarfile
-import time
 
 import httpx
 import pytest
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import scenario, then, when
+
+from tests.connect.conftest import _make_tar_gz
 
 
 @scenario("test_content_deploy.feature", "Deploy and execute a Quarto document")
@@ -52,18 +51,6 @@ def deploy_state():
 # ---------------------------------------------------------------------------
 # Bundle helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_tar_gz(files: dict[str, str]) -> bytes:
-    """Create an in-memory tar.gz archive from a dict of {filename: content}."""
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        for name, content in files.items():
-            data = content.encode()
-            info = tarfile.TarInfo(name=name)
-            info.size = len(data)
-            tar.addfile(info, io.BytesIO(data))
-    return buf.getvalue()
 
 
 _PLUMBER_BUNDLE = {
@@ -161,11 +148,6 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-@given("Connect is accessible at the configured URL")
-def connect_accessible(connect_client):
-    assert connect_client is not None
-
-
 _CONTENT_NAMES = [
     "vip-quarto-test",
     "vip-plumber-test",
@@ -213,51 +195,17 @@ def upload_and_deploy(connect_client, deploy_state):
 def wait_for_deploy(connect_client, deploy_state, vip_config):
     task_id = deploy_state["task_id"]
     timeout = vip_config.connect.deploy_timeout
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            task = connect_client.get_task(task_id)
-        except httpx.ReadTimeout:
-            # Transient timeout during long deployments (e.g. R package
-            # installs); retry as long as the overall deadline hasn't expired.
-            time.sleep(3)
-            continue
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code in (404, 502, 503, 504):
-                time.sleep(3)
-                continue
-            raise
-        if task.get("finished"):
-            deploy_state["task_result"] = task
-            if task.get("code") != 0:
-                output = "\n".join(task.get("output", []))
-                error = task.get("error", "unknown error")
-                pytest.fail(f"Deployment failed: {error}\n\n--- Task output ---\n{output}")
-            return
-        time.sleep(3)
-    # On timeout, fetch final task state for logs (with limited retries for
-    # the same transient errors handled in the loop above).
-    task = None
-    for _ in range(3):
-        try:
-            task = connect_client.get_task(task_id)
-            break
-        except httpx.ReadTimeout:
-            time.sleep(3)
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code in (404, 502, 503, 504):
-                time.sleep(3)
-                continue
-            raise
-    if task is None:
+    task = connect_client.wait_for_task(task_id, timeout=timeout)
+    deploy_state["task_result"] = task
+    if not task.get("finished"):
+        output = "\n".join(task.get("output", []))
         pytest.fail(
-            f"Deployment did not complete within {timeout} seconds and final task "
-            "state could not be retrieved due to repeated transient errors."
+            f"Deployment did not complete within {timeout} seconds\n\n--- Task output ---\n{output}"
         )
-    output = "\n".join(task.get("output", []))
-    pytest.fail(
-        f"Deployment did not complete within {timeout} seconds\n\n--- Task output ---\n{output}"
-    )
+    if task.get("code") != 0:
+        output = "\n".join(task.get("output", []))
+        error = task.get("error", "unknown error")
+        pytest.fail(f"Deployment failed: {error}\n\n--- Task output ---\n{output}")
 
 
 @then("the content is accessible via HTTP")
