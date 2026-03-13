@@ -1,6 +1,26 @@
 # CHANGELOG
 
 
+## v0.6.1 (2026-03-13)
+
+### Bug Fixes
+
+- **ci**: Use matrix version in smoke test artifact names
+  ([#80](https://github.com/posit-dev/vip/pull/80),
+  [`2cd5113`](https://github.com/posit-dev/vip/commit/2cd5113f14b08bd6dba30bd5180b655e2553ed61))
+
+### Documentation
+
+- Section README into smaller focused documents ([#79](https://github.com/posit-dev/vip/pull/79),
+  [`42ec96b`](https://github.com/posit-dev/vip/commit/42ec96bede101eb6d534d1423ca1bb188d017751))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+Co-authored-by: Elliot Murphy <statik@users.noreply.github.com>
+
+
 ## v0.6.0 (2026-03-12)
 
 ### Features
