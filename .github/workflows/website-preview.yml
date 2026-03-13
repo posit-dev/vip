@@ -11,8 +11,14 @@ permissions:
   pull-requests: write
 
 jobs:
+  example-report:
+    if: github.event.action != 'closed'
+    uses: ./.github/workflows/example-report.yml
+    secrets: inherit
+
   preview:
     if: github.event.action != 'closed'
+    needs: example-report
     name: Build & deploy website preview
     runs-on: ubuntu-latest
     steps:
@@ -43,6 +49,12 @@ jobs:
           npm ci
           npm run build -- --base /vip/pr-preview-site/pr-${{ github.event.pull_request.number }}/
           touch dist/.nojekyll
+
+      - name: Download example report
+        uses: actions/download-artifact@v4
+        with:
+          name: example-report
+          path: website/dist/example-report/
 
       - uses: rossjrw/pr-preview-action@v1
         with:

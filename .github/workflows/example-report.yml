@@ -1,25 +1,11 @@
 name: Example Validation Report
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "report/**"
-      - "tests/**"
-      - "src/vip/**"
-      - ".github/workflows/example-report.yml"
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
+  workflow_call:
 
 jobs:
   build:
-    name: Build & deploy example report
+    name: Build example report
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -150,14 +136,6 @@ jobs:
       - name: Render Quarto report
         run: cd report && uv run quarto render
 
-      - uses: JamesIves/github-pages-deploy-action@v4.8.0
-        with:
-          branch: gh-pages
-          folder: report/_output/
-          target-folder: example-report
-          clean: false
-          force: false
-
       # Stop Connect
       - name: Stop Connect
         if: always()
@@ -169,3 +147,9 @@ jobs:
       - name: Stop Package Manager
         if: always()
         run: docker stop packagemanager && docker rm packagemanager || true
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-report
+          path: report/_output/
