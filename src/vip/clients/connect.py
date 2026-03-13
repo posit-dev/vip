@@ -106,6 +106,50 @@ class ConnectClient:
         resp.raise_for_status()
         return resp.json()
 
+    def wait_for_task(self, task_id: str, timeout: float = 60.0) -> dict[str, Any]:
+        """Poll a task until it finishes or timeout is reached.
+
+        Polls ``get_task`` every 3 seconds, handling transient HTTP errors
+        (ReadTimeout, 404/502/503/504) by retrying until the deadline.
+
+        Returns the finished task dict.  If the deadline is reached without the
+        task finishing, returns the most recent (unfinished) task dict so that
+        callers can inspect the output and report an appropriate failure.
+        """
+        import time
+
+        deadline = time.time() + timeout
+        task: dict[str, Any] = {}
+        while time.time() < deadline:
+            try:
+                task = self.get_task(task_id)
+            except httpx.ReadTimeout:
+                time.sleep(3)
+                continue
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (404, 502, 503, 504):
+                    time.sleep(3)
+                    continue
+                raise
+            if task.get("finished"):
+                return task
+            time.sleep(3)
+
+        # Deadline reached — attempt one final fetch for up-to-date logs.
+        for _ in range(3):
+            try:
+                task = self.get_task(task_id)
+                break
+            except httpx.ReadTimeout:
+                time.sleep(3)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (404, 502, 503, 504):
+                    time.sleep(3)
+                    continue
+                raise
+
+        return task
+
     # -- Tags ---------------------------------------------------------------
 
     def _tag_content(self, guid: str, tag_name: str) -> None:
