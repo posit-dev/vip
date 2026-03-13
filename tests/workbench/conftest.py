@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import time
 
+import httpx
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -161,12 +162,29 @@ def _cleanup_sessions(page, workbench_client):
         return
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-        workbench_client.set_cookies(cookies)
-        sessions = workbench_client.list_sessions()
-        for session in sessions:
-            sid = session.get("id") or session.get("session_id", "")
-            if sid:
-                workbench_client.quit_session(sid)
+        # Use a temporary client so the session-scoped workbench_client's
+        # cookie jar is never mutated.
+        with httpx.Client(
+            base_url=workbench_client.base_url,
+            cookies=cookies,
+            timeout=30.0,
+        ) as tmp:
+            resp = tmp.get("/api/sessions")
+            sessions = resp.json() if resp.status_code == 200 else []
+            for session in sessions:
+                sid = session.get("id") or session.get("session_id", "")
+                if not sid:
+                    continue
+                for method, path in (
+                    ("DELETE", f"/api/sessions/{sid}"),
+                    ("POST", f"/api/sessions/{sid}/suspend"),
+                ):
+                    try:
+                        r = tmp.request(method, path)
+                        if r.status_code < 400:
+                            break
+                    except Exception:
+                        continue
     except Exception:
         # Best-effort cleanup; don't mask test failures.
         pass

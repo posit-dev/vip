@@ -266,18 +266,13 @@ def save_credentials_secret(
     secret_json = json.dumps(secret_spec)
 
     cmd = ["kubectl", "apply", "-f", "-", "-n", namespace]
-    result = subprocess.run(
+    subprocess.run(
         cmd,
         input=secret_json,
         capture_output=True,
         text=True,
         check=True,
     )
-
-    if result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, cmd, output=result.stdout, stderr=result.stderr
-        )
 
 
 def get_credentials_from_secret(
@@ -638,18 +633,13 @@ def _create_credentials_secret(username: str, password: str, namespace: str) -> 
     secret_json = json.dumps(secret_spec)
 
     cmd = ["kubectl", "apply", "-f", "-", "-n", namespace]
-    result = subprocess.run(
+    subprocess.run(
         cmd,
         input=secret_json,
         capture_output=True,
         text=True,
         check=True,
     )
-
-    if result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, cmd, output=result.stdout, stderr=result.stderr
-        )
 
 
 def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:

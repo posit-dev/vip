@@ -72,6 +72,7 @@ class WorkbenchConfig(ProductConfig):
     api_key: str = ""
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if not self.api_key:
             self.api_key = os.environ.get("VIP_WORKBENCH_API_KEY", "")
 
@@ -83,6 +84,7 @@ class PackageManagerConfig(ProductConfig):
     token: str = ""
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if not self.token:
             self.token = os.environ.get("VIP_PM_TOKEN", "")
 
@@ -109,7 +111,7 @@ class ClusterConfig:
     provider: str = ""  # "aws" or "azure"
     name: str = ""  # Cluster name (e.g., "ganso01-staging-20260101")
     region: str = ""  # Cloud region
-    namespace: str = "posit-team"  # K8s namespace for Posit products
+    namespace: str = ""  # K8s namespace for Posit products
     site: str = "main"  # PTD Site CR name (posit-dev/team-operator)
 
     # AWS-specific
@@ -131,10 +133,9 @@ class ClusterConfig:
             self.name = os.environ.get("VIP_CLUSTER_NAME", "")
         if not self.region:
             self.region = os.environ.get("VIP_CLUSTER_REGION", "")
-        if not self.namespace or self.namespace == "posit-team":
+        if not self.namespace:
             env_ns = os.environ.get("VIP_CLUSTER_NAMESPACE", "")
-            if env_ns:
-                self.namespace = env_ns
+            self.namespace = env_ns if env_ns else "posit-team"
         if not self.profile:
             self.profile = os.environ.get("VIP_AWS_PROFILE", "")
         if not self.role_arn:
@@ -285,7 +286,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
             provider=cluster_raw.get("provider", ""),
             name=cluster_raw.get("name", ""),
             region=cluster_raw.get("region", ""),
-            namespace=cluster_raw.get("namespace", "posit-team"),
+            namespace=cluster_raw.get("namespace", ""),
             site=cluster_raw.get("site", "main"),
             profile=cluster_raw.get("profile", ""),
             role_arn=cluster_raw.get("role_arn", ""),
