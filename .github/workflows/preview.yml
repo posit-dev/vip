@@ -147,6 +147,7 @@ jobs:
           source-dir: report/_output/
           preview-branch: gh-pages
           umbrella-dir: pr-preview
+          comment: false
 
       # Stop Connect
       - name: Stop Connect

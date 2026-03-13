@@ -65,9 +65,11 @@ jobs:
 
       - uses: marocchino/sticky-pull-request-comment@v2
         with:
-          header: website-preview
+          header: preview-links
           message: |
-            **Website Preview** · [View preview](https://posit-dev.github.io/vip/pr-preview-site/pr-${{ github.event.pull_request.number }}/)
+            **Preview Links**
+            - [Website](https://posit-dev.github.io/vip/pr-preview-site/pr-${{ github.event.pull_request.number }}/)
+            - [Validation Report](https://posit-dev.github.io/vip/pr-preview/pr-${{ github.event.pull_request.number }}/)
 
   cleanup:
     if: github.event.action == 'closed'
@@ -86,5 +88,5 @@ jobs:
 
       - uses: marocchino/sticky-pull-request-comment@v2
         with:
-          header: website-preview
+          header: preview-links
           delete: true
