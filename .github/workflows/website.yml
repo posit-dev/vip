@@ -53,5 +53,8 @@ jobs:
         with:
           branch: gh-pages
           folder: website/dist
-          clean-exclude: pr-preview/
+          clean-exclude: |
+            pr-preview/
+            pr-preview-site/
+            example-report/
           force: false
