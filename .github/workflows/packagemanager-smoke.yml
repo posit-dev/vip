@@ -162,7 +162,7 @@ jobs:
         if: always() && steps.license.outputs.available == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: pm-smoke-results-${{ steps.version.outputs.resolved }}
+          name: pm-smoke-results-${{ matrix.pm-version }}
           path: smoke-results.xml
 
       # Write a rich job summary with test details
