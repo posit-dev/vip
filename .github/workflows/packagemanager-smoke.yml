@@ -191,9 +191,11 @@ jobs:
         if: always()
         run: |
           if [ "${{ steps.license.outputs.available }}" != "true" ]; then
-            echo "## Package Manager Smoke Tests — Skipped" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "> RSPM_LICENSE secret is not configured. Add it to run PM smoke tests." >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "## Package Manager Smoke Tests — Skipped"
+              echo ""
+              echo "> RSPM_LICENSE secret is not configured. Add it to run PM smoke tests."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           RESOLVED="${{ steps.version.outputs.resolved }}"
