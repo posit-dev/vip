@@ -114,7 +114,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: connect-smoke-results-${{ steps.version.outputs.resolved }}
+          name: connect-smoke-results-${{ matrix.connect-version }}
           path: smoke-results.xml
 
       # Write a rich job summary with test details and emoji

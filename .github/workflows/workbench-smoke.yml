@@ -152,7 +152,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: workbench-smoke-results-${{ steps.version.outputs.resolved }}
+          name: workbench-smoke-results-${{ matrix.workbench-version }}
           path: smoke-results.xml
 
       # Write a rich job summary with test details and emoji
