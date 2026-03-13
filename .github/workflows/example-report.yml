@@ -125,6 +125,8 @@ jobs:
           EOF
 
       - name: Run smoke tests and generate results
+        env:
+          VIP_ENABLE_EXPECTED_FAILURE_DEMO: "1"
         run: |
           uv run pytest \
             tests/prerequisites/test_components.py \
