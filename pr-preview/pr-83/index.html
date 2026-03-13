@@ -23,7 +23,7 @@ ul.task-list li input[type="checkbox"] {
 </style>
 
 
-<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="site_libs/quarto-nav/headroom.min.js"></script>
 <script src="site_libs/clipboard/clipboard.min.js"></script>
 <script src="site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -68,6 +68,9 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 
 
 </head>
@@ -147,10 +150,10 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="verified-installation-of-posit" class="level1">
 <h1>Verified Installation of Posit</h1>
-<p><strong>Deployment:</strong> CI Connect 2026.02.0 + PM 2024.08.0-6 <strong>Generated:</strong> 2026-03-13 22:44:58 UTC</p>
+<p><strong>Deployment:</strong> CI Connect 2026.02.0 + PM 2024.08.0-6 <strong>Generated:</strong> 2026-03-13 22:49:19 UTC</p>
 <section id="products-under-test" class="level2">
 <h2 class="anchored" data-anchor-id="products-under-test">Products Under Test</h2>
-<div id="db2ee7a5" class="cell" data-execution_count="2">
+<div id="d72e56f3" class="cell" data-execution_count="2">
 <div class="cell-output cell-output-display cell-output-markdown">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -178,7 +181,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="summary" class="level2">
 <h2 class="anchored" data-anchor-id="summary">Summary</h2>
-<div id="d90aae64" class="cell" data-execution_count="3">
+<div id="31c2253a" class="cell" data-execution_count="3">
 <div class="cell-output cell-output-display cell-output-markdown">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -190,7 +193,7 @@ ul.task-list li input[type="checkbox"] {
 <tbody>
 <tr class="odd">
 <td><strong>Total</strong></td>
-<td>7</td>
+<td>8</td>
 </tr>
 <tr class="even">
 <td><strong>Passed</strong></td>
@@ -198,7 +201,7 @@ ul.task-list li input[type="checkbox"] {
 </tr>
 <tr class="odd">
 <td><strong>Failed</strong></td>
-<td>0</td>
+<td>1</td>
 </tr>
 <tr class="even">
 <td><strong>Skipped</strong></td>
@@ -206,7 +209,7 @@ ul.task-list li input[type="checkbox"] {
 </tr>
 <tr class="odd">
 <td><strong>Status</strong></td>
-<td><strong><span style="color:green">PASS</span></strong></td>
+<td><strong><span style="color:red">FAIL</span></strong></td>
 </tr>
 </tbody>
 </table>
@@ -215,7 +218,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="results-by-category" class="level2">
 <h2 class="anchored" data-anchor-id="results-by-category">Results by Category</h2>
-<div id="b4411726" class="cell" data-execution_count="4">
+<div id="3b285c01" class="cell" data-execution_count="4">
 <div class="cell-output cell-output-display cell-output-markdown">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -247,11 +250,11 @@ ul.task-list li input[type="checkbox"] {
 </tr>
 <tr class="odd">
 <td>prerequisites</td>
-<td>3</td>
+<td>4</td>
 <td>2</td>
-<td>0</td>
 <td>1</td>
-<td>PASS</td>
+<td>1</td>
+<td>FAIL</td>
 </tr>
 </tbody>
 </table>
@@ -260,9 +263,159 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="failed-tests" class="level2">
 <h2 class="anchored" data-anchor-id="failed-tests">Failed Tests</h2>
-<div id="7d8356d8" class="cell" data-execution_count="5">
+<div id="2a3c52c5" class="cell" data-execution_count="5">
+<div class="cell-output cell-output-display">
+
+<style>
+.vip-fail-card {
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #dc2626;
+  border-radius: 6px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+  background: #fefefe;
+}
+.vip-fail-title {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+.vip-fail-title code {
+  font-size: 0.875rem;
+  color: #dc2626;
+  background: #fef2f2;
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+}
+.vip-fail-scenario {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.9375rem;
+  color: #374151;
+}
+.vip-fail-details {
+  margin-bottom: 0.75rem;
+}
+.vip-fail-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #4b5563;
+  padding: 0.375rem 0;
+}
+.vip-fail-details summary:hover {
+  color: #1f2937;
+}
+.vip-fail-error-wrap {
+  position: relative;
+  margin-top: 0.375rem;
+}
+.vip-fail-error {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  padding: 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.vip-copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  z-index: 1;
+}
+.vip-copy-btn:hover {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+}
+.vip-fail-hints {
+  background: #fffbeb;
+  border: 1px solid #fbbf24;
+  border-radius: 4px;
+  padding: 0.875rem 1rem;
+  font-size: 0.875rem;
+  color: #92400e;
+}
+.vip-fail-hints ul, .vip-fail-hints ol {
+  margin: 0.25rem 0 0.75rem 1.25rem;
+  padding: 0;
+}
+.vip-fail-hints li {
+  margin-bottom: 0.25rem;
+}
+.vip-fail-hints p {
+  margin: 0.25rem 0;
+}
+.vip-fail-hints a {
+  color: #92400e;
+  text-decoration: underline;
+}
+</style>
+<div class="vip-fail-card"><h3 class="vip-fail-title anchored"><code>tests/prerequisites/test_expected_failure.py::test_workbench_expected_failure</code></h3><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-0" title="Copy to clipboard">Copy</button><pre id="vip-error-0" class="vip-fail-error">fixturefunc = &lt;function workbench_reachable at 0x7f43745fb1a0&gt;
+request = &lt;FixtureRequest for &lt;Function test_workbench_expected_failure&gt;&gt;
+kwargs = {'wb_configured': False}
+
+    def call_fixture_func(
+        fixturefunc: _FixtureFunc[FixtureValue], request: FixtureRequest, kwargs
+    ) -&gt; FixtureValue:
+        if inspect.isgeneratorfunction(fixturefunc):
+            fixturefunc = cast(Callable[..., Generator[FixtureValue]], fixturefunc)
+            generator = fixturefunc(**kwargs)
+            try:
+                fixture_result = next(generator)
+            except StopIteration:
+                raise ValueError(f"{request.fixturename} did not yield a value") from None
+            finalizer = functools.partial(_teardown_yield_fixture, fixturefunc, generator)
+            request.addfinalizer(finalizer)
+        else:
+            fixturefunc = cast(Callable[..., FixtureValue], fixturefunc)
+&gt;           fixture_result = fixturefunc(**kwargs)
+                             ^^^^^^^^^^^^^^^^^^^^^
+
+.venv/lib/python3.13/site-packages/_pytest/fixtures.py:915: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+wb_configured = False
+
+    @then("Workbench should be reachable")
+    def workbench_reachable(wb_configured):
+&gt;       assert wb_configured, (
+            "Workbench is not configured. "
+            "This is an expected failure used to demonstrate report rendering. "
+            "Set [workbench] url in vip.toml to resolve."
+        )
+E       AssertionError: Workbench is not configured. This is an expected failure used to demonstrate report rendering. Set [workbench] url in vip.toml to resolve.
+E       assert False
+
+tests/prerequisites/test_expected_failure.py:42: AssertionError</pre></div></details></div>
+<script>
+document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var target = document.getElementById(btn.getAttribute('data-target'));
+    if (!target) return;
+    navigator.clipboard.writeText(target.textContent).then(function() {
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+});
+</script>
+</div>
+</div>
+<div id="fbccc7dc" class="cell" data-execution_count="6">
 <div class="cell-output cell-output-display cell-output-markdown">
-<p>No failures.</p>
+<p><em>Wrote 1 failure(s) to <code>failures.json</code>.</em></p>
 </div>
 </div>
 
