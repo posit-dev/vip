@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.7.0 (2026-03-13)
+
+### Features
+
+- **ci**: Add license error annotations to smoke test workflows
+  ([#81](https://github.com/posit-dev/vip/pull/81),
+  [`2100d25`](https://github.com/posit-dev/vip/commit/2100d25772e12796a99cec8c3a6233e73f4fe8ef))
+
+
 ## v0.6.1 (2026-03-13)
 
 ### Bug Fixes
