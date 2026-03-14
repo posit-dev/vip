@@ -11,21 +11,21 @@ jupyter: python3
 ```{python}
 #| echo: false
 
+from html import escape as _esc
 from pathlib import Path
-from IPython.display import Markdown, display
-from vip.reporting import load_results
 
-data = load_results(Path("results.json"))
+from IPython.display import HTML, Markdown, display
 
 from vip.gherkin import parse_feature_file
+from vip.reporting import load_results, load_troubleshooting
 
-# Build a lookup from nodeid prefix (file path) to parsed feature data.
+data = load_results(Path("results.json"))
+hints = load_troubleshooting(Path("../tests/troubleshooting.toml"))
+
 _feature_cache: dict[str, dict] = {}
 
 
 def _get_feature(nodeid: str) -> dict | None:
-    """Return parsed feature data for a test's nodeid, or None."""
-    # nodeid looks like "tests/connect/test_auth.py::test_login"
     py_file = nodeid.split("::")[0] if "::" in nodeid else nodeid
     feature_file = py_file.rsplit(".", 1)[0] + ".feature"
     if feature_file not in _feature_cache:
@@ -37,41 +37,297 @@ def _get_feature(nodeid: str) -> dict | None:
     return _feature_cache[feature_file] or None
 
 
+def _get_steps(item) -> list[str]:
+    feature = _get_feature(item.nodeid)
+    if not feature or not feature.get("scenarios") or not item.scenario_title:
+        return []
+    for sc in feature["scenarios"]:
+        if sc["title"] == item.scenario_title and sc.get("steps"):
+            return sc["steps"]
+    return []
+
+
+_OUTCOME_STYLES = {
+    "passed": ("PASS", "#16a34a", "#dcfce7"),
+    "failed": ("FAIL", "#dc2626", "#fecaca"),
+    "skipped": ("SKIP", "#6b7280", "#e5e7eb"),
+}
+
+_BORDER_COLORS = {
+    "passed": "#16a34a",
+    "failed": "#dc2626",
+    "skipped": "#d1d5db",
+}
+
 if data.total == 0:
     display(Markdown("> **No results found.** Run `pytest` to generate results."))
 else:
+    _html = []
+    _html.append("""
+<style>
+.vip-cat-section { margin-bottom: 2rem; }
+.vip-cat-header {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+  color: #1f2937;
+}
+.vip-cat-counts {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin-bottom: 0.75rem;
+}
+.vip-test-card {
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+  background: #fefefe;
+}
+.vip-test-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.vip-test-scenario {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: #1f2937;
+}
+.vip-badge {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.vip-test-meta {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-family: monospace;
+  margin-top: 0.125rem;
+}
+.vip-test-steps {
+  margin-top: 0.375rem;
+}
+.vip-test-steps summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #6b7280;
+  padding: 0.25rem 0;
+}
+.vip-test-steps summary:hover { color: #374151; }
+.vip-step-list {
+  margin: 0.25rem 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+.vip-step-list li {
+  font-size: 0.8125rem;
+  font-family: monospace;
+  color: #374151;
+  line-height: 1.6;
+}
+.vip-step-list li::before {
+  content: "› ";
+  color: #9ca3af;
+}
+.vip-fail-details {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.vip-fail-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: #6b7280;
+  padding: 0.25rem 0;
+}
+.vip-fail-details summary:hover { color: #374151; }
+.vip-fail-error-wrap {
+  position: relative;
+  margin-top: 0.375rem;
+}
+.vip-fail-error {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  padding: 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.vip-copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  z-index: 1;
+}
+.vip-copy-btn:hover {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+}
+.vip-fail-hints {
+  background: #fffbeb;
+  border: 1px solid #fbbf24;
+  border-radius: 4px;
+  padding: 0.875rem 1rem;
+  font-size: 0.875rem;
+  color: #92400e;
+  margin-top: 0.5rem;
+}
+.vip-fail-hints ul, .vip-fail-hints ol {
+  margin: 0.25rem 0 0.75rem 1.25rem;
+  padding: 0;
+}
+.vip-fail-hints li { margin-bottom: 0.25rem; }
+.vip-fail-hints p { margin: 0.25rem 0; }
+.vip-fail-hints a {
+  color: #92400e;
+  text-decoration: underline;
+}
+</style>
+""")
+
+    _error_idx = 0
     categories = data.by_category()
-    lines = []
     for cat, items in sorted(categories.items()):
-        lines.append(f"## {cat.replace('_', ' ').title()}\n")
-        lines.append("| Test | Outcome | Duration |")
-        lines.append("|---|---|---|")
+        cat_label = cat.replace("_", " ").title()
+        cat_passed = sum(1 for i in items if i.outcome == "passed")
+        cat_failed = sum(1 for i in items if i.outcome == "failed")
+        cat_skipped = sum(1 for i in items if i.outcome == "skipped")
+
+        counts = []
+        if cat_passed:
+            counts.append(f"{cat_passed} passed")
+        if cat_failed:
+            counts.append(f"{cat_failed} failed")
+        if cat_skipped:
+            counts.append(f"{cat_skipped} skipped")
+
+        _html.append(
+            f'<div class="vip-cat-section">'
+            f'<h2 class="vip-cat-header">{_esc(cat_label)}</h2>'
+            f'<p class="vip-cat-counts">'
+            f"{len(items)} tests — {', '.join(counts)}</p>"
+        )
+
         for item in items:
-            short = item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
-            duration = f"{item.duration:.2f}s"
-            icon = {"passed": "PASS", "failed": "FAIL", "skipped": "SKIP"}.get(
-                item.outcome, item.outcome
+            label, fg, badge_bg = _OUTCOME_STYLES.get(
+                item.outcome, ("?", "#6b7280", "#e5e7eb")
             )
-            lines.append(f"| `{short}` | {icon} | {duration} |")
-        lines.append("")
+            border_color = _BORDER_COLORS.get(item.outcome, "#d1d5db")
+            title = _esc(item.scenario_title) if item.scenario_title else _esc(
+                item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
+            )
+            nodeid = _esc(item.nodeid)
+            duration = f"{item.duration:.2f}s"
+            badge = (
+                f'<span class="vip-badge" '
+                f'style="color:{fg};background:{badge_bg}">{label}</span>'
+            )
 
-        # Show BDD scenario steps per test in expandable details.
-        for item in items:
-            feature = _get_feature(item.nodeid)
-            if not feature or not feature.get("scenarios"):
-                continue
-            scenario_title = item.scenario_title
-            if not scenario_title:
-                continue
-            for sc in feature["scenarios"]:
-                if sc["title"] == scenario_title and sc.get("steps"):
-                    short = item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
-                    lines.append(f"<details><summary><code>{short}</code> — BDD steps</summary>\n")
-                    lines.append(f"**Scenario:** {sc['title']}\n")
-                    for step in sc["steps"]:
-                        lines.append(f"- `{step}`")
-                    lines.append("\n</details>\n")
-                    break
+            # BDD steps
+            steps = _get_steps(item)
+            steps_html = ""
+            if steps:
+                step_items = "".join(f"<li>{_esc(s)}</li>" for s in steps)
+                steps_html = (
+                    f'<details class="vip-test-steps">'
+                    f"<summary>BDD steps</summary>"
+                    f'<ul class="vip-step-list">{step_items}</ul>'
+                    f"</details>"
+                )
 
-    display(Markdown("\n".join(lines)))
+            # Error traceback for failed tests
+            error_html = ""
+            if item.outcome == "failed" and item.longrepr:
+                error_id = f"vip-detail-error-{_error_idx}"
+                _error_idx += 1
+                error_html = (
+                    f'<details class="vip-fail-details">'
+                    f"<summary>Error traceback</summary>"
+                    f'<div class="vip-fail-error-wrap">'
+                    f'<button class="vip-copy-btn" data-target="{error_id}"'
+                    f' title="Copy to clipboard">Copy</button>'
+                    f'<pre id="{error_id}" class="vip-fail-error">'
+                    f"{_esc(item.longrepr)}</pre>"
+                    f"</div></details>"
+                )
+
+            # Troubleshooting hints for failed tests
+            hints_html = ""
+            if item.outcome == "failed":
+                hint = hints.get(item.scenario_title, {}) if item.scenario_title else {}
+                if hint:
+                    _parts = []
+                    if hint.get("likely_causes"):
+                        _parts.append("<strong>Likely causes:</strong><ul>")
+                        for cause in hint["likely_causes"]:
+                            _parts.append(f"<li>{_esc(cause)}</li>")
+                        _parts.append("</ul>")
+                    if hint.get("suggested_steps"):
+                        _parts.append("<strong>Suggested next steps:</strong><ol>")
+                        for step in hint["suggested_steps"]:
+                            _parts.append(f"<li>{_esc(step)}</li>")
+                        _parts.append("</ol>")
+                    if hint.get("docs_url"):
+                        _url = _esc(hint["docs_url"])
+                        _parts.append(
+                            f'<p><strong>Documentation:</strong> '
+                            f'<a href="{_url}" target="_blank" '
+                            f'rel="noopener">{_url}</a></p>'
+                        )
+                    if _parts:
+                        hints_html = (
+                            f'<div class="vip-fail-hints">'
+                            f"{''.join(_parts)}</div>"
+                        )
+
+            _html.append(
+                f'<div class="vip-test-card" style="border-left-color:{border_color}">'
+                f'<div class="vip-test-header">'
+                f"{badge}"
+                f'<span class="vip-test-scenario">{title}</span>'
+                f"</div>"
+                f'<div class="vip-test-meta">{nodeid} · {duration}</div>'
+                f"{steps_html}{error_html}{hints_html}"
+                f"</div>"
+            )
+
+        _html.append("</div>")
+
+    _html.append("""
+<script>
+document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var target = document.getElementById(btn.getAttribute('data-target'));
+    if (!target) return;
+    navigator.clipboard.writeText(target.textContent).then(function() {
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+});
+</script>
+""")
+
+    display(HTML("\n".join(_html)))
 ```
