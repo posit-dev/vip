@@ -413,7 +413,8 @@ def server(input, output, session):
     @reactive.effect
     @reactive.event(input.run_btn)
     async def _run_tests():
-        if run_status() == "running":
+        # Do not start a new run while tests are running or shutting down
+        if run_status() in ("running", "stopping"):
             return
 
         cmd, temp_config = _build_command()
@@ -470,8 +471,8 @@ def server(input, output, session):
             proc.terminate()
             current = output_lines()
             output_lines.set([*current, "", "--- Tests stopped by user ---"])
-            run_status.set("idle")
-            process_handle.set(None)
+            # Mark as stopping so the UI stays disabled until cleanup completes
+            run_status.set("stopping")
 
     # --- auto-switch to report tab when tests finish ---
     @reactive.effect
@@ -491,7 +492,7 @@ def server(input, output, session):
     # --- run button (disabled when config is invalid or tests are running) ---
     @render.ui
     def run_btn_ui():
-        disabled = config_error() is not None or run_status() == "running"
+        disabled = config_error() is not None or run_status() in ("running", "stopping")
         return ui.input_action_button(
             "run_btn",
             ui.span(ui.tags.i(class_="bi bi-play-fill me-1"), "Run Tests"),
