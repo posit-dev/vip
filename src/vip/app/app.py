@@ -33,7 +33,7 @@ APP_DIR = Path(__file__).parent
 
 
 def _find_project_root() -> Path:
-    """Walk up from cwd looking for pyproject.toml with [project] name = 'vip'."""
+    """Walk up from cwd looking for a directory containing both `tests/` and `pyproject.toml`."""
     candidate = Path.cwd()
     for _ in range(10):
         if (candidate / "tests").is_dir() and (candidate / "pyproject.toml").is_file():
