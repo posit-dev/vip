@@ -251,7 +251,7 @@ else:
                 step_items = "".join(f"<li>{_esc(s)}</li>" for s in steps)
                 steps_html = (
                     f'<details class="vip-test-steps">'
-                    f"<summary>BDD steps</summary>"
+                    f"<summary>Test procedure</summary>"
                     f'<ul class="vip-step-list">{step_items}</ul>'
                     f"</details>"
                 )
