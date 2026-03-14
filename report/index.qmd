@@ -66,21 +66,192 @@ display(Markdown(f"""
 ```{python}
 #| echo: false
 
+from html import escape as _esc
+from IPython.display import HTML
+
+from vip.gherkin import parse_feature_file
+
+_feature_cache: dict[str, dict] = {}
+
+
+def _get_feature(nodeid: str) -> dict | None:
+    py_file = nodeid.split("::")[0] if "::" in nodeid else nodeid
+    feature_file = py_file.rsplit(".", 1)[0] + ".feature"
+    if feature_file not in _feature_cache:
+        p = Path("..") / feature_file
+        if p.exists():
+            _feature_cache[feature_file] = parse_feature_file(p)
+        else:
+            _feature_cache[feature_file] = {}
+    return _feature_cache[feature_file] or None
+
+
+def _get_steps(item) -> list[str]:
+    feature = _get_feature(item.nodeid)
+    if not feature or not feature.get("scenarios") or not item.scenario_title:
+        return []
+    for sc in feature["scenarios"]:
+        if sc["title"] == item.scenario_title and sc.get("steps"):
+            return sc["steps"]
+    return []
+
+
+_OUTCOME_STYLES = {
+    "passed": ("PASS", "#16a34a", "#f0fdf4", "#dcfce7"),
+    "failed": ("FAIL", "#dc2626", "#fef2f2", "#fecaca"),
+    "skipped": ("SKIP", "#6b7280", "#f9fafb", "#e5e7eb"),
+}
+
+_BORDER_COLORS = {
+    "passed": "#16a34a",
+    "failed": "#dc2626",
+    "skipped": "#d1d5db",
+}
+
 categories = data.by_category()
 if not categories:
     display(Markdown("No test results to display."))
 else:
-    rows = []
+    _html_parts = []
+    _html_parts.append("""
+<style>
+.vip-cat-section { margin-bottom: 2rem; }
+.vip-cat-header {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+  color: #1f2937;
+}
+.vip-cat-counts {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin-bottom: 0.75rem;
+}
+.vip-test-card {
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+  background: #fefefe;
+}
+.vip-test-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.vip-test-scenario {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: #1f2937;
+}
+.vip-badge {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.vip-test-nodeid {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-family: monospace;
+  margin-top: 0.125rem;
+}
+.vip-test-steps {
+  margin-top: 0.375rem;
+}
+.vip-test-steps summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #6b7280;
+  padding: 0.25rem 0;
+}
+.vip-test-steps summary:hover { color: #374151; }
+.vip-step-list {
+  margin: 0.25rem 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+.vip-step-list li {
+  font-size: 0.8125rem;
+  font-family: monospace;
+  color: #374151;
+  line-height: 1.6;
+}
+.vip-step-list li::before {
+  content: "› ";
+  color: #9ca3af;
+}
+</style>
+""")
+
     for cat, items in sorted(categories.items()):
+        cat_label = cat.replace("_", " ").title()
         cat_passed = sum(1 for i in items if i.outcome == "passed")
         cat_failed = sum(1 for i in items if i.outcome == "failed")
         cat_skipped = sum(1 for i in items if i.outcome == "skipped")
-        cat_total = len(items)
-        cat_status = "PASS" if cat_failed == 0 else "FAIL"
-        rows.append(f"| {cat} | {cat_total} | {cat_passed} | {cat_failed} | {cat_skipped} | {cat_status} |")
 
-    header = "| Category | Total | Passed | Failed | Skipped | Status |\n|---|---|---|---|---|---|"
-    display(Markdown(header + "\n" + "\n".join(rows)))
+        counts = []
+        if cat_passed:
+            counts.append(f"{cat_passed} passed")
+        if cat_failed:
+            counts.append(f"{cat_failed} failed")
+        if cat_skipped:
+            counts.append(f"{cat_skipped} skipped")
+
+        _html_parts.append(
+            f'<div class="vip-cat-section">'
+            f'<h3 class="vip-cat-header">{_esc(cat_label)}</h3>'
+            f'<p class="vip-cat-counts">'
+            f"{len(items)} tests — {', '.join(counts)}</p>"
+        )
+
+        for item in items:
+            label, fg, bg, border_bg = _OUTCOME_STYLES.get(
+                item.outcome, ("?", "#6b7280", "#f9fafb", "#e5e7eb")
+            )
+            border_color = _BORDER_COLORS.get(item.outcome, "#d1d5db")
+            title = _esc(item.scenario_title) if item.scenario_title else _esc(
+                item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
+            )
+            nodeid = _esc(item.nodeid)
+            badge = (
+                f'<span class="vip-badge" '
+                f'style="color:{fg};background:{border_bg}">{label}</span>'
+            )
+
+            steps = _get_steps(item)
+            steps_html = ""
+            if steps:
+                step_items = "".join(
+                    f"<li>{_esc(s)}</li>" for s in steps
+                )
+                steps_html = (
+                    f'<details class="vip-test-steps">'
+                    f"<summary>BDD steps</summary>"
+                    f'<ul class="vip-step-list">{step_items}</ul>'
+                    f"</details>"
+                )
+
+            _html_parts.append(
+                f'<div class="vip-test-card" style="border-left-color:{border_color}">'
+                f'<div class="vip-test-header">'
+                f"{badge}"
+                f'<span class="vip-test-scenario">{title}</span>'
+                f"</div>"
+                f'<div class="vip-test-nodeid">{nodeid}</div>'
+                f"{steps_html}"
+                f"</div>"
+            )
+
+        _html_parts.append("</div>")
+
+    display(HTML("\n".join(_html_parts)))
 ```
 
 ## Failed Tests
