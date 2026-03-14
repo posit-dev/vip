@@ -23,7 +23,7 @@ ul.task-list li input[type="checkbox"] {
 </style>
 
 
-<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="site_libs/quarto-nav/headroom.min.js"></script>
 <script src="site_libs/clipboard/clipboard.min.js"></script>
 <script src="site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -68,6 +68,9 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 
 
 </head>
@@ -141,90 +144,213 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="all-test-results" class="level1">
 <h1>All Test Results</h1>
-<div id="3de84b39" class="cell" data-execution_count="1">
-<div class="cell-output cell-output-display cell-output-markdown">
-<section id="connect" class="level2">
-<h2 class="anchored" data-anchor-id="connect">Connect</h2>
-<table class="caption-top table table-sm table-striped small">
-<thead>
-<tr class="header">
-<th>Test</th>
-<th>Outcome</th>
-<th>Duration</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>test_connect_login_api</code></td>
-<td>PASS</td>
-<td>0.27s</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="package-manager" class="level2">
-<h2 class="anchored" data-anchor-id="package-manager">Package Manager</h2>
-<table class="caption-top table table-sm table-striped small">
-<thead>
-<tr class="header">
-<th>Test</th>
-<th>Outcome</th>
-<th>Duration</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>test_cran_mirror</code></td>
-<td>PASS</td>
-<td>0.61s</td>
-</tr>
-<tr class="even">
-<td><code>test_pypi_mirror</code></td>
-<td>SKIP</td>
-<td>0.05s</td>
-</tr>
-<tr class="odd">
-<td><code>test_repo_exists</code></td>
-<td>PASS</td>
-<td>0.05s</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="prerequisites" class="level2">
-<h2 class="anchored" data-anchor-id="prerequisites">Prerequisites</h2>
-<table class="caption-top table table-sm table-striped small">
-<thead>
-<tr class="header">
-<th>Test</th>
-<th>Outcome</th>
-<th>Duration</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>test_connect_reachable</code></td>
-<td>PASS</td>
-<td>0.08s</td>
-</tr>
-<tr class="even">
-<td><code>test_workbench_reachable</code></td>
-<td>SKIP</td>
-<td>0.00s</td>
-</tr>
-<tr class="odd">
-<td><code>test_package_manager_reachable</code></td>
-<td>PASS</td>
-<td>0.05s</td>
-</tr>
-<tr class="even">
-<td><code>test_workbench_expected_failure</code></td>
-<td>FAIL</td>
-<td>0.00s</td>
-</tr>
-</tbody>
-</table>
-</section>
+<div id="edc4c057" class="cell" data-execution_count="1">
+<div class="cell-output cell-output-display">
+
+<style>
+.vip-cat-section { margin-bottom: 2rem; }
+.vip-cat-header {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+  color: #1f2937;
+}
+.vip-cat-counts {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin-bottom: 0.75rem;
+}
+.vip-test-card {
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+  background: #fefefe;
+}
+.vip-test-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.vip-test-scenario {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: #1f2937;
+}
+.vip-badge {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.vip-test-meta {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-family: monospace;
+  margin-top: 0.125rem;
+}
+.vip-test-steps {
+  margin-top: 0.375rem;
+}
+.vip-test-steps summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #6b7280;
+  padding: 0.25rem 0;
+}
+.vip-test-steps summary:hover { color: #374151; }
+.vip-step-list {
+  margin: 0.25rem 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+.vip-step-list li {
+  font-size: 0.8125rem;
+  font-family: monospace;
+  color: #374151;
+  line-height: 1.6;
+}
+.vip-step-list li::before {
+  content: "› ";
+  color: #9ca3af;
+}
+.vip-fail-details {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.vip-fail-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: #6b7280;
+  padding: 0.25rem 0;
+}
+.vip-fail-details summary:hover { color: #374151; }
+.vip-fail-error-wrap {
+  position: relative;
+  margin-top: 0.375rem;
+}
+.vip-fail-error {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  padding: 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.vip-copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  z-index: 1;
+}
+.vip-copy-btn:hover {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+}
+.vip-fail-hints {
+  background: #fffbeb;
+  border: 1px solid #fbbf24;
+  border-radius: 4px;
+  padding: 0.875rem 1rem;
+  font-size: 0.875rem;
+  color: #92400e;
+  margin-top: 0.5rem;
+}
+.vip-fail-hints ul, .vip-fail-hints ol {
+  margin: 0.25rem 0 0.75rem 1.25rem;
+  padding: 0;
+}
+.vip-fail-hints li { margin-bottom: 0.25rem; }
+.vip-fail-hints p { margin: 0.25rem 0; }
+.vip-fail-hints a {
+  color: #92400e;
+  text-decoration: underline;
+}
+</style>
+
+<div class="vip-cat-section"><h2 class="vip-cat-header anchored" data-anchor-id="all-test-results">Connect</h2><p class="vip-cat-counts">1 tests — 1 passed</p>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">test_connect_login_api</span></div><div class="vip-test-meta">tests/connect/test_auth.py::test_connect_login_api · 0.27s</div></div>
+</div>
+<div class="vip-cat-section"><h2 class="vip-cat-header anchored">Package Manager</h2><p class="vip-cat-counts">3 tests — 2 passed, 1 skipped</p>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">test_cran_mirror</span></div><div class="vip-test-meta">tests/package_manager/test_repos.py::test_cran_mirror · 0.60s</div></div>
+<div class="vip-test-card" style="border-left-color:#d1d5db"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">test_pypi_mirror</span></div><div class="vip-test-meta">tests/package_manager/test_repos.py::test_pypi_mirror · 0.03s</div></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">test_repo_exists</span></div><div class="vip-test-meta">tests/package_manager/test_repos.py::test_repo_exists · 0.03s</div></div>
+</div>
+<div class="vip-cat-section"><h2 class="vip-cat-header anchored">Prerequisites</h2><p class="vip-cat-counts">4 tests — 2 passed, 1 failed, 1 skipped</p>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">test_connect_reachable</span></div><div class="vip-test-meta">tests/prerequisites/test_components.py::test_connect_reachable · 0.08s</div></div>
+<div class="vip-test-card" style="border-left-color:#d1d5db"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">test_workbench_reachable</span></div><div class="vip-test-meta">tests/prerequisites/test_components.py::test_workbench_reachable · 0.00s</div></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">test_package_manager_reachable</span></div><div class="vip-test-meta">tests/prerequisites/test_components.py::test_package_manager_reachable · 0.03s</div></div>
+<div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">test_workbench_expected_failure</span></div><div class="vip-test-meta">tests/prerequisites/test_expected_failure.py::test_workbench_expected_failure · 0.00s</div><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-detail-error-0" title="Copy to clipboard">Copy</button><pre id="vip-detail-error-0" class="vip-fail-error">fixturefunc = &lt;function workbench_reachable at 0x7f1a691871a0&gt;
+request = &lt;FixtureRequest for &lt;Function test_workbench_expected_failure&gt;&gt;
+kwargs = {'wb_configured': False}
+
+    def call_fixture_func(
+        fixturefunc: _FixtureFunc[FixtureValue], request: FixtureRequest, kwargs
+    ) -&gt; FixtureValue:
+        if inspect.isgeneratorfunction(fixturefunc):
+            fixturefunc = cast(Callable[..., Generator[FixtureValue]], fixturefunc)
+            generator = fixturefunc(**kwargs)
+            try:
+                fixture_result = next(generator)
+            except StopIteration:
+                raise ValueError(f"{request.fixturename} did not yield a value") from None
+            finalizer = functools.partial(_teardown_yield_fixture, fixturefunc, generator)
+            request.addfinalizer(finalizer)
+        else:
+            fixturefunc = cast(Callable[..., FixtureValue], fixturefunc)
+&gt;           fixture_result = fixturefunc(**kwargs)
+                             ^^^^^^^^^^^^^^^^^^^^^
+
+.venv/lib/python3.13/site-packages/_pytest/fixtures.py:915: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+wb_configured = False
+
+    @then("Workbench should be reachable")
+    def workbench_reachable(wb_configured):
+&gt;       assert wb_configured, (
+            "Workbench is not configured. "
+            "This is an expected failure used to demonstrate report rendering. "
+            "Set [workbench] url in vip.toml to resolve."
+        )
+E       AssertionError: Workbench is not configured. This is an expected failure used to demonstrate report rendering. Set [workbench] url in vip.toml to resolve.
+E       assert False
+
+tests/prerequisites/test_expected_failure.py:42: AssertionError</pre></div></details></div>
+</div>
+
+<script>
+document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var target = document.getElementById(btn.getAttribute('data-target'));
+    if (!target) return;
+    navigator.clipboard.writeText(target.textContent).then(function() {
+      btn.textContent = 'Copied!';
+      setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+    });
+  });
+});
+</script>
 </div>
 </div>
 
