@@ -312,9 +312,9 @@ def _stash_scenario_metadata(item: pytest.Item) -> None:
     scenario_title = None
     feature_description = None
 
-    # pytest-bdd stores scenario info on the underlying function.
+    # pytest-bdd stores scenario info as __scenario__ on the wrapper function.
     fn = getattr(item, "obj", None)
-    scenario_obj = getattr(fn, "_pytest_bdd_scenario", None) if fn else None
+    scenario_obj = getattr(fn, "__scenario__", None) if fn else None
     if scenario_obj is not None:
         scenario_title = getattr(scenario_obj, "name", None)
         feature_obj = getattr(scenario_obj, "feature", None)
