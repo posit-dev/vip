@@ -443,19 +443,24 @@ def server(input, output, session):
                     break
                 decoded = line.decode("utf-8", errors="replace").rstrip("\n")
                 current = output_lines()
-                output_lines.set([*current, decoded])
+                current.append(decoded)
+                output_lines.set(current)
 
             await proc.wait()
             process_handle.set(None)
 
             rc = proc.returncode or 0
             current = output_lines()
-            output_lines.set([*current, "", f"Process exited with code {rc}"])
+            current.append("")
+            current.append(f"Process exited with code {rc}")
+            output_lines.set(current)
             run_status.set("passed" if rc == 0 else "failed")
             run_counter.set(run_counter() + 1)
         except Exception as exc:
             current = output_lines()
-            output_lines.set([*current, "", f"Error: {exc}"])
+            current.append("")
+            current.append(f"Error: {exc}")
+            output_lines.set(current)
             run_status.set("failed")
             run_counter.set(run_counter() + 1)
         finally:
