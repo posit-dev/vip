@@ -329,8 +329,14 @@ def run_app(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    if args.config:
-        os.environ["VIP_APP_CONFIG"] = str(args.config)
+    # The --config flag is not currently supported for the Shiny app.
+    # Fail fast instead of silently ignoring it.
+    if getattr(args, "config", None):
+        print(
+            "Error: the '--config' option is not supported for 'vip app' at this time.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     _run_shiny(
         "vip.app.app:app",
