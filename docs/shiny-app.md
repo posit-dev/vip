@@ -49,12 +49,9 @@ the IDE's Viewer pane.
 
 ### Sidebar controls
 
-- **Config file path** — path to `vip.toml`.  Defaults to `./vip.toml`
-  or the `VIP_CONFIG` environment variable.
 - **Product URL overrides** (expand the accordion) — enter Connect,
   Workbench, or Package Manager URLs to run without a config file.
-- **Test categories** — check the categories you want to run.  Use the
-  Select all / Deselect all links for convenience.
+- **Test categories** — check the categories you want to run.
 - **Extra pytest args** — pass additional flags to pytest
   (e.g., `-x` to stop on first failure, `-k 'login'` to filter tests).
 - **Run Tests** — start the test run.
