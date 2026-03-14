@@ -225,5 +225,13 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# R / RStudio
+.RData
+.Rhistory
+
 # macOS 
 .DS_Store
+.Rproj.user
+.positai/*
+!.positai/plans/
+.positai

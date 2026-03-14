@@ -1,0 +1,443 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+---
+
+<Layout title="Shiny App - VIP">
+  <Header />
+
+  <div class="page-header">
+    <div class="container">
+      <h1>Shiny App</h1>
+      <p>A graphical test runner for RStudio and Positron.</p>
+    </div>
+  </div>
+
+  <main class="content">
+    <div class="container">
+      <aside class="toc">
+        <h4>On this page</h4>
+        <ul>
+          <li><a href="#quick-start">Quick start</a></li>
+          <li><a href="#rstudio-positron">RStudio &amp; Positron</a></li>
+          <li><a href="#using-the-app">Using the app</a></li>
+          <li><a href="#cli-options">CLI options</a></li>
+        </ul>
+      </aside>
+
+      <article class="docs">
+        <section id="quick-start">
+          <h2>Quick start</h2>
+          <p>
+            VIP includes a <a href="https://shiny.posit.co/py/" target="_blank" rel="noopener">Shiny
+            for Python</a> app that lets you select test categories, run tests,
+            and view the styled report&mdash;all from a browser. Inside Posit
+            Workbench the app opens directly in the IDE&rsquo;s Viewer pane.
+          </p>
+
+          <pre><code>git clone https://github.com/posit-dev/vip.git
+cd vip
+uv sync
+uv run playwright install chromium
+
+uv run vip app</code></pre>
+
+          <p>
+            The app launches in your default browser. If you are inside an
+            RStudio or Positron session on Workbench, it opens in the Viewer
+            pane automatically.
+          </p>
+        </section>
+
+        <section id="rstudio-positron">
+          <h2>Running inside RStudio or Positron</h2>
+          <p>
+            The Shiny app is designed for use inside a Workbench IDE session.
+            Here is the recommended workflow:
+          </p>
+          <ol>
+            <li>
+              <strong>Create a new project from version control.</strong>
+              In RStudio, go to <em>File &rarr; New Project &rarr; Version
+              Control &rarr; Git</em> and fill in the dialog:
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Field</th>
+                      <th>Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Repository URL</td>
+                      <td><code>https://github.com/posit-dev/vip.git</code></td>
+                    </tr>
+                    <tr>
+                      <td>Project directory name</td>
+                      <td><code>vip</code> (auto-filled)</td>
+                    </tr>
+                    <tr>
+                      <td>Create project as subdirectory of</td>
+                      <td>Choose your preferred location (e.g. <code>~</code>)</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p>
+                Click <strong>Create Project</strong>. RStudio clones the
+                repository and opens the project automatically.
+              </p>
+              <p>
+                In Positron, use <em>File &rarr; New Project From Git</em> and
+                enter the same repository URL.
+              </p>
+            </li>
+            <li>
+              <strong>Install dependencies.</strong> Open a terminal in your
+              IDE (the Terminal tab in RStudio, or <code>Ctrl+`</code> in
+              Positron) and run:
+              <pre><code>uv sync
+uv run playwright install chromium</code></pre>
+            </li>
+            <li>
+              <strong>Configure credentials.</strong> Either create a
+              <code>vip.toml</code> file:
+              <pre><code>cp vip.toml.example vip.toml
+# Edit vip.toml with your deployment details</code></pre>
+              <p>Or set environment variables:</p>
+              <pre><code>export VIP_CONNECT_API_KEY="your-api-key"
+export VIP_TEST_USERNAME="test-user"
+export VIP_TEST_PASSWORD="test-password"</code></pre>
+              <p>
+                You can also skip this step entirely and enter product URLs
+                directly in the app.
+              </p>
+            </li>
+            <li>
+              <strong>Launch the app:</strong>
+              <pre><code>uv run vip app</code></pre>
+            </li>
+          </ol>
+        </section>
+
+        <section id="using-the-app">
+          <h2>Using the app</h2>
+
+          <h3>Sidebar controls</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Control</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Config file path</td>
+                  <td>
+                    Path to <code>vip.toml</code>. Defaults to <code>./vip.toml</code>
+                    or the <code>VIP_CONFIG</code> environment variable.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Product URL overrides</td>
+                  <td>
+                    Enter Connect, Workbench, or Package Manager URLs to run
+                    without a config file. Overrides the config file when both
+                    are provided.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Test categories</td>
+                  <td>
+                    Check the categories you want to run: Prerequisites,
+                    Connect, Workbench, Package Manager, Cross Product,
+                    Performance, Security.
+                  </td>
+                </tr>
+                <tr>
+                  <td>Extra pytest args</td>
+                  <td>
+                    Pass additional flags to pytest, e.g.
+                    <code>-x</code> (stop on first failure) or
+                    <code>-k 'login'</code> (filter by name).
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Main panel</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tab</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Test Output</strong></td>
+                  <td>
+                    Live-streaming terminal output from pytest. A status badge
+                    shows Idle, Running, Passed, or Failed.
+                  </td>
+                </tr>
+                <tr>
+                  <td><strong>Report</strong></td>
+                  <td>
+                    Styled HTML report with summary metrics, results grouped by
+                    category, expandable error tracebacks, and troubleshooting
+                    hints. Updates automatically when a run completes.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="cli-options">
+          <h2>CLI options</h2>
+          <pre><code>vip app [--config PATH] [--host HOST] [--port PORT] [--no-browser]</code></pre>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Flag</th>
+                  <th>Default</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>--config</code></td>
+                  <td><code>vip.toml</code></td>
+                  <td>Path to <code>vip.toml</code> (sets default in the app)</td>
+                </tr>
+                <tr>
+                  <td><code>--host</code></td>
+                  <td><code>127.0.0.1</code></td>
+                  <td>Host to bind</td>
+                </tr>
+                <tr>
+                  <td><code>--port</code></td>
+                  <td>auto</td>
+                  <td>Port number (0&nbsp;=&nbsp;pick a free port)</td>
+                </tr>
+                <tr>
+                  <td><code>--no-browser</code></td>
+                  <td>off</td>
+                  <td>Don&rsquo;t open a browser window automatically</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Installing with pip</h3>
+          <p>If you don&rsquo;t use uv:</p>
+          <pre><code>pip install -e .
+playwright install chromium
+vip app</code></pre>
+        </section>
+      </article>
+    </div>
+  </main>
+
+  <Footer />
+</Layout>
+
+<style>
+  .page-header {
+    background: white;
+    border-bottom: 1px solid var(--posit-border);
+    padding: 3rem 1.5rem;
+  }
+
+  .page-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    color: var(--posit-gray-900);
+  }
+
+  .page-header p {
+    color: var(--posit-text-muted);
+    font-size: 1.0625rem;
+  }
+
+  .container {
+    max-width: var(--max-width);
+    margin: 0 auto;
+  }
+
+  .content .container {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    gap: 3rem;
+    padding: 2.5rem 1.5rem;
+  }
+
+  .toc {
+    position: sticky;
+    top: 80px;
+    align-self: start;
+    order: 1;
+  }
+
+  .toc h4 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--posit-text-muted);
+    margin-bottom: 0.75rem;
+    font-family: var(--font-mono);
+  }
+
+  .toc ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .toc li {
+    margin-bottom: 0.375rem;
+  }
+
+  .toc a {
+    font-size: 0.8125rem;
+    color: var(--posit-text-muted);
+  }
+
+  .toc a:hover {
+    color: var(--posit-blue);
+  }
+
+  .docs {
+    order: 0;
+    min-width: 0;
+  }
+
+  .docs section {
+    margin-bottom: 3rem;
+  }
+
+  .docs h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--posit-navy);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--posit-border);
+  }
+
+  .docs h3 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--posit-navy);
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .docs p {
+    margin-bottom: 1rem;
+    color: var(--posit-gray-900);
+  }
+
+  .docs ol {
+    margin-bottom: 1rem;
+    padding-left: 1.5rem;
+  }
+
+  .docs li {
+    margin-bottom: 0.75rem;
+  }
+
+  .docs pre {
+    margin-bottom: 1rem;
+    position: relative;
+  }
+
+  .docs pre .copy-btn {
+    position: absolute;
+    top: 0.375rem;
+    right: 0.375rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .docs pre .copy-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+  }
+
+  .docs pre .copy-btn.copied {
+    background: var(--posit-teal);
+    color: white;
+    border-color: var(--posit-teal);
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    margin-bottom: 1rem;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid var(--posit-border);
+  }
+
+  th {
+    font-weight: 600;
+    color: var(--posit-navy);
+    background: var(--posit-gray-bg);
+  }
+
+  @media (max-width: 768px) {
+    .content .container {
+      grid-template-columns: 1fr;
+    }
+
+    .toc {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  document.querySelectorAll(".docs pre").forEach((pre) => {
+    const btn = document.createElement("button");
+    btn.className = "copy-btn";
+    btn.textContent = "Copy";
+    btn.addEventListener("click", async () => {
+      const code = pre.querySelector("code");
+      if (!code) return;
+      await navigator.clipboard.writeText(code.textContent || "");
+      btn.textContent = "Copied!";
+      btn.classList.add("copied");
+      setTimeout(() => {
+        btn.textContent = "Copy";
+        btn.classList.remove("copied");
+      }, 2000);
+    });
+    pre.appendChild(btn);
+  });
+</script>

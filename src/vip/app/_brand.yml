@@ -1,0 +1,45 @@
+meta:
+  name: VIP — Verified Installation of Posit
+
+logo:
+  images:
+    icon-light: logo-vip.svg
+    icon-dark: logo-vip.svg
+
+color:
+  palette:
+    posit-blue: "#447099"
+    posit-orange: "#EE6331"
+    posit-navy: "#213D4F"
+    posit-teal: "#297075"
+    posit-light-blue: "#E5F0FC"
+    posit-gray-bg: "#F4F4F4"
+    posit-border: "#DEDEDE"
+    white: "#FFFFFF"
+    gray-100: "#F5F5F5"
+    gray-900: "#111827"
+  foreground: gray-900
+  background: white
+  primary: posit-blue
+  secondary: posit-teal
+  success: "#16A34A"
+  danger: "#DC2626"
+  warning: posit-orange
+  info: posit-light-blue
+
+typography:
+  fonts:
+    - family: Open Sans
+      source: google
+    - family: Source Code Pro
+      source: google
+  base:
+    family: Open Sans
+    size: 0.9375rem
+  headings:
+    family: Open Sans
+    weight: 700
+    color: posit-navy
+  monospace:
+    family: Source Code Pro
+    size: 0.875rem
