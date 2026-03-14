@@ -227,3 +227,7 @@ __marimo__/
 
 # macOS 
 .DS_Store
+.Rproj.user
+.positai/*
+!.positai/plans/
+.positai

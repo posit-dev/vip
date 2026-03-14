@@ -318,6 +318,28 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
         cleanup(job_name, cm_name, namespace)
 
 
+def run_app(args: argparse.Namespace) -> None:
+    """Launch the VIP Shiny app."""
+    try:
+        from shiny import run_app as _run_shiny  # noqa: F811
+    except ImportError:
+        print(
+            "Error: the 'shiny' package is not installed.\nInstall with: uv sync",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if args.config:
+        os.environ["VIP_APP_CONFIG"] = str(args.config)
+
+    _run_shiny(
+        "vip.app.app:app",
+        host=args.host,
+        port=args.port,
+        launch_browser=not args.no_browser,
+    )
+
+
 def run_cleanup(args: argparse.Namespace) -> None:
     """Delete VIP test credentials and resources."""
     from vip.config import load_config
@@ -491,12 +513,33 @@ def main() -> None:
     connect_parser.add_argument("--profile", help="AWS profile name")
     connect_parser.set_defaults(func=connect_to_cluster)
 
+    # vip app
+    app_parser = subparsers.add_parser(
+        "app",
+        help="Launch the VIP Shiny app (graphical test runner)",
+    )
+    app_parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to vip.toml (passed to the app as default config)",
+    )
+    app_parser.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)")
+    app_parser.add_argument("--port", type=int, default=0, help="Port (default: auto)")
+    app_parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        default=False,
+        help="Don't open a browser window automatically",
+    )
+    app_parser.set_defaults(func=run_app)
+
     # Map command names to their parsers for context-appropriate help
     subcommand_parsers = {
         "verify": verify_parser,
         "cleanup": cleanup_parser,
         "auth": auth_parser,
         "cluster": cluster_parser,
+        "app": app_parser,
     }
 
     args = parser.parse_args()
