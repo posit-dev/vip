@@ -1,6 +1,34 @@
 # CHANGELOG
 
 
+## v0.9.0 (2026-03-14)
+
+### Chores
+
+- **deps**: Bump the python-dependencies group with 2 updates
+  ([#63](https://github.com/posit-dev/vip/pull/63),
+  [`4d03070`](https://github.com/posit-dev/vip/commit/4d03070e8947c8f41a2b1b2bf4242e298e618908))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Features
+
+- Add Shiny app for interactive test running ([#84](https://github.com/posit-dev/vip/pull/84),
+  [`dd92337`](https://github.com/posit-dev/vip/commit/dd9233791044102c2a42035eccb37361a62e43d2))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+### Testing
+
+- **ci**: Add expected failure test for report preview
+  ([#83](https://github.com/posit-dev/vip/pull/83),
+  [`cbcf579`](https://github.com/posit-dev/vip/commit/cbcf5794caf82d669f05540e6a533aca842da017))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+
 ## v0.8.0 (2026-03-13)
 
 ### Features
