@@ -12,14 +12,26 @@ the IDE's Viewer pane.
 
 ## Quick start in RStudio or Positron
 
-1. **Open a terminal** in your IDE (Terminal tab in RStudio, or
-   ``Ctrl+` `` in Positron).
+1. **Create a new project from version control.** In RStudio, go to
+   *File → New Project → Version Control → Git* and fill in the
+   Clone Git Repository dialog:
 
-2. **Clone and install VIP:**
+   | Field | Value |
+   |-------|-------|
+   | Repository URL | `https://github.com/posit-dev/vip.git` |
+   | Project directory name | `vip` (auto-filled) |
+   | Create project as subdirectory of | Choose your preferred location (e.g. `~`) |
+
+   Click **Create Project**. RStudio clones the repository and opens
+   the project automatically.
+
+   In Positron, use *File → New Project From Git* and enter the same
+   repository URL.
+
+2. **Install dependencies.** Open a terminal in your IDE (Terminal
+   tab in RStudio, or ``Ctrl+` `` in Positron) and run:
 
    ```bash
-   git clone https://github.com/posit-dev/vip.git
-   cd vip
    uv sync
    uv run playwright install chromium
    ```

@@ -58,14 +58,47 @@ uv run vip app</code></pre>
           </p>
           <ol>
             <li>
-              <strong>Open a terminal</strong> in your IDE (the Terminal tab in
-              RStudio, or <code>Ctrl+`</code> in Positron).
+              <strong>Create a new project from version control.</strong>
+              In RStudio, go to <em>File &rarr; New Project &rarr; Version
+              Control &rarr; Git</em> and fill in the dialog:
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Field</th>
+                      <th>Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Repository URL</td>
+                      <td><code>https://github.com/posit-dev/vip.git</code></td>
+                    </tr>
+                    <tr>
+                      <td>Project directory name</td>
+                      <td><code>vip</code> (auto-filled)</td>
+                    </tr>
+                    <tr>
+                      <td>Create project as subdirectory of</td>
+                      <td>Choose your preferred location (e.g. <code>~</code>)</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p>
+                Click <strong>Create Project</strong>. RStudio clones the
+                repository and opens the project automatically.
+              </p>
+              <p>
+                In Positron, use <em>File &rarr; New Project From Git</em> and
+                enter the same repository URL.
+              </p>
             </li>
             <li>
-              <strong>Clone and install VIP</strong> (one-time setup):
-              <pre><code>git clone https://github.com/posit-dev/vip.git
-cd vip
-uv sync
+              <strong>Install dependencies.</strong> Open a terminal in your
+              IDE (the Terminal tab in RStudio, or <code>Ctrl+`</code> in
+              Positron) and run:
+              <pre><code>uv sync
 uv run playwright install chromium</code></pre>
             </li>
             <li>
