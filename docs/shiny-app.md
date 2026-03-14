@@ -13,7 +13,7 @@ the IDE's Viewer pane.
 ## Quick start in RStudio or Positron
 
 1. **Open a terminal** in your IDE (Terminal tab in RStudio, or
-   `Ctrl+`` ` in Positron).
+   ``Ctrl+` `` in Positron).
 
 2. **Clone and install VIP:**
 
