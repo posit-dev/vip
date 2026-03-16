@@ -30,8 +30,8 @@ def test_package_manager_version():
     "Connect is configured in vip.toml with a version expectation",
     target_fixture="connect_expected_version",
 )
-def connect_version_configured(vip_config, connect_client):
-    if connect_client is None:
+def connect_version_configured(vip_config):
+    if not vip_config.connect.is_configured:
         pytest.skip("Connect is not configured")
     if not vip_config.connect.version:
         pytest.skip(
@@ -44,8 +44,8 @@ def connect_version_configured(vip_config, connect_client):
     "Workbench is configured in vip.toml with a version expectation",
     target_fixture="workbench_expected_version",
 )
-def workbench_version_configured(vip_config, workbench_client):
-    if workbench_client is None:
+def workbench_version_configured(vip_config):
+    if not vip_config.workbench.is_configured:
         pytest.skip("Workbench is not configured")
     if not vip_config.workbench.version:
         pytest.skip(
@@ -59,8 +59,8 @@ def workbench_version_configured(vip_config, workbench_client):
     "Package Manager is configured in vip.toml with a version expectation",
     target_fixture="pm_expected_version",
 )
-def pm_version_configured(vip_config, pm_client):
-    if pm_client is None:
+def pm_version_configured(vip_config):
+    if not vip_config.package_manager.is_configured:
         pytest.skip("Package Manager is not configured")
     if not vip_config.package_manager.version:
         pytest.skip(
