@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import os
 import sys
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -278,6 +279,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     if not path.exists():
         # Return default config when no file is present - tests will be
         # skipped for unconfigured products.
+        warnings.warn(f"Config file not found: {path}", stacklevel=2)
         return VIPConfig()
 
     with open(path, "rb") as f:

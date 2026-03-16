@@ -29,7 +29,7 @@ def test_repo_exists():
 @given("Package Manager is running")
 def pm_running(pm_client):
     assert pm_client is not None, "Package Manager client not configured"
-    status = pm_client.status()
+    status = pm_client.health()
     assert status < 400, f"Package Manager returned HTTP {status}"
 
 

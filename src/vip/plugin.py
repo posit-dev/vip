@@ -395,3 +395,28 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         p.write_text(json.dumps(payload, indent=2))
     except OSError as exc:
         warnings.warn(f"VIP: could not write report to {report_path}: {exc}", stacklevel=1)
+        return
+
+    # Write failures.json alongside results.json so report rendering is idempotent.
+    failures = [r for r in results if r.get("outcome") == "failed"]
+    if failures:
+        failures_payload = {
+            "deployment": cfg.deployment_name,
+            "generated_at": payload["generated_at"],
+            "failures": [
+                {
+                    "test": r["nodeid"],
+                    "scenario": r.get("scenario_title"),
+                    "feature": r.get("feature_description"),
+                    "error_summary": (r.get("longrepr") or "")[:500],
+                }
+                for r in failures
+            ],
+        }
+        failures_path = p.parent / "failures.json"
+        try:
+            failures_path.write_text(json.dumps(failures_payload, indent=2) + "\n")
+        except OSError as exc:
+            warnings.warn(
+                f"VIP: could not write failures report to {failures_path}: {exc}", stacklevel=1
+            )

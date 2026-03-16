@@ -4,22 +4,22 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
+from vip.clients.base import BaseClient
 
 
-class PackageManagerClient:
+class PackageManagerClient(BaseClient):
     """Minimal Package Manager HTTP wrapper."""
 
     def __init__(self, base_url: str, token: str = "", *, timeout: float = 30.0) -> None:
-        self.base_url = base_url.rstrip("/")
-        headers = {}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        self._client = httpx.Client(base_url=self.base_url, headers=headers, timeout=timeout)
+        super().__init__(
+            base_url,
+            auth_header_value=f"Bearer {token}" if token else "",
+            timeout=timeout,
+        )
 
     # -- Health / status ----------------------------------------------------
 
-    def status(self) -> int:
+    def health(self) -> int:
         """Return the HTTP status code for the status endpoint."""
         resp = self._client.get("/__api__/status")
         return resp.status_code
@@ -47,8 +47,3 @@ class PackageManagerClient:
         """Check whether a PyPI package is available in a repo."""
         resp = self._client.get(f"/{repo_name}/latest/simple/{package}/")
         return resp.status_code == 200
-
-    # -- Lifecycle ----------------------------------------------------------
-
-    def close(self) -> None:
-        self._client.close()

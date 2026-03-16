@@ -360,9 +360,9 @@ def main() -> None:
     verify_parser.add_argument(
         "--interactive-auth",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Launch a browser for OIDC login (default: enabled, use "
-        "--no-interactive-auth to disable)",
+        default=False,
+        help="Launch a browser for OIDC login (default: disabled, use "
+        "--interactive-auth to enable)",
     )
 
     # Test selection

@@ -14,7 +14,7 @@ pytestmark = pytest.mark.connect
 @given("Connect is accessible at the configured URL")
 def connect_accessible(connect_client):
     assert connect_client is not None, "Connect client not configured"
-    status = connect_client.server_status()
+    status = connect_client.health()
     assert status < 400, f"Connect returned HTTP {status}"
 
 

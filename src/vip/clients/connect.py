@@ -10,19 +10,20 @@ from typing import Any
 
 import httpx
 
+from vip.clients.base import BaseClient
+
 _VIP_CONTENT_TAG = "_vip_test"
 
 
-class ConnectClient:
+class ConnectClient(BaseClient):
     """Minimal Connect API wrapper."""
 
     def __init__(self, base_url: str, api_key: str, *, timeout: float = 30.0) -> None:
-        self.base_url = base_url.rstrip("/")
         api_key = (api_key or "").strip()
-        headers = {"Authorization": f"Key {api_key}"} if api_key else {}
-        self._client = httpx.Client(
-            base_url=f"{self.base_url}/__api__",
-            headers=headers,
+        super().__init__(
+            base_url,
+            auth_header_value=f"Key {api_key}" if api_key else "",
+            api_prefix="/__api__",
             timeout=timeout,
         )
 
@@ -33,7 +34,7 @@ class ConnectClient:
         resp.raise_for_status()
         return resp.json()
 
-    def server_status(self) -> int:
+    def health(self) -> int:
         """Return the HTTP status code for the server health endpoint."""
         resp = self._client.get("/server_settings")
         return resp.status_code
@@ -200,8 +201,3 @@ class ConnectClient:
         resp = self._client.post("/v1/tasks/send-test-email", json={"to": to})
         resp.raise_for_status()
         return resp.json()
-
-    # -- Lifecycle ----------------------------------------------------------
-
-    def close(self) -> None:
-        self._client.close()

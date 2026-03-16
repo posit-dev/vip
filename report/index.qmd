@@ -132,27 +132,6 @@ else:
 ```{python}
 #| echo: false
 
-import json as _json
-
 if failures:
-    _failure_export = {
-        "deployment": data.deployment_name,
-        "generated_at": data.generated_at,
-        "failures": [],
-    }
-    for f in failures:
-        hint = hints.get(f.scenario_title, {}) if f.scenario_title else {}
-        _failure_export["failures"].append({
-            "test": f.nodeid,
-            "scenario": f.scenario_title,
-            "feature": f.feature_description,
-            "error_summary": (f.longrepr or "")[:500],
-            "troubleshooting": {
-                "likely_causes": hint.get("likely_causes", []),
-                "suggested_steps": hint.get("suggested_steps", []),
-                "docs_url": hint.get("docs_url"),
-            } if hint else None,
-        })
-    Path("failures.json").write_text(_json.dumps(_failure_export, indent=2) + "\n")
-    display(Markdown(f"_Wrote {len(failures)} failure(s) to `failures.json`._"))
+    display(Markdown(f"_`failures.json` is written by `pytest` alongside `results.json`._"))
 ```
