@@ -9,6 +9,7 @@ Feature: Workbench IDE launch
     When the user starts a new RStudio session
     Then the session transitions to Active state
     And the RStudio IDE is displayed and functional
+    And the RStudio IDE can execute R code
     And the session is cleaned up
 
   Scenario: VS Code session can be launched
@@ -16,6 +17,7 @@ Feature: Workbench IDE launch
     When the user starts a new VS Code session
     Then the session transitions to Active state
     And the VS Code IDE is displayed
+    And the VS Code terminal is accessible
     And the session is cleaned up
 
   Scenario: JupyterLab session can be launched
@@ -23,6 +25,7 @@ Feature: Workbench IDE launch
     When the user starts a new JupyterLab session
     Then the session transitions to Active state
     And the JupyterLab IDE is displayed
+    And JupyterLab can execute code in a notebook
     And the session is cleaned up
 
   Scenario: Positron session can be launched
@@ -30,4 +33,5 @@ Feature: Workbench IDE launch
     When the user starts a new Positron session
     Then the session transitions to Active state
     And the Positron IDE is displayed
+    And the Positron console is accessible
     And the session is cleaned up

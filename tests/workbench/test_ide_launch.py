@@ -15,6 +15,7 @@ from pytest_bdd import given, scenario, then, when
 
 from tests.workbench.conftest import (
     TIMEOUT_CLEANUP,
+    TIMEOUT_CODE_EXEC,
     TIMEOUT_DIALOG,
     TIMEOUT_IDE_LOAD,
     TIMEOUT_PAGE_LOAD,
@@ -24,6 +25,7 @@ from tests.workbench.conftest import (
     workbench_login,
 )
 from tests.workbench.pages import (
+    ConsolePaneSelectors,
     Homepage,
     JupyterLabSession,
     NewSessionDialog,
@@ -190,6 +192,88 @@ def positron_displayed(page: Page):
     """Verify Positron IDE core elements are visible."""
     expect(page.locator(PositronSession.WORKBENCH)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
     expect(page.locator(PositronSession.STATUS_BAR)).to_be_visible(timeout=TIMEOUT_DIALOG)
+
+
+@then("the RStudio IDE can execute R code")
+def rstudio_executes_r_code(page: Page):
+    """Type a simple R expression into the console and verify the output.
+
+    Waits for the R console input to be ready, then types ``1 + 1``, presses
+    Enter, and asserts that ``[1] 2`` appears in the console output.  Generous
+    timeouts are used because R startup and first-expression evaluation can be
+    slow on a freshly started session.
+    """
+    console_input = page.locator(ConsolePaneSelectors.INPUT)
+    expect(console_input).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
+
+    console_input.click()
+    console_input.type("1 + 1")
+    console_input.press("Enter")
+
+    # The output area accumulates text; wait for the result to contain "[1] 2"
+    console_output = page.locator(ConsolePaneSelectors.OUTPUT)
+    expect(console_output).to_contain_text("[1] 2", timeout=TIMEOUT_CODE_EXEC)
+
+
+@then("the VS Code terminal is accessible")
+def vscode_terminal_accessible(page: Page):
+    """Verify the VS Code terminal panel can be opened.
+
+    Opens the integrated terminal via the keyboard shortcut and waits for the
+    terminal input area to become visible.  This confirms the shell runtime is
+    reachable even though we do not execute a command.
+    """
+    expect(page.locator(VSCodeSession.WORKBENCH)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
+
+    # Open the integrated terminal with the standard VS Code shortcut
+    page.keyboard.press("Control+`")
+
+    terminal_input = page.locator(VSCodeSession.TERMINAL_INPUT)
+    expect(terminal_input).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
+
+
+@then("JupyterLab can execute code in a notebook")
+def jupyterlab_executes_code(page: Page):
+    """Open a new notebook from the launcher and execute ``1 + 1``.
+
+    Clicks the first available notebook kernel card in the JupyterLab launcher,
+    waits for the notebook to open, types an expression into the first code
+    cell, runs it, and asserts that ``2`` appears in the cell output area.
+    """
+    # The launcher should already be visible (asserted in the previous step).
+    # Click the first notebook launcher card to open a new notebook.
+    notebook_card = page.locator(JupyterLabSession.LAUNCHER_NOTEBOOK_CARD).first
+    expect(notebook_card).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
+    notebook_card.click()
+
+    # Wait for the notebook panel to appear
+    notebook_panel = page.locator(JupyterLabSession.NOTEBOOK_PANEL)
+    expect(notebook_panel).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
+
+    # Click into the first code cell input and type the expression
+    cell_input = page.locator(JupyterLabSession.CELL_INPUT).first
+    expect(cell_input).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
+    cell_input.click()
+    cell_input.type("1 + 1")
+
+    # Run the cell with Shift+Enter
+    cell_input.press("Shift+Enter")
+
+    # Assert the output area shows 2
+    cell_output = page.locator(JupyterLabSession.CELL_OUTPUT).first
+    expect(cell_output).to_contain_text("2", timeout=TIMEOUT_CODE_EXEC)
+
+
+@then("the Positron console is accessible")
+def positron_console_accessible(page: Page):
+    """Verify the Positron console panel is visible and ready.
+
+    Positron (VS Code-based) exposes a dedicated console pane.  We assert it
+    is visible, confirming the runtime connection is established without
+    requiring a full code-execution round-trip.
+    """
+    console_panel = page.locator(PositronSession.CONSOLE_PANEL)
+    expect(console_panel).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
 
 
 @then("the session is cleaned up")

@@ -29,3 +29,7 @@ class JupyterLabSession:
     # Toolbar
     TOOLBAR = ".jp-Toolbar"
     RUN_BUTTON = "button[data-command='notebook:run-cell-and-select-next']"
+
+    # Launcher cards (to open a new notebook from the launcher)
+    LAUNCHER_CARD = ".jp-LauncherCard"
+    LAUNCHER_NOTEBOOK_CARD = ".jp-LauncherCard[data-category='Notebook']"

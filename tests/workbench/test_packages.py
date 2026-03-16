@@ -3,18 +3,37 @@
 from __future__ import annotations
 
 import re
+import time
+from pathlib import Path
 
 import pytest
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
-from tests.workbench.conftest import workbench_login
-
-
-@pytest.mark.skip(
-    reason="NYI: admin page scraping is fragile and doesn't reflect actual session config. "
-    "Rework to start an R session and check getOption('repos') instead."
+from tests.workbench.conftest import (
+    TIMEOUT_DIALOG,
+    TIMEOUT_IDE_LOAD,
+    TIMEOUT_PAGE_LOAD,
+    TIMEOUT_QUICK,
+    TIMEOUT_SESSION_START,
+    assert_homepage_loaded,
+    workbench_login,
 )
+from tests.workbench.pages import (
+    ConsolePaneSelectors,
+    Homepage,
+    NewSessionDialog,
+    RStudioSession,
+)
+
+_FILENAME = Path(__file__).name
+
+# Time (ms) to wait for the R console input to become visible after IDE load
+_TIMEOUT_CONSOLE_READY = 30_000
+# Time (ms) to wait for console output to appear after pressing Enter
+_TIMEOUT_R_OUTPUT = 15_000
+
+
 @scenario("test_packages.feature", "R repos.conf points to the expected repository")
 def test_r_repo_configured():
     pass
@@ -33,34 +52,89 @@ def user_logged_in(
     workbench_login(
         page, workbench_url, test_username, test_password, auth_provider, interactive_auth
     )
+    assert_homepage_loaded(page)
+
+
+def _start_session(page: Page, session_name: str) -> None:
+    """Start a new RStudio session with auto-join unchecked."""
+    page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)
+
+    dialog = page.locator(NewSessionDialog.DIALOG)
+    expect(dialog.locator(NewSessionDialog.TITLE)).to_have_text(
+        "New Session", timeout=TIMEOUT_DIALOG
+    )
+
+    ide_display = NewSessionDialog.ide_display_name("RStudio")
+    dialog.get_by_role("tab", name=ide_display).click(timeout=TIMEOUT_QUICK)
+
+    page.fill(NewSessionDialog.SESSION_NAME, session_name)
+
+    checkbox = page.locator(NewSessionDialog.JOIN_CHECKBOX)
+    if checkbox.is_checked():
+        checkbox.click()
+    expect(checkbox).not_to_be_checked(timeout=TIMEOUT_QUICK)
+
+    page.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=TIMEOUT_QUICK)
+
+
+def _wait_for_active_and_join(page: Page, session_name: str) -> None:
+    """Wait for the session to reach Active state, then navigate into it."""
+    session_row = page.locator(Homepage.session_row(session_name))
+    expect(session_row).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+
+    session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
+    expect(session_active).to_be_visible(timeout=TIMEOUT_SESSION_START)
+
+    session_link = session_row.locator(f"a[title='join {session_name}']")
+    expect(session_link).to_be_visible(timeout=TIMEOUT_DIALOG)
+    session_link.click()
+
+
+def _execute_r_command(page: Page, command: str) -> str:
+    """Type an R command into the RStudio console and return the output pane text.
+
+    Waits for the console input to be ready, types the command, presses Enter,
+    and captures the full console output pane text for the caller to parse.
+    """
+    console_input = page.locator(ConsolePaneSelectors.INPUT)
+    expect(console_input).to_be_visible(timeout=_TIMEOUT_CONSOLE_READY)
+
+    console_input.click()
+    console_input.fill("")
+    console_input.type(command)
+    console_input.press("Enter")
+
+    # Brief pause to let R evaluate before reading the output pane
+    time.sleep(1)
+
+    output_el = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT)
+    expect(output_el).to_be_visible(timeout=_TIMEOUT_R_OUTPUT)
+    return output_el.inner_text()
 
 
 @when(
-    "I check the configured R repositories in the session",
+    "I check R repository configuration in an RStudio session",
     target_fixture="repo_check_url",
 )
-def check_r_repos(page, workbench_url):
-    # Navigate to the Workbench admin R configuration page to inspect
-    # the configured R package repositories (repos.conf settings).
-    repo_urls: list[str] = []
-    for path in ("/admin/r", "/admin/", "/s/admin/r", "/s/admin/"):
-        try:
-            resp = page.goto(f"{workbench_url}{path}", wait_until="load", timeout=15000)
-            if resp and resp.status < 400:
-                content = page.content()
-                # Extract https:// URLs that look like package repository sources.
-                found = re.findall(r'https?://[^\s<>"\']+', content)
-                repo_urls.extend(found)
-                if repo_urls:
-                    break
-        except Exception:
-            continue
+def check_r_repos(page: Page, workbench_url: str):
+    """Start an RStudio session, run getOption('repos'), and return found URLs."""
+    session_name = f"VIP {_FILENAME} - {int(time.time())}"
+
+    _start_session(page, session_name)
+    _wait_for_active_and_join(page, session_name)
+
+    # Wait for RStudio to be fully loaded before interacting with the console
+    expect(page.locator(RStudioSession.LOGO)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
+    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_DIALOG)
+
+    output = _execute_r_command(page, "getOption('repos')")
+
+    repo_urls = re.findall(r"https?://[^\s<>\"']+", output)
 
     if not repo_urls:
         pytest.skip(
-            "Could not retrieve R repository configuration from the Workbench admin panel. "
-            "Verify that the test user has admin access, or configure the test to use an "
-            "R session (getOption('repos')) to inspect the repository settings."
+            "getOption('repos') returned no URLs. "
+            "Verify that R is available and repos.conf is configured in this Workbench deployment."
         )
 
     return repo_urls
@@ -71,9 +145,8 @@ def repo_url_present(repo_check_url, vip_config):
     if not vip_config.package_manager.is_configured:
         pytest.skip("Package Manager URL is not configured in vip.toml; cannot verify R repos")
     expected = vip_config.package_manager.url.rstrip("/")
-    # Match URLs that are equal to the expected base or extend it with a path.
     found = any(u.rstrip("/") == expected or u.startswith(expected + "/") for u in repo_check_url)
     assert found, (
-        f"Package Manager URL {expected!r} not found in Workbench R repository configuration. "
+        f"Package Manager URL {expected!r} not found in R repository configuration. "
         f"Found URLs: {repo_check_url[:10]}"
     )
