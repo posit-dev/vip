@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from types import TracebackType
+from typing import TypeVar
 
 import httpx
+
+_T = TypeVar("_T", bound="BaseClient")
 
 
 class BaseClient:
@@ -36,10 +39,16 @@ class BaseClient:
         headers: dict[str, str] = {}
         if auth_header_value:
             headers["Authorization"] = auth_header_value
+        # HTTPTransport retries cover connection-level failures (e.g. refused
+        # connections, broken pipes).  HTTP-level errors (502/503/504) are not
+        # retried here — ConnectClient.wait_for_task already handles those at
+        # the application level.
+        transport = httpx.HTTPTransport(retries=3)
         self._client = httpx.Client(
             base_url=f"{self._base_url}{api_prefix}",
             headers=headers,
             timeout=timeout,
+            transport=transport,
         )
 
     @property
@@ -51,7 +60,7 @@ class BaseClient:
         """Close the underlying httpx client."""
         self._client.close()
 
-    def __enter__(self) -> BaseClient:
+    def __enter__(self: _T) -> _T:
         return self
 
     def __exit__(

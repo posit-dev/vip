@@ -15,6 +15,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from vip.config import Mode
 
+# Buffer subtracted from the user-supplied timeout when setting the pytest
+# timeout inside the K8s Job.  The Job's own deadline is set to args.timeout,
+# so we give pytest a slightly shorter limit so it can finish and write results
+# before Kubernetes kills the pod.
+_JOB_CLEANUP_BUFFER_SECONDS = 60
+_JOB_MIN_PYTEST_TIMEOUT_SECONDS = 60
+
 
 def _connect_cluster(cluster_config) -> Path:
     """Generate kubeconfig and set KUBECONFIG env var. Returns the path."""
@@ -260,13 +267,24 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
         create_config_map(cm_name, namespace, vip_config_toml)
 
         print(f"Creating Job: {job_name}")
+        pytest_timeout = args.timeout - _JOB_CLEANUP_BUFFER_SECONDS
+        if pytest_timeout <= 0:
+            import warnings
+
+            warnings.warn(
+                f"--timeout ({args.timeout}s) is too short to subtract the "
+                f"{_JOB_CLEANUP_BUFFER_SECONDS}s cleanup buffer. "
+                f"Using minimum pytest timeout of {_JOB_MIN_PYTEST_TIMEOUT_SECONDS}s.",
+                stacklevel=2,
+            )
+            pytest_timeout = _JOB_MIN_PYTEST_TIMEOUT_SECONDS
         create_job(
             job_name,
             namespace,
             cm_name,
             image=args.image,
             categories=args.categories,
-            timeout_seconds=args.timeout - 60,
+            timeout_seconds=pytest_timeout,
         )
 
         print(f"Streaming logs from Job: {job_name}")
@@ -285,13 +303,120 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
         cleanup(job_name, cm_name, namespace)
 
 
-def run_cleanup(args: argparse.Namespace) -> None:
-    """Delete VIP test credentials and resources."""
+def run_report(args: argparse.Namespace) -> None:
+    """Render the Quarto report from a results.json file."""
+    import shutil
+    import webbrowser
+
+    results_src = Path(args.results)
+    results_dest = Path("report/results.json")
+
+    if results_src.resolve() != results_dest.resolve():
+        if not results_src.exists():
+            print(f"Error: results file not found: {results_src}", file=sys.stderr)
+            sys.exit(1)
+        shutil.copy2(results_src, results_dest)
+
+    result = subprocess.run(["quarto", "render"], cwd="report")
+
+    if args.open and result.returncode == 0:
+        webbrowser.open(str(Path("report/_site/index.html").resolve()))
+
+    sys.exit(result.returncode)
+
+
+def run_status(args: argparse.Namespace) -> None:
+    """Run preflight health checks against each configured product."""
+    from vip.clients.packagemanager import PackageManagerClient
+    from vip.clients.workbench import WorkbenchClient
     from vip.config import load_config
-    from vip.verify.credentials import cleanup_credentials
-    from vip.verify.site import _extract_connect_url, fetch_site_cr
+
+    config = load_config(args.config)
+
+    checks = [
+        ("connect", config.connect),
+        ("workbench", config.workbench),
+        ("package_manager", config.package_manager),
+    ]
+
+    results = []
+    for name, pc in checks:
+        if not pc.is_configured:
+            results.append((name, "not configured", "skip"))
+            continue
+        try:
+            if name == "connect":
+                from vip.clients.connect import ConnectClient as CC
+
+                client: CC | WorkbenchClient | PackageManagerClient = CC(
+                    pc.url,
+                    pc.api_key,  # type: ignore[attr-defined]
+                )
+            elif name == "workbench":
+                client = WorkbenchClient(pc.url, pc.api_key)  # type: ignore[attr-defined]
+            else:
+                client = PackageManagerClient(pc.url, pc.token)  # type: ignore[attr-defined]
+            status = client.health()
+            state = "ok" if status < 400 else "fail"
+            results.append((name, f"HTTP {status}", state))
+        except Exception as e:
+            results.append((name, str(e), "fail"))
+
+    for name, detail, state in results:
+        print(f"  {state.upper():4s}  {name:20s}  {detail}")
+
+    sys.exit(0 if all(s in ("ok", "skip") for _, _, s in results) else 1)
+
+
+def run_cleanup(args: argparse.Namespace) -> None:
+    """Delete VIP test credentials and resources.
+
+    Supports two modes:
+
+    - **Local mode** (auto-detected or ``--connect-url``): connects directly
+      to a Connect server and deletes all content tagged ``_vip_test``.
+    - **Cluster mode**: uses the PTD Site CR to look up credentials and runs
+      the full cluster-aware cleanup (K8s secrets, etc.).
+
+    Local mode is used when *any* of the following is true:
+    - ``--connect-url`` is provided on the command line, or
+    - no cluster config is present in ``vip.toml`` and a Connect URL is found
+      in the config file.
+    """
+    from vip.config import load_config
 
     config = load_config()
+
+    # Determine Connect URL and API key for local content cleanup.
+    connect_url = getattr(args, "connect_url", None)
+    api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
+
+    # Auto-detect local mode: explicit --connect-url or no cluster config.
+    use_local = bool(connect_url) or not config.cluster.is_configured
+
+    if use_local:
+        # Fall back to config file values when no CLI override is supplied.
+        if not connect_url and config.connect and config.connect.url:
+            connect_url = config.connect.url
+        if not connect_url:
+            print(
+                "Error: no Connect URL found. Pass --connect-url or set [connect] url in vip.toml.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        from vip.clients.connect import ConnectClient
+
+        print(f"Cleaning up VIP test content on Connect at {connect_url}")
+        with ConnectClient(connect_url, api_key) as client:
+            deleted = client.cleanup_vip_content()
+        print(f"Deleted {deleted} VIP test content item(s)")
+        print("Cleanup completed successfully")
+        return
+
+    # Cluster mode: requires K8s access.
+    from vip.verify.credentials import cleanup_credentials
+    from vip.verify.site import _extract_connect_url, fetch_site_cr
 
     if config.cluster.is_configured:
         _connect_cluster(config.cluster)
@@ -434,10 +559,33 @@ def main() -> None:
 
     # vip cleanup
     cleanup_parser = subparsers.add_parser(
-        "cleanup", help="Delete VIP test credentials and resources"
+        "cleanup",
+        help="Delete VIP test credentials and resources",
+        description=(
+            "Delete VIP test credentials and resources.\n\n"
+            "Local mode (auto-detected when no cluster config is present):\n"
+            "  vip cleanup --connect-url https://connect.example.com\n\n"
+            "Cluster mode (requires K8s access and PTD Site CR):\n"
+            "  vip cleanup --site main --namespace posit-team\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    cleanup_parser.add_argument("--site", default="main", help="PTD Site CR name (default: main)")
-    cleanup_parser.add_argument(
+    local_group = cleanup_parser.add_argument_group(
+        "local mode (Connect content cleanup, no K8s required)"
+    )
+    local_group.add_argument(
+        "--connect-url",
+        default=None,
+        help="Connect server URL (enables local mode; falls back to vip.toml if omitted)",
+    )
+    local_group.add_argument(
+        "--api-key",
+        default=None,
+        help="Connect API key (default: VIP_CONNECT_API_KEY env var)",
+    )
+    cluster_group = cleanup_parser.add_argument_group("cluster mode (K8s credential cleanup)")
+    cluster_group.add_argument("--site", default="main", help="PTD Site CR name (default: main)")
+    cluster_group.add_argument(
         "--namespace",
         default="posit-team",
         help="Kubernetes namespace (default: posit-team)",
@@ -458,12 +606,44 @@ def main() -> None:
     connect_parser.add_argument("--profile", help="AWS profile name")
     connect_parser.set_defaults(func=connect_to_cluster)
 
+    # vip report
+    report_parser = subparsers.add_parser(
+        "report",
+        help="Render the Quarto report from a results.json file",
+    )
+    report_parser.add_argument(
+        "--results",
+        default="report/results.json",
+        help="Path to results.json (default: report/results.json)",
+    )
+    report_parser.add_argument(
+        "--open",
+        action="store_true",
+        default=False,
+        help="Open the rendered report in a browser after rendering",
+    )
+    report_parser.set_defaults(func=run_report)
+
+    # vip status
+    status_parser = subparsers.add_parser(
+        "status",
+        help="Check health endpoints for each configured product",
+    )
+    status_parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to vip.toml (default: VIP_CONFIG env var or ./vip.toml)",
+    )
+    status_parser.set_defaults(func=run_status)
+
     # Map command names to their parsers for context-appropriate help
     subcommand_parsers = {
         "verify": verify_parser,
         "cleanup": cleanup_parser,
         "auth": auth_parser,
         "cluster": cluster_parser,
+        "report": report_parser,
+        "status": status_parser,
     }
 
     args = parser.parse_args()
