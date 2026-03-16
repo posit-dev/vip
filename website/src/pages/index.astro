@@ -81,22 +81,6 @@ const categories = [
 
   <section class="section section-alt">
     <div class="container">
-      <h2 class="section-title">Cross-cutting test categories</h2>
-      <div class="category-grid">
-        {
-          categories.map((cat) => (
-            <div class="category-card">
-              <h4>{cat.name}</h4>
-              <p>{cat.description}</p>
-            </div>
-          ))
-        }
-      </div>
-    </div>
-  </section>
-
-  <section class="section">
-    <div class="container">
       <h2 class="section-title">How it works</h2>
       <div class="steps">
         <div class="step">
@@ -120,6 +104,22 @@ const categories = [
             <p>Generate a Quarto report with detailed results you can publish to Connect.</p>
           </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2 class="section-title">Cross-cutting test categories</h2>
+      <div class="category-grid">
+        {
+          categories.map((cat) => (
+            <div class="category-card">
+              <h4>{cat.name}</h4>
+              <p>{cat.description}</p>
+            </div>
+          ))
+        }
       </div>
     </div>
   </section>
