@@ -388,7 +388,7 @@ def run_app(args: argparse.Namespace) -> None:
         )
         sys.exit(2)
 
-    _run_shiny(
+    _run_shiny(  # type: ignore[misc]  # shiny is an optional dep
         "vip.app.app:app",
         host=args.host,
         port=args.port,

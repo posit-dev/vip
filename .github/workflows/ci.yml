@@ -54,7 +54,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Audit dependencies
-        run: uv run pip-audit
+        run: uv run pip-audit --skip-editable
 
   selftest:
     name: Selftests (${{ matrix.python-version }})
