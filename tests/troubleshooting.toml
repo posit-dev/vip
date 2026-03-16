@@ -74,6 +74,18 @@ suggested_steps = [
 ]
 docs_url = "https://docs.posit.co/connect/admin/authentication/"
 
+["Workbench server is reachable but not configured"]
+summary = "Demonstrates report failure rendering (expected to fail in CI)"
+likely_causes = [
+    "Workbench is not configured in vip.toml (expected in CI preview)",
+    "This test intentionally fails to demonstrate report failure rendering",
+]
+suggested_steps = [
+    "No action needed — this failure is expected in the CI report preview",
+    "To resolve, add a [workbench] section with a valid URL to vip.toml",
+]
+docs_url = "https://github.com/posit-dev/vip/issues/73"
+
 ["API key authentication works"]
 summary = "Verifies API key access to the Connect API"
 likely_causes = [

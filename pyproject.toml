@@ -1,6 +1,6 @@
 [project]
 name = "vip"
-version = "0.6.0"
+version = "0.9.0"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -12,6 +12,9 @@ dependencies = [
     "pytest-bdd>=7.0",
     "pytest-playwright>=0.5",
     "pytest-xdist>=3.0",
+    "shiny[theme]>=1.0",
+    "brand-yml",
+    "htmltools",
     "tomli>=2.0;python_version<'3.11'",
 ]
 

@@ -304,10 +304,9 @@ def _stash_scenario_metadata(item: pytest.Item) -> None:
     scenario_title = None
     feature_description = None
 
-    # pytest-bdd stores scenario info on the underlying function.
+    # pytest-bdd stores scenario info as __scenario__ on the wrapper function.
     fn = getattr(item, "obj", None)
-    # Private pytest-bdd attr; no public API available.
-    scenario_obj = getattr(fn, "_pytest_bdd_scenario", None) if fn else None
+    scenario_obj = getattr(fn, "__scenario__", None) if fn else None
     if scenario_obj is not None:
         scenario_title = getattr(scenario_obj, "name", None)
         feature_obj = getattr(scenario_obj, "feature", None)
@@ -320,7 +319,10 @@ def _stash_scenario_metadata(item: pytest.Item) -> None:
     }
 
 
-def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
+    outcome = yield
+    report: pytest.TestReport = outcome.get_result()
     if report.when == "call" or (report.when == "setup" and report.skipped):
         if _active_config is None:
             return
@@ -329,16 +331,13 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
             return
         markers: list[str] = []
         scenario_meta: dict[str, str | None] = {}
-        # Private pytest-bdd attr; no public API available.
-        item = getattr(report, "item", None)
-        if item is not None:
-            try:
-                markers = [m.name for m in item.iter_markers()]  # type: ignore[attr-defined]
-            except Exception:
-                pass
-            item_stash = getattr(item, "stash", None)
-            if item_stash is not None:
-                scenario_meta = item_stash.get(_scenario_stash_key, {})
+        try:
+            markers = [m.name for m in item.iter_markers()]
+        except Exception:
+            pass
+        item_stash = getattr(item, "stash", None)
+        if item_stash is not None:
+            scenario_meta = item_stash.get(_scenario_stash_key, {})
         results.append(
             {
                 "nodeid": report.nodeid,

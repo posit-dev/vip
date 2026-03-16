@@ -19,6 +19,20 @@ uv run pytest                     # run all tests
 uv run pytest -m connect          # run tests for a single product
 ```
 
+## Shiny app (graphical test runner)
+
+VIP includes a Shiny for Python app that lets you select test categories,
+run tests, and view the report — all from a browser.  This is especially
+convenient inside a Posit Workbench session (RStudio or Positron) where
+the app opens in the Viewer pane.
+
+```bash
+uv sync
+uv run vip app
+```
+
+See the [Shiny App guide](docs/shiny-app.md) for details.
+
 ## Documentation
 
 | Guide | Description |
@@ -29,6 +43,7 @@ uv run pytest -m connect          # run tests for a single product
 | [Deployment Verification](docs/deployment-verification.md) | `vip verify`, cluster setup, and K8s integration |
 | [Test Categories](docs/test-categories.md) | Test markers, version gating, and extensibility |
 | [Reporting](docs/reporting.md) | Generating and publishing the Quarto report |
+| [Shiny App](docs/shiny-app.md) | Graphical test runner for RStudio and Positron |
 | [Development](docs/development.md) | Dev setup, linting, formatting, and design principles |
 
 ## License

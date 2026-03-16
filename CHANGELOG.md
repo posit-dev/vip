@@ -1,6 +1,73 @@
 # CHANGELOG
 
 
+## v0.9.0 (2026-03-14)
+
+### Chores
+
+- **deps**: Bump the python-dependencies group with 2 updates
+  ([#63](https://github.com/posit-dev/vip/pull/63),
+  [`4d03070`](https://github.com/posit-dev/vip/commit/4d03070e8947c8f41a2b1b2bf4242e298e618908))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Features
+
+- Add Shiny app for interactive test running ([#84](https://github.com/posit-dev/vip/pull/84),
+  [`dd92337`](https://github.com/posit-dev/vip/commit/dd9233791044102c2a42035eccb37361a62e43d2))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+### Testing
+
+- **ci**: Add expected failure test for report preview
+  ([#83](https://github.com/posit-dev/vip/pull/83),
+  [`cbcf579`](https://github.com/posit-dev/vip/commit/cbcf5794caf82d669f05540e6a533aca842da017))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+
+## v0.8.0 (2026-03-13)
+
+### Features
+
+- **website**: Add example validation report page ([#82](https://github.com/posit-dev/vip/pull/82),
+  [`46153b1`](https://github.com/posit-dev/vip/commit/46153b1ce0404664bcc644f08e9e4bd175fb8de5))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+
+## v0.7.0 (2026-03-13)
+
+### Features
+
+- **ci**: Add license error annotations to smoke test workflows
+  ([#81](https://github.com/posit-dev/vip/pull/81),
+  [`2100d25`](https://github.com/posit-dev/vip/commit/2100d25772e12796a99cec8c3a6233e73f4fe8ef))
+
+
+## v0.6.1 (2026-03-13)
+
+### Bug Fixes
+
+- **ci**: Use matrix version in smoke test artifact names
+  ([#80](https://github.com/posit-dev/vip/pull/80),
+  [`2cd5113`](https://github.com/posit-dev/vip/commit/2cd5113f14b08bd6dba30bd5180b655e2553ed61))
+
+### Documentation
+
+- Section README into smaller focused documents ([#79](https://github.com/posit-dev/vip/pull/79),
+  [`42ec96b`](https://github.com/posit-dev/vip/commit/42ec96bede101eb6d534d1423ca1bb188d017751))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+Co-authored-by: Elliot Murphy <statik@users.noreply.github.com>
+
+
 ## v0.6.0 (2026-03-12)
 
 ### Features

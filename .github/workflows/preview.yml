@@ -11,154 +11,31 @@ permissions:
   pull-requests: write
 
 jobs:
+  example-report:
+    if: github.event.action != 'closed'
+    uses: ./.github/workflows/example-report.yml
+    secrets: inherit
+
   preview:
     if: github.event.action != 'closed'
-    name: Build & deploy report preview
+    needs: example-report
+    name: Deploy report preview
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      # Start Connect in Docker
-      - name: Start Connect
-        id: connect
-        uses: posit-dev/with-connect@main
+      - name: Download example report
+        uses: actions/download-artifact@v4
         with:
-          version: release
-          license: ${{ secrets.CONNECT_LICENSE }}
-
-      # Resolve the actual Connect version for unambiguous job records
-      - name: Resolve Connect version
-        id: version
-        run: |
-          RESPONSE=$(curl -sf \
-            -H "Authorization: Key ${{ steps.connect.outputs.CONNECT_API_KEY }}" \
-            "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings")
-          VERSION=$(echo "${RESPONSE}" | jq -r '.version')
-          if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
-            echo "ERROR: Could not resolve Connect version from server_settings"
-            echo "Response body: ${RESPONSE}"
-            exit 1
-          fi
-          echo "Resolved Connect version: ${VERSION}"
-          echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      # Start Package Manager in Docker
-      - name: Start Package Manager
-        id: pm
-        run: |
-          docker run -d \
-            --name packagemanager \
-            -p 4242:4242 \
-            -e RSPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
-            rstudio/rstudio-package-manager:ubuntu2204-2024.08.0
-          echo "PM_URL=http://localhost:4242" >> "$GITHUB_OUTPUT"
-
-      # Wait for Package Manager health check
-      - name: Wait for Package Manager to be ready
-        run: |
-          echo "Waiting for Package Manager to start..."
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:4242/__api__/status > /dev/null 2>&1; then
-              echo "Package Manager is ready (attempt ${i})"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Package Manager failed to start within 120 seconds"
-          docker logs packagemanager
-          exit 1
-
-      # Provision CRAN and PyPI repositories for smoke testing
-      - name: Provision smoke test repositories
-        run: |
-          echo "Creating CRAN repository..."
-          docker exec packagemanager /opt/rstudio-pm/bin/rspm create repo \
-            --name=cran-all --type=r --description="CRAN mirror"
-          docker exec packagemanager /opt/rstudio-pm/bin/rspm create source \
-            --name=cran-mirror --type=cran-snapshot
-          docker exec packagemanager /opt/rstudio-pm/bin/rspm subscribe \
-            --repo=cran-all --source=cran-mirror
-
-          echo "Creating PyPI repository..."
-          docker exec packagemanager /opt/rstudio-pm/bin/rspm create repo \
-            --name=pypi-all --type=python --description="PyPI mirror"
-
-          echo "Repositories provisioned successfully"
-
-      # Resolve the actual Package Manager version
-      - name: Resolve Package Manager version
-        id: pm-version
-        run: |
-          RESPONSE=$(curl -sf http://localhost:4242/__api__/status)
-          VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty')
-          if [ -z "${VERSION}" ]; then
-            VERSION="ubuntu2204-2024.08.0"
-          fi
-          echo "Resolved Package Manager version: ${VERSION}"
-          echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --all-extras
-
-      - uses: quarto-dev/quarto-actions/setup@v2
-        with:
-          cache: true
-
-      # Generate vip.toml from with-connect and PM outputs
-      - name: Configure VIP for CI
-        run: |
-          cat > vip.toml << EOF
-          [general]
-          deployment_name = "CI Connect ${{ steps.version.outputs.resolved }} + PM ${{ steps.pm-version.outputs.resolved }}"
-
-          [connect]
-          enabled = true
-          url = "${{ steps.connect.outputs.CONNECT_SERVER }}"
-          api_key = "${{ steps.connect.outputs.CONNECT_API_KEY }}"
-          version = "${{ steps.version.outputs.resolved }}"
-
-          [package_manager]
-          enabled = true
-          url = "${{ steps.pm.outputs.PM_URL }}"
-          version = "${{ steps.pm-version.outputs.resolved }}"
-
-          [auth]
-          provider = "password"
-          EOF
-
-      - name: Run smoke tests and generate results
-        run: |
-          uv run pytest \
-            tests/prerequisites/test_components.py \
-            tests/connect/test_auth.py \
-            tests/package_manager/test_repos.py \
-            -v -k "reachable or api or mirror or repo_exists" \
-            --vip-config=vip.toml
-
-      - name: Render Quarto report
-        run: cd report && uv run quarto render
+          name: example-report
+          path: report/_output/
 
       - uses: rossjrw/pr-preview-action@v1
         with:
           source-dir: report/_output/
           preview-branch: gh-pages
           umbrella-dir: pr-preview
-
-      # Stop Connect
-      - name: Stop Connect
-        if: always()
-        uses: posit-dev/with-connect@main
-        with:
-          stop: ${{ steps.connect.outputs.CONTAINER_ID }}
-
-      # Stop Package Manager
-      - name: Stop Package Manager
-        if: always()
-        run: docker stop packagemanager && docker rm packagemanager || true
+          comment: false
 
   cleanup:
     if: github.event.action == 'closed'

@@ -37,6 +37,20 @@ source .venv/bin/activate
 uv pip install "vip @ git+https://github.com/posit-dev/vip.git"
 playwright install chromium</code></pre>
 
+          <h3>Using RStudio or Positron?</h3>
+          <p>
+            You can set up VIP as an RStudio project instead. Go to
+            <em>File &rarr; New Project &rarr; Version Control &rarr; Git</em>
+            and enter <code>https://github.com/posit-dev/vip.git</code> as
+            the Repository URL. Then install dependencies from the Terminal tab:
+          </p>
+          <pre><code>uv sync
+uv run playwright install chromium</code></pre>
+          <p>
+            See the <a href="../shiny-app/">Shiny app</a> page for the full
+            graphical workflow.
+          </p>
+
           <p>Run your first test against a Connect server:</p>
           <pre><code>vip verify --connect-url https://connect.example.com</code></pre>
           <p>
@@ -111,6 +125,12 @@ vip verify --connect-url https://connect.example.com --no-interactive-auth</code
 
         <section id="running-tests">
           <h2>Running tests</h2>
+          <p>
+            <strong>Prefer a graphical interface?</strong> VIP includes a
+            <a href="../shiny-app/">Shiny app</a> that lets you select
+            categories, run tests, and view the report from your browser or
+            the Workbench Viewer pane.
+          </p>
           <p>Target specific products or test categories:</p>
           <pre><code># Run all tests
 vip verify --connect-url https://connect.example.com

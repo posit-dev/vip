@@ -46,6 +46,27 @@ jobs:
           timeout 180 bash -c \
             'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
 
+      # Surface license errors as workflow annotations so expired keys
+      # are immediately visible on the Actions run page.
+      - name: Check for license errors
+        if: failure()
+        run: |
+          LOGS=$(docker logs workbench 2>&1 || true)
+          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable|not activated" | head -1 || true)
+          if [ -n "${LICENSE_MSG}" ]; then
+            echo "::error title=License Error::${LICENSE_MSG}"
+            {
+              echo "## License Error"
+              echo ""
+              echo "The Workbench license key is expired or invalid. Update the \`WORKBENCH_LICENSE\` repository secret."
+              echo ""
+              echo '```'
+              echo "${LICENSE_MSG}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
       # Resolve the running Workbench version.
       # Primary: authenticated GET /api/server-info (sign in with -L to follow the
       #          302 redirect so all session cookies are captured).
@@ -152,7 +173,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: workbench-smoke-results-${{ steps.version.outputs.resolved }}
+          name: workbench-smoke-results-${{ matrix.workbench-version }}
           path: smoke-results.xml
 
       # Write a rich job summary with test details and emoji
