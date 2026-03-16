@@ -15,3 +15,8 @@ Feature: Connect R and Python versions
     And expected Python versions are specified in vip.toml
     When I query Connect for available Python versions
     Then all expected Python versions are present
+
+  Scenario: Expected Quarto versions are available
+    Given Connect is accessible at the configured URL
+    When I query Connect for available Quarto versions
+    Then at least one Quarto version is available

@@ -25,16 +25,21 @@ report = [
     "ipykernel",
     "nbformat>=5.7",
     "nbclient>=0.8",
+    "tornado>=6.5.5",  # CVE-2026-31958 fix; transitive via jupyter
 ]
 cluster = [
     "boto3>=1.26",
     "azure-identity>=1.12",
     "azure-mgmt-containerservice>=20.0",
     "pyyaml>=6.0",
+    "pyjwt>=2.12.0",  # CVE-2026-32597 fix; transitive via msal
 ]
 dev = [
     "ruff>=0.15.0,<0.16",
     "mypy>=1.10",
+    "types-PyYAML>=6.0",
+    "pytest-cov>=6.0",
+    "pip-audit>=2.7",
 ]
 
 [project.scripts]
@@ -84,6 +89,11 @@ ignore_token_for_push = true
 [tool.semantic_release.changelog]
 generate = true
 file = "CHANGELOG.md"
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100

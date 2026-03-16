@@ -14,6 +14,11 @@ Feature: Package Manager repositories
     When I query the PyPI repository for the "requests" package
     Then the package is found in the repository
 
+  Scenario: Bioconductor mirror is accessible
+    Given Package Manager is running
+    When I query the Bioconductor repository for the "BiocGenerics" package
+    Then the package is found in the repository
+
   Scenario: At least one repository is configured
     Given Package Manager is running
     When I list all repositories

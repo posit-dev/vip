@@ -40,26 +40,29 @@ def pm_has_pypi(pm_client):
 
 
 @when("I download a small CRAN package", target_fixture="download_time")
-def download_cran(pm_client, cran_repo):
+def download_cran(pm_client, cran_repo, performance_config):
     # Download the PACKAGES index as a proxy for package download speed.
     url = f"{pm_client.base_url}/{cran_repo['name']}/latest/src/contrib/PACKAGES"
     start = time.monotonic()
-    resp = httpx.get(url, timeout=30)
+    resp = httpx.get(url, timeout=performance_config.download_timeout)
     elapsed = time.monotonic() - start
     resp.raise_for_status()
     return elapsed
 
 
 @when("I download a small PyPI package", target_fixture="download_time")
-def download_pypi(pm_client, pypi_repo):
+def download_pypi(pm_client, pypi_repo, performance_config):
     url = f"{pm_client.base_url}/{pypi_repo['name']}/latest/simple/pip/"
     start = time.monotonic()
-    resp = httpx.get(url, timeout=30)
+    resp = httpx.get(url, timeout=performance_config.download_timeout)
     elapsed = time.monotonic() - start
     resp.raise_for_status()
     return elapsed
 
 
-@then("the download completes in under 30 seconds")
-def download_fast(download_time):
-    assert download_time < 30, f"Download took {download_time:.2f}s (threshold: 30s)"
+@then("the download completes within the configured timeout")
+def download_fast(download_time, performance_config):
+    threshold = performance_config.download_timeout
+    assert download_time < threshold, (
+        f"Download took {download_time:.2f}s (threshold: {threshold}s)"
+    )

@@ -7,15 +7,14 @@ easy identification and cleanup.
 
 from __future__ import annotations
 
-import io
 import json
 import pathlib
-import tarfile
-import time
 
 import httpx
 import pytest
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import scenario, then, when
+
+from tests.connect.conftest import _make_tar_gz
 
 
 @scenario("test_content_deploy.feature", "Deploy and execute a Quarto document")
@@ -38,6 +37,21 @@ def test_deploy_dash():
     pass
 
 
+@scenario("test_content_deploy.feature", "Deploy and execute an R Markdown document")
+def test_deploy_rmarkdown():
+    pass
+
+
+@scenario("test_content_deploy.feature", "Deploy and execute a Jupyter Notebook")
+def test_deploy_jupyter():
+    pass
+
+
+@scenario("test_content_deploy.feature", "Deploy and execute a FastAPI application")
+def test_deploy_fastapi():
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Shared state for the current scenario
 # ---------------------------------------------------------------------------
@@ -52,18 +66,6 @@ def deploy_state():
 # ---------------------------------------------------------------------------
 # Bundle helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_tar_gz(files: dict[str, str]) -> bytes:
-    """Create an in-memory tar.gz archive from a dict of {filename: content}."""
-    buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        for name, content in files.items():
-            data = content.encode()
-            info = tarfile.TarInfo(name=name)
-            info.size = len(data)
-            tar.addfile(info, io.BytesIO(data))
-    return buf.getvalue()
 
 
 _PLUMBER_BUNDLE = {
@@ -153,6 +155,116 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
             ),
         }
 
+    if name == "vip-rmarkdown-test":
+        r_versions = connect_client.r_versions()
+        if not r_versions:
+            pytest.skip("No R versions available on Connect — cannot deploy R Markdown")
+        return {
+            "index.Rmd": (
+                "---\ntitle: VIP RMarkdown Test\noutput: html_document\n---\n\n"
+                "Hello from VIP RMarkdown.\n"
+            ),
+            "manifest.json": json.dumps(
+                {
+                    "version": 1,
+                    "platform": r_versions[0],
+                    "metadata": {
+                        "appmode": "rmd-static",
+                        "primary_rmd": "index.Rmd",
+                        "content_category": "",
+                        "has_parameters": False,
+                    },
+                    "packages": {},
+                }
+            ),
+        }
+
+    if name == "vip-jupyter-test":
+        py_versions = connect_client.python_versions()
+        if not py_versions:
+            pytest.skip("No Python versions available on Connect — cannot deploy Jupyter Notebook")
+        notebook_content = json.dumps(
+            {
+                "nbformat": 4,
+                "nbformat_minor": 5,
+                "metadata": {
+                    "kernelspec": {
+                        "display_name": "Python 3",
+                        "language": "python",
+                        "name": "python3",
+                    },
+                    "language_info": {"name": "python", "version": py_versions[0]},
+                },
+                "cells": [
+                    {
+                        "cell_type": "code",
+                        "execution_count": 1,
+                        "metadata": {},
+                        "outputs": [
+                            {
+                                "output_type": "stream",
+                                "name": "stdout",
+                                "text": "VIP notebook OK\n",
+                            }
+                        ],
+                        "source": 'print("VIP notebook OK")',
+                    }
+                ],
+            }
+        )
+        return {
+            "notebook.ipynb": notebook_content,
+            "manifest.json": json.dumps(
+                {
+                    "version": 1,
+                    "metadata": {
+                        "appmode": "jupyter-static",
+                        "primary_document": "notebook.ipynb",
+                        "content_category": "",
+                        "has_parameters": False,
+                    },
+                    "python": {
+                        "version": py_versions[0],
+                        "package_manager": {
+                            "name": "pip",
+                            "version": "24.0",
+                            "package_file": "requirements.txt",
+                        },
+                    },
+                }
+            ),
+            "requirements.txt": "",
+        }
+
+    if name == "vip-fastapi-test":
+        py_versions = connect_client.python_versions()
+        if not py_versions:
+            pytest.skip("No Python versions available on Connect — cannot deploy FastAPI")
+        return {
+            "app.py": (
+                "from fastapi import FastAPI\n"
+                "app = FastAPI()\n\n"
+                "@app.get('/')\n"
+                "def root():\n"
+                '    return {"message": "VIP fastapi OK"}\n'
+            ),
+            "requirements.txt": "fastapi\nuvicorn\n",
+            "manifest.json": json.dumps(
+                {
+                    "version": 1,
+                    "metadata": {"appmode": "python-fastapi", "entrypoint": "app"},
+                    "python": {
+                        "version": py_versions[0],
+                        "package_manager": {
+                            "name": "pip",
+                            "version": "24.0",
+                            "package_file": "requirements.txt",
+                        },
+                    },
+                }
+            ),
+        }
+
     pytest.fail(f"No bundle configuration for: {name}")
 
 
@@ -161,16 +273,14 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-@given("Connect is accessible at the configured URL")
-def connect_accessible(connect_client):
-    assert connect_client is not None
-
-
 _CONTENT_NAMES = [
     "vip-quarto-test",
     "vip-plumber-test",
     "vip-shiny-test",
     "vip-dash-test",
+    "vip-rmarkdown-test",
+    "vip-jupyter-test",
+    "vip-fastapi-test",
 ]
 
 
@@ -178,6 +288,9 @@ _CONTENT_NAMES = [
 @when('I create a VIP test content item named "vip-plumber-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-shiny-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-dash-test"', target_fixture="deploy_state")
+@when('I create a VIP test content item named "vip-rmarkdown-test"', target_fixture="deploy_state")
+@when('I create a VIP test content item named "vip-jupyter-test"', target_fixture="deploy_state")
+@when('I create a VIP test content item named "vip-fastapi-test"', target_fixture="deploy_state")
 def create_content(connect_client, request):
     # Extract content name by matching the content type keyword (e.g., "plumber")
     # from the bundle name against the test function name (e.g., "test_deploy_plumber").
@@ -199,6 +312,9 @@ def create_content(connect_client, request):
 @when("I upload and deploy a minimal Plumber bundle")
 @when("I upload and deploy a minimal Shiny bundle")
 @when("I upload and deploy a minimal Dash bundle")
+@when("I upload and deploy a minimal R Markdown bundle")
+@when("I upload and deploy a minimal Jupyter Notebook bundle")
+@when("I upload and deploy a minimal FastAPI bundle")
 def upload_and_deploy(connect_client, deploy_state):
     name = deploy_state["name"]
     bundle_files = _get_bundle(name, connect_client)
@@ -213,51 +329,17 @@ def upload_and_deploy(connect_client, deploy_state):
 def wait_for_deploy(connect_client, deploy_state, vip_config):
     task_id = deploy_state["task_id"]
     timeout = vip_config.connect.deploy_timeout
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            task = connect_client.get_task(task_id)
-        except httpx.ReadTimeout:
-            # Transient timeout during long deployments (e.g. R package
-            # installs); retry as long as the overall deadline hasn't expired.
-            time.sleep(3)
-            continue
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code in (404, 502, 503, 504):
-                time.sleep(3)
-                continue
-            raise
-        if task.get("finished"):
-            deploy_state["task_result"] = task
-            if task.get("code") != 0:
-                output = "\n".join(task.get("output", []))
-                error = task.get("error", "unknown error")
-                pytest.fail(f"Deployment failed: {error}\n\n--- Task output ---\n{output}")
-            return
-        time.sleep(3)
-    # On timeout, fetch final task state for logs (with limited retries for
-    # the same transient errors handled in the loop above).
-    task = None
-    for _ in range(3):
-        try:
-            task = connect_client.get_task(task_id)
-            break
-        except httpx.ReadTimeout:
-            time.sleep(3)
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code in (404, 502, 503, 504):
-                time.sleep(3)
-                continue
-            raise
-    if task is None:
+    task = connect_client.wait_for_task(task_id, timeout=timeout)
+    deploy_state["task_result"] = task
+    if not task.get("finished"):
+        output = "\n".join(task.get("output", []))
         pytest.fail(
-            f"Deployment did not complete within {timeout} seconds and final task "
-            "state could not be retrieved due to repeated transient errors."
+            f"Deployment did not complete within {timeout} seconds\n\n--- Task output ---\n{output}"
         )
-    output = "\n".join(task.get("output", []))
-    pytest.fail(
-        f"Deployment did not complete within {timeout} seconds\n\n--- Task output ---\n{output}"
-    )
+    if task.get("code") != 0:
+        output = "\n".join(task.get("output", []))
+        error = task.get("error", "unknown error")
+        pytest.fail(f"Deployment failed: {error}\n\n--- Task output ---\n{output}")
 
 
 @then("the content is accessible via HTTP")
@@ -267,6 +349,90 @@ def content_accessible(connect_client, deploy_state):
     if url:
         resp = httpx.get(url, follow_redirects=True, timeout=30)
         assert resp.status_code < 400, f"Content returned HTTP {resp.status_code}"
+
+
+# ---------------------------------------------------------------------------
+# Expected-output markers for each content type
+# ---------------------------------------------------------------------------
+
+_EXPECTED_OUTPUT: dict[str, dict] = {
+    # Quarto static renders an HTML page containing the document title and body.
+    "vip-quarto-test": {
+        "type": "html",
+        "markers": ["VIP Test", "Hello from VIP"],
+    },
+    # Plumber GET / returns a JSON object with a "message" key.
+    "vip-plumber-test": {
+        "type": "json",
+        "key": "message",
+        "value": "VIP test OK",
+    },
+    # Shiny apps serve an HTML page with Shiny bootstrap markup.
+    "vip-shiny-test": {
+        "type": "html",
+        "markers": ["shiny", "bootstraplib"],
+    },
+    # Dash apps serve an HTML page with Dash-specific markup.
+    "vip-dash-test": {
+        "type": "html",
+        "markers": ["_dash-", "dash"],
+    },
+    # R Markdown static renders an HTML page containing the document title.
+    "vip-rmarkdown-test": {
+        "type": "html",
+        "markers": ["VIP RMarkdown Test"],
+    },
+    # Jupyter static renders an HTML page with notebook output.
+    "vip-jupyter-test": {
+        "type": "html",
+        "markers": ["VIP notebook OK"],
+    },
+    # FastAPI GET / returns a JSON object with a "message" key.
+    "vip-fastapi-test": {
+        "type": "json",
+        "key": "message",
+        "value": "VIP fastapi OK",
+    },
+}
+
+
+@then("the content renders expected output")
+def content_renders_expected_output(connect_client, deploy_state):
+    name = deploy_state["name"]
+    expected = _EXPECTED_OUTPUT.get(name)
+    if expected is None:
+        pytest.fail(f"No expected-output configuration for content: {name}")
+
+    content = connect_client.get_content(deploy_state["guid"])
+    url = content.get("content_url", "")
+    if not url:
+        pytest.skip("Content URL not available — skipping output verification")
+
+    if expected["type"] == "json":
+        # Plumber: append the route path and verify JSON response.
+        resp = httpx.get(url.rstrip("/") + "/", follow_redirects=True, timeout=30)
+        assert resp.status_code < 400, f"Plumber API returned HTTP {resp.status_code}"
+        try:
+            body = resp.json()
+        except Exception as exc:
+            pytest.fail(f"Plumber response is not valid JSON: {exc}\nBody: {resp.text[:500]}")
+        # Connect wraps scalar values in lists; accept both "VIP test OK" and ["VIP test OK"].
+        raw = body.get(expected["key"])
+        value = raw[0] if isinstance(raw, list) else raw
+        assert value == expected["value"], (
+            f"Plumber response field '{expected['key']}' = {raw!r}; expected {expected['value']!r}"
+        )
+
+    else:
+        # HTML content types: check that the page contains expected marker strings.
+        resp = httpx.get(url, follow_redirects=True, timeout=30)
+        assert resp.status_code < 400, f"Content page returned HTTP {resp.status_code}"
+        body_lower = resp.text.lower()
+        for marker in expected["markers"]:
+            assert marker.lower() in body_lower, (
+                f"Expected marker {marker!r} not found in response for {name}.\n"
+                f"Response snippet: {resp.text[:500]}"
+            )
 
 
 @then("I clean up the test content")

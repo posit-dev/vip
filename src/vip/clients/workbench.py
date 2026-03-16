@@ -8,18 +8,18 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
+from vip.clients.base import BaseClient
 
 
-class WorkbenchClient:
+class WorkbenchClient(BaseClient):
     """Minimal Workbench HTTP wrapper."""
 
     def __init__(self, base_url: str, api_key: str = "", *, timeout: float = 30.0) -> None:
-        self.base_url = base_url.rstrip("/")
-        headers = {}
-        if api_key:
-            headers["Authorization"] = f"Key {api_key}"
-        self._client = httpx.Client(base_url=self.base_url, headers=headers, timeout=timeout)
+        super().__init__(
+            base_url,
+            auth_header_value=f"Key {api_key}" if api_key else "",
+            timeout=timeout,
+        )
 
     # -- Health / info ------------------------------------------------------
 
@@ -28,12 +28,15 @@ class WorkbenchClient:
         resp = self._client.get("/health-check")
         return resp.status_code
 
-    def server_info(self) -> dict[str, Any]:
-        """Return basic server information (unauthenticated)."""
-        resp = self._client.get("/api/server-info")
-        if resp.status_code == 200:
-            return resp.json()
-        return {}
+    def server_settings(self) -> dict[str, Any]:
+        """Return server settings including version information.
+
+        Returns the parsed JSON from ``/api/server/settings``.  Raises
+        ``httpx.HTTPStatusError`` if the endpoint is not reachable.
+        """
+        resp = self._client.get("/api/server/settings")
+        resp.raise_for_status()
+        return resp.json()
 
     # -- Sessions -----------------------------------------------------------
 
@@ -61,8 +64,3 @@ class WorkbenchClient:
             except Exception:
                 continue
         return False
-
-    # -- Lifecycle ----------------------------------------------------------
-
-    def close(self) -> None:
-        self._client.close()

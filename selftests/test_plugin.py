@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
 
 import pytest
 
@@ -168,3 +170,43 @@ class TestPluginIntegration:
             "--interactive-auth",
         )
         result.stderr.fnmatch_lines(["*--interactive-auth requires Connect URL*"])
+
+
+def test_markers_in_sync():
+    """Markers in pyproject.toml match those registered in plugin.py."""
+    repo_root = Path(__file__).parent.parent
+
+    # Parse marker names from pyproject.toml [tool.pytest.ini_options] markers list.
+    # Each entry looks like: "name: description" or "name(args): description"
+    pyproject_text = (repo_root / "pyproject.toml").read_text()
+    markers_section = re.search(
+        r"\[tool\.pytest\.ini_options\].*?^markers\s*=\s*\[(.*?)\]",
+        pyproject_text,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert markers_section, "Could not find markers list in pyproject.toml"
+    pyproject_markers = set(
+        re.match(r"\s*['\"](\w+)", line).group(1)
+        for line in markers_section.group(1).splitlines()
+        if re.match(r"\s*['\"](\w+)", line)
+    )
+
+    # Parse marker names registered via config.addinivalue_line in plugin.py.
+    # Each call looks like:
+    #   config.addinivalue_line("markers", "name...")          (single-line)
+    #   config.addinivalue_line(\n    "markers",\n    "name..."\n)  (multi-line)
+    plugin_text = (repo_root / "src" / "vip" / "plugin.py").read_text()
+    plugin_markers = set(
+        re.match(r"(\w+)", m).group(1)
+        for m in re.findall(
+            r'addinivalue_line\(\s*["\']markers["\'],\s*["\'](\w[^"\']*)["\']',
+            plugin_text,
+            re.DOTALL,
+        )
+    )
+
+    assert pyproject_markers == plugin_markers, (
+        f"Marker mismatch between pyproject.toml and plugin.py.\n"
+        f"  Only in pyproject.toml: {pyproject_markers - plugin_markers}\n"
+        f"  Only in plugin.py:      {plugin_markers - pyproject_markers}"
+    )

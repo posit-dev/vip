@@ -17,7 +17,7 @@ import subprocess
 
 import httpx
 
-from vip.auth import start_interactive_auth
+from vip.auth import _delete_api_key, start_interactive_auth
 
 # Name of the K8s Secret that holds VIP test user credentials.
 _VIP_TEST_CREDENTIALS_SECRET = "vip-test-credentials"
@@ -228,6 +228,36 @@ def generate_pm_token(
     return result.stdout.strip()
 
 
+def _build_secret_spec(
+    name: str,
+    namespace: str,
+    data_dict: dict[str, str],
+    labels_dict: dict[str, str],
+) -> dict:
+    """Build a Kubernetes Secret spec dict.
+
+    Args:
+        name: Secret name
+        namespace: Kubernetes namespace
+        data_dict: Already-encoded (base64) key-value pairs for the Secret data field
+        labels_dict: Labels to attach to the Secret metadata
+
+    Returns:
+        A dict representing the Secret spec, suitable for JSON serialisation
+    """
+    return {
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {
+            "name": name,
+            "namespace": namespace,
+            "labels": labels_dict,
+        },
+        "type": "Opaque",
+        "data": data_dict,
+    }
+
+
 def save_credentials_secret(
     namespace: str,
     credentials: dict[str, str],
@@ -248,36 +278,26 @@ def save_credentials_secret(
         key: base64.b64encode(value.encode()).decode() for key, value in credentials.items()
     }
 
-    secret_spec = {
-        "apiVersion": "v1",
-        "kind": "Secret",
-        "metadata": {
-            "name": _VIP_TEST_CREDENTIALS_SECRET,
-            "namespace": namespace,
-            "labels": {
-                "app.kubernetes.io/managed-by": "vip",
-                "app.kubernetes.io/name": "vip-verify",
-            },
+    secret_spec = _build_secret_spec(
+        name=_VIP_TEST_CREDENTIALS_SECRET,
+        namespace=namespace,
+        data_dict=encoded_data,
+        labels_dict={
+            "app.kubernetes.io/managed-by": "vip",
+            "app.kubernetes.io/name": "vip-verify",
         },
-        "type": "Opaque",
-        "data": encoded_data,
-    }
+    )
 
     secret_json = json.dumps(secret_spec)
 
     cmd = ["kubectl", "apply", "-f", "-", "-n", namespace]
-    result = subprocess.run(
+    subprocess.run(
         cmd,
         input=secret_json,
         capture_output=True,
         text=True,
         check=True,
     )
-
-    if result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, cmd, output=result.stdout, stderr=result.stderr
-        )
 
 
 def get_credentials_from_secret(
@@ -484,6 +504,36 @@ def _get_keycloak_admin_token(keycloak_url: str, username: str, password: str) -
         return access_token
 
 
+def _find_keycloak_user_id(
+    client: httpx.Client,
+    users_url: str,
+    username: str,
+    headers: dict[str, str],
+) -> str | None:
+    """Search for a Keycloak user by username and return their ID.
+
+    Args:
+        client: httpx.Client instance
+        users_url: Keycloak users endpoint URL
+        username: Username to search for (exact match)
+        headers: Request headers (must include Authorization)
+
+    Returns:
+        The user ID string, or None if the user was not found or the search failed
+    """
+    search_params = {"username": username, "exact": "true"}
+    resp = client.get(users_url, params=search_params, headers=headers)
+
+    if resp.status_code != 200:
+        return None
+
+    users = resp.json()
+    if not users:
+        return None
+
+    return users[0].get("id")
+
+
 def _create_keycloak_user(
     keycloak_url: str, realm: str, token: str, username: str, password: str
 ) -> None:
@@ -507,23 +557,12 @@ def _create_keycloak_user(
         headers = {"Authorization": f"Bearer {token}"}
 
         # Check if user already exists
-        search_params = {"username": username, "exact": "true"}
-        search_resp = client.get(users_url, params=search_params, headers=headers)
+        user_id = _find_keycloak_user_id(client, users_url, username, headers)
 
-        if search_resp.status_code == 200:
-            users = search_resp.json()
-            if users and len(users) > 0:
-                print(f"User already exists in Keycloak, resetting password: {username}")
-                user_id = users[0].get("id")
-                if not user_id:
-                    raise ValueError("Could not extract user ID from Keycloak search response")
-                _reset_keycloak_user_password(keycloak_url, realm, token, user_id, password, client)
-                return
-        else:
-            print(
-                f"Warning: User search failed with status {search_resp.status_code}, "
-                f"attempting create"
-            )
+        if user_id is not None:
+            print(f"User already exists in Keycloak, resetting password: {username}")
+            _reset_keycloak_user_password(keycloak_url, realm, token, user_id, password, client)
+            return
 
         # Create user with password
         user_payload = {
@@ -550,16 +589,9 @@ def _create_keycloak_user(
             print(
                 f"User already exists (409 on create), re-searching to reset password: {username}"
             )
-            search_resp2 = client.get(users_url, params=search_params, headers=headers)
-            search_resp2.raise_for_status()
-
-            users2 = search_resp2.json()
-            if not users2 or len(users2) == 0:
-                raise ValueError("Could not find user after 409 conflict")
-
-            user_id = users2[0].get("id")
+            user_id = _find_keycloak_user_id(client, users_url, username, headers)
             if not user_id:
-                raise ValueError("Could not extract user ID after 409 conflict")
+                raise ValueError("Could not find user after 409 conflict")
 
             _reset_keycloak_user_password(keycloak_url, realm, token, user_id, password, client)
             return
@@ -617,77 +649,26 @@ def _create_credentials_secret(username: str, password: str, namespace: str) -> 
     Raises:
         subprocess.CalledProcessError: If kubectl fails
     """
-    secret_spec = {
-        "apiVersion": "v1",
-        "kind": "Secret",
-        "metadata": {
-            "name": _VIP_TEST_CREDENTIALS_SECRET,
-            "namespace": namespace,
-            "labels": {
-                "app.kubernetes.io/managed-by": "vip",
-                "app.kubernetes.io/name": "vip-verify",
-            },
-        },
-        "type": "Opaque",
-        "data": {
+    secret_spec = _build_secret_spec(
+        name=_VIP_TEST_CREDENTIALS_SECRET,
+        namespace=namespace,
+        data_dict={
             "VIP_TEST_USERNAME": base64.b64encode(username.encode()).decode(),
             "VIP_TEST_PASSWORD": base64.b64encode(password.encode()).decode(),
         },
-    }
+        labels_dict={
+            "app.kubernetes.io/managed-by": "vip",
+            "app.kubernetes.io/name": "vip-verify",
+        },
+    )
 
     secret_json = json.dumps(secret_spec)
 
     cmd = ["kubectl", "apply", "-f", "-", "-n", namespace]
-    result = subprocess.run(
+    subprocess.run(
         cmd,
         input=secret_json,
         capture_output=True,
         text=True,
         check=True,
     )
-
-    if result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode, cmd, output=result.stdout, stderr=result.stderr
-        )
-
-
-def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
-    """Delete the VIP API key using the key itself for authentication.
-
-    Args:
-        connect_url: Connect server URL
-        api_key: API key to delete
-        key_name: Name of the API key
-
-    Raises:
-        httpx.HTTPError: If the API request fails
-        ValueError: If the key cannot be found
-    """
-    base = connect_url.rstrip("/")
-    with httpx.Client(
-        base_url=f"{base}/__api__",
-        headers={"Authorization": f"Key {api_key}"},
-        timeout=10.0,
-    ) as client:
-        for keys_path in ("/v1/user/api_keys", "/keys"):
-            resp = client.get(keys_path)
-            if resp.status_code == 404:
-                continue
-            if not resp.is_success:
-                print(f"Warning: {keys_path} returned HTTP {resp.status_code}")
-                continue
-
-            for k in resp.json():
-                if k.get("name") == key_name:
-                    del_resp = client.delete(f"{keys_path}/{k['id']}")
-                    if del_resp.is_success:
-                        print("API key deleted")
-                    else:
-                        print(
-                            f"Warning: DELETE {keys_path}/{k['id']} returned {del_resp.status_code}"
-                        )
-                    return
-            break
-
-        raise ValueError("Could not find API key to delete")

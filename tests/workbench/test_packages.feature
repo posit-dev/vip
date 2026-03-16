@@ -6,5 +6,5 @@ Feature: Workbench package installation source
 
   Scenario: R repos.conf points to the expected repository
     Given the user is logged in to Workbench
-    When I check the configured R repositories in the session
+    When I check R repository configuration in an RStudio session
     Then the expected package repository URL is present

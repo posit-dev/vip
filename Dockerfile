@@ -3,7 +3,7 @@
 FROM mcr.microsoft.com/playwright/python:v1.52.0-noble
 
 # Install uv for fast Python package management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.6.3 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 

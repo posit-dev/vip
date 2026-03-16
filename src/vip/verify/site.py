@@ -187,3 +187,38 @@ def _build_product_url(
 def _bool_str(value: bool) -> str:
     """Format a boolean for TOML output."""
     return "true" if value else "false"
+
+
+def _extract_connect_url(site_cr: dict[str, Any]) -> str | None:
+    """Extract Connect URL from a PTD Site CR."""
+    spec = site_cr.get("spec", {})
+    connect_spec = spec.get("connect")
+    if not connect_spec:
+        return None
+
+    domain = spec.get("domain", "")
+    prefix = connect_spec.get("domainPrefix", "connect")
+    base_domain = connect_spec.get("baseDomain", domain)
+
+    if not base_domain:
+        return None
+
+    return f"https://{prefix}.{base_domain}"
+
+
+def _extract_keycloak_url(site_cr: dict[str, Any]) -> str | None:
+    """Extract Keycloak URL from a PTD Site CR (if present)."""
+    spec = site_cr.get("spec", {})
+
+    connect_spec = spec.get("connect", {})
+    workbench_spec = spec.get("workbench", {})
+
+    connect_auth = connect_spec.get("auth", {}) if connect_spec else {}
+    workbench_auth = workbench_spec.get("auth", {}) if workbench_spec else {}
+
+    if connect_auth.get("type") == "oidc" or workbench_auth.get("type") == "oidc":
+        domain = spec.get("domain", "")
+        if domain:
+            return f"https://key.{domain}"
+
+    return None

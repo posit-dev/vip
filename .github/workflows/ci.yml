@@ -24,6 +24,38 @@ jobs:
           version: "0.15.0"
           args: format --check src/ tests/ selftests/ examples/
 
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run mypy
+        run: uv run mypy src/vip/
+
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Audit dependencies
+        run: uv run pip-audit --skip-editable
+
   selftest:
     name: Selftests (${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -38,13 +70,13 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --python ${{ matrix.python-version }}
+        run: uv sync --python ${{ matrix.python-version }} --all-extras
 
       - name: Verify import
         run: uv run python -c "import vip; print(vip.__version__)"
 
       - name: Run selftests
-        run: uv run pytest selftests/ -v --junitxml=selftest-results.xml
+        run: uv run pytest selftests/ -v --junitxml=selftest-results.xml --cov=src/vip --cov-report=term-missing
 
       - name: Collect VIP tests (dry run)
         run: uv run pytest tests/ --collect-only --quiet

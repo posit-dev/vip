@@ -1,20 +1,27 @@
-"""Step definitions for system resource usage checks.
+"""Step definitions for product server health checks.
 
-These tests check the host where VIP is running.  When VIP is executed on the
-same server as the Posit products (as recommended), this gives a direct view
-of resource utilisation.
+This module previously measured test-runner-local resources (disk usage,
+/proc/meminfo) which reflect the machine running VIP, not the Posit product
+servers.  It now queries each configured product's health endpoint directly
+so that the checks measure the actual servers under test.
+
+Note: Posit products do not expose Prometheus-style memory/CPU metrics over
+HTTP in their standard API.  If your deployment fronts the products with a
+metrics proxy, those checks belong in a custom extension.  The health
+endpoint check performed here confirms that each product process is alive
+and serving requests, which is the meaningful liveness signal available
+without additional infrastructure.
 """
 
 from __future__ import annotations
 
-import shutil
-
+import httpx
 import pytest
 from pytest_bdd import given, scenario, then, when
 
 
-@scenario("test_resources.feature", "System resource usage is within limits")
-def test_resource_usage():
+@scenario("test_resources.feature", "All configured products respond to health checks")
+def test_product_health():
     pass
 
 
@@ -29,41 +36,54 @@ def product_configured(vip_config):
         pytest.skip("No products configured")
 
 
-@when("I check system resource usage", target_fixture="resource_info")
-def check_resources():
-    disk = shutil.disk_usage("/")
-    disk_pct = (disk.used / disk.total) * 100
+@when("I check the health of each configured product", target_fixture="health_results")
+def check_product_health(vip_config):
+    """Query each configured product's health endpoint and record the result.
 
-    # Memory info from /proc/meminfo (Linux).
-    mem_total = 0
-    mem_available = 0
-    try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if line.startswith("MemTotal:"):
-                    mem_total = int(line.split()[1])
-                elif line.startswith("MemAvailable:"):
-                    mem_available = int(line.split()[1])
-    except FileNotFoundError:
-        pass  # Non-Linux; skip memory check.
+    Connect:         GET /__api__/server_settings  (200 = healthy)
+    Workbench:       GET /health-check              (200 = healthy)
+    Package Manager: GET /__api__/status            (200 = healthy)
+    """
+    results = []
 
-    return {
-        "disk_pct": disk_pct,
-        "mem_total_kb": mem_total,
-        "mem_available_kb": mem_available,
+    checks = [
+        ("Connect", vip_config.connect),
+        ("Workbench", vip_config.workbench),
+        ("Package Manager", vip_config.package_manager),
+    ]
+
+    health_paths = {
+        "Connect": "/__api__/server_settings",
+        "Workbench": "/health-check",
+        "Package Manager": "/__api__/status",
     }
 
+    for name, cfg in checks:
+        if not cfg.is_configured:
+            continue
+        path = health_paths[name]
+        url = cfg.url.rstrip("/") + path
+        entry = {"product": name, "url": url, "ok": False, "status": None, "error": None}
+        try:
+            resp = httpx.get(url, follow_redirects=True, timeout=15)
+            entry["status"] = resp.status_code
+            entry["ok"] = resp.status_code == 200
+        except Exception as exc:
+            entry["error"] = str(exc)
+        results.append(entry)
 
-@then("disk usage is below 90 percent")
-def disk_ok(resource_info):
-    assert resource_info["disk_pct"] < 90, (
-        f"Disk usage is {resource_info['disk_pct']:.1f}% (threshold: 90%)"
-    )
+    return results
 
 
-@then("the system is not under memory pressure")
-def memory_ok(resource_info):
-    if resource_info["mem_total_kb"] == 0:
-        pytest.skip("Memory info not available (non-Linux host)")
-    available_pct = (resource_info["mem_available_kb"] / resource_info["mem_total_kb"]) * 100
-    assert available_pct > 10, f"Only {available_pct:.1f}% memory available (threshold: 10%)"
+@then("all products respond with a healthy status")
+def all_healthy(health_results):
+    failures = [r for r in health_results if not r["ok"]]
+    if not failures:
+        return
+    lines = []
+    for r in failures:
+        if r["error"]:
+            lines.append(f"  {r['product']} ({r['url']}): {r['error']}")
+        else:
+            lines.append(f"  {r['product']} ({r['url']}): HTTP {r['status']} (expected 200)")
+    assert not failures, "Product health checks failed:\n" + "\n".join(lines)

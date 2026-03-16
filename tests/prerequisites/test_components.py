@@ -4,66 +4,34 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import parsers, scenarios, then, when
 
 # ---------------------------------------------------------------------------
 # Scenarios
 # ---------------------------------------------------------------------------
 
-
-@scenario("test_components.feature", "Connect server is reachable")
-def test_connect_reachable():
-    pass
-
-
-@scenario("test_components.feature", "Workbench server is reachable")
-def test_workbench_reachable():
-    pass
-
-
-@scenario("test_components.feature", "Package Manager server is reachable")
-def test_package_manager_reachable():
-    pass
+scenarios("test_components.feature")
 
 
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
 
-
-@given("Connect is configured in vip.toml")
-def connect_configured(vip_config):
-    if not vip_config.connect.is_configured:
-        pytest.skip("Connect is not configured")
-
-
-@given("Workbench is configured in vip.toml")
-def workbench_configured(vip_config):
-    if not vip_config.workbench.is_configured:
-        pytest.skip("Workbench is not configured")
+_HEALTH_ENDPOINTS = {
+    "Connect": "/__api__/server_settings",
+    "Workbench": "/health-check",
+    "Package Manager": "/__api__/status",
+}
 
 
-@given("Package Manager is configured in vip.toml")
-def package_manager_configured(vip_config):
-    if not vip_config.package_manager.is_configured:
-        pytest.skip("Package Manager is not configured")
-
-
-@when("I request the Connect health endpoint", target_fixture="health_response")
-def request_connect_health(vip_config):
-    resp = httpx.get(f"{vip_config.connect.url}/__api__/server_settings", timeout=15)
-    return resp
-
-
-@when("I request the Workbench health endpoint", target_fixture="health_response")
-def request_workbench_health(vip_config):
-    resp = httpx.get(f"{vip_config.workbench.url}/health-check", timeout=15)
-    return resp
-
-
-@when("I request the Package Manager status endpoint", target_fixture="health_response")
-def request_pm_health(vip_config):
-    resp = httpx.get(f"{vip_config.package_manager.url}/__api__/status", timeout=15)
+@when(parsers.parse("I request the {product} health endpoint"), target_fixture="health_response")
+def request_health_endpoint(product, vip_config):
+    endpoint = _HEALTH_ENDPOINTS[product]
+    product_key = product.lower().replace(" ", "_")
+    pc = vip_config.product_config(product_key)
+    if not pc.is_configured:
+        pytest.skip(f"{product} is not configured")
+    resp = httpx.get(f"{pc.url}{endpoint}", timeout=15)
     return resp
 
 

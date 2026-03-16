@@ -7,12 +7,27 @@ from __future__ import annotations
 
 import time
 
+import httpx
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.workbench.pages import Homepage, LoginPage, NewSessionDialog
+from tests.workbench.pages import Homepage, LoginPage
 
 pytestmark = pytest.mark.workbench
+
+# ---------------------------------------------------------------------------
+# Playwright timeout constants (milliseconds)
+# ---------------------------------------------------------------------------
+
+TIMEOUT_QUICK = 5_000
+TIMEOUT_DIALOG = 10_000
+TIMEOUT_PAGE_LOAD = 15_000
+TIMEOUT_CLEANUP = 30_000
+TIMEOUT_CODE_EXEC = 30_000
+TIMEOUT_IDE_LOAD = 60_000
+TIMEOUT_SESSION_START = 90_000
+
+# ---------------------------------------------------------------------------
 
 # Keywords indicating the URL is a login/auth page (used for OIDC detection)
 _LOGIN_KEYWORDS = ("sign-in", "login", "auth")
@@ -22,6 +37,16 @@ def _on_login_page(url: str) -> bool:
     """Return True if *url* looks like a login or IdP page."""
     lower = url.lower()
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
+
+
+def assert_homepage_loaded(page: Page) -> None:
+    """Assert that the Workbench homepage has fully loaded.
+
+    Verifies the Posit logo and new-session button are both visible.
+    Use .first for NEW_SESSION_BUTTON as there can be two instances.
+    """
+    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+    expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +117,7 @@ def workbench_login(
         # Not on homepage, not on login page - unexpected state
         # Give it one more check in case page is still loading
         try:
-            homepage_logo.wait_for(state="visible", timeout=5000)
+            homepage_logo.wait_for(state="visible", timeout=TIMEOUT_QUICK)
             return
         except Exception:
             pass
@@ -112,7 +137,7 @@ def workbench_login(
 
         # Wait for login form to be ready
         try:
-            login_form.wait_for(state="visible", timeout=5000)
+            login_form.wait_for(state="visible", timeout=TIMEOUT_QUICK)
         except Exception:
             continue
 
@@ -129,7 +154,7 @@ def workbench_login(
         # Wait for either homepage (success) or error panel (failure)
         homepage_or_error = homepage_logo.or_(error_panel)
         try:
-            homepage_or_error.wait_for(state="visible", timeout=15000)
+            homepage_or_error.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
         except Exception:
             if attempt == max_retries - 1:
                 raise AssertionError(f"Login failed after {max_retries} attempts: no response")
@@ -161,12 +186,29 @@ def _cleanup_sessions(page, workbench_client):
         return
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-        workbench_client.set_cookies(cookies)
-        sessions = workbench_client.list_sessions()
-        for session in sessions:
-            sid = session.get("id") or session.get("session_id", "")
-            if sid:
-                workbench_client.quit_session(sid)
+        # Use a temporary client so the session-scoped workbench_client's
+        # cookie jar is never mutated.
+        with httpx.Client(
+            base_url=workbench_client.base_url,
+            cookies=cookies,
+            timeout=30.0,
+        ) as tmp:
+            resp = tmp.get("/api/sessions")
+            sessions = resp.json() if resp.status_code == 200 else []
+            for session in sessions:
+                sid = session.get("id") or session.get("session_id", "")
+                if not sid:
+                    continue
+                for method, path in (
+                    ("DELETE", f"/api/sessions/{sid}"),
+                    ("POST", f"/api/sessions/{sid}/suspend"),
+                ):
+                    try:
+                        r = tmp.request(method, path)
+                        if r.status_code < 400:
+                            break
+                    except Exception:
+                        continue
     except Exception:
         # Best-effort cleanup; don't mask test failures.
         pass
@@ -193,74 +235,6 @@ def wb_login(
         page, workbench_url, test_username, test_password, auth_provider, interactive_auth
     )
 
-    # Verify homepage elements (use .first for NEW_SESSION_BUTTON as there can be two)
-    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=15000)
-    expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=15000)
+    assert_homepage_loaded(page)
 
     return page
-
-
-@pytest.fixture
-def wb_start_session(page: Page, wb_login):
-    """Factory fixture to start a session of any IDE type.
-
-    Usage:
-        def test_example(wb_start_session):
-            session_name = wb_start_session("RStudio")
-
-            # Or with auto_join disabled to stay on homepage:
-            session_name = wb_start_session("RStudio", auto_join=False)
-    """
-
-    def _start(ide_type: str, session_name: str | None = None, *, auto_join: bool = True) -> str:
-        if session_name is None:
-            session_name = f"VIP Test {ide_type} {int(time.time())}"
-
-        page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=10000)
-
-        # Wait for dialog to appear
-        dialog = page.locator(NewSessionDialog.DIALOG)
-        expect(dialog.locator(NewSessionDialog.TITLE)).to_have_text("New Session", timeout=10000)
-
-        # Select IDE type using role-based selector within dialog
-        ide_display = NewSessionDialog.ide_display_name(ide_type)
-        dialog.get_by_role("tab", name=ide_display).click(timeout=5000)
-
-        # Set session name
-        page.fill(NewSessionDialog.SESSION_NAME, session_name)
-
-        # Set auto-join checkbox based on parameter
-        checkbox = page.locator(NewSessionDialog.JOIN_CHECKBOX)
-        if auto_join and not checkbox.is_checked():
-            checkbox.click()
-        elif not auto_join and checkbox.is_checked():
-            checkbox.click()
-
-        # Launch the session
-        page.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=5000)
-
-        # Wait for session to become active
-        expect(page.get_by_text(session_name, exact=True)).to_be_visible(timeout=15000)
-        expect(page.get_by_role("button", name="Active").first).to_be_visible(timeout=90000)
-
-        return session_name
-
-    return _start
-
-
-@pytest.fixture
-def wb_quit_session(page: Page):
-    """Factory fixture to quit a session by name."""
-
-    def _quit(session_name: str):
-        checkbox = page.locator(Homepage.session_checkbox(session_name))
-        checkbox.click()
-
-        quit_btn = page.locator(Homepage.QUIT_BUTTON)
-        expect(quit_btn).to_be_visible()
-        quit_btn.click()
-
-        # Wait for session to disappear
-        expect(page.locator(Homepage.session_link(session_name))).not_to_be_visible(timeout=30000)
-
-    return _quit

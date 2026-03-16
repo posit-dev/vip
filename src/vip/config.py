@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import os
 import sys
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -64,6 +65,16 @@ class ConnectConfig(ProductConfig):
         if not self.api_key:
             self.api_key = os.environ.get("VIP_CONNECT_API_KEY", "")
 
+    @classmethod
+    def from_dict(cls, raw: dict) -> ConnectConfig:
+        return cls(
+            enabled=raw.get("enabled", True),
+            url=raw.get("url", ""),
+            version=raw.get("version"),
+            api_key=raw.get("api_key", ""),
+            deploy_timeout=raw.get("deploy_timeout", 600),
+        )
+
 
 @dataclass
 class WorkbenchConfig(ProductConfig):
@@ -72,8 +83,18 @@ class WorkbenchConfig(ProductConfig):
     api_key: str = ""
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if not self.api_key:
             self.api_key = os.environ.get("VIP_WORKBENCH_API_KEY", "")
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> WorkbenchConfig:
+        return cls(
+            enabled=raw.get("enabled", True),
+            url=raw.get("url", ""),
+            version=raw.get("version"),
+            api_key=raw.get("api_key", ""),
+        )
 
 
 @dataclass
@@ -83,8 +104,18 @@ class PackageManagerConfig(ProductConfig):
     token: str = ""
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if not self.token:
             self.token = os.environ.get("VIP_PM_TOKEN", "")
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> PackageManagerConfig:
+        return cls(
+            enabled=raw.get("enabled", True),
+            url=raw.get("url", ""),
+            version=raw.get("version"),
+            token=raw.get("token", ""),
+        )
 
 
 @dataclass
@@ -101,6 +132,14 @@ class AuthConfig:
         if not self.password:
             self.password = os.environ.get("VIP_TEST_PASSWORD", "")
 
+    @classmethod
+    def from_dict(cls, raw: dict) -> AuthConfig:
+        return cls(
+            provider=raw.get("provider", "password"),
+            username=raw.get("username", ""),
+            password=raw.get("password", ""),
+        )
+
 
 @dataclass
 class ClusterConfig:
@@ -109,7 +148,7 @@ class ClusterConfig:
     provider: str = ""  # "aws" or "azure"
     name: str = ""  # Cluster name (e.g., "ganso01-staging-20260101")
     region: str = ""  # Cloud region
-    namespace: str = "posit-team"  # K8s namespace for Posit products
+    namespace: str = ""  # K8s namespace for Posit products
     site: str = "main"  # PTD Site CR name (posit-dev/team-operator)
 
     # AWS-specific
@@ -131,14 +170,27 @@ class ClusterConfig:
             self.name = os.environ.get("VIP_CLUSTER_NAME", "")
         if not self.region:
             self.region = os.environ.get("VIP_CLUSTER_REGION", "")
-        if not self.namespace or self.namespace == "posit-team":
+        if not self.namespace:
             env_ns = os.environ.get("VIP_CLUSTER_NAMESPACE", "")
-            if env_ns:
-                self.namespace = env_ns
+            self.namespace = env_ns if env_ns else "posit-team"
         if not self.profile:
             self.profile = os.environ.get("VIP_AWS_PROFILE", "")
         if not self.role_arn:
             self.role_arn = os.environ.get("VIP_AWS_ROLE_ARN", "")
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> ClusterConfig:
+        return cls(
+            provider=raw.get("provider", ""),
+            name=raw.get("name", ""),
+            region=raw.get("region", ""),
+            namespace=raw.get("namespace", ""),
+            site=raw.get("site", "main"),
+            profile=raw.get("profile", ""),
+            role_arn=raw.get("role_arn", ""),
+            subscription_id=raw.get("subscription_id", ""),
+            resource_group=raw.get("resource_group", ""),
+        )
 
 
 @dataclass
@@ -159,6 +211,31 @@ class RuntimesConfig:
 
 
 @dataclass
+class PerformanceConfig:
+    """Thresholds for performance tests."""
+
+    page_load_timeout: float = 10.0  # seconds
+    download_timeout: float = 30.0
+    p95_response_time: float = 5.0
+    avg_response_time: float = 5.0
+    concurrent_requests: int = 10
+    disk_usage_max_pct: float = 90.0
+    memory_available_min_pct: float = 10.0
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> PerformanceConfig:
+        return cls(
+            page_load_timeout=raw.get("page_load_timeout", 10.0),
+            download_timeout=raw.get("download_timeout", 30.0),
+            p95_response_time=raw.get("p95_response_time", 5.0),
+            avg_response_time=raw.get("avg_response_time", 5.0),
+            concurrent_requests=raw.get("concurrent_requests", 10),
+            disk_usage_max_pct=raw.get("disk_usage_max_pct", 90.0),
+            memory_available_min_pct=raw.get("memory_available_min_pct", 10.0),
+        )
+
+
+@dataclass
 class VIPConfig:
     """Top-level VIP configuration."""
 
@@ -172,6 +249,7 @@ class VIPConfig:
     auth: AuthConfig = field(default_factory=AuthConfig)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
     runtimes: RuntimesConfig = field(default_factory=RuntimesConfig)
+    performance: PerformanceConfig = field(default_factory=PerformanceConfig)
     data_sources: list[DataSourceEntry] = field(default_factory=list)
 
     email_enabled: bool = False
@@ -227,22 +305,19 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     if not path.exists():
         # Return default config when no file is present - tests will be
         # skipped for unconfigured products.
+        warnings.warn(f"Config file not found: {path}", stacklevel=2)
         return VIPConfig()
 
     with open(path, "rb") as f:
         raw = tomllib.load(f)
 
     general = raw.get("general", {})
-    connect_raw = raw.get("connect", {})
-    workbench_raw = raw.get("workbench", {})
-    pm_raw = raw.get("package_manager", {})
-    auth_raw = raw.get("auth", {})
-    cluster_raw = raw.get("cluster", {})
-    runtimes_raw = raw.get("runtimes", {})
+    data_sources_raw = raw.get("data_sources", {})
     email_raw = raw.get("email", {})
     monitoring_raw = raw.get("monitoring", {})
     security_raw = raw.get("security", {})
-    data_sources_raw = raw.get("data_sources", {})
+    runtimes_raw = raw.get("runtimes", {})
+    performance_raw = raw.get("performance", {})
 
     data_sources: list[DataSourceEntry] = []
     for name, ds in data_sources_raw.items():
@@ -257,45 +332,16 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     return VIPConfig(
         deployment_name=general.get("deployment_name", "Posit Team"),
         extension_dirs=general.get("extension_dirs", []),
-        connect=ConnectConfig(
-            enabled=connect_raw.get("enabled", True),
-            url=connect_raw.get("url", ""),
-            version=connect_raw.get("version"),
-            api_key=connect_raw.get("api_key", ""),
-            deploy_timeout=connect_raw.get("deploy_timeout", 600),
-        ),
-        workbench=WorkbenchConfig(
-            enabled=workbench_raw.get("enabled", True),
-            url=workbench_raw.get("url", ""),
-            version=workbench_raw.get("version"),
-            api_key=workbench_raw.get("api_key", ""),
-        ),
-        package_manager=PackageManagerConfig(
-            enabled=pm_raw.get("enabled", True),
-            url=pm_raw.get("url", ""),
-            version=pm_raw.get("version"),
-            token=pm_raw.get("token", ""),
-        ),
-        auth=AuthConfig(
-            provider=auth_raw.get("provider", "password"),
-            username=auth_raw.get("username", ""),
-            password=auth_raw.get("password", ""),
-        ),
-        cluster=ClusterConfig(
-            provider=cluster_raw.get("provider", ""),
-            name=cluster_raw.get("name", ""),
-            region=cluster_raw.get("region", ""),
-            namespace=cluster_raw.get("namespace", "posit-team"),
-            site=cluster_raw.get("site", "main"),
-            profile=cluster_raw.get("profile", ""),
-            role_arn=cluster_raw.get("role_arn", ""),
-            subscription_id=cluster_raw.get("subscription_id", ""),
-            resource_group=cluster_raw.get("resource_group", ""),
-        ),
+        connect=ConnectConfig.from_dict(raw.get("connect", {})),
+        workbench=WorkbenchConfig.from_dict(raw.get("workbench", {})),
+        package_manager=PackageManagerConfig.from_dict(raw.get("package_manager", {})),
+        auth=AuthConfig.from_dict(raw.get("auth", {})),
+        cluster=ClusterConfig.from_dict(raw.get("cluster", {})),
         runtimes=RuntimesConfig(
             r_versions=runtimes_raw.get("r_versions", []),
             python_versions=runtimes_raw.get("python_versions", []),
         ),
+        performance=PerformanceConfig.from_dict(performance_raw),
         data_sources=data_sources,
         email_enabled=email_raw.get("enabled", False),
         monitoring_enabled=monitoring_raw.get("enabled", False),

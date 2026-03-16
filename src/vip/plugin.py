@@ -18,6 +18,7 @@ Responsibilities:
 from __future__ import annotations
 
 import json
+import re
 import sys
 import warnings
 from datetime import datetime, timezone
@@ -145,7 +146,7 @@ def _restore_worker_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
     """Reconstruct an auth session in an xdist worker from controller data."""
     from vip.auth import InteractiveAuthSession
 
-    wi = config.workerinput
+    wi = config.workerinput  # type: ignore[attr-defined]  # xdist injects this
     api_key = wi.get("vip_api_key") or None
     storage_state = wi.get("vip_storage_state", "")
 
@@ -225,7 +226,7 @@ def _assign_xdist_group(item: pytest.Item) -> None:
     else (prerequisites, cross_product, performance, security) lands in a
     shared ``general`` group.
     """
-    fspath = Path(str(getattr(item, "fspath", "")))
+    fspath = getattr(item, "path", None) or Path()
     dir_name = fspath.parent.name
     group = dir_name if dir_name in _PRODUCT_DIRS else "general"
     item.add_marker(pytest.mark.xdist_group(group))
@@ -236,7 +237,7 @@ def _maybe_skip_credential_check(item: pytest.Item, using_interactive_auth: bool
     if not using_interactive_auth:
         return
     # Match precisely to avoid skipping unrelated tests with similar names.
-    fspath = Path(str(getattr(item, "fspath", "")))
+    fspath = getattr(item, "path", None) or Path()
     if (
         fspath.name == "test_auth_configured.py"
         and fspath.parent.name == "prerequisites"
@@ -287,16 +288,7 @@ def _maybe_skip_for_version(item: pytest.Item, cfg: VIPConfig) -> None:
 
 def _version_tuple(v: str) -> tuple[int, ...]:
     """Parse a dotted version string into a comparable tuple."""
-    parts: list[int] = []
-    for segment in v.split("."):
-        digits = ""
-        for ch in segment:
-            if ch.isdigit():
-                digits += ch
-            else:
-                break
-        parts.append(int(digits) if digits else 0)
-    return tuple(parts)
+    return tuple(int(m.group()) if (m := re.match(r"\d+", seg)) else 0 for seg in v.split("."))
 
 
 # ---------------------------------------------------------------------------
@@ -377,8 +369,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     results = session.config.stash.get(_results_key, [])
 
     # Include product metadata for the report.
+    # Derive product list from _PRODUCT_MARKERS so new products are picked up automatically.
     products: dict[str, dict[str, Any]] = {}
-    for name in ("connect", "workbench", "package_manager"):
+    for name in _PRODUCT_MARKERS.values():
         pc = cfg.product_config(name)
         products[name] = {
             "enabled": pc.enabled,
@@ -401,3 +394,28 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         p.write_text(json.dumps(payload, indent=2))
     except OSError as exc:
         warnings.warn(f"VIP: could not write report to {report_path}: {exc}", stacklevel=1)
+        return
+
+    # Write failures.json alongside results.json so report rendering is idempotent.
+    failures = [r for r in results if r.get("outcome") == "failed"]
+    if failures:
+        failures_payload = {
+            "deployment": cfg.deployment_name,
+            "generated_at": payload["generated_at"],
+            "failures": [
+                {
+                    "test": r["nodeid"],
+                    "scenario": r.get("scenario_title"),
+                    "feature": r.get("feature_description"),
+                    "error_summary": (r.get("longrepr") or "")[:500],
+                }
+                for r in failures
+            ],
+        }
+        failures_path = p.parent / "failures.json"
+        try:
+            failures_path.write_text(json.dumps(failures_payload, indent=2) + "\n")
+        except OSError as exc:
+            warnings.warn(
+                f"VIP: could not write failures report to {failures_path}: {exc}", stacklevel=1
+            )

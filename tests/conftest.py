@@ -1,13 +1,14 @@
-"""Root conftest - shared fixtures for all VIP tests."""
+"""Root conftest - shared fixtures and step definitions for all VIP tests."""
 
 from __future__ import annotations
 
 import pytest
+from pytest_bdd import given
 
 from vip.clients.connect import ConnectClient
 from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
-from vip.config import VIPConfig
+from vip.config import PerformanceConfig, VIPConfig
 from vip.plugin import _auth_session_key, _vip_config_key
 
 # ---------------------------------------------------------------------------
@@ -126,6 +127,16 @@ def expected_python_versions(vip_config: VIPConfig) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Performance fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def performance_config(vip_config: VIPConfig) -> PerformanceConfig:
+    return vip_config.performance
+
+
+# ---------------------------------------------------------------------------
 # Data source fixtures
 # ---------------------------------------------------------------------------
 
@@ -145,6 +156,24 @@ def email_enabled(vip_config: VIPConfig) -> bool:
     return vip_config.email_enabled
 
 
-@pytest.fixture(scope="session")
-def monitoring_enabled(vip_config: VIPConfig) -> bool:
-    return vip_config.monitoring_enabled
+# ---------------------------------------------------------------------------
+# Shared BDD steps — product configuration guards
+# ---------------------------------------------------------------------------
+
+
+@given("Connect is configured in vip.toml")
+def connect_configured(vip_config):
+    if not vip_config.connect.is_configured:
+        pytest.skip("Connect is not configured")
+
+
+@given("Workbench is configured in vip.toml")
+def workbench_configured(vip_config):
+    if not vip_config.workbench.is_configured:
+        pytest.skip("Workbench is not configured")
+
+
+@given("Package Manager is configured in vip.toml")
+def package_manager_configured(vip_config):
+    if not vip_config.package_manager.is_configured:
+        pytest.skip("Package Manager is not configured")

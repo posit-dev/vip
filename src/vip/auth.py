@@ -298,7 +298,7 @@ def _create_api_key_via_ui(page: Page, connect_url: str, key_name: str) -> str |
                 val = el.input_value(timeout=2_000)
             except Exception:
                 try:
-                    val = el.text_content(timeout=2_000)
+                    val = el.text_content(timeout=2_000) or ""
                 except Exception:
                     continue
             if val and len(val) > 20:

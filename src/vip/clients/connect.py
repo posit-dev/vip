@@ -10,19 +10,20 @@ from typing import Any
 
 import httpx
 
+from vip.clients.base import BaseClient
+
 _VIP_CONTENT_TAG = "_vip_test"
 
 
-class ConnectClient:
+class ConnectClient(BaseClient):
     """Minimal Connect API wrapper."""
 
     def __init__(self, base_url: str, api_key: str, *, timeout: float = 30.0) -> None:
-        self.base_url = base_url.rstrip("/")
         api_key = (api_key or "").strip()
-        headers = {"Authorization": f"Key {api_key}"} if api_key else {}
-        self._client = httpx.Client(
-            base_url=f"{self.base_url}/__api__",
-            headers=headers,
+        super().__init__(
+            base_url,
+            auth_header_value=f"Key {api_key}" if api_key else "",
+            api_prefix="/__api__",
             timeout=timeout,
         )
 
@@ -33,7 +34,7 @@ class ConnectClient:
         resp.raise_for_status()
         return resp.json()
 
-    def server_status(self) -> int:
+    def health(self) -> int:
         """Return the HTTP status code for the server health endpoint."""
         resp = self._client.get("/server_settings")
         return resp.status_code
@@ -45,12 +46,17 @@ class ConnectClient:
         resp.raise_for_status()
         return resp.json()
 
-    # -- Content ------------------------------------------------------------
-
-    def list_content(self) -> list[dict[str, Any]]:
-        resp = self._client.get("/v1/content")
+    def list_users(self) -> list[dict[str, Any]]:
+        resp = self._client.get("/v1/users")
         resp.raise_for_status()
-        return resp.json()
+        return resp.json().get("results", [])
+
+    def list_groups(self) -> list[dict[str, Any]]:
+        resp = self._client.get("/v1/groups")
+        resp.raise_for_status()
+        return resp.json().get("results", [])
+
+    # -- Content ------------------------------------------------------------
 
     def create_content(self, name: str, **kwargs: Any) -> dict[str, Any]:
         """Create a new content item tagged for VIP cleanup.
@@ -111,6 +117,82 @@ class ConnectClient:
         resp.raise_for_status()
         return resp.json()
 
+    def wait_for_task(self, task_id: str, timeout: float = 60.0) -> dict[str, Any]:
+        """Poll a task until it finishes or timeout is reached.
+
+        Polls ``get_task`` every 3 seconds, handling transient HTTP errors
+        (ReadTimeout, 404/502/503/504) by retrying until the deadline.
+
+        Returns the finished task dict.  If the deadline is reached without the
+        task finishing, returns the most recent (unfinished) task dict so that
+        callers can inspect the output and report an appropriate failure.
+        """
+        import time
+
+        deadline = time.time() + timeout
+        task: dict[str, Any] = {}
+        while time.time() < deadline:
+            try:
+                task = self.get_task(task_id)
+            except httpx.ReadTimeout:
+                time.sleep(3)
+                continue
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (404, 502, 503, 504):
+                    time.sleep(3)
+                    continue
+                raise
+            if task.get("finished"):
+                return task
+            time.sleep(3)
+
+        # Deadline reached — attempt one final fetch for up-to-date logs.
+        for _ in range(3):
+            try:
+                task = self.get_task(task_id)
+                break
+            except httpx.ReadTimeout:
+                time.sleep(3)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (404, 502, 503, 504):
+                    time.sleep(3)
+                    continue
+                raise
+
+        return task
+
+    def list_vip_content(self) -> list[dict[str, Any]]:
+        """Return all content items tagged with the VIP test tag."""
+        try:
+            resp = self._client.get("/v1/tags", params={"name": _VIP_CONTENT_TAG})
+            resp.raise_for_status()
+            tags = resp.json()
+            if not tags:
+                return []
+            tag_id = tags[0]["id"]
+            resp = self._client.get(f"/v1/tags/{tag_id}/content")
+            resp.raise_for_status()
+            return resp.json().get("results", [])
+        except Exception:
+            return []
+
+    def cleanup_vip_content(self) -> int:
+        """Delete all content tagged with the VIP test tag.
+
+        Returns the number of items deleted.
+        """
+        items = self.list_vip_content()
+        deleted = 0
+        for item in items:
+            guid = item.get("guid")
+            if guid:
+                try:
+                    self.delete_content(guid)
+                    deleted += 1
+                except Exception:
+                    pass
+        return deleted
+
     # -- Tags ---------------------------------------------------------------
 
     def _tag_content(self, guid: str, tag_name: str) -> None:
@@ -131,28 +213,6 @@ class ConnectClient:
             self._client.post(f"/v1/content/{guid}/tags", json={"tag_id": tag_id})
         except Exception:
             pass
-
-    def cleanup_vip_content(self) -> int:
-        """Delete all content items tagged as VIP test content.
-
-        Returns the number of items deleted.
-        """
-        deleted = 0
-        try:
-            resp = self._client.get("/v1/tags", params={"name": _VIP_CONTENT_TAG})
-            resp.raise_for_status()
-            tags = resp.json()
-            if not tags:
-                return 0
-            tag_id = tags[0]["id"]
-            resp = self._client.get(f"/v1/tags/{tag_id}/content")
-            resp.raise_for_status()
-            for item in resp.json():
-                self.delete_content(item["guid"])
-                deleted += 1
-        except Exception:
-            pass
-        return deleted
 
     # -- R / Python versions ------------------------------------------------
 
@@ -177,46 +237,9 @@ class ConnectClient:
             return [i.get("version", i.get("path", "")) for i in installations]
         return []
 
-    def r_repos(self) -> list[str]:
-        """Return configured R repository URLs from the Connect admin API.
-
-        Tries multiple endpoints across Connect versions.  Returns an empty
-        list if the information is unavailable.
-        """
-        urls: list[str] = []
-        # Try the v1 server_settings endpoint (Connect 2024+).
-        for path in ("/v1/server_settings", "/server_settings"):
-            try:
-                resp = self._client.get(path)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    urls.extend(v for v in self._extract_strings(data) if v.startswith("http"))
-            except Exception:
-                continue
-        return urls
-
-    @staticmethod
-    def _extract_strings(obj: Any) -> list[str]:
-        """Recursively collect all string leaf values."""
-        results: list[str] = []
-        if isinstance(obj, str):
-            results.append(obj)
-        elif isinstance(obj, dict):
-            for v in obj.values():
-                results.extend(ConnectClient._extract_strings(v))
-        elif isinstance(obj, list):
-            for item in obj:
-                results.extend(ConnectClient._extract_strings(item))
-        return results
-
     # -- Email --------------------------------------------------------------
 
     def send_test_email(self, to: str) -> dict[str, Any]:
         resp = self._client.post("/v1/tasks/send-test-email", json={"to": to})
         resp.raise_for_status()
         return resp.json()
-
-    # -- Lifecycle ----------------------------------------------------------
-
-    def close(self) -> None:
-        self._client.close()

@@ -148,25 +148,18 @@ def create_job(
     )
 
 
-def stream_logs(job_name: str, namespace: str, timeout: int = 900) -> None:
-    """Stream logs from the VIP Job.
-
-    Waits for the pod to be created, then streams logs.
+def _wait_for_pod(job_name: str, namespace: str, deadline: float) -> str:
+    """Wait for a pod to appear for the given job and return its name.
 
     Args:
         job_name: Job name
         namespace: Kubernetes namespace
-        timeout: Timeout in seconds
+        deadline: Absolute time (from time.time()) by which the pod must appear
 
     Raises:
-        subprocess.CalledProcessError: If kubectl fails
-        TimeoutError: If pod is not found within timeout
+        TimeoutError: If no pod is found before the deadline
     """
-    # Wait for pod to be created
-    start_time = time.time()
-    pod_name = None
-
-    while time.time() - start_time < timeout:
+    while time.time() < deadline:
         cmd = [
             "kubectl",
             "get",
@@ -181,18 +174,28 @@ def stream_logs(job_name: str, namespace: str, timeout: int = 900) -> None:
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
         if result.returncode == 0 and result.stdout.strip():
-            pod_name = result.stdout.strip()
-            break
+            return result.stdout.strip()
 
         time.sleep(2)
 
-    if not pod_name:
-        raise TimeoutError(f"Pod for job {job_name} not found within {timeout}s")
+    raise TimeoutError(f"Pod for job {job_name} not found within deadline")
 
-    # Wait for the container to be running (or already completed).
-    # Without this, `kubectl logs -f` fails with "container is waiting
-    # to start: ContainerCreating".
-    while time.time() - start_time < timeout:
+
+def _wait_for_pod_running(pod_name: str, namespace: str, deadline: float) -> None:
+    """Wait for the pod to reach a running (or terminal) state.
+
+    Without this, ``kubectl logs -f`` fails with
+    "container is waiting to start: ContainerCreating".
+
+    Args:
+        pod_name: Pod name
+        namespace: Kubernetes namespace
+        deadline: Absolute time (from time.time()) by which the pod must be running
+
+    Raises:
+        RuntimeError: If the image cannot be pulled
+    """
+    while time.time() < deadline:
         result = subprocess.run(
             [
                 "kubectl",
@@ -210,7 +213,7 @@ def stream_logs(job_name: str, namespace: str, timeout: int = 900) -> None:
         )
         phase = result.stdout.strip()
         if phase in ("Running", "Succeeded", "Failed"):
-            break
+            return
 
         # Fast-fail on image pull errors
         reason_result = subprocess.run(
@@ -230,9 +233,30 @@ def stream_logs(job_name: str, namespace: str, timeout: int = 900) -> None:
         )
         reason = reason_result.stdout.strip()
         if reason in ("ImagePullBackOff", "ErrImagePull"):
-            raise RuntimeError(f"Image pull failed for job {job_name}: {reason}")
+            raise RuntimeError(f"Image pull failed for pod {pod_name}: {reason}")
 
         time.sleep(2)
+
+
+def stream_logs(job_name: str, namespace: str, timeout: int = 900) -> None:
+    """Stream logs from the VIP Job.
+
+    Waits for the pod to be created and running, then streams logs.
+
+    Args:
+        job_name: Job name
+        namespace: Kubernetes namespace
+        timeout: Timeout in seconds
+
+    Raises:
+        subprocess.CalledProcessError: If kubectl fails
+        TimeoutError: If pod is not found or not running within timeout
+        RuntimeError: If the pod image cannot be pulled
+    """
+    deadline = time.time() + timeout
+
+    pod_name = _wait_for_pod(job_name, namespace, deadline)
+    _wait_for_pod_running(pod_name, namespace, deadline)
 
     # Stream logs (this will block until the pod completes or fails)
     cmd = ["kubectl", "logs", "-n", namespace, "-f", pod_name]

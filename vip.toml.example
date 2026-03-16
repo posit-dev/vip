@@ -84,6 +84,15 @@ enabled = false
 # Set enabled = true if monitoring / logging is configured.
 enabled = false
 
+[performance]
+# Thresholds for performance tests.  All time values are in seconds.
+# page_load_timeout = 10.0
+# download_timeout = 30.0
+# p95_response_time = 5.0
+# concurrent_requests = 10
+# disk_usage_max_pct = 90.0
+# memory_available_min_pct = 10.0
+
 [security]
 # Set enabled = true to run security-policy compliance tests.
 policy_checks_enabled = false

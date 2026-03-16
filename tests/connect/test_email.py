@@ -11,11 +11,6 @@ def test_send_email():
     pass
 
 
-@given("Connect is accessible at the configured URL")
-def connect_accessible(connect_client):
-    assert connect_client is not None
-
-
 @given("email delivery is enabled")
 def email_is_enabled(email_enabled):
     if not email_enabled:
