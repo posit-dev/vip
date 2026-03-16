@@ -124,6 +124,7 @@ jobs:
 
           [auth]
           provider = "password"
+          username = "admin"
           EOF
 
       # Run the subset of tests that work against Docker Connect
@@ -132,7 +133,12 @@ jobs:
           uv run pytest \
             tests/prerequisites/test_components.py \
             tests/connect/test_auth.py \
-            -v -k "reachable or api" \
+            tests/connect/test_users.py \
+            tests/connect/test_runtime_versions.py \
+            tests/connect/test_content_deploy.py \
+            tests/security/test_error_handling.py \
+            -v \
+            -k "not connect_login_ui and not deploy_plumber and not deploy_shiny and not deploy_dash and not deploy_rmarkdown and not deploy_jupyter and not deploy_fastapi" \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
         env:

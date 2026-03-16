@@ -173,6 +173,7 @@ jobs:
         run: |
           uv run pytest \
             "tests/prerequisites/test_components.py::test_product_server_is_reachable[Package Manager]" \
+            tests/prerequisites/test_versions.py \
             tests/package_manager/test_repos.py \
             -v \
             --vip-config=vip.toml \
