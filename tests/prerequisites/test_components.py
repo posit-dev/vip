@@ -3,48 +3,35 @@
 from __future__ import annotations
 
 import httpx
-from pytest_bdd import scenario, then, when
+import pytest
+from pytest_bdd import scenarios, then, when
 
 # ---------------------------------------------------------------------------
 # Scenarios
 # ---------------------------------------------------------------------------
 
-
-@scenario("test_components.feature", "Connect server is reachable")
-def test_connect_reachable():
-    pass
-
-
-@scenario("test_components.feature", "Workbench server is reachable")
-def test_workbench_reachable():
-    pass
-
-
-@scenario("test_components.feature", "Package Manager server is reachable")
-def test_package_manager_reachable():
-    pass
+scenarios("test_components.feature")
 
 
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
 
-
-@when("I request the Connect health endpoint", target_fixture="health_response")
-def request_connect_health(vip_config):
-    resp = httpx.get(f"{vip_config.connect.url}/__api__/server_settings", timeout=15)
-    return resp
-
-
-@when("I request the Workbench health endpoint", target_fixture="health_response")
-def request_workbench_health(vip_config):
-    resp = httpx.get(f"{vip_config.workbench.url}/health-check", timeout=15)
-    return resp
+_HEALTH_ENDPOINTS = {
+    "Connect": "/__api__/server_settings",
+    "Workbench": "/health-check",
+    "Package Manager": "/__api__/status",
+}
 
 
-@when("I request the Package Manager status endpoint", target_fixture="health_response")
-def request_pm_health(vip_config):
-    resp = httpx.get(f"{vip_config.package_manager.url}/__api__/status", timeout=15)
+@when("I request the <product> health endpoint", target_fixture="health_response")
+def request_health_endpoint(product, vip_config):
+    endpoint = _HEALTH_ENDPOINTS[product]
+    product_key = product.lower().replace(" ", "_")
+    pc = vip_config.product_config(product_key)
+    if not pc.is_configured:
+        pytest.skip(f"{product} is not configured")
+    resp = httpx.get(f"{pc.url}{endpoint}", timeout=15)
     return resp
 
 

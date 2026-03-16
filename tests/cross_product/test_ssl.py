@@ -14,79 +14,28 @@ from urllib.parse import urlparse
 
 import httpx
 import pytest
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import scenarios, then, when
 
 # ---------------------------------------------------------------------------
 # Scenarios
 # ---------------------------------------------------------------------------
 
-
-@scenario("test_ssl.feature", "SSL certificate is valid for Connect")
-def test_ssl_connect():
-    pass
-
-
-@scenario("test_ssl.feature", "SSL certificate is valid for Workbench")
-def test_ssl_workbench():
-    pass
-
-
-@scenario("test_ssl.feature", "SSL certificate is valid for Package Manager")
-def test_ssl_package_manager():
-    pass
-
-
-@scenario("test_ssl.feature", "HTTP redirects to HTTPS for Connect")
-def test_https_redirect_connect():
-    pass
-
-
-@scenario("test_ssl.feature", "HTTP redirects to HTTPS for Workbench")
-def test_https_redirect_workbench():
-    pass
-
-
-@scenario("test_ssl.feature", "HTTP redirects to HTTPS for Package Manager")
-def test_https_redirect_package_manager():
-    pass
+scenarios("test_ssl.feature")
 
 
 # ---------------------------------------------------------------------------
 # Steps - SSL certificate checks
 # ---------------------------------------------------------------------------
 
-_PRODUCT_CONFIG_MAP = {
-    "Connect": "connect",
-    "Workbench": "workbench",
-    "Package Manager": "package_manager",
-}
 
+@when("I check the SSL certificate for <product>", target_fixture="cert_info")
+def check_ssl_cert(product, vip_config):
+    product_key = product.lower().replace(" ", "_")
+    pc = vip_config.product_config(product_key)
+    if not pc.is_configured:
+        pytest.skip(f"{product} is not configured")
 
-@given("Connect is configured in vip.toml", target_fixture="product_url")
-def connect_configured(vip_config):
-    if not vip_config.connect.is_configured:
-        pytest.skip("Connect is not configured")
-    return vip_config.connect.url
-
-
-@given("Workbench is configured in vip.toml", target_fixture="product_url")
-def workbench_configured(vip_config):
-    if not vip_config.workbench.is_configured:
-        pytest.skip("Workbench is not configured")
-    return vip_config.workbench.url
-
-
-@given("Package Manager is configured in vip.toml", target_fixture="product_url")
-def pm_configured(vip_config):
-    if not vip_config.package_manager.is_configured:
-        pytest.skip("Package Manager is not configured")
-    return vip_config.package_manager.url
-
-
-@when("I check the SSL certificate for Connect", target_fixture="cert_info")
-@when("I check the SSL certificate for Workbench", target_fixture="cert_info")
-@when("I check the SSL certificate for Package Manager", target_fixture="cert_info")
-def check_ssl_cert(product_url):
+    product_url = pc.url
     parsed = urlparse(product_url)
     if parsed.scheme != "https":
         pytest.skip(f"URL is not HTTPS: {product_url}")
@@ -125,10 +74,14 @@ def cert_chain_complete(cert_info):
 # ---------------------------------------------------------------------------
 
 
-@when("I request the HTTP URL for Connect", target_fixture="http_response")
-@when("I request the HTTP URL for Workbench", target_fixture="http_response")
-@when("I request the HTTP URL for Package Manager", target_fixture="http_response")
-def request_http(product_url):
+@when("I request the HTTP URL for <product>", target_fixture="http_response")
+def request_http(product, vip_config):
+    product_key = product.lower().replace(" ", "_")
+    pc = vip_config.product_config(product_key)
+    if not pc.is_configured:
+        pytest.skip(f"{product} is not configured")
+
+    product_url = pc.url
     http_url = product_url.replace("https://", "http://")
     parsed = urlparse(http_url)
     if parsed.scheme != "http":

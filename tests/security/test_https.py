@@ -4,41 +4,13 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import given, scenarios, then, when
 
 # ---------------------------------------------------------------------------
 # Scenarios
 # ---------------------------------------------------------------------------
 
-
-@scenario("test_https.feature", "Connect enforces HTTPS")
-def test_connect_https():
-    pass
-
-
-@scenario("test_https.feature", "Workbench enforces HTTPS")
-def test_workbench_https():
-    pass
-
-
-@scenario("test_https.feature", "Package Manager enforces HTTPS")
-def test_pm_https():
-    pass
-
-
-@scenario("test_https.feature", "Connect does not expose sensitive headers")
-def test_connect_headers():
-    pass
-
-
-@scenario("test_https.feature", "Workbench does not expose sensitive headers")
-def test_workbench_headers():
-    pass
-
-
-@scenario("test_https.feature", "Package Manager does not expose sensitive headers")
-def test_pm_headers():
-    pass
+scenarios("test_https.feature")
 
 
 # ---------------------------------------------------------------------------
@@ -46,39 +18,17 @@ def test_pm_headers():
 # ---------------------------------------------------------------------------
 
 
-@given("Connect is configured with an HTTPS URL", target_fixture="product_url")
-def connect_https(vip_config):
-    if not vip_config.connect.is_configured:
-        pytest.skip("Connect is not configured")
-    assert vip_config.connect.url.startswith("https://"), (
-        f"Connect URL is not HTTPS: {vip_config.connect.url}"
-    )
-    return vip_config.connect.url
+@given("<product> is configured with an HTTPS URL", target_fixture="product_url")
+def product_configured_https(product, vip_config):
+    product_key = product.lower().replace(" ", "_")
+    pc = vip_config.product_config(product_key)
+    if not pc.is_configured:
+        pytest.skip(f"{product} is not configured")
+    assert pc.url.startswith("https://"), f"{product} URL is not HTTPS: {pc.url}"
+    return pc.url
 
 
-@given("Workbench is configured with an HTTPS URL", target_fixture="product_url")
-def workbench_https(vip_config):
-    if not vip_config.workbench.is_configured:
-        pytest.skip("Workbench is not configured")
-    assert vip_config.workbench.url.startswith("https://"), (
-        f"Workbench URL is not HTTPS: {vip_config.workbench.url}"
-    )
-    return vip_config.workbench.url
-
-
-@given("Package Manager is configured with an HTTPS URL", target_fixture="product_url")
-def pm_https(vip_config):
-    if not vip_config.package_manager.is_configured:
-        pytest.skip("Package Manager is not configured")
-    assert vip_config.package_manager.url.startswith("https://"), (
-        f"Package Manager URL is not HTTPS: {vip_config.package_manager.url}"
-    )
-    return vip_config.package_manager.url
-
-
-@when("I make an HTTP request to Connect", target_fixture="http_result")
-@when("I make an HTTP request to Workbench", target_fixture="http_result")
-@when("I make an HTTP request to Package Manager", target_fixture="http_result")
+@when("I make an HTTP request to <product>", target_fixture="http_result")
 def make_http_request(product_url):
     http_url = product_url.replace("https://", "http://")
     try:
@@ -112,32 +62,13 @@ def https_enforced(http_result):
 # ---------------------------------------------------------------------------
 
 
-@given("Connect is configured in vip.toml", target_fixture="product_url")
-def connect_configured(vip_config):
-    if not vip_config.connect.is_configured:
-        pytest.skip("Connect is not configured")
-    return vip_config.connect.url
-
-
-@given("Workbench is configured in vip.toml", target_fixture="product_url")
-def workbench_configured(vip_config):
-    if not vip_config.workbench.is_configured:
-        pytest.skip("Workbench is not configured")
-    return vip_config.workbench.url
-
-
-@given("Package Manager is configured in vip.toml", target_fixture="product_url")
-def pm_configured(vip_config):
-    if not vip_config.package_manager.is_configured:
-        pytest.skip("Package Manager is not configured")
-    return vip_config.package_manager.url
-
-
-@when("I inspect response headers from Connect", target_fixture="response_headers")
-@when("I inspect response headers from Workbench", target_fixture="response_headers")
-@when("I inspect response headers from Package Manager", target_fixture="response_headers")
-def inspect_headers(product_url):
-    resp = httpx.get(product_url, follow_redirects=True, timeout=15)
+@when("I inspect response headers from <product>", target_fixture="response_headers")
+def inspect_headers(product, vip_config):
+    product_key = product.lower().replace(" ", "_")
+    pc = vip_config.product_config(product_key)
+    if not pc.is_configured:
+        pytest.skip(f"{product} is not configured")
+    resp = httpx.get(pc.url, follow_redirects=True, timeout=15)
     return dict(resp.headers)
 
 
