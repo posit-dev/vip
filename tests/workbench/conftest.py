@@ -15,6 +15,19 @@ from tests.workbench.pages import Homepage, LoginPage
 
 pytestmark = pytest.mark.workbench
 
+# ---------------------------------------------------------------------------
+# Playwright timeout constants (milliseconds)
+# ---------------------------------------------------------------------------
+
+TIMEOUT_QUICK = 5_000
+TIMEOUT_DIALOG = 10_000
+TIMEOUT_PAGE_LOAD = 15_000
+TIMEOUT_CLEANUP = 30_000
+TIMEOUT_IDE_LOAD = 60_000
+TIMEOUT_SESSION_START = 90_000
+
+# ---------------------------------------------------------------------------
+
 # Keywords indicating the URL is a login/auth page (used for OIDC detection)
 _LOGIN_KEYWORDS = ("sign-in", "login", "auth")
 
@@ -23,6 +36,16 @@ def _on_login_page(url: str) -> bool:
     """Return True if *url* looks like a login or IdP page."""
     lower = url.lower()
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
+
+
+def assert_homepage_loaded(page: Page) -> None:
+    """Assert that the Workbench homepage has fully loaded.
+
+    Verifies the Posit logo and new-session button are both visible.
+    Use .first for NEW_SESSION_BUTTON as there can be two instances.
+    """
+    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+    expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +116,7 @@ def workbench_login(
         # Not on homepage, not on login page - unexpected state
         # Give it one more check in case page is still loading
         try:
-            homepage_logo.wait_for(state="visible", timeout=5000)
+            homepage_logo.wait_for(state="visible", timeout=TIMEOUT_QUICK)
             return
         except Exception:
             pass
@@ -113,7 +136,7 @@ def workbench_login(
 
         # Wait for login form to be ready
         try:
-            login_form.wait_for(state="visible", timeout=5000)
+            login_form.wait_for(state="visible", timeout=TIMEOUT_QUICK)
         except Exception:
             continue
 
@@ -130,7 +153,7 @@ def workbench_login(
         # Wait for either homepage (success) or error panel (failure)
         homepage_or_error = homepage_logo.or_(error_panel)
         try:
-            homepage_or_error.wait_for(state="visible", timeout=15000)
+            homepage_or_error.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
         except Exception:
             if attempt == max_retries - 1:
                 raise AssertionError(f"Login failed after {max_retries} attempts: no response")
@@ -211,8 +234,6 @@ def wb_login(
         page, workbench_url, test_username, test_password, auth_provider, interactive_auth
     )
 
-    # Verify homepage elements (use .first for NEW_SESSION_BUTTON as there can be two)
-    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=15000)
-    expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=15000)
+    assert_homepage_loaded(page)
 
     return page

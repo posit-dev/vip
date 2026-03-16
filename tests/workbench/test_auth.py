@@ -6,7 +6,11 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
-from tests.workbench.conftest import workbench_login
+from tests.workbench.conftest import (
+    TIMEOUT_DIALOG,
+    assert_homepage_loaded,
+    workbench_login,
+)
 from tests.workbench.pages import Homepage
 
 
@@ -41,12 +45,11 @@ def navigate_and_login(
 
 @then("the Workbench homepage is displayed")
 def homepage_displayed(page: Page):
-    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=15000)
-    expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=15000)
+    assert_homepage_loaded(page)
 
 
 @then("the current user is shown in the header")
 def current_user_displayed(page: Page, test_username: str):
     current_user = page.locator(Homepage.CURRENT_USER)
-    expect(current_user).to_be_visible(timeout=10000)
+    expect(current_user).to_be_visible(timeout=TIMEOUT_DIALOG)
     expect(current_user).to_have_text(test_username)

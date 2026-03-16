@@ -32,6 +32,9 @@ cluster = [
 dev = [
     "ruff>=0.15.0,<0.16",
     "mypy>=1.10",
+    "types-PyYAML>=6.0",
+    "pytest-cov>=6.0",
+    "pip-audit>=2.7",
 ]
 
 [project.scripts]
@@ -81,6 +84,11 @@ ignore_token_for_push = true
 [tool.semantic_release.changelog]
 generate = true
 file = "CHANGELOG.md"
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100

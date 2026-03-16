@@ -31,6 +31,14 @@ check: lint format-check
 # Auto-fix everything (lint fixes + formatting)
 fix: lint-fix format
 
+# Run mypy type checker
+typecheck:
+    uv run mypy src/vip/
+
+# Run selftests with coverage
+coverage:
+    uv run pytest selftests/ --cov=src/vip --cov-report=term-missing
+
 # Run selftests (no products required)
 selftest *ARGS:
     uv run pytest selftests/ {{ ARGS }}
