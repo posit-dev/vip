@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.9.1 (2026-03-16)
+
+### Bug Fixes
+
+- **website**: Reorganize landing page (#86) ([#87](https://github.com/posit-dev/vip/pull/87),
+  [`208c65f`](https://github.com/posit-dev/vip/commit/208c65fd670cdb9f9d8cd7375282f5caa361d905))
+
+### Refactoring
+
+- Comprehensive codebase review — bugs, dedup, API design, features, CI
+  ([#85](https://github.com/posit-dev/vip/pull/85),
+  [`e7c34c2`](https://github.com/posit-dev/vip/commit/e7c34c2eb399759384a072ea9169535e310580ae))
+
+
 ## v0.9.0 (2026-03-14)
 
 ### Chores
