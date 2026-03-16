@@ -28,6 +28,16 @@ class WorkbenchClient(BaseClient):
         resp = self._client.get("/health-check")
         return resp.status_code
 
+    def server_settings(self) -> dict[str, Any]:
+        """Return server settings including version information.
+
+        Returns the parsed JSON from ``/api/server/settings``.  Raises
+        ``httpx.HTTPStatusError`` if the endpoint is not reachable.
+        """
+        resp = self._client.get("/api/server/settings")
+        resp.raise_for_status()
+        return resp.json()
+
     # -- Sessions -----------------------------------------------------------
 
     def set_cookies(self, cookies: dict[str, str]) -> None:

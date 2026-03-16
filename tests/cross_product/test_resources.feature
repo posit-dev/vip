@@ -1,11 +1,10 @@
 @cross_product
-Feature: System resource usage
+Feature: Product server health
   As a Posit Team administrator
-  I want to verify that system resource usage is within acceptable limits
-  So that the deployment has headroom for normal operations
+  I want to verify that all configured product servers respond to health checks
+  So that I know the services are running and reachable
 
-  Scenario: System resource usage is within limits
+  Scenario: All configured products respond to health checks
     Given at least one product is configured
-    When I check system resource usage
-    Then disk usage is below 90 percent
-    And the system is not under memory pressure
+    When I check the health of each configured product
+    Then all products respond with a healthy status

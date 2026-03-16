@@ -161,6 +161,38 @@ class ConnectClient(BaseClient):
 
         return task
 
+    def list_vip_content(self) -> list[dict[str, Any]]:
+        """Return all content items tagged with the VIP test tag."""
+        try:
+            resp = self._client.get("/v1/tags", params={"name": _VIP_CONTENT_TAG})
+            resp.raise_for_status()
+            tags = resp.json()
+            if not tags:
+                return []
+            tag_id = tags[0]["id"]
+            resp = self._client.get(f"/v1/tags/{tag_id}/content")
+            resp.raise_for_status()
+            return resp.json().get("results", [])
+        except Exception:
+            return []
+
+    def cleanup_vip_content(self) -> int:
+        """Delete all content tagged with the VIP test tag.
+
+        Returns the number of items deleted.
+        """
+        items = self.list_vip_content()
+        deleted = 0
+        for item in items:
+            guid = item.get("guid")
+            if guid:
+                try:
+                    self.delete_content(guid)
+                    deleted += 1
+                except Exception:
+                    pass
+        return deleted
+
     # -- Tags ---------------------------------------------------------------
 
     def _tag_content(self, guid: str, tag_name: str) -> None:

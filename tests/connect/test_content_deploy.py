@@ -37,6 +37,21 @@ def test_deploy_dash():
     pass
 
 
+@scenario("test_content_deploy.feature", "Deploy and execute an R Markdown document")
+def test_deploy_rmarkdown():
+    pass
+
+
+@scenario("test_content_deploy.feature", "Deploy and execute a Jupyter Notebook")
+def test_deploy_jupyter():
+    pass
+
+
+@scenario("test_content_deploy.feature", "Deploy and execute a FastAPI application")
+def test_deploy_fastapi():
+    pass
+
+
 # ---------------------------------------------------------------------------
 # Shared state for the current scenario
 # ---------------------------------------------------------------------------
@@ -140,6 +155,116 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
             ),
         }
 
+    if name == "vip-rmarkdown-test":
+        r_versions = connect_client.r_versions()
+        if not r_versions:
+            pytest.skip("No R versions available on Connect — cannot deploy R Markdown")
+        return {
+            "index.Rmd": (
+                "---\ntitle: VIP RMarkdown Test\noutput: html_document\n---\n\n"
+                "Hello from VIP RMarkdown.\n"
+            ),
+            "manifest.json": json.dumps(
+                {
+                    "version": 1,
+                    "platform": r_versions[0],
+                    "metadata": {
+                        "appmode": "rmd-static",
+                        "primary_rmd": "index.Rmd",
+                        "content_category": "",
+                        "has_parameters": False,
+                    },
+                    "packages": {},
+                }
+            ),
+        }
+
+    if name == "vip-jupyter-test":
+        py_versions = connect_client.python_versions()
+        if not py_versions:
+            pytest.skip("No Python versions available on Connect — cannot deploy Jupyter Notebook")
+        notebook_content = json.dumps(
+            {
+                "nbformat": 4,
+                "nbformat_minor": 5,
+                "metadata": {
+                    "kernelspec": {
+                        "display_name": "Python 3",
+                        "language": "python",
+                        "name": "python3",
+                    },
+                    "language_info": {"name": "python", "version": py_versions[0]},
+                },
+                "cells": [
+                    {
+                        "cell_type": "code",
+                        "execution_count": 1,
+                        "metadata": {},
+                        "outputs": [
+                            {
+                                "output_type": "stream",
+                                "name": "stdout",
+                                "text": "VIP notebook OK\n",
+                            }
+                        ],
+                        "source": 'print("VIP notebook OK")',
+                    }
+                ],
+            }
+        )
+        return {
+            "notebook.ipynb": notebook_content,
+            "manifest.json": json.dumps(
+                {
+                    "version": 1,
+                    "metadata": {
+                        "appmode": "jupyter-static",
+                        "primary_document": "notebook.ipynb",
+                        "content_category": "",
+                        "has_parameters": False,
+                    },
+                    "python": {
+                        "version": py_versions[0],
+                        "package_manager": {
+                            "name": "pip",
+                            "version": "24.0",
+                            "package_file": "requirements.txt",
+                        },
+                    },
+                }
+            ),
+            "requirements.txt": "",
+        }
+
+    if name == "vip-fastapi-test":
+        py_versions = connect_client.python_versions()
+        if not py_versions:
+            pytest.skip("No Python versions available on Connect — cannot deploy FastAPI")
+        return {
+            "app.py": (
+                "from fastapi import FastAPI\n"
+                "app = FastAPI()\n\n"
+                "@app.get('/')\n"
+                "def root():\n"
+                '    return {"message": "VIP fastapi OK"}\n'
+            ),
+            "requirements.txt": "fastapi\nuvicorn\n",
+            "manifest.json": json.dumps(
+                {
+                    "version": 1,
+                    "metadata": {"appmode": "python-fastapi", "entrypoint": "app"},
+                    "python": {
+                        "version": py_versions[0],
+                        "package_manager": {
+                            "name": "pip",
+                            "version": "24.0",
+                            "package_file": "requirements.txt",
+                        },
+                    },
+                }
+            ),
+        }
+
     pytest.fail(f"No bundle configuration for: {name}")
 
 
@@ -153,6 +278,9 @@ _CONTENT_NAMES = [
     "vip-plumber-test",
     "vip-shiny-test",
     "vip-dash-test",
+    "vip-rmarkdown-test",
+    "vip-jupyter-test",
+    "vip-fastapi-test",
 ]
 
 
@@ -160,6 +288,9 @@ _CONTENT_NAMES = [
 @when('I create a VIP test content item named "vip-plumber-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-shiny-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-dash-test"', target_fixture="deploy_state")
+@when('I create a VIP test content item named "vip-rmarkdown-test"', target_fixture="deploy_state")
+@when('I create a VIP test content item named "vip-jupyter-test"', target_fixture="deploy_state")
+@when('I create a VIP test content item named "vip-fastapi-test"', target_fixture="deploy_state")
 def create_content(connect_client, request):
     # Extract content name by matching the content type keyword (e.g., "plumber")
     # from the bundle name against the test function name (e.g., "test_deploy_plumber").
@@ -181,6 +312,9 @@ def create_content(connect_client, request):
 @when("I upload and deploy a minimal Plumber bundle")
 @when("I upload and deploy a minimal Shiny bundle")
 @when("I upload and deploy a minimal Dash bundle")
+@when("I upload and deploy a minimal R Markdown bundle")
+@when("I upload and deploy a minimal Jupyter Notebook bundle")
+@when("I upload and deploy a minimal FastAPI bundle")
 def upload_and_deploy(connect_client, deploy_state):
     name = deploy_state["name"]
     bundle_files = _get_bundle(name, connect_client)
@@ -242,6 +376,22 @@ _EXPECTED_OUTPUT: dict[str, dict] = {
     "vip-dash-test": {
         "type": "html",
         "markers": ["_dash-", "dash"],
+    },
+    # R Markdown static renders an HTML page containing the document title.
+    "vip-rmarkdown-test": {
+        "type": "html",
+        "markers": ["VIP RMarkdown Test"],
+    },
+    # Jupyter static renders an HTML page with notebook output.
+    "vip-jupyter-test": {
+        "type": "html",
+        "markers": ["VIP notebook OK"],
+    },
+    # FastAPI GET / returns a JSON object with a "message" key.
+    "vip-fastapi-test": {
+        "type": "json",
+        "key": "message",
+        "value": "VIP fastapi OK",
     },
 }
 

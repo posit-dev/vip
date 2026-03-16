@@ -32,11 +32,33 @@ class PackageManagerClient(BaseClient):
         resp.raise_for_status()
         return resp.json()
 
+    def status(self) -> dict[str, Any]:
+        """Return the parsed JSON body from the status endpoint."""
+        resp = self._client.get("/__api__/status")
+        resp.raise_for_status()
+        return resp.json()
+
     # -- CRAN ---------------------------------------------------------------
 
     def cran_package_available(self, repo_name: str, package: str) -> bool:
         """Check whether a CRAN package is available in a repo."""
         resp = self._client.get(f"/{repo_name}/latest/src/contrib/PACKAGES")
+        if resp.status_code != 200:
+            return False
+        return package in resp.text
+
+    # -- Bioconductor -------------------------------------------------------
+
+    def bioconductor_package_available(self, repo_name: str, package: str) -> bool:
+        """Check whether a Bioconductor package is available in a repo.
+
+        Bioconductor repos expose the same ``PACKAGES`` index as CRAN repos,
+        served under the ``/bioc/`` sub-path for software packages.
+        """
+        resp = self._client.get(f"/{repo_name}/latest/bioc/src/contrib/PACKAGES")
+        if resp.status_code != 200:
+            # Fall back to the root PACKAGES path (pre-2022 layout or non-bioc mirror).
+            resp = self._client.get(f"/{repo_name}/latest/src/contrib/PACKAGES")
         if resp.status_code != 200:
             return False
         return package in resp.text

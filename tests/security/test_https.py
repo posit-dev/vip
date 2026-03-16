@@ -84,7 +84,7 @@ def no_version_headers(response_headers):
 
             version_pattern = re.compile(r"\d+\.\d+")
             if version_pattern.search(value):
-                pytest.skip(
+                pytest.fail(
                     f"Header '{header}: {value}' exposes version info. "
-                    "Consider configuring the server to suppress version details."
+                    "Configure the server to suppress version details."
                 )

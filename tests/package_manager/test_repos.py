@@ -16,6 +16,11 @@ def test_pypi_mirror():
     pass
 
 
+@scenario("test_repos.feature", "Bioconductor mirror is accessible")
+def test_bioconductor_mirror():
+    pass
+
+
 @scenario("test_repos.feature", "At least one repository is configured")
 def test_repo_exists():
     pass
@@ -70,6 +75,27 @@ def query_pypi(pm_client):
     if not found:
         pytest.skip(
             f"PyPI package 'requests' not available in repo {repo_name!r} — "
+            "repo may not be synced yet"
+        )
+    return True
+
+
+@when(
+    'I query the Bioconductor repository for the "BiocGenerics" package',
+    target_fixture="package_found",
+)
+def query_bioconductor(pm_client):
+    repos = pm_client.list_repos()
+    bioc_repos = [
+        r for r in repos if r.get("type") == "bioconductor" or "bioc" in r.get("name", "").lower()
+    ]
+    if not bioc_repos:
+        pytest.skip("No Bioconductor repository configured in Package Manager")
+    repo_name = bioc_repos[0]["name"]
+    found = pm_client.bioconductor_package_available(repo_name, "BiocGenerics")
+    if not found:
+        pytest.skip(
+            f"Bioconductor package 'BiocGenerics' not available in repo {repo_name!r} — "
             "repo may not be synced yet"
         )
     return True
