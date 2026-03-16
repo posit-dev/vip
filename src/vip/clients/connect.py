@@ -46,6 +46,16 @@ class ConnectClient(BaseClient):
         resp.raise_for_status()
         return resp.json()
 
+    def list_users(self) -> list[dict[str, Any]]:
+        resp = self._client.get("/v1/users")
+        resp.raise_for_status()
+        return resp.json().get("results", [])
+
+    def list_groups(self) -> list[dict[str, Any]]:
+        resp = self._client.get("/v1/groups")
+        resp.raise_for_status()
+        return resp.json().get("results", [])
+
     # -- Content ------------------------------------------------------------
 
     def create_content(self, name: str, **kwargs: Any) -> dict[str, Any]:

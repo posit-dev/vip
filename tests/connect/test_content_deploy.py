@@ -217,6 +217,74 @@ def content_accessible(connect_client, deploy_state):
         assert resp.status_code < 400, f"Content returned HTTP {resp.status_code}"
 
 
+# ---------------------------------------------------------------------------
+# Expected-output markers for each content type
+# ---------------------------------------------------------------------------
+
+_EXPECTED_OUTPUT: dict[str, dict] = {
+    # Quarto static renders an HTML page containing the document title and body.
+    "vip-quarto-test": {
+        "type": "html",
+        "markers": ["VIP Test", "Hello from VIP"],
+    },
+    # Plumber GET / returns a JSON object with a "message" key.
+    "vip-plumber-test": {
+        "type": "json",
+        "key": "message",
+        "value": "VIP test OK",
+    },
+    # Shiny apps serve an HTML page with Shiny bootstrap markup.
+    "vip-shiny-test": {
+        "type": "html",
+        "markers": ["shiny", "bootstraplib"],
+    },
+    # Dash apps serve an HTML page with Dash-specific markup.
+    "vip-dash-test": {
+        "type": "html",
+        "markers": ["_dash-", "dash"],
+    },
+}
+
+
+@then("the content renders expected output")
+def content_renders_expected_output(connect_client, deploy_state):
+    name = deploy_state["name"]
+    expected = _EXPECTED_OUTPUT.get(name)
+    if expected is None:
+        pytest.fail(f"No expected-output configuration for content: {name}")
+
+    content = connect_client.get_content(deploy_state["guid"])
+    url = content.get("content_url", "")
+    if not url:
+        pytest.skip("Content URL not available — skipping output verification")
+
+    if expected["type"] == "json":
+        # Plumber: append the route path and verify JSON response.
+        resp = httpx.get(url.rstrip("/") + "/", follow_redirects=True, timeout=30)
+        assert resp.status_code < 400, f"Plumber API returned HTTP {resp.status_code}"
+        try:
+            body = resp.json()
+        except Exception as exc:
+            pytest.fail(f"Plumber response is not valid JSON: {exc}\nBody: {resp.text[:500]}")
+        # Connect wraps scalar values in lists; accept both "VIP test OK" and ["VIP test OK"].
+        raw = body.get(expected["key"])
+        value = raw[0] if isinstance(raw, list) else raw
+        assert value == expected["value"], (
+            f"Plumber response field '{expected['key']}' = {raw!r}; expected {expected['value']!r}"
+        )
+
+    else:
+        # HTML content types: check that the page contains expected marker strings.
+        resp = httpx.get(url, follow_redirects=True, timeout=30)
+        assert resp.status_code < 400, f"Content page returned HTTP {resp.status_code}"
+        body_lower = resp.text.lower()
+        for marker in expected["markers"]:
+            assert marker.lower() in body_lower, (
+                f"Expected marker {marker!r} not found in response for {name}.\n"
+                f"Response snippet: {resp.text[:500]}"
+            )
+
+
 @then("I clean up the test content")
 def cleanup_content(connect_client, deploy_state):
     connect_client.delete_content(deploy_state["guid"])

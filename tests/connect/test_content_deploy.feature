@@ -10,6 +10,7 @@ Feature: Connect content deployment
     And I upload and deploy a minimal Quarto bundle
     And I wait for the deployment to complete
     Then the content is accessible via HTTP
+    And the content renders expected output
     And I clean up the test content
 
   Scenario: Deploy and execute a Plumber API
@@ -18,6 +19,7 @@ Feature: Connect content deployment
     And I upload and deploy a minimal Plumber bundle
     And I wait for the deployment to complete
     Then the content is accessible via HTTP
+    And the content renders expected output
     And I clean up the test content
 
   Scenario: Deploy and execute a Shiny application
@@ -26,6 +28,7 @@ Feature: Connect content deployment
     And I upload and deploy a minimal Shiny bundle
     And I wait for the deployment to complete
     Then the content is accessible via HTTP
+    And the content renders expected output
     And I clean up the test content
 
   Scenario: Deploy and execute a Dash application
@@ -34,4 +37,5 @@ Feature: Connect content deployment
     And I upload and deploy a minimal Dash bundle
     And I wait for the deployment to complete
     Then the content is accessible via HTTP
+    And the content renders expected output
     And I clean up the test content
