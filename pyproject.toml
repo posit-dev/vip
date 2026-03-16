@@ -25,6 +25,7 @@ report = [
     "ipykernel",
     "nbformat>=5.7",
     "nbclient>=0.8",
+    "tornado>=6.5.5",  # CVE-2026-31958 fix; transitive via jupyter
 ]
 cluster = [
     "boto3>=1.26",
