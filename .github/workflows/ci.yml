@@ -54,7 +54,6 @@ jobs:
         run: uv sync --all-extras
 
       - name: Audit dependencies
-        continue-on-error: true
         run: uv run pip-audit --skip-editable
 
   selftest:
