@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from pytest_bdd import scenarios, then, when
+from pytest_bdd import parsers, scenarios, then, when
 
 # ---------------------------------------------------------------------------
 # Scenarios
@@ -24,7 +24,7 @@ _HEALTH_ENDPOINTS = {
 }
 
 
-@when("I request the <product> health endpoint", target_fixture="health_response")
+@when(parsers.parse("I request the {product} health endpoint"), target_fixture="health_response")
 def request_health_endpoint(product, vip_config):
     endpoint = _HEALTH_ENDPOINTS[product]
     product_key = product.lower().replace(" ", "_")

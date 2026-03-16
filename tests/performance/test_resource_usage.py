@@ -72,7 +72,7 @@ def generate_traffic_and_measure_response_times(vip_config):
     return results
 
 
-@then("the p95 response time is under 5 seconds")
+@then("the p95 response time is within the configured threshold")
 def check_p95_response_time(load_test_results, performance_config):
     """Assert that the 95th percentile response time is under 5 seconds."""
     if not load_test_results:

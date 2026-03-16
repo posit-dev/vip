@@ -60,7 +60,7 @@ def download_pypi(pm_client, pypi_repo, performance_config):
     return elapsed
 
 
-@then("the download completes in under 30 seconds")
+@then("the download completes within the configured timeout")
 def download_fast(download_time, performance_config):
     threshold = performance_config.download_timeout
     assert download_time < threshold, (

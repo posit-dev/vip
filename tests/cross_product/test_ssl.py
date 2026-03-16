@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 import httpx
 import pytest
-from pytest_bdd import scenarios, then, when
+from pytest_bdd import parsers, scenarios, then, when
 
 # ---------------------------------------------------------------------------
 # Scenarios
@@ -28,7 +28,7 @@ scenarios("test_ssl.feature")
 # ---------------------------------------------------------------------------
 
 
-@when("I check the SSL certificate for <product>", target_fixture="cert_info")
+@when(parsers.parse("I check the SSL certificate for {product}"), target_fixture="cert_info")
 def check_ssl_cert(product, vip_config):
     product_key = product.lower().replace(" ", "_")
     pc = vip_config.product_config(product_key)
@@ -74,7 +74,7 @@ def cert_chain_complete(cert_info):
 # ---------------------------------------------------------------------------
 
 
-@when("I request the HTTP URL for <product>", target_fixture="http_response")
+@when(parsers.parse("I request the HTTP URL for {product}"), target_fixture="http_response")
 def request_http(product, vip_config):
     product_key = product.lower().replace(" ", "_")
     pc = vip_config.product_config(product_key)
@@ -123,7 +123,7 @@ def http_port_closed(http_response):
 # ---------------------------------------------------------------------------
 
 
-@when("I attempt a TLS connection to <product>", target_fixture="tls_results")
+@when(parsers.parse("I attempt a TLS connection to {product}"), target_fixture="tls_results")
 def attempt_tls_connection(product, vip_config):
     product_key = product.lower().replace(" ", "_")
     pc = vip_config.product_config(product_key)

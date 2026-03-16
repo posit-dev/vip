@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from pytest_bdd import given, scenarios, then, when
+from pytest_bdd import given, parsers, scenarios, then, when
 
 # ---------------------------------------------------------------------------
 # Scenarios
@@ -18,7 +18,7 @@ scenarios("test_https.feature")
 # ---------------------------------------------------------------------------
 
 
-@given("<product> is configured with an HTTPS URL", target_fixture="product_url")
+@given(parsers.parse("{product} is configured with an HTTPS URL"), target_fixture="product_url")
 def product_configured_https(product, vip_config):
     product_key = product.lower().replace(" ", "_")
     pc = vip_config.product_config(product_key)
@@ -28,7 +28,7 @@ def product_configured_https(product, vip_config):
     return pc.url
 
 
-@when("I make an HTTP request to <product>", target_fixture="http_result")
+@when(parsers.parse("I make an HTTP request to {product}"), target_fixture="http_result")
 def make_http_request(product_url):
     http_url = product_url.replace("https://", "http://")
     try:
@@ -62,7 +62,7 @@ def https_enforced(http_result):
 # ---------------------------------------------------------------------------
 
 
-@when("I inspect response headers from <product>", target_fixture="response_headers")
+@when(parsers.parse("I inspect response headers from {product}"), target_fixture="response_headers")
 def inspect_headers(product, vip_config):
     product_key = product.lower().replace(" ", "_")
     pc = vip_config.product_config(product_key)

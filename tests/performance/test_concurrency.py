@@ -44,7 +44,7 @@ def _concurrent_requests(url: str, n: int) -> list[dict]:
 
 
 @when(
-    "I send 10 concurrent health-check requests to Connect",
+    "I send concurrent health-check requests to Connect",
     target_fixture="concurrent_results",
 )
 def concurrent_connect(vip_config, performance_config):
@@ -53,7 +53,7 @@ def concurrent_connect(vip_config, performance_config):
 
 
 @when(
-    "I send 10 concurrent status requests to Package Manager",
+    "I send concurrent status requests to Package Manager",
     target_fixture="concurrent_results",
 )
 def concurrent_pm(vip_config, performance_config):
@@ -62,7 +62,7 @@ def concurrent_pm(vip_config, performance_config):
 
 
 @when(
-    "I send 10 concurrent health-check requests to Workbench",
+    "I send concurrent health-check requests to Workbench",
     target_fixture="concurrent_results",
 )
 def concurrent_workbench(vip_config, performance_config):
@@ -76,8 +76,8 @@ def all_succeed(concurrent_results):
     assert not failures, f"Failed requests: {failures}"
 
 
-@then("the average response time is under 5 seconds")
+@then("the average response time is within the configured threshold")
 def avg_time_ok(concurrent_results, performance_config):
     avg = sum(r["elapsed"] for r in concurrent_results) / len(concurrent_results)
-    threshold = performance_config.p95_response_time
+    threshold = performance_config.avg_response_time
     assert avg < threshold, f"Average response time was {avg:.2f}s (threshold: {threshold}s)"

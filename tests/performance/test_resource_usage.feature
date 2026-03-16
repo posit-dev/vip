@@ -7,7 +7,7 @@ Feature: Remote product performance under load
   Scenario: Products respond within acceptable time under moderate load
     Given at least one product is configured
     When I generate moderate API traffic for 10 seconds
-    Then the p95 response time is under 5 seconds
+    Then the p95 response time is within the configured threshold
     And the error rate is below 10 percent
 
   Scenario: Prometheus metrics endpoint is enabled

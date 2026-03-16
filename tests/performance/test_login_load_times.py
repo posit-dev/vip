@@ -6,7 +6,7 @@ import time
 
 import httpx
 import pytest
-from pytest_bdd import scenarios, then, when
+from pytest_bdd import parsers, scenarios, then, when
 
 scenarios("test_login_load_times.feature")
 
@@ -22,7 +22,7 @@ _LOGIN_PATHS = {
 }
 
 
-@when("I measure the <product> login page load time", target_fixture="load_time")
+@when(parsers.parse("I measure the {product} login page load time"), target_fixture="load_time")
 def measure_load_time(product, vip_config, performance_config):
     product_key = product.lower().replace(" ", "_")
     pc = vip_config.product_config(product_key)
@@ -40,7 +40,7 @@ def measure_load_time(product, vip_config, performance_config):
     return elapsed
 
 
-@then("the page loads in under 10 seconds")
+@then("the page loads within the configured timeout")
 def load_time_ok(load_time, performance_config):
     threshold = performance_config.page_load_timeout
     assert load_time < threshold, f"Page load took {load_time:.2f}s (threshold: {threshold}s)"

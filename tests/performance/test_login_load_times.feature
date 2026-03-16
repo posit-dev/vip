@@ -7,7 +7,7 @@ Feature: Login and page load times
   Scenario Outline: <product> login page loads within acceptable time
     Given <product> is configured in vip.toml
     When I measure the <product> login page load time
-    Then the page loads in under 10 seconds
+    Then the page loads within the configured timeout
 
     Examples:
       | product         |

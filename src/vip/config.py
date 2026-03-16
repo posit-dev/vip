@@ -217,6 +217,7 @@ class PerformanceConfig:
     page_load_timeout: float = 10.0  # seconds
     download_timeout: float = 30.0
     p95_response_time: float = 5.0
+    avg_response_time: float = 5.0
     concurrent_requests: int = 10
     disk_usage_max_pct: float = 90.0
     memory_available_min_pct: float = 10.0
@@ -227,6 +228,7 @@ class PerformanceConfig:
             page_load_timeout=raw.get("page_load_timeout", 10.0),
             download_timeout=raw.get("download_timeout", 30.0),
             p95_response_time=raw.get("p95_response_time", 5.0),
+            avg_response_time=raw.get("avg_response_time", 5.0),
             concurrent_requests=raw.get("concurrent_requests", 10),
             disk_usage_max_pct=raw.get("disk_usage_max_pct", 90.0),
             memory_available_min_pct=raw.get("memory_available_min_pct", 10.0),
