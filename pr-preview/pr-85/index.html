@@ -150,10 +150,10 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="verified-installation-of-posit" class="level1">
 <h1>Verified Installation of Posit</h1>
-<p><strong>Deployment:</strong> CI Connect 2026.02.0 + PM 2024.08.0-6 <strong>Generated:</strong> 2026-03-16 18:46:23 UTC</p>
+<p><strong>Deployment:</strong> CI Connect 2026.02.0 + PM 2024.08.0-6 <strong>Generated:</strong> 2026-03-16 19:41:18 UTC</p>
 <section id="products-under-test" class="level2">
 <h2 class="anchored" data-anchor-id="products-under-test">Products Under Test</h2>
-<div id="ad2f38b5" class="cell" data-execution_count="2">
+<div id="72bf3fad" class="cell" data-execution_count="2">
 <div class="cell-output cell-output-display cell-output-markdown">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -181,7 +181,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="summary" class="level2">
 <h2 class="anchored" data-anchor-id="summary">Summary</h2>
-<div id="3ea2747e" class="cell" data-execution_count="3">
+<div id="23f9b883" class="cell" data-execution_count="3">
 <div class="cell-output cell-output-display cell-output-markdown">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -197,11 +197,11 @@ ul.task-list li input[type="checkbox"] {
 </tr>
 <tr class="even">
 <td><strong>Passed</strong></td>
-<td>3</td>
+<td>5</td>
 </tr>
 <tr class="odd">
 <td><strong>Failed</strong></td>
-<td>3</td>
+<td>1</td>
 </tr>
 <tr class="even">
 <td><strong>Skipped</strong></td>
@@ -218,7 +218,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="results-by-category" class="level2">
 <h2 class="anchored" data-anchor-id="results-by-category">Results by Category</h2>
-<div id="7575413a" class="cell" data-execution_count="4">
+<div id="41dfa1a7" class="cell" data-execution_count="4">
 <div class="cell-output cell-output-display">
 
 <style>
@@ -305,10 +305,10 @@ ul.task-list li input[type="checkbox"] {
 <div class="vip-test-card" style="border-left-color:#d1d5db"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">Bioconductor mirror is accessible</span></div><div class="vip-test-nodeid">tests/package_manager/test_repos.py::test_bioconductor_mirror</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the Bioconductor repository for the "BiocGenerics" package</li><li>Then the package is found in the repository</li></ul></details></div>
 <div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">At least one repository is configured</span></div><div class="vip-test-nodeid">tests/package_manager/test_repos.py::test_repo_exists</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I list all repositories</li><li>Then at least one repository exists</li></ul></details></div>
 </div>
-<div class="vip-cat-section"><h3 class="vip-cat-header anchored">Prerequisites</h3><p class="vip-cat-counts">4 tests — 3 failed, 1 skipped</p>
-<div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">&lt;product&gt; server is reachable</span></div><div class="vip-test-nodeid">tests/prerequisites/test_components.py::test_product_server_is_reachable[Connect]</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
+<div class="vip-cat-section"><h3 class="vip-cat-header anchored">Prerequisites</h3><p class="vip-cat-counts">4 tests — 2 passed, 1 failed, 1 skipped</p>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">&lt;product&gt; server is reachable</span></div><div class="vip-test-nodeid">tests/prerequisites/test_components.py::test_product_server_is_reachable[Connect]</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
 <div class="vip-test-card" style="border-left-color:#d1d5db"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">&lt;product&gt; server is reachable</span></div><div class="vip-test-nodeid">tests/prerequisites/test_components.py::test_product_server_is_reachable[Workbench]</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">&lt;product&gt; server is reachable</span></div><div class="vip-test-nodeid">tests/prerequisites/test_components.py::test_product_server_is_reachable[Package Manager]</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">&lt;product&gt; server is reachable</span></div><div class="vip-test-nodeid">tests/prerequisites/test_components.py::test_product_server_is_reachable[Package Manager]</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
 <div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">Workbench server is reachable but not configured</span></div><div class="vip-test-nodeid">tests/prerequisites/test_expected_failure.py::test_workbench_expected_failure</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Workbench is expected to be configured</li><li>When I check the Workbench configuration</li><li>Then Workbench should be reachable</li></ul></details></div>
 </div>
 </div>
@@ -316,7 +316,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="failed-tests" class="level2">
 <h2 class="anchored" data-anchor-id="failed-tests">Failed Tests</h2>
-<div id="3e15a02e" class="cell" data-execution_count="5">
+<div id="1a0cac31" class="cell" data-execution_count="5">
 <div class="cell-output cell-output-display">
 
 <style>
@@ -415,17 +415,9 @@ ul.task-list li input[type="checkbox"] {
   text-decoration: underline;
 }
 </style>
-<div class="vip-fail-card"><h3 class="vip-fail-title anchored"><code>tests/prerequisites/test_components.py::test_product_server_is_reachable[Connect]</code></h3><p class="vip-fail-scenario"><strong>What was tested:</strong> &lt;product&gt; server is reachable — As a Posit Team administrator
-I want to verify that all configured components are running
-So that I know the basic installation is healthy before running deeper tests</p><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-0" title="Copy to clipboard">Copy</button><pre id="vip-error-0" class="vip-fail-error">E   pytest_bdd.exceptions.StepDefinitionNotFoundError: Step definition is not found: When "I request the Connect health endpoint". Line 9 in scenario "Connect server is reachable" in the feature "/home/runner/work/vip/vip/tests/prerequisites/test_components.feature"
-All traceback entries are hidden. Pass `--full-trace` to see hidden and internal frames.</pre></div></details></div>
-<div class="vip-fail-card"><h3 class="vip-fail-title anchored"><code>tests/prerequisites/test_components.py::test_product_server_is_reachable[Package Manager]</code></h3><p class="vip-fail-scenario"><strong>What was tested:</strong> &lt;product&gt; server is reachable — As a Posit Team administrator
-I want to verify that all configured components are running
-So that I know the basic installation is healthy before running deeper tests</p><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-1" title="Copy to clipboard">Copy</button><pre id="vip-error-1" class="vip-fail-error">E   pytest_bdd.exceptions.StepDefinitionNotFoundError: Step definition is not found: When "I request the Package Manager health endpoint". Line 9 in scenario "Package Manager server is reachable" in the feature "/home/runner/work/vip/vip/tests/prerequisites/test_components.feature"
-All traceback entries are hidden. Pass `--full-trace` to see hidden and internal frames.</pre></div></details></div>
 <div class="vip-fail-card"><h3 class="vip-fail-title anchored"><code>tests/prerequisites/test_expected_failure.py::test_workbench_expected_failure</code></h3><p class="vip-fail-scenario"><strong>What was tested:</strong> Workbench server is reachable but not configured — As a VIP developer
 I want to see what a failed test looks like in the report
-So that I can verify the report renders failures correctly</p><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-2" title="Copy to clipboard">Copy</button><pre id="vip-error-2" class="vip-fail-error">fixturefunc = &lt;function workbench_reachable at 0x7f2f675cb1a0&gt;
+So that I can verify the report renders failures correctly</p><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-0" title="Copy to clipboard">Copy</button><pre id="vip-error-0" class="vip-fail-error">fixturefunc = &lt;function workbench_reachable at 0x7ff0344f32e0&gt;
 request = &lt;FixtureRequest for &lt;Function test_workbench_expected_failure&gt;&gt;
 kwargs = {'wb_configured': False}
 
@@ -476,7 +468,7 @@ document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
 </script>
 </div>
 </div>
-<div id="5fc8d205" class="cell" data-execution_count="6">
+<div id="cb30483d" class="cell" data-execution_count="6">
 <div class="cell-output cell-output-display cell-output-markdown">
 <p><em><code>failures.json</code> is written by <code>pytest</code> alongside <code>results.json</code>.</em></p>
 </div>
