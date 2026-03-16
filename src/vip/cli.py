@@ -146,6 +146,8 @@ def _phase_generate_config(args: argparse.Namespace) -> tuple[str, dict]:
 
 def _phase_provision_credentials(site_cr: dict, args: argparse.Namespace) -> None:
     """Provision test credentials in the K8s cluster."""
+    from vip.verify.site import _extract_connect_url, _extract_keycloak_url
+
     if args.interactive_auth:
         from vip.verify.credentials import mint_interactive_credentials
 
@@ -244,41 +246,6 @@ def _run_verify_k8s(args: argparse.Namespace) -> None:
     _run_k8s_job(vip_config_toml, args)
 
 
-def _extract_connect_url(site_cr: dict) -> str | None:
-    """Extract Connect URL from a PTD Site CR."""
-    spec = site_cr.get("spec", {})
-    connect_spec = spec.get("connect")
-    if not connect_spec:
-        return None
-
-    domain = spec.get("domain", "")
-    prefix = connect_spec.get("domainPrefix", "connect")
-    base_domain = connect_spec.get("baseDomain", domain)
-
-    if not base_domain:
-        return None
-
-    return f"https://{prefix}.{base_domain}"
-
-
-def _extract_keycloak_url(site_cr: dict) -> str | None:
-    """Extract Keycloak URL from a PTD Site CR (if present)."""
-    spec = site_cr.get("spec", {})
-
-    connect_spec = spec.get("connect", {})
-    workbench_spec = spec.get("workbench", {})
-
-    connect_auth = connect_spec.get("auth", {}) if connect_spec else {}
-    workbench_auth = workbench_spec.get("auth", {}) if workbench_spec else {}
-
-    if connect_auth.get("type") == "oidc" or workbench_auth.get("type") == "oidc":
-        domain = spec.get("domain", "")
-        if domain:
-            return f"https://key.{domain}"
-
-    return None
-
-
 def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
     """Run VIP tests as a K8s Job."""
     from vip.verify.job import cleanup, create_config_map, create_job, stream_logs, wait_for_job
@@ -322,7 +289,7 @@ def run_cleanup(args: argparse.Namespace) -> None:
     """Delete VIP test credentials and resources."""
     from vip.config import load_config
     from vip.verify.credentials import cleanup_credentials
-    from vip.verify.site import fetch_site_cr
+    from vip.verify.site import _extract_connect_url, fetch_site_cr
 
     config = load_config()
 
