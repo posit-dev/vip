@@ -27,3 +27,15 @@ Feature: SSL certificates and HTTPS
       | Connect         |
       | Workbench       |
       | Package Manager |
+
+  Scenario Outline: TLS 1.2 or higher is enforced for <product>
+    Given <product> is configured in vip.toml
+    When I attempt a TLS connection to <product>
+    Then TLS 1.0 and TLS 1.1 connections are rejected
+    And TLS 1.2 or higher succeeds
+
+    Examples:
+      | product         |
+      | Connect         |
+      | Workbench       |
+      | Package Manager |

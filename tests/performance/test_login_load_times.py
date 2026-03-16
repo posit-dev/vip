@@ -23,19 +23,24 @@ _LOGIN_PATHS = {
 
 
 @when("I measure the <product> login page load time", target_fixture="load_time")
-def measure_load_time(product, vip_config):
+def measure_load_time(product, vip_config, performance_config):
     product_key = product.lower().replace(" ", "_")
     pc = vip_config.product_config(product_key)
     if not pc.is_configured:
         pytest.skip(f"{product} is not configured")
     path = _LOGIN_PATHS[product]
     start = time.monotonic()
-    resp = httpx.get(f"{pc.url}{path}", follow_redirects=True, timeout=30)
+    resp = httpx.get(
+        f"{pc.url}{path}",
+        follow_redirects=True,
+        timeout=performance_config.page_load_timeout * 3,
+    )
     elapsed = time.monotonic() - start
     resp.raise_for_status()
     return elapsed
 
 
 @then("the page loads in under 10 seconds")
-def load_time_ok(load_time):
-    assert load_time < 10, f"Page load took {load_time:.2f}s (threshold: 10s)"
+def load_time_ok(load_time, performance_config):
+    threshold = performance_config.page_load_timeout
+    assert load_time < threshold, f"Page load took {load_time:.2f}s (threshold: {threshold}s)"

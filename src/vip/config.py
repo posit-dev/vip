@@ -211,6 +211,29 @@ class RuntimesConfig:
 
 
 @dataclass
+class PerformanceConfig:
+    """Thresholds for performance tests."""
+
+    page_load_timeout: float = 10.0  # seconds
+    download_timeout: float = 30.0
+    p95_response_time: float = 5.0
+    concurrent_requests: int = 10
+    disk_usage_max_pct: float = 90.0
+    memory_available_min_pct: float = 10.0
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> PerformanceConfig:
+        return cls(
+            page_load_timeout=raw.get("page_load_timeout", 10.0),
+            download_timeout=raw.get("download_timeout", 30.0),
+            p95_response_time=raw.get("p95_response_time", 5.0),
+            concurrent_requests=raw.get("concurrent_requests", 10),
+            disk_usage_max_pct=raw.get("disk_usage_max_pct", 90.0),
+            memory_available_min_pct=raw.get("memory_available_min_pct", 10.0),
+        )
+
+
+@dataclass
 class VIPConfig:
     """Top-level VIP configuration."""
 
@@ -224,6 +247,7 @@ class VIPConfig:
     auth: AuthConfig = field(default_factory=AuthConfig)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
     runtimes: RuntimesConfig = field(default_factory=RuntimesConfig)
+    performance: PerformanceConfig = field(default_factory=PerformanceConfig)
     data_sources: list[DataSourceEntry] = field(default_factory=list)
 
     email_enabled: bool = False
@@ -291,6 +315,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     monitoring_raw = raw.get("monitoring", {})
     security_raw = raw.get("security", {})
     runtimes_raw = raw.get("runtimes", {})
+    performance_raw = raw.get("performance", {})
 
     data_sources: list[DataSourceEntry] = []
     for name, ds in data_sources_raw.items():
@@ -314,6 +339,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
             r_versions=runtimes_raw.get("r_versions", []),
             python_versions=runtimes_raw.get("python_versions", []),
         ),
+        performance=PerformanceConfig.from_dict(performance_raw),
         data_sources=data_sources,
         email_enabled=email_raw.get("enabled", False),
         monitoring_enabled=monitoring_raw.get("enabled", False),

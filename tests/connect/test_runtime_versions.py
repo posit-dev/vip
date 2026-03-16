@@ -16,6 +16,11 @@ def test_python_versions():
     pass
 
 
+@scenario("test_runtime_versions.feature", "Expected Quarto versions are available")
+def test_quarto_versions():
+    pass
+
+
 @given("expected R versions are specified in vip.toml")
 def r_versions_specified(expected_r_versions):
     if not expected_r_versions:
@@ -50,3 +55,13 @@ def python_versions_present(expected_python_versions, available_python):
     assert not missing, (
         f"Missing Python versions on Connect: {missing}. Available: {available_python}"
     )
+
+
+@when("I query Connect for available Quarto versions", target_fixture="available_quarto")
+def query_quarto_versions(connect_client):
+    return connect_client.quarto_versions()
+
+
+@then("at least one Quarto version is available")
+def quarto_versions_present(available_quarto):
+    assert available_quarto, "No Quarto versions found on Connect"

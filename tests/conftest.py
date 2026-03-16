@@ -8,7 +8,7 @@ from pytest_bdd import given
 from vip.clients.connect import ConnectClient
 from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
-from vip.config import VIPConfig
+from vip.config import PerformanceConfig, VIPConfig
 from vip.plugin import _auth_session_key, _vip_config_key
 
 # ---------------------------------------------------------------------------
@@ -124,6 +124,16 @@ def expected_r_versions(vip_config: VIPConfig) -> list[str]:
 @pytest.fixture(scope="session")
 def expected_python_versions(vip_config: VIPConfig) -> list[str]:
     return vip_config.runtimes.python_versions
+
+
+# ---------------------------------------------------------------------------
+# Performance fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def performance_config(vip_config: VIPConfig) -> PerformanceConfig:
+    return vip_config.performance
 
 
 # ---------------------------------------------------------------------------

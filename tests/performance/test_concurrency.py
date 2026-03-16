@@ -19,6 +19,11 @@ def test_pm_concurrency():
     pass
 
 
+@scenario("test_concurrency.feature", "Workbench handles concurrent health check requests")
+def test_workbench_concurrency():
+    pass
+
+
 def _concurrent_requests(url: str, n: int) -> list[dict]:
     """Fire *n* GET requests concurrently and collect results."""
     results = []
@@ -42,18 +47,27 @@ def _concurrent_requests(url: str, n: int) -> list[dict]:
     "I send 10 concurrent health-check requests to Connect",
     target_fixture="concurrent_results",
 )
-def concurrent_connect(vip_config):
+def concurrent_connect(vip_config, performance_config):
     url = f"{vip_config.connect.url}/__api__/server_settings"
-    return _concurrent_requests(url, 10)
+    return _concurrent_requests(url, performance_config.concurrent_requests)
 
 
 @when(
     "I send 10 concurrent status requests to Package Manager",
     target_fixture="concurrent_results",
 )
-def concurrent_pm(vip_config):
+def concurrent_pm(vip_config, performance_config):
     url = f"{vip_config.package_manager.url}/__api__/status"
-    return _concurrent_requests(url, 10)
+    return _concurrent_requests(url, performance_config.concurrent_requests)
+
+
+@when(
+    "I send 10 concurrent health-check requests to Workbench",
+    target_fixture="concurrent_results",
+)
+def concurrent_workbench(vip_config, performance_config):
+    url = f"{vip_config.workbench.url}/health-check"
+    return _concurrent_requests(url, performance_config.concurrent_requests)
 
 
 @then("all requests succeed")
@@ -63,6 +77,7 @@ def all_succeed(concurrent_results):
 
 
 @then("the average response time is under 5 seconds")
-def avg_time_ok(concurrent_results):
+def avg_time_ok(concurrent_results, performance_config):
     avg = sum(r["elapsed"] for r in concurrent_results) / len(concurrent_results)
-    assert avg < 5, f"Average response time was {avg:.2f}s (threshold: 5s)"
+    threshold = performance_config.p95_response_time
+    assert avg < threshold, f"Average response time was {avg:.2f}s (threshold: {threshold}s)"

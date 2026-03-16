@@ -116,3 +116,91 @@ def redirects_to_https(http_response):
 def http_port_closed(http_response):
     # This step is an alternative - if HTTP redirected, that's fine too.
     pass
+
+
+# ---------------------------------------------------------------------------
+# Steps - TLS version enforcement
+# ---------------------------------------------------------------------------
+
+
+@when("I attempt a TLS connection to <product>", target_fixture="tls_results")
+def attempt_tls_connection(product, vip_config):
+    product_key = product.lower().replace(" ", "_")
+    pc = vip_config.product_config(product_key)
+    if not pc.is_configured:
+        pytest.skip(f"{product} is not configured")
+
+    product_url = pc.url
+    parsed = urlparse(product_url)
+    if parsed.scheme != "https":
+        pytest.skip(f"URL is not HTTPS: {product_url}")
+
+    hostname = parsed.hostname
+    port = parsed.port or 443
+
+    results = {}
+
+    # Attempt TLS 1.0 — should fail on modern servers.
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = True
+        ctx.verify_mode = ssl.CERT_REQUIRED
+        ctx.maximum_version = ssl.TLSVersion.TLSv1
+        with socket.create_connection((hostname, port), timeout=10) as sock:
+            with ctx.wrap_socket(sock, server_hostname=hostname):
+                results["tls1_0"] = "connected"
+    except ssl.SSLError:
+        results["tls1_0"] = "rejected"
+    except OSError:
+        results["tls1_0"] = "rejected"
+    except Exception as exc:
+        pytest.skip(f"Could not reach {hostname}:{port}: {exc}")
+
+    # Attempt TLS 1.1 — should fail on modern servers.
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = True
+        ctx.verify_mode = ssl.CERT_REQUIRED
+        ctx.maximum_version = ssl.TLSVersion.TLSv1_1
+        with socket.create_connection((hostname, port), timeout=10) as sock:
+            with ctx.wrap_socket(sock, server_hostname=hostname):
+                results["tls1_1"] = "connected"
+    except ssl.SSLError:
+        results["tls1_1"] = "rejected"
+    except OSError:
+        results["tls1_1"] = "rejected"
+    except Exception as exc:
+        pytest.skip(f"Could not reach {hostname}:{port}: {exc}")
+
+    # Attempt TLS 1.2 — must succeed.
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = True
+        ctx.verify_mode = ssl.CERT_REQUIRED
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        with socket.create_connection((hostname, port), timeout=10) as sock:
+            with ctx.wrap_socket(sock, server_hostname=hostname):
+                results["tls1_2"] = "connected"
+    except ssl.SSLError as exc:
+        results["tls1_2"] = f"failed: {exc}"
+    except Exception as exc:
+        pytest.skip(f"Could not reach {hostname}:{port}: {exc}")
+
+    return results
+
+
+@then("TLS 1.0 and TLS 1.1 connections are rejected")
+def old_tls_rejected(tls_results):
+    assert tls_results.get("tls1_0") == "rejected", (
+        "Server accepted a TLS 1.0 connection — legacy TLS is not disabled"
+    )
+    assert tls_results.get("tls1_1") == "rejected", (
+        "Server accepted a TLS 1.1 connection — legacy TLS is not disabled"
+    )
+
+
+@then("TLS 1.2 or higher succeeds")
+def modern_tls_succeeds(tls_results):
+    assert tls_results.get("tls1_2") == "connected", (
+        f"TLS 1.2 connection failed: {tls_results.get('tls1_2')}"
+    )

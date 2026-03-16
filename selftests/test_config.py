@@ -8,6 +8,7 @@ from vip.config import (
     ClusterConfig,
     ConnectConfig,
     Mode,
+    PerformanceConfig,
     ProductConfig,
     VIPConfig,
     load_config,
@@ -54,6 +55,26 @@ class TestConnectConfig:
     def test_explicit_deploy_timeout(self):
         cc = ConnectConfig(url="https://connect.example.com", deploy_timeout=1200)
         assert cc.deploy_timeout == 1200
+
+
+class TestPerformanceConfig:
+    def test_defaults(self):
+        pc = PerformanceConfig()
+        assert pc.page_load_timeout == 10.0
+        assert pc.download_timeout == 30.0
+        assert pc.p95_response_time == 5.0
+        assert pc.concurrent_requests == 10
+        assert pc.disk_usage_max_pct == 90.0
+        assert pc.memory_available_min_pct == 10.0
+
+    def test_from_dict_partial(self):
+        pc = PerformanceConfig.from_dict({"page_load_timeout": 15.0})
+        assert pc.page_load_timeout == 15.0
+        assert pc.download_timeout == 30.0  # default preserved
+
+    def test_from_dict_empty(self):
+        pc = PerformanceConfig.from_dict({})
+        assert pc.page_load_timeout == 10.0
 
 
 class TestVIPConfig:
@@ -190,6 +211,26 @@ policy_checks_enabled = true
         assert cfg.email_enabled is True
         assert cfg.monitoring_enabled is True
         assert cfg.security_policy_checks_enabled is True
+
+    def test_performance_section(self, tmp_toml):
+        path = tmp_toml(
+            """
+[performance]
+page_load_timeout = 20.0
+p95_response_time = 3.0
+concurrent_requests = 5
+"""
+        )
+        cfg = load_config(path)
+        assert cfg.performance.page_load_timeout == 20.0
+        assert cfg.performance.p95_response_time == 3.0
+        assert cfg.performance.concurrent_requests == 5
+        assert cfg.performance.download_timeout == 30.0  # default
+
+    def test_performance_defaults_when_section_missing(self, tmp_toml):
+        path = tmp_toml('[general]\ndeployment_name = "Test"\n')
+        cfg = load_config(path)
+        assert cfg.performance.page_load_timeout == 10.0
 
     def test_deploy_timeout_from_toml(self, tmp_toml):
         path = tmp_toml(

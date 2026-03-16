@@ -15,3 +15,9 @@ Feature: Concurrent workload stability
     When I send 10 concurrent status requests to Package Manager
     Then all requests succeed
     And the average response time is under 5 seconds
+
+  Scenario: Workbench handles concurrent health check requests
+    Given Workbench is configured in vip.toml
+    When I send 10 concurrent health-check requests to Workbench
+    Then all requests succeed
+    And the average response time is under 5 seconds

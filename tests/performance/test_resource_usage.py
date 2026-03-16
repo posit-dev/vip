@@ -73,7 +73,7 @@ def generate_traffic_and_measure_response_times(vip_config):
 
 
 @then("the p95 response time is under 5 seconds")
-def check_p95_response_time(load_test_results):
+def check_p95_response_time(load_test_results, performance_config):
     """Assert that the 95th percentile response time is under 5 seconds."""
     if not load_test_results:
         pytest.fail("No load test results collected")
@@ -88,7 +88,8 @@ def check_p95_response_time(load_test_results):
         quantiles = statistics.quantiles(elapsed_times, n=100, method="inclusive")
         p95_time = quantiles[94]  # 95th percentile
 
-    assert p95_time < 5, f"p95 response time was {p95_time:.2f}s (threshold: 5s)"
+    threshold = performance_config.p95_response_time
+    assert p95_time < threshold, f"p95 response time was {p95_time:.2f}s (threshold: {threshold}s)"
 
 
 @then("the error rate is below 10 percent")
