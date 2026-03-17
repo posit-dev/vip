@@ -11,26 +11,29 @@ const products = [
     flag: "connect-url",
     description: "Authentication, content deployment, data sources, packages, email, and runtimes",
     logo: `${base}logo-connect.svg`,
+    testsId: "connect",
   },
   {
     name: "Workbench",
     flag: "workbench-url",
     description: "Login, IDE launch, sessions, package installation, data sources, and runtimes",
     logo: `${base}logo-workbench.svg`,
+    testsId: "workbench",
   },
   {
     name: "Package Manager",
     flag: "pm-url",
     description: "CRAN/PyPI mirrors, repository configuration, and private package access",
     logo: `${base}logo-packagemanager.svg`,
+    testsId: "package_manager",
   },
 ];
 
 const categories = [
-  { name: "Prerequisites", description: "Server reachability, auth configuration, admin onboarding" },
-  { name: "Cross-product", description: "SSL certificates, monitoring, system resources" },
-  { name: "Performance", description: "Load times, concurrency, package install speed" },
-  { name: "Security", description: "HTTPS enforcement, auth policy, secrets storage" },
+  { name: "Prerequisites", description: "Server reachability, auth configuration, admin onboarding", testsId: "prerequisites" },
+  { name: "Cross-product", description: "SSL certificates, monitoring, system resources", testsId: "cross_product" },
+  { name: "Performance", description: "Load times, concurrency, package install speed", testsId: "performance" },
+  { name: "Security", description: "HTTPS enforcement, auth policy, secrets storage", testsId: "security" },
 ];
 ---
 
@@ -56,25 +59,24 @@ const categories = [
 
   <section class="section">
     <div class="container">
-      <h2 class="section-title">What VIP validates</h2>
-      <p class="section-subtitle">
-        VIP tests Connect, Workbench, and Package Manager using pytest-bdd with Gherkin feature
-        files and Playwright for browser automation.
-      </p>
-
-      <div class="product-grid">
-        {
-          products.map((product) => (
-            <div class="product-card">
-              <div class="product-logo">
-                <img src={product.logo} width="120" height="24" alt={`Posit ${product.name}`} />
-              </div>
-              <h3 class="product-title">{product.name}</h3>
-              <p>{product.description}</p>
-              <code class="marker">vip verify --{product.flag} https://...</code>
-            </div>
-          ))
-        }
+      <h2 class="section-title">Design principles</h2>
+      <div class="principles-grid">
+        <div class="principle">
+          <h4>Non-destructive</h4>
+          <p>Tests create, verify, and clean up their own content. They never modify existing customer data.</p>
+        </div>
+        <div class="principle">
+          <h4>Diagnostic</h4>
+          <p>Tests are sequenced so failures localize problems. Prerequisites run first; product tests follow.</p>
+        </div>
+        <div class="principle">
+          <h4>Loosely coupled</h4>
+          <p>The suite avoids tight coupling to product client libraries. API calls use plain HTTP.</p>
+        </div>
+        <div class="principle">
+          <h4>Extensible</h4>
+          <p>Add site-specific tests without modifying the VIP source tree using extension directories.</p>
+        </div>
       </div>
     </div>
   </section>
@@ -110,14 +112,23 @@ const categories = [
 
   <section class="section">
     <div class="container">
-      <h2 class="section-title">Cross-cutting test categories</h2>
-      <div class="category-grid">
+      <h2 class="section-title">What VIP validates</h2>
+      <p class="section-subtitle">
+        VIP tests Connect, Workbench, and Package Manager using pytest-bdd with Gherkin feature
+        files and Playwright for browser automation.
+      </p>
+
+      <div class="product-grid">
         {
-          categories.map((cat) => (
-            <div class="category-card">
-              <h4>{cat.name}</h4>
-              <p>{cat.description}</p>
-            </div>
+          products.map((product) => (
+            <a href={`${base}tests/#${product.testsId}`} class="product-card">
+              <div class="product-logo">
+                <img src={product.logo} width="120" height="24" alt={`Posit ${product.name}`} />
+              </div>
+              <h3 class="product-title">{product.name}</h3>
+              <p>{product.description}</p>
+              <code class="marker">vip verify --{product.flag} https://...</code>
+            </a>
           ))
         }
       </div>
@@ -126,24 +137,16 @@ const categories = [
 
   <section class="section section-alt">
     <div class="container">
-      <h2 class="section-title">Design principles</h2>
-      <div class="principles-grid">
-        <div class="principle">
-          <h4>Non-destructive</h4>
-          <p>Tests create, verify, and clean up their own content. They never modify existing customer data.</p>
-        </div>
-        <div class="principle">
-          <h4>Diagnostic</h4>
-          <p>Tests are sequenced so failures localize problems. Prerequisites run first; product tests follow.</p>
-        </div>
-        <div class="principle">
-          <h4>Loosely coupled</h4>
-          <p>The suite avoids tight coupling to product client libraries. API calls use plain HTTP.</p>
-        </div>
-        <div class="principle">
-          <h4>Extensible</h4>
-          <p>Add site-specific tests without modifying the VIP source tree using extension directories.</p>
-        </div>
+      <h2 class="section-title">Cross-cutting test categories</h2>
+      <div class="category-grid">
+        {
+          categories.map((cat) => (
+            <a href={`${base}tests/#${cat.testsId}`} class="category-card">
+              <h4>{cat.name}</h4>
+              <p>{cat.description}</p>
+            </a>
+          ))
+        }
       </div>
     </div>
   </section>
@@ -276,16 +279,21 @@ const categories = [
   }
 
   .product-card {
+    display: block;
     background: white;
     border: 1px solid var(--posit-border);
     border-radius: var(--radius);
     padding: 1.75rem;
+    text-decoration: none;
+    color: inherit;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
 
   .product-card:hover {
     border-color: var(--posit-link-hover);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+    text-decoration: none;
+    color: inherit;
   }
 
   .product-logo {
@@ -317,16 +325,21 @@ const categories = [
   }
 
   .category-card {
+    display: block;
     background: white;
     border: 1px solid var(--posit-border);
     border-radius: var(--radius);
     padding: 1.25rem;
+    text-decoration: none;
+    color: inherit;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
 
   .category-card:hover {
     border-color: var(--posit-link-hover);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+    text-decoration: none;
+    color: inherit;
   }
 
   .category-card h4 {
