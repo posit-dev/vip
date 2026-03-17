@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.9.2 (2026-03-17)
+
+### Bug Fixes
+
+- **website**: Fix copy buttons and reorder landing page
+  ([#88](https://github.com/posit-dev/vip/pull/88),
+  [`ad78fca`](https://github.com/posit-dev/vip/commit/ad78fca8bbdecb2871c3b2ced86834b073036f66))
+
+
 ## v0.9.1 (2026-03-16)
 
 ### Bug Fixes
