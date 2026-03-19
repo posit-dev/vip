@@ -11,6 +11,39 @@ Layer 3: Driver Port    →  what we need from the system (protocols/interfaces)
 Layer 4: Driver Adapter →  how we interact with the system (API calls, browser clicks)
 ```
 
+```mermaid
+graph TD
+    subgraph "Layer 1: Test"
+        F[".feature files<br/>(Gherkin scenarios)"]
+    end
+
+    subgraph "Layer 2: DSL"
+        S["Step definitions<br/>(given / when / then)"]
+        FX["Fixtures<br/>(conftest.py)"]
+        S --- FX
+    end
+
+    subgraph "Layer 3: Driver Port"
+        CC["ConnectClient"]
+        WC["WorkbenchClient"]
+        PC["PackageManagerClient"]
+    end
+
+    subgraph "Layer 4: Driver Adapter"
+        API["httpx<br/>(API calls)"]
+        UI["Playwright<br/>(browser)"]
+    end
+
+    F --> S
+    S --> CC
+    S --> WC
+    S --> PC
+    CC --> API
+    WC --> API
+    PC --> API
+    S --> UI
+```
+
 This separation is what makes acceptance tests maintainable. Remove any layer and the whole thing falls apart.
 
 ## Layer 1: The Test (`.feature` files)
