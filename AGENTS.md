@@ -195,7 +195,7 @@ The report lives in `report/` and reads `report/results.json` (written by pytest
 
 ## PR titles
 
-PR titles must use conventional commit format. CI enforces this via `amannn/action-semantic-pull-request@v6` in `.github/workflows/pr-title.yml`. Squash merges use the PR title as the commit message, so the title directly becomes the git history.
+PR titles must use conventional commit format. CI enforces this via `.github/workflows/pr-title.yml`. Squash merges use the PR title as the commit message, so the title directly becomes the git history.
 
 ### Format
 
@@ -235,7 +235,7 @@ PR titles must use conventional commit format. CI enforces this via `amannn/acti
 feat: add four-layer test architecture guide
 fix(plugin): handle missing config file gracefully
 docs: update AGENTS.md with PR title requirements
-ci: upgrade action-semantic-pull-request to v6
+ci: update PR title check workflow
 chore(deps): bump boto3 from 1.42.63 to 1.42.65
 refactor(connect)!: rename client constructor parameters
 ```
