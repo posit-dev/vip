@@ -51,10 +51,11 @@ Step definitions are where the fluent API lives. They translate Gherkin steps in
 @given("Connect is accessible at the configured URL")
 def connect_accessible(connect_client):
     """Guard step -- ensures the product is available."""
-    assert connect_client is not None
+    if connect_client is None:
+        pytest.skip("Connect is not configured")
 ```
 
-Given steps collect preconditions. They use **fixtures** (like `connect_client`, `vip_config`) to access configuration and verify the world is ready. When a precondition isn't met, they skip the test rather than fail.
+Given steps collect preconditions. They use **fixtures** (like `connect_client`, `vip_config`) to access configuration and verify the world is ready. When a precondition isn't met, they call `pytest.skip()` rather than fail -- this marks the test as skipped with a clear reason instead of producing a confusing assertion error.
 
 ### When -- performing the action
 
@@ -91,7 +92,7 @@ Driver ports define **what** the DSL needs from the system without saying **how*
 ```python
 # src/vip/clients/connect.py -- the port (interface)
 class ConnectClient:
-    """Thin httpx wrapper for the Connect API."""
+    """Client interface for interacting with the Connect API in tests."""
 
     def current_user(self) -> dict: ...
     def list_content(self) -> list[dict]: ...
@@ -99,7 +100,7 @@ class ConnectClient:
 ```
 
 Key rules for driver ports:
-- **All string inputs** for maximum flexibility (allows invalid values in negative tests)
+- **String identifiers and parameters** for maximum flexibility (allows invalid values in negative tests); non-string payloads like binary bundles are fine
 - **Return dicts**, not custom model objects
 - **No product SDK dependencies** -- use raw HTTP
 - **Minimal surface** -- add methods only when tests need them
@@ -115,6 +116,7 @@ This is where the same interface gets different implementations.
 ```python
 class ConnectClient:
     def __init__(self, base_url: str, *, api_key: str | None = None):
+        headers = {"Authorization": f"Key {api_key}"} if api_key else {}
         self._client = httpx.Client(base_url=base_url, headers=headers)
 
     def current_user(self) -> dict:

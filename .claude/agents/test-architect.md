@@ -39,7 +39,7 @@ Work through each layer top-down:
 - Check if `src/vip/clients/{connect,workbench,packagemanager}.py` already has the method
 - If not, add a new method to the appropriate client
 - Return dicts from JSON responses, not custom objects
-- Use string inputs for flexibility (supports negative test cases)
+- Use string inputs for identifiers and parameters (supports negative test cases); non-string payloads like binary bundles are fine
 - No product SDK dependencies -- raw httpx only
 
 ### 4. Driver Adapter (Layer 4)
@@ -63,7 +63,7 @@ When reviewing test code, verify:
 ## VIP-Specific Conventions
 
 - Tests must be non-destructive. Tag created content with `_vip_test` and clean up.
-- Use `pytest.skip()` in Given steps when preconditions aren't met (don't fail).
+- Use `pytest.skip("reason")` in Given steps when preconditions aren't met -- don't use assertions, which produce confusing failures instead of clean skips.
 - Fixtures are defined in `tests/conftest.py` (session-scoped) and available everywhere.
 - Available clients: `connect_client`, `workbench_client`, `pm_client` (all session-scoped, `None` if unconfigured).
 - Selftests in `selftests/` verify framework behavior; product tests in `tests/` verify deployments.
