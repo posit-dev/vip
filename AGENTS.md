@@ -107,6 +107,26 @@ Key rules:
 -   Tests must be non-destructive. Tag created content with `_vip_test` and clean it up in a final `then` step.
 -   Use version gating for version-specific features: `@pytest.mark.min_version(product="connect", version="2024.09.0")`
 
+## Four-layer test architecture
+
+VIP follows a four-layer testing architecture. Each layer has one job and only talks to the layer directly below:
+
+```
+Layer 1: Test           →  .feature files (Gherkin scenarios)
+Layer 2: DSL            →  step definitions + fixtures (pytest_bdd)
+Layer 3: Driver Port    →  client interfaces (src/vip/clients/)
+Layer 4: Driver Adapter →  httpx (API) or Playwright (UI)
+```
+
+When writing new tests, work top-down through each layer. See `docs/test-architecture.md` for the full guide and `/.claude/agents/test-architect.md` for the automated test design agent.
+
+Key principles:
+-   Feature files contain only business language -- no URLs, status codes, or selectors.
+-   Step definitions are thin; push logic down to the client layer.
+-   Client methods return dicts and use raw httpx (no product SDKs).
+-   Use `target_fixture` to pass state between steps, not module-level globals.
+-   Each layer protects you from a different kind of change (business rules, API changes, UI redesigns).
+
 ## Key source files
 
 | File | Purpose |
