@@ -201,6 +201,8 @@ Same business action, completely different implementation. The UI adapter uses P
 
 ## Why This Architecture Matters
 
+The four-layer model is based on Valentina Jemuović's [architecture behind acceptance tests](https://journal.optivem.com/p/the-architecture-behind-acceptance-tests).
+
 Each layer protects you from a different kind of change:
 
 - **Business rules change?** Update the `.feature` files. Step definitions and clients stay the same.
