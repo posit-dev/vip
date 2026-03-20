@@ -74,6 +74,20 @@ The test only knows **what** it's testing. It has no idea **how** the system wor
 
 VIP supports running the same scenario through different channels using product marker tags (`@connect`, `@workbench`, `@package_manager`). The same business scenario can be verified through both the API and the UI when step definitions support both paths.
 
+### Tagging rules
+
+Every feature file **must** have a product marker tag (`@connect`, `@workbench`, or `@package_manager`). The tag controls auto-skip: when a product is not configured, all scenarios with its tag are skipped automatically. Forgetting the tag breaks this mechanism and causes confusing failures.
+
+### Version gating
+
+Use the `min_version` marker for features that only exist in certain product versions:
+
+```python
+@pytest.mark.min_version(product="connect", version="2024.09.0")
+```
+
+This skips the test when the deployed version is older than the specified minimum, so the same test suite works across multiple product releases.
+
 ## Layer 2: The DSL (step definitions + fixtures)
 
 Step definitions are where the fluent API lives. They translate Gherkin steps into actions using fixtures and driver ports.
