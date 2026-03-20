@@ -39,9 +39,10 @@ graph TD
     S --> WC
     S --> PC
     CC --> API
+    CC --> UI
     WC --> API
+    WC --> UI
     PC --> API
-    S --> UI
 ```
 
 This separation is what makes acceptance tests maintainable. Remove any layer and the whole thing falls apart.
