@@ -20,7 +20,8 @@ graph TD
     subgraph "Layer 2: DSL"
         S["Step definitions<br/>(given / when / then)"]
         FX["Fixtures<br/>(conftest.py)"]
-        S --- FX
+        S
+        FX
     end
 
     subgraph "Layer 3: Driver Port"
