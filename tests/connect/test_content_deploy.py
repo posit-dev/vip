@@ -447,14 +447,9 @@ def content_renders_expected_output(connect_client, deploy_state):
     if not url:
         pytest.skip("Content URL not available — skipping output verification")
 
-    # Fetch content with API key auth (content may be behind OAuth2/SSO).
-    auth_headers = dict(connect_client._client.headers)
-
     if expected["type"] == "json":
         # Plumber: append the route path and verify JSON response.
-        resp = httpx.get(
-            url.rstrip("/") + "/", headers=auth_headers, follow_redirects=True, timeout=30
-        )
+        resp = connect_client.fetch_content(url.rstrip("/") + "/")
         assert resp.status_code < 400, f"Plumber API returned HTTP {resp.status_code}"
         try:
             body = resp.json()
@@ -469,7 +464,7 @@ def content_renders_expected_output(connect_client, deploy_state):
 
     else:
         # HTML content types: check that the page contains expected marker strings.
-        resp = httpx.get(url, headers=auth_headers, follow_redirects=True, timeout=30)
+        resp = connect_client.fetch_content(url)
         assert resp.status_code < 400, f"Content page returned HTTP {resp.status_code}"
         body_lower = resp.text.lower()
         for marker in expected["markers"]:
