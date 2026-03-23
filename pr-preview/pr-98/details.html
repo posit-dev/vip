@@ -146,7 +146,7 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="all-test-results" class="level1">
 <h1>All Test Results</h1>
-<div id="d7c54c39" class="cell" data-execution_count="1">
+<div id="0a83a0e1" class="cell" data-execution_count="1">
 <div class="cell-output cell-output-display">
 
 <style>
@@ -290,20 +290,92 @@ ul.task-list li input[type="checkbox"] {
 }
 </style>
 
-<div class="vip-cat-section"><h2 class="vip-cat-header anchored" data-anchor-id="all-test-results">Connect</h2><p class="vip-cat-counts">1 tests — 1 passed</p>
+<div class="vip-cat-section"><h2 class="vip-cat-header anchored" data-anchor-id="all-test-results">Connect</h2><p class="vip-cat-counts">2 tests — 1 passed, 1 failed</p>
 <div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">API key authentication works</span></div><div class="vip-test-meta">tests/connect/test_auth.py::test_connect_login_api · 0.27s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>And a valid API key is configured</li><li>When I request the current user via the API</li><li>Then the API returns user information</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">Connect system checks can be run and the report downloaded</span></div><div class="vip-test-meta">tests/connect/test_system_checks.py::test_connect_system_checks · 0.26s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>And a valid API key is configured</li><li>When I trigger a new system check run via the Connect API</li><li>Then the system check report is returned</li><li>And I can download the system check report artifact</li></ul></details><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-detail-error-0" title="Copy to clipboard">Copy</button><pre id="vip-detail-error-0" class="vip-fail-error">fixturefunc = &lt;function trigger_system_check at 0x7f01c4a0cea0&gt;
+request = &lt;FixtureRequest for &lt;Function test_connect_system_checks&gt;&gt;
+kwargs = {'connect_client': &lt;vip.clients.connect.ConnectClient object at 0x7f01c4a6bb60&gt;}
+
+    def call_fixture_func(
+        fixturefunc: _FixtureFunc[FixtureValue], request: FixtureRequest, kwargs
+    ) -&gt; FixtureValue:
+        if inspect.isgeneratorfunction(fixturefunc):
+            fixturefunc = cast(Callable[..., Generator[FixtureValue]], fixturefunc)
+            generator = fixturefunc(**kwargs)
+            try:
+                fixture_result = next(generator)
+            except StopIteration:
+                raise ValueError(f"{request.fixturename} did not yield a value") from None
+            finalizer = functools.partial(_teardown_yield_fixture, fixturefunc, generator)
+            request.addfinalizer(finalizer)
+        else:
+            fixturefunc = cast(Callable[..., FixtureValue], fixturefunc)
+&gt;           fixture_result = fixturefunc(**kwargs)
+                             ^^^^^^^^^^^^^^^^^^^^^
+
+.venv/lib/python3.13/site-packages/_pytest/fixtures.py:915: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/connect/test_system_checks.py:32: in trigger_system_check
+    return connect_client.run_server_check()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/vip/clients/connect.py:251: in run_server_check
+    resp.raise_for_status()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;Response [404 Not Found]&gt;
+
+    def raise_for_status(self) -&gt; Response:
+        """
+        Raise the `HTTPStatusError` if one occurred.
+        """
+        request = self._request
+        if request is None:
+            raise RuntimeError(
+                "Cannot call `raise_for_status` as the request "
+                "instance has not been set on this response."
+            )
+    
+        if self.is_success:
+            return self
+    
+        if self.has_redirect_location:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "Redirect location: '{0.headers[location]}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+        else:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+    
+        status_class = self.status_code // 100
+        error_types = {
+            1: "Informational response",
+            3: "Redirect response",
+            4: "Client error",
+            5: "Server error",
+        }
+        error_type = error_types.get(status_class, "Invalid status code")
+        message = message.format(self, error_type=error_type)
+&gt;       raise HTTPStatusError(message, request=request, response=self)
+E       httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:3939/__api__/v1/server_checks'
+E       For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+.venv/lib/python3.13/site-packages/httpx/_models.py:829: HTTPStatusError</pre></div></details></div>
 </div>
 <div class="vip-cat-section"><h2 class="vip-cat-header anchored">Package Manager</h2><p class="vip-cat-counts">4 tests — 2 passed, 2 skipped</p>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">CRAN mirror is accessible</span></div><div class="vip-test-meta">tests/package_manager/test_repos.py::test_cran_mirror · 0.58s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the CRAN repository for the "Matrix" package</li><li>Then the package is found in the repository</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#d1d5db"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">PyPI mirror is accessible</span></div><div class="vip-test-meta">tests/package_manager/test_repos.py::test_pypi_mirror · 0.03s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the PyPI repository for the "requests" package</li><li>Then the package is found in the repository</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#d1d5db"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">Bioconductor mirror is accessible</span></div><div class="vip-test-meta">tests/package_manager/test_repos.py::test_bioconductor_mirror · 0.03s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the Bioconductor repository for the "BiocGenerics" package</li><li>Then the package is found in the repository</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">At least one repository is configured</span></div><div class="vip-test-meta">tests/package_manager/test_repos.py::test_repo_exists · 0.03s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I list all repositories</li><li>Then at least one repository exists</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">CRAN mirror is accessible</span></div><div class="vip-test-meta">tests/package_manager/test_repos.py::test_cran_mirror · 0.57s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the CRAN repository for the "Matrix" package</li><li>Then the package is found in the repository</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#d1d5db"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">PyPI mirror is accessible</span></div><div class="vip-test-meta">tests/package_manager/test_repos.py::test_pypi_mirror · 0.02s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the PyPI repository for the "requests" package</li><li>Then the package is found in the repository</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#d1d5db"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">Bioconductor mirror is accessible</span></div><div class="vip-test-meta">tests/package_manager/test_repos.py::test_bioconductor_mirror · 0.02s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the Bioconductor repository for the "BiocGenerics" package</li><li>Then the package is found in the repository</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">At least one repository is configured</span></div><div class="vip-test-meta">tests/package_manager/test_repos.py::test_repo_exists · 0.02s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I list all repositories</li><li>Then at least one repository exists</li></ul></details></div>
 </div>
 <div class="vip-cat-section"><h2 class="vip-cat-header anchored">Prerequisites</h2><p class="vip-cat-counts">4 tests — 2 passed, 1 failed, 1 skipped</p>
 <div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">&lt;product&gt; server is reachable</span></div><div class="vip-test-meta">tests/prerequisites/test_components.py::test_product_server_is_reachable[Connect] · 0.08s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
 <div class="vip-test-card" style="border-left-color:#d1d5db"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">&lt;product&gt; server is reachable</span></div><div class="vip-test-meta">tests/prerequisites/test_components.py::test_product_server_is_reachable[Workbench] · 0.00s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">&lt;product&gt; server is reachable</span></div><div class="vip-test-meta">tests/prerequisites/test_components.py::test_product_server_is_reachable[Package Manager] · 0.04s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">Workbench server is reachable but not configured</span></div><div class="vip-test-meta">tests/prerequisites/test_expected_failure.py::test_workbench_expected_failure · 0.00s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Workbench is expected to be configured</li><li>When I check the Workbench configuration</li><li>Then Workbench should be reachable</li></ul></details><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-detail-error-0" title="Copy to clipboard">Copy</button><pre id="vip-detail-error-0" class="vip-fail-error">fixturefunc = &lt;function workbench_reachable at 0x7f08388f3600&gt;
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">&lt;product&gt; server is reachable</span></div><div class="vip-test-meta">tests/prerequisites/test_components.py::test_product_server_is_reachable[Package Manager] · 0.02s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">Workbench server is reachable but not configured</span></div><div class="vip-test-meta">tests/prerequisites/test_expected_failure.py::test_workbench_expected_failure · 0.00s</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Workbench is expected to be configured</li><li>When I check the Workbench configuration</li><li>Then Workbench should be reachable</li></ul></details><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-detail-error-1" title="Copy to clipboard">Copy</button><pre id="vip-detail-error-1" class="vip-fail-error">fixturefunc = &lt;function workbench_reachable at 0x7f01c4ac76a0&gt;
 request = &lt;FixtureRequest for &lt;Function test_workbench_expected_failure&gt;&gt;
 kwargs = {'wb_configured': False}
 
