@@ -1,6 +1,44 @@
 # CHANGELOG
 
 
+## v0.10.0 (2026-03-23)
+
+### Chores
+
+- **deps**: Bump boto3 from 1.42.63 to 1.42.65 in the python-dependencies group
+  ([#89](https://github.com/posit-dev/vip/pull/89),
+  [`1079c09`](https://github.com/posit-dev/vip/commit/1079c0932eb3ba639b14775cbac7299d6527f678))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump the actions-dependencies group with 7 updates
+  ([#90](https://github.com/posit-dev/vip/pull/90),
+  [`1bd5984`](https://github.com/posit-dev/vip/commit/1bd5984c123148413d5f78578e6477fa90c94da9))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Continuous Integration
+
+- Publish wheels to PyPI on GitHub releases ([#92](https://github.com/posit-dev/vip/pull/92),
+  [`ac459a9`](https://github.com/posit-dev/vip/commit/ac459a92d9dc5464ee8488e2d7338a26b9a3f1a7))
+
+### Documentation
+
+- **website**: Update hero banner to say Posit Team
+  ([#93](https://github.com/posit-dev/vip/pull/93),
+  [`f6734fb`](https://github.com/posit-dev/vip/commit/f6734fbd350e96eb42cb2ad5af929881fb138973))
+
+### Features
+
+- Add four-layer test architecture guide and test-architect agent
+  ([#95](https://github.com/posit-dev/vip/pull/95),
+  [`28fcb53`](https://github.com/posit-dev/vip/commit/28fcb5342a668cbe5540087f61a66896f774ce9e))
+
+
 ## v0.9.2 (2026-03-17)
 
 ### Bug Fixes
