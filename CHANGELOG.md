@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.11.0 (2026-03-23)
+
+### Features
+
+- Add SessionStart hook to auto-install gh CLI ([#96](https://github.com/posit-dev/vip/pull/96),
+  [`016fe67`](https://github.com/posit-dev/vip/commit/016fe67ac2fa239977d6fd9d27e6040a74ff0af7))
+
+
 ## v0.10.0 (2026-03-23)
 
 ### Chores
