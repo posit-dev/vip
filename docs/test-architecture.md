@@ -1,6 +1,6 @@
 # Four-Layer Test Architecture for VIP
 
-This document describes VIP's four-layer testing architecture. Each layer has one job and only talks to the layer directly below it.
+This document describes how VIP structures its tests into four layers. The key rule is that each layer only communicates with the one directly below it -- a `.feature` file doesn't call httpx, and the httpx client has no idea what Gherkin is.
 
 ## The Four Layers
 
@@ -46,7 +46,7 @@ graph TD
     PC --> API
 ```
 
-This separation is what makes acceptance tests maintainable. Remove any layer and the whole thing falls apart.
+Skip a layer and you end up with feature files full of HTTP status codes, or step definitions that break every time an endpoint changes.
 
 ## Layer 1: The Test (`.feature` files)
 
@@ -70,7 +70,7 @@ What's **not** here:
 - No database queries
 - No setup or teardown logic
 
-The test only knows **what** it's testing. It has no idea **how** the system works. That's the point.
+The scenario describes what the user experiences. How the system delivers that is entirely somebody else's problem.
 
 ### Channel annotations
 
@@ -203,16 +203,16 @@ Same business action, completely different implementation. The UI adapter uses P
 
 ## Why This Architecture Matters
 
-The four-layer model is based on Valentina Jemuović's [architecture behind acceptance tests](https://journal.optivem.com/p/the-architecture-behind-acceptance-tests).
+VIP's layer structure is an application of Valentina Jemuović's [architecture behind acceptance tests](https://journal.optivem.com/p/the-architecture-behind-acceptance-tests) to how we test Posit Team deployments.
 
-Each layer protects you from a different kind of change:
+In practice, it means changes stay local:
 
 - **Business rules change?** Update the `.feature` files. Step definitions and clients stay the same.
 - **API endpoint changes?** Update the API client. Features, steps, and UI tests don't move.
 - **UI redesign?** Update the Playwright steps. Features, API steps, and clients don't move.
 - **New feature?** Add new `.feature` + `.py` pairs and extend clients. Everything existing stays untouched.
 
-Your tests -- the things that express what the system should do -- never change unless the requirements change.
+The `.feature` files only need to change when the requirements change.
 
 ## Adding a New Test: Layer-by-Layer Checklist
 

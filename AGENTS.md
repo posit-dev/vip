@@ -109,7 +109,7 @@ Key rules:
 
 ## Four-layer test architecture
 
-VIP follows a four-layer testing architecture. Each layer has one job and only talks to the layer directly below:
+VIP structures its tests into four layers, where each layer only communicates with the one directly below it:
 
 ```
 Layer 1: Test           →  .feature files (Gherkin scenarios)
@@ -125,7 +125,7 @@ Key principles:
 -   Step definitions are thin; push logic down to the client layer.
 -   Client methods return dicts and use raw httpx (no product SDKs).
 -   Use `target_fixture` to pass state between steps, not module-level globals.
--   Each layer protects you from a different kind of change (business rules, API changes, UI redesigns).
+-   A product API change touches only the client. A UI redesign touches only the Playwright steps. Feature files only change when requirements change.
 
 ## Key source files
 
