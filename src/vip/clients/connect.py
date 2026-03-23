@@ -297,6 +297,26 @@ class ConnectClient(BaseClient):
             )
         return resp
 
+    # -- System checks ------------------------------------------------------
+
+    def list_server_checks(self) -> list[dict[str, Any]]:
+        """Return a list of server check reports."""
+        resp = self._client.get("/v1/server_checks")
+        resp.raise_for_status()
+        return resp.json().get("results", [])
+
+    def run_server_check(self) -> dict[str, Any]:
+        """Trigger a new server check run and return the report object."""
+        resp = self._client.post("/v1/server_checks")
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_server_check_report(self, check_id: str | int) -> bytes:
+        """Download the server check report as bytes."""
+        resp = self._client.get(f"/v1/server_checks/{check_id}/download")
+        resp.raise_for_status()
+        return resp.content
+
     # -- Email --------------------------------------------------------------
 
     def send_test_email(self, to: str) -> dict[str, Any]:
