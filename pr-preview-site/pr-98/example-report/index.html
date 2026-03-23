@@ -124,6 +124,7 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#summary" id="toc-summary" class="nav-link" data-scroll-target="#summary">Summary</a></li>
   <li><a href="#results-by-category" id="toc-results-by-category" class="nav-link" data-scroll-target="#results-by-category">Results by Category</a></li>
   <li><a href="#failed-tests" id="toc-failed-tests" class="nav-link" data-scroll-target="#failed-tests">Failed Tests</a></li>
+  <li><a href="#connect-system-checks" id="toc-connect-system-checks" class="nav-link" data-scroll-target="#connect-system-checks">Connect System Checks</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -152,10 +153,10 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="verified-installation-of-posit" class="level1">
 <h1>Verified Installation of Posit</h1>
-<p><strong>Deployment:</strong> CI Connect 2026.03.0 + PM 2024.08.0-6 <strong>Generated:</strong> 2026-03-23 16:04:42 UTC</p>
+<p><strong>Deployment:</strong> CI Connect 2026.03.0 + PM 2024.08.0-6 <strong>Generated:</strong> 2026-03-23 17:03:34 UTC</p>
 <section id="products-under-test" class="level2">
 <h2 class="anchored" data-anchor-id="products-under-test">Products Under Test</h2>
-<div id="6ef5a754" class="cell" data-execution_count="2">
+<div id="6176dc57" class="cell" data-execution_count="2">
 <div class="cell-output cell-output-display cell-output-markdown">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -183,7 +184,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="summary" class="level2">
 <h2 class="anchored" data-anchor-id="summary">Summary</h2>
-<div id="fd572da5" class="cell" data-execution_count="3">
+<div id="7d0cb1b2" class="cell" data-execution_count="3">
 <div class="cell-output cell-output-display cell-output-markdown">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -195,7 +196,7 @@ ul.task-list li input[type="checkbox"] {
 <tbody>
 <tr class="odd">
 <td><strong>Total</strong></td>
-<td>9</td>
+<td>10</td>
 </tr>
 <tr class="even">
 <td><strong>Passed</strong></td>
@@ -203,7 +204,7 @@ ul.task-list li input[type="checkbox"] {
 </tr>
 <tr class="odd">
 <td><strong>Failed</strong></td>
-<td>1</td>
+<td>2</td>
 </tr>
 <tr class="even">
 <td><strong>Skipped</strong></td>
@@ -220,7 +221,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="results-by-category" class="level2">
 <h2 class="anchored" data-anchor-id="results-by-category">Results by Category</h2>
-<div id="74f5032b" class="cell" data-execution_count="4">
+<div id="85c733de" class="cell" data-execution_count="4">
 <div class="cell-output cell-output-display">
 
 <style>
@@ -298,8 +299,9 @@ ul.task-list li input[type="checkbox"] {
 }
 </style>
 
-<div class="vip-cat-section"><h3 class="vip-cat-header anchored">Connect</h3><p class="vip-cat-counts">1 tests — 1 passed</p>
+<div class="vip-cat-section"><h3 class="vip-cat-header anchored">Connect</h3><p class="vip-cat-counts">2 tests — 1 passed, 1 failed</p>
 <div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">API key authentication works</span></div><div class="vip-test-nodeid">tests/connect/test_auth.py::test_connect_login_api</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>And a valid API key is configured</li><li>When I request the current user via the API</li><li>Then the API returns user information</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">Connect system checks can be run and the report downloaded</span></div><div class="vip-test-nodeid">tests/connect/test_system_checks.py::test_connect_system_checks</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>And a valid API key is configured</li><li>When I trigger a new system check run via the Connect API</li><li>Then the system check report is returned</li><li>And I can download the system check report artifact</li></ul></details></div>
 </div>
 <div class="vip-cat-section"><h3 class="vip-cat-header anchored">Package Manager</h3><p class="vip-cat-counts">4 tests — 2 passed, 2 skipped</p>
 <div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">CRAN mirror is accessible</span></div><div class="vip-test-nodeid">tests/package_manager/test_repos.py::test_cran_mirror</div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the CRAN repository for the "Matrix" package</li><li>Then the package is found in the repository</li></ul></details></div>
@@ -318,7 +320,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="failed-tests" class="level2">
 <h2 class="anchored" data-anchor-id="failed-tests">Failed Tests</h2>
-<div id="3af40a27" class="cell" data-execution_count="5">
+<div id="cd8d075d" class="cell" data-execution_count="5">
 <div class="cell-output cell-output-display">
 
 <style>
@@ -419,7 +421,7 @@ ul.task-list li input[type="checkbox"] {
 </style>
 <div class="vip-fail-card"><h3 class="vip-fail-title anchored"><code>tests/prerequisites/test_expected_failure.py::test_workbench_expected_failure</code></h3><p class="vip-fail-scenario"><strong>What was tested:</strong> Workbench server is reachable but not configured — As a VIP developer
 I want to see what a failed test looks like in the report
-So that I can verify the report renders failures correctly</p><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-0" title="Copy to clipboard">Copy</button><pre id="vip-error-0" class="vip-fail-error">fixturefunc = &lt;function workbench_reachable at 0x7f91482f3600&gt;
+So that I can verify the report renders failures correctly</p><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-0" title="Copy to clipboard">Copy</button><pre id="vip-error-0" class="vip-fail-error">fixturefunc = &lt;function workbench_reachable at 0x7f393bff36a0&gt;
 request = &lt;FixtureRequest for &lt;Function test_workbench_expected_failure&gt;&gt;
 kwargs = {'wb_configured': False}
 
@@ -456,6 +458,80 @@ E       AssertionError: Workbench is not configured. This is an expected failure
 E       assert False
 
 tests/prerequisites/test_expected_failure.py:42: AssertionError</pre></div></details><div class="vip-fail-hints"><strong>Likely causes:</strong><ul><li>Workbench is not configured in vip.toml (expected in CI preview)</li><li>This test intentionally fails to demonstrate report failure rendering</li></ul><strong>Suggested next steps:</strong><ol><li>No action needed — this failure is expected in the CI report preview</li><li>To resolve, add a [workbench] section with a valid URL to vip.toml</li></ol><p><strong>Documentation:</strong> <a href="https://github.com/posit-dev/vip/issues/73" target="_blank" rel="noopener">https://github.com/posit-dev/vip/issues/73</a></p></div></div>
+<div class="vip-fail-card"><h3 class="vip-fail-title anchored"><code>tests/connect/test_system_checks.py::test_connect_system_checks</code></h3><p class="vip-fail-scenario"><strong>What was tested:</strong> Connect system checks can be run and the report downloaded — As a Posit Team administrator
+I want to run the Connect system diagnostics
+So that I can verify the Connect installation is healthy</p><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-1" title="Copy to clipboard">Copy</button><pre id="vip-error-1" class="vip-fail-error">fixturefunc = &lt;function trigger_system_check at 0x7f393bf80ea0&gt;
+request = &lt;FixtureRequest for &lt;Function test_connect_system_checks&gt;&gt;
+kwargs = {'connect_client': &lt;vip.clients.connect.ConnectClient object at 0x7f393bfbfb60&gt;}
+
+    def call_fixture_func(
+        fixturefunc: _FixtureFunc[FixtureValue], request: FixtureRequest, kwargs
+    ) -&gt; FixtureValue:
+        if inspect.isgeneratorfunction(fixturefunc):
+            fixturefunc = cast(Callable[..., Generator[FixtureValue]], fixturefunc)
+            generator = fixturefunc(**kwargs)
+            try:
+                fixture_result = next(generator)
+            except StopIteration:
+                raise ValueError(f"{request.fixturename} did not yield a value") from None
+            finalizer = functools.partial(_teardown_yield_fixture, fixturefunc, generator)
+            request.addfinalizer(finalizer)
+        else:
+            fixturefunc = cast(Callable[..., FixtureValue], fixturefunc)
+&gt;           fixture_result = fixturefunc(**kwargs)
+                             ^^^^^^^^^^^^^^^^^^^^^
+
+.venv/lib/python3.13/site-packages/_pytest/fixtures.py:915: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/connect/test_system_checks.py:32: in trigger_system_check
+    return connect_client.run_server_check()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/vip/clients/connect.py:251: in run_server_check
+    resp.raise_for_status()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;Response [404 Not Found]&gt;
+
+    def raise_for_status(self) -&gt; Response:
+        """
+        Raise the `HTTPStatusError` if one occurred.
+        """
+        request = self._request
+        if request is None:
+            raise RuntimeError(
+                "Cannot call `raise_for_status` as the request "
+                "instance has not been set on this response."
+            )
+    
+        if self.is_success:
+            return self
+    
+        if self.has_redirect_location:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "Redirect location: '{0.headers[location]}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+        else:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+    
+        status_class = self.status_code // 100
+        error_types = {
+            1: "Informational response",
+            3: "Redirect response",
+            4: "Client error",
+            5: "Server error",
+        }
+        error_type = error_types.get(status_class, "Invalid status code")
+        message = message.format(self, error_type=error_type)
+&gt;       raise HTTPStatusError(message, request=request, response=self)
+E       httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:3939/__api__/v1/server_checks'
+E       For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+.venv/lib/python3.13/site-packages/httpx/_models.py:829: HTTPStatusError</pre></div></details></div>
 <script>
 document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
@@ -470,9 +546,17 @@ document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
 </script>
 </div>
 </div>
-<div id="6d2590e3" class="cell" data-execution_count="6">
+<div id="479ace1f" class="cell" data-execution_count="6">
 <div class="cell-output cell-output-display cell-output-markdown">
 <p><em><code>failures.json</code> is written by <code>pytest</code> alongside <code>results.json</code>.</em></p>
+</div>
+</div>
+</section>
+<section id="connect-system-checks" class="level2">
+<h2 class="anchored" data-anchor-id="connect-system-checks">Connect System Checks</h2>
+<div id="7be64e7c" class="cell" data-execution_count="7">
+<div class="cell-output cell-output-display cell-output-markdown">
+<p><em>No Connect system checks report found. Run <code>tests/connect/test_system_checks.py</code> against a configured Connect instance.</em></p>
 </div>
 </div>
 
