@@ -66,3 +66,13 @@ Feature: Connect content deployment
     Then the content is accessible via HTTP
     And the content renders expected output
     And I clean up the test content
+
+  Scenario: Deploy and execute a git-backed Quarto document
+    Given Connect is accessible at the configured URL
+    When I create a VIP test content item named "vip-gitbacked-test"
+    And I link the content item to a public test git repository
+    And I trigger a git-backed deployment
+    And I wait for the deployment to complete
+    Then the content is accessible via HTTP
+    And the content renders expected output
+    And I clean up the test content

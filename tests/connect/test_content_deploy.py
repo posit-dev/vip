@@ -16,6 +16,10 @@ from pytest_bdd import scenario, then, when
 
 from tests.connect.conftest import _make_tar_gz
 
+_GIT_REPO_URL = "https://github.com/posit-dev/connect-extensions"
+_GIT_BRANCH = "main"
+_GIT_DIRECTORY = "extensions/quarto-document"
+
 
 @scenario("test_content_deploy.feature", "Deploy and execute a Quarto document")
 def test_deploy_quarto():
@@ -49,6 +53,11 @@ def test_deploy_jupyter():
 
 @scenario("test_content_deploy.feature", "Deploy and execute a FastAPI application")
 def test_deploy_fastapi():
+    pass
+
+
+@scenario("test_content_deploy.feature", "Deploy and execute a git-backed Quarto document")
+def test_deploy_gitbacked():
     pass
 
 
@@ -281,6 +290,7 @@ _CONTENT_NAMES = [
     "vip-rmarkdown-test",
     "vip-jupyter-test",
     "vip-fastapi-test",
+    "vip-gitbacked-test",
 ]
 
 
@@ -291,6 +301,7 @@ _CONTENT_NAMES = [
 @when('I create a VIP test content item named "vip-rmarkdown-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-jupyter-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-fastapi-test"', target_fixture="deploy_state")
+@when('I create a VIP test content item named "vip-gitbacked-test"', target_fixture="deploy_state")
 def create_content(connect_client, request):
     # Extract content name by matching the content type keyword (e.g., "plumber")
     # from the bundle name against the test function name (e.g., "test_deploy_plumber").
@@ -322,6 +333,29 @@ def upload_and_deploy(connect_client, deploy_state):
     bundle = connect_client.upload_bundle(deploy_state["guid"], archive)
     deploy_state["bundle_id"] = bundle["id"]
     result = connect_client.deploy_bundle(deploy_state["guid"], bundle["id"])
+    deploy_state["task_id"] = result["task_id"]
+
+
+@when("I link the content item to a public test git repository")
+def link_git_repository(connect_client, deploy_state):
+    quarto_versions = connect_client.quarto_versions()
+    if not quarto_versions:
+        pytest.skip("No Quarto on Connect — cannot deploy git-backed Quarto document")
+    # Check that the remote repository is reachable before attempting to link.
+    try:
+        resp = httpx.head(_GIT_REPO_URL, follow_redirects=True, timeout=10)
+        if resp.status_code >= 400:
+            pytest.skip(f"Git repository not reachable (HTTP {resp.status_code}): {_GIT_REPO_URL}")
+    except httpx.TransportError as exc:
+        pytest.skip(f"Git repository not reachable: {exc}")
+    connect_client.set_repository(
+        deploy_state["guid"], _GIT_REPO_URL, branch=_GIT_BRANCH, directory=_GIT_DIRECTORY
+    )
+
+
+@when("I trigger a git-backed deployment")
+def trigger_git_deploy(connect_client, deploy_state):
+    result = connect_client.deploy_from_repository(deploy_state["guid"])
     deploy_state["task_id"] = result["task_id"]
 
 
@@ -393,6 +427,11 @@ _EXPECTED_OUTPUT: dict[str, dict] = {
         "key": "message",
         "value": "VIP fastapi OK",
     },
+    # posit-dev/connect-extensions quarto-document renders an HTML page.
+    "vip-gitbacked-test": {
+        "type": "html",
+        "markers": ["Quarto Document", "Penguins"],
+    },
 }
 
 
@@ -408,9 +447,14 @@ def content_renders_expected_output(connect_client, deploy_state):
     if not url:
         pytest.skip("Content URL not available — skipping output verification")
 
+    # Fetch content with API key auth (content may be behind OAuth2/SSO).
+    auth_headers = dict(connect_client._client.headers)
+
     if expected["type"] == "json":
         # Plumber: append the route path and verify JSON response.
-        resp = httpx.get(url.rstrip("/") + "/", follow_redirects=True, timeout=30)
+        resp = httpx.get(
+            url.rstrip("/") + "/", headers=auth_headers, follow_redirects=True, timeout=30
+        )
         assert resp.status_code < 400, f"Plumber API returned HTTP {resp.status_code}"
         try:
             body = resp.json()
@@ -425,7 +469,7 @@ def content_renders_expected_output(connect_client, deploy_state):
 
     else:
         # HTML content types: check that the page contains expected marker strings.
-        resp = httpx.get(url, follow_redirects=True, timeout=30)
+        resp = httpx.get(url, headers=auth_headers, follow_redirects=True, timeout=30)
         assert resp.status_code < 400, f"Content page returned HTTP {resp.status_code}"
         body_lower = resp.text.lower()
         for marker in expected["markers"]:

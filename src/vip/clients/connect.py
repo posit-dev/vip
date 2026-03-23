@@ -237,6 +237,32 @@ class ConnectClient(BaseClient):
             return [i.get("version", i.get("path", "")) for i in installations]
         return []
 
+    # -- Git-backed publishing ----------------------------------------------
+
+    def set_repository(
+        self,
+        guid: str,
+        repo_url: str,
+        branch: str = "main",
+        directory: str = ".",
+    ) -> dict[str, Any]:
+        """Link a content item to a git repository (PUT creates, PATCH updates)."""
+        payload: dict[str, Any] = {
+            "repository": repo_url,
+            "branch": branch,
+            "directory": directory,
+            "polling": False,
+        }
+        resp = self._client.put(f"/v1/content/{guid}/repository", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    def deploy_from_repository(self, guid: str) -> dict[str, Any]:
+        """Trigger a deployment from the linked git repository."""
+        resp = self._client.post(f"/v1/content/{guid}/deploy", json={})
+        resp.raise_for_status()
+        return resp.json()
+
     # -- Email --------------------------------------------------------------
 
     def send_test_email(self, to: str) -> dict[str, Any]:
