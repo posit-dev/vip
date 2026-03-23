@@ -451,3 +451,26 @@ document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
 if failures:
     display(Markdown(f"_`failures.json` is written by `pytest` alongside `results.json`._"))
 ```
+
+## Connect System Checks
+
+```{python}
+#| echo: false
+
+checks_path = Path("connect_system_checks.html")
+if not checks_path.exists():
+    display(Markdown(
+        "_No Connect system checks report found. "
+        "Run `tests/connect/test_system_checks.py` against a configured Connect instance._"
+    ))
+else:
+    content = checks_path.read_text(encoding="utf-8", errors="replace")
+    # Escape double quotes for use in the srcdoc attribute
+    srcdoc = content.replace("&", "&amp;").replace('"', "&quot;")
+    display(HTML(
+        '<iframe srcdoc="' + srcdoc + '" '
+        'style="width:100%;height:700px;border:1px solid #e5e7eb;border-radius:6px;" '
+        'sandbox="allow-same-origin allow-scripts">'
+        "</iframe>"
+    ))
+```

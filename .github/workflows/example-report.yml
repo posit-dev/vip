@@ -132,8 +132,9 @@ jobs:
             tests/prerequisites/test_components.py \
             tests/prerequisites/test_expected_failure.py \
             tests/connect/test_auth.py \
+            tests/connect/test_system_checks.py \
             tests/package_manager/test_repos.py \
-            -v -k "reachable or api or mirror or repo_exists or expected_failure" \
+            -v -k "reachable or api or mirror or repo_exists or expected_failure or system_checks" \
             --vip-config=vip.toml \
           || true
 
