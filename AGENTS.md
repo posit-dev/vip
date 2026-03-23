@@ -107,6 +107,26 @@ Key rules:
 -   Tests must be non-destructive. Tag created content with `_vip_test` and clean it up in a final `then` step.
 -   Use version gating for version-specific features: `@pytest.mark.min_version(product="connect", version="2024.09.0")`
 
+## Four-layer test architecture
+
+VIP structures its tests into four layers, where each layer only communicates with the one directly below it:
+
+```
+Layer 1: Test           →  .feature files (Gherkin scenarios)
+Layer 2: DSL            →  step definitions + fixtures (pytest_bdd)
+Layer 3: Driver Port    →  client interfaces (src/vip/clients/)
+Layer 4: Driver Adapter →  httpx (API) or Playwright (UI)
+```
+
+When writing new tests, work top-down through each layer. See `docs/test-architecture.md` for the full guide and `/.claude/agents/test-architect.md` for the automated test design agent.
+
+Key principles:
+-   Feature files contain only business language -- no URLs, status codes, or selectors.
+-   Step definitions are thin; push logic down to the client layer.
+-   Client methods return dicts and use raw httpx (no product SDKs).
+-   Use `target_fixture` to pass state between steps, not module-level globals.
+-   A product API change touches only the client. A UI redesign touches only the Playwright steps. Feature files only change when requirements change.
+
 ## Key source files
 
 | File | Purpose |
@@ -175,14 +195,57 @@ The report lives in `report/` and reads `report/results.json` (written by pytest
 
 ## PR titles
 
-PR titles must use conventional commit format. CI enforces this via `amannn/action-semantic-pull-request`. Format:
+PR titles must use conventional commit format. CI enforces this via `.github/workflows/pr-title.yml`. Squash merges use the PR title as the commit message, so the title directly becomes the git history.
 
-```         
+### Format
+
+```
 <type>: <description>
 <type>(scope): <description>
 ```
 
-Valid types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`. Scope is optional. A `!` after the type or scope marks a breaking change (e.g. `feat!: ...`).
+### Valid types
+
+| Type | Use when |
+|------------|----------------------------------------------|
+| `feat` | Adding a wholly new feature or capability |
+| `fix` | Fixing a bug |
+| `docs` | Documentation-only changes |
+| `style` | Formatting, whitespace, no code logic changes |
+| `refactor` | Code restructuring without behavior changes |
+| `perf` | Performance improvements |
+| `test` | Adding or updating tests |
+| `build` | Build system or dependency changes |
+| `ci` | CI workflow or configuration changes |
+| `chore` | Maintenance tasks (releases, deps, tooling) |
+| `revert` | Reverting a previous commit |
+
+### Rules
+
+-   Scope is optional. Use it to narrow the area of change (e.g. `fix(config): ...`, `feat(connect): ...`).
+-   A `!` after the type or scope marks a breaking change (e.g. `feat!: ...`, `fix(config)!: ...`).
+-   The description (subject) must not be empty.
+-   Do not capitalize the first letter of the description (e.g. `feat: add auth` not `feat: Add auth`).
+-   Do not end the description with a period.
+-   Keep the title under 70 characters.
+
+### Examples
+
+```
+feat: add four-layer test architecture guide
+fix(plugin): handle missing config file gracefully
+docs: update AGENTS.md with PR title requirements
+ci: update PR title check workflow
+chore(deps): bump boto3 from 1.42.63 to 1.42.65
+refactor(connect)!: rename client constructor parameters
+```
+
+### Common mistakes
+
+-   Using an invalid type (e.g. `update`, `change`, `add` — use `feat` or `fix` instead).
+-   Capitalizing the description (e.g. `feat: Add feature` — use lowercase `feat: add feature`).
+-   Missing the colon and space after the type (e.g. `feat add feature` — must be `feat: add feature`).
+-   Using a PR title that is not conventional when the branch will be squash-merged.
 
 ## Showboat demos
 
