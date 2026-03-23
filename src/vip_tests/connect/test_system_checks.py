@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pytest_bdd import scenario, then, when
 
 
@@ -32,7 +34,14 @@ def check_report_returned(server_check):
 
 
 @then("I can download the system check report artifact")
-def download_report_artifact(connect_client, server_check):
+def download_report_artifact(connect_client, server_check, pytestconfig):
     check_id = server_check["id"]
     report_bytes = connect_client.get_server_check_report(check_id)
     assert report_bytes, f"System check report for id={check_id!r} was empty"
+
+    # Persist alongside results.json so the Quarto report can embed it.
+    vip_report = pytestconfig.getoption("--vip-report")
+    if vip_report:
+        artifact_path = Path(vip_report).parent / "connect_system_checks.html"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_bytes(report_bytes)

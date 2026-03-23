@@ -1,16 +1,16 @@
 # feat: Add Connect system checks test (issue #74)
 
-*2026-03-23T13:48:44Z by Showboat 0.6.1*
-<!-- showboat-id: e842db8b-7754-4653-9d5b-3cfdb9c8a078 -->
+*2026-03-23T16:59:59Z by Showboat 0.6.1*
+<!-- showboat-id: 955dfeed-3e66-44a6-85a8-61438d68007a -->
 
-Added a Connect system checks test that triggers the built-in Connect server diagnostics and downloads the resulting report artifact, implementing posit-dev/vip#74.
+Implements posit-dev/vip#74: adds a Connect system checks BDD test that triggers the built-in diagnostics, downloads the artifact, and embeds it in the VIP Quarto report.
 
 Changes:
-- Added list_server_checks(), run_server_check(), and get_server_check_report(check_id) to ConnectClient
-- Added tests/connect/test_system_checks.feature with @connect-tagged BDD scenario
-- Added tests/connect/test_system_checks.py with step definitions
-
-The test triggers a new system check run (POST /v1/server_checks), verifies the report contains an 'id' field, then downloads the artifact (GET /v1/server_checks/{id}/download).
+- ConnectClient: list_server_checks(), run_server_check(), get_server_check_report()
+- tests/connect/test_system_checks.feature: @connect BDD scenario
+- tests/connect/test_system_checks.py: step defs; saves artifact to report/connect_system_checks.html
+- report/index.qmd: new 'Connect System Checks' section embeds the artifact via srcdoc iframe
+- .github/workflows/example-report.yml: adds test_system_checks.py to CI smoke run
 
 ```bash
 uv run ruff check src/ tests/ selftests/ examples/ && uv run ruff format --check src/ tests/ selftests/ examples/ && echo 'Lint/format: OK'
@@ -38,3 +38,5 @@ uv run pytest tests/connect/test_system_checks.py --collect-only -q 2>&1 | grep 
 tests/connect/test_system_checks.py::test_connect_system_checks
 
 ```
+
+The index.qmd 'Connect System Checks' section renders when report/connect_system_checks.html exists (saved by the test step). When no system checks were run, it shows a placeholder message. The CI example-report.yml now includes test_system_checks.py in the smoke run so the section is populated in every PR preview.
