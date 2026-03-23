@@ -246,7 +246,7 @@ class ConnectClient(BaseClient):
         branch: str = "main",
         directory: str = ".",
     ) -> dict[str, Any]:
-        """Link a content item to a git repository (PUT creates, PATCH updates)."""
+        """Link a content item to a git repository via PUT."""
         payload: dict[str, Any] = {
             "repository": repo_url,
             "branch": branch,

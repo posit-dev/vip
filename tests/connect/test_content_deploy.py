@@ -17,6 +17,8 @@ from pytest_bdd import scenario, then, when
 from tests.connect.conftest import _make_tar_gz
 
 _GIT_REPO_URL = "https://github.com/posit-dev/connect-extensions"
+# Using main branch — this is a Posit-maintained repo with stable examples.
+# Connect's git integration requires a branch name (not a commit SHA).
 _GIT_BRANCH = "main"
 _GIT_DIRECTORY = "extensions/quarto-document"
 
@@ -381,7 +383,7 @@ def content_accessible(connect_client, deploy_state):
     content = connect_client.get_content(deploy_state["guid"])
     url = content.get("content_url", "")
     if url:
-        resp = httpx.get(url, follow_redirects=True, timeout=30)
+        resp = connect_client.fetch_content(url)
         assert resp.status_code < 400, f"Content returned HTTP {resp.status_code}"
 
 
