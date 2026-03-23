@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.11.1 (2026-03-23)
+
+### Bug Fixes
+
+- **ci**: Trigger PyPI publish on tag push instead of release event
+  ([#97](https://github.com/posit-dev/vip/pull/97),
+  [`8704193`](https://github.com/posit-dev/vip/commit/87041934302c65b7bc8e44d36c3199ae83938614))
+
+
 ## v0.11.0 (2026-03-23)
 
 ### Features
