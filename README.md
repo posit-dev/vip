@@ -10,9 +10,10 @@ that can be published to a Connect server.
 ## Quick start
 
 ```bash
-git clone https://github.com/posit-dev/vip.git
-cd vip
-uv sync && uv run playwright install chromium
+uv venv
+source .venv/bin/activate
+uv pip install posit-vip
+playwright install chromium
 
 cp vip.toml.example vip.toml     # edit with your deployment details
 uv run pytest                     # run all tests
