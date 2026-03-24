@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.12.0 (2026-03-24)
+
+### Features
+
+- Add git-backed publishing test for Connect ([#99](https://github.com/posit-dev/vip/pull/99),
+  [`ffd14a4`](https://github.com/posit-dev/vip/commit/ffd14a4f5ca87d3bb2e8e5f21c16265ff30587aa))
+
+
 ## v0.11.1 (2026-03-23)
 
 ### Bug Fixes
