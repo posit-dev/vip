@@ -2183,6 +2183,78 @@ wheels = [
 ]
 
 [[package]]
+name = "posit-vip"
+version = "0.12.0"
+source = { editable = "." }
+dependencies = [
+    { name = "brand-yml" },
+    { name = "htmltools" },
+    { name = "httpx" },
+    { name = "playwright" },
+    { name = "pytest" },
+    { name = "pytest-bdd" },
+    { name = "pytest-playwright" },
+    { name = "pytest-xdist" },
+    { name = "shiny", extra = ["theme"] },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
+]
+
+[package.optional-dependencies]
+cluster = [
+    { name = "azure-identity" },
+    { name = "azure-mgmt-containerservice" },
+    { name = "boto3" },
+    { name = "pyjwt" },
+    { name = "pyyaml" },
+]
+dev = [
+    { name = "mypy" },
+    { name = "pip-audit" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+]
+report = [
+    { name = "ipykernel" },
+    { name = "jinja2" },
+    { name = "jupyter" },
+    { name = "nbclient" },
+    { name = "nbformat" },
+    { name = "tornado" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "azure-identity", marker = "extra == 'cluster'", specifier = ">=1.12" },
+    { name = "azure-mgmt-containerservice", marker = "extra == 'cluster'", specifier = ">=20.0" },
+    { name = "boto3", marker = "extra == 'cluster'", specifier = ">=1.26" },
+    { name = "brand-yml" },
+    { name = "htmltools" },
+    { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "ipykernel", marker = "extra == 'report'" },
+    { name = "jinja2", marker = "extra == 'report'", specifier = ">=3.1" },
+    { name = "jupyter", marker = "extra == 'report'" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
+    { name = "nbclient", marker = "extra == 'report'", specifier = ">=0.8" },
+    { name = "nbformat", marker = "extra == 'report'", specifier = ">=5.7" },
+    { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7" },
+    { name = "playwright", specifier = ">=1.40" },
+    { name = "pyjwt", marker = "extra == 'cluster'", specifier = ">=2.12.0" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-bdd", specifier = ">=7.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0" },
+    { name = "pytest-playwright", specifier = ">=0.5" },
+    { name = "pytest-xdist", specifier = ">=3.0" },
+    { name = "pyyaml", marker = "extra == 'cluster'", specifier = ">=6.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.0,<0.16" },
+    { name = "shiny", extras = ["theme"], specifier = ">=1.0" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0" },
+    { name = "tornado", marker = "extra == 'report'", specifier = ">=6.5.5" },
+    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
+]
+provides-extras = ["report", "cluster", "dev"]
+
+[[package]]
 name = "prometheus-client"
 version = "0.24.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3335,78 +3407,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/32/ce/eeb58ae4ac36fe09e
 wheels = [
     { url = "https://files.pythonhosted.org/packages/83/e4/d04a086285c20886c0daad0e026f250869201013d18f81d9ff5eada73a88/uvicorn-0.41.0-py3-none-any.whl", hash = "sha256:29e35b1d2c36a04b9e180d4007ede3bcb32a85fbdfd6c6aeb3f26839de088187", size = 68783, upload-time = "2026-02-16T23:07:22.357Z" },
 ]
-
-[[package]]
-name = "vip"
-version = "0.11.0"
-source = { editable = "." }
-dependencies = [
-    { name = "brand-yml" },
-    { name = "htmltools" },
-    { name = "httpx" },
-    { name = "playwright" },
-    { name = "pytest" },
-    { name = "pytest-bdd" },
-    { name = "pytest-playwright" },
-    { name = "pytest-xdist" },
-    { name = "shiny", extra = ["theme"] },
-    { name = "tomli", marker = "python_full_version < '3.11'" },
-]
-
-[package.optional-dependencies]
-cluster = [
-    { name = "azure-identity" },
-    { name = "azure-mgmt-containerservice" },
-    { name = "boto3" },
-    { name = "pyjwt" },
-    { name = "pyyaml" },
-]
-dev = [
-    { name = "mypy" },
-    { name = "pip-audit" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
-]
-report = [
-    { name = "ipykernel" },
-    { name = "jinja2" },
-    { name = "jupyter" },
-    { name = "nbclient" },
-    { name = "nbformat" },
-    { name = "tornado" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "azure-identity", marker = "extra == 'cluster'", specifier = ">=1.12" },
-    { name = "azure-mgmt-containerservice", marker = "extra == 'cluster'", specifier = ">=20.0" },
-    { name = "boto3", marker = "extra == 'cluster'", specifier = ">=1.26" },
-    { name = "brand-yml" },
-    { name = "htmltools" },
-    { name = "httpx", specifier = ">=0.27,<1" },
-    { name = "ipykernel", marker = "extra == 'report'" },
-    { name = "jinja2", marker = "extra == 'report'", specifier = ">=3.1" },
-    { name = "jupyter", marker = "extra == 'report'" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "nbclient", marker = "extra == 'report'", specifier = ">=0.8" },
-    { name = "nbformat", marker = "extra == 'report'", specifier = ">=5.7" },
-    { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7" },
-    { name = "playwright", specifier = ">=1.40" },
-    { name = "pyjwt", marker = "extra == 'cluster'", specifier = ">=2.12.0" },
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-bdd", specifier = ">=7.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0" },
-    { name = "pytest-playwright", specifier = ">=0.5" },
-    { name = "pytest-xdist", specifier = ">=3.0" },
-    { name = "pyyaml", marker = "extra == 'cluster'", specifier = ">=6.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.0,<0.16" },
-    { name = "shiny", extras = ["theme"], specifier = ">=1.0" },
-    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0" },
-    { name = "tornado", marker = "extra == 'report'", specifier = ">=6.5.5" },
-    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
-]
-provides-extras = ["report", "cluster", "dev"]
 
 [[package]]
 name = "watchfiles"
