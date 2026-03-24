@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.12.1 (2026-03-24)
+
+### Bug Fixes
+
+- **ci**: Rename package to posit-vip to match PyPI project
+  ([#102](https://github.com/posit-dev/vip/pull/102),
+  [`dc32200`](https://github.com/posit-dev/vip/commit/dc322002abbf49279e1a7f1a7e5ca1125260ebd4))
+
+
 ## v0.12.0 (2026-03-24)
 
 ### Features
