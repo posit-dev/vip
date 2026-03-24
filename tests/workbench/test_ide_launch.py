@@ -134,11 +134,7 @@ def _start_session(page: Page, ide_type: str, session_name: str):
 
     # Select IDE type using role-based selector within dialog
     ide_display = NewSessionDialog.ide_display_name(ide_type)
-    ide_tab = dialog.get_by_role("tab", name=ide_display)
-    if ide_tab.count() == 0:
-        page.locator(NewSessionDialog.CANCEL_BUTTON).click()
-        pytest.skip(f"{ide_type} IDE not available in this Workbench deployment")
-    ide_tab.click(timeout=TIMEOUT_QUICK)
+    dialog.get_by_role("tab", name=ide_display).click(timeout=TIMEOUT_QUICK)
 
     page.fill(NewSessionDialog.SESSION_NAME, session_name)
 
