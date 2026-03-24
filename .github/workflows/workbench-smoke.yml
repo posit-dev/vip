@@ -26,7 +26,7 @@ jobs:
       # Start Workbench in Docker
       - name: Start Workbench
         id: workbench
-        uses: posit-dev/with-workbench@main
+        uses: ian-flores/with-workbench@add-github-action
         with:
           license-key: ${{ secrets.WORKBENCH_LICENSE }}
           version: ${{ matrix.workbench-version }}
@@ -222,7 +222,7 @@ jobs:
       # Stop and remove the Workbench container
       - name: Stop Workbench
         if: always()
-        uses: posit-dev/with-workbench@main
+        uses: ian-flores/with-workbench@add-github-action
         with:
           stop: ${{ steps.workbench.outputs.CONTAINER_ID }}
 
