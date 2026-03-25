@@ -33,10 +33,10 @@ APP_DIR = Path(__file__).parent
 
 
 def _find_project_root() -> Path:
-    """Walk up from cwd looking for a directory containing both `tests/` and `pyproject.toml`."""
+    """Walk up from cwd looking for a directory with both `src/vip_tests/` and `pyproject.toml`."""
     candidate = Path.cwd()
     for _ in range(10):
-        if (candidate / "tests").is_dir() and (candidate / "pyproject.toml").is_file():
+        if (candidate / "src" / "vip_tests").is_dir() and (candidate / "pyproject.toml").is_file():
             return candidate
         parent = candidate.parent
         if parent == candidate:
@@ -55,7 +55,7 @@ PROJECT_ROOT = _find_project_root().resolve()
 
 def _load_category_features() -> dict[str, list[dict]]:
     """Return {category_key: [parsed_feature, ...]} for all .feature files."""
-    tests_dir = PROJECT_ROOT / "tests"
+    tests_dir = PROJECT_ROOT / "src" / "vip_tests"
     result: dict[str, list[dict]] = {}
     for key in CATEGORIES:
         cat_dir = tests_dir / key
@@ -360,7 +360,7 @@ def server(input, output, session):
             "-m",
             "pytest",
             f"--rootdir={PROJECT_ROOT}",
-            str(PROJECT_ROOT / "tests"),
+            str(PROJECT_ROOT / "src" / "vip_tests"),
         ]
         temp_config = None
 
@@ -613,7 +613,7 @@ def server(input, output, session):
         from vip.reporting import load_results, load_troubleshooting
 
         data = load_results(report_path)
-        troubleshooting_path = PROJECT_ROOT / "tests" / "troubleshooting.toml"
+        troubleshooting_path = PROJECT_ROOT / "src" / "vip_tests" / "troubleshooting.toml"
         hints = load_troubleshooting(troubleshooting_path)
 
         html = render_report_html(

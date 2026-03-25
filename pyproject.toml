@@ -53,10 +53,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/vip", "tests"]
+packages = ["src/vip", "src/vip_tests"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["src/vip_tests"]
 addopts = "--dist loadgroup"
 filterwarnings = [
     # gherkin-official 29.0.0 passes maxsplit positionally to re.split;
@@ -97,7 +97,7 @@ ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests", "selftests", "examples"]
+src = ["src", "selftests", "examples"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]

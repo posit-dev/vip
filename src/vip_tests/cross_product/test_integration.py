@@ -7,7 +7,7 @@ import pathlib
 import pytest
 from pytest_bdd import scenario, then, when
 
-from tests.connect.conftest import _make_tar_gz
+from vip_tests.connect.conftest import _make_tar_gz
 
 
 @scenario(

@@ -7,7 +7,7 @@ import pathlib
 import pytest
 from pytest_bdd import given, scenario, then, when
 
-from tests.connect.conftest import _make_tar_gz
+from vip_tests.connect.conftest import _make_tar_gz
 
 
 @scenario("test_packages.feature", "Connect is configured to use the expected package repository")

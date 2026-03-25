@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - "website/**"
-      - "tests/**"
+      - "src/vip_tests/**"
       - "report/**"
       - "src/vip/**"
       - "scripts/generate-test-catalog.py"

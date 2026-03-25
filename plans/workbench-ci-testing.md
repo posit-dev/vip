@@ -85,7 +85,7 @@ RESPONSE=$(curl -s -b /tmp/wb_cookies.txt http://localhost:8787/api/server-info)
 VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty')
 
 # Run tests
-pytest tests/prerequisites/test_components.py tests/workbench/test_auth.py ...
+pytest src/vip_tests/prerequisites/test_components.py src/vip_tests/workbench/test_auth.py ...
 
 # Cleanup
 docker stop workbench && docker rm workbench || true
@@ -96,21 +96,21 @@ docker stop workbench && docker rm workbench || true
 | Test file | Feasibility | Notes |
 |---|---|---|
 | `prerequisites/test_components` | ✅ Yes | Health-check only — no auth required |
-| `workbench/test_auth` | ✅ Yes | Password form login; uses page objects from `tests/workbench/pages/` |
+| `workbench/test_auth` | ✅ Yes | Password form login; uses page objects from `src/vip_tests/workbench/pages/` |
 | `workbench/test_ide_launch` | ❌ No | Requires R/Python; not in minimal image |
 | `workbench/test_packages` | ❌ No | Requires R runtime |
 | `workbench/test_data_sources` | ❌ No | Requires external databases |
 
 > **Note:** `test_runtime_versions` and `test_sessions` were removed from the
 > workbench test suite (commit `f45d242` on main). Runtime and session fixtures
-> now live in `tests/workbench/conftest.py` and are consumed by `test_ide_launch`.
+> now live in `src/vip_tests/workbench/conftest.py` and are consumed by `test_ide_launch`.
 
 ### Recommended initial test scope
 
 1. **`prerequisites/test_components`** — Workbench health check (no credentials)
 2. **`workbench/test_auth`** — Web UI login with the PAM test user
 
-`test_auth` now uses the page-object selectors in `tests/workbench/pages/`
+`test_auth` now uses the page-object selectors in `src/vip_tests/workbench/pages/`
 (e.g. `#posit-logo`, `#current-user`, `button:text-is('New Session')`) — the
 same selectors used by rstudio-pro's own end-to-end suite.  It also verifies
 that `#current-user` text matches `auth.username` (`rstudio` in the Docker
@@ -247,8 +247,8 @@ jobs:
       - name: Run Workbench smoke tests
         run: |
           uv run pytest \
-            tests/prerequisites/test_components.py \
-            tests/workbench/test_auth.py \
+            src/vip_tests/prerequisites/test_components.py \
+            src/vip_tests/workbench/test_auth.py \
             -v -k "workbench" \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
@@ -336,7 +336,7 @@ Once Phase 1 is stable:
 1. **Add a version matrix** for additional stable releases.
 2. **Add `workbench/test_ide_launch`** using a Workbench image that ships
    R/Python runtimes, or build a custom image on top of the official one.
-   The `wb_start_session` fixture in `tests/workbench/conftest.py` already
+   The `wb_start_session` fixture in `src/vip_tests/workbench/conftest.py` already
    provides the session-launch helper.
 3. **Add `workbench/test_packages`** once R runtime is available in the image.
 
@@ -368,7 +368,7 @@ Once Phase 1 is stable:
    a private registry.
 
 3. **UI selector accuracy**: The Playwright selectors in `test_auth.py` use the
-   page-object classes in `tests/workbench/pages/` — mirroring the rstudio-pro
+   page-object classes in `src/vip_tests/workbench/pages/` — mirroring the rstudio-pro
    e2e selectors (`#posit-logo`, `#current-user`, etc.).  They should be accurate
    for the 2026.01 image but may need adjustment for older releases.
 

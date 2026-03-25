@@ -16,13 +16,13 @@ jobs:
         name: Ruff lint
         with:
           version: "0.15.0"
-          args: check src/ tests/ selftests/ examples/
+          args: check src/ selftests/ examples/
 
       - uses: astral-sh/ruff-action@v3
         name: Ruff format
         with:
           version: "0.15.0"
-          args: format --check src/ tests/ selftests/ examples/
+          args: format --check src/ selftests/ examples/
 
   typecheck:
     name: Type Check
@@ -86,7 +86,7 @@ jobs:
         run: uv run pytest selftests/ -v --junitxml=selftest-results.xml --cov=src/vip --cov-report=term-missing
 
       - name: Collect VIP tests (dry run)
-        run: uv run pytest tests/ --collect-only --quiet
+        run: uv run pytest src/vip_tests/ --collect-only --quiet
 
       - name: Upload test results
         if: always()
