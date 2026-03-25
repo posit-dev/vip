@@ -16,6 +16,7 @@ dependencies = [
     "brand-yml",
     "htmltools",
     "tomli>=2.0;python_version<'3.11'",
+    "requests>=2.33.0",  # transitive via pytest-playwright; pinned to track updates
 ]
 
 [project.optional-dependencies]
