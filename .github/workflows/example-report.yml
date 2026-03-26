@@ -12,6 +12,17 @@ jobs:
         with:
           persist-credentials: false
 
+      # Skip Package Manager steps if the license secret is not configured
+      - name: Check for RSPM_LICENSE
+        id: pm-license
+        run: |
+          if [ -z "${{ secrets.RSPM_LICENSE }}" ]; then
+            echo "RSPM_LICENSE secret not configured — skipping Package Manager steps"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # Start Connect in Docker
       - name: Start Connect
         id: connect
@@ -38,6 +49,7 @@ jobs:
 
       # Start Package Manager in Docker
       - name: Start Package Manager
+        if: steps.pm-license.outputs.available == 'true'
         id: pm
         run: |
           docker run -d \
@@ -49,6 +61,7 @@ jobs:
 
       # Wait for Package Manager health check
       - name: Wait for Package Manager to be ready
+        if: steps.pm-license.outputs.available == 'true'
         run: |
           echo "Waiting for Package Manager to start..."
           for i in $(seq 1 60); do
@@ -62,8 +75,29 @@ jobs:
           docker logs packagemanager
           exit 1
 
+      # Surface license errors as workflow annotations
+      - name: Check for license errors
+        if: failure() && steps.pm-license.outputs.available == 'true'
+        run: |
+          LOGS=$(docker logs packagemanager 2>&1 || true)
+          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable|not activated" | head -1 || true)
+          if [ -n "${LICENSE_MSG}" ]; then
+            echo "::error title=License Error::${LICENSE_MSG}"
+            {
+              echo "## License Error"
+              echo ""
+              echo "The Package Manager license key is expired or invalid. Update the \`RSPM_LICENSE\` repository secret."
+              echo ""
+              echo '```'
+              echo "${LICENSE_MSG}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
       # Provision CRAN and PyPI repositories for smoke testing
       - name: Provision smoke test repositories
+        if: steps.pm-license.outputs.available == 'true'
         run: |
           echo "Creating CRAN repository..."
           docker exec packagemanager /opt/rstudio-pm/bin/rspm create repo \
@@ -81,6 +115,7 @@ jobs:
 
       # Resolve the actual Package Manager version
       - name: Resolve Package Manager version
+        if: steps.pm-license.outputs.available == 'true'
         id: pm-version
         run: |
           RESPONSE=$(curl -sf http://localhost:4242/__api__/status)
@@ -105,21 +140,30 @@ jobs:
       # Generate vip.toml from with-connect and PM outputs
       - name: Configure VIP for CI
         run: |
+          PM_SECTION=""
+          if [ "${{ steps.pm-license.outputs.available }}" = "true" ]; then
+            PM_SECTION="
+          [package_manager]
+          enabled = true
+          url = \"${{ steps.pm.outputs.PM_URL }}\"
+          version = \"${{ steps.pm-version.outputs.resolved }}\""
+          fi
+
+          DEPLOYMENT_NAME="CI Connect ${{ steps.version.outputs.resolved }}"
+          if [ "${{ steps.pm-license.outputs.available }}" = "true" ]; then
+            DEPLOYMENT_NAME="${DEPLOYMENT_NAME} + PM ${{ steps.pm-version.outputs.resolved }}"
+          fi
+
           cat > vip.toml << EOF
           [general]
-          deployment_name = "CI Connect ${{ steps.version.outputs.resolved }} + PM ${{ steps.pm-version.outputs.resolved }}"
+          deployment_name = "${DEPLOYMENT_NAME}"
 
           [connect]
           enabled = true
           url = "${{ steps.connect.outputs.CONNECT_SERVER }}"
           api_key = "${{ steps.connect.outputs.CONNECT_API_KEY }}"
           version = "${{ steps.version.outputs.resolved }}"
-
-          [package_manager]
-          enabled = true
-          url = "${{ steps.pm.outputs.PM_URL }}"
-          version = "${{ steps.pm-version.outputs.resolved }}"
-
+          ${PM_SECTION}
           [auth]
           provider = "password"
           EOF
@@ -149,7 +193,7 @@ jobs:
 
       # Stop Package Manager
       - name: Stop Package Manager
-        if: always()
+        if: always() && steps.pm-license.outputs.available == 'true'
         run: docker stop packagemanager && docker rm packagemanager || true
 
       - name: Upload report artifact
