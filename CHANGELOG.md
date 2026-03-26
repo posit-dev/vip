@@ -1,6 +1,36 @@
 # CHANGELOG
 
 
+## v0.12.2 (2026-03-26)
+
+### Bug Fixes
+
+- Include tests/ directory in the package wheel ([#110](https://github.com/posit-dev/vip/pull/110),
+  [`bf23266`](https://github.com/posit-dev/vip/commit/bf232662ede07d481f4e658d9682ef3679907ce1))
+
+### Chores
+
+- **deps**: Bump requests from 2.32.5 to 2.33.0 ([#114](https://github.com/posit-dev/vip/pull/114),
+  [`d3a118b`](https://github.com/posit-dev/vip/commit/d3a118bbc39aa736636b457abe022a0e2322d5a6))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+- **deps**: Bump the actions-dependencies group with 4 updates
+  ([#112](https://github.com/posit-dev/vip/pull/112),
+  [`653be07`](https://github.com/posit-dev/vip/commit/653be07797f88c97c491525c46b696ecc1e0833d))
+
+- **deps**: Bump the python-dependencies group with 4 updates
+  ([#111](https://github.com/posit-dev/vip/pull/111),
+  [`90ca94f`](https://github.com/posit-dev/vip/commit/90ca94f4f61586d6e36ef998041d5c5db97b6d97))
+
+### Documentation
+
+- Update install instructions to use PyPI ([#104](https://github.com/posit-dev/vip/pull/104),
+  [`c5b576f`](https://github.com/posit-dev/vip/commit/c5b576f74f43a653ed12ad6fa12f6b2e1139731c))
+
+
 ## v0.12.1 (2026-03-24)
 
 ### Bug Fixes
