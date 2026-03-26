@@ -14,7 +14,7 @@ import httpx
 import pytest
 from pytest_bdd import scenario, then, when
 
-from tests.connect.conftest import _make_tar_gz
+from vip_tests.connect.conftest import _make_tar_gz
 
 _GIT_REPO_URL = "https://github.com/posit-dev/connect-extensions"
 # Using main branch — this is a Posit-maintained repo with stable examples.

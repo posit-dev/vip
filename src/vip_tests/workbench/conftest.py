@@ -11,7 +11,7 @@ import httpx
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.workbench.pages import Homepage, LoginPage
+from vip_tests.workbench.pages import Homepage, LoginPage
 
 pytestmark = pytest.mark.workbench
 

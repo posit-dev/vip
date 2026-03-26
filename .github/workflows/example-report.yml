@@ -129,10 +129,10 @@ jobs:
           VIP_ENABLE_EXPECTED_FAILURE_DEMO: "1"
         run: |
           uv run pytest \
-            tests/prerequisites/test_components.py \
-            tests/prerequisites/test_expected_failure.py \
-            tests/connect/test_auth.py \
-            tests/package_manager/test_repos.py \
+            src/vip_tests/prerequisites/test_components.py \
+            src/vip_tests/prerequisites/test_expected_failure.py \
+            src/vip_tests/connect/test_auth.py \
+            src/vip_tests/package_manager/test_repos.py \
             -v -k "reachable or api or mirror or repo_exists or expected_failure" \
             --vip-config=vip.toml \
           || true

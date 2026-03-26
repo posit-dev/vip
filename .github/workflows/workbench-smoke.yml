@@ -162,8 +162,8 @@ jobs:
       - name: Run Workbench smoke tests
         run: |
           uv run pytest \
-            tests/prerequisites/test_components.py \
-            tests/workbench/test_auth.py \
+            src/vip_tests/prerequisites/test_components.py \
+            src/vip_tests/workbench/test_auth.py \
             -v -k "workbench" \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml

@@ -6,12 +6,12 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
-from tests.workbench.conftest import (
+from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     assert_homepage_loaded,
     workbench_login,
 )
-from tests.workbench.pages import Homepage
+from vip_tests.workbench.pages import Homepage
 
 
 @scenario("test_auth.feature", "User can log in to Workbench via the web UI")

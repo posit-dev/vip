@@ -32,10 +32,10 @@ just format         # ruff format
 Without just, run ruff directly:
 
 ```bash
-uv run ruff check src/ tests/        # lint
-uv run ruff format --check src/ tests/  # format check
-uv run ruff check --fix src/ tests/  # auto-fix lint
-uv run ruff format src/ tests/       # reformat
+uv run ruff check src/ src/vip_tests/        # lint
+uv run ruff format --check src/ src/vip_tests/  # format check
+uv run ruff check --fix src/ src/vip_tests/  # auto-fix lint
+uv run ruff format src/ src/vip_tests/       # reformat
 ```
 
 ## Type checking

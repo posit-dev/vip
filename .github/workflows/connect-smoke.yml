@@ -131,11 +131,11 @@ jobs:
       - name: Run Connect smoke tests
         run: |
           uv run pytest \
-            tests/prerequisites/test_components.py \
-            tests/connect/test_auth.py \
-            tests/connect/test_users.py \
-            tests/connect/test_runtime_versions.py \
-            tests/security/test_error_handling.py \
+            src/vip_tests/prerequisites/test_components.py \
+            src/vip_tests/connect/test_auth.py \
+            src/vip_tests/connect/test_users.py \
+            src/vip_tests/connect/test_runtime_versions.py \
+            src/vip_tests/security/test_error_handling.py \
             -v \
             -k "not connect_login_ui" \
             --vip-config=vip.toml \
