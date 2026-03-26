@@ -64,6 +64,7 @@ class TestPerformanceConfig:
         assert pc.download_timeout == 30.0
         assert pc.p95_response_time == 5.0
         assert pc.concurrent_requests == 10
+        assert pc.load_users == 10
         assert pc.disk_usage_max_pct == 90.0
         assert pc.memory_available_min_pct == 10.0
 
