@@ -4,6 +4,8 @@ These tests simulate multiple authenticated users making real API requests
 simultaneously, verifying that each product handles concurrent user load
 acceptably.  Unlike the health-check concurrency tests, every request here
 carries authentication credentials and exercises a real user-facing endpoint.
+
+Each product is tested at 10, 20, 50, and 100 concurrent users.
 """
 
 from __future__ import annotations
@@ -13,22 +15,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import httpx
-from pytest_bdd import scenario, then, when
+from pytest_bdd import parsers, scenarios, then, when
 
-
-@scenario("test_load.feature", "Connect handles concurrent authenticated user requests")
-def test_connect_load():
-    pass
-
-
-@scenario("test_load.feature", "Workbench handles concurrent user requests")
-def test_workbench_load():
-    pass
-
-
-@scenario("test_load.feature", "Package Manager handles concurrent user requests")
-def test_pm_load():
-    pass
+scenarios("test_load.feature")
 
 
 # ---------------------------------------------------------------------------
@@ -68,33 +57,33 @@ def _run_load_test(url: str, headers: dict, n: int) -> list[dict]:
 
 
 @when(
-    "I run a load test with concurrent users against Connect",
+    parsers.parse("I run a load test with {users:d} concurrent users against Connect"),
     target_fixture="load_test_results",
 )
-def load_test_connect(vip_config, performance_config):
+def load_test_connect(users, vip_config):
     url = f"{vip_config.connect.url}/__api__/v1/content"
     headers = {"Authorization": f"Key {vip_config.connect.api_key}"}
-    return _run_load_test(url, headers, performance_config.load_users)
+    return _run_load_test(url, headers, users)
 
 
 @when(
-    "I run a load test with concurrent users against Workbench",
+    parsers.parse("I run a load test with {users:d} concurrent users against Workbench"),
     target_fixture="load_test_results",
 )
-def load_test_workbench(vip_config, performance_config):
+def load_test_workbench(users, vip_config):
     url = f"{vip_config.workbench.url}/api/server/settings"
     headers = {"Authorization": f"Key {vip_config.workbench.api_key}"}
-    return _run_load_test(url, headers, performance_config.load_users)
+    return _run_load_test(url, headers, users)
 
 
 @when(
-    "I run a load test with concurrent users against Package Manager",
+    parsers.parse("I run a load test with {users:d} concurrent users against Package Manager"),
     target_fixture="load_test_results",
 )
-def load_test_pm(vip_config, performance_config):
+def load_test_pm(users, vip_config):
     url = f"{vip_config.package_manager.url}/__api__/repos"
     headers = {"Authorization": f"Bearer {vip_config.package_manager.token}"}
-    return _run_load_test(url, headers, performance_config.load_users)
+    return _run_load_test(url, headers, users)
 
 
 # ---------------------------------------------------------------------------

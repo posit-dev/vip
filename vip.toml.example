@@ -90,7 +90,6 @@ enabled = false
 # download_timeout = 30.0
 # p95_response_time = 5.0
 # concurrent_requests = 10
-# load_users = 10
 # disk_usage_max_pct = 90.0
 # memory_available_min_pct = 10.0
 

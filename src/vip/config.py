@@ -219,7 +219,6 @@ class PerformanceConfig:
     p95_response_time: float = 5.0
     avg_response_time: float = 5.0
     concurrent_requests: int = 10
-    load_users: int = 10
     disk_usage_max_pct: float = 90.0
     memory_available_min_pct: float = 10.0
 
@@ -231,7 +230,6 @@ class PerformanceConfig:
             p95_response_time=raw.get("p95_response_time", 5.0),
             avg_response_time=raw.get("avg_response_time", 5.0),
             concurrent_requests=raw.get("concurrent_requests", 10),
-            load_users=raw.get("load_users", 10),
             disk_usage_max_pct=raw.get("disk_usage_max_pct", 90.0),
             memory_available_min_pct=raw.get("memory_available_min_pct", 10.0),
         )
