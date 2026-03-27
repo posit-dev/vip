@@ -1,0 +1,445 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import matrix from "../data/feature-matrix.json";
+
+const base = import.meta.env.BASE_URL;
+const products = matrix.products;
+const productSpecific = matrix.product_specific;
+const crossCutting = matrix.cross_cutting;
+const notCovered = matrix.not_covered;
+const productTotals = matrix.product_totals;
+
+const totalAreas = productSpecific.length + crossCutting.length;
+const totalScenarios = Object.values(productTotals).reduce((a, b) => a + b, 0);
+---
+
+<Layout title="Feature Matrix - VIP">
+  <Header />
+
+  <div class="page-header">
+    <div class="container">
+      <h1>Feature Matrix</h1>
+      <p>
+        {totalAreas} test areas &middot; {totalScenarios} scenarios across {products.length} products
+      </p>
+      <div class="legend">
+        <span class="legend-item"><span class="dot dot-covered"></span> Covered</span>
+        <span class="legend-item"><span class="dot dot-conditional"></span> Conditional</span>
+        <span class="legend-item"><span class="dot dot-empty"></span> Not covered</span>
+      </div>
+    </div>
+  </div>
+
+  <main class="content">
+    <div class="container">
+      <div class="matrix-wrapper">
+        <table class="matrix">
+          <thead>
+            <tr>
+              <th class="area-col">Test Area</th>
+              {products.map((p) => (
+                <th class="product-col">{p.label}</th>
+              ))}
+              <th class="total-col">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* Product-specific areas */}
+            <tr class="section-row">
+              <td colspan={products.length + 2}>
+                <span class="section-icon">&#9632;</span> Product-Specific Tests
+              </td>
+            </tr>
+            {productSpecific.map((area) => (
+              <tr>
+                <td class="area-cell">
+                  <span class="area-name">{area.name}</span>
+                  <span class="area-categories">
+                    {area.category_labels.join(", ")}
+                  </span>
+                </td>
+                {products.map((p) => {
+                  const cell = area.products[p.id];
+                  return (
+                    <td class={`product-cell ${cell.covered ? (cell.conditional ? "conditional" : "covered") : "not-covered"}`}>
+                      {cell.covered ? (
+                        <a href={`${base}tests/#${area.categories[0]}`} class="cell-link">
+                          <span class="cell-count">{cell.scenario_count}</span>
+                          {cell.conditional && <span class="conditional-flag">*</span>}
+                        </a>
+                      ) : (
+                        <span class="cell-empty">&mdash;</span>
+                      )}
+                    </td>
+                  );
+                })}
+                <td class="total-cell">{area.total_scenarios}</td>
+              </tr>
+            ))}
+
+            {/* Cross-cutting areas */}
+            <tr class="section-row">
+              <td colspan={products.length + 2}>
+                <span class="section-icon">&#9670;</span> Cross-Cutting Tests
+              </td>
+            </tr>
+            {crossCutting.map((area) => (
+              <tr>
+                <td class="area-cell">
+                  <span class="area-name">{area.name}</span>
+                  <span class="area-categories">
+                    {area.category_labels.join(", ")}
+                  </span>
+                </td>
+                {products.map((p) => {
+                  const cell = area.products[p.id];
+                  return (
+                    <td class={`product-cell ${cell.covered ? (cell.conditional ? "conditional" : "covered") : "not-covered"}`}>
+                      {cell.covered ? (
+                        <a href={`${base}tests/#${area.categories[0]}`} class="cell-link">
+                          <span class="cell-count">{cell.scenario_count}</span>
+                          {cell.conditional && <span class="conditional-flag">*</span>}
+                        </a>
+                      ) : (
+                        <span class="cell-empty">&mdash;</span>
+                      )}
+                    </td>
+                  );
+                })}
+                <td class="total-cell">{area.total_scenarios}</td>
+              </tr>
+            ))}
+
+            {/* Totals row */}
+            <tr class="totals-row">
+              <td class="totals-label">Total Scenarios</td>
+              {products.map((p) => (
+                <td class="totals-cell">{productTotals[p.id]}</td>
+              ))}
+              <td class="totals-cell totals-grand">{totalScenarios}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Not yet covered section */}
+      <div class="not-covered-section">
+        <h2>Not Yet Covered</h2>
+        <p class="not-covered-desc">
+          The following areas are planned for future VIP releases:
+        </p>
+        <div class="not-covered-grid">
+          {notCovered.map((item) => (
+            <div class="not-covered-card">
+              <span class="not-covered-icon">&#9711;</span>
+              <div>
+                <strong>{item.name}</strong>
+                <span class="not-covered-reason">{item.description}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <Footer />
+</Layout>
+
+<style>
+  .page-header {
+    background: white;
+    border-bottom: 1px solid var(--posit-border);
+    padding: 3rem 1.5rem;
+  }
+
+  .page-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    color: var(--posit-gray-900);
+  }
+
+  .page-header p {
+    color: var(--posit-text-muted);
+    font-size: 1.0625rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .legend {
+    display: flex;
+    gap: 1.25rem;
+    font-size: 0.8125rem;
+    color: var(--posit-text-muted);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .dot-covered { background: #22c55e; }
+  .dot-conditional { background: #f59e0b; }
+  .dot-empty { background: var(--posit-border); }
+
+  .container {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem;
+  }
+
+  .matrix-wrapper {
+    overflow-x: auto;
+    border: 1px solid var(--posit-border);
+    border-radius: var(--radius);
+    background: white;
+  }
+
+  .matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .matrix thead {
+    background: var(--posit-navy);
+    color: white;
+  }
+
+  .matrix th {
+    padding: 0.875rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .product-col,
+  .total-col {
+    text-align: center !important;
+    min-width: 130px;
+  }
+
+  .area-col {
+    min-width: 220px;
+  }
+
+  /* Section header rows */
+  .section-row td {
+    background: var(--posit-gray-100);
+    padding: 0.75rem 1rem;
+    font-weight: 700;
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--posit-navy);
+    border-top: 2px solid var(--posit-border);
+  }
+
+  .section-icon {
+    margin-right: 0.375rem;
+    font-size: 0.625rem;
+    vertical-align: middle;
+  }
+
+  /* Data rows */
+  .matrix tbody tr:not(.section-row):not(.totals-row) {
+    border-bottom: 1px solid var(--posit-border);
+  }
+
+  .matrix tbody tr:not(.section-row):not(.totals-row):hover {
+    background: #fafbfc;
+  }
+
+  .area-cell {
+    padding: 0.75rem 1rem 0.75rem 1.5rem;
+  }
+
+  .area-name {
+    display: block;
+    font-weight: 600;
+    color: var(--posit-gray-900);
+    line-height: 1.3;
+  }
+
+  .area-categories {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--posit-text-muted);
+    margin-top: 0.125rem;
+  }
+
+  /* Product cells */
+  .product-cell {
+    text-align: center;
+    padding: 0.625rem 0.5rem;
+  }
+
+  .product-cell.covered {
+    background: #f0fdf4;
+  }
+
+  .product-cell.conditional {
+    background: #fffbeb;
+  }
+
+  .cell-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    text-decoration: none;
+  }
+
+  .cell-count {
+    display: inline-block;
+    min-width: 28px;
+    padding: 0.2rem 0.5rem;
+    border-radius: 10px;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    text-align: center;
+  }
+
+  .covered .cell-count {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .conditional .cell-count {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .cell-link:hover .cell-count {
+    box-shadow: 0 0 0 2px var(--posit-blue);
+  }
+
+  .conditional-flag {
+    font-size: 0.6875rem;
+    color: #92400e;
+    font-weight: 600;
+  }
+
+  .cell-empty {
+    color: var(--posit-text-muted);
+    font-size: 0.875rem;
+  }
+
+  .total-cell {
+    text-align: center;
+    padding: 0.625rem 0.5rem;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--posit-text-muted);
+  }
+
+  /* Totals row */
+  .totals-row {
+    border-top: 2px solid var(--posit-navy) !important;
+    background: var(--posit-gray-100);
+  }
+
+  .totals-label {
+    padding: 0.875rem 1rem;
+    font-weight: 700;
+    color: var(--posit-navy);
+    text-transform: uppercase;
+    font-size: 0.8125rem;
+    letter-spacing: 0.04em;
+  }
+
+  .totals-cell {
+    text-align: center;
+    padding: 0.875rem 0.5rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    color: var(--posit-navy);
+  }
+
+  .totals-grand {
+    background: var(--posit-navy);
+    color: white;
+  }
+
+  /* Not yet covered */
+  .not-covered-section {
+    margin-top: 2.5rem;
+  }
+
+  .not-covered-section h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--posit-navy);
+    margin-bottom: 0.5rem;
+  }
+
+  .not-covered-desc {
+    color: var(--posit-text-muted);
+    font-size: 0.9375rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .not-covered-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .not-covered-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    background: white;
+    border: 1px solid var(--posit-border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    border-left: 3px solid var(--posit-border);
+  }
+
+  .not-covered-icon {
+    color: var(--posit-text-muted);
+    font-size: 0.875rem;
+    flex-shrink: 0;
+    margin-top: 0.125rem;
+  }
+
+  .not-covered-card strong {
+    display: block;
+    font-size: 0.9375rem;
+    color: var(--posit-gray-900);
+    margin-bottom: 0.125rem;
+  }
+
+  .not-covered-reason {
+    font-size: 0.8125rem;
+    color: var(--posit-text-muted);
+  }
+
+  @media (max-width: 768px) {
+    .legend {
+      flex-wrap: wrap;
+    }
+
+    .area-cell {
+      padding-left: 1rem;
+    }
+
+    .not-covered-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
