@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.13.0 (2026-03-27)
+
+### Features
+
+- Add feature matrix page to website ([#120](https://github.com/posit-dev/vip/pull/120),
+  [`c8b4a2f`](https://github.com/posit-dev/vip/commit/c8b4a2fb19cd97ea3125a8c17dafae4905a52916))
+
+
 ## v0.12.2 (2026-03-26)
 
 ### Bug Fixes

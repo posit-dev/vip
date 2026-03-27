@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "0.12.2"
+version = "0.13.0"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
