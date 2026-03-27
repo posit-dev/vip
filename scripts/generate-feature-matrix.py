@@ -225,7 +225,10 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
     not_covered = [
         {"name": "Chronicle", "description": "Not yet available in VIP"},
         {"name": "Flightdeck", "description": "Not yet available in VIP"},
-        {"name": "LDAP/SAML/OAuth2 auth flows in CI", "description": "Requires identity provider setup"},
+        {
+            "name": "LDAP/SAML/OAuth2 auth flows in CI",
+            "description": "Requires identity provider setup",
+        },
         {"name": "Connect scheduled content", "description": "Planned for future release"},
         {"name": "Workbench HA/multi-node", "description": "Planned for future release"},
         {"name": "Package Manager admin UI", "description": "Planned for future release"},
