@@ -13,7 +13,8 @@ const productTotals = matrix.product_totals;
 
 const totalAreas = productSpecific.length + crossCutting.length;
 const allAreas = [...productSpecific, ...crossCutting];
-const totalScenarios = allAreas.reduce((sum, a) => sum + a.total_scenarios, 0);
+const uniqueScenarios = allAreas.reduce((sum, a) => sum + a.total_scenarios, 0);
+const productTotalSum = Object.values(productTotals).reduce((a, b) => a + b, 0);
 ---
 
 <Layout title="Feature Matrix - VIP">
@@ -23,7 +24,7 @@ const totalScenarios = allAreas.reduce((sum, a) => sum + a.total_scenarios, 0);
     <div class="container">
       <h1>Feature Matrix</h1>
       <p>
-        {totalAreas} test areas &middot; {totalScenarios} scenarios across {products.length} products
+        {totalAreas} test areas &middot; {uniqueScenarios} scenarios across {products.length} products
       </p>
       <div class="legend">
         <span class="legend-item"><span class="dot dot-covered"></span> Covered</span>
@@ -76,7 +77,7 @@ const totalScenarios = allAreas.reduce((sum, a) => sum + a.total_scenarios, 0);
                     </td>
                   );
                 })}
-                <td class="total-cell">{area.total_scenarios}</td>
+                <td class="total-cell">{products.reduce((sum, p) => sum + area.products[p.id].scenario_count, 0)}</td>
               </tr>
             ))}
 
@@ -109,7 +110,7 @@ const totalScenarios = allAreas.reduce((sum, a) => sum + a.total_scenarios, 0);
                     </td>
                   );
                 })}
-                <td class="total-cell">{area.total_scenarios}</td>
+                <td class="total-cell">{products.reduce((sum, p) => sum + area.products[p.id].scenario_count, 0)}</td>
               </tr>
             ))}
 
@@ -119,7 +120,7 @@ const totalScenarios = allAreas.reduce((sum, a) => sum + a.total_scenarios, 0);
               {products.map((p) => (
                 <td class="totals-cell">{productTotals[p.id]}</td>
               ))}
-              <td class="totals-cell totals-grand">{totalScenarios}</td>
+              <td class="totals-cell totals-grand">{productTotalSum}</td>
             </tr>
           </tbody>
         </table>
