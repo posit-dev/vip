@@ -90,11 +90,16 @@ def _area_name(stem: str) -> str:
     return stem.removeprefix("test_").replace("_", " ").title()
 
 
-def _detect_products_in_steps(scenarios: list[dict]) -> set[str]:
-    """Scan scenario steps for product name mentions."""
+def _detect_products_in_steps(scenarios: list[dict[str, str | list[str]]]) -> set[str]:
+    """Scan scenario steps for product name mentions.
+
+    Each scenario dict has ``steps: list[str]`` (plain step text from
+    ``parse_feature_file``).
+    """
     products_found: set[str] = set()
     for scenario in scenarios:
         for step in scenario.get("steps", []):
+            assert isinstance(step, str)
             for product, pattern in _PRODUCT_PATTERNS.items():
                 if pattern.search(step):
                     products_found.add(product)
@@ -120,6 +125,9 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
         lambda: {p: {"scenarios": 0, "files": [], "conditional": False} for p in PRODUCTS}
     )
     area_categories: dict[str, set[str]] = defaultdict(set)
+    # Track actual (unique) scenario counts per area to avoid double-counting
+    # when cross-cutting features are attributed to multiple products.
+    area_unique_scenarios: dict[str, int] = defaultdict(int)
 
     for feature_path in sorted(tests_dir.rglob("*.feature")):
         parsed = parse_feature_file(feature_path, relative_to=PROJECT_ROOT)
@@ -132,6 +140,7 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
         is_conditional = "if_applicable" in all_tags
 
         area_categories[area_key].add(category_id)
+        area_unique_scenarios[area_key] += scenario_count
 
         if category_id in PRODUCT_CATEGORIES:
             # Directly maps to one product.
@@ -166,15 +175,25 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
         cats = area_categories[area_key]
         is_cross_cutting = all(c in CROSS_CUTTING_CATEGORIES for c in cats)
 
+        # Build a mapping from product to the best category for linking.
+        # Prefer the product-specific category if present, otherwise first cross-cutting one.
+        category_for_product: dict[str, str] = {}
+        sorted_cats = sorted(cats)
+        for product in PRODUCTS:
+            if product in cats:
+                category_for_product[product] = product
+            else:
+                category_for_product[product] = sorted_cats[0] if sorted_cats else ""
+
         area_entry = {
             "id": area_key,
             "name": _area_name(area_key),
-            "categories": sorted(cats),
-            "category_labels": [CATEGORY_LABELS.get(c, c) for c in sorted(cats)],
+            "categories": sorted_cats,
+            "category_labels": [CATEGORY_LABELS.get(c, c) for c in sorted_cats],
+            "category_for_product": category_for_product,
             "products": {},
         }
 
-        total_scenarios = 0
         for product in PRODUCTS:
             data = area_data[area_key][product]
             covered = data["scenarios"] > 0
@@ -184,9 +203,9 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
                 "conditional": data["conditional"],
                 "files": data["files"],
             }
-            total_scenarios += data["scenarios"]
 
-        area_entry["total_scenarios"] = total_scenarios
+        # Use unique scenario count (not sum of per-product) to avoid double-counting.
+        area_entry["total_scenarios"] = area_unique_scenarios[area_key]
 
         if is_cross_cutting:
             cross_cutting_areas.append(area_entry)

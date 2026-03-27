@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-27T22:51:49.753757+00:00",
+  "generated_at": "2026-03-27T23:06:09.062203+00:00",
   "products": [
     {
       "id": "connect",
@@ -31,6 +31,11 @@
         "Connect",
         "Workbench"
       ],
+      "category_for_product": {
+        "connect": "connect",
+        "workbench": "workbench",
+        "package_manager": "connect"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -66,6 +71,11 @@
       "category_labels": [
         "Connect"
       ],
+      "category_for_product": {
+        "connect": "connect",
+        "workbench": "connect",
+        "package_manager": "connect"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -101,6 +111,11 @@
         "Connect",
         "Workbench"
       ],
+      "category_for_product": {
+        "connect": "connect",
+        "workbench": "workbench",
+        "package_manager": "connect"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -136,6 +151,11 @@
       "category_labels": [
         "Connect"
       ],
+      "category_for_product": {
+        "connect": "connect",
+        "workbench": "connect",
+        "package_manager": "connect"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -169,6 +189,11 @@
       "category_labels": [
         "Workbench"
       ],
+      "category_for_product": {
+        "connect": "workbench",
+        "workbench": "workbench",
+        "package_manager": "workbench"
+      },
       "products": {
         "connect": {
           "covered": false,
@@ -204,6 +229,11 @@
         "Connect",
         "Workbench"
       ],
+      "category_for_product": {
+        "connect": "connect",
+        "workbench": "workbench",
+        "package_manager": "connect"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -239,6 +269,11 @@
       "category_labels": [
         "Package Manager"
       ],
+      "category_for_product": {
+        "connect": "package_manager",
+        "workbench": "package_manager",
+        "package_manager": "package_manager"
+      },
       "products": {
         "connect": {
           "covered": false,
@@ -272,6 +307,11 @@
       "category_labels": [
         "Package Manager"
       ],
+      "category_for_product": {
+        "connect": "package_manager",
+        "workbench": "package_manager",
+        "package_manager": "package_manager"
+      },
       "products": {
         "connect": {
           "covered": false,
@@ -305,6 +345,11 @@
       "category_labels": [
         "Connect"
       ],
+      "category_for_product": {
+        "connect": "connect",
+        "workbench": "connect",
+        "package_manager": "connect"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -338,6 +383,11 @@
       "category_labels": [
         "Workbench"
       ],
+      "category_for_product": {
+        "connect": "workbench",
+        "workbench": "workbench",
+        "package_manager": "workbench"
+      },
       "products": {
         "connect": {
           "covered": false,
@@ -371,6 +421,11 @@
       "category_labels": [
         "Connect"
       ],
+      "category_for_product": {
+        "connect": "connect",
+        "workbench": "connect",
+        "package_manager": "connect"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -406,6 +461,11 @@
       "category_labels": [
         "Security"
       ],
+      "category_for_product": {
+        "connect": "security",
+        "workbench": "security",
+        "package_manager": "security"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -439,6 +499,11 @@
       "category_labels": [
         "Prerequisites"
       ],
+      "category_for_product": {
+        "connect": "prerequisites",
+        "workbench": "prerequisites",
+        "package_manager": "prerequisites"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -465,7 +530,7 @@
           ]
         }
       },
-      "total_scenarios": 3
+      "total_scenarios": 1
     },
     {
       "id": "test_auth_policy",
@@ -476,6 +541,11 @@
       "category_labels": [
         "Security"
       ],
+      "category_for_product": {
+        "connect": "security",
+        "workbench": "security",
+        "package_manager": "security"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -509,6 +579,11 @@
       "category_labels": [
         "Performance"
       ],
+      "category_for_product": {
+        "connect": "performance",
+        "workbench": "performance",
+        "package_manager": "performance"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -535,7 +610,7 @@
           ]
         }
       },
-      "total_scenarios": 9
+      "total_scenarios": 3
     },
     {
       "id": "test_integration",
@@ -546,6 +621,11 @@
       "category_labels": [
         "Cross-Product"
       ],
+      "category_for_product": {
+        "connect": "cross_product",
+        "workbench": "cross_product",
+        "package_manager": "cross_product"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -570,7 +650,7 @@
           ]
         }
       },
-      "total_scenarios": 2
+      "total_scenarios": 1
     },
     {
       "id": "test_expected_failure",
@@ -581,6 +661,11 @@
       "category_labels": [
         "Prerequisites"
       ],
+      "category_for_product": {
+        "connect": "prerequisites",
+        "workbench": "prerequisites",
+        "package_manager": "prerequisites"
+      },
       "products": {
         "connect": {
           "covered": false,
@@ -614,6 +699,11 @@
       "category_labels": [
         "Security"
       ],
+      "category_for_product": {
+        "connect": "security",
+        "workbench": "security",
+        "package_manager": "security"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -640,7 +730,7 @@
           ]
         }
       },
-      "total_scenarios": 6
+      "total_scenarios": 2
     },
     {
       "id": "test_components",
@@ -651,6 +741,11 @@
       "category_labels": [
         "Prerequisites"
       ],
+      "category_for_product": {
+        "connect": "prerequisites",
+        "workbench": "prerequisites",
+        "package_manager": "prerequisites"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -677,7 +772,7 @@
           ]
         }
       },
-      "total_scenarios": 3
+      "total_scenarios": 1
     },
     {
       "id": "test_login_load_times",
@@ -688,6 +783,11 @@
       "category_labels": [
         "Performance"
       ],
+      "category_for_product": {
+        "connect": "performance",
+        "workbench": "performance",
+        "package_manager": "performance"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -714,7 +814,7 @@
           ]
         }
       },
-      "total_scenarios": 3
+      "total_scenarios": 1
     },
     {
       "id": "test_monitoring",
@@ -725,6 +825,11 @@
       "category_labels": [
         "Cross-Product"
       ],
+      "category_for_product": {
+        "connect": "cross_product",
+        "workbench": "cross_product",
+        "package_manager": "cross_product"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -751,7 +856,7 @@
           ]
         }
       },
-      "total_scenarios": 3
+      "total_scenarios": 1
     },
     {
       "id": "test_package_install_speed",
@@ -762,6 +867,11 @@
       "category_labels": [
         "Performance"
       ],
+      "category_for_product": {
+        "connect": "performance",
+        "workbench": "performance",
+        "package_manager": "performance"
+      },
       "products": {
         "connect": {
           "covered": false,
@@ -795,6 +905,11 @@
       "category_labels": [
         "Performance"
       ],
+      "category_for_product": {
+        "connect": "performance",
+        "workbench": "performance",
+        "package_manager": "performance"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -821,7 +936,7 @@
           ]
         }
       },
-      "total_scenarios": 6
+      "total_scenarios": 2
     },
     {
       "id": "test_ssl",
@@ -832,6 +947,11 @@
       "category_labels": [
         "Cross-Product"
       ],
+      "category_for_product": {
+        "connect": "cross_product",
+        "workbench": "cross_product",
+        "package_manager": "cross_product"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -858,7 +978,7 @@
           ]
         }
       },
-      "total_scenarios": 9
+      "total_scenarios": 3
     },
     {
       "id": "test_secrets",
@@ -869,6 +989,11 @@
       "category_labels": [
         "Security"
       ],
+      "category_for_product": {
+        "connect": "security",
+        "workbench": "security",
+        "package_manager": "security"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -902,6 +1027,11 @@
       "category_labels": [
         "Cross-Product"
       ],
+      "category_for_product": {
+        "connect": "cross_product",
+        "workbench": "cross_product",
+        "package_manager": "cross_product"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -928,7 +1058,7 @@
           ]
         }
       },
-      "total_scenarios": 3
+      "total_scenarios": 1
     },
     {
       "id": "test_versions",
@@ -939,6 +1069,11 @@
       "category_labels": [
         "Prerequisites"
       ],
+      "category_for_product": {
+        "connect": "prerequisites",
+        "workbench": "prerequisites",
+        "package_manager": "prerequisites"
+      },
       "products": {
         "connect": {
           "covered": true,
@@ -965,7 +1100,7 @@
           ]
         }
       },
-      "total_scenarios": 9
+      "total_scenarios": 3
     }
   ],
   "not_covered": [

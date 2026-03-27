@@ -12,7 +12,8 @@ const notCovered = matrix.not_covered;
 const productTotals = matrix.product_totals;
 
 const totalAreas = productSpecific.length + crossCutting.length;
-const totalScenarios = Object.values(productTotals).reduce((a, b) => a + b, 0);
+const allAreas = [...productSpecific, ...crossCutting];
+const totalScenarios = allAreas.reduce((sum, a) => sum + a.total_scenarios, 0);
 ---
 
 <Layout title="Feature Matrix - VIP">
@@ -65,7 +66,7 @@ const totalScenarios = Object.values(productTotals).reduce((a, b) => a + b, 0);
                   return (
                     <td class={`product-cell ${cell.covered ? (cell.conditional ? "conditional" : "covered") : "not-covered"}`}>
                       {cell.covered ? (
-                        <a href={`${base}tests/#${area.categories[0]}`} class="cell-link">
+                        <a href={`${base}tests/#${area.category_for_product[p.id]}`} class="cell-link">
                           <span class="cell-count">{cell.scenario_count}</span>
                           {cell.conditional && <span class="conditional-flag">*</span>}
                         </a>
@@ -98,7 +99,7 @@ const totalScenarios = Object.values(productTotals).reduce((a, b) => a + b, 0);
                   return (
                     <td class={`product-cell ${cell.covered ? (cell.conditional ? "conditional" : "covered") : "not-covered"}`}>
                       {cell.covered ? (
-                        <a href={`${base}tests/#${area.categories[0]}`} class="cell-link">
+                        <a href={`${base}tests/#${area.category_for_product[p.id]}`} class="cell-link">
                           <span class="cell-count">{cell.scenario_count}</span>
                           {cell.conditional && <span class="conditional-flag">*</span>}
                         </a>
