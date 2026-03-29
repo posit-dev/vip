@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from pytest_bdd import given, scenario, then, when
+from pytest_bdd import scenario, then, when
 
 
 @scenario("test_auth.feature", "User can log in via the web UI")
@@ -19,13 +19,6 @@ def test_connect_login_api():
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
-
-
-@given("a valid API key is configured")
-def api_key_configured(vip_config):
-    assert vip_config.connect.api_key, (
-        "VIP_CONNECT_API_KEY is not set. Set it in vip.toml or as an environment variable."
-    )
 
 
 @when("a user navigates to the Connect login page")

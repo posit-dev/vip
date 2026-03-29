@@ -18,6 +18,13 @@ def connect_accessible(connect_client):
     assert status < 400, f"Connect returned HTTP {status}"
 
 
+@given("a valid API key is configured")
+def api_key_configured(vip_config):
+    assert vip_config.connect.api_key, (
+        "VIP_CONNECT_API_KEY is not set. Set it in vip.toml or as an environment variable."
+    )
+
+
 def _make_tar_gz(files: dict[str, str]) -> bytes:
     """Create an in-memory tar.gz archive from a dict of {filename: content}."""
     buf = io.BytesIO()
