@@ -57,7 +57,7 @@ uv run playwright install chromium</code></pre>
             suite headlessly and cleans up the session automatically.
           </p>
           <p>Check product health without running the full test suite:</p>
-          <pre><code>vip status --connect-url https://connect.example.com</code></pre>
+          <pre><code>vip status</code></pre>
 
           <p>Test multiple products at once:</p>
           <pre><code>vip verify \
@@ -233,18 +233,21 @@ def test_new_api_feature():
           <pre><code># Run tests and save results
 vip verify --connect-url https://connect.example.com --report report/results.json
 
-# Render an HTML report
+# Render the report (requires quarto CLI)
 vip report
 
-# Or render the full Quarto report (requires quarto CLI)
+# Or run Quarto directly
 cd report && quarto render
 
 # Publish to Connect (optional)
 quarto publish connect --server https://connect.example.com</code></pre>
           <p>
-            <code>vip report</code> renders a standalone HTML report from the
-            results JSON. For the richer Quarto report with interactive tables,
-            use <code>quarto render</code> instead.
+            <code>vip report</code> is a convenience wrapper around
+            <code>quarto render</code>. It reads results from
+            <code>report/results.json</code> by default, or a custom path via
+            <code>--results</code>. The
+            <a href="https://quarto.org/docs/download/">Quarto CLI</a> must be
+            installed.
           </p>
         </section>
 

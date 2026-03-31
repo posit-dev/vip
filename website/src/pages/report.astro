@@ -17,9 +17,10 @@ const base = import.meta.env.BASE_URL;
         This report is rebuilt automatically whenever the website is deployed.
       </p>
       <p class="how-to">
-        Generate your own: run <code>vip verify --report results.json</code> to
-        save test results, then <code>vip report</code> to render the HTML report.
-        For the richer Quarto version, use <code>cd report && quarto render</code>.
+        Generate your own: run <code>vip verify --report report/results.json</code> to
+        save test results, then <code>vip report</code> to render the report.
+        Note: <code>vip report</code> runs Quarto under the hood, so you must
+        have the <a href="https://quarto.org/docs/download/">quarto CLI</a> installed.
       </p>
       <a
         href={`${base}example-report/`}
