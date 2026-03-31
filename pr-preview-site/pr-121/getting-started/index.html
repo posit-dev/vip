@@ -26,7 +26,7 @@ See the <a href="../shiny-app/" data-astro-cid-mwd2jfe2>Shiny app</a> page for t
 The <code data-astro-cid-mwd2jfe2>--interactive-auth</code> flag opens a Chromium window so
             you can log in. After authentication completes, VIP runs the test
             suite headlessly and cleans up the session automatically.
-</p> <p data-astro-cid-mwd2jfe2>Check product health without running the full test suite:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip status --connect-url https://connect.example.com</code></pre> <p data-astro-cid-mwd2jfe2>Test multiple products at once:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify \
+</p> <p data-astro-cid-mwd2jfe2>Check product health without running the full test suite:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip status</code></pre> <p data-astro-cid-mwd2jfe2>Test multiple products at once:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify \
   --connect-url https://connect.example.com \
   --workbench-url https://workbench.example.com \
   --pm-url https://packagemanager.example.com \
@@ -76,16 +76,19 @@ for the full template.
 </p> </section> <section id="generating-reports" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Generating reports</h2> <p data-astro-cid-mwd2jfe2>After running tests, generate and render the report:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2># Run tests and save results
 vip verify --connect-url https://connect.example.com --report report/results.json
 
-# Render an HTML report
+# Render the report (requires quarto CLI)
 vip report
 
-# Or render the full Quarto report (requires quarto CLI)
+# Or run Quarto directly
 cd report && quarto render
 
 # Publish to Connect (optional)
-quarto publish connect --server https://connect.example.com</code></pre> <p data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>vip report</code> renders a standalone HTML report from the
-            results JSON. For the richer Quarto report with interactive tables,
-            use <code data-astro-cid-mwd2jfe2>quarto render</code> instead.
+quarto publish connect --server https://connect.example.com</code></pre> <p data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>vip report</code> is a convenience wrapper around
+<code data-astro-cid-mwd2jfe2>quarto render</code>. It reads results from
+<code data-astro-cid-mwd2jfe2>report/results.json</code> by default, or a custom path via
+<code data-astro-cid-mwd2jfe2>--results</code>. The
+<a href="https://quarto.org/docs/download/" data-astro-cid-mwd2jfe2>Quarto CLI</a> must be
+            installed.
 </p> </section> <section id="extending-vip" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Extending VIP</h2> <p data-astro-cid-mwd2jfe2>
 Add site-specific tests without modifying the VIP source tree. Create a directory with
 <code data-astro-cid-mwd2jfe2>.feature</code> and <code data-astro-cid-mwd2jfe2>.py</code> files following the same conventions:
