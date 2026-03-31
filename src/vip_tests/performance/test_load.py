@@ -121,4 +121,4 @@ def load_p95_response_time(load_test_results, performance_config):
     else:
         p95 = statistics.quantiles(elapsed_times, n=100, method="inclusive")[94]
     threshold = performance_config.p95_response_time
-    assert p95 <= threshold, f"Load test p95 response time was {p95:.2f}s (threshold: {threshold}s)"
+    assert p95 < threshold, f"Load test p95 response time was {p95:.2f}s (threshold: {threshold}s)"
