@@ -1,24 +1,46 @@
+[![PyPI](https://img.shields.io/pypi/v/posit-vip)](https://pypi.org/project/posit-vip/)
+[![CI](https://github.com/posit-dev/vip/actions/workflows/ci.yml/badge.svg)](https://github.com/posit-dev/vip/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/pypi/pyversions/posit-vip)](https://pypi.org/project/posit-vip/)
+
 # VIP - Verified Installation of Posit
 
 An open-source, extensible test suite that validates Posit Team deployments are
 installed correctly and functioning properly.
 
 VIP uses **BDD-style tests** (pytest-bdd + Playwright) to verify Connect,
-Workbench, and Package Manager.  Results are compiled into a **Quarto report**
+Workbench, and Package Manager.  Results are compiled into an **HTML report**
 that can be published to a Connect server.
+
+**Documentation:** https://posit-dev.github.io/vip/
 
 ## Quick start
 
 ```bash
-uv venv
-source .venv/bin/activate
 uv pip install posit-vip
-playwright install chromium
-
-cp vip.toml.example vip.toml     # edit with your deployment details
-uv run pytest                     # run all tests
-uv run pytest -m connect          # run tests for a single product
+uv run playwright install chromium
+vip verify --connect-url https://connect.example.com --interactive-auth
 ```
+
+With a configuration file:
+
+```bash
+cp vip.toml.example vip.toml     # edit with your deployment details
+vip verify --config vip.toml
+```
+
+## CLI commands
+
+| Command | Description |
+|---|---|
+| `vip verify` | Run verification tests against a Posit Team deployment |
+| `vip status` | Quick health check for each configured product |
+| `vip cleanup` | Delete VIP test credentials and resources |
+| `vip report` | Render the HTML report from test results |
+| `vip app` | Launch the Shiny GUI for interactive test running |
+| `vip auth` | Authentication tools (e.g. mint Connect API keys) |
+| `vip cluster` | Cluster connection tools for Kubernetes deployments |
+
+Run `vip --help` or `vip <command> --help` for full usage details.
 
 ## Shiny app (graphical test runner)
 
@@ -28,24 +50,16 @@ convenient inside a Posit Workbench session (RStudio or Positron) where
 the app opens in the Viewer pane.
 
 ```bash
-uv sync
 uv run vip app
 ```
 
-See the [Shiny App guide](docs/shiny-app.md) for details.
+See the [Shiny App guide](https://posit-dev.github.io/vip/shiny-app/) for details.
 
-## Documentation
+## Development
 
-| Guide | Description |
-|---|---|
-| [Getting Started](docs/getting-started.md) | Prerequisites, installation, and first run |
-| [Configuration](docs/configuration.md) | `vip.toml` settings and environment variables |
-| [Authentication](docs/authentication.md) | Password, LDAP, OIDC, and interactive auth flows |
-| [Deployment Verification](docs/deployment-verification.md) | `vip verify`, cluster setup, and K8s integration |
-| [Test Categories](docs/test-categories.md) | Test markers, version gating, and extensibility |
-| [Reporting](docs/reporting.md) | Generating and publishing the Quarto report |
-| [Shiny App](docs/shiny-app.md) | Graphical test runner for RStudio and Positron |
-| [Development](docs/development.md) | Dev setup, linting, formatting, and design principles |
+See [docs/development.md](docs/development.md) for dev setup, linting, and formatting.
+
+For the test architecture and four-layer design, see [docs/test-architecture.md](docs/test-architecture.md).
 
 ## License
 
