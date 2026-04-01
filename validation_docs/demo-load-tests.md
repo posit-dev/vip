@@ -18,19 +18,18 @@ src/vip_tests/performance/test_load.py::test_pm_load
 ```
 
 ```bash
-ruff check src/ src/vip_tests/ selftests/ examples/ && ruff format --check src/ src/vip_tests/ selftests/ examples/ && echo 'All lint checks passed'
+uv run ruff check src/ src/vip_tests/ selftests/ examples/ && uv run ruff format --check src/ src/vip_tests/ selftests/ examples/ && echo 'All lint checks passed'
 ```
 
 ```output
 All checks passed!
-90 files already formatted
 All lint checks passed
 ```
 
 ```bash
-uv run pytest selftests/ -q 2>&1 | grep -E '^[0-9]+ passed'
+uv run pytest selftests/ -q 2>&1 | grep -oE '^[0-9]+ passed'
 ```
 
 ```output
-95 passed, 2 warnings in 0.64s
+95 passed
 ```
