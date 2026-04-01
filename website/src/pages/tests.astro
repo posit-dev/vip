@@ -4,6 +4,7 @@ import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
 import catalog from "../data/test-catalog.json";
 
+const base = import.meta.env.BASE_URL;
 const categories = catalog.categories;
 const totalFeatures = categories.reduce((sum, c) => sum + c.feature_count, 0);
 const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
@@ -38,6 +39,10 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
       </aside>
 
       <article class="docs">
+        <p class="cross-link">
+          See the <a href={`${base}feature-matrix/`}>Feature Matrix</a> for a cross-product coverage overview.
+        </p>
+
         <section class="start-here">
           <div class="callout">
             <div class="callout-header">
@@ -213,6 +218,12 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
     font-size: 0.875rem;
     color: var(--posit-text-muted);
     margin-bottom: 1rem;
+  }
+
+  .cross-link {
+    font-size: 0.9375rem;
+    color: var(--posit-text-muted);
+    margin-bottom: 1.5rem;
   }
 
   /* Start here callout */

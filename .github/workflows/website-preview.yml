@@ -31,10 +31,13 @@ jobs:
       - name: Sync Python dependencies
         run: uv sync --frozen
 
-      - name: Generate test catalog
+      - name: Generate test catalog and feature matrix
         run: |
           if [ -f scripts/generate-test-catalog.py ]; then
             uv run python scripts/generate-test-catalog.py
+          fi
+          if [ -f scripts/generate-feature-matrix.py ]; then
+            uv run python scripts/generate-feature-matrix.py
           fi
 
       - uses: actions/setup-node@v6

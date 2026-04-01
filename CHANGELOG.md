@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.13.1 (2026-04-01)
+
+### Bug Fixes
+
+- **deps**: Pin cryptography>=46.0.6 for CVE-2026-34073
+  ([#123](https://github.com/posit-dev/vip/pull/123),
+  [`7360a4d`](https://github.com/posit-dev/vip/commit/7360a4d5771b58ad2196826f27628431cc496ac5))
+
+
+## v0.13.0 (2026-03-27)
+
+### Features
+
+- Add feature matrix page to website ([#120](https://github.com/posit-dev/vip/pull/120),
+  [`c8b4a2f`](https://github.com/posit-dev/vip/commit/c8b4a2fb19cd97ea3125a8c17dafae4905a52916))
+
+
 ## v0.12.2 (2026-03-26)
 
 ### Bug Fixes

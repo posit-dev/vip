@@ -1,4 +1,6 @@
 # VIP Configuration
+# Documentation: https://posit-dev.github.io/vip/getting-started/
+#
 # Copy this file to vip.toml and fill in your deployment details.
 # Secrets should be set via environment variables (see comments below).
 #

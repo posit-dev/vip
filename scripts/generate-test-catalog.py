@@ -20,7 +20,7 @@ from pathlib import Path
 from vip.gherkin import parse_feature_file
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-TESTS_DIR = PROJECT_ROOT / "tests"
+TESTS_DIR = PROJECT_ROOT / "src" / "vip_tests"
 DEFAULT_OUTPUT = PROJECT_ROOT / "website" / "src" / "data" / "test-catalog.json"
 
 # Category display labels — underscores become spaces, title-cased.
