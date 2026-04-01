@@ -7,38 +7,38 @@ Feature: Concurrent user load testing
   Scenario Outline: Connect handles <users> concurrent authenticated users
     Given Connect is configured in vip.toml
     When I run a load test with <users> concurrent users against Connect
-    Then the load test success rate is at least 95 percent
+    Then the load test success rate is at least the configured threshold
     And the load test p95 response time is within the configured threshold
 
     Examples:
       | users |
       | 10    |
-      | 20    |
-      | 50    |
       | 100   |
+      | 1000  |
+      | 10000 |
 
   Scenario Outline: Workbench handles <users> concurrent users
     Given Workbench is configured in vip.toml
     When I run a load test with <users> concurrent users against Workbench
-    Then the load test success rate is at least 95 percent
+    Then the load test success rate is at least the configured threshold
     And the load test p95 response time is within the configured threshold
 
     Examples:
       | users |
       | 10    |
-      | 20    |
-      | 50    |
       | 100   |
+      | 1000  |
+      | 10000 |
 
   Scenario Outline: Package Manager handles <users> concurrent users
     Given Package Manager is configured in vip.toml
     When I run a load test with <users> concurrent users against Package Manager
-    Then the load test success rate is at least 95 percent
+    Then the load test success rate is at least the configured threshold
     And the load test p95 response time is within the configured threshold
 
     Examples:
       | users |
       | 10    |
-      | 20    |
-      | 50    |
       | 100   |
+      | 1000  |
+      | 10000 |

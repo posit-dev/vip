@@ -94,6 +94,14 @@ enabled = false
 # concurrent_requests = 10
 # disk_usage_max_pct = 90.0
 # memory_available_min_pct = 10.0
+#
+# Load test settings (used by test_load scenarios).
+# load_user_counts = [10, 100, 1000, 10000]
+# load_max_connections = 200
+# load_success_rate_threshold = 0.95
+# load_test_tool = "auto"        # "auto" | "async" | "locust" | "threadpool"
+# load_test_duration = 30         # seconds (locust only)
+# load_test_spawn_rate = 10       # users/sec (locust only)
 
 [security]
 # Set enabled = true to run security-policy compliance tests.
