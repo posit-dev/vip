@@ -15,6 +15,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import httpx
+import pytest
 from pytest_bdd import parsers, scenarios, then, when
 
 scenarios("test_load.feature")
@@ -61,6 +62,8 @@ def _run_load_test(url: str, headers: dict, n: int) -> list[dict]:
     target_fixture="load_test_results",
 )
 def load_test_connect(users, vip_config):
+    if not vip_config.connect.api_key:
+        pytest.skip("Connect API key is not configured")
     url = f"{vip_config.connect.url}/__api__/v1/content"
     headers = {"Authorization": f"Key {vip_config.connect.api_key}"}
     return _run_load_test(url, headers, users)
@@ -71,6 +74,8 @@ def load_test_connect(users, vip_config):
     target_fixture="load_test_results",
 )
 def load_test_workbench(users, vip_config):
+    if not vip_config.workbench.api_key:
+        pytest.skip("Workbench API key is not configured")
     url = f"{vip_config.workbench.url}/api/server/settings"
     headers = {"Authorization": f"Key {vip_config.workbench.api_key}"}
     return _run_load_test(url, headers, users)
@@ -81,6 +86,8 @@ def load_test_workbench(users, vip_config):
     target_fixture="load_test_results",
 )
 def load_test_pm(users, vip_config):
+    if not vip_config.package_manager.token:
+        pytest.skip("Package Manager token is not configured")
     url = f"{vip_config.package_manager.url}/__api__/repos"
     headers = {"Authorization": f"Bearer {vip_config.package_manager.token}"}
     return _run_load_test(url, headers, users)
@@ -112,6 +119,6 @@ def load_p95_response_time(load_test_results, performance_config):
         # Not enough data points to compute quantiles; use the single value directly.
         p95 = elapsed_times[0] if elapsed_times else 0.0
     else:
-        p95 = statistics.quantiles(elapsed_times, n=20)[18]  # 95th percentile
+        p95 = statistics.quantiles(elapsed_times, n=100, method="inclusive")[94]
     threshold = performance_config.p95_response_time
-    assert p95 <= threshold, f"Load test p95 response time was {p95:.2f}s (threshold: {threshold}s)"
+    assert p95 < threshold, f"Load test p95 response time was {p95:.2f}s (threshold: {threshold}s)"
