@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.14.0 (2026-04-01)
+
+### Features
+
+- **performance**: Add concurrent user load tests for each product
+  ([#118](https://github.com/posit-dev/vip/pull/118),
+  [`f5f20e4`](https://github.com/posit-dev/vip/commit/f5f20e463e95c7a8d18e8a2037d5803abc0d9b3d))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <iflores.siaca@posit.co>
+
+Co-authored-by: Elliot Murphy <statik@users.noreply.github.com>
+
+Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>
+
+
 ## v0.13.2 (2026-04-01)
 
 ### Bug Fixes
