@@ -12,10 +12,8 @@ GitHub
             1.1.16 1.92.08 2.12.51.56.82 1.27.82
             2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54
             1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013
-            8.013 0 0016 8c0-4.42-3.58-8-8-8z" data-astro-cid-3ef6ksr2></path> </svg> </a> </nav> </div> </header>  <div class="page-header" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <h1 data-astro-cid-mwd2jfe2>Getting Started</h1> <p data-astro-cid-mwd2jfe2>Validate your Posit Team deployment in minutes.</p> </div> </div> <main class="content" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <aside class="toc" data-astro-cid-mwd2jfe2> <h4 data-astro-cid-mwd2jfe2>On this page</h4> <ul data-astro-cid-mwd2jfe2> <li data-astro-cid-mwd2jfe2><a href="#quick-start" data-astro-cid-mwd2jfe2>Quick start</a></li> <li data-astro-cid-mwd2jfe2><a href="#authentication" data-astro-cid-mwd2jfe2>Authentication</a></li> <li data-astro-cid-mwd2jfe2><a href="#running-tests" data-astro-cid-mwd2jfe2>Running tests</a></li> <li data-astro-cid-mwd2jfe2><a href="#configuration-file" data-astro-cid-mwd2jfe2>Configuration file</a></li> <li data-astro-cid-mwd2jfe2><a href="#generating-reports" data-astro-cid-mwd2jfe2>Generating reports</a></li> <li data-astro-cid-mwd2jfe2><a href="#extending-vip" data-astro-cid-mwd2jfe2>Extending VIP</a></li> </ul> </aside> <article class="docs" data-astro-cid-mwd2jfe2> <section id="quick-start" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Quick start</h2> <p data-astro-cid-mwd2jfe2>Install VIP, then point it at your server:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>uv venv
-source .venv/bin/activate
-uv pip install posit-vip
-playwright install chromium</code></pre> <h3 data-astro-cid-mwd2jfe2>Using RStudio or Positron?</h3> <p data-astro-cid-mwd2jfe2>
+            8.013 0 0016 8c0-4.42-3.58-8-8-8z" data-astro-cid-3ef6ksr2></path> </svg> </a> </nav> </div> </header>  <div class="page-header" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <h1 data-astro-cid-mwd2jfe2>Getting Started</h1> <p data-astro-cid-mwd2jfe2>Validate your Posit Team deployment in minutes.</p> </div> </div> <main class="content" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <aside class="toc" data-astro-cid-mwd2jfe2> <h4 data-astro-cid-mwd2jfe2>On this page</h4> <ul data-astro-cid-mwd2jfe2> <li data-astro-cid-mwd2jfe2><a href="#quick-start" data-astro-cid-mwd2jfe2>Quick start</a></li> <li data-astro-cid-mwd2jfe2><a href="#authentication" data-astro-cid-mwd2jfe2>Authentication</a></li> <li data-astro-cid-mwd2jfe2><a href="#running-tests" data-astro-cid-mwd2jfe2>Running tests</a></li> <li data-astro-cid-mwd2jfe2><a href="#configuration-file" data-astro-cid-mwd2jfe2>Configuration file</a></li> <li data-astro-cid-mwd2jfe2><a href="#generating-reports" data-astro-cid-mwd2jfe2>Generating reports</a></li> <li data-astro-cid-mwd2jfe2><a href="#extending-vip" data-astro-cid-mwd2jfe2>Extending VIP</a></li> </ul> </aside> <article class="docs" data-astro-cid-mwd2jfe2> <section id="quick-start" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Quick start</h2> <p data-astro-cid-mwd2jfe2>Install VIP, then point it at your server:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>uv pip install posit-vip
+uv run playwright install chromium</code></pre> <h3 data-astro-cid-mwd2jfe2>Using RStudio or Positron?</h3> <p data-astro-cid-mwd2jfe2>
 You can set up VIP as an RStudio project instead. Go to
 <em data-astro-cid-mwd2jfe2>File &rarr; New Project &rarr; Version Control &rarr; Git</em>
 and enter <code data-astro-cid-mwd2jfe2>https://github.com/posit-dev/vip.git</code> as
@@ -24,20 +22,21 @@ and enter <code data-astro-cid-mwd2jfe2>https://github.com/posit-dev/vip.git</co
 uv run playwright install chromium</code></pre> <p data-astro-cid-mwd2jfe2>
 See the <a href="../shiny-app/" data-astro-cid-mwd2jfe2>Shiny app</a> page for the full
             graphical workflow.
-</p> <p data-astro-cid-mwd2jfe2>Run your first test against a Connect server:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com</code></pre> <p data-astro-cid-mwd2jfe2>
-A browser window opens for you to log in. After authentication
-            completes, VIP runs the test suite headlessly and cleans up the
-            session automatically.
-</p> <p data-astro-cid-mwd2jfe2>Test multiple products at once:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify \
+</p> <p data-astro-cid-mwd2jfe2>Run your first test against a Connect server:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre> <p data-astro-cid-mwd2jfe2>
+The <code data-astro-cid-mwd2jfe2>--interactive-auth</code> flag opens a Chromium window so
+            you can log in. After authentication completes, VIP runs the test
+            suite headlessly and cleans up the session automatically.
+</p> <p data-astro-cid-mwd2jfe2>Check product health without running the full test suite:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip status</code></pre> <p data-astro-cid-mwd2jfe2>Test multiple products at once:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify \
   --connect-url https://connect.example.com \
   --workbench-url https://workbench.example.com \
-  --pm-url https://packagemanager.example.com</code></pre> </section> <section id="authentication" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Authentication</h2> <h3 data-astro-cid-mwd2jfe2>Interactive auth (default)</h3> <p data-astro-cid-mwd2jfe2>
-VIP opens a Chromium window so you can log in through any identity
-            provider (Okta, SAML, OIDC, password). After login, VIP mints a
-            temporary API key, saves the session, and runs all tests headlessly.
-            No credentials need to be configured.
-</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2># Interactive auth is the default — just run:
-vip verify --connect-url https://connect.example.com</code></pre> <h3 data-astro-cid-mwd2jfe2>Credential-based auth</h3> <p data-astro-cid-mwd2jfe2>
+  --pm-url https://packagemanager.example.com \
+  --interactive-auth</code></pre> </section> <section id="authentication" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Authentication</h2> <h3 data-astro-cid-mwd2jfe2>Interactive auth</h3> <p data-astro-cid-mwd2jfe2>
+Pass <code data-astro-cid-mwd2jfe2>--interactive-auth</code> to open a Chromium window where
+            you can log in through any identity provider (Okta, SAML, OIDC,
+            password). After login, VIP mints a temporary API key, saves the
+            session, and runs all tests headlessly. No credentials need to be
+            configured in advance.
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre> <h3 data-astro-cid-mwd2jfe2>Credential-based auth</h3> <p data-astro-cid-mwd2jfe2>
 If you have API keys or test user credentials, disable interactive
             auth and set environment variables instead:
 </p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>export VIP_CONNECT_API_KEY="your-api-key"
@@ -74,14 +73,23 @@ If no <code data-astro-cid-mwd2jfe2>--config</code> is specified and no URL flag
 Each product section (Connect, Workbench, Package Manager) can be
             enabled or disabled individually. See <code data-astro-cid-mwd2jfe2>vip.toml.example</code>
 for the full template.
-</p> </section> <section id="generating-reports" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Generating reports</h2> <p data-astro-cid-mwd2jfe2>After running tests, generate and optionally publish a Quarto report:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2># Generate results JSON
+</p> </section> <section id="generating-reports" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Generating reports</h2> <p data-astro-cid-mwd2jfe2>After running tests, generate and render the report:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2># Run tests and save results
 vip verify --connect-url https://connect.example.com --report report/results.json
 
-# Render the report
+# Render the report (requires quarto CLI)
+vip report
+
+# Or run Quarto directly
 cd report && quarto render
 
 # Publish to Connect (optional)
-quarto publish connect --server https://connect.example.com</code></pre> </section> <section id="extending-vip" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Extending VIP</h2> <p data-astro-cid-mwd2jfe2>
+quarto publish connect --server https://connect.example.com</code></pre> <p data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>vip report</code> is a convenience wrapper around
+<code data-astro-cid-mwd2jfe2>quarto render</code>. It reads results from
+<code data-astro-cid-mwd2jfe2>report/results.json</code> by default, or a custom path via
+<code data-astro-cid-mwd2jfe2>--results</code>. The
+<a href="https://quarto.org/docs/download/" data-astro-cid-mwd2jfe2>Quarto CLI</a> must be
+            installed.
+</p> </section> <section id="extending-vip" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Extending VIP</h2> <p data-astro-cid-mwd2jfe2>
 Add site-specific tests without modifying the VIP source tree. Create a directory with
 <code data-astro-cid-mwd2jfe2>.feature</code> and <code data-astro-cid-mwd2jfe2>.py</code> files following the same conventions:
 </p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com \
