@@ -10,7 +10,11 @@ These classes are used by :func:`vip.load_engine.run_user_simulation` when
 
 from __future__ import annotations
 
-from locust import HttpUser, between, task
+try:
+    from locust import HttpUser, between, task
+except ImportError as _err:
+    msg = "locust is required for user simulation: pip install 'posit-vip[load]'"
+    raise ImportError(msg) from _err
 
 
 class ConnectUser(HttpUser):
