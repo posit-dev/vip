@@ -1,12 +1,12 @@
-"""Step definitions for concurrent user load tests.
+"""Step definitions for concurrent request load tests.
 
-These tests simulate multiple authenticated users making real API requests
-simultaneously, verifying that each product handles concurrent user load
-acceptably.  Unlike the health-check concurrency tests, every request here
-carries authentication credentials and exercises a real user-facing endpoint.
+These tests fire N simultaneous authenticated API requests against a single
+endpoint per product, measuring burst throughput and p95 response time.
+All requests share the same credential — this tests server capacity under
+concurrent request load, not multi-user session isolation.
 
-User counts default to 10, 100, 1K, and 10K.  Counts not present in
-``performance.load_user_counts`` in ``vip.toml`` are skipped.
+For multi-endpoint session simulation, see ``test_user_simulation.py``.
+For true multi-user testing with unique credentials, see issue #125.
 """
 
 from __future__ import annotations

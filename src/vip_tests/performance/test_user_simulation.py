@@ -1,12 +1,15 @@
-"""Step definitions for realistic user simulation tests.
+"""Step definitions for realistic session simulation tests.
 
-These tests use Locust to simulate concurrent users performing realistic
-multi-endpoint sessions against each product: browsing content, checking
+These tests use Locust to simulate concurrent sessions performing realistic
+multi-endpoint traffic against each product: browsing content, checking
 settings, listing sessions, fetching package indexes, etc.
 
 Unlike the burst load tests (test_load.py) which fire N identical requests,
-these tests model real user behavior with weighted task frequencies and
-think-time between requests.
+these tests model real traffic patterns with weighted task frequencies and
+think-time between requests.  All sessions share the same credential — this
+tests server capacity under realistic traffic, not multi-user isolation.
+
+For true multi-user testing with unique credentials, see issue #125.
 
 Requires the ``vip[load]`` extra (locust).
 """
