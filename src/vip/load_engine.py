@@ -222,6 +222,93 @@ def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestRe
 
 
 # ---------------------------------------------------------------------------
+# User simulation (multi-endpoint, realistic behavior)
+# ---------------------------------------------------------------------------
+
+
+def run_user_simulation(
+    host: str,
+    user_class_name: str,
+    users: int,
+    config,
+    *,
+    credentials: dict[str, str] | None = None,
+) -> LoadTestResult:
+    """Run a realistic user simulation using product-specific Locust user classes.
+
+    Parameters
+    ----------
+    host:
+        Base URL for the product (e.g. ``https://connect.example.com``).
+    user_class_name:
+        One of ``"connect"``, ``"workbench"``, ``"package_manager"``.
+    users:
+        Number of simulated concurrent users.
+    config:
+        :class:`~vip.config.PerformanceConfig` instance.
+    credentials:
+        Product-specific credentials passed to the user class via
+        ``environment.parsed_options``.  Keys depend on the product
+        (e.g. ``{"api_key": "..."}`` for Connect/Workbench,
+        ``{"token": "..."}`` for Package Manager).
+    """
+    if not _locust_available():
+        msg = "locust not installed; user simulation requires: pip install 'posit-vip[load]'"
+        raise RuntimeError(msg)
+
+    import gevent
+    from locust.env import Environment
+
+    from vip.load_users import ConnectUser, PackageManagerUser, WorkbenchUser
+
+    user_classes = {
+        "connect": ConnectUser,
+        "workbench": WorkbenchUser,
+        "package_manager": PackageManagerUser,
+    }
+
+    if user_class_name not in user_classes:
+        msg = f"Unknown user class: {user_class_name!r}"
+        raise ValueError(msg)
+
+    # Create a concrete subclass with the correct host.
+    base_class = user_classes[user_class_name]
+    concrete = type(
+        f"_{user_class_name}_user",
+        (base_class,),
+        {"host": host, "abstract": False},
+    )
+
+    # Pass credentials via a custom attribute on the environment.
+    env = Environment(user_classes=[concrete])
+    env._vip_credentials = credentials or {}
+    runner = env.create_local_runner()
+    runner.start(users, spawn_rate=config.load_test_spawn_rate)
+    gevent.sleep(config.load_test_duration)
+    runner.stop()
+    runner.quit()
+
+    stats = env.stats.total
+    total = stats.num_requests
+    if total == 0:
+        return LoadTestResult(
+            total=0, successes=0, failure_rate=1.0, p95_response_time=0.0, results=[]
+        )
+
+    p95_s = (stats.get_response_time_percentile(0.95) or 0) / 1000.0
+    successes = total - stats.num_failures
+    failure_rate = 1.0 - (successes / total) if total else 1.0
+
+    return LoadTestResult(
+        total=total,
+        successes=successes,
+        failure_rate=failure_rate,
+        p95_response_time=p95_s,
+        results=[],
+    )
+
+
+# ---------------------------------------------------------------------------
 # Result builder
 # ---------------------------------------------------------------------------
 
