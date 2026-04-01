@@ -1,15 +1,5 @@
 # Quarto Report
 
-After running the tests, generate a report:
+This documentation has moved to the VIP website:
 
-```bash
-pytest
-cd report
-quarto render
-```
-
-The rendered report can be published to Connect:
-
-```bash
-quarto publish connect --server https://connect.example.com
-```
+**https://posit-dev.github.io/vip/report/**

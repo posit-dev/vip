@@ -1,10 +1,19 @@
 [project]
 name = "posit-vip"
-version = "0.13.0"
+version = "0.13.1"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
 dependencies = [
     "httpx>=0.27,<1",
     "playwright>=1.40",
@@ -34,6 +43,7 @@ cluster = [
     "azure-mgmt-containerservice>=20.0",
     "pyyaml>=6.0",
     "pyjwt>=2.12.0",  # CVE-2026-32597 fix; transitive via msal
+    "cryptography>=46.0.6",  # CVE-2026-34073 fix; transitive via boto3/urllib3
 ]
 dev = [
     "ruff>=0.15.0,<0.16",
@@ -42,6 +52,12 @@ dev = [
     "pytest-cov>=6.0",
     "pip-audit>=2.7",
 ]
+
+[project.urls]
+Homepage = "https://posit-dev.github.io/vip/"
+Repository = "https://github.com/posit-dev/vip"
+Documentation = "https://posit-dev.github.io/vip/getting-started/"
+Changelog = "https://github.com/posit-dev/vip/blob/main/CHANGELOG.md"
 
 [project.scripts]
 vip = "vip.cli:main"

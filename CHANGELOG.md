@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.13.1 (2026-04-01)
+
+### Bug Fixes
+
+- **deps**: Pin cryptography>=46.0.6 for CVE-2026-34073
+  ([#123](https://github.com/posit-dev/vip/pull/123),
+  [`7360a4d`](https://github.com/posit-dev/vip/commit/7360a4d5771b58ad2196826f27628431cc496ac5))
+
+
 ## v0.13.0 (2026-03-27)
 
 ### Features

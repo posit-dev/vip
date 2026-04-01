@@ -24,7 +24,8 @@ const productTotalSum = Object.values(productTotals).reduce((a, b) => a + b, 0);
     <div class="container">
       <h1>Feature Matrix</h1>
       <p>
-        {totalAreas} test areas &middot; {uniqueScenarios} scenarios across {products.length} products
+        {totalAreas} test areas &middot; {uniqueScenarios} scenarios across {products.length} products.
+        See the <a href={`${base}tests/`}>Test Inventory</a> for detailed scenarios and steps.
       </p>
       <div class="legend">
         <span class="legend-item"><span class="dot dot-covered"></span> Covered</span>
