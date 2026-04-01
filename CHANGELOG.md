@@ -1,6 +1,26 @@
 # CHANGELOG
 
 
+## v0.13.2 (2026-04-01)
+
+### Bug Fixes
+
+- **example-report**: Skip Package Manager when RSPM_LICENSE is unavailable
+  ([#116](https://github.com/posit-dev/vip/pull/116),
+  [`34a6eba`](https://github.com/posit-dev/vip/commit/34a6eba92a83e1b4169db3091f9d2b69a3bc0f62))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <iflores.siaca@posit.co>
+
+### Documentation
+
+- Polish documentation for alpha release ([#121](https://github.com/posit-dev/vip/pull/121),
+  [`6592978`](https://github.com/posit-dev/vip/commit/659297859e86d7b32f7b098bdbf5a0f432a060e9))
+
+
 ## v0.13.1 (2026-04-01)
 
 ### Bug Fixes
