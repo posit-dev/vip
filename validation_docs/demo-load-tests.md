@@ -27,11 +27,10 @@ src/vip_tests/performance/test_load.py::test_package_manager_handles_users_concu
 ```
 
 ```bash
-uv run ruff check src/ src/vip_tests/ selftests/ examples/ && uv run ruff format --check src/ src/vip_tests/ selftests/ examples/ && echo 'All lint checks passed'
+uv run ruff check src/ src/vip_tests/ selftests/ examples/ > /dev/null && uv run ruff format --check src/ src/vip_tests/ selftests/ examples/ > /dev/null && echo 'All lint checks passed'
 ```
 
 ```output
-All checks passed!
 All lint checks passed
 ```
 
