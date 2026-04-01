@@ -281,7 +281,7 @@ def run_user_simulation(
 
     # Pass credentials via a custom attribute on the environment.
     env = Environment(user_classes=[concrete])
-    env._vip_credentials = credentials or {}
+    env._vip_credentials = credentials or {}  # type: ignore[attr-defined]
     runner = env.create_local_runner()
     runner.start(users, spawn_rate=config.load_test_spawn_rate)
     gevent.sleep(config.load_test_duration)
