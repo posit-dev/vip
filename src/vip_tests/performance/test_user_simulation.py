@@ -21,6 +21,14 @@ from vip.load_engine import run_user_simulation
 scenarios("test_user_simulation.feature")
 
 
+def _check_user_count(users: int, performance_config) -> None:
+    """Skip if this user count is not in the configured list."""
+    if users not in performance_config.load_user_counts:
+        pytest.skip(
+            f"{users} users not in load_user_counts ({performance_config.load_user_counts})"
+        )
+
+
 # ---------------------------------------------------------------------------
 # When steps
 # ---------------------------------------------------------------------------
@@ -31,6 +39,7 @@ scenarios("test_user_simulation.feature")
     target_fixture="simulation_result",
 )
 def simulate_connect(users, vip_config, performance_config):
+    _check_user_count(users, performance_config)
     if not vip_config.connect.api_key:
         pytest.skip("Connect API key is not configured")
     return run_user_simulation(
@@ -47,6 +56,7 @@ def simulate_connect(users, vip_config, performance_config):
     target_fixture="simulation_result",
 )
 def simulate_workbench(users, vip_config, performance_config):
+    _check_user_count(users, performance_config)
     if not vip_config.workbench.api_key:
         pytest.skip("Workbench API key is not configured")
     return run_user_simulation(
@@ -63,6 +73,7 @@ def simulate_workbench(users, vip_config, performance_config):
     target_fixture="simulation_result",
 )
 def simulate_pm(users, vip_config, performance_config):
+    _check_user_count(users, performance_config)
     if not vip_config.package_manager.url:
         pytest.skip("Package Manager URL is not configured")
     token = vip_config.package_manager.token or ""

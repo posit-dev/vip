@@ -5,8 +5,8 @@ simultaneously, verifying that each product handles concurrent user load
 acceptably.  Unlike the health-check concurrency tests, every request here
 carries authentication credentials and exercises a real user-facing endpoint.
 
-User counts default to 10, 100, 1K, and 10K (configurable via
-``performance.load_user_counts`` in ``vip.toml``).
+User counts default to 10, 100, 1K, and 10K.  Counts not present in
+``performance.load_user_counts`` in ``vip.toml`` are skipped.
 """
 
 from __future__ import annotations
@@ -19,6 +19,14 @@ from vip.load_engine import run_load_test
 scenarios("test_load.feature")
 
 
+def _check_user_count(users: int, performance_config) -> None:
+    """Skip if this user count is not in the configured list."""
+    if users not in performance_config.load_user_counts:
+        pytest.skip(
+            f"{users} users not in load_user_counts ({performance_config.load_user_counts})"
+        )
+
+
 # ---------------------------------------------------------------------------
 # When steps
 # ---------------------------------------------------------------------------
@@ -29,6 +37,7 @@ scenarios("test_load.feature")
     target_fixture="load_test_result",
 )
 def load_test_connect(users, vip_config, performance_config):
+    _check_user_count(users, performance_config)
     if not vip_config.connect.api_key:
         pytest.skip("Connect API key is not configured")
     url = f"{vip_config.connect.url}/__api__/v1/content"
@@ -41,6 +50,7 @@ def load_test_connect(users, vip_config, performance_config):
     target_fixture="load_test_result",
 )
 def load_test_workbench(users, vip_config, performance_config):
+    _check_user_count(users, performance_config)
     if not vip_config.workbench.api_key:
         pytest.skip("Workbench API key is not configured")
     url = f"{vip_config.workbench.url}/api/server/settings"
@@ -53,6 +63,7 @@ def load_test_workbench(users, vip_config, performance_config):
     target_fixture="load_test_result",
 )
 def load_test_pm(users, vip_config, performance_config):
+    _check_user_count(users, performance_config)
     if not vip_config.package_manager.token:
         pytest.skip("Package Manager token is not configured")
     url = f"{vip_config.package_manager.url}/__api__/repos"

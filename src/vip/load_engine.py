@@ -18,8 +18,12 @@ import statistics
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import httpx
+
+if TYPE_CHECKING:
+    from vip.config import PerformanceConfig
 
 
 @dataclass
@@ -42,7 +46,7 @@ def run_load_test(
     url: str,
     headers: dict[str, str],
     users: int,
-    config,  # PerformanceConfig — avoid circular import
+    config: PerformanceConfig,
 ) -> LoadTestResult:
     """Run a load test and return aggregated results.
 
@@ -76,26 +80,27 @@ def run_load_test(
 
 def _run_threadpool(url: str, headers: dict[str, str], n: int, timeout: float = 30.0) -> list[dict]:
     """Fire *n* synchronous GET requests via a thread pool."""
+    with httpx.Client(timeout=timeout) as client:
 
-    def _fetch():
-        start = time.monotonic()
-        try:
-            resp = httpx.get(url, headers=headers, timeout=timeout)
-            return {
-                "elapsed": time.monotonic() - start,
-                "status": resp.status_code,
-                "error": None,
-            }
-        except Exception as exc:
-            return {
-                "elapsed": time.monotonic() - start,
-                "status": None,
-                "error": str(exc),
-            }
+        def _fetch():
+            start = time.monotonic()
+            try:
+                resp = client.get(url, headers=headers)
+                return {
+                    "elapsed": time.monotonic() - start,
+                    "status": resp.status_code,
+                    "error": None,
+                }
+            except Exception as exc:
+                return {
+                    "elapsed": time.monotonic() - start,
+                    "status": None,
+                    "error": str(exc),
+                }
 
-    with ThreadPoolExecutor(max_workers=min(n, 500)) as pool:
-        futures = [pool.submit(_fetch) for _ in range(n)]
-        return [f.result() for f in as_completed(futures)]
+        with ThreadPoolExecutor(max_workers=min(n, 500)) as pool:
+            futures = [pool.submit(_fetch) for _ in range(n)]
+            return [f.result() for f in as_completed(futures)]
 
 
 # ---------------------------------------------------------------------------
