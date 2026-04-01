@@ -157,3 +157,9 @@ class TestErrors:
         config = PerformanceConfig(load_test_tool="bogus")
         with pytest.raises(ValueError, match="Unknown load_test_tool"):
             run_load_test(mock_server, {}, 10, config)
+
+    def test_locust_not_installed_raises(self, mock_server, monkeypatch):
+        monkeypatch.setattr("vip.load_engine._locust_available", lambda: False)
+        config = PerformanceConfig(load_test_tool="locust")
+        with pytest.raises(RuntimeError, match="locust not installed"):
+            run_load_test(mock_server, {}, 10, config)

@@ -20,7 +20,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 import httpx
-import pytest
 
 
 @dataclass
@@ -94,7 +93,7 @@ def _run_threadpool(url: str, headers: dict[str, str], n: int, timeout: float = 
                 "error": str(exc),
             }
 
-    with ThreadPoolExecutor(max_workers=n) as pool:
+    with ThreadPoolExecutor(max_workers=min(n, 500)) as pool:
         futures = [pool.submit(_fetch) for _ in range(n)]
         return [f.result() for f in as_completed(futures)]
 
@@ -161,13 +160,14 @@ def _locust_available() -> bool:
     return importlib.util.find_spec("locust") is not None
 
 
-def _run_locust(url: str, headers: dict[str, str], n: int, config) -> list[dict]:
-    """Run a headless Locust load test and return per-request results."""
+def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestResult:
+    """Run a headless Locust load test and return aggregated results."""
     if not _locust_available():
-        pytest.skip(
+        msg = (
             f"locust not installed; {n} users with tool='locust' requires: "
             "pip install 'posit-vip[load]'"
         )
+        raise RuntimeError(msg)
 
     # Parse base URL and path from the full URL.
     from urllib.parse import urlparse
@@ -202,7 +202,9 @@ def _run_locust(url: str, headers: dict[str, str], n: int, config) -> list[dict]
     stats = env.stats.total
     total = stats.num_requests
     if total == 0:
-        return []
+        return LoadTestResult(
+            total=0, successes=0, failure_rate=1.0, p95_response_time=0.0, results=[]
+        )
 
     # Locust gives aggregate stats, not per-request data.  Build a
     # LoadTestResult directly to preserve the real p95.
