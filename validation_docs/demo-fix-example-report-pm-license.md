@@ -15,11 +15,10 @@ The fix adds the same pattern to example-report.yml:
 - The Stop Package Manager cleanup step is also conditionalized to avoid errors
 
 ```bash
-uv run ruff check src/ src/vip_tests/ selftests/ examples/ && uv run ruff format --check src/ src/vip_tests/ selftests/ examples/ && echo 'All checks passed'
+uv run ruff check src/ src/vip_tests/ selftests/ examples/ > /dev/null && uv run ruff format --check src/ src/vip_tests/ selftests/ examples/ > /dev/null && echo 'All checks passed'
 ```
 
 ```output
-All checks passed!
 All checks passed
 ```
 
