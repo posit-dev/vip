@@ -227,10 +227,7 @@ def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Pa
     if failures:
         passed = len(launched_sessions) - len(failures)
         total = len(launched_sessions)
-        msg = (
-            f"{passed}/{total} sessions reached Active. "
-            f"Failed profiles: {', '.join(failures)}"
-        )
+        msg = f"{passed}/{total} sessions reached Active. Failed profiles: {', '.join(failures)}"
         pytest.fail(msg)
 
 
