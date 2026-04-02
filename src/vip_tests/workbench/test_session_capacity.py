@@ -93,15 +93,16 @@ def _launch_session(
     if profile is not None:
         profile_dropdown = page.locator(NewSessionDialog.RESOURCE_PROFILE)
         if profile_dropdown.is_visible(timeout=TIMEOUT_QUICK):
-            profile_dropdown.click()
-            # Workbench uses a custom dropdown — dump the DOM for debugging
-            # if the standard selectors don't work.
-            import time as _time
-
-            _time.sleep(0.5)  # wait for dropdown animation
-            # Try clicking by visible text within the dropdown listbox.
-            option = page.locator(f"text='{profile}'").first
-            option.click(timeout=TIMEOUT_QUICK)
+            # Use select_option for native <select> elements, or click
+            # for custom dropdowns.
+            tag = profile_dropdown.evaluate("el => el.tagName.toLowerCase()")
+            if tag == "select":
+                profile_dropdown.select_option(label=profile)
+            else:
+                profile_dropdown.click()
+                page.locator(f"[role='option']:has-text('{profile}')").first.click(
+                    timeout=TIMEOUT_QUICK
+                )
         else:
             pytest.skip(f"Resource profile dropdown not available; cannot select '{profile}'")
 
