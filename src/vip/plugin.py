@@ -135,7 +135,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
         from vip.auth import start_interactive_auth
 
-        cache_path = Path(config.rootdir) / ".vip-auth-cache.json"
+        cache_path = Path(config.rootpath) / ".vip-auth-cache.json"
         session = start_interactive_auth(
             connect_url=connect_url, workbench_url=wb_url, cache_path=cache_path
         )

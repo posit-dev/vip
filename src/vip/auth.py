@@ -145,6 +145,7 @@ def start_interactive_auth(
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
+    assert primary_url is not None  # guaranteed by the check above
     login_path = "/__login__" if connect_url else ""
 
     tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
