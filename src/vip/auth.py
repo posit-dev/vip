@@ -54,9 +54,66 @@ class InteractiveAuthSession:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
 
+def _load_cached_auth(cache_path: Path) -> InteractiveAuthSession | None:
+    """Load a cached auth session if the storage state file exists and is recent."""
+    if not cache_path.exists():
+        return None
+
+    import json
+
+    # Check if the cache is less than 4 hours old.
+    age = time.time() - cache_path.stat().st_mtime
+    if age > 4 * 3600:
+        return None
+
+    # Read the companion metadata file if it exists.
+    meta_path = cache_path.with_suffix(".meta.json")
+    api_key = None
+    key_name = ""
+    connect_url = ""
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text())
+            api_key = meta.get("api_key")
+            key_name = meta.get("key_name", "")
+            connect_url = meta.get("connect_url", "")
+        except Exception:
+            pass
+
+    print(f">>> Reusing cached auth session from {cache_path}")
+    return InteractiveAuthSession(
+        storage_state_path=cache_path,
+        api_key=api_key,
+        key_name=key_name,
+        _connect_url=connect_url,
+        _tmpdir="",
+    )
+
+
+def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
+    """Save auth session metadata alongside the storage state."""
+    import json
+    import shutil as _shutil
+
+    # Copy storage state to the cache location.
+    _shutil.copy2(session.storage_state_path, cache_path)
+    os.chmod(cache_path, 0o600)
+
+    # Write companion metadata.
+    meta_path = cache_path.with_suffix(".meta.json")
+    meta = {
+        "api_key": session.api_key,
+        "key_name": session.key_name,
+        "connect_url": session._connect_url,
+    }
+    meta_path.write_text(json.dumps(meta))
+    os.chmod(meta_path, 0o600)
+
+
 def start_interactive_auth(
     connect_url: str | None = None,
     workbench_url: str | None = None,
+    cache_path: Path | None = None,
 ) -> InteractiveAuthSession:
     """Launch a headed browser, authenticate via OIDC, and optionally
     mint a Connect API key through the UI.
@@ -79,6 +136,12 @@ def start_interactive_auth(
         raise ValueError(
             "--interactive-auth requires at least one product URL (Connect or Workbench)"
         )
+
+    # Check for a valid cached session.
+    if cache_path:
+        cached = _load_cached_auth(cache_path)
+        if cached is not None:
+            return cached
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
@@ -150,13 +213,19 @@ def start_interactive_auth(
 
         context.storage_state(path=str(storage_state_path))
 
-        return InteractiveAuthSession(
+        session = InteractiveAuthSession(
             storage_state_path=storage_state_path,
             api_key=api_key,
             key_name=key_name,
             _connect_url=connect_url or "",
             _tmpdir=tmpdir,
         )
+
+        # Cache the session for reuse across runs.
+        if cache_path:
+            _save_auth_cache(session, cache_path)
+
+        return session
     except Exception:
         if tmpdir and os.path.isdir(tmpdir):
             shutil.rmtree(tmpdir, ignore_errors=True)

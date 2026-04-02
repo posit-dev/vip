@@ -5,11 +5,11 @@ selectable resource profiles, verifying that the deployment can handle
 the concurrent session load.  Sessions are launched one at a time
 (Playwright is sequential) and then verified to all reach Active state.
 
-Resource profiles are dynamically parametrized:
+Resource profiles are resolved at runtime:
 - If ``workbench.session_profiles`` is set in ``vip.toml``, only those
   profiles are tested.
 - If not set, the test auto-detects available profiles from the UI
-  dropdown at runtime.
+  dropdown.
 
 Requires ``--interactive-auth`` since session launching is browser-driven.
 """
@@ -34,35 +34,6 @@ scenarios("test_session_capacity.feature")
 
 # Unique prefix for session names so cleanup only targets our sessions.
 _SESSION_PREFIX = "_vip_capacity_"
-
-
-# ---------------------------------------------------------------------------
-# Dynamic parametrization
-# ---------------------------------------------------------------------------
-
-
-def pytest_generate_tests(metafunc):
-    """Parametrize session capacity tests by resource profile.
-
-    If ``workbench.session_profiles`` is configured, use that list.
-    Otherwise, inject a single ``None`` value that triggers auto-detection
-    from the UI dropdown at runtime.
-    """
-    if "resource_profile" not in metafunc.fixturenames:
-        return
-
-    config = metafunc.config.stash.get(pytest.StashKey[object](), None)
-    # The VIP config is stored by the plugin; fall back to auto-detect.
-    profiles = None
-    if config is not None and hasattr(config, "workbench"):
-        profiles = config.workbench.session_profiles
-
-    if profiles:
-        metafunc.parametrize("resource_profile", profiles, ids=profiles)
-    else:
-        # None = auto-detect at runtime.  We parametrize with a single
-        # sentinel so the test still collects.
-        metafunc.parametrize("resource_profile", [None], ids=["auto-detect"])
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +151,12 @@ def workbench_logged_in(
     interactive_auth: bool,
 ):
     workbench_login(
-        page, workbench_url, test_username, test_password, auth_provider, interactive_auth
+        page,
+        workbench_url,
+        test_username,
+        test_password,
+        auth_provider,
+        interactive_auth,
     )
     assert_homepage_loaded(page)
 
@@ -191,19 +167,21 @@ def workbench_logged_in(
 
 
 @when("I launch sessions with the test resource profile", target_fixture="launched_sessions")
-def launch_sessions(resource_profile: str | None, page: Page, vip_config):
+def launch_sessions(page: Page, vip_config):
     session_count = vip_config.workbench.session_count
+    configured_profiles = vip_config.workbench.session_profiles
 
-    if resource_profile is None:
-        # Auto-detect: read profiles from the dropdown.
-        detected = _detect_profiles(page)
-        if not detected:
-            # No profiles available — launch with defaults.
-            profiles_to_test = [None]
-        else:
-            profiles_to_test = detected
+    if configured_profiles:
+        # Explicit config — test only the listed profiles.
+        profiles_to_test = configured_profiles
     else:
-        profiles_to_test = [resource_profile]
+        # Auto-detect from the dropdown.
+        detected = _detect_profiles(page)
+        if detected:
+            profiles_to_test = detected
+        else:
+            # No dropdown — launch with default profile.
+            profiles_to_test = [None]
 
     all_sessions: list[dict[str, str | None]] = []
     for profile in profiles_to_test:

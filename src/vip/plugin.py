@@ -131,9 +131,14 @@ def pytest_configure(config: pytest.Config) -> None:
                 "--interactive-auth requires at least one product URL (Connect or Workbench)"
             )
 
+        from pathlib import Path
+
         from vip.auth import start_interactive_auth
 
-        session = start_interactive_auth(connect_url=connect_url, workbench_url=wb_url)
+        cache_path = Path(config.rootdir) / ".vip-auth-cache.json"
+        session = start_interactive_auth(
+            connect_url=connect_url, workbench_url=wb_url, cache_path=cache_path
+        )
         config.stash[_auth_session_key] = session
         if session.api_key:
             vip_cfg.connect.api_key = session.api_key

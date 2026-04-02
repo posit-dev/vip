@@ -169,9 +169,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             "--interactive-auth",
         )
-        result.stderr.fnmatch_lines(
-            ["*--interactive-auth requires at least one product URL*"]
-        )
+        result.stderr.fnmatch_lines(["*--interactive-auth requires at least one product URL*"])
 
 
 def test_markers_in_sync():
