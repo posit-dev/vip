@@ -157,8 +157,8 @@ class TestPluginIntegration:
         assert result["scenario_title"] is None
         assert result["feature_description"] is None
 
-    def test_interactive_auth_requires_connect_url(self, selftest_pytester):
-        """--interactive-auth fails fast when Connect URL is not configured."""
+    def test_interactive_auth_requires_product_url(self, selftest_pytester):
+        """--interactive-auth fails fast when no product URL is configured."""
         selftest_pytester.makepyfile(
             """
             def test_placeholder():
@@ -169,7 +169,9 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             "--interactive-auth",
         )
-        result.stderr.fnmatch_lines(["*--interactive-auth requires Connect URL*"])
+        result.stderr.fnmatch_lines(
+            ["*--interactive-auth requires at least one product URL*"]
+        )
 
 
 def test_markers_in_sync():

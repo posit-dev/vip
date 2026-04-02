@@ -123,18 +123,21 @@ def pytest_configure(config: pytest.Config) -> None:
         # xdist worker — restore auth data shared by the controller.
         _restore_worker_auth(config, vip_cfg)
     elif config.getoption("--interactive-auth"):
-        if not vip_cfg.connect.url:
+        connect_url = vip_cfg.connect.url if vip_cfg.connect.is_configured else None
+        wb_url = vip_cfg.workbench.url if vip_cfg.workbench.is_configured else None
+
+        if not connect_url and not wb_url:
             raise pytest.UsageError(
-                "--interactive-auth requires Connect URL to be configured in vip.toml"
+                "--interactive-auth requires at least one product URL (Connect or Workbench)"
             )
+
         from vip.auth import start_interactive_auth
 
-        wb_url = vip_cfg.workbench.url if vip_cfg.workbench.is_configured else None
-        session = start_interactive_auth(vip_cfg.connect.url, workbench_url=wb_url)
+        session = start_interactive_auth(connect_url=connect_url, workbench_url=wb_url)
         config.stash[_auth_session_key] = session
         if session.api_key:
             vip_cfg.connect.api_key = session.api_key
-        else:
+        elif connect_url:
             warnings.warn(
                 "VIP: --interactive-auth could not mint an API key. "
                 "API-based tests will likely fail. Set VIP_CONNECT_API_KEY to fix.",

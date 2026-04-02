@@ -55,20 +55,35 @@ class InteractiveAuthSession:
 
 
 def start_interactive_auth(
-    connect_url: str,
+    connect_url: str | None = None,
     workbench_url: str | None = None,
 ) -> InteractiveAuthSession:
-    """Launch a headed browser, authenticate via OIDC, and mint a
-    Connect API key through the UI.
+    """Launch a headed browser, authenticate via OIDC, and optionally
+    mint a Connect API key through the UI.
 
-    If *workbench_url* is provided, the browser also visits Workbench
-    after Connect login so that the saved storage state contains session
-    cookies for both products (they typically share the same IdP, so SSO
-    handles the second authentication automatically).
+    At least one of *connect_url* or *workbench_url* must be provided.
+
+    When *connect_url* is given, the browser opens Connect's login page
+    and attempts to mint a temporary API key.  If *workbench_url* is
+    also provided, the browser visits Workbench afterward so the saved
+    storage state contains session cookies for both products (SSO handles
+    the second authentication automatically).
+
+    When only *workbench_url* is given, the browser opens Workbench
+    directly.  No Connect API key is minted.
 
     The browser is closed before this function returns.  pytest-playwright
     creates its own browser instance using the saved storage state.
     """
+    if not connect_url and not workbench_url:
+        raise ValueError(
+            "--interactive-auth requires at least one product URL (Connect or Workbench)"
+        )
+
+    # Determine the primary login target.
+    primary_url = connect_url or workbench_url
+    login_path = "/__login__" if connect_url else ""
+
     tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
     storage_state_path = Path(tmpdir) / "vip-auth-state.json"
     os.chmod(tmpdir, 0o700)
@@ -83,24 +98,36 @@ def start_interactive_auth(
         context = browser.new_context()
         page = context.new_page()
 
-        page.goto(f"{connect_url}/__login__")
+        page.goto(f"{primary_url}{login_path}")
 
-        print(f"\n>>> A browser window has opened at {connect_url}")
+        print(f"\n>>> A browser window has opened at {primary_url}")
         print(">>> Please log in through your identity provider.")
         print(">>> The browser will close automatically after login.\n")
 
         # Poll until login completes
-        base = connect_url.rstrip("/")
+        base = primary_url.rstrip("/")
         deadline = time.monotonic() + 300
         login_completed = False
+
+        # Login detection: for Connect check we left /__login__,
+        # for Workbench check we're no longer on a login/auth page.
         while time.monotonic() < deadline:
             try:
                 url = page.url
             except Exception:
                 break
-            if base in url and "/__login__" not in url:
-                login_completed = True
-                break
+            if connect_url:
+                if base in url and "/__login__" not in url:
+                    login_completed = True
+                    break
+            else:
+                # For Workbench, login is complete when we're on the
+                # homepage (no login/auth keywords in the URL).
+                lower = url.lower()
+                at_login = any(kw in lower for kw in ("sign-in", "login", "auth"))
+                if base.rstrip("/").lower() in lower and not at_login:
+                    login_completed = True
+                    break
             try:
                 page.wait_for_timeout(500)
             except Exception:
@@ -112,10 +139,13 @@ def start_interactive_auth(
                 "Please rerun and complete authentication in the browser window."
             )
 
-        api_key = _create_api_key_via_ui(page, connect_url, key_name)
+        # Mint Connect API key only if Connect is configured.
+        api_key = None
+        if connect_url:
+            api_key = _create_api_key_via_ui(page, connect_url, key_name)
 
         # Visit Workbench so the storage state includes its session cookies.
-        if workbench_url:
+        if workbench_url and connect_url:
             _authenticate_workbench(page, workbench_url)
 
         context.storage_state(path=str(storage_state_path))
@@ -124,7 +154,7 @@ def start_interactive_auth(
             storage_state_path=storage_state_path,
             api_key=api_key,
             key_name=key_name,
-            _connect_url=connect_url,
+            _connect_url=connect_url or "",
             _tmpdir=tmpdir,
         )
     except Exception:
