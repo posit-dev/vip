@@ -32,8 +32,9 @@ from vip_tests.workbench.pages import Homepage, NewSessionDialog
 
 scenarios("test_session_capacity.feature")
 
-# Unique prefix for session names so cleanup only targets our sessions.
-_SESSION_PREFIX = "_vip_capacity_"
+# Unique prefix for session names. Timestamp ensures no collision with
+# leftover sessions from previous runs.
+_SESSION_PREFIX = f"_vip_cap_{int(__import__('time').time())}_"
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +216,7 @@ def launch_sessions(page: Page, vip_config):
 def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Page):
     for session in launched_sessions:
         name = session["name"]
-        active = page.locator(Homepage.session_row_status(name, "Active"))
+        active = page.locator(Homepage.session_row_status(name, "Active")).first
         expect(active).to_be_visible(timeout=TIMEOUT_SESSION_START)
 
 
