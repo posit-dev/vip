@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.15.0 (2026-04-02)
+
+### Features
+
+- **performance**: Add logarithmic-scale load testing with pluggable engine
+  ([#124](https://github.com/posit-dev/vip/pull/124),
+  [`23730af`](https://github.com/posit-dev/vip/commit/23730af3c6d45f4ba74e15ed88d5081607b74173))
+
+
 ## v0.14.0 (2026-04-01)
 
 ### Features
