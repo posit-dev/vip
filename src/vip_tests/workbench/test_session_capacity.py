@@ -52,8 +52,9 @@ def _detect_profiles(page: Page) -> list[str]:
 
     profile_dropdown = page.locator(NewSessionDialog.RESOURCE_PROFILE)
     if not profile_dropdown.is_visible(timeout=TIMEOUT_QUICK):
-        # No resource profile dropdown — close dialog and return empty.
-        page.locator(NewSessionDialog.CANCEL_BUTTON).click()
+        # No resource profile dropdown — close dialog via Escape.
+        page.keyboard.press("Escape")
+        expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
         return []
 
     # Open the dropdown to read options.
@@ -66,9 +67,9 @@ def _detect_profiles(page: Page) -> list[str]:
         if name:
             profiles.append(name.strip())
 
-    # Close the dropdown and dialog.
+    # Close the dropdown, then close the dialog via Escape.
     page.keyboard.press("Escape")
-    page.locator(NewSessionDialog.CANCEL_BUTTON).click()
+    page.keyboard.press("Escape")
     expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
 
     return profiles
