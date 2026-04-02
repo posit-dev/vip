@@ -177,13 +177,16 @@ def launch_sessions(page: Page, vip_config):
         # Explicit config — test only the listed profiles.
         profiles_to_test = configured_profiles
     else:
-        # Auto-detect from the dropdown.
+        # Auto-detect from the dropdown, excluding "Default" since
+        # that's the current selection, not a distinct profile.
         detected = _detect_profiles(page)
-        if detected:
-            profiles_to_test = detected
-        else:
-            # No dropdown — launch with default profile.
+        profiles_to_test = [p for p in detected if p.lower() != "default"]
+        if not profiles_to_test:
+            # No non-default profiles — launch with default.
             profiles_to_test = [None]
+        # When auto-detecting, launch 1 session per profile to avoid
+        # overwhelming the cluster with many profiles × session_count.
+        session_count = 1
 
     all_sessions: list[dict[str, str | None]] = []
     for profile in profiles_to_test:
