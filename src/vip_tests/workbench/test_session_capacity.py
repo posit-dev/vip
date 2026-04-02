@@ -60,12 +60,13 @@ def _detect_profiles(page: Page) -> list[str]:
     # Open the dropdown to read options.
     profile_dropdown.click()
     options = page.locator("[role='option']")
+    options.first.wait_for(state="visible", timeout=TIMEOUT_QUICK)
     count = options.count()
     profiles = []
     for i in range(count):
-        name = options.nth(i).get_attribute("name") or options.nth(i).text_content()
-        if name:
-            profiles.append(name.strip())
+        text = (options.nth(i).text_content() or "").strip()
+        if text:
+            profiles.append(text)
 
     # Close the dropdown, then close the dialog via Escape.
     page.keyboard.press("Escape")
@@ -93,7 +94,7 @@ def _launch_session(
         profile_dropdown = page.locator(NewSessionDialog.RESOURCE_PROFILE)
         if profile_dropdown.is_visible(timeout=TIMEOUT_QUICK):
             profile_dropdown.click()
-            option = page.locator(NewSessionDialog.resource_profile_option(profile))
+            option = page.get_by_role("option", name=profile, exact=True)
             option.click(timeout=TIMEOUT_QUICK)
         else:
             pytest.skip(f"Resource profile dropdown not available; cannot select '{profile}'")
