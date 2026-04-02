@@ -100,7 +100,10 @@ def _execute_r_command(page: Page, command: str) -> str:
     expect(console_input).to_be_visible(timeout=_TIMEOUT_CONSOLE_READY)
 
     console_input.click()
-    console_input.fill("")
+    # The console input is an ACE editor <div>, not an <input>, so fill()
+    # doesn't work.  Select-all + delete to clear any previous content.
+    page.keyboard.press("Control+a")
+    page.keyboard.press("Backspace")
     console_input.type(command)
     console_input.press("Enter")
 

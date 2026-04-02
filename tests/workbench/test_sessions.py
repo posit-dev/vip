@@ -137,8 +137,12 @@ def user_resumes_session(page: Page, session_context: dict):
     session_row = page.locator(Homepage.session_row(session_name))
     expect(session_row).to_be_visible(timeout=TIMEOUT_DIALOG)
 
-    # Clicking the session link on a suspended session resumes it
-    session_link = session_row.locator(f"a[title='join {session_name}']")
+    # Clicking the session link on a suspended session resumes it.
+    # The link title may be "join <name>" (active) or just "<name>" (suspended),
+    # so match either form.
+    session_link = session_row.locator(
+        f"a[title='join {session_name}'], a[title='{session_name}'], a:text-is('{session_name}')"
+    ).first
     expect(session_link).to_be_visible(timeout=TIMEOUT_DIALOG)
     session_link.click()
 
