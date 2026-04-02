@@ -214,10 +214,24 @@ def launch_sessions(page: Page, vip_config):
 
 @then("all launched sessions reach Active state")
 def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Page):
+    failures = []
     for session in launched_sessions:
         name = session["name"]
+        profile = session["profile"] or "default"
         active = page.locator(Homepage.session_row_status(name, "Active")).first
-        expect(active).to_be_visible(timeout=TIMEOUT_SESSION_START)
+        try:
+            expect(active).to_be_visible(timeout=TIMEOUT_SESSION_START)
+        except AssertionError:
+            failures.append(profile)
+
+    if failures:
+        passed = len(launched_sessions) - len(failures)
+        total = len(launched_sessions)
+        msg = (
+            f"{passed}/{total} sessions reached Active. "
+            f"Failed profiles: {', '.join(failures)}"
+        )
+        pytest.fail(msg)
 
 
 @then("I clean up all launched sessions")
