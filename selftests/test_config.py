@@ -76,6 +76,33 @@ class TestPerformanceConfig:
         pc = PerformanceConfig.from_dict({})
         assert pc.page_load_timeout == 10.0
 
+    def test_load_defaults(self):
+        pc = PerformanceConfig()
+        assert pc.load_user_counts == [10, 100, 1_000, 10_000]
+        assert pc.load_max_connections == 200
+        assert pc.load_success_rate_threshold == 0.95
+        assert pc.load_test_tool == "auto"
+        assert pc.load_test_duration == 30
+        assert pc.load_test_spawn_rate == 10
+
+    def test_load_from_dict(self):
+        pc = PerformanceConfig.from_dict(
+            {
+                "load_user_counts": [5, 50],
+                "load_max_connections": 100,
+                "load_success_rate_threshold": 0.90,
+                "load_test_tool": "async",
+                "load_test_duration": 60,
+                "load_test_spawn_rate": 20,
+            }
+        )
+        assert pc.load_user_counts == [5, 50]
+        assert pc.load_max_connections == 100
+        assert pc.load_success_rate_threshold == 0.90
+        assert pc.load_test_tool == "async"
+        assert pc.load_test_duration == 60
+        assert pc.load_test_spawn_rate == 20
+
 
 class TestVIPConfig:
     def test_product_config_lookup(self):
