@@ -100,9 +100,9 @@ def _launch_session(
                 profile_dropdown.select_option(label=profile)
             else:
                 profile_dropdown.click()
-                page.locator(f"[role='option']:has-text('{profile}')").first.click(
-                    timeout=TIMEOUT_QUICK
-                )
+                page.wait_for_timeout(500)
+                option = page.locator(f"[role='option']:has-text('{profile}')").first
+                option.click(timeout=TIMEOUT_QUICK)
         else:
             pytest.skip(f"Resource profile dropdown not available; cannot select '{profile}'")
 
