@@ -90,6 +90,11 @@ def _launch_session(
         "New Session", timeout=TIMEOUT_DIALOG
     )
 
+    # Explicitly select RStudio IDE tab to avoid relying on the default.
+    rstudio_tab = dialog.get_by_role("tab", name="RStudio")
+    if rstudio_tab.count() > 0:
+        rstudio_tab.first.click(timeout=TIMEOUT_QUICK)
+
     # Select resource profile if specified and the dropdown exists.
     if profile is not None:
         profile_dropdown = page.locator(NewSessionDialog.RESOURCE_PROFILE)
@@ -121,8 +126,11 @@ def _launch_session(
     expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
 
 
-def _cleanup_sessions_via_api(page: Page, workbench_base_url: str) -> None:
-    """Delete all sessions via the REST API."""
+def _cleanup_sessions_via_api(
+    page: Page, workbench_base_url: str, launched: list[dict[str, str | None]]
+) -> None:
+    """Delete only sessions created by this test run."""
+    launched_names = {s["name"] for s in launched}
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
         with httpx.Client(base_url=workbench_base_url, cookies=cookies, timeout=30.0) as client:
@@ -130,7 +138,8 @@ def _cleanup_sessions_via_api(page: Page, workbench_base_url: str) -> None:
             sessions = resp.json() if resp.status_code == 200 else []
             for session in sessions:
                 sid = session.get("id") or session.get("session_id", "")
-                if not sid:
+                name = session.get("label", "")
+                if not sid or name not in launched_names:
                     continue
                 for method, path in (
                     ("DELETE", f"/api/sessions/{sid}"),
@@ -235,7 +244,7 @@ def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Pa
 def cleanup_sessions(
     launched_sessions: list[dict[str, str | None]], page: Page, workbench_url: str
 ):
-    _cleanup_sessions_via_api(page, workbench_url)
+    _cleanup_sessions_via_api(page, workbench_url, launched_sessions)
 
     for session in launched_sessions:
         row = page.locator(Homepage.session_row(session["name"]))
