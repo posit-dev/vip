@@ -94,7 +94,11 @@ def _launch_session(
         profile_dropdown = page.locator(NewSessionDialog.RESOURCE_PROFILE)
         if profile_dropdown.is_visible(timeout=TIMEOUT_QUICK):
             profile_dropdown.click()
-            option = page.get_by_role("option", name=profile, exact=True)
+            # Try multiple selector strategies for the custom dropdown.
+            option = page.locator(
+                f"[role='option']:has-text('{profile}'), "
+                f"[role='listbox'] >> text='{profile}'"
+            ).first
             option.click(timeout=TIMEOUT_QUICK)
         else:
             pytest.skip(f"Resource profile dropdown not available; cannot select '{profile}'")
