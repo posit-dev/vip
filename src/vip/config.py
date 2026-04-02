@@ -81,6 +81,10 @@ class WorkbenchConfig(ProductConfig):
     """Workbench-specific configuration."""
 
     api_key: str = ""
+    # Resource profiles to test for session capacity.  None = auto-detect
+    # from the UI dropdown; explicit list = test only these profiles.
+    session_profiles: list[str] | None = None
+    session_count: int = 3  # sessions per profile in capacity tests
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -94,6 +98,8 @@ class WorkbenchConfig(ProductConfig):
             url=raw.get("url", ""),
             version=raw.get("version"),
             api_key=raw.get("api_key", ""),
+            session_profiles=raw.get("session_profiles"),
+            session_count=raw.get("session_count", 3),
         )
 
 
