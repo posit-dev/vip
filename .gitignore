@@ -2,6 +2,8 @@
 vip.toml
 report/results.json
 demo.md
+.vip-auth-cache.json
+.vip-auth-cache.meta.json
 
 # Agent tooling
 .positai/settings.json
