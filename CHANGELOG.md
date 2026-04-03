@@ -1,6 +1,118 @@
 # CHANGELOG
 
 
+## v0.15.0 (2026-04-02)
+
+### Features
+
+- **performance**: Add logarithmic-scale load testing with pluggable engine
+  ([#124](https://github.com/posit-dev/vip/pull/124),
+  [`23730af`](https://github.com/posit-dev/vip/commit/23730af3c6d45f4ba74e15ed88d5081607b74173))
+
+
+## v0.14.0 (2026-04-01)
+
+### Features
+
+- **performance**: Add concurrent user load tests for each product
+  ([#118](https://github.com/posit-dev/vip/pull/118),
+  [`f5f20e4`](https://github.com/posit-dev/vip/commit/f5f20e463e95c7a8d18e8a2037d5803abc0d9b3d))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <iflores.siaca@posit.co>
+
+Co-authored-by: Elliot Murphy <statik@users.noreply.github.com>
+
+Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>
+
+
+## v0.13.2 (2026-04-01)
+
+### Bug Fixes
+
+- **example-report**: Skip Package Manager when RSPM_LICENSE is unavailable
+  ([#116](https://github.com/posit-dev/vip/pull/116),
+  [`34a6eba`](https://github.com/posit-dev/vip/commit/34a6eba92a83e1b4169db3091f9d2b69a3bc0f62))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <iflores.siaca@posit.co>
+
+### Documentation
+
+- Polish documentation for alpha release ([#121](https://github.com/posit-dev/vip/pull/121),
+  [`6592978`](https://github.com/posit-dev/vip/commit/659297859e86d7b32f7b098bdbf5a0f432a060e9))
+
+
+## v0.13.1 (2026-04-01)
+
+### Bug Fixes
+
+- **deps**: Pin cryptography>=46.0.6 for CVE-2026-34073
+  ([#123](https://github.com/posit-dev/vip/pull/123),
+  [`7360a4d`](https://github.com/posit-dev/vip/commit/7360a4d5771b58ad2196826f27628431cc496ac5))
+
+
+## v0.13.0 (2026-03-27)
+
+### Features
+
+- Add feature matrix page to website ([#120](https://github.com/posit-dev/vip/pull/120),
+  [`c8b4a2f`](https://github.com/posit-dev/vip/commit/c8b4a2fb19cd97ea3125a8c17dafae4905a52916))
+
+
+## v0.12.2 (2026-03-26)
+
+### Bug Fixes
+
+- Include tests/ directory in the package wheel ([#110](https://github.com/posit-dev/vip/pull/110),
+  [`bf23266`](https://github.com/posit-dev/vip/commit/bf232662ede07d481f4e658d9682ef3679907ce1))
+
+### Chores
+
+- **deps**: Bump requests from 2.32.5 to 2.33.0 ([#114](https://github.com/posit-dev/vip/pull/114),
+  [`d3a118b`](https://github.com/posit-dev/vip/commit/d3a118bbc39aa736636b457abe022a0e2322d5a6))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+- **deps**: Bump the actions-dependencies group with 4 updates
+  ([#112](https://github.com/posit-dev/vip/pull/112),
+  [`653be07`](https://github.com/posit-dev/vip/commit/653be07797f88c97c491525c46b696ecc1e0833d))
+
+- **deps**: Bump the python-dependencies group with 4 updates
+  ([#111](https://github.com/posit-dev/vip/pull/111),
+  [`90ca94f`](https://github.com/posit-dev/vip/commit/90ca94f4f61586d6e36ef998041d5c5db97b6d97))
+
+### Documentation
+
+- Update install instructions to use PyPI ([#104](https://github.com/posit-dev/vip/pull/104),
+  [`c5b576f`](https://github.com/posit-dev/vip/commit/c5b576f74f43a653ed12ad6fa12f6b2e1139731c))
+
+
+## v0.12.1 (2026-03-24)
+
+### Bug Fixes
+
+- **ci**: Rename package to posit-vip to match PyPI project
+  ([#102](https://github.com/posit-dev/vip/pull/102),
+  [`dc32200`](https://github.com/posit-dev/vip/commit/dc322002abbf49279e1a7f1a7e5ca1125260ebd4))
+
+
+## v0.12.0 (2026-03-24)
+
+### Features
+
+- Add git-backed publishing test for Connect ([#99](https://github.com/posit-dev/vip/pull/99),
+  [`ffd14a4`](https://github.com/posit-dev/vip/commit/ffd14a4f5ca87d3bb2e8e5f21c16265ff30587aa))
+
+
 ## v0.11.1 (2026-03-23)
 
 ### Bug Fixes

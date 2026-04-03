@@ -13,7 +13,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
-from tests.workbench.conftest import (
+from vip_tests.workbench.conftest import (
     TIMEOUT_CLEANUP,
     TIMEOUT_DIALOG,
     TIMEOUT_PAGE_LOAD,
@@ -22,7 +22,7 @@ from tests.workbench.conftest import (
     assert_homepage_loaded,
     workbench_login,
 )
-from tests.workbench.pages import Homepage, NewSessionDialog
+from vip_tests.workbench.pages import Homepage, NewSessionDialog
 
 # Get filename for session naming
 _FILENAME = Path(__file__).name

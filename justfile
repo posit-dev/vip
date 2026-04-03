@@ -70,9 +70,10 @@ demo-save NAME:
     mv demo.md validation_docs/demo-{{ NAME }}.md
     @echo "Saved to validation_docs/demo-{{ NAME }}.md"
 
-# Generate test catalog JSON for the website
+# Generate test catalog and feature matrix JSON for the website
 website-data:
     uv run python scripts/generate-test-catalog.py
+    uv run python scripts/generate-feature-matrix.py
 
 # Generate a Quarto report from selftests (for CI / demo purposes)
 report-selftest:

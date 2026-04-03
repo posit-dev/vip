@@ -23,8 +23,8 @@ Work through each layer top-down:
 
 - Write scenarios in business language -- no URLs, status codes, or selectors
 - Always include a product tag: `@connect`, `@workbench`, or `@package_manager`
-- Place in the correct category directory under `tests/`
-- Reuse existing Given steps from `tests/conftest.py` for common guards
+- Place in the correct category directory under `src/vip_tests/`
+- Reuse existing Given steps from `src/vip_tests/conftest.py` for common guards
 
 ### 2. Step Definitions (Layer 2)
 
@@ -32,7 +32,7 @@ Work through each layer top-down:
 - Use `@scenario("file.feature", "Scenario name")` to link scenarios
 - Use `target_fixture` to pass state between steps
 - Keep steps under ~10 lines; push logic to the client layer
-- Reuse existing steps; check `tests/conftest.py` and sibling test files
+- Reuse existing steps; check `src/vip_tests/conftest.py` and sibling test files
 
 ### 3. Driver Port (Layer 3)
 
@@ -64,9 +64,9 @@ When reviewing test code, verify:
 
 - Tests must be non-destructive. Tag created content with `_vip_test` and clean up.
 - Use `pytest.skip("reason")` in Given steps when preconditions aren't met -- don't use assertions, which produce confusing failures instead of clean skips.
-- Fixtures are defined in `tests/conftest.py` (session-scoped) and available everywhere.
+- Fixtures are defined in `src/vip_tests/conftest.py` (session-scoped) and available everywhere.
 - Available clients: `connect_client`, `workbench_client`, `pm_client` (all session-scoped, `None` if unconfigured).
-- Selftests in `selftests/` verify framework behavior; product tests in `tests/` verify deployments.
+- Selftests in `selftests/` verify framework behavior; product tests in `src/vip_tests/` verify deployments.
 
 ## Anti-Patterns to Flag
 

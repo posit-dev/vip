@@ -16,13 +16,13 @@ jobs:
         name: Ruff lint
         with:
           version: "0.15.0"
-          args: check src/ tests/ selftests/ examples/
+          args: check src/ selftests/ examples/
 
       - uses: astral-sh/ruff-action@v3
         name: Ruff format
         with:
           version: "0.15.0"
-          args: format --check src/ tests/ selftests/ examples/
+          args: format --check src/ selftests/ examples/
 
   typecheck:
     name: Type Check
@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -54,7 +54,14 @@ jobs:
         run: uv sync --all-extras
 
       - name: Audit dependencies
-        run: uv run pip-audit --skip-editable
+        run: |
+          # CVE-2026-4539: ReDoS in pygments' AdlLexer (archetype.py), CVSS 3.3.
+          # Requires local access; no network exposure. VIP never invokes the ADL lexer.
+          # Pygments cannot be removed — it is a hard dependency of pytest, rich, ipython,
+          # and the full Jupyter stack. No patched version exists upstream yet (reported at
+          # https://github.com/pygments/pygments/issues/3058 but unaddressed as of 2026-03-24).
+          # Re-evaluate when a fix is released.
+          uv run pip-audit --skip-editable --ignore-vuln CVE-2026-4539
 
   selftest:
     name: Selftests (${{ matrix.python-version }})
@@ -65,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -79,7 +86,7 @@ jobs:
         run: uv run pytest selftests/ -v --junitxml=selftest-results.xml --cov=src/vip --cov-report=term-missing
 
       - name: Collect VIP tests (dry run)
-        run: uv run pytest tests/ --collect-only --quiet
+        run: uv run pytest src/vip_tests/ --collect-only --quiet
 
       - name: Upload test results
         if: always()
@@ -97,7 +104,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - uses: extractions/setup-just@v3

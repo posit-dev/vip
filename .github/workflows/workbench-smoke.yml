@@ -116,7 +116,7 @@ jobs:
             }
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -154,12 +154,12 @@ jobs:
       - name: Run Workbench smoke tests
         run: |
           uv run pytest \
-            tests/prerequisites/test_components.py \
-            tests/workbench/test_auth.py \
-            tests/workbench/test_ide_launch.py \
-            tests/workbench/test_sessions.py \
-            tests/workbench/test_packages.py \
-            tests/workbench/test_data_sources.py \
+            src/vip_tests/prerequisites/test_components.py \
+            src/vip_tests/workbench/test_auth.py \
+            src/vip_tests/workbench/test_ide_launch.py \
+            src/vip_tests/workbench/test_sessions.py \
+            src/vip_tests/workbench/test_packages.py \
+            src/vip_tests/workbench/test_data_sources.py \
             -v -k "workbench" \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml

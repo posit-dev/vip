@@ -32,10 +32,8 @@ import Footer from "../components/Footer.astro";
         <section id="quick-start">
           <h2>Quick start</h2>
           <p>Install VIP, then point it at your server:</p>
-          <pre><code>uv venv
-source .venv/bin/activate
-uv pip install "vip @ git+https://github.com/posit-dev/vip.git"
-playwright install chromium</code></pre>
+          <pre><code>uv pip install posit-vip
+uv run playwright install chromium</code></pre>
 
           <h3>Using RStudio or Positron?</h3>
           <p>
@@ -52,32 +50,35 @@ uv run playwright install chromium</code></pre>
           </p>
 
           <p>Run your first test against a Connect server:</p>
-          <pre><code>vip verify --connect-url https://connect.example.com</code></pre>
+          <pre><code>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre>
           <p>
-            A browser window opens for you to log in. After authentication
-            completes, VIP runs the test suite headlessly and cleans up the
-            session automatically.
+            The <code>--interactive-auth</code> flag opens a Chromium window so
+            you can log in. After authentication completes, VIP runs the test
+            suite headlessly and cleans up the session automatically.
           </p>
+          <p>Check product health without running the full test suite:</p>
+          <pre><code>vip status</code></pre>
 
           <p>Test multiple products at once:</p>
           <pre><code>vip verify \
   --connect-url https://connect.example.com \
   --workbench-url https://workbench.example.com \
-  --pm-url https://packagemanager.example.com</code></pre>
+  --pm-url https://packagemanager.example.com \
+  --interactive-auth</code></pre>
         </section>
 
         <section id="authentication">
           <h2>Authentication</h2>
 
-          <h3>Interactive auth (default)</h3>
+          <h3>Interactive auth</h3>
           <p>
-            VIP opens a Chromium window so you can log in through any identity
-            provider (Okta, SAML, OIDC, password). After login, VIP mints a
-            temporary API key, saves the session, and runs all tests headlessly.
-            No credentials need to be configured.
+            Pass <code>--interactive-auth</code> to open a Chromium window where
+            you can log in through any identity provider (Okta, SAML, OIDC,
+            password). After login, VIP mints a temporary API key, saves the
+            session, and runs all tests headlessly. No credentials need to be
+            configured in advance.
           </p>
-          <pre><code># Interactive auth is the default — just run:
-vip verify --connect-url https://connect.example.com</code></pre>
+          <pre><code>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre>
 
           <h3>Credential-based auth</h3>
           <p>
@@ -228,15 +229,26 @@ def test_new_api_feature():
 
         <section id="generating-reports">
           <h2>Generating reports</h2>
-          <p>After running tests, generate and optionally publish a Quarto report:</p>
-          <pre><code># Generate results JSON
+          <p>After running tests, generate and render the report:</p>
+          <pre><code># Run tests and save results
 vip verify --connect-url https://connect.example.com --report report/results.json
 
-# Render the report
+# Render the report (requires quarto CLI)
+vip report
+
+# Or run Quarto directly
 cd report && quarto render
 
 # Publish to Connect (optional)
 quarto publish connect --server https://connect.example.com</code></pre>
+          <p>
+            <code>vip report</code> is a convenience wrapper around
+            <code>quarto render</code>. It reads results from
+            <code>report/results.json</code> by default, or a custom path via
+            <code>--results</code>. The
+            <a href="https://quarto.org/docs/download/">Quarto CLI</a> must be
+            installed.
+          </p>
         </section>
 
         <section id="extending-vip">

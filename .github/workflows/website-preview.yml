@@ -24,17 +24,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
       - name: Sync Python dependencies
         run: uv sync --frozen
 
-      - name: Generate test catalog
+      - name: Generate test catalog and feature matrix
         run: |
           if [ -f scripts/generate-test-catalog.py ]; then
             uv run python scripts/generate-test-catalog.py
+          fi
+          if [ -f scripts/generate-feature-matrix.py ]; then
+            uv run python scripts/generate-feature-matrix.py
           fi
 
       - uses: actions/setup-node@v6
@@ -63,7 +66,7 @@ jobs:
           umbrella-dir: pr-preview-site
           comment: false
 
-      - uses: marocchino/sticky-pull-request-comment@v2
+      - uses: marocchino/sticky-pull-request-comment@v3
         env:
           WEBSITE_URL: https://posit-dev.github.io/vip/pr-preview-site/pr-${{ github.event.pull_request.number }}/
           REPORT_URL: https://posit-dev.github.io/vip/pr-preview/pr-${{ github.event.pull_request.number }}/
@@ -93,7 +96,7 @@ jobs:
           comment: false
           action: remove
 
-      - uses: marocchino/sticky-pull-request-comment@v2
+      - uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: preview-links
           delete: true

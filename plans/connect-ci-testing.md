@@ -168,8 +168,8 @@ jobs:
       - name: Run Connect smoke tests
         run: |
           uv run pytest \
-            tests/prerequisites/test_components.py \
-            tests/connect/test_auth.py \
+            src/vip_tests/prerequisites/test_components.py \
+            src/vip_tests/connect/test_auth.py \
             -v -k "reachable or api" \
             --vip-config=vip.toml
         env:

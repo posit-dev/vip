@@ -139,7 +139,7 @@ jobs:
             }
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         if: steps.license.outputs.available == 'true'
         with:
           enable-cache: true
@@ -172,9 +172,9 @@ jobs:
         if: steps.license.outputs.available == 'true'
         run: |
           uv run pytest \
-            "tests/prerequisites/test_components.py::test_product_server_is_reachable[Package Manager]" \
-            tests/prerequisites/test_versions.py \
-            tests/package_manager/test_repos.py \
+            "src/vip_tests/prerequisites/test_components.py::test_product_server_is_reachable[Package Manager]" \
+            src/vip_tests/prerequisites/test_versions.py \
+            src/vip_tests/package_manager/test_repos.py \
             -v \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml

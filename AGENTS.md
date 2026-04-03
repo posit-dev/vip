@@ -20,8 +20,8 @@ Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `py
 Ruff is the linter and formatter. CI enforces both. Always run checks before committing:
 
 ``` bash
-uv run ruff check src/ tests/ selftests/ examples/
-uv run ruff format --check src/ tests/ selftests/ examples/
+uv run ruff check src/ src/vip_tests/ selftests/ examples/
+uv run ruff format --check src/ src/vip_tests/ selftests/ examples/
 ```
 
 Or with just:
@@ -30,7 +30,7 @@ Or with just:
 just check
 ```
 
-Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. All Python directories (`src/`, `tests/`, `selftests/`, `examples/`) must pass. CI pins ruff to version 0.15.0 -- do not change the version without updating `.github/workflows/ci.yml`.
+Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. All Python directories (`src/`, `src/vip_tests/`, `selftests/`, `examples/`) must pass. CI pins ruff to version 0.15.0 -- do not change the version without updating `.github/workflows/ci.yml`.
 
 Auto-fix before committing:
 
@@ -52,18 +52,18 @@ uv run pytest selftests/ -v
 
 Run selftests after any change to `src/vip/`. If you add new config fields, plugin hooks, or reporting features, add corresponding selftests. Plugin integration tests use the `pytester` fixture (subprocess isolation).
 
-### Product tests (`tests/`)
+### Product tests (`src/vip_tests/`)
 
 BDD tests that run against real Posit Team deployments. These are organized by category:
 
 ```         
-tests/prerequisites/     # Server reachability, auth
-tests/package_manager/   # CRAN/PyPI mirrors, repos
-tests/connect/           # Auth, deploy, data sources, packages, email
-tests/workbench/         # Auth, IDE launch, sessions, packages
-tests/cross_product/     # SSL, monitoring, system resources
-tests/performance/       # Load times, concurrency
-tests/security/          # HTTPS, auth policy, secrets
+src/vip_tests/prerequisites/     # Server reachability, auth
+src/vip_tests/package_manager/   # CRAN/PyPI mirrors, repos
+src/vip_tests/connect/           # Auth, deploy, data sources, packages, email
+src/vip_tests/workbench/         # Auth, IDE launch, sessions, packages
+src/vip_tests/cross_product/     # SSL, monitoring, system resources
+src/vip_tests/performance/       # Load times, concurrency
+src/vip_tests/security/          # HTTPS, auth policy, secrets
 ```
 
 Product tests cannot run in CI (no products available). They are collected with `--collect-only` as a dry run in CI.
@@ -75,7 +75,7 @@ Every test is a pair of files:
 1.  **`.feature` file** -- Gherkin scenarios with a product marker tag
 2.  **`.py` file** -- Step definitions using `pytest_bdd`
 
-Example feature file (`tests/connect/test_auth.feature`):
+Example feature file (`src/vip_tests/connect/test_auth.feature`):
 
 ``` gherkin
 @connect
@@ -86,7 +86,7 @@ Feature: Connect authentication
     Then I see the Connect dashboard
 ```
 
-Example step file (`tests/connect/test_auth.py`):
+Example step file (`src/vip_tests/connect/test_auth.py`):
 
 ``` python
 from pytest_bdd import scenario, given, when, then
@@ -145,13 +145,13 @@ Key principles:
 | `src/vip/verify/site.py` | PTD Site CR parsing, vip.toml generation |
 | `src/vip/verify/credentials.py` | Keycloak + interactive credential provisioning |
 | `src/vip/verify/job.py` | K8s Job creation, log streaming, cleanup |
-| `tests/conftest.py` | Root fixtures: clients, auth, runtimes, data sources |
+| `src/vip_tests/conftest.py` | Root fixtures: clients, auth, runtimes, data sources |
 | `report/index.qmd` | Quarto summary page |
 | `report/details.qmd` | Quarto detailed results page |
 
 ## Fixtures available in product tests
 
-These are defined in `tests/conftest.py` and available to all tests:
+These are defined in `src/vip_tests/conftest.py` and available to all tests:
 
 -   `vip_config` -- the full `VIPConfig` object
 -   `connect_client` / `workbench_client` / `pm_client` -- httpx API clients (or `None` if not configured)

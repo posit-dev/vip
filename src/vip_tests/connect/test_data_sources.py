@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pytest_bdd import given, scenario, then, when
 
-from tests.helpers import check_data_source_connectivity
+from vip_tests.helpers import check_data_source_connectivity
 
 
 @scenario("test_data_sources.feature", "External data sources are reachable from Connect")

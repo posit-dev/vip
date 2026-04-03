@@ -18,7 +18,7 @@ vip/
 │       ├── workbench.py         # Health, server info, sessions
 │       └── packagemanager.py    # Repos, CRAN/PyPI availability
 │
-├── tests/                       # The VIP test suite (runs against real products)
+├── src/vip_tests/                       # The VIP test suite (runs against real products)
 │   ├── conftest.py              # Root fixtures: clients, auth, runtimes, data sources
 │   ├── prerequisites/           # Server reachability, auth credentials present
 │   ├── package_manager/         # CRAN/PyPI mirrors, repo listing, private repos
@@ -38,7 +38,7 @@ vip/
 │   ├── index.qmd                # Summary: pass/fail counts, category breakdown, failures
 │   └── details.qmd              # Per-test listing with outcome and duration
 │
-├── examples/custom_tests/       # Extension example for customer-specific tests
+├── examples/custom_src/vip_tests/       # Extension example for customer-specific tests
 ├── .github/workflows/
 │   ├── ci.yml                   # Lint + format + selftests (Python 3.10 & 3.12)
 │   └── preview.yml              # Render Quarto report and publish PR preview to gh-pages
@@ -114,15 +114,15 @@ environment.  This will immediately surface:
 ```bash
 cp vip.toml.example vip.toml
 # Fill in real URLs, set env vars for secrets
-pytest tests/ -v 2>&1 | tee first-run.log
+pytest src/vip_tests/ -v 2>&1 | tee first-run.log
 ```
 
 Start with prerequisites, then work outward:
 
 ```bash
-pytest tests/prerequisites/ -v
-pytest tests/connect/test_auth.py -v
-pytest tests/connect/ -v
+pytest src/vip_tests/prerequisites/ -v
+pytest src/vip_tests/connect/test_auth.py -v
+pytest src/vip_tests/connect/ -v
 # ...
 ```
 
@@ -147,7 +147,7 @@ When fixing selectors:
 
 Two tests are stubs that need real implementations:
 
-**`tests/workbench/test_packages.py` - R repos.conf check**
+**`src/vip_tests/workbench/test_packages.py` - R repos.conf check**
 
 The current step `check_r_repos` returns the Workbench URL without verifying
 anything.  To implement it:
@@ -159,7 +159,7 @@ anything.  To implement it:
 - Option C (session): Start a session, run `getOption("repos")` in the R
   console, and verify the output contains the expected URL.
 
-**`tests/security/test_secrets.py` - plaintext detection**
+**`src/vip_tests/security/test_secrets.py` - plaintext detection**
 
 The current placeholder list (`{"...", "your-api-key", "changeme", ""}`) works
 for basic cases.  To harden it:
@@ -288,7 +288,7 @@ pairs.  A `conftest.py` in the directory can define customer-specific fixtures.
 All VIP fixtures (`vip_config`, `connect_client`, etc.) are available
 automatically.
 
-See `examples/custom_tests/` for a working example.
+See `examples/custom_src/vip_tests/` for a working example.
 
 ### 9. Improve the Quarto report
 

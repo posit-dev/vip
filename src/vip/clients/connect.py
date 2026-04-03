@@ -237,6 +237,66 @@ class ConnectClient(BaseClient):
             return [i.get("version", i.get("path", "")) for i in installations]
         return []
 
+    # -- Git-backed publishing ----------------------------------------------
+
+    def set_repository(
+        self,
+        guid: str,
+        repo_url: str,
+        branch: str = "main",
+        directory: str = ".",
+    ) -> dict[str, Any]:
+        """Link a content item to a git repository via PUT."""
+        payload: dict[str, Any] = {
+            "repository": repo_url,
+            "branch": branch,
+            "directory": directory,
+            "polling": False,
+        }
+        resp = self._client.put(f"/v1/content/{guid}/repository", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    def deploy_from_repository(self, guid: str) -> dict[str, Any]:
+        """Trigger a deployment from the linked git repository."""
+        resp = self._client.post(f"/v1/content/{guid}/deploy", json={})
+        resp.raise_for_status()
+        return resp.json()
+
+    # -- Content fetching (authenticated, redirect-safe) -----------------------
+
+    def fetch_content(self, url: str, *, timeout: float = 30.0) -> httpx.Response:
+        """Fetch a content URL with API-key auth, following only same-origin redirects.
+
+        This avoids leaking the API key to external domains if Connect
+        redirects to a CDN or OAuth provider.
+        """
+        from urllib.parse import urlparse
+
+        origin = urlparse(self.base_url)
+        max_redirects = 10
+        resp = httpx.get(
+            url,
+            headers={"Authorization": self._client.headers["Authorization"]},
+            follow_redirects=False,
+            timeout=timeout,
+        )
+        for _ in range(max_redirects):
+            if not resp.is_redirect:
+                break
+            location = resp.headers.get("location", "")
+            target = urlparse(location)
+            # Only follow redirects to the same origin.
+            if target.hostname and target.hostname != origin.hostname:
+                break
+            resp = httpx.get(
+                location,
+                headers={"Authorization": self._client.headers["Authorization"]},
+                follow_redirects=False,
+                timeout=timeout,
+            )
+        return resp
+
     # -- Email --------------------------------------------------------------
 
     def send_test_email(self, to: str) -> dict[str, Any]:
