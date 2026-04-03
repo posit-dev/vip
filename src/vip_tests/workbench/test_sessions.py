@@ -137,17 +137,22 @@ def user_resumes_session(page: Page, session_context: dict):
     session_row = page.locator(Homepage.session_row(session_name))
     expect(session_row).to_be_visible(timeout=TIMEOUT_DIALOG)
 
-    # Clicking the session link on a suspended session resumes it.
-    # The link title may be "join <name>" (active) or just "<name>" (suspended),
-    # so match either form.
-    session_link = session_row.locator(
-        f"a[title='join {session_name}'], a[title='{session_name}'], a:text-is('{session_name}')"
-    ).first
-    expect(session_link).to_be_visible(timeout=TIMEOUT_DIALOG)
-    session_link.click()
+    # Suspended sessions may not have a clickable link.  Select the session
+    # checkbox and click the session name text to trigger a resume, or fall
+    # back to navigating into the session via any available link.
+    session_link = session_row.locator("a").first
+    if session_link.count() > 0:
+        session_link.click()
+    else:
+        # No link available — select and use the session row action
+        checkbox = page.locator(Homepage.session_checkbox(session_name))
+        checkbox.click()
+        # After selecting a suspended session, the homepage should offer a
+        # way to resume.  Click the session name text as a fallback.
+        session_row.locator(f"text='{session_name}'").click()
 
     # Navigate back to homepage to observe the Active state
-    page.go_back()
+    page.goto(page.url.split("/s/")[0] + "/home") if "/s/" in page.url else page.go_back()
     expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
 
