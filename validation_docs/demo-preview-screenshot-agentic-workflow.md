@@ -1,7 +1,7 @@
 # Feature: preview screenshot agentic workflow
 
-*2026-04-06T18:54:30Z by Showboat 0.6.1*
-<!-- showboat-id: b5c2d9a4-b3ed-435e-af0c-6be3a4ffc0da -->
+*2026-04-06T19:56:51Z by Showboat 0.6.1*
+<!-- showboat-id: 5bd446a1-d0be-41b5-a55d-d115db2148b2 -->
 
 Added a GitHub Agentic Workflow that runs after Website Preview completes, captures full-page screenshots for report and website preview pages, uploads them as PR assets, and posts a summary comment.
 
@@ -10,7 +10,7 @@ gh aw compile preview-screenshot-gallery
 ```
 
 ```output
-✓ .github/workflows/preview-screenshot-gallery.md (61.6 KB)
+✓ .github/workflows/preview-screenshot-gallery.md (63.3 KB)
 ✓ Compiled 1 workflow(s): 0 error(s), 0 warning(s)
 ```
 
