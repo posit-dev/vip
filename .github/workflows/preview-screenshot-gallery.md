@@ -11,6 +11,7 @@ tools:
   playwright:
 safe-outputs:
   upload-asset:
+    branch: assets/preview-screenshot-gallery
     max: 100
   add-comment:
     max: 1
