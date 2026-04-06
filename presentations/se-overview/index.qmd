@@ -73,7 +73,7 @@ Simplest path: pip install, one command. The --interactive-auth flag opens a bro
 </div>
 
 ::: {.notes}
-Switching to the terminal. This runs against our staging cluster. Takes about two minutes. I want you to notice what happens when something fails — the report tells you what went wrong and what to check first.
+Switching to the terminal. This runs against a staging cluster. Takes about two minutes. I want you to notice what happens when something fails — the report tells you what went wrong and what to check first.
 :::
 
 ## Your Sign-Off Document
@@ -119,7 +119,7 @@ Tests auto-skip when a product isn't configured, so partial deployments work fin
 1. **Try it** — run `vip verify` against a Posit Team deployment
 2. **Tell us what's missing** — what do customers ask that we don't test?
 3. **Tell us what's confusing** — would a customer understand this report?
-4. **File issues** — github.com/posit-dev/vip/issues
+4. **File issues** — [github.com/posit-dev/vip/issues](https://github.com/posit-dev/vip/issues)
 :::
 
 ::: {.notes}
@@ -131,9 +131,9 @@ We're not handing you a finished thing. We need to know what you see in the fiel
 <div style="text-align:center; color:white; margin-top:4rem;">
 <div style="font-size:1.8em; font-weight:700; margin-bottom:2rem;">Help us make this ready for customers.</div>
 <div style="font-size:0.7em; opacity:0.6; line-height:2;">
-github.com/posit-dev/vip<br>
-posit-dev.github.io/vip/example-report/<br>
-ghcr.io/posit-dev/vip
+<a href="https://github.com/posit-dev/vip" style="color:rgba(255,255,255,0.6);">github.com/posit-dev/vip</a><br>
+<a href="https://posit-dev.github.io/vip/example-report/" style="color:rgba(255,255,255,0.6);">posit-dev.github.io/vip/example-report</a><br>
+<a href="https://ghcr.io/posit-dev/vip" style="color:rgba(255,255,255,0.6);">ghcr.io/posit-dev/vip</a>
 </div>
 </div>
 
