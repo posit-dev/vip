@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.17.0 (2026-04-06)
+
+### Features
+
+- Migrate workbench smoke tests to with-workbench CLI and expand coverage
+  ([#100](https://github.com/posit-dev/vip/pull/100),
+  [`bc8b3cc`](https://github.com/posit-dev/vip/commit/bc8b3cc17bf92a04569e05f506d98dea012e5be2))
+
+
 ## v0.16.0 (2026-04-06)
 
 ### Features
