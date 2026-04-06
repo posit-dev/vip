@@ -1,0 +1,48 @@
+/*-- scss:defaults --*/
+$font-family-sans-serif: "Open Sans", sans-serif;
+$font-family-monospace: "Source Code Pro", monospace;
+$presentation-heading-font: "Open Sans", sans-serif;
+$presentation-heading-color: #213d4f;
+$link-color: #447099;
+$body-color: #213d4f;
+
+/*-- scss:rules --*/
+.reveal .slides section h2 {
+  color: #213d4f;
+  border-bottom: 3px solid #ee6331;
+  padding-bottom: 0.2em;
+  margin-bottom: 0.8em;
+}
+
+.reveal .slide-number {
+  color: #447099;
+  font-size: 0.6em;
+}
+
+.reveal pre code {
+  font-family: "Source Code Pro", monospace;
+  font-size: 0.85em;
+  border-left: 4px solid #447099;
+  padding-left: 1em;
+}
+
+/* Title slide styling for dark background */
+.reveal .slide-background-content[style*="213d4f"] + .slide .title {
+  color: white;
+}
+
+#title-slide .title {
+  color: white;
+  font-size: 2.5em;
+  font-weight: 700;
+}
+
+#title-slide .subtitle {
+  color: #ee6331;
+  font-weight: 600;
+}
+
+#title-slide .author,
+#title-slide .date {
+  color: rgba(255, 255, 255, 0.6);
+}
