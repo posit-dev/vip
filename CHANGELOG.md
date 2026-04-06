@@ -1,25 +1,19 @@
 # CHANGELOG
 
-## Alpha Milestone Summary
 
-VIP validates Posit Team deployments across all three products
-with CI smoke tests, an HTML validation report, and a Docker image for
-Kubernetes-based execution. The Docker image is available at
-`ghcr.io/posit-dev/vip:latest`.
+## v0.19.1 (2026-04-06)
 
-### Highlights
+### Bug Fixes
 
-- **Connect smoke tests** — Auth (API + UI), user management, runtime versions, git-backed deploys, error handling
-- **Workbench smoke tests** — Auth, IDE launch (RStudio, VS Code, JupyterLab, Positron), session lifecycle
-- **Package Manager smoke tests** — CRAN/PyPI mirror validation, repo existence checks
-- **Cross-product prerequisites** — Server reachability, version verification, credential checks
-- **Security tests** — HTTPS enforcement, error page information leakage
-- **Performance tests** — Logarithmic-scale load testing with pluggable engine, session capacity testing
-- **HTML validation report** — Quarto-rendered report with product badges, troubleshooting hints, test procedures
-- **Docker image** — `ghcr.io/posit-dev/vip` for running tests as Kubernetes Jobs
-- **CI infrastructure** — Smoke test workflows for all three products using `with-connect` and `with-workbench` GitHub Actions
+- Resolve CVE-2026-4539 by upgrading pygments to >=2.20.0
+  ([#135](https://github.com/posit-dev/vip/pull/135),
+  [`53ecd3e`](https://github.com/posit-dev/vip/commit/53ecd3e8c30b1b9fdf30258be8e00e6cbc18d415))
 
----
+### Chores
+
+- Add authors and alpha milestone summary ([#134](https://github.com/posit-dev/vip/pull/134),
+  [`b877a9b`](https://github.com/posit-dev/vip/commit/b877a9bdf4017486804654e8ec9547bedfa56fe8))
+
 
 ## v0.19.0 (2026-04-06)
 
