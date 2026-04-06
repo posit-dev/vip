@@ -20,23 +20,27 @@ def test_connect_system_checks():
 # ---------------------------------------------------------------------------
 
 
-@when("I trigger a new system check run via the Connect API", target_fixture="server_check")
+@when("I trigger a new system check run via the Connect API", target_fixture="system_check")
 def trigger_system_check(connect_client):
-    return connect_client.run_server_check()
+    return connect_client.run_system_check()
 
 
 @then("the system check report is returned")
-def check_report_returned(server_check):
-    assert server_check is not None, "System check API returned no result"
-    assert "id" in server_check, (
-        f"System check response missing 'id' field. Got: {list(server_check.keys())}"
+def check_report_returned(system_check):
+    assert system_check is not None, "System check API returned no result"
+    assert "id" in system_check, (
+        f"System check response missing 'id' field. Got: {list(system_check.keys())}"
     )
 
 
 @then("I can download the system check report artifact")
-def download_report_artifact(connect_client, server_check, pytestconfig):
-    check_id = server_check["id"]
-    report_bytes = connect_client.get_server_check_report(check_id)
+def download_report_artifact(connect_client, system_check, pytestconfig):
+    check_id = system_check["id"]
+
+    # Wait for the system check run to complete before fetching results.
+    connect_client.wait_for_system_check(check_id)
+
+    report_bytes = connect_client.get_system_check_results(check_id)
     assert report_bytes, f"System check report for id={check_id!r} was empty"
 
     # Persist alongside results.json so the Quarto report can embed it.
