@@ -254,9 +254,16 @@ else:
                 item.outcome, ("?", "#6b7280", "#e5e7eb")
             )
             border_color = _BORDER_COLORS.get(item.outcome, "#d1d5db")
-            title = _esc(item.scenario_title) if item.scenario_title else _esc(
+            raw_title = item.scenario_title or (
                 item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
             )
+            # Substitute <param> placeholders with pytest parametrize values from nodeid
+            import re as _re
+            _param_match = _re.search(r"\[(.+)\]$", item.nodeid)
+            if _param_match and "<" in raw_title:
+                param_val = _param_match.group(1)
+                raw_title = _re.sub(r"<[^>]+>", param_val, raw_title)
+            title = _esc(raw_title)
             nodeid = _esc(item.nodeid)
             duration = f"{item.duration:.2f}s"
             badge = (
