@@ -23,6 +23,16 @@ jobs:
             echo "available=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check for WORKBENCH_LICENSE
+        id: wb-license
+        run: |
+          if [ -z "${{ secrets.WORKBENCH_LICENSE }}" ]; then
+            echo "WORKBENCH_LICENSE secret not configured — skipping Workbench steps"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # Start Connect in Docker
       - name: Start Connect
         id: connect
@@ -30,6 +40,67 @@ jobs:
         with:
           version: release
           license: ${{ secrets.CONNECT_LICENSE }}
+
+      # Start Workbench in Docker
+      - name: Start Workbench
+        if: steps.wb-license.outputs.available == 'true'
+        id: workbench
+        uses: posit-dev/with-workbench@main
+        with:
+          license-key: ${{ secrets.WORKBENCH_LICENSE }}
+          version: release
+
+      # Surface Workbench license errors
+      - name: Check for Workbench license errors
+        if: failure() && steps.wb-license.outputs.available == 'true' && steps.workbench.outcome == 'failure'
+        run: |
+          CID=$(docker ps -aq --filter "ancestor=rstudio/rstudio-workbench" | head -1)
+          if [ -z "${CID}" ]; then
+            echo "::error title=Workbench Startup Failed::Workbench container not found."
+            exit 1
+          fi
+          LOGS=$(docker logs "${CID}" 2>&1 || true)
+          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable|not activated" | head -1 || true)
+          if [ -n "${LICENSE_MSG}" ]; then
+            echo "::error title=Workbench License Error::${LICENSE_MSG}"
+            {
+              echo "## Workbench License Error"
+              echo ""
+              echo "The Workbench license key is expired or invalid. Update the \`WORKBENCH_LICENSE\` repository secret."
+              echo ""
+              echo '```'
+              echo "${LICENSE_MSG}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error title=Workbench Startup Failed::Workbench failed to start. Check the 'Start Workbench' step logs."
+          fi
+          exit 1
+
+      # Resolve Workbench version
+      - name: Resolve Workbench version
+        if: steps.wb-license.outputs.available == 'true'
+        id: wb-version
+        run: |
+          curl -s -L -c /tmp/wb_cookies.txt \
+            -d "username=${{ steps.workbench.outputs.WORKBENCH_USER }}&password=${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}" \
+            ${{ steps.workbench.outputs.WORKBENCH_URL }}/auth-sign-in > /dev/null
+
+          RESPONSE=$(curl -s -b /tmp/wb_cookies.txt ${{ steps.workbench.outputs.WORKBENCH_URL }}/api/server-info)
+          VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty' 2>/dev/null || true)
+
+          if [ -z "${VERSION}" ]; then
+            VERSION=$(docker exec ${{ steps.workbench.outputs.CONTAINER_ID }} rstudio-server version 2>/dev/null \
+                      | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+\+[^[:space:]]+' | head -1 || true)
+          fi
+
+          if [ -z "${VERSION}" ]; then
+            echo "ERROR: Could not resolve Workbench version"
+            exit 1
+          fi
+
+          echo "Resolved Workbench version: ${VERSION}"
+          echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
 
       # Resolve the actual Connect version for unambiguous job records
       - name: Resolve Connect version
@@ -133,6 +204,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
+      - name: Install Playwright browsers
+        run: uv run playwright install chromium
+
       - uses: quarto-dev/quarto-actions/setup@v2
         with:
           cache: true
@@ -149,7 +223,23 @@ jobs:
           version = \"${{ steps.pm-version.outputs.resolved }}\""
           fi
 
+          WB_SECTION=""
+          WB_AUTH=""
+          if [ "${{ steps.wb-license.outputs.available }}" = "true" ]; then
+            WB_SECTION="
+          [workbench]
+          enabled = true
+          url = \"${{ steps.workbench.outputs.WORKBENCH_URL }}\"
+          version = \"${{ steps.wb-version.outputs.resolved }}\""
+            WB_AUTH="
+          username = \"${{ steps.workbench.outputs.WORKBENCH_USER }}\"
+          password = \"${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}\""
+          fi
+
           DEPLOYMENT_NAME="CI Connect ${{ steps.version.outputs.resolved }}"
+          if [ "${{ steps.wb-license.outputs.available }}" = "true" ]; then
+            DEPLOYMENT_NAME="${DEPLOYMENT_NAME} + WB ${{ steps.wb-version.outputs.resolved }}"
+          fi
           if [ "${{ steps.pm-license.outputs.available }}" = "true" ]; then
             DEPLOYMENT_NAME="${DEPLOYMENT_NAME} + PM ${{ steps.pm-version.outputs.resolved }}"
           fi
@@ -164,8 +254,10 @@ jobs:
           api_key = "${{ steps.connect.outputs.CONNECT_API_KEY }}"
           version = "${{ steps.version.outputs.resolved }}"
           ${PM_SECTION}
+          ${WB_SECTION}
           [auth]
           provider = "password"
+          ${WB_AUTH}
           EOF
 
       - name: Run smoke tests and generate results
@@ -176,8 +268,9 @@ jobs:
             src/vip_tests/prerequisites/test_components.py \
             src/vip_tests/prerequisites/test_expected_failure.py \
             src/vip_tests/connect/test_auth.py \
+            src/vip_tests/workbench/test_auth.py \
             src/vip_tests/package_manager/test_repos.py \
-            -v -k "reachable or api or mirror or repo_exists or expected_failure" \
+            -v -k "reachable or api or mirror or repo_exists or expected_failure or workbench_login" \
             --vip-config=vip.toml \
           || true
 
@@ -195,6 +288,13 @@ jobs:
       - name: Stop Package Manager
         if: always() && steps.pm-license.outputs.available == 'true'
         run: docker stop packagemanager && docker rm packagemanager || true
+
+      # Stop Workbench
+      - name: Stop Workbench
+        if: always() && steps.wb-license.outputs.available == 'true'
+        uses: posit-dev/with-workbench@main
+        with:
+          stop: ${{ steps.workbench.outputs.CONTAINER_ID }}
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v7
