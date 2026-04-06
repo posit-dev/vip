@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.19.0 (2026-04-06)
+
+### Features
+
+- Improve example report — fix troubleshooting, expand tests, better styling
+  ([#133](https://github.com/posit-dev/vip/pull/133),
+  [`3ee864f`](https://github.com/posit-dev/vip/commit/3ee864f46bb339f62d7266c6300cd2686bde37d2))
+
+
 ## v0.18.0 (2026-04-06)
 
 ### Features
