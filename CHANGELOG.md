@@ -1,6 +1,120 @@
 # CHANGELOG
 
 
+## v0.19.1 (2026-04-06)
+
+### Bug Fixes
+
+- Resolve CVE-2026-4539 by upgrading pygments to >=2.20.0
+  ([#135](https://github.com/posit-dev/vip/pull/135),
+  [`53ecd3e`](https://github.com/posit-dev/vip/commit/53ecd3e8c30b1b9fdf30258be8e00e6cbc18d415))
+
+### Chores
+
+- Add authors and alpha milestone summary ([#134](https://github.com/posit-dev/vip/pull/134),
+  [`b877a9b`](https://github.com/posit-dev/vip/commit/b877a9bdf4017486804654e8ec9547bedfa56fe8))
+
+
+## v0.19.0 (2026-04-06)
+
+### Features
+
+- Improve example report — fix troubleshooting, expand tests, better styling
+  ([#133](https://github.com/posit-dev/vip/pull/133),
+  [`3ee864f`](https://github.com/posit-dev/vip/commit/3ee864f46bb339f62d7266c6300cd2686bde37d2))
+
+
+## v0.18.0 (2026-04-06)
+
+### Features
+
+- Add Workbench to example validation report ([#132](https://github.com/posit-dev/vip/pull/132),
+  [`a4a852e`](https://github.com/posit-dev/vip/commit/a4a852efca3521f0de2a5ee11e73c709eef77914))
+
+
+## v0.17.0 (2026-04-06)
+
+### Features
+
+- Migrate workbench smoke tests to with-workbench CLI and expand coverage
+  ([#100](https://github.com/posit-dev/vip/pull/100),
+  [`bc8b3cc`](https://github.com/posit-dev/vip/commit/bc8b3cc17bf92a04569e05f506d98dea012e5be2))
+
+
+## v0.16.0 (2026-04-06)
+
+### Features
+
+- **workbench**: Add session capacity testing with resource profiles
+  ([#128](https://github.com/posit-dev/vip/pull/128),
+  [`dea5ccc`](https://github.com/posit-dev/vip/commit/dea5ccc6b89cac5f8949d2e523953403f754a3fb))
+
+
+## v0.15.0 (2026-04-02)
+
+### Features
+
+- **performance**: Add logarithmic-scale load testing with pluggable engine
+  ([#124](https://github.com/posit-dev/vip/pull/124),
+  [`23730af`](https://github.com/posit-dev/vip/commit/23730af3c6d45f4ba74e15ed88d5081607b74173))
+
+
+## v0.14.0 (2026-04-01)
+
+### Features
+
+- **performance**: Add concurrent user load tests for each product
+  ([#118](https://github.com/posit-dev/vip/pull/118),
+  [`f5f20e4`](https://github.com/posit-dev/vip/commit/f5f20e463e95c7a8d18e8a2037d5803abc0d9b3d))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <iflores.siaca@posit.co>
+
+Co-authored-by: Elliot Murphy <statik@users.noreply.github.com>
+
+Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>
+
+
+## v0.13.2 (2026-04-01)
+
+### Bug Fixes
+
+- **example-report**: Skip Package Manager when RSPM_LICENSE is unavailable
+  ([#116](https://github.com/posit-dev/vip/pull/116),
+  [`34a6eba`](https://github.com/posit-dev/vip/commit/34a6eba92a83e1b4169db3091f9d2b69a3bc0f62))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <iflores.siaca@posit.co>
+
+### Documentation
+
+- Polish documentation for alpha release ([#121](https://github.com/posit-dev/vip/pull/121),
+  [`6592978`](https://github.com/posit-dev/vip/commit/659297859e86d7b32f7b098bdbf5a0f432a060e9))
+
+
+## v0.13.1 (2026-04-01)
+
+### Bug Fixes
+
+- **deps**: Pin cryptography>=46.0.6 for CVE-2026-34073
+  ([#123](https://github.com/posit-dev/vip/pull/123),
+  [`7360a4d`](https://github.com/posit-dev/vip/commit/7360a4d5771b58ad2196826f27628431cc496ac5))
+
+
+## v0.13.0 (2026-03-27)
+
+### Features
+
+- Add feature matrix page to website ([#120](https://github.com/posit-dev/vip/pull/120),
+  [`c8b4a2f`](https://github.com/posit-dev/vip/commit/c8b4a2fb19cd97ea3125a8c17dafae4905a52916))
+
+
 ## v0.12.2 (2026-03-26)
 
 ### Bug Fixes

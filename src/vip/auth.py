@@ -54,21 +54,100 @@ class InteractiveAuthSession:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
 
-def start_interactive_auth(
-    connect_url: str,
-    workbench_url: str | None = None,
-) -> InteractiveAuthSession:
-    """Launch a headed browser, authenticate via OIDC, and mint a
-    Connect API key through the UI.
+def _load_cached_auth(cache_path: Path) -> InteractiveAuthSession | None:
+    """Load a cached auth session if the storage state file exists and is recent."""
+    if not cache_path.exists():
+        return None
 
-    If *workbench_url* is provided, the browser also visits Workbench
-    after Connect login so that the saved storage state contains session
-    cookies for both products (they typically share the same IdP, so SSO
-    handles the second authentication automatically).
+    import json
+
+    # Check if the cache is less than 4 hours old.
+    age = time.time() - cache_path.stat().st_mtime
+    if age > 4 * 3600:
+        return None
+
+    # Read the companion metadata file if it exists.
+    meta_path = cache_path.with_suffix(".meta.json")
+    api_key = None
+    key_name = ""
+    connect_url = ""
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text())
+            api_key = meta.get("api_key")
+            key_name = meta.get("key_name", "")
+            connect_url = meta.get("connect_url", "")
+        except Exception:
+            pass
+
+    print(f">>> Reusing cached auth session from {cache_path}")
+    return InteractiveAuthSession(
+        storage_state_path=cache_path,
+        api_key=api_key,
+        key_name=key_name,
+        _connect_url=connect_url,
+        _tmpdir="",
+    )
+
+
+def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
+    """Save auth session metadata alongside the storage state."""
+    import json
+    import shutil as _shutil
+
+    # Copy storage state to the cache location.
+    _shutil.copy2(session.storage_state_path, cache_path)
+    os.chmod(cache_path, 0o600)
+
+    # Write companion metadata.
+    meta_path = cache_path.with_suffix(".meta.json")
+    meta = {
+        "api_key": session.api_key,
+        "key_name": session.key_name,
+        "connect_url": session._connect_url,
+    }
+    meta_path.write_text(json.dumps(meta))
+    os.chmod(meta_path, 0o600)
+
+
+def start_interactive_auth(
+    connect_url: str | None = None,
+    workbench_url: str | None = None,
+    cache_path: Path | None = None,
+) -> InteractiveAuthSession:
+    """Launch a headed browser, authenticate via OIDC, and optionally
+    mint a Connect API key through the UI.
+
+    At least one of *connect_url* or *workbench_url* must be provided.
+
+    When *connect_url* is given, the browser opens Connect's login page
+    and attempts to mint a temporary API key.  If *workbench_url* is
+    also provided, the browser visits Workbench afterward so the saved
+    storage state contains session cookies for both products (SSO handles
+    the second authentication automatically).
+
+    When only *workbench_url* is given, the browser opens Workbench
+    directly.  No Connect API key is minted.
 
     The browser is closed before this function returns.  pytest-playwright
     creates its own browser instance using the saved storage state.
     """
+    if not connect_url and not workbench_url:
+        raise ValueError(
+            "--interactive-auth requires at least one product URL (Connect or Workbench)"
+        )
+
+    # Check for a valid cached session.
+    if cache_path:
+        cached = _load_cached_auth(cache_path)
+        if cached is not None:
+            return cached
+
+    # Determine the primary login target.
+    primary_url = connect_url or workbench_url
+    assert primary_url is not None  # guaranteed by the check above
+    login_path = "/__login__" if connect_url else ""
+
     tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
     storage_state_path = Path(tmpdir) / "vip-auth-state.json"
     os.chmod(tmpdir, 0o700)
@@ -83,24 +162,36 @@ def start_interactive_auth(
         context = browser.new_context()
         page = context.new_page()
 
-        page.goto(f"{connect_url}/__login__")
+        page.goto(f"{primary_url}{login_path}")
 
-        print(f"\n>>> A browser window has opened at {connect_url}")
+        print(f"\n>>> A browser window has opened at {primary_url}")
         print(">>> Please log in through your identity provider.")
         print(">>> The browser will close automatically after login.\n")
 
         # Poll until login completes
-        base = connect_url.rstrip("/")
+        base = primary_url.rstrip("/")
         deadline = time.monotonic() + 300
         login_completed = False
+
+        # Login detection: for Connect check we left /__login__,
+        # for Workbench check we're no longer on a login/auth page.
         while time.monotonic() < deadline:
             try:
                 url = page.url
             except Exception:
                 break
-            if base in url and "/__login__" not in url:
-                login_completed = True
-                break
+            if connect_url:
+                if base in url and "/__login__" not in url:
+                    login_completed = True
+                    break
+            else:
+                # For Workbench, login is complete when we're on the
+                # homepage (no login/auth keywords in the URL).
+                lower = url.lower()
+                at_login = any(kw in lower for kw in ("sign-in", "login", "auth"))
+                if base.rstrip("/").lower() in lower and not at_login:
+                    login_completed = True
+                    break
             try:
                 page.wait_for_timeout(500)
             except Exception:
@@ -112,21 +203,30 @@ def start_interactive_auth(
                 "Please rerun and complete authentication in the browser window."
             )
 
-        api_key = _create_api_key_via_ui(page, connect_url, key_name)
+        # Mint Connect API key only if Connect is configured.
+        api_key = None
+        if connect_url:
+            api_key = _create_api_key_via_ui(page, connect_url, key_name)
 
         # Visit Workbench so the storage state includes its session cookies.
-        if workbench_url:
+        if workbench_url and connect_url:
             _authenticate_workbench(page, workbench_url)
 
         context.storage_state(path=str(storage_state_path))
 
-        return InteractiveAuthSession(
+        session = InteractiveAuthSession(
             storage_state_path=storage_state_path,
             api_key=api_key,
             key_name=key_name,
-            _connect_url=connect_url,
+            _connect_url=connect_url or "",
             _tmpdir=tmpdir,
         )
+
+        # Cache the session for reuse across runs.
+        if cache_path:
+            _save_auth_cache(session, cache_path)
+
+        return session
     except Exception:
         if tmpdir and os.path.isdir(tmpdir):
             shutil.rmtree(tmpdir, ignore_errors=True)

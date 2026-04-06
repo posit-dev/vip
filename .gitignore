@@ -1,7 +1,10 @@
 # VIP-specific
 vip.toml
 report/results.json
+report/failures.json
 demo.md
+.vip-auth-cache.json
+.vip-auth-cache.meta.json
 
 # Agent tooling
 .positai/settings.json
@@ -13,6 +16,7 @@ website/node_modules/
 website/dist/
 website/.astro/
 website/src/data/test-catalog.json
+website/src/data/feature-matrix.json
 report/_output/
 report/_freeze/
 report/.quarto/

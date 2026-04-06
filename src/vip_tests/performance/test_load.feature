@@ -1,0 +1,44 @@
+@performance
+Feature: Concurrent request load testing
+  As a Posit Team administrator
+  I want to verify that each product handles concurrent authenticated API requests
+  So that the deployment performs acceptably under burst traffic
+
+  Scenario Outline: Connect handles <users> concurrent requests
+    Given Connect is configured in vip.toml
+    When I run a load test with <users> concurrent users against Connect
+    Then the load test success rate is at least the configured threshold
+    And the load test p95 response time is within the configured threshold
+
+    Examples:
+      | users |
+      | 10    |
+      | 100   |
+      | 1000  |
+      | 10000 |
+
+  Scenario Outline: Workbench handles <users> concurrent requests
+    Given Workbench is configured in vip.toml
+    When I run a load test with <users> concurrent users against Workbench
+    Then the load test success rate is at least the configured threshold
+    And the load test p95 response time is within the configured threshold
+
+    Examples:
+      | users |
+      | 10    |
+      | 100   |
+      | 1000  |
+      | 10000 |
+
+  Scenario Outline: Package Manager handles <users> concurrent requests
+    Given Package Manager is configured in vip.toml
+    When I run a load test with <users> concurrent users against Package Manager
+    Then the load test success rate is at least the configured threshold
+    And the load test p95 response time is within the configured threshold
+
+    Examples:
+      | users |
+      | 10    |
+      | 100   |
+      | 1000  |
+      | 10000 |

@@ -1,4 +1,6 @@
 # VIP Configuration
+# Documentation: https://posit-dev.github.io/vip/getting-started/
+#
 # Copy this file to vip.toml and fill in your deployment details.
 # Secrets should be set via environment variables (see comments below).
 #
@@ -42,6 +44,11 @@ url = "https://workbench.example.com"
 # API key for a Workbench admin user.
 # Prefer setting the VIP_WORKBENCH_API_KEY environment variable.
 # api_key = "..."
+#
+# Session capacity testing (requires --interactive-auth).
+# If omitted, VIP auto-detects available profiles from the UI.
+# session_profiles = ["Small", "Medium", "Large"]
+# session_count = 3
 
 [package_manager]
 enabled = true
@@ -92,6 +99,14 @@ enabled = false
 # concurrent_requests = 10
 # disk_usage_max_pct = 90.0
 # memory_available_min_pct = 10.0
+#
+# Load test settings (used by test_load scenarios).
+# load_user_counts = [10, 100, 1000, 10000]
+# load_max_connections = 200
+# load_success_rate_threshold = 0.95
+# load_test_tool = "auto"        # "auto" | "async" | "locust" | "threadpool"
+# load_test_duration = 30         # seconds (locust only)
+# load_test_spawn_rate = 10       # users/sec (locust only)
 
 [security]
 # Set enabled = true to run security-policy compliance tests.

@@ -81,6 +81,10 @@ class WorkbenchConfig(ProductConfig):
     """Workbench-specific configuration."""
 
     api_key: str = ""
+    # Resource profiles to test for session capacity.  None = auto-detect
+    # from the UI dropdown; explicit list = test only these profiles.
+    session_profiles: list[str] | None = None
+    session_count: int = 3  # sessions per profile in capacity tests
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -94,6 +98,8 @@ class WorkbenchConfig(ProductConfig):
             url=raw.get("url", ""),
             version=raw.get("version"),
             api_key=raw.get("api_key", ""),
+            session_profiles=raw.get("session_profiles"),
+            session_count=raw.get("session_count", 3),
         )
 
 
@@ -222,6 +228,14 @@ class PerformanceConfig:
     disk_usage_max_pct: float = 90.0
     memory_available_min_pct: float = 10.0
 
+    # Load test configuration
+    load_user_counts: list[int] = field(default_factory=lambda: [10, 100, 1_000, 10_000])
+    load_max_connections: int = 200
+    load_success_rate_threshold: float = 0.95
+    load_test_tool: str = "auto"  # "auto" | "async" | "locust" | "threadpool"
+    load_test_duration: int = 30  # seconds (locust only)
+    load_test_spawn_rate: int = 10  # users/sec (locust only)
+
     @classmethod
     def from_dict(cls, raw: dict) -> PerformanceConfig:
         return cls(
@@ -232,6 +246,12 @@ class PerformanceConfig:
             concurrent_requests=raw.get("concurrent_requests", 10),
             disk_usage_max_pct=raw.get("disk_usage_max_pct", 90.0),
             memory_available_min_pct=raw.get("memory_available_min_pct", 10.0),
+            load_user_counts=raw.get("load_user_counts", [10, 100, 1_000, 10_000]),
+            load_max_connections=raw.get("load_max_connections", 200),
+            load_success_rate_threshold=raw.get("load_success_rate_threshold", 0.95),
+            load_test_tool=raw.get("load_test_tool", "auto"),
+            load_test_duration=raw.get("load_test_duration", 30),
+            load_test_spawn_rate=raw.get("load_test_spawn_rate", 10),
         )
 
 
