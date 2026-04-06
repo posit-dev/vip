@@ -124,7 +124,6 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#products-under-test" id="toc-products-under-test" class="nav-link" data-scroll-target="#products-under-test">Products Under Test</a></li>
   <li><a href="#summary" id="toc-summary" class="nav-link" data-scroll-target="#summary">Summary</a></li>
   <li><a href="#results" id="toc-results" class="nav-link" data-scroll-target="#results">Results</a></li>
-  <li><a href="#failed-tests" id="toc-failed-tests" class="nav-link" data-scroll-target="#failed-tests">Failed Tests</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -153,10 +152,10 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="verified-installation-of-posit" class="level1">
 <h1>Verified Installation of Posit</h1>
-<p><strong>Deployment:</strong> CI Connect 2026.03.1 + WB 2026.01.2+418.pro1 + PM 2024.08.0-6 <strong>Generated:</strong> 2026-04-06 14:07:42 UTC</p>
+<p><strong>Deployment:</strong> CI Connect 2026.03.1 + WB 2026.01.2+418.pro1 + PM 2024.08.0-6 <strong>Generated:</strong> 2026-04-06 14:17:23 UTC</p>
 <section id="products-under-test" class="level2">
 <h2 class="anchored" data-anchor-id="products-under-test">Products Under Test</h2>
-<div id="1f86b0fe" class="cell" data-execution_count="2">
+<div id="ca621be4" class="cell" data-execution_count="2">
 <div class="cell-output cell-output-display cell-output-markdown">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -189,7 +188,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="summary" class="level2">
 <h2 class="anchored" data-anchor-id="summary">Summary</h2>
-<div id="23352912" class="cell" data-execution_count="3">
+<div id="02712b61" class="cell" data-execution_count="3">
 <div class="cell-output cell-output-display cell-output-markdown">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -226,7 +225,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="results" class="level2">
 <h2 class="anchored" data-anchor-id="results">Results</h2>
-<div id="67b32490" class="cell" data-execution_count="4">
+<div id="aca07312" class="cell" data-execution_count="4">
 <div class="cell-output cell-output-display">
 
 <style>
@@ -314,152 +313,42 @@ ul.task-list li input[type="checkbox"] {
   content: "› ";
   color: #9ca3af;
 }
-</style>
-
-<div class="vip-cat-section"><h3 class="vip-cat-header anchored" style="color:#16a34a">Passed (18)</h3>
-<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-connect">Connect</span><span class="vip-cat-counts" style="margin-left:0.5rem">5 tests</span></h4>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">User can log in via the web UI</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_auth.py::test_connect_login_ui<span class="vip-test-duration">6.61s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>When a user navigates to the Connect login page</li><li>And enters valid credentials</li><li>Then the user is successfully authenticated</li><li>And the Connect dashboard is displayed</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">API key authentication works</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_auth.py::test_connect_login_api<span class="vip-test-duration">0.26s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>And a valid API key is configured</li><li>When I request the current user via the API</li><li>Then the API returns user information</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Admin user exists and has admin privileges</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_users.py::test_admin_user<span class="vip-test-duration">0.26s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>When I retrieve the current user profile</li><li>Then the user has admin privileges</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Groups can be listed</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_users.py::test_list_groups<span class="vip-test-duration">0.26s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>When I list all groups</li><li>Then the response is successful</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Expected Quarto versions are available</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_runtime_versions.py::test_quarto_versions<span class="vip-test-duration">0.26s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>When I query Connect for available Quarto versions</li><li>Then at least one Quarto version is available</li></ul></details></div>
-<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-package-manager">Package Manager</span><span class="vip-cat-counts" style="margin-left:0.5rem">2 tests</span></h4>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">CRAN mirror is accessible</span><span class="badge-package-manager">Package Manager</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/package_manager/test_repos.py::test_cran_mirror<span class="vip-test-duration">0.60s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the CRAN repository for the "Matrix" package</li><li>Then the package is found in the repository</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">At least one repository is configured</span><span class="badge-package-manager">Package Manager</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/package_manager/test_repos.py::test_repo_exists<span class="vip-test-duration">0.08s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I list all repositories</li><li>Then at least one repository exists</li></ul></details></div>
-<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-prerequisites">Prerequisites</span><span class="vip-cat-counts" style="margin-left:0.5rem">7 tests</span></h4>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Test credentials are provided</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_auth_configured.py::test_credentials_provided<span class="vip-test-duration">0.00s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given VIP is configured with test user credentials</li><li>Then the username is not empty</li><li>And the password is not empty</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Connect server is reachable</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_components.py::test_product_server_is_reachable[Connect]<span class="vip-test-duration">0.13s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Workbench server is reachable</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_components.py::test_product_server_is_reachable[Workbench]<span class="vip-test-duration">0.11s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Package Manager server is reachable</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_components.py::test_product_server_is_reachable[Package Manager]<span class="vip-test-duration">0.08s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Workbench server is reachable but not configured</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a VIP developer</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_expected_failure.py::test_workbench_expected_failure<span class="vip-test-duration">0.00s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Workbench is expected to be configured</li><li>When I check the Workbench configuration</li><li>Then Workbench should be reachable</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Connect version matches configuration</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_versions.py::test_connect_version<span class="vip-test-duration">0.14s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is configured in vip.toml with a version expectation</li><li>When I fetch the Connect server version</li><li>Then the Connect version matches the configured value</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Package Manager version matches configuration</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_versions.py::test_package_manager_version<span class="vip-test-duration">0.08s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is configured in vip.toml with a version expectation</li><li>When I fetch the Package Manager server version</li><li>Then the Package Manager version matches the configured value</li></ul></details></div>
-<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-security">Security</span><span class="vip-cat-counts" style="margin-left:0.5rem">3 tests</span></h4>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Unauthenticated API request returns 401</span><span class="badge-security">Security</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/security/test_error_handling.py::test_unauthenticated_api_request_returns_401<span class="vip-test-duration">0.01s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is configured in vip.toml</li><li>When I make an unauthenticated API request to Connect</li><li>Then the response status is 401</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Invalid API key returns 401</span><span class="badge-security">Security</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/security/test_error_handling.py::test_invalid_api_key_returns_401<span class="vip-test-duration">2.83s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is configured in vip.toml</li><li>When I make an API request to Connect with an invalid key</li><li>Then the response status is 401</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Non-existent endpoint returns 404</span><span class="badge-security">Security</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/security/test_error_handling.py::test_nonexistent_endpoint_returns_404<span class="vip-test-duration">0.01s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is configured in vip.toml</li><li>When I request a non-existent endpoint on Connect</li><li>Then the response status is 404</li></ul></details></div>
-<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-workbench">Workbench</span><span class="vip-cat-counts" style="margin-left:0.5rem">1 tests</span></h4>
-<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">User can log in to Workbench via the web UI</span><span class="badge-workbench">Workbench</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/workbench/test_auth.py::test_workbench_login[chromium]<span class="vip-test-duration">0.60s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Workbench is accessible at the configured URL</li><li>When a user navigates to the Workbench login page and enters valid credentials</li><li>Then the Workbench homepage is displayed</li><li>And the current user is shown in the header</li></ul></details></div>
-</div>
-<div class="vip-cat-section"><h3 class="vip-cat-header anchored" style="color:#6b7280">Skipped (5)</h3>
-<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-connect">Connect</span><span class="vip-cat-counts" style="margin-left:0.5rem">2 tests</span></h4>
-<div class="vip-test-card" style="border-left-color:#6b7280"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">Expected R versions are available on Connect</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_runtime_versions.py::test_r_versions<span class="vip-test-duration">0.13s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>And expected R versions are specified in vip.toml</li><li>When I query Connect for available R versions</li><li>Then all expected R versions are present</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#6b7280"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">Expected Python versions are available on Connect</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_runtime_versions.py::test_python_versions<span class="vip-test-duration">0.13s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>And expected Python versions are specified in vip.toml</li><li>When I query Connect for available Python versions</li><li>Then all expected Python versions are present</li></ul></details></div>
-<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-package-manager">Package Manager</span><span class="vip-cat-counts" style="margin-left:0.5rem">2 tests</span></h4>
-<div class="vip-test-card" style="border-left-color:#6b7280"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">PyPI mirror is accessible</span><span class="badge-package-manager">Package Manager</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/package_manager/test_repos.py::test_pypi_mirror<span class="vip-test-duration">0.07s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the PyPI repository for the "requests" package</li><li>Then the package is found in the repository</li></ul></details></div>
-<div class="vip-test-card" style="border-left-color:#6b7280"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">Bioconductor mirror is accessible</span><span class="badge-package-manager">Package Manager</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/package_manager/test_repos.py::test_bioconductor_mirror<span class="vip-test-duration">0.07s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the Bioconductor repository for the "BiocGenerics" package</li><li>Then the package is found in the repository</li></ul></details></div>
-<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-prerequisites">Prerequisites</span><span class="vip-cat-counts" style="margin-left:0.5rem">1 tests</span></h4>
-<div class="vip-test-card" style="border-left-color:#6b7280"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">Workbench version matches configuration</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_versions.py::test_workbench_version<span class="vip-test-duration">0.01s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Workbench is configured in vip.toml with a version expectation</li><li>When I fetch the Workbench server version</li><li>Then the Workbench version matches the configured value</li></ul></details></div>
-</div>
-</div>
-</div>
-</section>
-<section id="failed-tests" class="level2">
-<h2 class="anchored" data-anchor-id="failed-tests">Failed Tests</h2>
-<div id="02b3b9f3" class="cell" data-execution_count="5">
-<div class="cell-output cell-output-display">
-
-<style>
-.vip-fail-card {
-  border: 1px solid #e5e7eb;
-  border-left: 4px solid #dc2626;
-  border-radius: 6px;
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1.25rem;
-  background: #fefefe;
-}
-.vip-fail-title {
-  font-size: 1rem;
-  margin: 0 0 0.5rem;
-}
-.vip-fail-title code {
-  font-size: 0.875rem;
-  color: #dc2626;
-  background: #fef2f2;
-  padding: 0.15em 0.4em;
-  border-radius: 3px;
-}
-.vip-fail-scenario {
-  margin: 0.25rem 0 0.75rem;
-  font-size: 0.9375rem;
-  color: #374151;
-}
-.vip-fail-details {
-  margin-bottom: 0.75rem;
-}
+.vip-fail-details { margin-top: 0.5rem; margin-bottom: 0.5rem; }
 .vip-fail-details summary {
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: #4b5563;
-  padding: 0.375rem 0;
+  cursor: pointer; font-weight: 600; font-size: 0.8125rem;
+  color: #6b7280; padding: 0.25rem 0;
 }
-.vip-fail-details summary:hover {
-  color: #1f2937;
-}
-.vip-fail-error-wrap {
-  position: relative;
-  margin-top: 0.375rem;
-}
+.vip-fail-details summary:hover { color: #374151; }
+.vip-fail-error-wrap { position: relative; margin-top: 0.375rem; }
 .vip-fail-error {
-  background: #1e1e1e;
-  color: #d4d4d4;
-  font-size: 0.8125rem;
-  line-height: 1.5;
-  padding: 1rem;
-  border-radius: 4px;
-  overflow-x: auto;
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
+  background: #1e1e1e; color: #d4d4d4; font-size: 0.8125rem;
+  line-height: 1.5; padding: 1rem; border-radius: 4px;
+  overflow-x: auto; margin: 0; white-space: pre-wrap; word-break: break-word;
 }
 .vip-copy-btn {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  background: rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.7);
-  border: 1px solid rgba(255,255,255,0.2);
-  border-radius: 4px;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.75rem;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  z-index: 1;
+  position: absolute; top: 0.5rem; right: 0.5rem;
+  background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;
+  padding: 0.2rem 0.5rem; font-size: 0.75rem; font-family: inherit;
+  cursor: pointer; transition: background 0.15s, color 0.15s; z-index: 1;
 }
-.vip-copy-btn:hover {
-  background: rgba(255,255,255,0.2);
-  color: #fff;
-}
+.vip-copy-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
 .vip-fail-hints {
-  background: #fffbeb;
-  border: 1px solid #fbbf24;
-  border-radius: 4px;
-  padding: 0.875rem 1rem;
-  font-size: 0.875rem;
-  color: #92400e;
+  background: #fffbeb; border: 1px solid #fbbf24; border-radius: 4px;
+  padding: 0.875rem 1rem; font-size: 0.875rem; color: #92400e;
+  margin-top: 0.5rem;
 }
-.vip-fail-hints ul, .vip-fail-hints ol {
-  margin: 0.25rem 0 0.75rem 1.25rem;
-  padding: 0;
-}
-.vip-fail-hints li {
-  margin-bottom: 0.25rem;
-}
-.vip-fail-hints p {
-  margin: 0.25rem 0;
-}
-.vip-fail-hints a {
-  color: #92400e;
-  text-decoration: underline;
-}
+.vip-fail-hints ul, .vip-fail-hints ol { margin: 0.25rem 0 0.75rem 1.25rem; padding: 0; }
+.vip-fail-hints li { margin-bottom: 0.25rem; }
+.vip-fail-hints p { margin: 0.25rem 0; }
+.vip-fail-hints a { color: #92400e; text-decoration: underline; }
 </style>
-<div class="vip-fail-card"><h3 class="vip-fail-title anchored"><code>src/vip_tests/connect/test_users.py::test_list_users</code></h3><p class="vip-fail-scenario"><strong>What was tested:</strong> Users can be listed — As a Posit Team administrator
-I want to verify that user and group management APIs are functional
-So that I know access control is properly configured</p><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-0" title="Copy to clipboard">Copy</button><pre id="vip-error-0" class="vip-fail-error">fixturefunc = &lt;function check_test_user_in_list at 0x7f656ea6d620&gt;
+
+<div class="vip-cat-section"><h3 class="vip-cat-header anchored" style="color:#dc2626">Failed (1)</h3>
+<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-connect">Connect</span><span class="vip-cat-counts" style="margin-left:0.5rem">1 tests</span></h4>
+<div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">Users can be listed</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_users.py::test_list_users<span class="vip-test-duration">0.27s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>When I list all users</li><li>Then the user list is not empty</li><li>And the test user exists in the user list</li></ul></details><details class="vip-fail-details"><summary>Error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-0" title="Copy to clipboard">Copy</button><pre id="vip-error-0" class="vip-fail-error">fixturefunc = &lt;function check_test_user_in_list at 0x7f43b8b71620&gt;
 request = &lt;FixtureRequest for &lt;Function test_list_users&gt;&gt;
-kwargs = {'test_username': 'testuser', 'user_list': [{'active_time': '2026-04-06T14:06:27Z', 'confirmed': True, 'created_time': '2026-04-06T14:05:04Z', 'email': '', ...}]}
+kwargs = {'test_username': 'testuser', 'user_list': [{'active_time': '2026-04-06T14:16:02Z', 'confirmed': True, 'created_time': '2026-04-06T14:14:23Z', 'email': '', ...}]}
 
     def call_fixture_func(
         fixturefunc: _FixtureFunc[FixtureValue], request: FixtureRequest, kwargs
@@ -481,7 +370,7 @@ kwargs = {'test_username': 'testuser', 'user_list': [{'active_time': '2026-04-06
 .venv/lib/python3.13/site-packages/_pytest/fixtures.py:915: 
 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-user_list = [{'active_time': '2026-04-06T14:06:27Z', 'confirmed': True, 'created_time': '2026-04-06T14:05:04Z', 'email': '', ...}]
+user_list = [{'active_time': '2026-04-06T14:16:02Z', 'confirmed': True, 'created_time': '2026-04-06T14:14:23Z', 'email': '', ...}]
 test_username = 'testuser'
 
     @then("the test user exists in the user list")
@@ -494,6 +383,43 @@ E       AssertionError: Test user 'testuser' not found in user list: ['__bootstr
 E       assert 'testuser' in ['__bootstrap_admin__']
 
 src/vip_tests/connect/test_users.py:53: AssertionError</pre></div></details></div>
+</div>
+<div class="vip-cat-section"><h3 class="vip-cat-header anchored" style="color:#16a34a">Passed (18)</h3>
+<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-connect">Connect</span><span class="vip-cat-counts" style="margin-left:0.5rem">5 tests</span></h4>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">User can log in via the web UI</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_auth.py::test_connect_login_ui<span class="vip-test-duration">4.12s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>When a user navigates to the Connect login page</li><li>And enters valid credentials</li><li>Then the user is successfully authenticated</li><li>And the Connect dashboard is displayed</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">API key authentication works</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_auth.py::test_connect_login_api<span class="vip-test-duration">0.27s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>And a valid API key is configured</li><li>When I request the current user via the API</li><li>Then the API returns user information</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Admin user exists and has admin privileges</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_users.py::test_admin_user<span class="vip-test-duration">0.26s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>When I retrieve the current user profile</li><li>Then the user has admin privileges</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Groups can be listed</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_users.py::test_list_groups<span class="vip-test-duration">0.27s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>When I list all groups</li><li>Then the response is successful</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Expected Quarto versions are available</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_runtime_versions.py::test_quarto_versions<span class="vip-test-duration">0.27s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>When I query Connect for available Quarto versions</li><li>Then at least one Quarto version is available</li></ul></details></div>
+<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-package-manager">Package Manager</span><span class="vip-cat-counts" style="margin-left:0.5rem">2 tests</span></h4>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">CRAN mirror is accessible</span><span class="badge-package-manager">Package Manager</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/package_manager/test_repos.py::test_cran_mirror<span class="vip-test-duration">0.75s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the CRAN repository for the "Matrix" package</li><li>Then the package is found in the repository</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">At least one repository is configured</span><span class="badge-package-manager">Package Manager</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/package_manager/test_repos.py::test_repo_exists<span class="vip-test-duration">0.08s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I list all repositories</li><li>Then at least one repository exists</li></ul></details></div>
+<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-prerequisites">Prerequisites</span><span class="vip-cat-counts" style="margin-left:0.5rem">7 tests</span></h4>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Test credentials are provided</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_auth_configured.py::test_credentials_provided<span class="vip-test-duration">0.00s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given VIP is configured with test user credentials</li><li>Then the username is not empty</li><li>And the password is not empty</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Connect server is reachable</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_components.py::test_product_server_is_reachable[Connect]<span class="vip-test-duration">0.11s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Workbench server is reachable</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_components.py::test_product_server_is_reachable[Workbench]<span class="vip-test-duration">0.11s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Package Manager server is reachable</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_components.py::test_product_server_is_reachable[Package Manager]<span class="vip-test-duration">0.09s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given &lt;product&gt; is configured in vip.toml</li><li>When I request the &lt;product&gt; health endpoint</li><li>Then the server responds with a successful status code</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Workbench server is reachable but not configured</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a VIP developer</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_expected_failure.py::test_workbench_expected_failure<span class="vip-test-duration">0.00s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Workbench is expected to be configured</li><li>When I check the Workbench configuration</li><li>Then Workbench should be reachable</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Connect version matches configuration</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_versions.py::test_connect_version<span class="vip-test-duration">0.14s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is configured in vip.toml with a version expectation</li><li>When I fetch the Connect server version</li><li>Then the Connect version matches the configured value</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Package Manager version matches configuration</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_versions.py::test_package_manager_version<span class="vip-test-duration">0.09s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is configured in vip.toml with a version expectation</li><li>When I fetch the Package Manager server version</li><li>Then the Package Manager version matches the configured value</li></ul></details></div>
+<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-security">Security</span><span class="vip-cat-counts" style="margin-left:0.5rem">3 tests</span></h4>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Unauthenticated API request returns 401</span><span class="badge-security">Security</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/security/test_error_handling.py::test_unauthenticated_api_request_returns_401<span class="vip-test-duration">0.01s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is configured in vip.toml</li><li>When I make an unauthenticated API request to Connect</li><li>Then the response status is 401</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Invalid API key returns 401</span><span class="badge-security">Security</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/security/test_error_handling.py::test_invalid_api_key_returns_401<span class="vip-test-duration">4.46s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is configured in vip.toml</li><li>When I make an API request to Connect with an invalid key</li><li>Then the response status is 401</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">Non-existent endpoint returns 404</span><span class="badge-security">Security</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/security/test_error_handling.py::test_nonexistent_endpoint_returns_404<span class="vip-test-duration">0.01s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is configured in vip.toml</li><li>When I request a non-existent endpoint on Connect</li><li>Then the response status is 404</li></ul></details></div>
+<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-workbench">Workbench</span><span class="vip-cat-counts" style="margin-left:0.5rem">1 tests</span></h4>
+<div class="vip-test-card" style="border-left-color:#16a34a"><div class="vip-test-header"><span class="vip-badge" style="color:#16a34a;background:#dcfce7">PASS</span><span class="vip-test-scenario">User can log in to Workbench via the web UI</span><span class="badge-workbench">Workbench</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/workbench/test_auth.py::test_workbench_login[chromium]<span class="vip-test-duration">0.65s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Workbench is accessible at the configured URL</li><li>When a user navigates to the Workbench login page and enters valid credentials</li><li>Then the Workbench homepage is displayed</li><li>And the current user is shown in the header</li></ul></details></div>
+</div>
+<div class="vip-cat-section"><h3 class="vip-cat-header anchored" style="color:#6b7280">Skipped (5)</h3>
+<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-connect">Connect</span><span class="vip-cat-counts" style="margin-left:0.5rem">2 tests</span></h4>
+<div class="vip-test-card" style="border-left-color:#6b7280"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">Expected R versions are available on Connect</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_runtime_versions.py::test_r_versions<span class="vip-test-duration">0.13s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>And expected R versions are specified in vip.toml</li><li>When I query Connect for available R versions</li><li>Then all expected R versions are present</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#6b7280"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">Expected Python versions are available on Connect</span><span class="badge-connect">Connect</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/connect/test_runtime_versions.py::test_python_versions<span class="vip-test-duration">0.13s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Connect is accessible at the configured URL</li><li>And expected Python versions are specified in vip.toml</li><li>When I query Connect for available Python versions</li><li>Then all expected Python versions are present</li></ul></details></div>
+<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-package-manager">Package Manager</span><span class="vip-cat-counts" style="margin-left:0.5rem">2 tests</span></h4>
+<div class="vip-test-card" style="border-left-color:#6b7280"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">PyPI mirror is accessible</span><span class="badge-package-manager">Package Manager</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/package_manager/test_repos.py::test_pypi_mirror<span class="vip-test-duration">0.08s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the PyPI repository for the "requests" package</li><li>Then the package is found in the repository</li></ul></details></div>
+<div class="vip-test-card" style="border-left-color:#6b7280"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">Bioconductor mirror is accessible</span><span class="badge-package-manager">Package Manager</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/package_manager/test_repos.py::test_bioconductor_mirror<span class="vip-test-duration">0.08s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Package Manager is running</li><li>When I query the Bioconductor repository for the "BiocGenerics" package</li><li>Then the package is found in the repository</li></ul></details></div>
+<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151" class="anchored"><span class="badge-prerequisites">Prerequisites</span><span class="vip-cat-counts" style="margin-left:0.5rem">1 tests</span></h4>
+<div class="vip-test-card" style="border-left-color:#6b7280"><div class="vip-test-header"><span class="vip-badge" style="color:#6b7280;background:#e5e7eb">SKIP</span><span class="vip-test-scenario">Workbench version matches configuration</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As a Posit Team administrator</div><div class="vip-test-nodeid">src/vip_tests/prerequisites/test_versions.py::test_workbench_version<span class="vip-test-duration">0.01s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Workbench is configured in vip.toml with a version expectation</li><li>When I fetch the Workbench server version</li><li>Then the Workbench version matches the configured value</li></ul></details></div>
+</div>
+
 <script>
 document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
@@ -506,11 +432,6 @@ document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
   });
 });
 </script>
-</div>
-</div>
-<div id="2fc08213" class="cell" data-execution_count="6">
-<div class="cell-output cell-output-display cell-output-markdown">
-<p><em><code>failures.json</code> is written by <code>pytest</code> alongside <code>results.json</code>.</em></p>
 </div>
 </div>
 
