@@ -1,0 +1,138 @@
+---
+title: "VIP: Verified Installation of Posit"
+subtitle: "Automated validation for Posit Team deployments"
+author: "Ian Flores Siaca"
+date: "2026-04-07"
+format:
+  revealjs:
+    theme: default
+    slide-number: true
+    hash: true
+    center: true
+    transition: fade
+    code-line-numbers: false
+    mermaid:
+      theme: neutral
+---
+
+## The Problem
+
+- Customer installs Posit Team — "is it actually working?"
+- Manual spot-checks are slow, inconsistent, and miss things
+- Upgrades and config changes break things silently
+
+::: {.notes}
+Every SE knows the feeling — you finish an install, click around for a few minutes, and hope for the best. VIP replaces that with structured, repeatable validation.
+:::
+
+## What is VIP?
+
+An automated test suite that validates Posit Team deployments — Connect, Workbench, and Package Manager.
+
+- Runs tests against a live deployment (not mocks)
+- Generates an HTML report with pass/fail/skip results
+- Includes troubleshooting hints when tests fail
+- Works via CLI, Docker, or CI
+
+::: {.notes}
+VIP is a pytest-based BDD test suite. It talks to real products via their APIs and UIs. The report is the artifact you hand to the customer.
+:::
+
+## What We Test
+
+```{mermaid}
+%%| fig-width: 10
+flowchart LR
+    VIP[VIP Test Suite]
+
+    VIP --> C[Connect]
+    VIP --> W[Workbench]
+    VIP --> PM[Package Manager]
+    VIP --> X[Cross-Cutting]
+
+    C --> C1[Auth & Users]
+    C --> C2[Content Deploy]
+    C --> C3[Runtime Versions]
+    C --> C4[System Diagnostics]
+
+    W --> W1[Auth & Login]
+    W --> W2[IDE Launch]
+    W --> W3[Session Lifecycle]
+
+    PM --> PM1[CRAN Repos]
+    PM --> PM2[PyPI Repos]
+
+    X --> X1[Security]
+    X --> X2[Prerequisites]
+    X --> X3[Performance]
+```
+
+::: {.notes}
+Each branch is a test category. All tests are BDD — written in Gherkin so even non-developers can read the scenarios. Tests auto-skip when a product isn't configured, so you can run VIP against a partial deployment.
+:::
+
+## How to Run It
+
+**Quickest — CLI:**
+
+```bash
+pip install posit-vip
+vip verify --connect-url https://connect.example.com
+```
+
+**Docker:**
+
+```bash
+docker run ghcr.io/posit-dev/vip:latest \
+  vip verify --connect-url https://connect.example.com
+```
+
+**CI** — already running on every PR. See the repo for details.
+
+::: {.notes}
+The simplest path is pip install and one command. Point it at a URL and it figures out the rest. The Docker image is for Kubernetes jobs — PTD uses this to validate customer clusters automatically.
+:::
+
+## Live Demo
+
+`vip verify` against a live staging cluster
+
+::: {.notes}
+I'm going to run VIP against our ganso01-staging cluster. We'll see the CLI output, then walk through the HTML report — passed tests, a failure with troubleshooting hints, and the product badges.
+
+(This is where you switch to the terminal for the live demo)
+:::
+
+## The Report
+
+![Example VIP Report](images/report-summary.png){fig-align="center" width="80%"}
+
+::: {.notes}
+This is what the customer sees. Products under test, pass/fail summary, then results grouped by outcome. Failed tests show error tracebacks and troubleshooting hints — the yellow box tells operators what to check first. This is the artifact you share with the customer.
+:::
+
+## We Need Your Feedback
+
+**We want to make VIP useful for your customer conversations.**
+
+1. **Try it** — Run `vip verify` against a staging or customer cluster this week
+2. **Tell us what's missing** — What checks do you wish existed? What do customers ask about that we don't test?
+3. **Tell us what's confusing** — Is the report clear? Would a customer understand it?
+4. **File issues** — github.com/posit-dev/vip/issues
+
+**Your input directly shapes what we build next.**
+
+::: {.notes}
+This is not a finished product we're throwing over the wall. We need your field experience to make it useful. The tests we write should reflect what you see customers struggle with. If there's a check you find yourself doing manually every time, that should be a VIP test.
+:::
+
+## Get Started
+
+- **Repository:** `github.com/posit-dev/vip`
+- **Example Report:** `posit-dev.github.io/vip/example-report/`
+- **Docker Image:** `ghcr.io/posit-dev/vip:latest`
+- **Questions?** Reach out on Slack or file an issue
+
+::: {.notes}
+The example report is live on the website — you can share that link with customers today to show them what VIP produces. The getting-started page has install instructions.
+:::
