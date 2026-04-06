@@ -2,7 +2,7 @@
 
 ## Alpha Milestone Summary
 
-VIP v1.0.0-alpha validates Posit Team deployments across all three products
+VIP validates Posit Team deployments across all three products
 with CI smoke tests, an HTML validation report, and a Docker image for
 Kubernetes-based execution. The Docker image is available at
 `ghcr.io/posit-dev/vip:latest`.
