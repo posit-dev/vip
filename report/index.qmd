@@ -72,8 +72,11 @@ from html import escape as _esc
 from IPython.display import HTML
 
 from vip.gherkin import parse_feature_file
+from vip.reporting import load_troubleshooting
 
+_hints = load_troubleshooting(Path("../src/vip_tests/troubleshooting.toml"))
 _feature_cache: dict[str, dict] = {}
+_error_idx = 0
 
 
 def _get_feature(nodeid: str) -> dict | None:
@@ -112,8 +115,8 @@ _PRODUCT_BADGE_CSS = {
     "prerequisites": ("badge-prerequisites", "Prerequisites"),
 }
 
-_OUTCOME_ORDER = ["passed", "skipped"]  # Failed tests shown in dedicated section below
-_OUTCOME_LABELS = {"passed": "Passed", "skipped": "Skipped"}
+_OUTCOME_ORDER = ["failed", "passed", "skipped"]
+_OUTCOME_LABELS = {"failed": "Failed", "passed": "Passed", "skipped": "Skipped"}
 _OUTCOME_COLORS = {"passed": "#16a34a", "failed": "#dc2626", "skipped": "#6b7280"}
 
 
@@ -225,6 +228,35 @@ else:
   content: "› ";
   color: #9ca3af;
 }
+.vip-fail-details { margin-top: 0.5rem; margin-bottom: 0.5rem; }
+.vip-fail-details summary {
+  cursor: pointer; font-weight: 600; font-size: 0.8125rem;
+  color: #6b7280; padding: 0.25rem 0;
+}
+.vip-fail-details summary:hover { color: #374151; }
+.vip-fail-error-wrap { position: relative; margin-top: 0.375rem; }
+.vip-fail-error {
+  background: #1e1e1e; color: #d4d4d4; font-size: 0.8125rem;
+  line-height: 1.5; padding: 1rem; border-radius: 4px;
+  overflow-x: auto; margin: 0; white-space: pre-wrap; word-break: break-word;
+}
+.vip-copy-btn {
+  position: absolute; top: 0.5rem; right: 0.5rem;
+  background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;
+  padding: 0.2rem 0.5rem; font-size: 0.75rem; font-family: inherit;
+  cursor: pointer; transition: background 0.15s, color 0.15s; z-index: 1;
+}
+.vip-copy-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+.vip-fail-hints {
+  background: #fffbeb; border: 1px solid #fbbf24; border-radius: 4px;
+  padding: 0.875rem 1rem; font-size: 0.875rem; color: #92400e;
+  margin-top: 0.5rem;
+}
+.vip-fail-hints ul, .vip-fail-hints ol { margin: 0.25rem 0 0.75rem 1.25rem; padding: 0; }
+.vip-fail-hints li { margin-bottom: 0.25rem; }
+.vip-fail-hints p { margin: 0.25rem 0; }
+.vip-fail-hints a { color: #92400e; text-decoration: underline; }
 </style>
 """)
 
@@ -305,6 +337,45 @@ else:
                         f"</details>"
                     )
 
+                # Error traceback + troubleshooting hints (failed only)
+                error_html = ""
+                hints_html = ""
+                if item.outcome == "failed":
+                    if item.longrepr:
+                        eid = f"vip-error-{_error_idx}"
+                        _error_idx += 1
+                        error_html = (
+                            f'<details class="vip-fail-details">'
+                            f"<summary>Error traceback</summary>"
+                            f'<div class="vip-fail-error-wrap">'
+                            f'<button class="vip-copy-btn" data-target="{eid}"'
+                            f' title="Copy to clipboard">Copy</button>'
+                            f'<pre id="{eid}" class="vip-fail-error">'
+                            f"{_esc(item.longrepr)}</pre>"
+                            f"</div></details>"
+                        )
+                    hint = _hints.get(item.scenario_title, {}) if item.scenario_title else {}
+                    if hint:
+                        _hp = []
+                        if hint.get("likely_causes"):
+                            _hp.append("<strong>Likely causes:</strong><ul>")
+                            for c in hint["likely_causes"]:
+                                _hp.append(f"<li>{_esc(c)}</li>")
+                            _hp.append("</ul>")
+                        if hint.get("suggested_steps"):
+                            _hp.append("<strong>Suggested next steps:</strong><ol>")
+                            for s in hint["suggested_steps"]:
+                                _hp.append(f"<li>{_esc(s)}</li>")
+                            _hp.append("</ol>")
+                        if hint.get("docs_url"):
+                            _u = _esc(hint["docs_url"])
+                            _hp.append(
+                                f'<p><strong>Documentation:</strong> '
+                                f'<a href="{_u}" target="_blank" rel="noopener">{_u}</a></p>'
+                            )
+                        if _hp:
+                            hints_html = f'<div class="vip-fail-hints">{"".join(_hp)}</div>'
+
                 border = _OUTCOME_COLORS.get(item.outcome, "#d1d5db")
                 _html_parts.append(
                     f'<div class="vip-test-card" style="border-left-color:{border}">'
@@ -317,189 +388,14 @@ else:
                     f'<div class="vip-test-nodeid">{nodeid}'
                     f'<span class="vip-test-duration">{_esc(duration)}</span>'
                     f"</div>"
-                    f"{steps_html}"
+                    f"{steps_html}{error_html}{hints_html}"
                     f"</div>"
                 )
 
         _html_parts.append("</div>")  # close outcome section
 
-    display(HTML("\n".join(_html_parts)))
-```
-
-## Failed Tests
-
-```{python}
-#| echo: false
-
-from html import escape as _esc
-from IPython.display import HTML
-
-from vip.reporting import load_troubleshooting
-
-hints = load_troubleshooting(Path("../src/vip_tests/troubleshooting.toml"))
-
-failures = [r for r in data.results if r.outcome == "failed"]
-if not failures:
-    display(Markdown("No failures."))
-else:
-    _cards = []
-    for _idx, f in enumerate(failures):
-        hint = hints.get(f.scenario_title, {}) if f.scenario_title else {}
-
-        _title = _esc(f.nodeid)
-        _scenario = ""
-        if f.scenario_title:
-            desc = f" — {_esc(f.feature_description)}" if f.feature_description else ""
-            _scenario = (
-                f'<p class="vip-fail-scenario">'
-                f"<strong>What was tested:</strong> {_esc(f.scenario_title)}{desc}</p>"
-            )
-
-        _error = ""
-        if f.longrepr:
-            _error_id = f"vip-error-{_idx}"
-            _error = (
-                f'<details class="vip-fail-details">'
-                f"<summary>Error traceback</summary>"
-                f'<div class="vip-fail-error-wrap">'
-                f'<button class="vip-copy-btn" data-target="{_error_id}"'
-                f' title="Copy to clipboard">Copy</button>'
-                f'<pre id="{_error_id}" class="vip-fail-error">'
-                f"{_esc(f.longrepr)}</pre>"
-                f"</div></details>"
-            )
-
-        _troubleshoot = ""
-        if hint:
-            _parts = []
-            if hint.get("likely_causes"):
-                _parts.append("<strong>Likely causes:</strong><ul>")
-                for cause in hint["likely_causes"]:
-                    _parts.append(f"<li>{_esc(cause)}</li>")
-                _parts.append("</ul>")
-            if hint.get("suggested_steps"):
-                _parts.append("<strong>Suggested next steps:</strong><ol>")
-                for step in hint["suggested_steps"]:
-                    _parts.append(f"<li>{_esc(step)}</li>")
-                _parts.append("</ol>")
-            if hint.get("docs_url"):
-                _url = _esc(hint["docs_url"])
-                _parts.append(
-                    f'<p><strong>Documentation:</strong> '
-                    f'<a href="{_url}" target="_blank" rel="noopener">{_url}</a></p>'
-                )
-            if _parts:
-                _troubleshoot = (
-                    f'<div class="vip-fail-hints">{"".join(_parts)}</div>'
-                )
-
-        _cards.append(
-            f'<div class="vip-fail-card">'
-            f'<h3 class="vip-fail-title"><code>{_title}</code></h3>'
-            f"{_scenario}{_error}{_troubleshoot}"
-            f"</div>"
-        )
-
-    _style = """
-<style>
-.vip-fail-card {
-  border: 1px solid #e5e7eb;
-  border-left: 4px solid #dc2626;
-  border-radius: 6px;
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1.25rem;
-  background: #fefefe;
-}
-.vip-fail-title {
-  font-size: 1rem;
-  margin: 0 0 0.5rem;
-}
-.vip-fail-title code {
-  font-size: 0.875rem;
-  color: #dc2626;
-  background: #fef2f2;
-  padding: 0.15em 0.4em;
-  border-radius: 3px;
-}
-.vip-fail-scenario {
-  margin: 0.25rem 0 0.75rem;
-  font-size: 0.9375rem;
-  color: #374151;
-}
-.vip-fail-details {
-  margin-bottom: 0.75rem;
-}
-.vip-fail-details summary {
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: #4b5563;
-  padding: 0.375rem 0;
-}
-.vip-fail-details summary:hover {
-  color: #1f2937;
-}
-.vip-fail-error-wrap {
-  position: relative;
-  margin-top: 0.375rem;
-}
-.vip-fail-error {
-  background: #1e1e1e;
-  color: #d4d4d4;
-  font-size: 0.8125rem;
-  line-height: 1.5;
-  padding: 1rem;
-  border-radius: 4px;
-  overflow-x: auto;
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.vip-copy-btn {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  background: rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.7);
-  border: 1px solid rgba(255,255,255,0.2);
-  border-radius: 4px;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.75rem;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  z-index: 1;
-}
-.vip-copy-btn:hover {
-  background: rgba(255,255,255,0.2);
-  color: #fff;
-}
-.vip-fail-hints {
-  background: #fffbeb;
-  border: 1px solid #fbbf24;
-  border-radius: 4px;
-  padding: 0.875rem 1rem;
-  font-size: 0.875rem;
-  color: #92400e;
-}
-.vip-fail-hints ul, .vip-fail-hints ol {
-  margin: 0.25rem 0 0.75rem 1.25rem;
-  padding: 0;
-}
-.vip-fail-hints li {
-  margin-bottom: 0.25rem;
-}
-.vip-fail-hints p {
-  margin: 0.25rem 0;
-}
-.vip-fail-hints a {
-  color: #92400e;
-  text-decoration: underline;
-}
-</style>
-"""
-
-    _script = """
+    # Copy-to-clipboard script for error tracebacks
+    _html_parts.append("""
 <script>
 document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
@@ -512,14 +408,7 @@ document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
   });
 });
 </script>
-"""
+""")
 
-    display(HTML(_style + "\n".join(_cards) + _script))
-```
-
-```{python}
-#| echo: false
-
-if failures:
-    display(Markdown(f"_`failures.json` is written by `pytest` alongside `results.json`._"))
+    display(HTML("\n".join(_html_parts)))
 ```
