@@ -17,10 +17,16 @@ instance without requiring a dedicated deployment.
 
 ### Key difference from Connect
 
-Unlike Connect, **there is no `posit-dev/with-workbench` action**.  We must
-set up the Workbench container directly using Docker within the workflow.
-Workbench is also a more complex product to start: it requires PAM user
-accounts, a heavier runtime, and a different bootstrapping model.
+Unlike Connect's `posit-dev/with-connect` action, Workbench uses the
+**`with-workbench` CLI tool** rather than a GitHub Action.  Install it with:
+
+```bash
+uv tool install git+https://github.com/posit-dev/with-workbench.git
+```
+
+`with-workbench` handles the full container lifecycle: PAM user provisioning,
+health checks, port allocation, and cleanup.  This mirrors the ergonomics of
+`with-connect` without requiring a dedicated GitHub Action.
 
 ### Workbench Docker image
 
@@ -85,7 +91,7 @@ RESPONSE=$(curl -s -b /tmp/wb_cookies.txt http://localhost:8787/api/server-info)
 VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty')
 
 # Run tests
-pytest src/vip_tests/prerequisites/test_components.py src/vip_tests/workbench/test_auth.py ...
+pytest tests/prerequisites/test_components.py tests/workbench/test_auth.py ...
 
 # Cleanup
 docker stop workbench && docker rm workbench || true
@@ -96,21 +102,24 @@ docker stop workbench && docker rm workbench || true
 | Test file | Feasibility | Notes |
 |---|---|---|
 | `prerequisites/test_components` | ✅ Yes | Health-check only — no auth required |
-| `workbench/test_auth` | ✅ Yes | Password form login; uses page objects from `src/vip_tests/workbench/pages/` |
-| `workbench/test_ide_launch` | ❌ No | Requires R/Python; not in minimal image |
-| `workbench/test_packages` | ❌ No | Requires R runtime |
-| `workbench/test_data_sources` | ❌ No | Requires external databases |
+| `workbench/test_auth` | ✅ Yes | Password form login; uses page objects from `tests/workbench/pages/` |
+| `workbench/test_ide_launch` | ✅ Yes | Standard image includes R; RStudio is the default IDE. Other IDEs skip cleanly via availability guard |
+| `workbench/test_sessions` | ✅ Yes | Suspend/resume lifecycle using RStudio |
+| `workbench/test_packages` | ⚠️ Partial | Skips PM assertion when Package Manager is not configured |
+| `workbench/test_data_sources` | ⚠️ Partial | Skips when no data sources are configured |
 
-> **Note:** `test_runtime_versions` and `test_sessions` were removed from the
-> workbench test suite (commit `f45d242` on main). Runtime and session fixtures
-> now live in `src/vip_tests/workbench/conftest.py` and are consumed by `test_ide_launch`.
+> **Note:** `test_runtime_versions` was removed from the workbench test suite
+> (commit `f45d242` on main). Runtime and session fixtures now live in
+> `tests/workbench/conftest.py` and are consumed by `test_ide_launch`.
 
 ### Recommended initial test scope
 
 1. **`prerequisites/test_components`** — Workbench health check (no credentials)
 2. **`workbench/test_auth`** — Web UI login with the PAM test user
+3. **`workbench/test_ide_launch`** — RStudio session launch (R included in standard image)
+4. **`workbench/test_sessions`** — Session suspend/resume lifecycle
 
-`test_auth` now uses the page-object selectors in `src/vip_tests/workbench/pages/`
+`test_auth` now uses the page-object selectors in `tests/workbench/pages/`
 (e.g. `#posit-logo`, `#current-user`, `button:text-is('New Session')`) — the
 same selectors used by rstudio-pro's own end-to-end suite.  It also verifies
 that `#current-user` text matches `auth.username` (`rstudio` in the Docker
@@ -128,217 +137,52 @@ api_key = "..."   # or via VIP_WORKBENCH_API_KEY env var
 
 ## Implementation plan
 
-### Phase 1: Minimal smoke test workflow
+### Phase 1: Minimal smoke test workflow (complete)
 
-Create `.github/workflows/workbench-smoke.yml`:
+`.github/workflows/workbench-smoke.yml` was created using the `with-workbench`
+CLI tool instead of raw `docker run`.  The CLI is installed in the workflow via:
 
 ```yaml
-name: Workbench Smoke Tests
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-  schedule:
-    - cron: "0 7 * * *"  # daily at 7am UTC (offset from Connect run at 6am)
-
-permissions:
-  contents: read
-  checks: write
-
-jobs:
-  workbench-smoke:
-    name: Smoke test against Workbench ${{ matrix.workbench-version }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2026.01.1", "ubuntu2204"]') || fromJSON('["ubuntu2204-2026.01.1"]') }}
-    steps:
-      - uses: actions/checkout@v4
-
-      # Start Workbench in Docker
-      - name: Start Workbench
-        run: |
-          docker run -d \
-            --name workbench \
-            -p 8787:8787 \
-            -e RSP_LICENSE="${{ secrets.WORKBENCH_LICENSE }}" \
-            rstudio/rstudio-workbench:${{ matrix.workbench-version }}
-      - name: Create test user
-        run: |
-          timeout 180 bash -c '
-            until docker exec workbench sh -c "true" 2>/dev/null; do sleep 3; done
-          '
-          docker exec workbench useradd -m -s /bin/bash rstudio
-          docker exec workbench sh -c "echo 'rstudio:rstudio' | chpasswd"
-
-      # Wait for the server to be ready
-      - name: Wait for Workbench to be ready
-        run: |
-          timeout 180 bash -c \
-            'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
-
-      # Resolve the actual Workbench version
-      - name: Resolve Workbench version
-        id: version
-        run: |
-          VERSION=$(curl -sf http://localhost:8787/api/server-info | jq -r '.version')
-          if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
-            echo "ERROR: Could not resolve Workbench version"
-            exit 1
-          fi
-          echo "Resolved Workbench version: ${VERSION}"
-          echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      # Rename the check run to show the resolved version
-      - name: Update job title with resolved version
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const resolvedVersion = '${{ steps.version.outputs.resolved }}';
-            const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.runId,
-            });
-            const currentJob = jobs.find(
-              j => j.status === 'in_progress' && j.name.includes('${{ matrix.workbench-version }}')
-            );
-            if (currentJob) {
-              await github.rest.checks.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                check_run_id: currentJob.id,
-                name: `Smoke test against Workbench ${resolvedVersion}`,
-              });
-            }
-
-      # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync
-
-      - name: Install Playwright browsers
-        run: uv run playwright install chromium
-
-      # Generate vip.toml from Docker outputs
-      - name: Configure VIP for CI Workbench
-        run: |
-          cat > vip.toml << EOF
-          [general]
-          deployment_name = "CI Workbench"
-
-          [workbench]
-          enabled = true
-          url = "http://localhost:8787"
-          version = "${{ steps.version.outputs.resolved }}"
-
-          [auth]
-          provider = "password"
-          username = "rstudio"
-          password = "rstudio"
-          EOF
-
-      # Run the subset of tests that work against Docker Workbench
-      - name: Run Workbench smoke tests
-        run: |
-          uv run pytest \
-            src/vip_tests/prerequisites/test_components.py \
-            src/vip_tests/workbench/test_auth.py \
-            -v -k "workbench" \
-            --vip-config=vip.toml \
-            --junitxml=smoke-results.xml
-
-      # Upload test results for debugging
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: workbench-smoke-results-${{ steps.version.outputs.resolved }}
-          path: smoke-results.xml
-
-      # Write a rich job summary
-      - name: Write workflow summary
-        if: always()
-        run: |
-          RESOLVED="${{ steps.version.outputs.resolved }}"
-          WB_URL="http://localhost:8787"
-          REQUESTED="${{ matrix.workbench-version }}"
-          RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
-          {
-            echo "## 🧪 Workbench Smoke Tests — v${RESOLVED}"
-            echo ""
-            echo "| | |"
-            echo "|---|---|"
-            echo "| 🏷️ **Requested version** | \`${REQUESTED}\` |"
-            echo "| ✅ **Resolved version** | \`${RESOLVED}\` |"
-            echo "| 🌐 **Workbench URL** | \`${WB_URL}\` |"
-            echo "| 📅 **Run date** | ${RUN_DATE} |"
-            echo ""
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [ -f smoke-results.xml ]; then
-            TESTS=$(grep -oP '(?<=tests=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            FAILURES=$(grep -oP '(?<=failures=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            ERRORS=$(grep -oP '(?<=errors=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            SKIPPED=$(grep -oP '(?<=skipped=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            TESTS=${TESTS:-0}; FAILURES=${FAILURES:-0}; ERRORS=${ERRORS:-0}; SKIPPED=${SKIPPED:-0}
-            PASSED=$(( TESTS - FAILURES - ERRORS - SKIPPED ))
-            {
-              echo "### 📊 Test Results"
-              echo ""
-              echo "| Result | Count |"
-              echo "|--------|-------|"
-              echo "| ✅ Passed | ${PASSED} |"
-              echo "| ❌ Failed | ${FAILURES:-0} |"
-              echo "| ⚠️ Errors | ${ERRORS:-0} |"
-              echo "| ⏭️ Skipped | ${SKIPPED:-0} |"
-              echo "| 📝 **Total** | **${TESTS:-0}** |"
-              echo ""
-              if [ "${FAILURES:-0}" = "0" ] && [ "${ERRORS:-0}" = "0" ]; then
-                echo "🎉 **All tests passed!**"
-              else
-                echo "💥 **Some tests failed — check the logs for details.**"
-              fi
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "> ⚠️ Test results file not found — tests may have been skipped." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      # Stop and remove Workbench container
-      - name: Stop Workbench
-        if: always()
-        run: docker stop workbench && docker rm workbench || true
+- name: Install with-workbench
+  run: uv tool install git+https://github.com/posit-dev/with-workbench.git
 ```
+
+`with-workbench` then handles container startup, PAM user provisioning, health
+polling, and port allocation in a single command.  The workflow generates
+`vip.toml` from the outputs (URL, resolved version, credentials) and runs
+`pytest` against the live instance.
 
 **Key decisions:**
 
-- **No `with-workbench` action**: Docker is used directly since no equivalent
-  action exists yet.
-- **PAM user creation**: A test user `rstudio`/`rstudio` is created with
-  `useradd` + `chpasswd` inside the container.
-- **Single version on PRs**: Only `ubuntu2204-2026.01.1` is tested on push/PR
-  to keep CI fast.  The `ubuntu2204` (latest) tag is added on scheduled runs
-  to catch regressions.
+- **`with-workbench` CLI**: Replaces raw `docker run` + manual `useradd`/`chpasswd`.
+  Handles the full lifecycle and exposes structured outputs (URL, version).
+- **Version format**: `with-workbench` uses plain version strings (`2026.01.1`,
+  `release`) rather than Docker image tags (`ubuntu2204-2026.01.1`).
+- **Single version on PRs**: Only `2026.01.1` is tested on push/PR to keep CI
+  fast.  The `release` (latest) version is added on scheduled runs to catch
+  regressions.
 - **Offline schedule offset**: The cron runs at 7am UTC, one hour after the
   Connect smoke run (6am), to avoid resource contention.
 - **Generous timeouts**: 180 seconds for container readiness, vs. 60–120 for
   Connect, because Workbench takes longer to boot.
 - **Cleanup with `if: always()`**: Container is removed even when tests fail.
 
-### Phase 2: Expand test coverage (future)
+### Phase 2: Expand test coverage (complete)
 
-Once Phase 1 is stable:
+The standard `rstudio/rstudio-workbench` image ships R and Python, so all IDE
+and session tests run without a custom image.  The following tests were added to
+the smoke workflow beyond the initial `test_components` + `test_auth` scope:
 
-1. **Add a version matrix** for additional stable releases.
-2. **Add `workbench/test_ide_launch`** using a Workbench image that ships
-   R/Python runtimes, or build a custom image on top of the official one.
-   The `wb_start_session` fixture in `src/vip_tests/workbench/conftest.py` already
-   provides the session-launch helper.
-3. **Add `workbench/test_packages`** once R runtime is available in the image.
+- **`workbench/test_ide_launch`** — Launches an RStudio session (R is available
+  in the standard image).  Non-RStudio IDEs (VS Code, JupyterLab, Positron)
+  skip cleanly via an IDE availability guard that checks whether the IDE is
+  offered by the running instance before attempting to launch it.
+- **`workbench/test_sessions`** — Exercises the suspend/resume session lifecycle
+  using RStudio.
+- **`workbench/test_packages`** — Included with partial coverage: the Package
+  Manager assertion is skipped when PM is not configured in `vip.toml`.
+- **`workbench/test_data_sources`** — Included with partial coverage: skips
+  entirely when no data sources are configured.
 
 ### Phase 3: Version matrix and nightly runs (future)
 
@@ -367,14 +211,18 @@ Once Phase 1 is stable:
    Hub for `rstudio/rstudio-workbench`?  Some older versions may only exist in
    a private registry.
 
-3. **UI selector accuracy**: The Playwright selectors in `test_auth.py` use the
-   page-object classes in `src/vip_tests/workbench/pages/` — mirroring the rstudio-pro
+3. **UI selector accuracy**: ~~The Playwright selectors in `test_auth.py` use the
+   page-object classes in `tests/workbench/pages/` — mirroring the rstudio-pro
    e2e selectors (`#posit-logo`, `#current-user`, etc.).  They should be accurate
-   for the 2026.01 image but may need adjustment for older releases.
+   for the 2026.01 image but may need adjustment for older releases.~~
+   **Resolved**: Selectors (`#posit-logo`, `#current-user`, `button:text-is('New Session')`)
+   work correctly with the standard Docker image.
 
-4. **Session support**: The Workbench Docker image includes two versions of R
+4. **Session support**: ~~The Workbench Docker image includes two versions of R
    and two versions of Python (per Docker Hub docs), so IDE launch tests should
-   work once Phase 2 is implemented.
+   work once Phase 2 is implemented.~~
+   **Resolved**: The standard image includes R and Python.  IDE launch and session
+   tests (`test_ide_launch`, `test_sessions`) both work against the unmodified image.
 
 5. **`/api/server-info` authentication**: The Workbench `/api/server-info` endpoint
    requires authentication. Version resolution uses `POST /auth-sign-in` to get a

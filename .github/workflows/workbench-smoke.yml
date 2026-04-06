@@ -19,39 +19,29 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2026.01.1", "ubuntu2204"]') || fromJSON('["ubuntu2204-2026.01.1"]') }}
-    # Throwaway PAM credentials created inside the ephemeral Docker container
-    env:
-      WB_TEST_USER: rstudio
-      WB_TEST_PASSWD: Rstudio123!
+        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["2026.01.1", "release"]') || fromJSON('["2026.01.1"]') }}
     steps:
       - uses: actions/checkout@v6
 
       # Start Workbench in Docker
-      # RSW_TESTUSER/RSW_TESTUSER_PASSWD provision the default test user automatically.
-      # Using RSW_LICENSE (not RSP_LICENSE) for license key activation.
       - name: Start Workbench
-        run: |
-          docker run -d \
-            --name workbench \
-            -p 8787:8787 \
-            -e RSW_LICENSE="${{ secrets.WORKBENCH_LICENSE }}" \
-            -e RSW_TESTUSER="${WB_TEST_USER}" \
-            -e RSW_TESTUSER_PASSWD="${WB_TEST_PASSWD}" \
-            rstudio/rstudio-workbench:${{ matrix.workbench-version }}
-
-      # Wait for the server health endpoint to respond
-      - name: Wait for Workbench to be ready
-        run: |
-          timeout 180 bash -c \
-            'until curl -sf http://localhost:8787/health-check; do sleep 5; done'
+        id: workbench
+        uses: posit-dev/with-workbench@main
+        with:
+          license-key: ${{ secrets.WORKBENCH_LICENSE }}
+          version: ${{ matrix.workbench-version }}
 
       # Surface license errors as workflow annotations so expired keys
       # are immediately visible on the Actions run page.
       - name: Check for license errors
-        if: failure()
+        if: failure() && steps.workbench.outcome == 'failure'
         run: |
-          LOGS=$(docker logs workbench 2>&1 || true)
+          CID=$(docker ps -aq --filter "ancestor=rstudio/rstudio-workbench" | head -1)
+          if [ -z "${CID}" ]; then
+            echo "::error title=Workbench Startup Failed::Workbench container not found. The with-workbench action failed before creating a container."
+            exit 1
+          fi
+          LOGS=$(docker logs "${CID}" 2>&1 || true)
           LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable|not activated" | head -1 || true)
           if [ -n "${LICENSE_MSG}" ]; then
             echo "::error title=License Error::${LICENSE_MSG}"
@@ -64,8 +54,10 @@ jobs:
               echo "${LICENSE_MSG}"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
+          else
+            echo "::error title=Workbench Startup Failed::Workbench failed to start. Check the 'Start Workbench' step logs for details."
           fi
+          exit 1
 
       # Resolve the running Workbench version.
       # Primary: authenticated GET /api/server-info (sign in with -L to follow the
@@ -77,18 +69,18 @@ jobs:
         run: |
           # Sign in - follow redirects (-L) so the session cookie jar is fully populated
           curl -s -L -c /tmp/wb_cookies.txt \
-            -d "username=${WB_TEST_USER}&password=${WB_TEST_PASSWD}" \
-            http://localhost:8787/auth-sign-in > /dev/null
+            -d "username=${{ steps.workbench.outputs.WORKBENCH_USER }}&password=${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}" \
+            ${{ steps.workbench.outputs.WORKBENCH_URL }}/auth-sign-in > /dev/null
 
           # Fetch server info with the authenticated session
-          RESPONSE=$(curl -s -b /tmp/wb_cookies.txt http://localhost:8787/api/server-info)
+          RESPONSE=$(curl -s -b /tmp/wb_cookies.txt ${{ steps.workbench.outputs.WORKBENCH_URL }}/api/server-info)
           VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty' 2>/dev/null || true)
 
           # Fallback: query the running binary directly if the API didn't return JSON
           if [ -z "${VERSION}" ]; then
             echo "INFO: /api/server-info did not yield a version (response: ${RESPONSE:0:200})"
             echo "INFO: Falling back to rstudio-server version"
-            VERSION=$(docker exec workbench rstudio-server version 2>/dev/null \
+            VERSION=$(docker exec ${{ steps.workbench.outputs.CONTAINER_ID }} rstudio-server version 2>/dev/null \
                       | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+\+[^[:space:]]+' | head -1 || true)
           fi
 
@@ -134,7 +126,7 @@ jobs:
       - name: Install Playwright browsers
         run: uv run playwright install chromium
 
-      # Generate vip.toml from Docker container outputs
+      # Generate vip.toml from with-workbench outputs
       - name: Configure VIP for CI Workbench
         run: |
           cat > vip.toml << EOF
@@ -146,7 +138,7 @@ jobs:
 
           [workbench]
           enabled = true
-          url = "http://localhost:8787"
+          url = "${{ steps.workbench.outputs.WORKBENCH_URL }}"
           version = "${{ steps.version.outputs.resolved }}"
 
           [package_manager]
@@ -154,8 +146,8 @@ jobs:
 
           [auth]
           provider = "password"
-          username = "${WB_TEST_USER}"
-          password = "${WB_TEST_PASSWD}"
+          username = "${{ steps.workbench.outputs.WORKBENCH_USER }}"
+          password = "${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}"
           EOF
 
       # Run the subset of tests that work against Docker Workbench
@@ -164,6 +156,9 @@ jobs:
           uv run pytest \
             src/vip_tests/prerequisites/test_components.py \
             src/vip_tests/workbench/test_auth.py \
+            src/vip_tests/workbench/test_ide_launch.py \
+            src/vip_tests/workbench/test_packages.py \
+            src/vip_tests/workbench/test_data_sources.py \
             -v -k "workbench" \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
@@ -181,7 +176,7 @@ jobs:
         if: always()
         run: |
           RESOLVED="${{ steps.version.outputs.resolved }}"
-          WB_URL="http://localhost:8787"
+          WB_URL="${{ steps.workbench.outputs.WORKBENCH_URL }}"
           REQUESTED="${{ matrix.workbench-version }}"
           RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
           {
@@ -226,7 +221,9 @@ jobs:
       # Stop and remove the Workbench container
       - name: Stop Workbench
         if: always()
-        run: docker stop workbench && docker rm workbench || true
+        uses: posit-dev/with-workbench@main
+        with:
+          stop: ${{ steps.workbench.outputs.CONTAINER_ID }}
 
   status:
     name: Workbench Smoke Tests Status
