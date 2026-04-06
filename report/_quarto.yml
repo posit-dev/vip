@@ -16,4 +16,3 @@ format:
     theme: cosmo
     toc: true
     code-fold: true
-    css: styles.css
