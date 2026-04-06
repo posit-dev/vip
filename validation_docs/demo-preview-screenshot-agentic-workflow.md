@@ -24,7 +24,7 @@ gh aw validate preview-screenshot-gallery
 ```
 
 ```bash
-UV_NO_PROGRESS=1 uv run --extra dev ruff check src/ src/vip_tests/ selftests/ examples/
+uv run --with ruff ruff check src/ src/vip_tests/ selftests/ examples/ 2>&1 | grep -v 'Using CPython\|Creating virtual environment\|Building posit-vip\|Downloading\|Downloaded\|Installed'
 ```
 
 ```output
@@ -32,7 +32,7 @@ All checks passed!
 ```
 
 ```bash
-UV_NO_PROGRESS=1 uv run --extra dev ruff format --check src/ src/vip_tests/ selftests/ examples/
+uv run --with ruff ruff format --check src/ src/vip_tests/ selftests/ examples/ 2>&1 | grep -v 'Using CPython\|Creating virtual environment\|Building posit-vip\|Downloading\|Downloaded\|Installed'
 ```
 
 ```output

@@ -44,6 +44,7 @@ Take screenshots with Playwright and attach them to the PR:
    - total screenshots uploaded,
    - which URLs were captured,
    - any pages that failed to render/screenshot.
+9. In that PR comment, render screenshots inline using Markdown image syntax (for example, `![website home](<asset-url>)`) so images are directly visible in the comment body, not just linked.
 
 Quality checks:
 - Use full-page screenshots.
