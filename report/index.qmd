@@ -62,11 +62,12 @@ display(Markdown(f"""
 """))
 ```
 
-## Results by Category
+## Results
 
 ```{python}
 #| echo: false
 
+from collections import defaultdict
 from html import escape as _esc
 from IPython.display import HTML
 
@@ -103,12 +104,6 @@ _OUTCOME_STYLES = {
     "skipped": ("SKIP", "#6b7280", "#f9fafb", "#e5e7eb"),
 }
 
-_OUTCOME_CSS = {
-    "passed": "passed",
-    "failed": "failed",
-    "skipped": "skipped",
-}
-
 _PRODUCT_BADGE_CSS = {
     "connect": ("badge-connect", "Connect"),
     "workbench": ("badge-workbench", "Workbench"),
@@ -117,10 +112,32 @@ _PRODUCT_BADGE_CSS = {
     "prerequisites": ("badge-prerequisites", "Prerequisites"),
 }
 
-categories = data.by_category()
-if not categories:
+_OUTCOME_ORDER = ["passed", "failed", "skipped"]
+_OUTCOME_LABELS = {"passed": "Passed", "failed": "Failed", "skipped": "Skipped"}
+_OUTCOME_COLORS = {"passed": "#16a34a", "failed": "#dc2626", "skipped": "#6b7280"}
+
+
+def _product_tag(item):
+    """Extract the primary product tag from markers for sub-grouping."""
+    for m in (item.markers or []):
+        if m in _PRODUCT_BADGE_CSS:
+            return m
+    # Fall back to category from nodeid path
+    parts = item.nodeid.split("/")
+    for p in parts:
+        if p in _PRODUCT_BADGE_CSS:
+            return p
+    return "other"
+
+
+if not data.results:
     display(Markdown("No test results to display."))
 else:
+    # Group: outcome → product tag → items
+    _by_outcome = defaultdict(lambda: defaultdict(list))
+    for _item in data.results:
+        _by_outcome[_item.outcome][_product_tag(_item)].append(_item)
+
     _html_parts = []
     _html_parts.append("""
 <style>
@@ -211,98 +228,100 @@ else:
 </style>
 """)
 
-    for cat, items in sorted(categories.items()):
-        cat_label = cat.replace("_", " ").title()
-        cat_passed = sum(1 for i in items if i.outcome == "passed")
-        cat_failed = sum(1 for i in items if i.outcome == "failed")
-        cat_skipped = sum(1 for i in items if i.outcome == "skipped")
-
-        counts = []
-        if cat_passed:
-            counts.append(f"{cat_passed} passed")
-        if cat_failed:
-            counts.append(f"{cat_failed} failed")
-        if cat_skipped:
-            counts.append(f"{cat_skipped} skipped")
+    for outcome in _OUTCOME_ORDER:
+        if outcome not in _by_outcome:
+            continue
+        product_groups = _by_outcome[outcome]
+        total_in_outcome = sum(len(v) for v in product_groups.values())
+        outcome_label = _OUTCOME_LABELS[outcome]
+        outcome_color = _OUTCOME_COLORS[outcome]
 
         _html_parts.append(
             f'<div class="vip-cat-section">'
-            f'<h3 class="vip-cat-header">{_esc(cat_label)}</h3>'
-            f'<p class="vip-cat-counts">'
-            f"{len(items)} tests — {', '.join(counts)}</p>"
+            f'<h3 class="vip-cat-header" style="color:{outcome_color}">'
+            f'{_esc(outcome_label)} ({total_in_outcome})</h3>'
         )
 
-        for item in items:
-            label, fg, bg, border_bg = _OUTCOME_STYLES.get(
-                item.outcome, ("?", "#6b7280", "#f9fafb", "#e5e7eb")
-            )
-            outcome_css = _OUTCOME_CSS.get(item.outcome, "skipped")
-            raw_title = item.scenario_title or (
-                item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
-            )
-            # Substitute <param> placeholders with pytest parametrize values from nodeid
-            # e.g., "<product> server is reachable" + nodeid ending in "[Connect]" → "Connect server is reachable"
-            import re as _re
-            _param_match = _re.search(r"\[(.+)\]$", item.nodeid)
-            if _param_match and "<" in raw_title:
-                param_val = _param_match.group(1)
-                raw_title = _re.sub(r"<[^>]+>", param_val, raw_title)
-            title = _esc(raw_title)
-            nodeid = _esc(item.nodeid)
-            duration = f"{item.duration:.2f}s"
-            badge = (
-                f'<span class="vip-badge" '
-                f'style="color:{fg};background:{border_bg}">{label}</span>'
+        for tag in sorted(product_groups.keys()):
+            items = product_groups[tag]
+            tag_css, tag_label = _PRODUCT_BADGE_CSS.get(tag, ("", tag.title()))
+            _html_parts.append(
+                f'<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151">'
+                f'<span class="{tag_css}">{_esc(tag_label)}</span>'
+                f'<span class="vip-cat-counts" style="margin-left:0.5rem">'
+                f'{len(items)} tests</span></h4>'
             )
 
-            # Product/category badges from markers
-            product_badges = ""
-            if hasattr(item, "markers") and item.markers:
-                for marker in item.markers:
-                    if marker in _PRODUCT_BADGE_CSS:
-                        css_class, display_name = _PRODUCT_BADGE_CSS[marker]
-                        product_badges += (
-                            f'<span class="{css_class}">{_esc(display_name)}</span>'
+            for item in items:
+                label, fg, bg, border_bg = _OUTCOME_STYLES.get(
+                    item.outcome, ("?", "#6b7280", "#f9fafb", "#e5e7eb")
+                )
+                raw_title = item.scenario_title or (
+                    item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
+                )
+                # Substitute <param> placeholders with pytest parametrize values
+                import re as _re
+                _param_match = _re.search(r"\[(.+)\]$", item.nodeid)
+                if _param_match and "<" in raw_title:
+                    param_val = _param_match.group(1)
+                    raw_title = _re.sub(r"<[^>]+>", param_val, raw_title)
+                title = _esc(raw_title)
+                nodeid = _esc(item.nodeid)
+                duration = f"{item.duration:.2f}s"
+                badge = (
+                    f'<span class="vip-badge" '
+                    f'style="color:{fg};background:{border_bg}">{label}</span>'
+                )
+
+                # Product/category badges from markers
+                product_badges = ""
+                if hasattr(item, "markers") and item.markers:
+                    for marker in item.markers:
+                        if marker in _PRODUCT_BADGE_CSS:
+                            css_class, display_name = _PRODUCT_BADGE_CSS[marker]
+                            product_badges += (
+                                f'<span class="{css_class}">{_esc(display_name)}</span>'
+                            )
+
+                # Feature description (first line only)
+                description_html = ""
+                if item.feature_description:
+                    first_line = item.feature_description.split("\n")[0].strip()
+                    if first_line:
+                        description_html = (
+                            f'<div class="vip-test-description">{_esc(first_line)}</div>'
                         )
 
-            # Feature description (first line only)
-            description_html = ""
-            if item.feature_description:
-                first_line = item.feature_description.split("\n")[0].strip()
-                if first_line:
-                    description_html = (
-                        f'<div class="vip-test-description">{_esc(first_line)}</div>'
+                steps = _get_steps(item)
+                steps_html = ""
+                if steps:
+                    step_items = "".join(
+                        f"<li>{_esc(s)}</li>" for s in steps
+                    )
+                    steps_html = (
+                        f'<details class="vip-test-steps">'
+                        f"<summary>Test procedure</summary>"
+                        f'<ul class="vip-step-list">{step_items}</ul>'
+                        f"</details>"
                     )
 
-            steps = _get_steps(item)
-            steps_html = ""
-            if steps:
-                step_items = "".join(
-                    f"<li>{_esc(s)}</li>" for s in steps
-                )
-                steps_html = (
-                    f'<details class="vip-test-steps">'
-                    f"<summary>Test procedure</summary>"
-                    f'<ul class="vip-step-list">{step_items}</ul>'
-                    f"</details>"
+                border = _OUTCOME_COLORS.get(item.outcome, "#d1d5db")
+                _html_parts.append(
+                    f'<div class="vip-test-card" style="border-left-color:{border}">'
+                    f'<div class="vip-test-header">'
+                    f"{badge}"
+                    f'<span class="vip-test-scenario">{title}</span>'
+                    f"{product_badges}"
+                    f"</div>"
+                    f'{description_html}'
+                    f'<div class="vip-test-nodeid">{nodeid}'
+                    f'<span class="vip-test-duration">{_esc(duration)}</span>'
+                    f"</div>"
+                    f"{steps_html}"
+                    f"</div>"
                 )
 
-            _html_parts.append(
-                f'<div class="vip-test-card" style="border-left-color:{"#16a34a" if outcome_css == "passed" else "#dc2626" if outcome_css == "failed" else "#d1d5db"}">'
-                f'<div class="vip-test-header">'
-                f"{badge}"
-                f'<span class="vip-test-scenario">{title}</span>'
-                f"{product_badges}"
-                f"</div>"
-                f'{description_html}'
-                f'<div class="vip-test-nodeid">{nodeid}'
-                f'<span class="vip-test-duration">{_esc(duration)}</span>'
-                f"</div>"
-                f"{steps_html}"
-                f"</div>"
-            )
-
-        _html_parts.append("</div>")
+        _html_parts.append("</div>")  # close outcome section
 
     display(HTML("\n".join(_html_parts)))
 ```
