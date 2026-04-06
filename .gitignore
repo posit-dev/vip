@@ -239,3 +239,5 @@ __marimo__/
 .positai/*
 !.positai/plans/
 .positai
+presentations/se-overview/index.html
+presentations/se-overview/index_files/

@@ -1,138 +1,142 @@
 ---
-title: "VIP: Verified Installation of Posit"
-subtitle: "Automated validation for Posit Team deployments"
+title: "VIP"
+subtitle: "Verified Installation of Posit"
 author: "Ian Flores Siaca"
-date: "2026-04-07"
+date: "April 7, 2026"
+logo: images/logo-posit-light.svg
+title-slide-attributes:
+  data-background-color: "#213d4f"
 format:
   revealjs:
-    theme: default
+    theme: [default, custom.scss]
     slide-number: true
     hash: true
     center: true
     transition: fade
     code-line-numbers: false
-    mermaid:
-      theme: neutral
 ---
 
 ## The Problem
 
-- Customer installs Posit Team — "is it actually working?"
-- Manual spot-checks are slow, inconsistent, and miss things
+A customer finishes deploying Posit Team and asks:
+
+> Is it actually working?
+
+::: {.incremental}
+- No structured way to validate a deployment end-to-end
+- Manual spot-checks are slow, inconsistent, miss things
 - Upgrades and config changes break things silently
+:::
 
 ::: {.notes}
-Every SE knows the feeling — you finish an install, click around for a few minutes, and hope for the best. VIP replaces that with structured, repeatable validation.
+We've all been on that call. Customer asks "how do I know this is working?" and the honest answer is "log in, click around, try a deploy." That's not something you can hand over as proof. VIP gives you something you can.
 :::
 
 ## What is VIP?
 
-An automated test suite that validates Posit Team deployments — Connect, Workbench, and Package Manager.
+A test suite that runs against live Posit Team deployments.
 
-- Runs tests against a live deployment (not mocks)
-- Generates an HTML report with pass/fail/skip results
-- Includes troubleshooting hints when tests fail
-- Works via CLI, Docker, or CI
-
-::: {.notes}
-VIP is a pytest-based BDD test suite. It talks to real products via their APIs and UIs. The report is the artifact you hand to the customer.
+::: {.incremental}
+- Hits real APIs and real UIs, not mocks
+- Tests are plain-English Gherkin files anyone can read
+- Failures come with troubleshooting hints
+- Cleans up after itself with `vip cleanup`
 :::
 
-## What We Test
-
-```{mermaid}
-%%| fig-width: 10
-flowchart LR
-    VIP[VIP Test Suite]
-
-    VIP --> C[Connect]
-    VIP --> W[Workbench]
-    VIP --> PM[Package Manager]
-    VIP --> X[Cross-Cutting]
-
-    C --> C1[Auth & Users]
-    C --> C2[Content Deploy]
-    C --> C3[Runtime Versions]
-    C --> C4[System Diagnostics]
-
-    W --> W1[Auth & Login]
-    W --> W2[IDE Launch]
-    W --> W3[Session Lifecycle]
-
-    PM --> PM1[CRAN Repos]
-    PM --> PM2[PyPI Repos]
-
-    X --> X1[Security]
-    X --> X2[Prerequisites]
-    X --> X3[Performance]
-```
-
 ::: {.notes}
-Each branch is a test category. All tests are BDD — written in Gherkin so even non-developers can read the scenarios. Tests auto-skip when a product isn't configured, so you can run VIP against a partial deployment.
+Under the hood it's pytest with BDD via pytest-bdd. Playwright for browser tests, httpx for API calls. You point it at a deployment, it runs, and you get an HTML report. The report is the thing — that's what goes to the customer.
 :::
 
 ## How to Run It
 
-**Quickest — CLI:**
+**CLI:**
 
 ```bash
 pip install posit-vip
-vip verify --connect-url https://connect.example.com
+vip verify --connect-url https://connect.example.com --interactive-auth
 ```
 
-**Docker:**
+**Shiny app:**
 
 ```bash
-docker run ghcr.io/posit-dev/vip:latest \
-  vip verify --connect-url https://connect.example.com
+vip app   # opens a graphical test runner
 ```
 
-**CI** — already running on every PR. See the repo for details.
-
 ::: {.notes}
-The simplest path is pip install and one command. Point it at a URL and it figures out the rest. The Docker image is for Kubernetes jobs — PTD uses this to validate customer clusters automatically.
+Simplest path: pip install, one command. The --interactive-auth flag opens a browser for SSO/OIDC — you log in once, then tests run headlessly. vip app gives you a Shiny UI if you'd rather click than type. You can scope runs with --categories: just 'connect', just 'security', whatever you need.
 :::
 
-## Live Demo
+## Live Demo {background-color="#213d4f"}
 
-`vip verify` against a live staging cluster
-
-::: {.notes}
-I'm going to run VIP against our ganso01-staging cluster. We'll see the CLI output, then walk through the HTML report — passed tests, a failure with troubleshooting hints, and the product badges.
-
-(This is where you switch to the terminal for the live demo)
-:::
-
-## The Report
-
-![Example VIP Report](images/report-summary.png){fig-align="center" width="80%"}
+<div style="text-align:center; color:white; margin-top:4rem;">
+<div style="font-size:1.5em; font-weight:600;">Running VIP against a live deployment</div>
+</div>
 
 ::: {.notes}
-This is what the customer sees. Products under test, pass/fail summary, then results grouped by outcome. Failed tests show error tracebacks and troubleshooting hints — the yellow box tells operators what to check first. This is the artifact you share with the customer.
+Switching to the terminal. This runs against our staging cluster. Takes about two minutes. I want you to notice what happens when something fails — the report tells you what went wrong and what to check first.
 :::
 
-## We Need Your Feedback
+## Your Sign-Off Document
 
-**We want to make VIP useful for your customer conversations.**
+*Example of a generated validation report*
 
-1. **Try it** — Run `vip verify` against a staging or customer cluster this week
-2. **Tell us what's missing** — What checks do you wish existed? What do customers ask about that we don't test?
-3. **Tell us what's confusing** — Is the report clear? Would a customer understand it?
+![](images/report-summary.png){fig-align="center" width="85%"}
+
+::: {.notes}
+This is what comes out. Products tested, pass/fail counts, results by outcome. When a test fails, you get the traceback plus a yellow box with likely causes and what to try next. That's the report you send to the customer.
+:::
+
+## What's Inside
+
+<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:1rem;">
+<div style="background:#447099; color:white; border-radius:10px; padding:20px 16px; text-align:center;">
+  <img src="images/logo-connect.svg" style="height:24px; margin-bottom:8px; filter:brightness(0) invert(1);">
+  <div style="font-size:0.65em; line-height:1.6; opacity:0.9; margin-top:6px;">Auth & Users<br>Content Deploy<br>Runtime Versions<br>System Diagnostics</div>
+</div>
+<div style="background:#72994E; color:white; border-radius:10px; padding:20px 16px; text-align:center;">
+  <img src="images/logo-workbench.svg" style="height:24px; margin-bottom:8px; filter:brightness(0) invert(1);">
+  <div style="font-size:0.65em; line-height:1.6; opacity:0.9; margin-top:6px;">Auth & Login<br>IDE Launch<br>Session Lifecycle</div>
+</div>
+<div style="background:#9A4665; color:white; border-radius:10px; padding:20px 16px; text-align:center;">
+  <img src="images/logo-packagemanager.svg" style="height:24px; margin-bottom:8px; filter:brightness(0) invert(1);">
+  <div style="font-size:0.65em; line-height:1.6; opacity:0.9; margin-top:6px;">CRAN Repos<br>PyPI Repos</div>
+</div>
+</div>
+<div style="background:#4A5568; color:white; border-radius:10px; padding:14px 20px; text-align:center; margin-top:16px;">
+  <span style="font-size:0.75em; font-weight:700;">Cross-Cutting</span>
+  <span style="font-size:0.65em; opacity:0.9; margin-left:1.5em;">Security · Prerequisites · Performance</span>
+</div>
+
+::: {.notes}
+Tests auto-skip when a product isn't configured, so partial deployments work fine. Everything is written in Gherkin — customers can read the feature files and see exactly what was checked. If they want custom checks, there's an --extensions flag for that.
+:::
+
+## Shape What We Build Next
+
+**What would make this useful in your customer conversations?**
+
+::: {.incremental}
+1. **Try it** — run `vip verify` against a Posit Team deployment
+2. **Tell us what's missing** — what do customers ask that we don't test?
+3. **Tell us what's confusing** — would a customer understand this report?
 4. **File issues** — github.com/posit-dev/vip/issues
-
-**Your input directly shapes what we build next.**
-
-::: {.notes}
-This is not a finished product we're throwing over the wall. We need your field experience to make it useful. The tests we write should reflect what you see customers struggle with. If there's a check you find yourself doing manually every time, that should be a VIP test.
 :::
 
-## Get Started
+::: {.notes}
+We're not handing you a finished thing. We need to know what you see in the field. If there's a check you do by hand every time, that should be a VIP test. If the report confuses you, it'll confuse a customer.
+:::
 
-- **Repository:** `github.com/posit-dev/vip`
-- **Example Report:** `posit-dev.github.io/vip/example-report/`
-- **Docker Image:** `ghcr.io/posit-dev/vip:latest`
-- **Questions?** Reach out on Slack or file an issue
+## {background-color="#213d4f"}
+
+<div style="text-align:center; color:white; margin-top:4rem;">
+<div style="font-size:1.8em; font-weight:700; margin-bottom:2rem;">Help us make this ready for customers.</div>
+<div style="font-size:0.7em; opacity:0.6; line-height:2;">
+github.com/posit-dev/vip<br>
+posit-dev.github.io/vip/example-report/<br>
+ghcr.io/posit-dev/vip
+</div>
+</div>
 
 ::: {.notes}
-The example report is live on the website — you can share that link with customers today to show them what VIP produces. The getting-started page has install instructions.
+The example report is live at that URL. Repo has install docs. Slack or GitHub issues — either works.
 :::
