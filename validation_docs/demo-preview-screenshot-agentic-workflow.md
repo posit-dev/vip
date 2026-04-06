@@ -24,7 +24,7 @@ gh aw validate preview-screenshot-gallery
 ```
 
 ```bash
-uv run ruff check src/ src/vip_tests/ selftests/ examples/
+UV_NO_PROGRESS=1 uv run --extra dev ruff check src/ src/vip_tests/ selftests/ examples/
 ```
 
 ```output
@@ -32,7 +32,7 @@ All checks passed!
 ```
 
 ```bash
-uv run ruff format --check src/ src/vip_tests/ selftests/ examples/
+UV_NO_PROGRESS=1 uv run --extra dev ruff format --check src/ src/vip_tests/ selftests/ examples/
 ```
 
 ```output
