@@ -54,14 +54,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Audit dependencies
-        run: |
-          # CVE-2026-4539: ReDoS in pygments' AdlLexer (archetype.py), CVSS 3.3.
-          # Requires local access; no network exposure. VIP never invokes the ADL lexer.
-          # Pygments cannot be removed — it is a hard dependency of pytest, rich, ipython,
-          # and the full Jupyter stack. No patched version exists upstream yet (reported at
-          # https://github.com/pygments/pygments/issues/3058 but unaddressed as of 2026-03-24).
-          # Re-evaluate when a fix is released.
-          uv run pip-audit --skip-editable --ignore-vuln CVE-2026-4539
+        run: uv run pip-audit --skip-editable
 
   selftest:
     name: Selftests (${{ matrix.python-version }})
