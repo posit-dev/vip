@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.16.0 (2026-04-06)
+
+### Features
+
+- **workbench**: Add session capacity testing with resource profiles
+  ([#128](https://github.com/posit-dev/vip/pull/128),
+  [`dea5ccc`](https://github.com/posit-dev/vip/commit/dea5ccc6b89cac5f8949d2e523953403f754a3fb))
+
+
 ## v0.15.0 (2026-04-02)
 
 ### Features
