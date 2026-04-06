@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.18.0 (2026-04-06)
+
+### Features
+
+- Add Workbench to example validation report ([#132](https://github.com/posit-dev/vip/pull/132),
+  [`a4a852e`](https://github.com/posit-dev/vip/commit/a4a852efca3521f0de2a5ee11e73c709eef77914))
+
+
 ## v0.17.0 (2026-04-06)
 
 ### Features
