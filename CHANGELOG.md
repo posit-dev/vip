@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## Alpha Milestone Summary
+
+VIP validates Posit Team deployments across all three products
+with CI smoke tests, an HTML validation report, and a Docker image for
+Kubernetes-based execution. The Docker image is available at
+`ghcr.io/posit-dev/vip:latest`.
+
+### Highlights
+
+- **Connect smoke tests** — Auth (API + UI), user management, runtime versions, git-backed deploys, error handling
+- **Workbench smoke tests** — Auth, IDE launch (RStudio, VS Code, JupyterLab, Positron), session lifecycle
+- **Package Manager smoke tests** — CRAN/PyPI mirror validation, repo existence checks
+- **Cross-product prerequisites** — Server reachability, version verification, credential checks
+- **Security tests** — HTTPS enforcement, error page information leakage
+- **Performance tests** — Logarithmic-scale load testing with pluggable engine, session capacity testing
+- **HTML validation report** — Quarto-rendered report with product badges, troubleshooting hints, test procedures
+- **Docker image** — `ghcr.io/posit-dev/vip` for running tests as Kubernetes Jobs
+- **CI infrastructure** — Smoke test workflows for all three products using `with-connect` and `with-workbench` GitHub Actions
+
+---
 
 ## v0.19.0 (2026-04-06)
 
