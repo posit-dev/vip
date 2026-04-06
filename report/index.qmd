@@ -48,7 +48,8 @@ else:
 #| echo: false
 
 status = "PASS" if data.failed == 0 and data.total > 0 else "FAIL" if data.failed > 0 else "NO RESULTS"
-color = "green" if status == "PASS" else "red" if status == "FAIL" else "gray"
+status_class = "summary-status-pass" if status == "PASS" else "summary-status-fail" if status == "FAIL" else ""
+status_html = f'<span class="{status_class}">{status}</span>' if status_class else status
 
 display(Markdown(f"""
 | Metric | Count |
@@ -57,7 +58,7 @@ display(Markdown(f"""
 | **Passed** | {data.passed} |
 | **Failed** | {data.failed} |
 | **Skipped** | {data.skipped} |
-| **Status** | **<span style="color:{color}">{status}</span>** |
+| **Status** | {status_html} |
 """))
 ```
 
@@ -102,10 +103,18 @@ _OUTCOME_STYLES = {
     "skipped": ("SKIP", "#6b7280", "#f9fafb", "#e5e7eb"),
 }
 
-_BORDER_COLORS = {
-    "passed": "#16a34a",
-    "failed": "#dc2626",
-    "skipped": "#d1d5db",
+_OUTCOME_CSS = {
+    "passed": "passed",
+    "failed": "failed",
+    "skipped": "skipped",
+}
+
+_PRODUCT_BADGE_CSS = {
+    "connect": ("badge-connect", "Connect"),
+    "workbench": ("badge-workbench", "Workbench"),
+    "package_manager": ("badge-package-manager", "Package Manager"),
+    "security": ("badge-security", "Security"),
+    "prerequisites": ("badge-prerequisites", "Prerequisites"),
 }
 
 categories = data.by_category()
@@ -161,6 +170,18 @@ else:
   font-family: monospace;
   margin-top: 0.125rem;
 }
+.vip-test-duration {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-left: 0.5rem;
+}
+.vip-test-description {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  font-style: italic;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
 .vip-test-steps {
   margin-top: 0.375rem;
 }
@@ -215,15 +236,35 @@ else:
             label, fg, bg, border_bg = _OUTCOME_STYLES.get(
                 item.outcome, ("?", "#6b7280", "#f9fafb", "#e5e7eb")
             )
-            border_color = _BORDER_COLORS.get(item.outcome, "#d1d5db")
+            outcome_css = _OUTCOME_CSS.get(item.outcome, "skipped")
             title = _esc(item.scenario_title) if item.scenario_title else _esc(
                 item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
             )
             nodeid = _esc(item.nodeid)
+            duration = f"{item.duration:.2f}s"
             badge = (
                 f'<span class="vip-badge" '
                 f'style="color:{fg};background:{border_bg}">{label}</span>'
             )
+
+            # Product/category badges from markers
+            product_badges = ""
+            if hasattr(item, "markers") and item.markers:
+                for marker in item.markers:
+                    if marker in _PRODUCT_BADGE_CSS:
+                        css_class, display_name = _PRODUCT_BADGE_CSS[marker]
+                        product_badges += (
+                            f'<span class="{css_class}">{_esc(display_name)}</span>'
+                        )
+
+            # Feature description (first line only)
+            description_html = ""
+            if item.feature_description:
+                first_line = item.feature_description.split("\n")[0].strip()
+                if first_line:
+                    description_html = (
+                        f'<div class="vip-test-description">{_esc(first_line)}</div>'
+                    )
 
             steps = _get_steps(item)
             steps_html = ""
@@ -239,12 +280,16 @@ else:
                 )
 
             _html_parts.append(
-                f'<div class="vip-test-card" style="border-left-color:{border_color}">'
+                f'<div class="vip-test-card" style="border-left-color:{"#16a34a" if outcome_css == "passed" else "#dc2626" if outcome_css == "failed" else "#d1d5db"}">'
                 f'<div class="vip-test-header">'
                 f"{badge}"
                 f'<span class="vip-test-scenario">{title}</span>'
+                f"{product_badges}"
                 f"</div>"
-                f'<div class="vip-test-nodeid">{nodeid}</div>'
+                f'{description_html}'
+                f'<div class="vip-test-nodeid">{nodeid}'
+                f'<span class="vip-test-duration">{_esc(duration)}</span>'
+                f"</div>"
                 f"{steps_html}"
                 f"</div>"
             )
@@ -264,7 +309,7 @@ from IPython.display import HTML
 
 from vip.reporting import load_troubleshooting
 
-hints = load_troubleshooting(Path("../tests/troubleshooting.toml"))
+hints = load_troubleshooting(Path("../src/vip_tests/troubleshooting.toml"))
 
 failures = [r for r in data.results if r.outcome == "failed"]
 if not failures:

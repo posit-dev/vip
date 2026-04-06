@@ -1,0 +1,26 @@
+{
+  "generated_at": "2024-01-01T00:00:00.000000+00:00",
+  "deployment_name": "example-deployment",
+  "exit_status": 0,
+  "products": {
+    "connect": {
+      "enabled": true,
+      "url": "https://connect.example.com",
+      "version": null,
+      "configured": true
+    },
+    "workbench": {
+      "enabled": false,
+      "url": null,
+      "version": null,
+      "configured": false
+    },
+    "package_manager": {
+      "enabled": false,
+      "url": null,
+      "version": null,
+      "configured": false
+    }
+  },
+  "results": []
+}
