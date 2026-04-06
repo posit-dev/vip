@@ -20,7 +20,7 @@ from vip.gherkin import parse_feature_file
 from vip.reporting import load_results, load_troubleshooting
 
 data = load_results(Path("results.json"))
-hints = load_troubleshooting(Path("../tests/troubleshooting.toml"))
+hints = load_troubleshooting(Path("../src/vip_tests/troubleshooting.toml"))
 
 _feature_cache: dict[str, dict] = {}
 
@@ -57,6 +57,14 @@ _BORDER_COLORS = {
     "passed": "#16a34a",
     "failed": "#dc2626",
     "skipped": "#d1d5db",
+}
+
+_PRODUCT_BADGE_CSS = {
+    "connect": ("badge-connect", "Connect"),
+    "workbench": ("badge-workbench", "Workbench"),
+    "package_manager": ("badge-package-manager", "Package Manager"),
+    "security": ("badge-security", "Security"),
+    "prerequisites": ("badge-prerequisites", "Prerequisites"),
 }
 
 if data.total == 0:
@@ -110,6 +118,18 @@ else:
   color: #9ca3af;
   font-family: monospace;
   margin-top: 0.125rem;
+}
+.vip-test-duration {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-left: 0.5rem;
+}
+.vip-test-description {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  font-style: italic;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
 }
 .vip-test-steps {
   margin-top: 0.375rem;
@@ -234,15 +254,41 @@ else:
                 item.outcome, ("?", "#6b7280", "#e5e7eb")
             )
             border_color = _BORDER_COLORS.get(item.outcome, "#d1d5db")
-            title = _esc(item.scenario_title) if item.scenario_title else _esc(
+            raw_title = item.scenario_title or (
                 item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
             )
+            # Substitute <param> placeholders with pytest parametrize values from nodeid
+            import re as _re
+            _param_match = _re.search(r"\[(.+)\]$", item.nodeid)
+            if _param_match and "<" in raw_title:
+                param_val = _param_match.group(1)
+                raw_title = _re.sub(r"<[^>]+>", param_val, raw_title)
+            title = _esc(raw_title)
             nodeid = _esc(item.nodeid)
             duration = f"{item.duration:.2f}s"
             badge = (
                 f'<span class="vip-badge" '
                 f'style="color:{fg};background:{badge_bg}">{label}</span>'
             )
+
+            # Product/category badges from markers
+            product_badges = ""
+            if hasattr(item, "markers") and item.markers:
+                for marker in item.markers:
+                    if marker in _PRODUCT_BADGE_CSS:
+                        css_class, display_name = _PRODUCT_BADGE_CSS[marker]
+                        product_badges += (
+                            f'<span class="{css_class}">{_esc(display_name)}</span>'
+                        )
+
+            # Feature description (first line only)
+            description_html = ""
+            if item.feature_description:
+                first_line = item.feature_description.split("\n")[0].strip()
+                if first_line:
+                    description_html = (
+                        f'<div class="vip-test-description">{_esc(first_line)}</div>'
+                    )
 
             # BDD steps
             steps = _get_steps(item)
@@ -306,8 +352,12 @@ else:
                 f'<div class="vip-test-header">'
                 f"{badge}"
                 f'<span class="vip-test-scenario">{title}</span>'
+                f"{product_badges}"
                 f"</div>"
-                f'<div class="vip-test-meta">{nodeid} · {duration}</div>'
+                f"{description_html}"
+                f'<div class="vip-test-meta">{nodeid}'
+                f'<span class="vip-test-duration">{_esc(duration)}</span>'
+                f"</div>"
                 f"{steps_html}{error_html}{hints_html}"
                 f"</div>"
             )
