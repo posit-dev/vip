@@ -44,6 +44,11 @@ url = "https://workbench.example.com"
 # API key for a Workbench admin user.
 # Prefer setting the VIP_WORKBENCH_API_KEY environment variable.
 # api_key = "..."
+#
+# Session capacity testing (requires --interactive-auth).
+# If omitted, VIP auto-detects available profiles from the UI.
+# session_profiles = ["Small", "Medium", "Large"]
+# session_count = 3
 
 [package_manager]
 enabled = true
