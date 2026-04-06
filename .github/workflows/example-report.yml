@@ -269,6 +269,7 @@ jobs:
             src/vip_tests/connect/test_auth.py \
             src/vip_tests/connect/test_users.py \
             src/vip_tests/connect/test_runtime_versions.py \
+            src/vip_tests/connect/test_system_checks.py \
             src/vip_tests/security/test_error_handling.py \
             src/vip_tests/workbench/test_auth.py \
             src/vip_tests/package_manager/test_repos.py \
