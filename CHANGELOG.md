@@ -1,6 +1,22 @@
 # CHANGELOG
 
 
+## v0.20.0 (2026-04-06)
+
+### Features
+
+- **connect**: Add system checks test (closes #74) ([#98](https://github.com/posit-dev/vip/pull/98),
+  [`829322f`](https://github.com/posit-dev/vip/commit/829322f20e283a7863d9beea7474e47eaa39f0bd))
+
+Co-authored-by: Claude <noreply@anthropic.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <iflores.siaca@posit.co>
+
+
 ## v0.19.1 (2026-04-06)
 
 ### Bug Fixes
