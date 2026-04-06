@@ -30,6 +30,7 @@ dependencies = [
     "htmltools",
     "tomli>=2.0;python_version<'3.11'",
     "requests>=2.33.0",  # transitive via pytest-playwright; pinned to track updates
+    "pygments>=2.20.0",  # CVE-2026-4539 fix
 ]
 
 [project.optional-dependencies]
