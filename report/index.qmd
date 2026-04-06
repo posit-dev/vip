@@ -112,8 +112,8 @@ _PRODUCT_BADGE_CSS = {
     "prerequisites": ("badge-prerequisites", "Prerequisites"),
 }
 
-_OUTCOME_ORDER = ["passed", "failed", "skipped"]
-_OUTCOME_LABELS = {"passed": "Passed", "failed": "Failed", "skipped": "Skipped"}
+_OUTCOME_ORDER = ["passed", "skipped"]  # Failed tests shown in dedicated section below
+_OUTCOME_LABELS = {"passed": "Passed", "skipped": "Skipped"}
 _OUTCOME_COLORS = {"passed": "#16a34a", "failed": "#dc2626", "skipped": "#6b7280"}
 
 
