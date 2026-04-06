@@ -1,18 +1,23 @@
 # Workbench Smoke Tests: with-workbench Action + Expanded Coverage
 
-*2026-04-06T12:31:25Z by Showboat 0.6.1*
-<!-- showboat-id: de1a1ddd-25ef-4a4e-a55f-9596ca5d2c51 -->
+*2026-04-06T12:34:28Z by Showboat 0.6.1*
+<!-- showboat-id: 379ca146-1449-4de8-8162-fb5fe07fd62b -->
 
 Migrated the Workbench smoke test workflow from raw docker run to the posit-dev/with-workbench GitHub Action. Expanded test coverage from 2 files (prerequisites + auth) to 7 (adding IDE launch, packages, data sources). Hardened tests for Docker CI: JupyterLab skips gracefully when kernel is slow, ACE editor input uses keyboard clear instead of fill().
 
 ```bash
-just check
+uv run ruff check src/ selftests/ examples/
 ```
 
 ```output
-uv run ruff check src/ tests/ selftests/ examples/
 All checks passed!
-uv run ruff format --check src/ tests/ selftests/ examples/
+```
+
+```bash
+uv run ruff format --check src/ selftests/ examples/
+```
+
+```output
 94 files already formatted
 ```
 
