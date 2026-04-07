@@ -28,18 +28,16 @@ def navigate_to_login(page, connect_url):
 
 @when("enters valid credentials")
 def enter_credentials(page, test_username, test_password, auth_provider, interactive_auth):
-    if interactive_auth:
+    if auth_provider != "password":
+        if not interactive_auth:
+            pytest.skip(
+                f"Login form not available for auth provider {auth_provider!r}. "
+                "Pass --interactive-auth when browser storage state is pre-loaded."
+            )
         # With --interactive-auth the browser is already authenticated via storage
-        # state.  The login page will redirect immediately — no form to fill.
+        # state - just wait for any redirect away from the login page to complete.
         page.wait_for_load_state("networkidle")
         return
-    if auth_provider != "password":
-        pytest.skip(
-            f"Login form not available for auth provider {auth_provider!r}. "
-            "Pass --interactive-auth when browser storage state is pre-loaded."
-        )
-    if not test_username or not test_password:
-        pytest.skip("UI login test requires username and password credentials.")
     page.fill("[name='username'], #username", test_username)
     page.fill("[name='password'], #password", test_password)
     page.click("[data-automation='login-panel-submit']")

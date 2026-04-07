@@ -159,7 +159,7 @@ jobs:
             src/vip_tests/workbench/test_ide_launch.py \
             src/vip_tests/workbench/test_packages.py \
             src/vip_tests/workbench/test_data_sources.py \
-            -v -k "workbench" -n 0 \
+            -v -k "workbench" \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
 
