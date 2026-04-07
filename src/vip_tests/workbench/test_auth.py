@@ -13,8 +13,6 @@ from vip_tests.workbench.conftest import (
 )
 from vip_tests.workbench.pages import Homepage
 
-pytestmark = pytest.mark.xdist_group("workbench")
-
 
 @scenario("test_auth.feature", "User can log in to Workbench via the web UI")
 def test_workbench_login():

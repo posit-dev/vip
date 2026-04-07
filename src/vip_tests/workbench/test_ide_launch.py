@@ -37,8 +37,6 @@ from vip_tests.workbench.pages import (
 # Get filename for session naming
 _FILENAME = Path(__file__).name
 
-pytestmark = pytest.mark.xdist_group("workbench")
-
 
 @scenario("test_ide_launch.feature", "RStudio IDE session can be launched")
 def test_launch_rstudio():
@@ -190,25 +188,13 @@ def vscode_displayed(page: Page):
 @then("the JupyterLab IDE is displayed")
 def jupyter_displayed(page: Page):
     """Verify JupyterLab IDE core elements are visible."""
-    try:
-        expect(page.locator(JupyterLabSession.LAUNCHER)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-    except AssertionError:
-        pytest.skip(
-            "JupyterLab did not load within timeout — "
-            "the IDE may not be installed on this Workbench instance"
-        )
+    expect(page.locator(JupyterLabSession.LAUNCHER)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
 
 
 @then("the Positron IDE is displayed")
 def positron_displayed(page: Page):
     """Verify Positron IDE core elements are visible."""
-    try:
-        expect(page.locator(PositronSession.WORKBENCH)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-    except AssertionError:
-        pytest.skip(
-            "Positron did not load within timeout — "
-            "the IDE may not be installed on this Workbench instance"
-        )
+    expect(page.locator(PositronSession.WORKBENCH)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
     expect(page.locator(PositronSession.STATUS_BAR)).to_be_visible(timeout=TIMEOUT_DIALOG)
 
 
