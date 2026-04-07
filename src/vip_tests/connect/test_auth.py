@@ -28,6 +28,11 @@ def navigate_to_login(page, connect_url):
 
 @when("enters valid credentials")
 def enter_credentials(page, test_username, test_password, auth_provider, interactive_auth):
+    if interactive_auth and not test_username:
+        pytest.skip(
+            "UI login test requires username/password credentials. "
+            "With --interactive-auth (SSO/OIDC), form-based login is not available."
+        )
     if auth_provider != "password":
         if not interactive_auth:
             pytest.skip(
