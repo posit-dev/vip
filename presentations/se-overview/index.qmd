@@ -66,16 +66,6 @@ vip app   # opens a graphical test runner
 Simplest path: pip install, one command. The --interactive-auth flag opens a browser for SSO/OIDC — you log in once, then tests run headlessly. vip app gives you a Shiny UI if you'd rather click than type. You can scope runs with --categories: just 'connect', just 'security', whatever you need.
 :::
 
-## Live Demo {background-color="#213d4f"}
-
-<div style="text-align:center; color:white; margin-top:4rem;">
-<div style="font-size:1.5em; font-weight:600;">Running VIP against a live deployment</div>
-</div>
-
-::: {.notes}
-Switching to the terminal. This runs against a staging cluster. Takes about two minutes. I want you to notice what happens when something fails — the report tells you what went wrong and what to check first.
-:::
-
 ## Your Sign-Off Document
 
 *Example of a generated validation report*
@@ -84,6 +74,16 @@ Switching to the terminal. This runs against a staging cluster. Takes about two 
 
 ::: {.notes}
 This is what comes out. Products tested, pass/fail counts, results by outcome. When a test fails, you get the traceback plus a yellow box with likely causes and what to try next. That's the report you send to the customer.
+:::
+
+## Live Demo {background-color="#213d4f"}
+
+<div style="text-align:center; color:white; margin-top:4rem;">
+<div style="font-size:1.5em; font-weight:600;">Running VIP against a live deployment</div>
+</div>
+
+::: {.notes}
+Now I'll show you a live report. This was generated against our staging cluster with all three products. I want you to notice what happens when something fails — the troubleshooting hints tell you exactly what to check.
 :::
 
 ## What's Inside
