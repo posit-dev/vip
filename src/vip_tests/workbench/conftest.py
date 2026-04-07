@@ -13,7 +13,10 @@ from playwright.sync_api import Page, expect
 
 from vip_tests.workbench.pages import Homepage, LoginPage
 
-pytestmark = pytest.mark.workbench
+pytestmark = [
+    pytest.mark.workbench,
+    pytest.mark.xdist_group("workbench"),  # Playwright tests share a browser — run sequentially
+]
 
 # ---------------------------------------------------------------------------
 # Playwright timeout constants (milliseconds)
