@@ -20,3 +20,7 @@ class VSCodeSession:
     # Terminal
     TERMINAL_PANEL = ".terminal"
     TERMINAL_INPUT = ".xterm-helper-textarea"
+
+    # Posit Workbench extension
+    POSIT_EXTENSION_TAB_NAME = "Posit Workbench"
+    POSIT_EXTENSION_HOME_BUTTON_NAME = "home Posit Workbench"
