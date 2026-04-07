@@ -1,6 +1,29 @@
 # CHANGELOG
 
 
+## v0.20.1 (2026-04-07)
+
+### Bug Fixes
+
+- Improve test robustness for interactive-auth and missing IDEs
+  ([#139](https://github.com/posit-dev/vip/pull/139),
+  [`6ddf8a7`](https://github.com/posit-dev/vip/commit/6ddf8a747c853fc8daa5f3d4ba72cc954c934fb4))
+
+### Continuous Integration
+
+- Add preview screenshot agentic workflow ([#136](https://github.com/posit-dev/vip/pull/136),
+  [`c4d6b73`](https://github.com/posit-dev/vip/commit/c4d6b73346cc6d9f9377bc264dfa4fde7a5d6cc7))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: statik <983+statik@users.noreply.github.com>
+
+### Documentation
+
+- Add SE overview presentation ([#137](https://github.com/posit-dev/vip/pull/137),
+  [`d85bc0c`](https://github.com/posit-dev/vip/commit/d85bc0c5eb76b1ca072cec69620b11ec3684d5b1))
+
+
 ## v0.20.0 (2026-04-06)
 
 ### Features
