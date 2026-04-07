@@ -11,7 +11,7 @@
     "href": "index.html",
     "title": "VIP Report",
     "section": "",
-    "text": "No results found. Run pytest to generate results.\n\n\n\nDeployment: CI Connect 2026.03.1 + WB 2026.01.2+418.pro1 + PM 2024.08.0-6 Generated: 2026-04-07 14:36:06 UTC\n\n\n\n\n\n\n\nProduct\nURL\nVersion\n\n\n\n\nConnect\nhttp://localhost:3939\n2026.03.1\n\n\nWorkbench\nhttp://localhost:8787\n2026.01.2+418.pro1\n\n\nPackage Manager\nhttp://localhost:4242\n2024.08.0-6\n\n\n\n\n\n\n\n\n\n\n\n\n\nMetric\nCount\n\n\n\n\nTotal\n0\n\n\nPassed\n0\n\n\nFailed\n0\n\n\nSkipped\n0\n\n\nStatus\nNO RESULTS\n\n\n\n\n\n\n\n\n\n\nNo test results to display.\n\n\n\n\n\n\n\nNo Connect system checks report found. Run tests/connect/test_system_checks.py against a configured Connect instance."
+    "text": "No results found. Run pytest to generate results.\n\n\n\nDeployment: CI Connect 2026.03.1 + WB 2026.01.2+418.pro1 + PM 2024.08.0-6 Generated: 2026-04-07 14:41:13 UTC\n\n\n\n\n\n\n\nProduct\nURL\nVersion\n\n\n\n\nConnect\nhttp://localhost:3939\n2026.03.1\n\n\nWorkbench\nhttp://localhost:8787\n2026.01.2+418.pro1\n\n\nPackage Manager\nhttp://localhost:4242\n2024.08.0-6\n\n\n\n\n\n\n\n\n\n\n\n\n\nMetric\nCount\n\n\n\n\nTotal\n0\n\n\nPassed\n0\n\n\nFailed\n0\n\n\nSkipped\n0\n\n\nStatus\nNO RESULTS\n\n\n\n\n\n\n\n\n\n\nNo test results to display.\n\n\n\n\n\n\n\nNo Connect system checks report found. Run tests/connect/test_system_checks.py against a configured Connect instance."
   },
   {
     "objectID": "index.html#products-under-test",
