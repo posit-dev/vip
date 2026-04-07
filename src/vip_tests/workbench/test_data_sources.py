@@ -25,6 +25,8 @@ from vip_tests.workbench.pages import (
     RStudioSession,
 )
 
+pytestmark = pytest.mark.xdist_group("workbench")
+
 _FILENAME = Path(__file__).name
 
 # Types that support an HTTP connectivity check via base R

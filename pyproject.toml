@@ -82,7 +82,7 @@ packages = ["src/vip", "src/vip_tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["src/vip_tests"]
-addopts = "-n auto --dist loadscope"
+addopts = "-n auto --dist loadgroup"
 filterwarnings = [
     # gherkin-official 29.0.0 passes maxsplit positionally to re.split;
     # fixed upstream but pulled transitively via pytest-bdd.

@@ -28,6 +28,8 @@ from vip_tests.workbench.pages import (
 
 _FILENAME = Path(__file__).name
 
+pytestmark = pytest.mark.xdist_group("workbench")
+
 # Time (ms) to wait for the R console input to become visible after IDE load
 _TIMEOUT_CONSOLE_READY = 30_000
 # Time (ms) to wait for console output to appear after pressing Enter
