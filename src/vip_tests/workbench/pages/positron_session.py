@@ -24,3 +24,7 @@ class PositronSession:
 
     # Data explorer
     DATA_EXPLORER = ".positron-data-explorer"
+
+    # Posit Workbench extension
+    POSIT_EXTENSION_TAB_NAME = "Posit Workbench"
+    POSIT_EXTENSION_HOME_BUTTON_NAME = "home Posit Workbench"

@@ -33,3 +33,6 @@ class JupyterLabSession:
     # Launcher cards (to open a new notebook from the launcher)
     LAUNCHER_CARD = ".jp-LauncherCard"
     LAUNCHER_NOTEBOOK_CARD = ".jp-LauncherCard[data-category='Notebook']"
+
+    # Posit Workbench extension
+    POSIT_EXTENSION_ICON = "#rsw-icon"
