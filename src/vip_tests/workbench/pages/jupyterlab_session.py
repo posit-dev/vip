@@ -43,5 +43,9 @@ class JupyterLabSession:
 
     @staticmethod
     def installed_extension_item(name: str) -> str:
-        """Selector for an installed extension entry by name."""
-        return f".jp-extensionmanager-entry:has-text('{name}')"
+        """Selector for an installed extension entry by name.
+
+        Targets the 'Installed' section of the Extension Manager to avoid
+        matching extensions that are merely available but not installed.
+        """
+        return f".jp-extensionmanager-installedlist .jp-extensionmanager-entry:has-text('{name}')"
