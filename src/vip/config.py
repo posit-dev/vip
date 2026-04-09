@@ -37,6 +37,15 @@ def _normalize_url(url: str) -> str:
     return url
 
 
+def _as_str_list(value: object, field_name: str) -> list[str]:
+    """Coerce *value* to a list of strings, or raise on bad input."""
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    if isinstance(value, str):
+        return [value]
+    raise ValueError(f"{field_name} must be a list of strings, got {type(value).__name__}")
+
+
 @dataclass
 class ProductConfig:
     """Configuration for a single Posit product."""
@@ -91,9 +100,9 @@ class WorkbenchExtensionsConfig:
     @classmethod
     def from_dict(cls, raw: dict) -> WorkbenchExtensionsConfig:
         return cls(
-            vscode=raw.get("vscode", []),
-            positron=raw.get("positron", []),
-            jupyterlab=raw.get("jupyterlab", []),
+            vscode=_as_str_list(raw.get("vscode", []), "workbench.extensions.vscode"),
+            positron=_as_str_list(raw.get("positron", []), "workbench.extensions.positron"),
+            jupyterlab=_as_str_list(raw.get("jupyterlab", []), "workbench.extensions.jupyterlab"),
         )
 
 
