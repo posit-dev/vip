@@ -77,6 +77,27 @@ class ConnectConfig(ProductConfig):
 
 
 @dataclass
+class WorkbenchExtensionsConfig:
+    """Additional IDE extensions the admin expects to be installed.
+
+    These are merged with the built-in Posit Workbench integration
+    extension that is always validated.
+    """
+
+    vscode: list[str] = field(default_factory=list)
+    positron: list[str] = field(default_factory=list)
+    jupyterlab: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> WorkbenchExtensionsConfig:
+        return cls(
+            vscode=raw.get("vscode", []),
+            positron=raw.get("positron", []),
+            jupyterlab=raw.get("jupyterlab", []),
+        )
+
+
+@dataclass
 class WorkbenchConfig(ProductConfig):
     """Workbench-specific configuration."""
 
@@ -85,6 +106,7 @@ class WorkbenchConfig(ProductConfig):
     # from the UI dropdown; explicit list = test only these profiles.
     session_profiles: list[str] | None = None
     session_count: int = 3  # sessions per profile in capacity tests
+    extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -100,6 +122,7 @@ class WorkbenchConfig(ProductConfig):
             api_key=raw.get("api_key", ""),
             session_profiles=raw.get("session_profiles"),
             session_count=raw.get("session_count", 3),
+            extensions=WorkbenchExtensionsConfig.from_dict(raw.get("extensions", {})),
         )
 
 

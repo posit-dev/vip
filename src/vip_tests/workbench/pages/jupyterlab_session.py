@@ -34,5 +34,14 @@ class JupyterLabSession:
     LAUNCHER_CARD = ".jp-LauncherCard"
     LAUNCHER_NOTEBOOK_CARD = ".jp-LauncherCard[data-category='Notebook']"
 
+    # Extension Manager
+    EXTENSION_MANAGER_TAB = ".jp-SideBar .lm-TabBar-tab[data-id='extensionmanager.main-view']"
+    EXTENSION_SEARCH_INPUT = ".jp-extensionmanager-search input"
+
     # Posit Workbench extension
     POSIT_EXTENSION_ICON = "#rsw-icon"
+
+    @staticmethod
+    def installed_extension_item(name: str) -> str:
+        """Selector for an installed extension entry by name."""
+        return f".jp-extensionmanager-entry:has-text('{name}')"
