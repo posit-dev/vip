@@ -4,8 +4,29 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from pytest_bdd import scenario, then, when
+
+_REDACTED = "[redacted]"
+
+
+def _redact_license_outputs(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a copy of *results* with output/error redacted for license checks.
+
+    Connect system check results for license-related checks may include the
+    actual license key in their ``output`` or ``error`` fields.  We replace
+    those values before writing the artifact so that license keys never appear
+    in the report.
+    """
+    redacted = []
+    for r in results:
+        group_name = (r.get("group") or {}).get("name", "")
+        test_name = (r.get("test") or {}).get("name", "")
+        if "license" in group_name.lower() or "license" in test_name.lower():
+            r = {**r, "output": _REDACTED, "error": _REDACTED}
+        redacted.append(r)
+    return redacted
 
 
 @scenario(
@@ -49,11 +70,17 @@ def download_report_artifact(connect_client, system_check, pytestconfig):
     assert results, f"System check results for id={check_id!r} were empty"
 
     # Persist alongside results.json so the Quarto report can embed it.
+    # Redact license check output/error before writing so that license keys
+    # never appear in the saved artifact or the rendered report.
     vip_report = pytestconfig.getoption("--vip-report")
     if vip_report:
+        safe_results = {
+            **results,
+            "results": _redact_license_outputs(results.get("results", [])),
+        }
         artifact_path = Path(vip_report).parent / "connect_system_checks.json"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(
-            json.dumps(results, indent=2) + "\n",
+            json.dumps(safe_results, indent=2) + "\n",
             encoding="utf-8",
         )
