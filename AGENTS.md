@@ -68,6 +68,14 @@ src/vip_tests/security/          # HTTPS, auth policy, secrets
 
 Product tests cannot run in CI (no products available). They are collected with `--collect-only` as a dry run in CI.
 
+Run a specific category of product tests:
+
+``` bash
+uv run vip verify --config vip.toml --categories package_manager -- -v
+```
+
+Pass extra pytest args after `--` (e.g. `-k pattern` to filter, `-v` for verbose).
+
 ## How tests are structured
 
 Every test is a pair of files:
@@ -302,3 +310,4 @@ CI will run `showboat verify` on any new or changed files in `validation_docs/` 
 -   Creating `.py` step files without a matching `.feature` file (or vice versa).
 -   Forgetting the `@connect`/`@workbench`/`@package_manager` tag in feature files (breaks auto-skip).
 -   Using non-conventional PR titles (must be `type: description`).
+-   Relying on multi-line formatting to shorten lines -- `ruff format` will collapse list comprehensions back to one line if they fit within 100 chars. Extract a helper function instead.
