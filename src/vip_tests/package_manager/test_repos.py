@@ -112,9 +112,11 @@ def query_bioconductor(pm_client):
 )
 def query_openvsx(pm_client):
     repos = pm_client.list_repos()
-    vsx_repos = [
-        r for r in repos if r.get("type", "").upper() == "VSX" or "vsx" in r.get("name", "").lower()
-    ]
+
+    def is_vsx(r):
+        return r.get("type", "").upper() == "VSX" or "vsx" in r.get("name", "").lower()
+
+    vsx_repos = [r for r in repos if is_vsx(r)]
     if not vsx_repos:
         pytest.skip("No OpenVSX repository configured in Package Manager")
     repo_name = vsx_repos[0]["name"]
