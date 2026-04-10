@@ -299,23 +299,41 @@ class ConnectClient(BaseClient):
 
     # -- System checks ------------------------------------------------------
 
-    def list_server_checks(self) -> list[dict[str, Any]]:
-        """Return a list of server check reports."""
-        resp = self._client.get("/v1/server_checks")
-        resp.raise_for_status()
-        return resp.json().get("results", [])
-
-    def run_server_check(self) -> dict[str, Any]:
-        """Trigger a new server check run and return the report object."""
-        resp = self._client.post("/v1/server_checks")
+    def list_system_checks(self) -> list[dict[str, Any]]:
+        """Return a list of system check runs."""
+        resp = self._client.get("/v1/system/checks")
         resp.raise_for_status()
         return resp.json()
 
-    def get_server_check_report(self, check_id: str | int) -> bytes:
-        """Download the server check report as bytes."""
-        resp = self._client.get(f"/v1/server_checks/{check_id}/download")
+    def run_system_check(self) -> dict[str, Any]:
+        """Trigger a new system check run and return the run object."""
+        resp = self._client.post("/v1/system/checks", json={})
         resp.raise_for_status()
-        return resp.content
+        return resp.json()
+
+    def get_system_check(self, check_id: str | int) -> dict[str, Any]:
+        """Get the status of a system check run."""
+        resp = self._client.get(f"/v1/system/checks/{check_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_system_check_results(self, check_id: str | int) -> dict[str, Any]:
+        """Return the system check results as structured JSON."""
+        resp = self._client.get(f"/v1/system/checks/{check_id}/results")
+        resp.raise_for_status()
+        return resp.json()
+
+    def wait_for_system_check(self, check_id: str | int, timeout: float = 120.0) -> dict[str, Any]:
+        """Poll a system check run until it completes or timeout is reached."""
+        import time
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            check = self.get_system_check(check_id)
+            if check.get("status") == "done":
+                return check
+            time.sleep(3)
+        return self.get_system_check(check_id)
 
     # -- Email --------------------------------------------------------------
 
