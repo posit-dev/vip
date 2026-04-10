@@ -327,12 +327,42 @@ class ConnectClient(BaseClient):
         """Poll a system check run until it completes or timeout is reached."""
         import time
 
+        transient_status_codes = {404, 502, 503, 504}
         deadline = time.time() + timeout
+        last_exception: Exception | None = None
+
         while time.time() < deadline:
-            check = self.get_system_check(check_id)
+            try:
+                check = self.get_system_check(check_id)
+            except httpx.ReadTimeout as exc:
+                last_exception = exc
+                time.sleep(3)
+                continue
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in transient_status_codes:
+                    raise
+                last_exception = exc
+                time.sleep(3)
+                continue
+
+            last_exception = None
             if check.get("status") == "done":
                 return check
             time.sleep(3)
+
+        for _ in range(3):
+            try:
+                return self.get_system_check(check_id)
+            except httpx.ReadTimeout as exc:
+                last_exception = exc
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in transient_status_codes:
+                    raise
+                last_exception = exc
+            time.sleep(1)
+
+        if last_exception is not None:
+            raise last_exception
         return self.get_system_check(check_id)
 
     # -- Email --------------------------------------------------------------
