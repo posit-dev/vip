@@ -53,4 +53,7 @@ def download_report_artifact(connect_client, system_check, pytestconfig):
     if vip_report:
         artifact_path = Path(vip_report).parent / "connect_system_checks.json"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        artifact_path.write_text(json.dumps(results, indent=2))
+        artifact_path.write_text(
+            json.dumps(results, indent=2) + "\n",
+            encoding="utf-8",
+        )
