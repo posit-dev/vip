@@ -63,6 +63,16 @@ class PackageManagerClient(BaseClient):
             return False
         return package in resp.text
 
+    # -- OpenVSX (VSX) ------------------------------------------------------
+
+    def openvsx_extension_available(self, repo_name: str, extension: str) -> bool:
+        """Check whether an OpenVSX extension is available in a repo.
+
+        *extension* uses the ``namespace.name`` format, e.g. ``"golang.Go"``.
+        """
+        resp = self._client.get(f"/__api__/repos/{repo_name}/packages/{extension}")
+        return resp.status_code == 200
+
     # -- PyPI ---------------------------------------------------------------
 
     def pypi_package_available(self, repo_name: str, package: str) -> bool:
