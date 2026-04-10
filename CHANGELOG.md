@@ -1,6 +1,35 @@
 # CHANGELOG
 
 
+## v0.21.1 (2026-04-10)
+
+### Bug Fixes
+
+- **connect**: Use correct /v1/system/checks API for system checks
+  ([#157](https://github.com/posit-dev/vip/pull/157),
+  [`95438cc`](https://github.com/posit-dev/vip/commit/95438cc83f993e4d0d8663d26d1a2e815c7745c9))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group across 1 directory with 3 updates
+  ([#156](https://github.com/posit-dev/vip/pull/156),
+  [`912ae6b`](https://github.com/posit-dev/vip/commit/912ae6b7de0764a3c147be3b0d2b03c78a43426c))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump the python-dependencies group across 1 directory with 6 updates
+  ([#155](https://github.com/posit-dev/vip/pull/155),
+  [`969859e`](https://github.com/posit-dev/vip/commit/969859e26a0cdb743d2e863225d8300df597b4d5))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
 ## v0.21.0 (2026-04-10)
 
 ### Documentation
