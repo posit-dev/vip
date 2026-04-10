@@ -47,5 +47,10 @@ class JupyterLabSession:
 
         Targets the 'Installed' section of the Extension Manager to avoid
         matching extensions that are merely available but not installed.
+        Uses Playwright's text= selector to avoid CSS quoting issues.
         """
-        return f".jp-extensionmanager-installedlist .jp-extensionmanager-entry:has-text('{name}')"
+        # Escape any regex-special characters so the name matches literally
+        import re
+
+        escaped = re.escape(name)
+        return f".jp-extensionmanager-installedlist .jp-extensionmanager-entry >> text=/{escaped}/i"

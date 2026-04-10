@@ -53,6 +53,14 @@ url = "https://workbench.example.com"
 # session_profiles = ["Small", "Medium", "Large"]
 # session_count = 3
 
+# Additional IDE extensions to validate beyond the built-in Posit Workbench
+# integration (which is always checked).  Use extension IDs for VS Code and
+# Positron, and package names for JupyterLab.
+# [workbench.extensions]
+# vscode = ["quarto.quarto", "posit.shiny", "posit.publisher"]
+# positron = ["quarto.quarto"]
+# jupyterlab = []
+
 [package_manager]
 enabled = true
 url = "https://packagemanager.example.com"
