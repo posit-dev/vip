@@ -52,16 +52,33 @@ class PackageManagerClient(BaseClient):
     def bioconductor_package_available(self, repo_name: str, package: str) -> bool:
         """Check whether a Bioconductor package is available in a repo.
 
-        Bioconductor repos expose the same ``PACKAGES`` index as CRAN repos,
-        served under the ``/bioc/`` sub-path for software packages.
+        Queries the internal package API with the latest Bioconductor version
+        obtained from the status endpoint.
         """
-        resp = self._client.get(f"/{repo_name}/latest/bioc/src/contrib/PACKAGES")
-        if resp.status_code != 200:
-            # Fall back to the root PACKAGES path (pre-2022 layout or non-bioc mirror).
-            resp = self._client.get(f"/{repo_name}/latest/src/contrib/PACKAGES")
+        status_resp = self._client.get("/__api__/status")
+        if status_resp.status_code != 200:
+            return False
+        bioc_versions = status_resp.json().get("bioc_versions", [])
+        if not bioc_versions:
+            return False
+        bioc_version = bioc_versions[0]["bioc_version"]
+        resp = self._client.get(
+            f"/__api__/repos/{repo_name}/packages",
+            params={"bioc_version": bioc_version, "name": package},
+        )
         if resp.status_code != 200:
             return False
-        return package in resp.text
+        return any(p.get("name") == package for p in resp.json())
+
+    # -- OpenVSX (VSX) ------------------------------------------------------
+
+    def openvsx_extension_available(self, repo_name: str, extension: str) -> bool:
+        """Check whether an OpenVSX extension is available in a repo.
+
+        *extension* uses the ``namespace.name`` format, e.g. ``"golang.Go"``.
+        """
+        resp = self._client.get(f"/__api__/repos/{repo_name}/packages/{extension}")
+        return resp.status_code == 200
 
     # -- PyPI ---------------------------------------------------------------
 
