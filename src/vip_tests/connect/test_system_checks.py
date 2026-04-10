@@ -37,7 +37,14 @@ def check_report_returned(system_check):
 @then("I can download the system check report artifact")
 def download_report_artifact(connect_client, system_check, pytestconfig):
     check_id = system_check["id"]
-    connect_client.wait_for_system_check(check_id)
+    completed_run = connect_client.wait_for_system_check(check_id)
+    assert completed_run is not None, (
+        f"Waiting for system check id={check_id!r} returned no run details"
+    )
+    assert completed_run.get("status") == "done", (
+        "System check did not complete before fetching results. "
+        f"id={check_id!r}, final status={completed_run.get('status')!r}"
+    )
     results = connect_client.get_system_check_results(check_id)
     assert results, f"System check results for id={check_id!r} were empty"
 
