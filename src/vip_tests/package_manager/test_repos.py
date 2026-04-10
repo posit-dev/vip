@@ -21,6 +21,11 @@ def test_bioconductor_mirror():
     pass
 
 
+@scenario("test_repos.feature", "OpenVSX mirror is accessible")
+def test_openvsx_mirror():
+    pass
+
+
 @scenario("test_repos.feature", "At least one repository is configured")
 def test_repo_exists():
     pass
@@ -96,6 +101,29 @@ def query_bioconductor(pm_client):
     if not found:
         pytest.skip(
             f"Bioconductor package 'BiocGenerics' not available in repo {repo_name!r} — "
+            "repo may not be synced yet"
+        )
+    return True
+
+
+@when(
+    'I query the OpenVSX repository for the "golang.Go" extension',
+    target_fixture="package_found",
+)
+def query_openvsx(pm_client):
+    repos = pm_client.list_repos()
+    vsx_repos = [
+        r
+        for r in repos
+        if r.get("type", "").upper() == "VSX" or "vsx" in r.get("name", "").lower()
+    ]
+    if not vsx_repos:
+        pytest.skip("No OpenVSX repository configured in Package Manager")
+    repo_name = vsx_repos[0]["name"]
+    found = pm_client.openvsx_extension_available(repo_name, "golang.Go")
+    if not found:
+        pytest.skip(
+            f"OpenVSX extension 'golang.Go' not available in repo {repo_name!r} — "
             "repo may not be synced yet"
         )
     return True
