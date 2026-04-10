@@ -11,6 +11,7 @@ jupyter: python3
 ```{python}
 #| echo: false
 
+import html
 import json
 from pathlib import Path
 from IPython.display import Markdown, HTML, display
@@ -438,13 +439,18 @@ else:
         f"**Passed:** {passed} · **Failed:** {failed}"
     ))
 
+    def _escape_md_table_cell(value):
+        text = html.escape(str(value or ""), quote=True)
+        text = text.replace("|", "&#124;")
+        return text.replace("\n", "<br>")
+
     rows = []
     for r in results:
-        group = r.get("group", {}).get("name", "")
-        test = r.get("test", {}).get("name", "")
+        group = _escape_md_table_cell(r.get("group", {}).get("name", ""))
+        test = _escape_md_table_cell(r.get("test", {}).get("name", ""))
         status = "✅" if r.get("passed") else "❌"
-        output = r.get("output", "").strip().replace("\n", "<br>")
-        error = r.get("error", "").strip().replace("\n", "<br>")
+        output = _escape_md_table_cell(r.get("output", "").strip())
+        error = _escape_md_table_cell(r.get("error", "").strip())
         detail = error if error else output
         rows.append(f"| {status} | {group} | {test} | {detail} |")
 
