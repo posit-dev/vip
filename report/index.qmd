@@ -423,7 +423,7 @@ checks_path = Path("connect_system_checks.json")
 if not checks_path.exists():
     display(Markdown(
         "_No Connect system checks report found. "
-        "Run `tests/connect/test_system_checks.py` against a configured Connect instance._"
+        "Run `src/vip_tests/connect/test_system_checks.py` against a configured Connect instance._"
     ))
 else:
     checks_data = json.loads(checks_path.read_text())
