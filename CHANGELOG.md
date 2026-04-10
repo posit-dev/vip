@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.21.0 (2026-04-10)
+
+### Documentation
+
+- Reorder presentation slides ([#146](https://github.com/posit-dev/vip/pull/146),
+  [`8ec69e5`](https://github.com/posit-dev/vip/commit/8ec69e5134800731d46390ec905c7c652ac7581e))
+
+### Features
+
+- Package Manager updates: fix Bioconductor and add OpenVSX
+  ([#153](https://github.com/posit-dev/vip/pull/153),
+  [`7b9dd01`](https://github.com/posit-dev/vip/commit/7b9dd010c28ff74e411d30d26b7682180307fc91))
+
+
 ## v0.20.1 (2026-04-07)
 
 ### Bug Fixes
