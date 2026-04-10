@@ -3,6 +3,10 @@
 Mirrors: rstudio-pro/e2e/pages/vscode_session.page.ts
 """
 
+import re
+
+_EXTENSION_ID_RE = re.compile(r"^[\w.-]+$")
+
 
 class VSCodeSession:
     """Selectors for the VS Code IDE."""
@@ -22,7 +26,7 @@ class VSCodeSession:
     TERMINAL_INPUT = ".xterm-helper-textarea"
 
     # Extensions panel
-    EXTENSIONS_SEARCH_INPUT = ".extensions-viewlet .inputarea"
+    EXTENSIONS_SEARCH_INPUT = ".extensions-search-container input[type='text']"
 
     # Posit Workbench extension
     POSIT_EXTENSION_TAB_NAME = "Posit Workbench"
@@ -31,4 +35,6 @@ class VSCodeSession:
     @staticmethod
     def extension_list_item(extension_id: str) -> str:
         """Selector for an installed extension by its ID (e.g. 'quarto.quarto')."""
+        if not _EXTENSION_ID_RE.match(extension_id):
+            raise ValueError(f"Invalid extension ID (contains unsafe characters): {extension_id!r}")
         return f".extension-list-item[data-extension-id='{extension_id}']"
