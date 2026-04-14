@@ -209,6 +209,23 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         temp_config = _generate_temp_config(args)
         config_path = temp_config
 
+    # Fail fast when a config file is expected but doesn't exist.
+    if config_path and not Path(config_path).exists():
+        print(f"Error: config file not found: {config_path}", file=sys.stderr)
+        sys.exit(1)
+    if not config_path:
+        # No explicit config and no URL args — check the default resolution.
+        env = os.environ.get("VIP_CONFIG")
+        default = Path(env) if env else Path("vip.toml")
+        if not default.exists():
+            print(f"Error: config file not found: {default}", file=sys.stderr)
+            print(
+                "Provide a config file with --config, or pass product URLs directly "
+                "(e.g. --connect-url https://connect.example.com).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
     cmd = [sys.executable, "-m", "pytest", "-v"]
 
     if config_path:
