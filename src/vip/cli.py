@@ -209,7 +209,7 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         temp_config = _generate_temp_config(args)
         config_path = temp_config
 
-    cmd = [sys.executable, "-m", "pytest"]
+    cmd = [sys.executable, "-m", "pytest", "-v"]
 
     if config_path:
         cmd.append(f"--vip-config={config_path}")
