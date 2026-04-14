@@ -115,18 +115,30 @@ def _print_skip_notes(config_path: str | None) -> None:
             print(f"Note: no URL given for {name} — {name} tests will be skipped.", flush=True)
 
 
+# Pytest options that consume the next argument as a directory path.
+# We skip these values so they aren't mistaken for positional test targets.
+_CONSUMES_DIR_VALUE = frozenset({"--rootdir", "--confcutdir", "--basetemp"})
+
+
 def _has_explicit_test_targets(pytest_args: list[str]) -> bool:
     """Return True if *pytest_args* contains what looks like test paths or nodeids.
 
     This avoids injecting the default ``vip_tests`` path when the user already
     passed explicit targets after ``--`` (e.g. ``vip verify -- tests/foo.py``).
-    Only ``.py`` files and ``::`` nodeids are detected — bare directory names are
-    ambiguous (could be option values like ``--rootdir dir``) and are not matched.
+    Directory values consumed by known pytest options (``--rootdir``, etc.) are
+    excluded so they don't trigger false-positive detection.
     """
+    skip_next = False
     for arg in pytest_args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in _CONSUMES_DIR_VALUE:
+            skip_next = True
+            continue
         if arg.startswith("-"):
             continue
-        if "::" in arg or arg.endswith(".py"):
+        if "::" in arg or arg.endswith(".py") or Path(arg).is_dir():
             return True
     return False
 

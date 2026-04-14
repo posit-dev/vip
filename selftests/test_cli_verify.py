@@ -85,13 +85,27 @@ class TestVerifyLocalTestPath:
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["-x", "--tb=short"]))
         assert _vip_tests_path() in cmd
 
-    def test_vip_tests_path_kept_when_bare_dir_is_option_value(self, tmp_path):
-        """A bare directory name (e.g. --rootdir value) must not trigger
-        false-positive target detection."""
+    def test_vip_tests_path_skipped_when_user_passes_directory_target(self, tmp_path):
+        """A positional directory argument is a test target."""
         cfg = tmp_path / "vip.toml"
         cfg.write_text("[general]\n")
-        # tmp_path is a real existing directory — should NOT be mistaken for a target.
+        target_dir = tmp_path / "my_tests"
+        target_dir.mkdir()
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=[str(target_dir)]))
+        assert _vip_tests_path() not in cmd
+
+    def test_vip_tests_path_kept_when_dir_is_rootdir_value(self, tmp_path):
+        """--rootdir value must not trigger false-positive target detection."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--rootdir", str(tmp_path)]))
+        assert _vip_tests_path() in cmd
+
+    def test_vip_tests_path_kept_when_dir_is_confcutdir_value(self, tmp_path):
+        """--confcutdir value must not trigger false-positive target detection."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--confcutdir", str(tmp_path)]))
         assert _vip_tests_path() in cmd
 
 
