@@ -53,6 +53,7 @@ class TestCreateJobEnvFrom:
                 config_map_name=kwargs.get("config_map_name", "test-cm"),
                 image=kwargs.get("image", "ghcr.io/posit-dev/vip:latest"),
                 categories=kwargs.get("categories"),
+                filter_expr=kwargs.get("filter_expr"),
                 timeout_seconds=kwargs.get("timeout_seconds", 840),
             )
 
@@ -92,3 +93,52 @@ class TestCreateJobEnvFrom:
             entry["secretRef"]["name"] for entry in container["envFrom"] if "secretRef" in entry
         ]
         assert "vip-test-credentials" in secret_names
+
+
+class TestCreateJobFilterExpr:
+    """Verify that create_job forwards the filter_expr as pytest -k."""
+
+    def _capture_job_spec(self, **kwargs) -> dict:
+        captured: list[str] = []
+
+        def fake_run(cmd, **run_kwargs):
+            if "input" in run_kwargs:
+                captured.append(run_kwargs["input"])
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        with patch("vip.verify.job.subprocess.run", side_effect=fake_run):
+            from vip.verify.job import create_job
+
+            create_job(
+                name=kwargs.get("name", "test-job"),
+                namespace=kwargs.get("namespace", "posit-team"),
+                config_map_name=kwargs.get("config_map_name", "test-cm"),
+                image=kwargs.get("image", "ghcr.io/posit-dev/vip:latest"),
+                categories=kwargs.get("categories"),
+                filter_expr=kwargs.get("filter_expr"),
+                timeout_seconds=kwargs.get("timeout_seconds", 840),
+            )
+
+        assert captured, "subprocess.run was never called with job JSON"
+        return json.loads(captured[0])
+
+    def test_filter_expr_adds_k_flag(self):
+        spec = self._capture_job_spec(filter_expr="test_login")
+        args = spec["spec"]["template"]["spec"]["containers"][0]["args"]
+        k_index = args.index("-k")
+        assert args[k_index + 1] == "test_login"
+
+    def test_no_filter_expr_omits_k_flag(self):
+        spec = self._capture_job_spec()
+        args = spec["spec"]["template"]["spec"]["containers"][0]["args"]
+        assert "-k" not in args
+
+    def test_filter_expr_with_categories(self):
+        spec = self._capture_job_spec(categories="connect", filter_expr="test_login and not saml")
+        args = spec["spec"]["template"]["spec"]["containers"][0]["args"]
+        assert "-m" in args
+        assert "-k" in args
+        k_index = args.index("-k")
+        assert args[k_index + 1] == "test_login and not saml"
