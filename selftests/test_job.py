@@ -24,6 +24,7 @@ class TestCreateJobSignature:
             "config_map_name",
             "image",
             "categories",
+            "filter_expr",
             "timeout_seconds",
         }
         assert expected == set(sig.parameters)

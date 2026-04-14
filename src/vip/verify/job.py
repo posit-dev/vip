@@ -52,6 +52,7 @@ def create_job(
     config_map_name: str,
     image: str = "ghcr.io/posit-dev/vip:latest",
     categories: str | None = None,
+    filter_expr: str | None = None,
     timeout_seconds: int = 840,
 ) -> None:
     """Create a K8s Job to run VIP tests.
@@ -62,6 +63,7 @@ def create_job(
         config_map_name: Name of the ConfigMap containing vip.toml
         image: VIP container image
         categories: Test categories to run (pytest -m marker)
+        filter_expr: Test name filter expression (pytest -k)
         timeout_seconds: Job timeout in seconds
 
     Raises:
@@ -71,6 +73,8 @@ def create_job(
     pytest_args = ["pytest", "--vip-config=/config/vip.toml", "-v", "--tb=short"]
     if categories:
         pytest_args.extend(["-m", categories])
+    if filter_expr:
+        pytest_args.extend(["-k", filter_expr])
 
     # Always mount the vip-test-credentials Secret via envFrom so that
     # credentials written by either credential path (Keycloak or interactive)

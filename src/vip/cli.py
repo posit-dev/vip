@@ -221,6 +221,8 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append(f"--vip-extensions={ext}")
     if args.categories:
         cmd.extend(["-m", args.categories])
+    if args.filter_expr:
+        cmd.extend(["-k", args.filter_expr])
 
     cmd.extend(args.pytest_args)
 
@@ -284,6 +286,7 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             cm_name,
             image=args.image,
             categories=args.categories,
+            filter_expr=getattr(args, "filter_expr", None),
             timeout_seconds=pytest_timeout,
         )
 
@@ -490,8 +493,10 @@ def main() -> None:
             "  vip verify --config vip.toml --no-interactive-auth\n\n"
             "Kubernetes mode (requires posit-dev/team-operator PTD Site CR):\n"
             "  vip verify --k8s --site main --namespace posit-team\n\n"
+            "Filter tests by name:\n"
+            "  vip verify --connect-url https://connect.example.com -k 'login'\n\n"
             "Any arguments after -- are passed directly to pytest:\n"
-            "  vip verify --connect-url https://connect.example.com -- -x -k 'login'"
+            "  vip verify --connect-url https://connect.example.com -- -x"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -524,6 +529,14 @@ def main() -> None:
         default=None,
         help="Test categories as a pytest marker expression "
         "(e.g. 'connect', 'performance and workbench')",
+    )
+    verify_parser.add_argument(
+        "-k",
+        "--filter",
+        default=None,
+        dest="filter_expr",
+        help="Filter tests by name expression, passed to pytest -k "
+        "(e.g. 'test_login', 'test_login and not saml')",
     )
     verify_parser.add_argument(
         "--report",
