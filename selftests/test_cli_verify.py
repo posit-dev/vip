@@ -145,7 +145,7 @@ class TestVerifyLocalSkipNotes:
         )
         _capture_cmd(_make_args(config=str(cfg)))
         out = capsys.readouterr().out
-        assert "will be skipped" not in out
+        assert "will not be collected" not in out
 
     def test_notes_from_url_args(self, tmp_path, monkeypatch, capsys):
         """URL-argument flow generates a temp config; notes should reflect it."""

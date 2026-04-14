@@ -46,7 +46,7 @@ class TestPluginIntegration:
         pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
         return pytester
 
-    def test_unconfigured_product_skips(self, selftest_pytester):
+    def test_unconfigured_product_deselected(self, selftest_pytester):
         selftest_pytester.makepyfile(
             """
             import pytest
@@ -56,8 +56,9 @@ class TestPluginIntegration:
                 assert True
             """
         )
-        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-rs")
-        result.stdout.fnmatch_lines(["*SKIPPED*not configured*"])
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes()
+        result.stdout.fnmatch_lines(["*1 deselected*"])
 
     def test_version_skip(self, selftest_pytester):
         selftest_pytester.makefile(

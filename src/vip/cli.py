@@ -116,7 +116,7 @@ def _print_skip_notes(config_path: str | None) -> None:
                 reason = "disabled"
             else:
                 reason = "no URL given"
-            print(f"Note: {name} {reason} — {name} tests will be skipped.", flush=True)
+            print(f"Note: {name} {reason} — {name} tests will not be collected.", flush=True)
 
 
 # Pytest options that consume the next argument as a directory path.

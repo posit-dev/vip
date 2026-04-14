@@ -7,7 +7,7 @@ Responsibilities:
 - Register custom markers.
 - Add CLI options (``--vip-config``, ``--vip-extensions``, ``--vip-report``,
   ``--interactive-auth``).
-- Auto-skip tests whose product is not configured.
+- Deselect (exclude) tests whose product is not configured.
 - Auto-skip tests whose product version doesn't meet ``min_version``.
 - Ensure prerequisites run before other tests.
 - Collect extension directories.
@@ -200,17 +200,22 @@ def pytest_collection_modifyitems(
     config: pytest.Config,
     items: list[pytest.Item],
 ) -> None:
-    """Skip tests whose product is not configured or whose version
-    requirement is not met, and ensure prerequisites run first."""
+    """Deselect tests whose product is not configured, skip tests whose
+    version requirement is not met, and ensure prerequisites run first."""
     vip_cfg: VIPConfig = config.stash[_vip_config_key]
     using_interactive_auth = config.stash.get(_auth_session_key, None) is not None
 
     # Sort so prerequisites run before everything else, and assign xdist
     # groups so that each product's tests land on a dedicated worker.
+    # Tests for unconfigured products are deselected (excluded entirely)
+    # rather than skipped, so they don't appear in the report.
     prerequisites: list[pytest.Item] = []
     rest: list[pytest.Item] = []
+    deselected: list[pytest.Item] = []
     for item in items:
-        _maybe_skip_for_product(item, vip_cfg)
+        if _should_deselect_for_product(item, vip_cfg):
+            deselected.append(item)
+            continue
         _maybe_skip_for_version(item, vip_cfg)
         _maybe_skip_credential_check(item, using_interactive_auth)
         _assign_xdist_group(item)
@@ -220,6 +225,8 @@ def pytest_collection_modifyitems(
         else:
             rest.append(item)
     items[:] = prerequisites + rest
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
 
 
 # Directories whose tests get a dedicated xdist worker.
@@ -256,17 +263,15 @@ def _maybe_skip_credential_check(item: pytest.Item, using_interactive_auth: bool
         )
 
 
-def _maybe_skip_for_product(item: pytest.Item, cfg: VIPConfig) -> None:
+def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
+    """Return True if *item* should be deselected because its product is not configured."""
     for marker_name, product_key in _PRODUCT_MARKERS.items():
         marker = item.get_closest_marker(marker_name)
         if marker is not None:
             pc = cfg.product_config(product_key)
             if not pc.is_configured:
-                item.add_marker(
-                    pytest.mark.skip(
-                        reason=f"{product_key} is not configured (set url in vip.toml)"
-                    )
-                )
+                return True
+    return False
 
 
 def _maybe_skip_for_version(item: pytest.Item, cfg: VIPConfig) -> None:
