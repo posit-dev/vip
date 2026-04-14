@@ -153,8 +153,9 @@ class TestVerifyLocalSkipNotes:
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         _capture_cmd(_make_args(package_manager_url="http://localhost:4242/"))
         out = capsys.readouterr().out
-        assert "Connect" in out
-        assert "Workbench" in out
+        assert "Connect disabled" in out
+        assert "will not be collected" in out
+        assert "Workbench disabled" in out
         assert "Package Manager" not in out
 
 
