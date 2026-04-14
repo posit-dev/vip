@@ -112,7 +112,11 @@ def _print_skip_notes(config_path: str | None) -> None:
     ]
     for name, pc in products:
         if not pc.is_configured:
-            print(f"Note: no URL given for {name} — {name} tests will be skipped.", flush=True)
+            if not pc.enabled:
+                reason = "disabled"
+            else:
+                reason = "no URL given"
+            print(f"Note: {name} {reason} — {name} tests will be skipped.", flush=True)
 
 
 # Pytest options that consume the next argument as a directory path.

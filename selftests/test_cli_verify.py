@@ -112,7 +112,7 @@ class TestVerifyLocalTestPath:
 class TestVerifyLocalSkipNotes:
     """Unconfigured products should produce a note before tests run."""
 
-    def test_notes_printed_for_unconfigured_products(self, tmp_path, capsys):
+    def test_disabled_product_says_disabled(self, tmp_path, capsys):
         cfg = tmp_path / "vip.toml"
         cfg.write_text(
             "[general]\n"
@@ -122,9 +122,18 @@ class TestVerifyLocalSkipNotes:
         )
         _capture_cmd(_make_args(config=str(cfg)))
         out = capsys.readouterr().out
-        assert "Connect" in out
-        assert "Workbench" in out
+        assert "Connect disabled" in out
+        assert "Workbench disabled" in out
         assert "Package Manager" not in out
+
+    def test_missing_url_says_no_url(self, tmp_path, capsys):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        _capture_cmd(_make_args(config=str(cfg)))
+        out = capsys.readouterr().out
+        assert "Connect no URL given" in out
+        assert "Workbench no URL given" in out
+        assert "Package Manager no URL given" in out
 
     def test_no_notes_when_all_products_configured(self, tmp_path, capsys):
         cfg = tmp_path / "vip.toml"
@@ -137,6 +146,16 @@ class TestVerifyLocalSkipNotes:
         _capture_cmd(_make_args(config=str(cfg)))
         out = capsys.readouterr().out
         assert "will be skipped" not in out
+
+    def test_notes_from_url_args(self, tmp_path, monkeypatch, capsys):
+        """URL-argument flow generates a temp config; notes should reflect it."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        _capture_cmd(_make_args(package_manager_url="http://localhost:4242/"))
+        out = capsys.readouterr().out
+        assert "Connect" in out
+        assert "Workbench" in out
+        assert "Package Manager" not in out
 
 
 class TestVerifyLocalVerbose:
