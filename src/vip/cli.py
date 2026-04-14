@@ -100,6 +100,20 @@ def connect_to_cluster(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _has_explicit_test_targets(pytest_args: list[str]) -> bool:
+    """Return True if *pytest_args* contains what looks like test paths or nodeids.
+
+    This avoids injecting the default ``vip_tests`` path when the user already
+    passed explicit targets after ``--`` (e.g. ``vip verify -- tests/foo.py``).
+    """
+    for arg in pytest_args:
+        if arg.startswith("-"):
+            continue
+        if "::" in arg or arg.endswith(".py") or Path(arg).is_dir():
+            return True
+    return False
+
+
 def _generate_temp_config(args: argparse.Namespace) -> str:
     """Write a minimal vip.toml from CLI URL arguments. Returns temp file path."""
     lines = ["[general]", 'deployment_name = "Posit Team"', ""]
@@ -230,11 +244,13 @@ def _run_verify_local(args: argparse.Namespace) -> None:
 
     # Resolve the installed vip_tests package so pytest finds tests even
     # when running outside the source tree (e.g. ``pip install posit-vip``).
-    from importlib.util import find_spec
+    # Skip when the user already passed explicit test targets after ``--``.
+    if not _has_explicit_test_targets(args.pytest_args):
+        from importlib.util import find_spec
 
-    _spec = find_spec("vip_tests")
-    if _spec and _spec.submodule_search_locations:
-        cmd.append(_spec.submodule_search_locations[0])
+        _spec = find_spec("vip_tests")
+        if _spec and _spec.submodule_search_locations:
+            cmd.append(_spec.submodule_search_locations[0])
 
     if config_path:
         cmd.append(f"--vip-config={config_path}")

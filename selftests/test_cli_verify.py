@@ -48,21 +48,42 @@ def _capture_cmd(args: argparse.Namespace) -> list[str]:
     return captured[0]
 
 
+def _vip_tests_path() -> str:
+    """Return the resolved vip_tests package path for assertions."""
+    from importlib.util import find_spec
+
+    spec = find_spec("vip_tests")
+    assert spec and spec.submodule_search_locations
+    return spec.submodule_search_locations[0]
+
+
 class TestVerifyLocalTestPath:
     """The CLI must pass the vip_tests package path to pytest so tests are
     found even when running outside the source tree (pip install)."""
 
-    def test_vip_tests_path_included_in_command(self, tmp_path):
+    def test_vip_tests_path_included_by_default(self, tmp_path):
         cfg = tmp_path / "vip.toml"
         cfg.write_text("[general]\n")
         cmd = _capture_cmd(_make_args(config=str(cfg)))
-        # At least one positional arg should resolve to the vip_tests package.
-        from importlib.util import find_spec
+        assert _vip_tests_path() in cmd
 
-        spec = find_spec("vip_tests")
-        assert spec and spec.submodule_search_locations
-        expected = spec.submodule_search_locations[0]
-        assert expected in cmd
+    def test_vip_tests_path_skipped_when_user_passes_test_file(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["tests/foo.py"]))
+        assert _vip_tests_path() not in cmd
+
+    def test_vip_tests_path_skipped_when_user_passes_nodeid(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["tests/foo.py::test_bar"]))
+        assert _vip_tests_path() not in cmd
+
+    def test_vip_tests_path_kept_with_flag_only_pytest_args(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["-x", "--tb=short"]))
+        assert _vip_tests_path() in cmd
 
 
 class TestVerifyLocalVerbose:
