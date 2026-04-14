@@ -105,11 +105,13 @@ def _has_explicit_test_targets(pytest_args: list[str]) -> bool:
 
     This avoids injecting the default ``vip_tests`` path when the user already
     passed explicit targets after ``--`` (e.g. ``vip verify -- tests/foo.py``).
+    Only ``.py`` files and ``::`` nodeids are detected — bare directory names are
+    ambiguous (could be option values like ``--rootdir dir``) and are not matched.
     """
     for arg in pytest_args:
         if arg.startswith("-"):
             continue
-        if "::" in arg or arg.endswith(".py") or Path(arg).is_dir():
+        if "::" in arg or arg.endswith(".py"):
             return True
     return False
 

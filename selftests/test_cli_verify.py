@@ -85,6 +85,17 @@ class TestVerifyLocalTestPath:
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["-x", "--tb=short"]))
         assert _vip_tests_path() in cmd
 
+    def test_vip_tests_path_kept_when_bare_dir_is_option_value(self, tmp_path):
+        """A bare directory name (e.g. --rootdir value) must not trigger
+        false-positive target detection."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        # tmp_path is a real existing directory — should NOT be mistaken for a target.
+        cmd = _capture_cmd(
+            _make_args(config=str(cfg), pytest_args=["--rootdir", str(tmp_path)])
+        )
+        assert _vip_tests_path() in cmd
+
 
 class TestVerifyLocalVerbose:
     """Review #87: verify -v is included by default in local runs."""
