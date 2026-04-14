@@ -14,7 +14,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "config": None,
         "connect_url": None,
         "workbench_url": None,
-        "pm_url": None,
+        "package_manager_url": None,
         "report": "report/results.json",
         "interactive_auth": False,
         "extensions": [],
@@ -91,9 +91,7 @@ class TestVerifyLocalTestPath:
         cfg = tmp_path / "vip.toml"
         cfg.write_text("[general]\n")
         # tmp_path is a real existing directory — should NOT be mistaken for a target.
-        cmd = _capture_cmd(
-            _make_args(config=str(cfg), pytest_args=["--rootdir", str(tmp_path)])
-        )
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--rootdir", str(tmp_path)]))
         assert _vip_tests_path() in cmd
 
 

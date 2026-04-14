@@ -130,8 +130,8 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     else:
         lines.extend(["[workbench]", "enabled = false", ""])
 
-    if args.pm_url:
-        lines.extend(["[package_manager]", f'url = "{args.pm_url}"', ""])
+    if args.package_manager_url:
+        lines.extend(["[package_manager]", f'url = "{args.package_manager_url}"', ""])
     else:
         lines.extend(["[package_manager]", "enabled = false", ""])
 
@@ -221,7 +221,7 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     config_path = args.config
     temp_config = None
 
-    if not config_path and (args.connect_url or args.workbench_url or args.pm_url):
+    if not config_path and (args.connect_url or args.workbench_url or args.package_manager_url):
         temp_config = _generate_temp_config(args)
         config_path = temp_config
 
@@ -548,7 +548,7 @@ def main() -> None:
     url_group = verify_parser.add_argument_group("product URLs (no config file needed)")
     url_group.add_argument("--connect-url", default=None, help="Connect server URL")
     url_group.add_argument("--workbench-url", default=None, help="Workbench server URL")
-    url_group.add_argument("--pm-url", default=None, help="Package Manager server URL")
+    url_group.add_argument("--package-manager-url", default=None, help="Package Manager server URL")
 
     # Config file
     verify_parser.add_argument(

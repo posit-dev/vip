@@ -63,7 +63,7 @@ uv run playwright install chromium</code></pre>
           <pre><code>vip verify \
   --connect-url https://connect.example.com \
   --workbench-url https://workbench.example.com \
-  --pm-url https://packagemanager.example.com \
+  --package-manager-url https://packagemanager.example.com \
   --interactive-auth</code></pre>
         </section>
 
@@ -139,7 +139,7 @@ vip verify --connect-url https://connect.example.com
 # Run tests for a specific category
 vip verify --connect-url https://connect.example.com --categories connect
 vip verify --workbench-url https://workbench.example.com --categories workbench
-vip verify --pm-url https://pm.example.com --categories package_manager
+vip verify --package-manager-url https://pm.example.com --categories package_manager
 
 # Combine markers
 vip verify --connect-url https://connect.example.com --categories "performance and connect"
