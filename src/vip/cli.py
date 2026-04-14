@@ -494,7 +494,7 @@ def main() -> None:
             "Kubernetes mode (requires posit-dev/team-operator PTD Site CR):\n"
             "  vip verify --k8s --site main --namespace posit-team\n\n"
             "Filter tests by name:\n"
-            "  vip verify --connect-url https://connect.example.com -k 'login'\n\n"
+            "  vip verify --connect-url https://connect.example.com --filter 'login'\n\n"
             "Any arguments after -- are passed directly to pytest:\n"
             "  vip verify --connect-url https://connect.example.com -- -x"
         ),
@@ -531,7 +531,7 @@ def main() -> None:
         "(e.g. 'connect', 'performance and workbench')",
     )
     verify_parser.add_argument(
-        "-k",
+        "-f",
         "--filter",
         default=None,
         dest="filter_expr",
