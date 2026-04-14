@@ -100,6 +100,21 @@ def connect_to_cluster(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _print_skip_notes(config_path: str | None) -> None:
+    """Print a note for each product that is not configured."""
+    from vip.config import load_config
+
+    cfg = load_config(config_path)
+    products = [
+        ("Connect", cfg.connect),
+        ("Workbench", cfg.workbench),
+        ("Package Manager", cfg.package_manager),
+    ]
+    for name, pc in products:
+        if not pc.is_configured:
+            print(f"Note: no URL given for {name} — {name} tests will be skipped.", flush=True)
+
+
 def _has_explicit_test_targets(pytest_args: list[str]) -> bool:
     """Return True if *pytest_args* contains what looks like test paths or nodeids.
 
@@ -241,6 +256,10 @@ def _run_verify_local(args: argparse.Namespace) -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
+
+    # Print notes for products that are not configured so the user knows
+    # upfront which categories will be skipped.
+    _print_skip_notes(config_path)
 
     cmd = [sys.executable, "-m", "pytest", "-v"]
 

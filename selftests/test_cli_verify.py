@@ -95,6 +95,36 @@ class TestVerifyLocalTestPath:
         assert _vip_tests_path() in cmd
 
 
+class TestVerifyLocalSkipNotes:
+    """Unconfigured products should produce a note before tests run."""
+
+    def test_notes_printed_for_unconfigured_products(self, tmp_path, capsys):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text(
+            "[general]\n"
+            "[connect]\nenabled = false\n"
+            "[workbench]\nenabled = false\n"
+            '[package_manager]\nurl = "http://localhost:4242/"\n'
+        )
+        _capture_cmd(_make_args(config=str(cfg)))
+        out = capsys.readouterr().out
+        assert "Connect" in out
+        assert "Workbench" in out
+        assert "Package Manager" not in out
+
+    def test_no_notes_when_all_products_configured(self, tmp_path, capsys):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text(
+            "[general]\n"
+            '[connect]\nurl = "https://c.example.com"\n'
+            '[workbench]\nurl = "https://w.example.com"\n'
+            '[package_manager]\nurl = "https://pm.example.com"\n'
+        )
+        _capture_cmd(_make_args(config=str(cfg)))
+        out = capsys.readouterr().out
+        assert "will be skipped" not in out
+
+
 class TestVerifyLocalVerbose:
     """Review #87: verify -v is included by default in local runs."""
 
