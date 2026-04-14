@@ -71,7 +71,7 @@ Product tests cannot run in CI (no products available). They are collected with 
 Run a specific category of product tests:
 
 ``` bash
-uv run vip verify --config vip.toml --categories package_manager -- -v
+uv run vip verify --config vip.toml --categories package-manager -- -v
 ```
 
 Pass extra pytest args after `--` (e.g. `-k pattern` to filter, `-v` for verbose).
