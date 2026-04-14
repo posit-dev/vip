@@ -48,6 +48,23 @@ def _capture_cmd(args: argparse.Namespace) -> list[str]:
     return captured[0]
 
 
+class TestVerifyLocalTestPath:
+    """The CLI must pass the vip_tests package path to pytest so tests are
+    found even when running outside the source tree (pip install)."""
+
+    def test_vip_tests_path_included_in_command(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg)))
+        # At least one positional arg should resolve to the vip_tests package.
+        from importlib.util import find_spec
+
+        spec = find_spec("vip_tests")
+        assert spec and spec.submodule_search_locations
+        expected = spec.submodule_search_locations[0]
+        assert expected in cmd
+
+
 class TestVerifyLocalVerbose:
     """Review #87: verify -v is included by default in local runs."""
 

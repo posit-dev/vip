@@ -228,6 +228,14 @@ def _run_verify_local(args: argparse.Namespace) -> None:
 
     cmd = [sys.executable, "-m", "pytest", "-v"]
 
+    # Resolve the installed vip_tests package so pytest finds tests even
+    # when running outside the source tree (e.g. ``pip install posit-vip``).
+    from importlib.util import find_spec
+
+    _spec = find_spec("vip_tests")
+    if _spec and _spec.submodule_search_locations:
+        cmd.append(_spec.submodule_search_locations[0])
+
     if config_path:
         cmd.append(f"--vip-config={config_path}")
     if args.report:
