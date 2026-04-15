@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.22.0 (2026-04-15)
+
+### Features
+
+- Usability improvements and new command-line options
+  ([#162](https://github.com/posit-dev/vip/pull/162),
+  [`7a850a4`](https://github.com/posit-dev/vip/commit/7a850a4270b2dbbed30e15e2cb2041c9bf383e14))
+
+
 ## v0.21.1 (2026-04-10)
 
 ### Bug Fixes
