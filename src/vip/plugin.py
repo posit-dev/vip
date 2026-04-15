@@ -268,7 +268,6 @@ def _assign_xdist_group(item: pytest.Item) -> None:
     item.add_marker(pytest.mark.xdist_group(group))
 
 
-
 # Mapping from "Given" step name prefix to product config key.
 # Steps like "Connect is configured in vip.toml" gate a scenario on
 # a product being configured; when it isn't, the test should be
@@ -277,6 +276,13 @@ _GIVEN_PRODUCT_STEPS = {
     "Connect is configured": "connect",
     "Workbench is configured": "workbench",
     "Package Manager is configured": "package_manager",
+}
+
+# Display name → config key for parameterized "<product>" placeholders.
+_PRODUCT_DISPLAY_NAMES = {
+    "Connect": "connect",
+    "Workbench": "workbench",
+    "Package Manager": "package_manager",
 }
 
 
@@ -297,11 +303,22 @@ def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
         for step in getattr(scenario_obj, "steps", []):
             if step.type != "given":
                 continue
+            # Direct match: "Connect is configured in vip.toml"
             for prefix, product_key in _GIVEN_PRODUCT_STEPS.items():
                 if step.name.startswith(prefix):
                     pc = cfg.product_config(product_key)
                     if not pc.is_configured:
                         return True
+            # Parameterized match: "<product> is configured in vip.toml"
+            # The product name is in the test's parametrize value (e.g., [Connect]).
+            if step.name.startswith("<") and "is configured" in step.name:
+                param = re.search(r"\[(.+?)\]$", item.name)
+                if param:
+                    product_key = _PRODUCT_DISPLAY_NAMES.get(param.group(1))
+                    if product_key:
+                        pc = cfg.product_config(product_key)
+                        if not pc.is_configured:
+                            return True
 
     return False
 
