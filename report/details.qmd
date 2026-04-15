@@ -302,21 +302,33 @@ else:
                     f"</details>"
                 )
 
-            # Error traceback for failed tests
+            # Error display for failed tests: concise message + expandable traceback
             error_html = ""
-            if item.outcome == "failed" and item.longrepr:
-                error_id = f"vip-detail-error-{_error_idx}"
-                _error_idx += 1
-                error_html = (
-                    f'<details class="vip-fail-details">'
-                    f"<summary>Error traceback</summary>"
-                    f'<div class="vip-fail-error-wrap">'
-                    f'<button class="vip-copy-btn" data-target="{error_id}"'
-                    f' title="Copy to clipboard">Copy</button>'
-                    f'<pre id="{error_id}" class="vip-fail-error">'
-                    f"{_esc(item.longrepr)}</pre>"
-                    f"</div></details>"
-                )
+            if item.outcome == "failed":
+                parts = []
+                # Concise error — always visible
+                concise = getattr(item, "concise_error", None) or ""
+                if concise:
+                    parts.append(
+                        f'<div class="vip-fail-concise" style="'
+                        f"font-size:0.875rem;color:#dc2626;font-weight:600;"
+                        f'margin-top:0.375rem">{_esc(concise)}</div>'
+                    )
+                # Full traceback — expandable
+                if item.longrepr:
+                    error_id = f"vip-detail-error-{_error_idx}"
+                    _error_idx += 1
+                    parts.append(
+                        f'<details class="vip-fail-details">'
+                        f"<summary>Full error traceback</summary>"
+                        f'<div class="vip-fail-error-wrap">'
+                        f'<button class="vip-copy-btn" data-target="{error_id}"'
+                        f' title="Copy to clipboard">Copy</button>'
+                        f'<pre id="{error_id}" class="vip-fail-error">'
+                        f"{_esc(item.longrepr)}</pre>"
+                        f"</div></details>"
+                    )
+                error_html = "".join(parts)
 
             # Troubleshooting hints for failed tests
             hints_html = ""
