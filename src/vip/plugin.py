@@ -276,14 +276,38 @@ def _maybe_skip_credential_check(item: pytest.Item, using_interactive_auth: bool
         )
 
 
+# Mapping from "Given" step name prefix to product config key.
+# Steps like "Connect is configured in vip.toml" gate a scenario on
+# a product being configured; when it isn't, the test should be
+# deselected rather than skipped so it doesn't clutter the output.
+_GIVEN_PRODUCT_STEPS = {
+    "Connect is configured": "connect",
+    "Workbench is configured": "workbench",
+    "Package Manager is configured": "package_manager",
+}
+
+
 def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
     """Return True if *item* should be deselected because its product is not configured."""
+    # Check explicit product markers (@connect, @workbench, @package_manager).
     for marker_name, product_key in _PRODUCT_MARKERS.items():
         marker = item.get_closest_marker(marker_name)
         if marker is not None:
             pc = cfg.product_config(product_key)
             if not pc.is_configured:
                 return True
+
+    # Check BDD scenario steps for product-configuration guards.
+    fn = getattr(item, "obj", None)
+    scenario_obj = getattr(fn, "__scenario__", None) if fn else None
+    if scenario_obj is not None:
+        for step in getattr(scenario_obj, "steps", []):
+            for prefix, product_key in _GIVEN_PRODUCT_STEPS.items():
+                if step.name.startswith(prefix):
+                    pc = cfg.product_config(product_key)
+                    if not pc.is_configured:
+                        return True
+
     return False
 
 

@@ -194,6 +194,43 @@ class TestPluginIntegration:
         result.assert_outcomes()
         result.stdout.fnmatch_lines(["*1 deselected*"])
 
+    def test_bdd_given_configured_step_deselected(self, selftest_pytester):
+        """A BDD scenario with 'Given Connect is configured in vip.toml'
+        should be deselected (not skipped) when Connect is not configured."""
+        selftest_pytester.makefile(
+            ".feature",
+            test_perf=(
+                "@performance\n"
+                "Feature: Perf test\n"
+                "  Scenario: Load test Connect\n"
+                "    Given Connect is configured in vip.toml\n"
+                "    Then something passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_perf="""
+            import pytest
+            from pytest_bdd import scenario, given, then
+
+            @scenario("test_perf.feature", "Load test Connect")
+            def test_load():
+                pass
+
+            @given("Connect is configured in vip.toml")
+            def connect_configured():
+                pytest.skip("Connect is not configured")
+
+            @then("something passes")
+            def something_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes()
+        result.stdout.fnmatch_lines(["*1 deselected*"])
+        # Must NOT appear as SKIPPED
+        assert "SKIPPED" not in result.stdout.str()
+
     def test_version_skip(self, selftest_pytester):
         selftest_pytester.makefile(
             ".toml",
