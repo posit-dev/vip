@@ -1,0 +1,19 @@
+; Posit Connect configuration for local VIP development.
+; Uses password auth so tests can run without SSO.
+
+[Server]
+SenderEmail = vip@localhost
+Address = http://localhost:3939
+
+[HTTP]
+Listen = :3939
+
+[Authentication]
+Provider = password
+
+[Password]
+; Allow self-registration so the first user can create an admin account.
+SelfRegistration = true
+
+[Python]
+Enabled = true

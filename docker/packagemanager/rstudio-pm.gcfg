@@ -1,0 +1,13 @@
+; Posit Package Manager configuration for local VIP development.
+
+[Server]
+Address = http://localhost:4242
+
+[HTTP]
+Listen = :4242
+
+[CRAN]
+SyncSchedule = "0 0 * * *"
+
+[PyPI]
+SyncSchedule = "0 0 * * *"

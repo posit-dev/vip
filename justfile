@@ -75,6 +75,21 @@ website-data:
     uv run python scripts/generate-test-catalog.py
     uv run python scripts/generate-feature-matrix.py
 
+# Start the local docker-compose dev environment
+compose-up *SERVICES:
+    docker compose up -d {{ SERVICES }}
+    @echo "Waiting for services to be healthy..."
+    @docker compose ps
+
+# Stop the local docker-compose dev environment
+compose-down:
+    docker compose down
+
+# Run VIP tests against the local docker-compose environment
+test-local *ARGS:
+    docker compose up -d --wait
+    uv run vip verify --config vip.toml.local {{ ARGS }}
+
 # Generate a Quarto report from selftests (for CI / demo purposes)
 report-selftest:
     uv run pytest selftests/

@@ -1,0 +1,31 @@
+# VIP configuration for local docker-compose development.
+#
+# Usage:
+#   just compose-up
+#   vip verify --config vip.toml.local --categories workbench -- -v
+#
+# Or use the shortcut:
+#   just test-local
+
+[general]
+deployment_name = "Local Docker Dev"
+
+[connect]
+enabled = true
+url = "http://localhost:3939"
+# After first boot, create an admin user at http://localhost:3939
+# and set this key (or export VIP_CONNECT_API_KEY):
+# api_key = "..."
+
+[workbench]
+enabled = true
+url = "http://localhost:8787"
+
+[package_manager]
+enabled = true
+url = "http://localhost:4242"
+
+[auth]
+provider = "password"
+username = "vip_test"
+password = "vip_test_password"
