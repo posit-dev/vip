@@ -40,8 +40,19 @@ VALID_CATEGORIES: dict[str, str] = {
 # Marker expression keywords that are not category names.
 _MARKER_KEYWORDS = {"and", "or", "not"}
 
-# Regex matching a single identifier token (may contain hyphens or underscores).
-_IDENT_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
+# Regex matching a complete identifier token (may contain hyphens or
+# underscores).  Negative lookbehind/lookahead ensure we don't match a
+# substring inside a larger token like ``_connect`` or ``1connect``.
+_IDENT_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z][A-Za-z0-9_-]*(?![A-Za-z0-9_-])")
+
+
+def _valid_categories_message() -> str:
+    """Return a comma-separated string of preferred (hyphenated) category names."""
+    seen: dict[str, str] = {}
+    for k, v in VALID_CATEGORIES.items():
+        if v not in seen or "-" in k:
+            seen[v] = k
+    return ", ".join(sorted(seen.values()))
 
 
 def _normalize_categories(expr: str) -> str:
@@ -59,19 +70,25 @@ def _normalize_categories(expr: str) -> str:
             return word
         if word in VALID_CATEGORIES:
             return VALID_CATEGORIES[word]
-        # Show one name per category, preferring the hyphenated form.
-        seen: dict[str, str] = {}
-        for k, v in VALID_CATEGORIES.items():
-            if v not in seen or "-" in k:
-                seen[v] = k
-        valid = ", ".join(sorted(seen.values()))
         print(
-            f"Error: unknown category '{word}'. Valid categories: {valid}",
+            f"Error: unknown category '{word}'. Valid categories: {_valid_categories_message()}",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    return _IDENT_RE.sub(_replace, expr)
+    result = _IDENT_RE.sub(_replace, expr)
+    # After substitution, only whitespace and parentheses should remain
+    # between identifiers.  Any leftover characters (digits, underscores
+    # from malformed tokens like ``_connect`` or ``1connect``) are invalid.
+    leftover = _IDENT_RE.sub("", result).replace("(", "").replace(")", "").strip()
+    if leftover:
+        print(
+            f"Error: invalid characters in category expression: '{expr}'. "
+            f"Valid categories: {_valid_categories_message()}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return result
 
 
 def _connect_cluster(cluster_config) -> Path:

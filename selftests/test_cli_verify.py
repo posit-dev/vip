@@ -289,3 +289,17 @@ class TestNormalizeCategories:
 
         result = _normalize_categories("(package-manager or cross-product)")
         assert result == "(package_manager or cross_product)"
+
+    def test_leading_underscore_rejected(self):
+        from vip.cli import _normalize_categories
+
+        with pytest.raises(SystemExit) as exc_info:
+            _normalize_categories("_connect")
+        assert exc_info.value.code == 1
+
+    def test_leading_digit_rejected(self):
+        from vip.cli import _normalize_categories
+
+        with pytest.raises(SystemExit) as exc_info:
+            _normalize_categories("1connect")
+        assert exc_info.value.code == 1
