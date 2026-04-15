@@ -19,6 +19,7 @@ class TestResult:
     outcome: str  # "passed", "failed", "skipped"
     duration: float = 0.0
     longrepr: str | None = None
+    concise_error: str | None = None
     markers: list[str] = field(default_factory=list)
     scenario_title: str | None = None
     feature_description: str | None = None
@@ -104,6 +105,7 @@ def load_results(path: str | Path) -> ReportData:
             outcome=r["outcome"],
             duration=r.get("duration", 0.0),
             longrepr=r.get("longrepr"),
+            concise_error=r.get("concise_error"),
             markers=r.get("markers", []),
             scenario_title=r.get("scenario_title"),
             feature_description=r.get("feature_description"),
