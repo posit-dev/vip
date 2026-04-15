@@ -330,6 +330,52 @@ class TestPluginIntegration:
         # Should be the concise format, not a 500-char truncation
         assert len(data["failures"][0]["error_summary"]) < 200
 
+    def test_concise_failure_output(self, selftest_pytester):
+        """Failed test shows one-liner, not full traceback."""
+        selftest_pytester.makepyfile(
+            """
+            def test_with_message():
+                assert False, "Username is missing"
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(failed=1)
+        # The concise message should appear in output.
+        result.stdout.fnmatch_lines(["*Username is missing*"])
+        # The full traceback should NOT appear — no "E" prefix lines with AssertionError.
+        for line in result.stdout.lines:
+            assert not (line.startswith("E") and "AssertionError" in line), (
+                f"Found unexpected traceback line: {line}"
+            )
+
+    def test_unexpected_error_output(self, selftest_pytester):
+        """Non-assertion errors show 'an unexpected error occurred' prefix."""
+        selftest_pytester.makepyfile(
+            """
+            def test_crashes():
+                raise ValueError("bad value")
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(failed=1)
+        result.stdout.fnmatch_lines(["*an unexpected error occurred*ValueError*bad value*"])
+
+    def test_vip_verbose_shows_full_traceback(self, selftest_pytester):
+        """--vip-verbose restores pytest's default traceback output."""
+        selftest_pytester.makepyfile(
+            """
+            def test_with_message():
+                assert False, "Username is missing"
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "--vip-verbose", "-v")
+        result.assert_outcomes(failed=1)
+        # Full traceback should appear — look for pytest's "E" prefix lines.
+        # The exact number of spaces varies by pytest version, so match loosely.
+        assert any(
+            line.startswith("E") and "AssertionError" in line for line in result.stdout.lines
+        ), "Expected a traceback 'E ... AssertionError' line in verbose output"
+
 
 def test_markers_in_sync():
     """Markers in pyproject.toml match those registered in plugin.py."""

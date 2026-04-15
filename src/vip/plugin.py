@@ -79,6 +79,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Launch a browser for manual OIDC login before running tests.",
     )
+    group.addoption(
+        "--vip-verbose",
+        action="store_true",
+        default=False,
+        help="Show full pytest tracebacks instead of concise error messages.",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -423,6 +429,27 @@ def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
                 "feature_description": scenario_meta.get("feature_description"),
             }
         )
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """Replace verbose tracebacks with concise error messages for terminal display.
+
+    Runs after pytest_runtest_makereport has captured the full longrepr for
+    JSON reporting. This modifies report.longrepr in-place so the terminal
+    reporter shows the concise format.
+    """
+    if _active_config is None:
+        return
+    if _active_config.getoption("--vip-verbose", default=False):
+        return
+    if report.outcome not in ("failed", "error"):
+        return
+    if not report.longrepr:
+        return
+
+    longrepr_str = str(report.longrepr)
+    exc_type, exc_message = _extract_exception_info(longrepr_str)
+    report.longrepr = _format_concise_error(report.nodeid, exc_type, exc_message)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
