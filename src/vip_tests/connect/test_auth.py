@@ -39,7 +39,10 @@ def enter_credentials(page, test_username, test_password, auth_provider, interac
             "Pass --interactive-auth when browser storage state is pre-loaded."
         )
     if not test_username or not test_password:
-        pytest.skip("UI login test requires username and password credentials.")
+        pytest.fail(
+            "UI login test requires VIP_TEST_USERNAME and VIP_TEST_PASSWORD "
+            "to be set when auth_provider is 'password'."
+        )
     page.fill("[name='username'], #username", test_username)
     page.fill("[name='password'], #password", test_password)
     page.click("[data-automation='login-panel-submit']")
