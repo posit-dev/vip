@@ -222,7 +222,6 @@ def pytest_collection_modifyitems(
     """Deselect tests whose product is not configured, skip tests whose
     version requirement is not met, and ensure prerequisites run first."""
     vip_cfg: VIPConfig = config.stash[_vip_config_key]
-    using_interactive_auth = config.stash.get(_auth_session_key, None) is not None
     no_auth = config.getoption("--no-auth", default=False)
 
     # Sort so prerequisites run before everything else, and assign xdist
@@ -240,7 +239,6 @@ def pytest_collection_modifyitems(
             deselected.append(item)
             continue
         _maybe_skip_for_version(item, vip_cfg)
-        _maybe_skip_credential_check(item, using_interactive_auth)
         _assign_xdist_group(item)
         _stash_scenario_metadata(item)
         if item.get_closest_marker("prerequisites"):
@@ -269,21 +267,6 @@ def _assign_xdist_group(item: pytest.Item) -> None:
     group = dir_name if dir_name in _PRODUCT_DIRS else "general"
     item.add_marker(pytest.mark.xdist_group(group))
 
-
-def _maybe_skip_credential_check(item: pytest.Item, using_interactive_auth: bool) -> None:
-    """Skip the credential prerequisite test when using interactive auth."""
-    if not using_interactive_auth:
-        return
-    # Match precisely to avoid skipping unrelated tests with similar names.
-    fspath = getattr(item, "path", None) or Path()
-    if (
-        fspath.name == "test_auth_configured.py"
-        and fspath.parent.name == "prerequisites"
-        and item.name == "test_credentials_provided"
-    ):
-        item.add_marker(
-            pytest.mark.skip(reason="--interactive-auth is active, credential check not needed")
-        )
 
 
 # Mapping from "Given" step name prefix to product config key.
@@ -333,11 +316,6 @@ def _requires_auth(item: pytest.Item) -> bool:
     for marker_name in _AUTH_PRODUCTS:
         if item.get_closest_marker(marker_name) is not None:
             return True
-
-    # The credential prerequisite test checks that credentials are set.
-    fspath = getattr(item, "path", None) or Path()
-    if fspath.name == "test_auth_configured.py" and fspath.parent.name == "prerequisites":
-        return True
 
     # BDD "Given" steps that reference an auth-required product.
     fn = getattr(item, "obj", None)
