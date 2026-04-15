@@ -459,8 +459,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
         return
 
     # On xdist workers, skip all processing — the controller handles it.
-    # Use report.config (the config that produced this report) for robustness.
-    if hasattr(report.config, "workerinput"):
+    if hasattr(_active_config, "workerinput"):
         return
 
     # --- Result collection (for JSON report) ---
