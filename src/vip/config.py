@@ -112,7 +112,9 @@ class PackageManagerConfig(ProductConfig):
     def __post_init__(self) -> None:
         super().__post_init__()
         if not self.token:
-            self.token = os.environ.get("VIP_PM_TOKEN", "")
+            self.token = os.environ.get(
+                "VIP_PACKAGE_MANAGER_TOKEN", os.environ.get("VIP_PM_TOKEN", "")
+            )
 
     @classmethod
     def from_dict(cls, raw: dict) -> PackageManagerConfig:
