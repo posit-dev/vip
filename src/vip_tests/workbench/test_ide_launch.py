@@ -184,6 +184,8 @@ def vscode_displayed(page: Page):
     try:
         expect(page.locator(VSCodeSession.WORKBENCH)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
     except AssertionError as exc:
+        if "timeout" not in str(exc).lower():
+            raise  # Not a timeout — let it fail normally
         pytest.skip(
             f"VS Code did not load within timeout — "
             f"the IDE may not be installed on this Workbench instance ({exc})"
@@ -198,6 +200,8 @@ def jupyter_displayed(page: Page):
     try:
         expect(page.locator(JupyterLabSession.LAUNCHER)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
     except AssertionError as exc:
+        if "timeout" not in str(exc).lower():
+            raise  # Not a timeout — let it fail normally
         pytest.skip(
             f"JupyterLab did not load within timeout — "
             f"the IDE may not be installed on this Workbench instance ({exc})"
@@ -210,6 +214,8 @@ def positron_displayed(page: Page):
     try:
         expect(page.locator(PositronSession.WORKBENCH)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
     except AssertionError as exc:
+        if "timeout" not in str(exc).lower():
+            raise  # Not a timeout — let it fail normally
         pytest.skip(
             f"Positron did not load within timeout — "
             f"the IDE may not be installed on this Workbench instance ({exc})"
