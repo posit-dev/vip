@@ -349,9 +349,9 @@ def _extract_exception_info(longrepr: str) -> tuple[str, str]:
 
     Returns ``("UnknownError", <truncated string>)`` if parsing fails.
     """
-    # Look for pytest's "E   ExcType: message" line format.
+    # Look for pytest's "E   ExcType: message" line format (message may be empty).
     m = re.search(
-        r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.+)",
+        r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.*)",
         longrepr,
         re.MULTILINE,
     )

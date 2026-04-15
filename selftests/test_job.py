@@ -135,9 +135,6 @@ class TestCreateJobVerbose:
 
 def test_pytest_args_no_tb_flag():
     """The K8s job should not hardcode --tb=short; the plugin controls traceback format."""
-    import inspect
-
-    from vip.verify.job import create_job
-
-    source = inspect.getsource(create_job)
-    assert "--tb=short" not in source
+    spec = _capture_job_spec()
+    args = spec["spec"]["template"]["spec"]["containers"][0]["args"]
+    assert "--tb=short" not in args

@@ -128,8 +128,8 @@ class TestExtractExceptionInfo:
         """ExcType with colon but no message text."""
         longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError:"
         exc_type, exc_message = _extract_exception_info(longrepr)
-        # The regex requires at least one char after the colon, so this falls through.
-        assert exc_type == "UnknownError"
+        assert exc_type == "ValueError"
+        assert exc_message == ""
 
     def test_unknown_format_falls_back(self):
         longrepr = "something weird happened"
@@ -441,14 +441,17 @@ class TestPluginIntegration:
         result.stdout.fnmatch_lines(["*Deployment check failed*"])
         result.stdout.fnmatch_lines(["*an unexpected error occurred*RuntimeError*connection lost*"])
 
-        # JSON: both fields present
+        # JSON: both fields present for failures
         data = json.loads(report_path.read_text())
         failed = [r for r in data["results"] if r["outcome"] == "failed"]
         for r in failed:
             assert r["concise_error"] is not None
             assert r["longrepr"] is not None
-            assert len(r["longrepr"]) > len(r["concise_error"])
+            # longrepr contains traceback details; concise_error is a one-liner
+            assert "Traceback" in r["longrepr"] or ".py" in r["longrepr"]
+            assert "::" not in r["concise_error"]  # no nodeid path, just test name
 
+        # Passing tests have no concise_error
         passed = [r for r in data["results"] if r["outcome"] == "passed"]
         for r in passed:
             assert r["concise_error"] is None
