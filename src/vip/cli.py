@@ -206,7 +206,7 @@ def _print_credential_warnings(config_path: str | None, *, interactive_auth: boo
     if needs_creds:
         products = " and ".join(needs_creds)
         print(
-            f"Warning: {products} tests selected but no credentials provided. "
+            f"\033[1mWarning: {products} tests selected but no credentials provided.\033[0m "
             "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD, or use --interactive-auth.",
             flush=True,
         )
