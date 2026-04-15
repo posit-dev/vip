@@ -164,10 +164,10 @@ def session_becomes_active_again(page: Page, session_context: dict):
     session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
     try:
         expect(session_active).to_be_visible(timeout=TIMEOUT_SESSION_START)
-    except AssertionError:
+    except AssertionError as exc:
         pytest.skip(
-            "Session did not return to Active state after resume — "
-            "suspend/resume may not be supported in this Workbench configuration"
+            f"Session did not return to Active state after resume — "
+            f"suspend/resume may not be supported in this Workbench configuration ({exc})"
         )
 
 
