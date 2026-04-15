@@ -85,9 +85,14 @@ compose-up *SERVICES:
 compose-down:
     docker compose down
 
-# Run VIP tests against the local docker-compose environment
+# Run VIP tests against the local docker-compose environment (Workbench only by default)
 test-local *ARGS:
     docker compose up -d --wait
+    uv run vip verify --config vip.toml.local --categories workbench {{ ARGS }}
+
+# Run VIP tests against the full local stack (requires RSC_LICENSE and RSPM_LICENSE)
+test-local-full *ARGS:
+    docker compose --profile full up -d --wait
     uv run vip verify --config vip.toml.local {{ ARGS }}
 
 # Generate a Quarto report from selftests (for CI / demo purposes)

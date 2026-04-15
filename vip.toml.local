@@ -11,10 +11,11 @@
 deployment_name = "Local Docker Dev"
 
 [connect]
-enabled = true
+# Disabled by default — Connect requires manual admin user bootstrap after first boot.
+# To enable: start with `just compose-up --profile connect`, create an admin at
+# http://localhost:3939, generate an API key, then set enabled = true and api_key below.
+enabled = false
 url = "http://localhost:3939"
-# After first boot, create an admin user at http://localhost:3939
-# and set this key (or export VIP_CONNECT_API_KEY):
 # api_key = "..."
 
 [workbench]
@@ -22,7 +23,9 @@ enabled = true
 url = "http://localhost:8787"
 
 [package_manager]
-enabled = true
+# Disabled by default — requires RSPM_LICENSE and the packagemanager profile.
+# To enable: start with `just compose-up --profile packagemanager` and set enabled = true.
+enabled = false
 url = "http://localhost:4242"
 
 [auth]
