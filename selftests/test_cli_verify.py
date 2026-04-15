@@ -21,6 +21,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "categories": None,
         "filter_expr": None,
         "pytest_args": [],
+        "verbose": False,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -203,3 +204,19 @@ class TestVerifyLocalMissingConfig:
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         cmd = _capture_cmd(_make_args(connect_url="https://connect.example.com"))
         assert any("--vip-config" in arg for arg in cmd)
+
+
+class TestVerifyLocalVerboseFlag:
+    """vip verify --verbose should pass --vip-verbose to pytest."""
+
+    def test_verbose_flag_passes_vip_verbose(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), verbose=True))
+        assert "--vip-verbose" in cmd
+
+    def test_no_verbose_flag_omits_vip_verbose(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), verbose=False))
+        assert "--vip-verbose" not in cmd

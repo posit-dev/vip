@@ -302,6 +302,8 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     if args.filter_expr:
         cmd.extend(["-k", args.filter_expr])
 
+    if args.verbose:
+        cmd.append("--vip-verbose")
     cmd.extend(args.pytest_args)
 
     try:
@@ -621,6 +623,12 @@ def main() -> None:
         default="report/results.json",
         help="Write JSON results to this path for Quarto report generation"
         " (default: report/results.json)",
+    )
+    verify_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Show full pytest tracebacks instead of concise error messages",
     )
     verify_parser.add_argument(
         "--extensions",
