@@ -108,6 +108,11 @@ def pytest_configure(config: pytest.Config) -> None:
         "if_applicable: skip when the related feature is not configured",
     )
 
+    # In concise mode, suppress the "short test summary info" section — the
+    # inline concise error messages make it redundant.
+    if not config.getoption("--vip-verbose", default=False):
+        config.option.reportchars = ""
+
     # Load VIP config and stash it for fixtures / collection hooks.
     vip_cfg = load_config(config.getoption("--vip-config"))
     config.stash[_vip_config_key] = vip_cfg

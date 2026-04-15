@@ -374,6 +374,30 @@ class TestPluginIntegration:
                 f"Found unexpected traceback line: {line}"
             )
 
+    def test_concise_mode_suppresses_short_summary(self, selftest_pytester):
+        """Concise mode hides the 'short test summary info' section."""
+        selftest_pytester.makepyfile(
+            """
+            def test_fails():
+                assert False, "expected failure"
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(failed=1)
+        result.stdout.no_fnmatch_line("*short test summary info*")
+
+    def test_vip_verbose_shows_short_summary(self, selftest_pytester):
+        """--vip-verbose keeps the 'short test summary info' section."""
+        selftest_pytester.makepyfile(
+            """
+            def test_fails():
+                assert False, "expected failure"
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "--vip-verbose", "-v")
+        result.assert_outcomes(failed=1)
+        result.stdout.fnmatch_lines(["*short test summary info*"])
+
     def test_unexpected_error_output(self, selftest_pytester):
         """Non-assertion errors show 'an unexpected error occurred' prefix."""
         selftest_pytester.makepyfile(
