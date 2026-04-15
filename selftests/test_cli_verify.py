@@ -160,6 +160,84 @@ class TestVerifyLocalSkipNotes:
         assert "Package Manager" not in out
 
 
+class TestVerifyLocalCredentialWarnings:
+    """Warn when products are configured but no credentials are provided."""
+
+    def test_workbench_url_without_creds_warns(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(workbench_url="https://wb.example.com"))
+        out = capsys.readouterr().out
+        assert "Warning" in out
+        assert "Workbench" in out
+        assert "VIP_TEST_USERNAME" in out
+
+    def test_connect_url_without_creds_warns(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
+        _capture_cmd(_make_args(connect_url="https://c.example.com"))
+        out = capsys.readouterr().out
+        assert "Warning" in out
+        assert "Connect" in out
+
+    def test_both_urls_without_creds_warns_both(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
+        _capture_cmd(
+            _make_args(
+                connect_url="https://c.example.com",
+                workbench_url="https://wb.example.com",
+            )
+        )
+        out = capsys.readouterr().out
+        assert "Connect and Workbench" in out
+
+    def test_connect_with_api_key_no_warning(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        monkeypatch.setenv("VIP_CONNECT_API_KEY", "abc123")
+        _capture_cmd(_make_args(connect_url="https://c.example.com"))
+        out = capsys.readouterr().out
+        assert "Warning" not in out
+
+    def test_with_username_no_warning(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
+        _capture_cmd(_make_args(workbench_url="https://wb.example.com"))
+        out = capsys.readouterr().out
+        assert "Warning" not in out
+
+    def test_interactive_auth_suppresses_warning(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(workbench_url="https://wb.example.com", interactive_auth=True))
+        out = capsys.readouterr().out
+        assert "Warning" not in out
+
+    def test_package_manager_only_no_warning(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(package_manager_url="https://pm.example.com"))
+        out = capsys.readouterr().out
+        assert "Warning" not in out
+
+
 class TestVerifyLocalVerbose:
     """Review #87: verify -v is included by default in local runs."""
 

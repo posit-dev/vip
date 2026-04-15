@@ -187,6 +187,31 @@ def _print_skip_notes(config_path: str | None) -> None:
             print(f"Note: {name} {reason} — {name} tests will not be collected.", flush=True)
 
 
+def _print_credential_warnings(config_path: str | None, *, interactive_auth: bool) -> None:
+    """Warn when products are configured but credentials are missing."""
+    from vip.config import load_config
+
+    cfg = load_config(config_path)
+    if interactive_auth:
+        return
+
+    has_username = bool(cfg.auth.username)
+    needs_creds: list[str] = []
+
+    if cfg.connect.is_configured and not cfg.connect.api_key and not has_username:
+        needs_creds.append("Connect")
+    if cfg.workbench.is_configured and not has_username:
+        needs_creds.append("Workbench")
+
+    if needs_creds:
+        products = " and ".join(needs_creds)
+        print(
+            f"Warning: {products} tests selected but no credentials provided. "
+            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD, or use --interactive-auth.",
+            flush=True,
+        )
+
+
 # Pytest options that consume the next argument as a directory path.
 # We skip these values so they aren't mistaken for positional test targets.
 _CONSUMES_DIR_VALUE = frozenset({"--rootdir", "--confcutdir", "--basetemp"})
@@ -344,6 +369,7 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     # Print notes for products that are not configured so the user knows
     # upfront which categories will be skipped.
     _print_skip_notes(config_path)
+    _print_credential_warnings(config_path, interactive_auth=args.interactive_auth)
 
     cmd = [sys.executable, "-m", "pytest", "-v"]
 
