@@ -26,6 +26,7 @@ class TestCreateJobSignature:
             "categories",
             "filter_expr",
             "timeout_seconds",
+            "verbose",
         }
         assert expected == set(sig.parameters)
 
@@ -52,6 +53,7 @@ def _capture_job_spec(**kwargs) -> dict:
             categories=kwargs.get("categories"),
             filter_expr=kwargs.get("filter_expr"),
             timeout_seconds=kwargs.get("timeout_seconds", 840),
+            verbose=kwargs.get("verbose", False),
         )
 
     assert captured, "subprocess.run was never called with job JSON"
@@ -115,6 +117,20 @@ class TestCreateJobFilterExpr:
         assert "-k" in args
         k_index = args.index("-k")
         assert args[k_index + 1] == "test_login and not saml"
+
+
+class TestCreateJobVerbose:
+    """Verify that create_job forwards the verbose flag as --vip-verbose."""
+
+    def test_verbose_adds_vip_verbose_flag(self):
+        spec = _capture_job_spec(verbose=True)
+        args = spec["spec"]["template"]["spec"]["containers"][0]["args"]
+        assert "--vip-verbose" in args
+
+    def test_no_verbose_omits_vip_verbose_flag(self):
+        spec = _capture_job_spec(verbose=False)
+        args = spec["spec"]["template"]["spec"]["containers"][0]["args"]
+        assert "--vip-verbose" not in args
 
 
 def test_pytest_args_no_tb_flag():

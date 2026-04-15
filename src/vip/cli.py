@@ -368,6 +368,7 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             categories=args.categories,
             filter_expr=getattr(args, "filter_expr", None),
             timeout_seconds=pytest_timeout,
+            verbose=getattr(args, "verbose", False),
         )
 
         print(f"Streaming logs from Job: {job_name}")
