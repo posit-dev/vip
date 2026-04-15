@@ -332,6 +332,32 @@ def _stash_scenario_metadata(item: pytest.Item) -> None:
     }
 
 
+def _extract_exception_info(longrepr: str) -> tuple[str, str]:
+    """Extract (exception_type, message) from a longrepr string.
+
+    Handles two common formats:
+    - pytest's ``E   ExcType: message`` lines in tracebacks
+    - plain ``ExcType: message`` strings (e.g. from failures.json)
+
+    Returns ``("UnknownError", <full string>)`` if parsing fails.
+    """
+    # Look for pytest's "E   ExcType: message" line format.
+    m = re.search(
+        r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.+)",
+        longrepr,
+        re.MULTILINE,
+    )
+    if m:
+        return m.group(1), m.group(2).strip()
+
+    # Fall back to "ExcType: message" at the start of the string.
+    m = re.match(r"([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.+)", longrepr.strip())
+    if m:
+        return m.group(1), m.group(2).strip()
+
+    return "UnknownError", longrepr.strip()[:200]
+
+
 def _format_concise_error(
     nodeid: str,
     exc_type: str,

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from vip.plugin import _format_concise_error, _version_tuple
+from vip.plugin import _extract_exception_info, _format_concise_error, _version_tuple
 
 
 class TestFormatConciseError:
@@ -69,6 +69,53 @@ class TestFormatConciseError:
             exc_message="",
         )
         assert result == "test_login: AssertionError"
+
+
+class TestExtractExceptionInfo:
+    def test_from_reprcrash_string(self):
+        """Parse a longrepr string that looks like pytest's crash repr."""
+        longrepr = (
+            "src/vip_tests/prerequisites/test_auth.py:15: in test_credentials\n"
+            "E   AssertionError: VIP_TEST_USERNAME is not set."
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "AssertionError"
+        assert exc_message == "VIP_TEST_USERNAME is not set."
+
+    def test_from_simple_string(self):
+        longrepr = "AssertionError: HTTP not redirected"
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "AssertionError"
+        assert exc_message == "HTTP not redirected"
+
+    def test_dotted_exception_type(self):
+        longrepr = (
+            "tests/connect/test_api.py:42: in test_call\n"
+            "E   httpx.ConnectError: [Errno 61] Connection refused"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "httpx.ConnectError"
+        assert exc_message == "[Errno 61] Connection refused"
+
+    def test_bare_assertion(self):
+        longrepr = (
+            "tests/connect/test_auth.py:10: in test_login\nE   AssertionError: assert 403 == 200"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "AssertionError"
+        assert exc_message == "assert 403 == 200"
+
+    def test_unknown_format_falls_back(self):
+        longrepr = "something weird happened"
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "UnknownError"
+        assert exc_message == "something weird happened"
+
+    def test_multiline_message(self):
+        longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError: line one\nE   line two"
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "ValueError"
+        assert exc_message == "line one"
 
 
 class TestVersionTuple:
