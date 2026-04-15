@@ -381,13 +381,20 @@ def _extract_exception_info(longrepr: str) -> tuple[str, str]:
     Returns ``("UnknownError", <truncated string>)`` if parsing fails.
     """
     # Look for pytest's "E   ExcType: message" line format (message may be empty).
+    # Multi-line assertion messages produce continuation "E   ..." lines that
+    # we join together so the concise output keeps the full details.
     m = re.search(
         r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.*)",
         longrepr,
         re.MULTILINE,
     )
     if m:
-        return m.group(1), m.group(2).strip()
+        msg_lines = [m.group(2).strip()]
+        # Gather continuation E-lines that follow immediately.
+        rest = longrepr[m.end() :]
+        for cont in re.finditer(r"^E\s{3,}(.+)", rest, re.MULTILINE):
+            msg_lines.append(cont.group(1).strip())
+        return m.group(1), " ".join(line for line in msg_lines if line)
 
     # Bare assertion from pytest's assertion rewriting: "E   assert 403 == 200"
     m = re.search(r"^E\s+(assert\s+.+)", longrepr, re.MULTILINE)

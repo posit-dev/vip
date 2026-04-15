@@ -139,10 +139,25 @@ class TestExtractExceptionInfo:
         assert exc_message == "something weird happened"
 
     def test_multiline_message(self):
-        longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError: line one\nE   line two"
+        longrepr = (
+            "tests/test_foo.py:5: in test_it\n"
+            "E   ValueError: line one\n"
+            "E       line two"
+        )
         exc_type, exc_message = _extract_exception_info(longrepr)
         assert exc_type == "ValueError"
-        assert exc_message == "line one"
+        assert exc_message == "line one line two"
+
+    def test_multiline_assertion_with_details(self):
+        """Multi-line assertion messages should include continuation lines."""
+        longrepr = (
+            "tests/test_foo.py:5: in test_it\n"
+            "E       AssertionError: Prometheus metrics endpoint check failed:\n"
+            "E         Connect: /metrics returned 403 (expected 200)"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "AssertionError"
+        assert "Connect: /metrics returned 403" in exc_message
 
 
 class TestVersionTuple:
