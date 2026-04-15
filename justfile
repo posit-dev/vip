@@ -77,8 +77,7 @@ website-data:
 
 # Start the local docker-compose dev environment
 compose-up *SERVICES:
-    docker compose up -d {{ SERVICES }}
-    @echo "Waiting for services to be healthy..."
+    docker compose up -d --wait {{ SERVICES }}
     @docker compose ps
 
 # Stop the local docker-compose dev environment
