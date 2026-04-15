@@ -202,12 +202,13 @@ def positron_displayed(page: Page):
     """Verify Positron IDE core elements are visible."""
     try:
         expect(page.locator(PositronSession.WORKBENCH)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-        expect(page.locator(PositronSession.STATUS_BAR)).to_be_visible(timeout=TIMEOUT_DIALOG)
     except AssertionError as exc:
         pytest.skip(
             f"Positron did not load within timeout — "
             f"the IDE may not be installed on this Workbench instance ({exc})"
         )
+    # If we get here, Positron is installed — a missing status bar is a real failure.
+    expect(page.locator(PositronSession.STATUS_BAR)).to_be_visible(timeout=TIMEOUT_DIALOG)
 
 
 @then("the RStudio IDE can execute R code")
