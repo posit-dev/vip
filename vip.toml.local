@@ -30,5 +30,8 @@ url = "http://localhost:4242"
 
 [auth]
 provider = "password"
-username = "vip_test"
-password = "vip_test_password"
+# Credentials default to the values in docker/workbench/startup.sh.
+# Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD environment variables, or
+# override here for local development only.
+# username = "vip_test"
+# password = "vip_test_password"
