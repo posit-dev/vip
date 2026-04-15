@@ -220,3 +220,61 @@ class TestVerifyLocalVerboseFlag:
         cfg.write_text("[general]\n")
         cmd = _capture_cmd(_make_args(config=str(cfg), verbose=False))
         assert "--vip-verbose" not in cmd
+
+
+class TestNormalizeCategories:
+    """_normalize_categories should accept hyphenated names and reject invalid ones."""
+
+    def test_hyphenated_category_normalized_to_underscore(self):
+        from vip.cli import _normalize_categories
+
+        assert _normalize_categories("package-manager") == "package_manager"
+
+    def test_plain_category_passes_through(self):
+        from vip.cli import _normalize_categories
+
+        assert _normalize_categories("connect") == "connect"
+
+    def test_compound_expression_normalized(self):
+        from vip.cli import _normalize_categories
+
+        assert _normalize_categories("package-manager and cross-product") == (
+            "package_manager and cross_product"
+        )
+
+    def test_invalid_category_exits(self):
+        from vip.cli import _normalize_categories
+
+        with pytest.raises(SystemExit) as exc_info:
+            _normalize_categories("bogus")
+        assert exc_info.value.code == 1
+
+    def test_invalid_category_in_expression_exits(self):
+        from vip.cli import _normalize_categories
+
+        with pytest.raises(SystemExit) as exc_info:
+            _normalize_categories("connect and bogus")
+        assert exc_info.value.code == 1
+
+    def test_not_expression_accepted(self):
+        from vip.cli import _normalize_categories
+
+        assert _normalize_categories("not performance") == "not performance"
+
+    def test_or_expression_accepted(self):
+        from vip.cli import _normalize_categories
+
+        assert _normalize_categories("connect or workbench") == "connect or workbench"
+
+    def test_all_hyphenated_categories_accepted(self):
+        from vip.cli import _normalize_categories
+
+        assert _normalize_categories("package-manager") == "package_manager"
+        assert _normalize_categories("cross-product") == "cross_product"
+
+    def test_underscore_category_rejected(self):
+        from vip.cli import _normalize_categories
+
+        with pytest.raises(SystemExit) as exc_info:
+            _normalize_categories("package_manager")
+        assert exc_info.value.code == 1

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -21,6 +22,47 @@ if TYPE_CHECKING:
 # before Kubernetes kills the pod.
 _JOB_CLEANUP_BUFFER_SECONDS = 60
 _JOB_MIN_PYTEST_TIMEOUT_SECONDS = 60
+
+# Valid test categories. Keys are the user-facing names (hyphenated); values
+# are the pytest marker names (underscored) used internally.
+VALID_CATEGORIES: dict[str, str] = {
+    "prerequisites": "prerequisites",
+    "connect": "connect",
+    "workbench": "workbench",
+    "package-manager": "package_manager",
+    "cross-product": "cross_product",
+    "performance": "performance",
+    "security": "security",
+}
+
+# Marker expression keywords that are not category names.
+_MARKER_KEYWORDS = {"and", "or", "not"}
+
+
+def _normalize_categories(expr: str) -> str:
+    """Validate and normalize a ``--categories`` expression.
+
+    Accepts user-facing hyphenated names (e.g. ``package-manager``) and
+    translates them to the underscore-based pytest marker names.  Raises
+    :class:`SystemExit` if any token is not a valid category.
+    """
+    tokens = re.split(r"([\s()]+)", expr)
+    normalized: list[str] = []
+    for tok in tokens:
+        stripped = tok.strip()
+        if not stripped or stripped in ("(", ")") or stripped in _MARKER_KEYWORDS:
+            normalized.append(tok)
+            continue
+        if stripped in VALID_CATEGORIES:
+            normalized.append(tok.replace(stripped, VALID_CATEGORIES[stripped]))
+        else:
+            valid = ", ".join(sorted(VALID_CATEGORIES))
+            print(
+                f"Error: unknown category '{stripped}'. Valid categories: {valid}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    return "".join(normalized)
 
 
 def _connect_cluster(cluster_config) -> Path:
@@ -298,7 +340,7 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     for ext in args.extensions or []:
         cmd.append(f"--vip-extensions={ext}")
     if args.categories:
-        cmd.extend(["-m", args.categories])
+        cmd.extend(["-m", _normalize_categories(args.categories)])
     if args.filter_expr:
         cmd.extend(["-k", args.filter_expr])
 
@@ -365,7 +407,7 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             namespace,
             cm_name,
             image=args.image,
-            categories=args.categories,
+            categories=_normalize_categories(args.categories) if args.categories else None,
             filter_expr=getattr(args, "filter_expr", None),
             timeout_seconds=pytest_timeout,
             verbose=getattr(args, "verbose", False),
@@ -609,7 +651,7 @@ def main() -> None:
         "--categories",
         default=None,
         help="Test categories as a pytest marker expression "
-        "(e.g. 'connect', 'performance and workbench')",
+        "(e.g. 'connect', 'package-manager', 'performance and workbench')",
     )
     verify_parser.add_argument(
         "-f",
