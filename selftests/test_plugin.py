@@ -279,6 +279,57 @@ class TestPluginIntegration:
         )
         result.stderr.fnmatch_lines(["*--interactive-auth requires at least one product URL*"])
 
+    def test_json_report_includes_concise_error(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            """
+            def test_expected_failure():
+                assert False, "Something went wrong"
+
+            def test_unexpected_failure():
+                raise ValueError("bad value")
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        result.assert_outcomes(failed=2)
+
+        data = json.loads(report_path.read_text())
+        failed = [r for r in data["results"] if r["outcome"] == "failed"]
+        assert len(failed) == 2
+
+        expected = next(r for r in failed if "expected_failure" in r["nodeid"])
+        assert expected["concise_error"] is not None
+        assert "Something went wrong" in expected["concise_error"]
+        assert expected["longrepr"] is not None  # full traceback preserved
+
+        unexpected = next(r for r in failed if "unexpected_failure" in r["nodeid"])
+        assert "an unexpected error occurred" in unexpected["concise_error"]
+        assert "ValueError" in unexpected["concise_error"]
+
+    def test_failures_json_uses_concise_error(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            """
+            def test_will_fail():
+                assert False, "Config is missing"
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        failures_path = selftest_pytester.path / "failures.json"
+        assert failures_path.exists()
+
+        data = json.loads(failures_path.read_text())
+        assert len(data["failures"]) == 1
+        assert "Config is missing" in data["failures"][0]["error_summary"]
+        # Should be the concise format, not a 500-char truncation
+        assert len(data["failures"][0]["error_summary"]) < 200
+
 
 def test_markers_in_sync():
     """Markers in pyproject.toml match those registered in plugin.py."""

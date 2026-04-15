@@ -405,12 +405,19 @@ def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
         item_stash = getattr(item, "stash", None)
         if item_stash is not None:
             scenario_meta = item_stash.get(_scenario_stash_key, {})
+        longrepr_str = str(report.longrepr) if report.longrepr else None
+        concise_error = None
+        if report.outcome == "failed" and longrepr_str:
+            exc_type, exc_message = _extract_exception_info(longrepr_str)
+            concise_error = _format_concise_error(report.nodeid, exc_type, exc_message)
+
         results.append(
             {
                 "nodeid": report.nodeid,
                 "outcome": report.outcome,
                 "duration": report.duration,
-                "longrepr": str(report.longrepr) if report.longrepr else None,
+                "longrepr": longrepr_str,
+                "concise_error": concise_error,
                 "markers": markers,
                 "scenario_title": scenario_meta.get("scenario_title"),
                 "feature_description": scenario_meta.get("feature_description"),
@@ -474,7 +481,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
                     "test": r["nodeid"],
                     "scenario": r.get("scenario_title"),
                     "feature": r.get("feature_description"),
-                    "error_summary": (r.get("longrepr") or "")[:500],
+                    "error_summary": r.get("concise_error") or (r.get("longrepr") or "")[:500],
                 }
                 for r in failures
             ],
