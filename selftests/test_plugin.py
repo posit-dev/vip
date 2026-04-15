@@ -8,7 +8,67 @@ from pathlib import Path
 
 import pytest
 
-from vip.plugin import _version_tuple
+from vip.plugin import _format_concise_error, _version_tuple
+
+
+class TestFormatConciseError:
+    def test_assertion_with_message(self):
+        result = _format_concise_error(
+            nodeid="tests/prerequisites/test_auth.py::test_credentials_provided",
+            exc_type="AssertionError",
+            exc_message=(
+                "VIP_TEST_USERNAME is not set. Set it in vip.toml or as an environment variable."
+            ),
+        )
+        assert result == (
+            "test_credentials_provided: VIP_TEST_USERNAME is not set."
+            " Set it in vip.toml or as an environment variable."
+        )
+
+    def test_assertion_without_message(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_auth.py::test_login",
+            exc_type="AssertionError",
+            exc_message="assert 403 == 200",
+        )
+        assert result == "test_login: AssertionError: assert 403 == 200"
+
+    def test_unexpected_error(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_deploy.py::test_deploy_app",
+            exc_type="ConnectionError",
+            exc_message="Connection refused",
+        )
+        assert result == (
+            "test_deploy_app: an unexpected error occurred: ConnectionError: Connection refused"
+        )
+
+    def test_unexpected_error_with_dotted_type(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_api.py::test_api_call",
+            exc_type="httpx.ConnectError",
+            exc_message="[Errno 61] Connection refused",
+        )
+        assert result == (
+            "test_api_call: an unexpected error occurred:"
+            " httpx.ConnectError: [Errno 61] Connection refused"
+        )
+
+    def test_parametrized_test_name(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_packages.py::test_package_available[numpy]",
+            exc_type="AssertionError",
+            exc_message="Package numpy not found",
+        )
+        assert result == "test_package_available[numpy]: Package numpy not found"
+
+    def test_empty_message_falls_back(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_auth.py::test_login",
+            exc_type="AssertionError",
+            exc_message="",
+        )
+        assert result == "test_login: AssertionError"
 
 
 class TestVersionTuple:

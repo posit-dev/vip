@@ -332,6 +332,34 @@ def _stash_scenario_metadata(item: pytest.Item) -> None:
     }
 
 
+def _format_concise_error(
+    nodeid: str,
+    exc_type: str,
+    exc_message: str,
+) -> str:
+    """Format a concise one-liner error message for terminal and report display.
+
+    AssertionError is treated as an expected test failure — the message is shown
+    directly. All other exception types are prefixed with "an unexpected error
+    occurred" to signal infrastructure or code issues.
+    """
+    test_name = nodeid.split("::")[-1] if "::" in nodeid else nodeid
+
+    is_assertion = exc_type == "AssertionError" or exc_type.endswith(".AssertionError")
+
+    if not exc_message:
+        return f"{test_name}: {exc_type}"
+
+    if is_assertion:
+        # Custom assertion messages are user-actionable — show them directly.
+        # Bare assertions (e.g. "assert 403 == 200") still need the type prefix.
+        if exc_message.startswith("assert "):
+            return f"{test_name}: AssertionError: {exc_message}"
+        return f"{test_name}: {exc_message}"
+
+    return f"{test_name}: an unexpected error occurred: {exc_type}: {exc_message}"
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
     outcome = yield
