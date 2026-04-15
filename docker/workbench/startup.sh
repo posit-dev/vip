@@ -2,7 +2,7 @@
 # Create a test user for VIP on first boot.
 # This script runs as a cont-init.d script inside the Workbench container.
 
-VIP_USER="${VIP_TEST_USER:-vip_test}"
+VIP_USER="${VIP_TEST_USERNAME:-vip_test}"
 VIP_PASS="${VIP_TEST_PASSWORD:-vip_test_password}"
 
 # Only create the user if it doesn't already exist

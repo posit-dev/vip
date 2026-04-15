@@ -27,7 +27,8 @@ services:
       - "8787:8787"
     environment:
       RSW_LICENSE: ${RSW_LICENSE:-}
-      # Create a test user on first boot
+      VIP_TEST_USERNAME: ${VIP_TEST_USERNAME:-vip_test}
+      VIP_TEST_PASSWORD: ${VIP_TEST_PASSWORD:-vip_test_password}
       WORKBENCH_JUPYTER_PATH: /usr/local/bin/jupyter
     volumes:
       - workbench-home:/home

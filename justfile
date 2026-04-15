@@ -89,7 +89,9 @@ test-local *ARGS:
     docker compose up -d --wait
     uv run vip verify --config vip.toml.local --categories workbench {{ ARGS }}
 
-# Run VIP tests against the full local stack (requires RSC_LICENSE and RSPM_LICENSE)
+# Run VIP tests against the full local stack (requires RSC_LICENSE and RSPM_LICENSE).
+# NOTE: Connect and PM are disabled in vip.toml.local by default. Enable them in the
+# config after bootstrapping (create admin user in Connect, etc.) before running this.
 test-local-full *ARGS:
     docker compose --profile full up -d --wait
     uv run vip verify --config vip.toml.local {{ ARGS }}
