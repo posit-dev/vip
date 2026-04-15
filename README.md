@@ -21,6 +21,12 @@ uv run playwright install chromium
 vip verify --connect-url https://connect.example.com --interactive-auth
 ```
 
+Run a specific test by name:
+
+```bash
+vip verify --connect-url https://connect.example.com --filter test_login
+```
+
 With a configuration file:
 
 ```bash

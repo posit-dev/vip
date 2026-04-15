@@ -90,6 +90,7 @@ def sample_results_json(tmp_path: Path) -> Path:
                 "outcome": "failed",
                 "duration": 0.8,
                 "longrepr": "AssertionError: HTTP not redirected",
+                "concise_error": "test_connect_https: HTTP not redirected",
                 "markers": ["security"],
             },
         ],

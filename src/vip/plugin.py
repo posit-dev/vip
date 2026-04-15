@@ -7,7 +7,7 @@ Responsibilities:
 - Register custom markers.
 - Add CLI options (``--vip-config``, ``--vip-extensions``, ``--vip-report``,
   ``--interactive-auth``).
-- Auto-skip tests whose product is not configured.
+- Deselect (exclude) tests whose product is not configured.
 - Auto-skip tests whose product version doesn't meet ``min_version``.
 - Ensure prerequisites run before other tests.
 - Collect extension directories.
@@ -79,6 +79,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Launch a browser for manual OIDC login before running tests.",
     )
+    group.addoption(
+        "--vip-verbose",
+        action="store_true",
+        default=False,
+        help="Show full pytest tracebacks instead of concise error messages.",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -101,6 +107,11 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "if_applicable: skip when the related feature is not configured",
     )
+
+    # In concise mode, suppress the "short test summary info" section — the
+    # inline concise error messages make it redundant.
+    if not config.getoption("--vip-verbose", default=False):
+        config.option.reportchars = ""
 
     # Load VIP config and stash it for fixtures / collection hooks.
     vip_cfg = load_config(config.getoption("--vip-config"))
@@ -200,17 +211,22 @@ def pytest_collection_modifyitems(
     config: pytest.Config,
     items: list[pytest.Item],
 ) -> None:
-    """Skip tests whose product is not configured or whose version
-    requirement is not met, and ensure prerequisites run first."""
+    """Deselect tests whose product is not configured, skip tests whose
+    version requirement is not met, and ensure prerequisites run first."""
     vip_cfg: VIPConfig = config.stash[_vip_config_key]
     using_interactive_auth = config.stash.get(_auth_session_key, None) is not None
 
     # Sort so prerequisites run before everything else, and assign xdist
     # groups so that each product's tests land on a dedicated worker.
+    # Tests for unconfigured products are deselected (excluded entirely)
+    # rather than skipped, so they don't appear in the report.
     prerequisites: list[pytest.Item] = []
     rest: list[pytest.Item] = []
+    deselected: list[pytest.Item] = []
     for item in items:
-        _maybe_skip_for_product(item, vip_cfg)
+        if _should_deselect_for_product(item, vip_cfg):
+            deselected.append(item)
+            continue
         _maybe_skip_for_version(item, vip_cfg)
         _maybe_skip_credential_check(item, using_interactive_auth)
         _assign_xdist_group(item)
@@ -220,6 +236,8 @@ def pytest_collection_modifyitems(
         else:
             rest.append(item)
     items[:] = prerequisites + rest
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
 
 
 # Directories whose tests get a dedicated xdist worker.
@@ -256,17 +274,15 @@ def _maybe_skip_credential_check(item: pytest.Item, using_interactive_auth: bool
         )
 
 
-def _maybe_skip_for_product(item: pytest.Item, cfg: VIPConfig) -> None:
+def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
+    """Return True if *item* should be deselected because its product is not configured."""
     for marker_name, product_key in _PRODUCT_MARKERS.items():
         marker = item.get_closest_marker(marker_name)
         if marker is not None:
             pc = cfg.product_config(product_key)
             if not pc.is_configured:
-                item.add_marker(
-                    pytest.mark.skip(
-                        reason=f"{product_key} is not configured (set url in vip.toml)"
-                    )
-                )
+                return True
+    return False
 
 
 def _maybe_skip_for_version(item: pytest.Item, cfg: VIPConfig) -> None:
@@ -327,6 +343,78 @@ def _stash_scenario_metadata(item: pytest.Item) -> None:
     }
 
 
+def _extract_exception_info(longrepr: str) -> tuple[str, str]:
+    """Extract (exception_type, message) from a longrepr string.
+
+    Handles four common formats:
+    - pytest's ``E   ExcType: message`` lines in tracebacks
+    - pytest's bare ``E   assert ...`` lines (assertion rewriting, no type prefix)
+    - pytest's bare ``E   ExcType`` lines (exception with no message)
+    - plain ``ExcType: message`` strings (e.g. from failures.json)
+
+    Returns ``("UnknownError", <truncated string>)`` if parsing fails.
+    """
+    # Look for pytest's "E   ExcType: message" line format (message may be empty).
+    m = re.search(
+        r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.*)",
+        longrepr,
+        re.MULTILINE,
+    )
+    if m:
+        return m.group(1), m.group(2).strip()
+
+    # Bare assertion from pytest's assertion rewriting: "E   assert 403 == 200"
+    m = re.search(r"^E\s+(assert\s+.+)", longrepr, re.MULTILINE)
+    if m:
+        return "AssertionError", m.group(1).strip()
+
+    # Bare exception type with no message: "E   ValueError" (no colon)
+    m = re.search(
+        r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?)\s*$",
+        longrepr,
+        re.MULTILINE,
+    )
+    if m:
+        return m.group(1), ""
+
+    # Fall back to "ExcType: message" at the start of the string.
+    m = re.match(r"([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.+)", longrepr.strip())
+    if m:
+        return m.group(1), m.group(2).strip()
+
+    return "UnknownError", longrepr.strip()[:200]
+
+
+def _format_concise_error(
+    nodeid: str,
+    exc_type: str,
+    exc_message: str,
+) -> str:
+    """Format a concise one-liner error message for terminal and report display.
+
+    AssertionError is treated as an expected test failure — the message is shown
+    directly. All other exception types are prefixed with "an unexpected error
+    occurred" to signal infrastructure or code issues.
+    """
+    test_name = nodeid.split("::")[-1] if "::" in nodeid else nodeid
+
+    is_assertion = exc_type == "AssertionError" or exc_type.endswith(".AssertionError")
+
+    if not exc_message:
+        if is_assertion:
+            return f"{test_name}: {exc_type}"
+        return f"{test_name}: an unexpected error occurred: {exc_type}"
+
+    if is_assertion:
+        # Custom assertion messages are user-actionable — show them directly.
+        # Bare assertions (e.g. "assert 403 == 200") still need the type prefix.
+        if exc_message.lstrip().startswith("assert "):
+            return f"{test_name}: AssertionError: {exc_message}"
+        return f"{test_name}: {exc_message}"
+
+    return f"{test_name}: an unexpected error occurred: {exc_type}: {exc_message}"
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
     outcome = yield
@@ -346,17 +434,45 @@ def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
         item_stash = getattr(item, "stash", None)
         if item_stash is not None:
             scenario_meta = item_stash.get(_scenario_stash_key, {})
+        longrepr_str = str(report.longrepr) if report.longrepr else None
+        concise_error = None
+        if report.outcome == "failed" and longrepr_str:
+            exc_type, exc_message = _extract_exception_info(longrepr_str)
+            concise_error = _format_concise_error(report.nodeid, exc_type, exc_message)
+
         results.append(
             {
                 "nodeid": report.nodeid,
                 "outcome": report.outcome,
                 "duration": report.duration,
-                "longrepr": str(report.longrepr) if report.longrepr else None,
+                "longrepr": longrepr_str,
+                "concise_error": concise_error,
                 "markers": markers,
                 "scenario_title": scenario_meta.get("scenario_title"),
                 "feature_description": scenario_meta.get("feature_description"),
             }
         )
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """Replace verbose tracebacks with concise error messages for terminal display.
+
+    Runs after pytest_runtest_makereport has captured the full longrepr for
+    JSON reporting. This modifies report.longrepr in-place so the terminal
+    reporter shows the concise format.
+    """
+    if _active_config is None:
+        return
+    if _active_config.getoption("--vip-verbose", default=False):
+        return
+    if report.outcome not in ("failed", "error"):
+        return
+    if not report.longrepr:
+        return
+
+    longrepr_str = str(report.longrepr)
+    exc_type, exc_message = _extract_exception_info(longrepr_str)
+    report.longrepr = _format_concise_error(report.nodeid, exc_type, exc_message)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
@@ -415,7 +531,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
                     "test": r["nodeid"],
                     "scenario": r.get("scenario_title"),
                     "feature": r.get("feature_description"),
-                    "error_summary": (r.get("longrepr") or "")[:500],
+                    "error_summary": r.get("concise_error") or (r.get("longrepr") or "")[:500],
                 }
                 for r in failures
             ],

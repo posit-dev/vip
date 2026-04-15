@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -21,6 +22,73 @@ if TYPE_CHECKING:
 # before Kubernetes kills the pod.
 _JOB_CLEANUP_BUFFER_SECONDS = 60
 _JOB_MIN_PYTEST_TIMEOUT_SECONDS = 60
+
+# Valid test categories. Maps every accepted spelling (hyphenated and
+# underscored) to the internal pytest marker name.
+VALID_CATEGORIES: dict[str, str] = {
+    "prerequisites": "prerequisites",
+    "connect": "connect",
+    "workbench": "workbench",
+    "package-manager": "package_manager",
+    "package_manager": "package_manager",
+    "cross-product": "cross_product",
+    "cross_product": "cross_product",
+    "performance": "performance",
+    "security": "security",
+}
+
+# Marker expression keywords that are not category names.
+_MARKER_KEYWORDS = {"and", "or", "not"}
+
+# Regex matching a complete identifier token (may contain hyphens or
+# underscores).  Negative lookbehind/lookahead ensure we don't match a
+# substring inside a larger token like ``_connect`` or ``1connect``.
+_IDENT_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z][A-Za-z0-9_-]*(?![A-Za-z0-9_-])")
+
+
+def _valid_categories_message() -> str:
+    """Return a comma-separated string of preferred (hyphenated) category names."""
+    seen: dict[str, str] = {}
+    for k, v in VALID_CATEGORIES.items():
+        if v not in seen or "-" in k:
+            seen[v] = k
+    return ", ".join(sorted(seen.values()))
+
+
+def _normalize_categories(expr: str) -> str:
+    """Validate and normalize a ``--categories`` expression.
+
+    Accepts user-facing hyphenated names (e.g. ``package-manager``) as well
+    as underscore names (``package_manager``) and translates both to the
+    internal pytest marker names.  Raises :class:`SystemExit` if any
+    identifier token is not a recognised category or keyword.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        word = match.group(0)
+        if word in _MARKER_KEYWORDS:
+            return word
+        if word in VALID_CATEGORIES:
+            return VALID_CATEGORIES[word]
+        print(
+            f"Error: unknown category '{word}'. Valid categories: {_valid_categories_message()}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    result = _IDENT_RE.sub(_replace, expr)
+    # After substitution, only whitespace and parentheses should remain
+    # between identifiers.  Any leftover characters (digits, underscores
+    # from malformed tokens like ``_connect`` or ``1connect``) are invalid.
+    leftover = _IDENT_RE.sub("", result).replace("(", "").replace(")", "").strip()
+    if leftover:
+        print(
+            f"Error: invalid characters in category expression: '{expr}'. "
+            f"Valid categories: {_valid_categories_message()}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return result
 
 
 def _connect_cluster(cluster_config) -> Path:
@@ -100,6 +168,53 @@ def connect_to_cluster(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _print_skip_notes(config_path: str | None) -> None:
+    """Print a note for each product that is not configured."""
+    from vip.config import load_config
+
+    cfg = load_config(config_path)
+    products = [
+        ("Connect", cfg.connect),
+        ("Workbench", cfg.workbench),
+        ("Package Manager", cfg.package_manager),
+    ]
+    for name, pc in products:
+        if not pc.is_configured:
+            if not pc.enabled:
+                reason = "disabled"
+            else:
+                reason = "no URL given"
+            print(f"Note: {name} {reason} — {name} tests will not be collected.", flush=True)
+
+
+# Pytest options that consume the next argument as a directory path.
+# We skip these values so they aren't mistaken for positional test targets.
+_CONSUMES_DIR_VALUE = frozenset({"--rootdir", "--confcutdir", "--basetemp"})
+
+
+def _has_explicit_test_targets(pytest_args: list[str]) -> bool:
+    """Return True if *pytest_args* contains what looks like test paths or nodeids.
+
+    This avoids injecting the default ``vip_tests`` path when the user already
+    passed explicit targets after ``--`` (e.g. ``vip verify -- tests/foo.py``).
+    Directory values consumed by known pytest options (``--rootdir``, etc.) are
+    excluded so they don't trigger false-positive detection.
+    """
+    skip_next = False
+    for arg in pytest_args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in _CONSUMES_DIR_VALUE:
+            skip_next = True
+            continue
+        if arg.startswith("-"):
+            continue
+        if "::" in arg or arg.endswith(".py") or Path(arg).is_dir():
+            return True
+    return False
+
+
 def _generate_temp_config(args: argparse.Namespace) -> str:
     """Write a minimal vip.toml from CLI URL arguments. Returns temp file path."""
     lines = ["[general]", 'deployment_name = "Posit Team"', ""]
@@ -114,8 +229,8 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     else:
         lines.extend(["[workbench]", "enabled = false", ""])
 
-    if args.pm_url:
-        lines.extend(["[package_manager]", f'url = "{args.pm_url}"', ""])
+    if args.package_manager_url:
+        lines.extend(["[package_manager]", f'url = "{args.package_manager_url}"', ""])
     else:
         lines.extend(["[package_manager]", "enabled = false", ""])
 
@@ -205,11 +320,42 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     config_path = args.config
     temp_config = None
 
-    if not config_path and (args.connect_url or args.workbench_url or args.pm_url):
+    if not config_path and (args.connect_url or args.workbench_url or args.package_manager_url):
         temp_config = _generate_temp_config(args)
         config_path = temp_config
 
-    cmd = [sys.executable, "-m", "pytest"]
+    # Fail fast when a config file is expected but doesn't exist.
+    if config_path and not Path(config_path).is_file():
+        print(f"Error: config file not found: {config_path}", file=sys.stderr)
+        sys.exit(1)
+    if not config_path:
+        # No explicit config and no URL args — check the default resolution.
+        env = os.environ.get("VIP_CONFIG")
+        default = Path(env) if env else Path("vip.toml")
+        if not default.is_file():
+            print(f"Error: config file not found: {default}", file=sys.stderr)
+            print(
+                "Provide a config file with --config, or pass product URLs directly "
+                "(e.g. --connect-url https://connect.example.com).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    # Print notes for products that are not configured so the user knows
+    # upfront which categories will be skipped.
+    _print_skip_notes(config_path)
+
+    cmd = [sys.executable, "-m", "pytest", "-v"]
+
+    # Resolve the installed vip_tests package so pytest finds tests even
+    # when running outside the source tree (e.g. ``pip install posit-vip``).
+    # Skip when the user already passed explicit test targets after ``--``.
+    if not _has_explicit_test_targets(args.pytest_args):
+        from importlib.util import find_spec
+
+        _spec = find_spec("vip_tests")
+        if _spec and _spec.submodule_search_locations:
+            cmd.append(_spec.submodule_search_locations[0])
 
     if config_path:
         cmd.append(f"--vip-config={config_path}")
@@ -220,8 +366,12 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     for ext in args.extensions or []:
         cmd.append(f"--vip-extensions={ext}")
     if args.categories:
-        cmd.extend(["-m", args.categories])
+        cmd.extend(["-m", _normalize_categories(args.categories)])
+    if args.filter_expr:
+        cmd.extend(["-k", args.filter_expr])
 
+    if args.verbose:
+        cmd.append("--vip-verbose")
     cmd.extend(args.pytest_args)
 
     try:
@@ -283,8 +433,10 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             namespace,
             cm_name,
             image=args.image,
-            categories=args.categories,
+            categories=_normalize_categories(args.categories) if args.categories else None,
+            filter_expr=getattr(args, "filter_expr", None),
             timeout_seconds=pytest_timeout,
+            verbose=getattr(args, "verbose", False),
         )
 
         print(f"Streaming logs from Job: {job_name}")
@@ -490,8 +642,10 @@ def main() -> None:
             "  vip verify --config vip.toml --no-interactive-auth\n\n"
             "Kubernetes mode (requires posit-dev/team-operator PTD Site CR):\n"
             "  vip verify --k8s --site main --namespace posit-team\n\n"
+            "Filter tests by name:\n"
+            "  vip verify --connect-url https://connect.example.com --filter 'login'\n\n"
             "Any arguments after -- are passed directly to pytest:\n"
-            "  vip verify --connect-url https://connect.example.com -- -x -k 'login'"
+            "  vip verify --connect-url https://connect.example.com -- -x"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -500,7 +654,7 @@ def main() -> None:
     url_group = verify_parser.add_argument_group("product URLs (no config file needed)")
     url_group.add_argument("--connect-url", default=None, help="Connect server URL")
     url_group.add_argument("--workbench-url", default=None, help="Workbench server URL")
-    url_group.add_argument("--pm-url", default=None, help="Package Manager server URL")
+    url_group.add_argument("--package-manager-url", default=None, help="Package Manager server URL")
 
     # Config file
     verify_parser.add_argument(
@@ -523,13 +677,27 @@ def main() -> None:
         "--categories",
         default=None,
         help="Test categories as a pytest marker expression "
-        "(e.g. 'connect', 'performance and workbench')",
+        "(e.g. 'connect', 'package-manager', 'performance and workbench')",
+    )
+    verify_parser.add_argument(
+        "-f",
+        "--filter",
+        default=None,
+        dest="filter_expr",
+        help="Filter tests by name expression, passed to pytest -k "
+        "(e.g. 'test_login', 'test_login and not saml')",
     )
     verify_parser.add_argument(
         "--report",
         default="report/results.json",
         help="Write JSON results to this path for Quarto report generation"
         " (default: report/results.json)",
+    )
+    verify_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Show full pytest tracebacks instead of concise error messages",
     )
     verify_parser.add_argument(
         "--extensions",

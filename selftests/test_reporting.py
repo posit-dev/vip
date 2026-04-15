@@ -221,3 +221,40 @@ class TestProductInfo:
         assert p.name == "connect"
         assert p.configured
         assert p.version == "2024.09.0"
+
+
+class TestConciseError:
+    def test_concise_error_field_default_none(self):
+        r = TestResult(nodeid="a", outcome="passed")
+        assert r.concise_error is None
+
+    def test_concise_error_loaded_from_json(self, tmp_path):
+        import json
+
+        data = {
+            "deployment_name": "Test",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "exit_status": 1,
+            "products": {},
+            "results": [
+                {
+                    "nodeid": "tests/connect/test_auth.py::test_login",
+                    "outcome": "failed",
+                    "duration": 1.0,
+                    "longrepr": "full traceback here...",
+                    "concise_error": "test_login: Login failed",
+                    "markers": ["connect"],
+                },
+                {
+                    "nodeid": "tests/connect/test_api.py::test_api",
+                    "outcome": "passed",
+                    "duration": 0.5,
+                    "markers": [],
+                },
+            ],
+        }
+        p = tmp_path / "results.json"
+        p.write_text(json.dumps(data))
+        rd = load_results(p)
+        assert rd.results[0].concise_error == "test_login: Login failed"
+        assert rd.results[1].concise_error is None

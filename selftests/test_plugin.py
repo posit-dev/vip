@@ -8,7 +8,140 @@ from pathlib import Path
 
 import pytest
 
-from vip.plugin import _version_tuple
+from vip.plugin import _extract_exception_info, _format_concise_error, _version_tuple
+
+
+class TestFormatConciseError:
+    def test_assertion_with_message(self):
+        result = _format_concise_error(
+            nodeid="tests/prerequisites/test_auth.py::test_credentials_provided",
+            exc_type="AssertionError",
+            exc_message=(
+                "VIP_TEST_USERNAME is not set. Set it in vip.toml or as an environment variable."
+            ),
+        )
+        assert result == (
+            "test_credentials_provided: VIP_TEST_USERNAME is not set."
+            " Set it in vip.toml or as an environment variable."
+        )
+
+    def test_assertion_without_message(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_auth.py::test_login",
+            exc_type="AssertionError",
+            exc_message="assert 403 == 200",
+        )
+        assert result == "test_login: AssertionError: assert 403 == 200"
+
+    def test_unexpected_error(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_deploy.py::test_deploy_app",
+            exc_type="ConnectionError",
+            exc_message="Connection refused",
+        )
+        assert result == (
+            "test_deploy_app: an unexpected error occurred: ConnectionError: Connection refused"
+        )
+
+    def test_unexpected_error_with_dotted_type(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_api.py::test_api_call",
+            exc_type="httpx.ConnectError",
+            exc_message="[Errno 61] Connection refused",
+        )
+        assert result == (
+            "test_api_call: an unexpected error occurred:"
+            " httpx.ConnectError: [Errno 61] Connection refused"
+        )
+
+    def test_parametrized_test_name(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_packages.py::test_package_available[numpy]",
+            exc_type="AssertionError",
+            exc_message="Package numpy not found",
+        )
+        assert result == "test_package_available[numpy]: Package numpy not found"
+
+    def test_empty_message_assertion_falls_back(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_auth.py::test_login",
+            exc_type="AssertionError",
+            exc_message="",
+        )
+        assert result == "test_login: AssertionError"
+
+    def test_empty_message_unexpected_error(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_api.py::test_api_call",
+            exc_type="ConnectionError",
+            exc_message="",
+        )
+        assert result == "test_api_call: an unexpected error occurred: ConnectionError"
+
+
+class TestExtractExceptionInfo:
+    def test_from_reprcrash_string(self):
+        """Parse a longrepr string that looks like pytest's crash repr."""
+        longrepr = (
+            "src/vip_tests/prerequisites/test_auth.py:15: in test_credentials\n"
+            "E   AssertionError: VIP_TEST_USERNAME is not set."
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "AssertionError"
+        assert exc_message == "VIP_TEST_USERNAME is not set."
+
+    def test_from_simple_string(self):
+        longrepr = "AssertionError: HTTP not redirected"
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "AssertionError"
+        assert exc_message == "HTTP not redirected"
+
+    def test_dotted_exception_type(self):
+        longrepr = (
+            "tests/connect/test_api.py:42: in test_call\n"
+            "E   httpx.ConnectError: [Errno 61] Connection refused"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "httpx.ConnectError"
+        assert exc_message == "[Errno 61] Connection refused"
+
+    def test_bare_assertion(self):
+        longrepr = (
+            "tests/connect/test_auth.py:10: in test_login\nE   AssertionError: assert 403 == 200"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "AssertionError"
+        assert exc_message == "assert 403 == 200"
+
+    def test_bare_assert_no_type_prefix(self):
+        """pytest assertion rewriting produces 'E   assert ...' without AssertionError prefix."""
+        longrepr = (
+            "tests/connect/test_auth.py:10: in test_login\n"
+            "E       assert 403 == 200\n"
+            "E        +  where 403 = response.status_code"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "AssertionError"
+        assert exc_message == "assert 403 == 200"
+
+    def test_empty_message_after_type(self):
+        """ExcType with colon but no message text."""
+        longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError:"
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "ValueError"
+        assert exc_message == ""
+
+    def test_unknown_format_falls_back(self):
+        longrepr = "something weird happened"
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "UnknownError"
+        assert exc_message == "something weird happened"
+
+    def test_multiline_message(self):
+        longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError: line one\nE   line two"
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "ValueError"
+        assert exc_message == "line one"
 
 
 class TestVersionTuple:
@@ -46,7 +179,7 @@ class TestPluginIntegration:
         pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
         return pytester
 
-    def test_unconfigured_product_skips(self, selftest_pytester):
+    def test_unconfigured_product_deselected(self, selftest_pytester):
         selftest_pytester.makepyfile(
             """
             import pytest
@@ -56,8 +189,9 @@ class TestPluginIntegration:
                 assert True
             """
         )
-        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-rs")
-        result.stdout.fnmatch_lines(["*SKIPPED*not configured*"])
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes()
+        result.stdout.fnmatch_lines(["*1 deselected*"])
 
     def test_version_skip(self, selftest_pytester):
         selftest_pytester.makefile(
@@ -170,6 +304,181 @@ class TestPluginIntegration:
             "--interactive-auth",
         )
         result.stderr.fnmatch_lines(["*--interactive-auth requires at least one product URL*"])
+
+    def test_json_report_includes_concise_error(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            """
+            def test_expected_failure():
+                assert False, "Something went wrong"
+
+            def test_unexpected_failure():
+                raise ValueError("bad value")
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        result.assert_outcomes(failed=2)
+
+        data = json.loads(report_path.read_text())
+        failed = [r for r in data["results"] if r["outcome"] == "failed"]
+        assert len(failed) == 2
+
+        expected = next(r for r in failed if "expected_failure" in r["nodeid"])
+        assert expected["concise_error"] is not None
+        assert "Something went wrong" in expected["concise_error"]
+        assert expected["longrepr"] is not None  # full traceback preserved
+
+        unexpected = next(r for r in failed if "unexpected_failure" in r["nodeid"])
+        assert "an unexpected error occurred" in unexpected["concise_error"]
+        assert "ValueError" in unexpected["concise_error"]
+
+    def test_failures_json_uses_concise_error(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            """
+            def test_will_fail():
+                assert False, "Config is missing"
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        failures_path = selftest_pytester.path / "failures.json"
+        assert failures_path.exists()
+
+        data = json.loads(failures_path.read_text())
+        assert len(data["failures"]) == 1
+        assert "Config is missing" in data["failures"][0]["error_summary"]
+        # Should be the concise format, not a 500-char truncation
+        assert len(data["failures"][0]["error_summary"]) < 200
+
+    def test_concise_failure_output(self, selftest_pytester):
+        """Failed test shows one-liner, not full traceback."""
+        selftest_pytester.makepyfile(
+            """
+            def test_with_message():
+                assert False, "Username is missing"
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(failed=1)
+        # The concise message should appear in output.
+        result.stdout.fnmatch_lines(["*Username is missing*"])
+        # The full traceback should NOT appear — no "E" prefix lines with AssertionError.
+        for line in result.stdout.lines:
+            assert not (line.lstrip().startswith("E") and "AssertionError" in line), (
+                f"Found unexpected traceback line: {line}"
+            )
+
+    def test_concise_mode_suppresses_short_summary(self, selftest_pytester):
+        """Concise mode hides the 'short test summary info' section."""
+        selftest_pytester.makepyfile(
+            """
+            def test_fails():
+                assert False, "expected failure"
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(failed=1)
+        result.stdout.no_fnmatch_line("*short test summary info*")
+
+    def test_vip_verbose_shows_short_summary(self, selftest_pytester):
+        """--vip-verbose keeps the 'short test summary info' section."""
+        selftest_pytester.makepyfile(
+            """
+            def test_fails():
+                assert False, "expected failure"
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "--vip-verbose", "-v")
+        result.assert_outcomes(failed=1)
+        result.stdout.fnmatch_lines(["*short test summary info*"])
+
+    def test_unexpected_error_output(self, selftest_pytester):
+        """Non-assertion errors show 'an unexpected error occurred' prefix."""
+        selftest_pytester.makepyfile(
+            """
+            def test_crashes():
+                raise ValueError("bad value")
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(failed=1)
+        result.stdout.fnmatch_lines(["*an unexpected error occurred*ValueError*bad value*"])
+
+    def test_vip_verbose_shows_full_traceback(self, selftest_pytester):
+        """--vip-verbose restores pytest's default traceback output."""
+        selftest_pytester.makepyfile(
+            """
+            def test_with_message():
+                assert False, "Username is missing"
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "--vip-verbose", "-v")
+        result.assert_outcomes(failed=1)
+        # Full traceback should appear — look for pytest's "E" prefix lines.
+        # The exact number of spaces varies by pytest version, so match loosely.
+        assert any(
+            line.lstrip().startswith("E") and "AssertionError" in line
+            for line in result.stdout.lines
+        ), "Expected a traceback 'E ... AssertionError' line in verbose output"
+
+    def test_concise_empty_message_exception(self, selftest_pytester):
+        """Non-assertion exception with no message gets 'unexpected error' prefix."""
+        selftest_pytester.makepyfile(
+            """
+            def test_empty_value_error():
+                raise ValueError()
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(failed=1)
+        result.stdout.fnmatch_lines(["*an unexpected error occurred*ValueError*"])
+
+    def test_concise_output_end_to_end(self, selftest_pytester):
+        """Full flow: concise terminal output + JSON report with both fields."""
+        selftest_pytester.makepyfile(
+            """
+            def test_passes():
+                assert True
+
+            def test_assertion_fails():
+                assert False, "Deployment check failed"
+
+            def test_error_fails():
+                raise RuntimeError("connection lost")
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+            "-v",
+        )
+        result.assert_outcomes(passed=1, failed=2)
+
+        # Terminal: concise output
+        result.stdout.fnmatch_lines(["*Deployment check failed*"])
+        result.stdout.fnmatch_lines(["*an unexpected error occurred*RuntimeError*connection lost*"])
+
+        # JSON: both fields present for failures
+        data = json.loads(report_path.read_text())
+        failed = [r for r in data["results"] if r["outcome"] == "failed"]
+        for r in failed:
+            assert r["concise_error"] is not None
+            assert r["longrepr"] is not None
+            # longrepr contains traceback details; concise_error is a one-liner
+            assert "Traceback" in r["longrepr"] or ".py" in r["longrepr"]
+            assert "::" not in r["concise_error"]  # no nodeid path, just test name
+
+        # Passing tests have no concise_error
+        passed = [r for r in data["results"] if r["outcome"] == "passed"]
+        for r in passed:
+            assert r["concise_error"] is None
 
 
 def test_markers_in_sync():
