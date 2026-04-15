@@ -550,17 +550,7 @@ class TestXdistCompatibility:
 
     def test_vip_metadata_survives_xdist(self, selftest_pytester):
         """Custom report attributes (markers, scenario fields) survive xdist transit."""
-        selftest_pytester.makepyfile(
-            """
-            import pytest
-
-            @pytest.mark.connect
-            def test_with_marker():
-                assert True
-            """
-        )
-        # Connect not configured → test gets deselected, but we need a passing test.
-        # Use a plain test and check markers are present in results.
+        # Use a plain test file and verify markers/scenario fields are present in results.
         selftest_pytester.makepyfile(
             test_plain="""
             def test_plain():

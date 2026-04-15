@@ -426,6 +426,8 @@ def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
     """
     outcome = yield
     report: pytest.TestReport = outcome.get_result()
+    if _active_config is None:
+        return
     if report.when == "call" or (report.when == "setup" and report.skipped):
         markers: list[str] = []
         try:
