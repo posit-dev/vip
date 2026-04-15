@@ -11,6 +11,11 @@ from vip.clients.workbench import WorkbenchClient
 from vip.config import PerformanceConfig, VIPConfig
 from vip.plugin import _auth_session_key, _vip_config_key
 
+# pytest-bdd step definitions with target_fixture return values intentionally;
+# pytest 9.x warns about non-None returns from test functions. Scoped to
+# vip_tests only so selftests still catch accidental returns.
+pytestmark = pytest.mark.filterwarnings("ignore::pytest.PytestReturnNotNoneWarning")
+
 # ---------------------------------------------------------------------------
 # Configuration fixture
 # ---------------------------------------------------------------------------

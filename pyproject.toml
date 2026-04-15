@@ -87,9 +87,6 @@ filterwarnings = [
     # gherkin-official 29.0.0 passes maxsplit positionally to re.split;
     # fixed upstream but pulled transitively via pytest-bdd.
     "ignore:'maxsplit' is passed as positional argument:DeprecationWarning:gherkin",
-    # pytest-bdd step definitions with target_fixture return values intentionally;
-    # pytest 9.x warns about non-None returns from test functions.
-    "ignore::pytest.PytestReturnNotNoneWarning",
 ]
 markers = [
     "connect: tests for Posit Connect",
