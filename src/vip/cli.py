@@ -228,7 +228,8 @@ def _check_credentials(
         products = " and ".join(needs_creds)
         print(
             f"\033[1mError: {products} tests selected but no credentials provided.\033[0m\n"
-            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD, or use --interactive-auth.",
+            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD, use --interactive-auth,\n"
+            "or use --no-auth to skip tests that require authentication.",
             file=sys.stderr,
             flush=True,
         )
@@ -392,11 +393,12 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     # Print notes for products that are not configured so the user knows
     # upfront which categories will be skipped.
     _print_skip_notes(config_path)
-    _check_credentials(
-        config_path,
-        interactive_auth=args.interactive_auth,
-        categories=args.categories,
-    )
+    if not args.no_auth:
+        _check_credentials(
+            config_path,
+            interactive_auth=args.interactive_auth,
+            categories=args.categories,
+        )
 
     cmd = [sys.executable, "-m", "pytest", "-v"]
 
@@ -416,6 +418,8 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append(f"--vip-report={args.report}")
     if args.interactive_auth:
         cmd.append("--interactive-auth")
+    if args.no_auth:
+        cmd.append("--no-auth")
     for ext in args.extensions or []:
         cmd.append(f"--vip-extensions={ext}")
     if args.categories:
@@ -723,6 +727,12 @@ def main() -> None:
         default=False,
         help="Launch a browser for OIDC login (default: disabled, use "
         "--interactive-auth to enable)",
+    )
+    verify_parser.add_argument(
+        "--no-auth",
+        action="store_true",
+        default=False,
+        help="Skip all tests that require authentication (Connect and Workbench)",
     )
 
     # Test selection

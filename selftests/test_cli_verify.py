@@ -17,6 +17,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "package_manager_url": None,
         "report": "report/results.json",
         "interactive_auth": False,
+        "no_auth": False,
         "extensions": [],
         "categories": None,
         "filter_expr": None,
@@ -271,6 +272,29 @@ class TestVerifyLocalCredentialCheck:
         monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
         self._run_and_expect_exit(_make_args(config=str(cfg), categories="workbench"))
+
+    def test_no_auth_bypasses_credential_check(self, tmp_path, monkeypatch):
+        """--no-auth should not exit even without credentials."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(workbench_url="https://wb.example.com", no_auth=True))
+
+    def test_no_auth_passes_flag_to_pytest(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        cmd = _capture_cmd(_make_args(workbench_url="https://wb.example.com", no_auth=True))
+        assert "--no-auth" in cmd
+
+    def test_error_message_mentions_no_auth(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        self._run_and_expect_exit(_make_args(workbench_url="https://wb.example.com"))
+        err = capsys.readouterr().err
+        assert "--no-auth" in err
 
 
 class TestVerifyLocalVerbose:

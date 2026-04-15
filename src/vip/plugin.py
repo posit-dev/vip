@@ -82,6 +82,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Launch a browser for manual OIDC login before running tests.",
     )
     group.addoption(
+        "--no-auth",
+        action="store_true",
+        default=False,
+        help="Skip all tests that require authentication credentials (Connect and Workbench).",
+    )
+    group.addoption(
         "--vip-verbose",
         action="store_true",
         default=False,
@@ -217,6 +223,7 @@ def pytest_collection_modifyitems(
     version requirement is not met, and ensure prerequisites run first."""
     vip_cfg: VIPConfig = config.stash[_vip_config_key]
     using_interactive_auth = config.stash.get(_auth_session_key, None) is not None
+    no_auth = config.getoption("--no-auth", default=False)
 
     # Sort so prerequisites run before everything else, and assign xdist
     # groups so that each product's tests land on a dedicated worker.
@@ -227,6 +234,9 @@ def pytest_collection_modifyitems(
     deselected: list[pytest.Item] = []
     for item in items:
         if _should_deselect_for_product(item, vip_cfg):
+            deselected.append(item)
+            continue
+        if no_auth and _requires_auth(item):
             deselected.append(item)
             continue
         _maybe_skip_for_version(item, vip_cfg)
@@ -309,6 +319,31 @@ def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
                     pc = cfg.product_config(product_key)
                     if not pc.is_configured:
                         return True
+
+    return False
+
+
+# Products that require username/password credentials.
+_AUTH_PRODUCTS = {"connect", "workbench"}
+
+
+def _requires_auth(item: pytest.Item) -> bool:
+    """Return True if *item* requires authentication credentials."""
+    # Explicit product markers.
+    for marker_name in _AUTH_PRODUCTS:
+        if item.get_closest_marker(marker_name) is not None:
+            return True
+
+    # BDD "Given" steps that reference an auth-required product.
+    fn = getattr(item, "obj", None)
+    scenario_obj = getattr(fn, "__scenario__", None) if fn else None
+    if scenario_obj is not None:
+        for step in getattr(scenario_obj, "steps", []):
+            if step.type != "given":
+                continue
+            for prefix, product_key in _GIVEN_PRODUCT_STEPS.items():
+                if product_key in _AUTH_PRODUCTS and step.name.startswith(prefix):
+                    return True
 
     return False
 
