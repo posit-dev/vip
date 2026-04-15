@@ -115,3 +115,13 @@ class TestCreateJobFilterExpr:
         assert "-k" in args
         k_index = args.index("-k")
         assert args[k_index + 1] == "test_login and not saml"
+
+
+def test_pytest_args_no_tb_flag():
+    """The K8s job should not hardcode --tb=short; the plugin controls traceback format."""
+    import inspect
+
+    from vip.verify.job import create_job
+
+    source = inspect.getsource(create_job)
+    assert "--tb=short" not in source

@@ -70,7 +70,7 @@ def create_job(
         subprocess.CalledProcessError: If kubectl fails
     """
     # Build pytest command
-    pytest_args = ["pytest", "--vip-config=/config/vip.toml", "-v", "--tb=short"]
+    pytest_args = ["pytest", "--vip-config=/config/vip.toml", "-v"]
     if categories:
         pytest_args.extend(["-m", categories])
     if filter_expr:
