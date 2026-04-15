@@ -5,8 +5,6 @@ from __future__ import annotations
 import pytest
 from pytest_bdd import scenario, then, when
 
-pytestmark = pytest.mark.xdist_group("connect")
-
 
 @scenario("test_auth.feature", "User can log in via the web UI")
 def test_connect_login_ui():

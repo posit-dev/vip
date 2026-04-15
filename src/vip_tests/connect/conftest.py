@@ -8,7 +8,7 @@ import tarfile
 import pytest
 from pytest_bdd import given
 
-pytestmark = pytest.mark.connect
+pytestmark = [pytest.mark.connect, pytest.mark.xdist_group("connect")]
 
 
 @given("Connect is accessible at the configured URL")

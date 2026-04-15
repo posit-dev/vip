@@ -27,8 +27,6 @@ from vip_tests.workbench.pages import Homepage, NewSessionDialog
 # Get filename for session naming
 _FILENAME = Path(__file__).name
 
-pytestmark = pytest.mark.xdist_group("workbench")
-
 
 @scenario("test_sessions.feature", "Session can be suspended and resumed")
 def test_session_suspend_resume():

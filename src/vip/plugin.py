@@ -459,6 +459,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
         return
 
     # On xdist workers, skip all processing — the controller handles it.
+    # _active_config is a pytest.Config; xdist sets workerinput on worker configs.
     if hasattr(_active_config, "workerinput"):
         return
 
