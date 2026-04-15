@@ -334,6 +334,11 @@ def _requires_auth(item: pytest.Item) -> bool:
         if item.get_closest_marker(marker_name) is not None:
             return True
 
+    # The credential prerequisite test checks that credentials are set.
+    fspath = getattr(item, "path", None) or Path()
+    if fspath.name == "test_auth_configured.py" and fspath.parent.name == "prerequisites":
+        return True
+
     # BDD "Given" steps that reference an auth-required product.
     fn = getattr(item, "obj", None)
     scenario_obj = getattr(fn, "__scenario__", None) if fn else None

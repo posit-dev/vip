@@ -208,11 +208,16 @@ def _check_credentials(
     needs_creds: list[str] = []
 
     # When a category filter is active, only enforce credential checks for
-    # products that are actually selected.
+    # products that are actually selected.  We tokenize the expression and
+    # check that the marker appears as a positive term (not negated by "not").
     def _category_selected(marker: str) -> bool:
         if categories is None:
             return True
-        return marker in categories
+        tokens = re.findall(r"\w+", categories)
+        for i, tok in enumerate(tokens):
+            if tok == marker and (i == 0 or tokens[i - 1] != "not"):
+                return True
+        return False
 
     if (
         cfg.connect.is_configured

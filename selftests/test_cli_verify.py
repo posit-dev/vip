@@ -273,6 +273,18 @@ class TestVerifyLocalCredentialCheck:
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
         self._run_and_expect_exit(_make_args(config=str(cfg), categories="workbench"))
 
+    def test_negated_category_skips_credential_check(self, tmp_path, monkeypatch):
+        """'not workbench' should NOT require workbench credentials."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text(
+            "[general]\n"
+            '[workbench]\nurl = "https://wb.example.com"\n'
+            '[package_manager]\nurl = "https://pm.example.com"\n'
+        )
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(config=str(cfg), categories="not workbench"))
+
     def test_no_auth_bypasses_credential_check(self, tmp_path, monkeypatch):
         """--no-auth should not exit even without credentials."""
         monkeypatch.chdir(tmp_path)
