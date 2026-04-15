@@ -286,6 +286,21 @@ _PRODUCT_DISPLAY_NAMES = {
 }
 
 
+def _get_bdd_param_product(item: pytest.Item) -> str | None:
+    """Extract the product display name from a pytest-bdd parameterized item.
+
+    pytest-bdd stores Scenario Outline examples in ``callspec.params`` as
+    ``{'_pytest_bdd_example': {'product': 'Connect', ...}}``.
+    """
+    callspec = getattr(item, "callspec", None)
+    if callspec is None:
+        return None
+    example = callspec.params.get("_pytest_bdd_example")
+    if isinstance(example, dict):
+        return example.get("product")
+    return None
+
+
 def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
     """Return True if *item* should be deselected because its product is not configured."""
     # Check explicit product markers (@connect, @workbench, @package_manager).
@@ -310,11 +325,12 @@ def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
                     if not pc.is_configured:
                         return True
             # Parameterized match: "<product> is configured in vip.toml"
-            # The product name is in the test's parametrize value (e.g., [Connect]).
+            # pytest-bdd stores Scenario Outline examples in callspec.params
+            # as {'_pytest_bdd_example': {'product': 'Connect', ...}}.
             if step.name.startswith("<") and "is configured" in step.name:
-                param = re.search(r"\[(.+?)\]$", item.name)
-                if param:
-                    product_key = _PRODUCT_DISPLAY_NAMES.get(param.group(1))
+                product_name = _get_bdd_param_product(item)
+                if product_name:
+                    product_key = _PRODUCT_DISPLAY_NAMES.get(product_name)
                     if product_key:
                         pc = cfg.product_config(product_key)
                         if not pc.is_configured:

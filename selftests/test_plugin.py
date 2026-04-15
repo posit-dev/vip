@@ -316,6 +316,46 @@ class TestPluginIntegration:
         # which may contain "deselected" in the tmpdir path).
         assert "deselected" not in result.stdout.lines[-1]
 
+    def test_bdd_parameterized_unconfigured_deselected(self, selftest_pytester):
+        """A parameterized '<product> is configured' step should deselect
+        when the product is not configured."""
+        selftest_pytester.makefile(
+            ".feature",
+            test_param=(
+                "@performance\n"
+                "Feature: Param test\n"
+                "  Scenario Outline: <product> check\n"
+                "    Given <product> is configured in vip.toml\n"
+                "    Then it passes\n"
+                "\n"
+                "    Examples:\n"
+                "      | product   |\n"
+                "      | Connect   |\n"
+                "      | CustomApp |\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_param="""
+            import pytest
+            from pytest_bdd import scenarios, given, then, parsers
+
+            scenarios("test_param.feature")
+
+            @given(parsers.parse("{product} is configured in vip.toml"))
+            def product_configured(product):
+                pytest.skip(f"{product} is not configured")
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        # Connect is not configured → deselected.
+        # CustomApp is unrecognized → not deselected, runs and skips at runtime.
+        result.stdout.fnmatch_lines(["*1 deselected*"])
+        result.stdout.fnmatch_lines(["*SKIPPED*"])
+
     def test_version_skip(self, selftest_pytester):
         selftest_pytester.makefile(
             ".toml",
