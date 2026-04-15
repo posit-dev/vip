@@ -370,7 +370,7 @@ class TestPluginIntegration:
         result.stdout.fnmatch_lines(["*Username is missing*"])
         # The full traceback should NOT appear — no "E" prefix lines with AssertionError.
         for line in result.stdout.lines:
-            assert not (line.startswith("E") and "AssertionError" in line), (
+            assert not (line.lstrip().startswith("E") and "AssertionError" in line), (
                 f"Found unexpected traceback line: {line}"
             )
 
@@ -399,8 +399,21 @@ class TestPluginIntegration:
         # Full traceback should appear — look for pytest's "E" prefix lines.
         # The exact number of spaces varies by pytest version, so match loosely.
         assert any(
-            line.startswith("E") and "AssertionError" in line for line in result.stdout.lines
+            line.lstrip().startswith("E") and "AssertionError" in line
+            for line in result.stdout.lines
         ), "Expected a traceback 'E ... AssertionError' line in verbose output"
+
+    def test_concise_empty_message_exception(self, selftest_pytester):
+        """Non-assertion exception with no message gets 'unexpected error' prefix."""
+        selftest_pytester.makepyfile(
+            """
+            def test_empty_value_error():
+                raise ValueError()
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(failed=1)
+        result.stdout.fnmatch_lines(["*an unexpected error occurred*ValueError*"])
 
     def test_concise_output_end_to_end(self, selftest_pytester):
         """Full flow: concise terminal output + JSON report with both fields."""

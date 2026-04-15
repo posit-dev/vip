@@ -341,9 +341,10 @@ def _stash_scenario_metadata(item: pytest.Item) -> None:
 def _extract_exception_info(longrepr: str) -> tuple[str, str]:
     """Extract (exception_type, message) from a longrepr string.
 
-    Handles three common formats:
+    Handles four common formats:
     - pytest's ``E   ExcType: message`` lines in tracebacks
     - pytest's bare ``E   assert ...`` lines (assertion rewriting, no type prefix)
+    - pytest's bare ``E   ExcType`` lines (exception with no message)
     - plain ``ExcType: message`` strings (e.g. from failures.json)
 
     Returns ``("UnknownError", <truncated string>)`` if parsing fails.
@@ -361,6 +362,15 @@ def _extract_exception_info(longrepr: str) -> tuple[str, str]:
     m = re.search(r"^E\s+(assert\s+.+)", longrepr, re.MULTILINE)
     if m:
         return "AssertionError", m.group(1).strip()
+
+    # Bare exception type with no message: "E   ValueError" (no colon)
+    m = re.search(
+        r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?)\s*$",
+        longrepr,
+        re.MULTILINE,
+    )
+    if m:
+        return m.group(1), ""
 
     # Fall back to "ExcType: message" at the start of the string.
     m = re.match(r"([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.+)", longrepr.strip())
