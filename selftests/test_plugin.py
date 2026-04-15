@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 
 import pytest
@@ -479,6 +480,42 @@ class TestPluginIntegration:
         passed = [r for r in data["results"] if r["outcome"] == "passed"]
         for r in passed:
             assert r["concise_error"] is None
+
+
+class TestHeartbeat:
+    """Unit tests for the long-running test heartbeat."""
+
+    def test_heartbeat_fires(self):
+        from vip.plugin import _Heartbeat
+
+        output: list[str] = []
+        hb = _Heartbeat(output.append, interval=0.1)
+        hb.start()
+        time.sleep(0.35)
+        hb.stop()
+        assert len(output) >= 2
+        assert "still running" in output[0]
+
+    def test_heartbeat_stop_is_immediate(self):
+        from vip.plugin import _Heartbeat
+
+        output: list[str] = []
+        hb = _Heartbeat(output.append, interval=10)
+        hb.start()
+        hb.stop()
+        assert len(output) == 0
+
+    def test_heartbeat_shows_elapsed_seconds(self):
+        from vip.plugin import _Heartbeat
+
+        output: list[str] = []
+        hb = _Heartbeat(output.append, interval=0.1)
+        hb.start()
+        time.sleep(0.15)
+        hb.stop()
+        assert len(output) >= 1
+        # Should contain a number of seconds in parentheses
+        assert re.search(r"\(\d+s\)", output[0])
 
 
 def test_markers_in_sync():

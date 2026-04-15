@@ -20,6 +20,8 @@ from __future__ import annotations
 import json
 import re
 import sys
+import threading
+import time
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -413,6 +415,57 @@ def _format_concise_error(
         return f"{test_name}: {exc_message}"
 
     return f"{test_name}: an unexpected error occurred: {exc_type}: {exc_message}"
+
+
+# ---------------------------------------------------------------------------
+# Long-running test heartbeat
+# ---------------------------------------------------------------------------
+
+_HEARTBEAT_INTERVAL = 30  # seconds between "still running" messages
+
+
+class _Heartbeat:
+    """Print periodic elapsed-time messages while a test is running."""
+
+    def __init__(self, writer, interval: int = _HEARTBEAT_INTERVAL):
+        self._writer = writer
+        self._interval = interval
+        self._start: float = 0
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        self._start = time.monotonic()
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+            self._thread = None
+
+    def _run(self) -> None:
+        while not self._stop_event.wait(self._interval):
+            elapsed = int(time.monotonic() - self._start)
+            self._writer(f"  ... still running ({elapsed}s)\n")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item: pytest.Item, nextitem) -> None:  # noqa: ARG001
+    """Print periodic heartbeat messages while a test is running."""
+    heartbeat: _Heartbeat | None = None
+    if _active_config is not None:
+        tr = _active_config.pluginmanager.get_plugin("terminalreporter")
+        if tr is not None:
+            heartbeat = _Heartbeat(tr._tw.write)
+            heartbeat.start()
+    try:
+        yield
+    finally:
+        if heartbeat is not None:
+            heartbeat.stop()
 
 
 @pytest.hookimpl(hookwrapper=True)
