@@ -178,18 +178,29 @@ def rstudio_functional(page: Page):
     expect(page.locator(RStudioSession.PROJECT_MENU)).to_be_visible(timeout=TIMEOUT_DIALOG)
 
 
+def _expect_ide_or_skip(page: Page, locator_str: str, ide_name: str) -> None:
+    """Wait for the primary IDE element; skip if it times out (IDE may not be installed).
+
+    Playwright's ``expect().to_be_visible()`` raises ``AssertionError`` on timeout.
+    We match "timeout" in the message to distinguish timeouts from other assertion
+    failures.  This couples to Playwright's current message format — if it changes,
+    the guard will re-raise instead of skipping, which is the safe failure mode.
+    """
+    try:
+        expect(page.locator(locator_str)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
+    except AssertionError as exc:
+        if "timeout" not in str(exc).lower():
+            raise
+        pytest.skip(
+            f"{ide_name} did not load within timeout — "
+            f"the IDE may not be installed on this Workbench instance ({exc})"
+        )
+
+
 @then("the VS Code IDE is displayed")
 def vscode_displayed(page: Page):
     """Verify VS Code IDE core elements are visible."""
-    try:
-        expect(page.locator(VSCodeSession.WORKBENCH)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-    except AssertionError as exc:
-        if "timeout" not in str(exc).lower():
-            raise  # Not a timeout — let it fail normally
-        pytest.skip(
-            f"VS Code did not load within timeout — "
-            f"the IDE may not be installed on this Workbench instance ({exc})"
-        )
+    _expect_ide_or_skip(page, VSCodeSession.WORKBENCH, "VS Code")
     # If we get here, VS Code is installed — a missing status bar is a real failure.
     expect(page.locator(VSCodeSession.STATUS_BAR)).to_be_visible(timeout=TIMEOUT_DIALOG)
 
@@ -197,29 +208,13 @@ def vscode_displayed(page: Page):
 @then("the JupyterLab IDE is displayed")
 def jupyter_displayed(page: Page):
     """Verify JupyterLab IDE core elements are visible."""
-    try:
-        expect(page.locator(JupyterLabSession.LAUNCHER)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-    except AssertionError as exc:
-        if "timeout" not in str(exc).lower():
-            raise  # Not a timeout — let it fail normally
-        pytest.skip(
-            f"JupyterLab did not load within timeout — "
-            f"the IDE may not be installed on this Workbench instance ({exc})"
-        )
+    _expect_ide_or_skip(page, JupyterLabSession.LAUNCHER, "JupyterLab")
 
 
 @then("the Positron IDE is displayed")
 def positron_displayed(page: Page):
     """Verify Positron IDE core elements are visible."""
-    try:
-        expect(page.locator(PositronSession.WORKBENCH)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-    except AssertionError as exc:
-        if "timeout" not in str(exc).lower():
-            raise  # Not a timeout — let it fail normally
-        pytest.skip(
-            f"Positron did not load within timeout — "
-            f"the IDE may not be installed on this Workbench instance ({exc})"
-        )
+    _expect_ide_or_skip(page, PositronSession.WORKBENCH, "Positron")
     # If we get here, Positron is installed — a missing status bar is a real failure.
     expect(page.locator(PositronSession.STATUS_BAR)).to_be_visible(timeout=TIMEOUT_DIALOG)
 
