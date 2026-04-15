@@ -37,6 +37,8 @@ from vip_tests.workbench.pages import (
 # Get filename for session naming
 _FILENAME = Path(__file__).name
 
+pytestmark = pytest.mark.xdist_group("workbench")
+
 
 @scenario("test_ide_launch.feature", "RStudio IDE session can be launched")
 def test_launch_rstudio():

@@ -32,6 +32,8 @@ from vip_tests.workbench.pages import Homepage, NewSessionDialog
 
 scenarios("test_session_capacity.feature")
 
+pytestmark = pytest.mark.xdist_group("workbench")
+
 # Unique prefix for session names. Timestamp ensures no collision with
 # leftover sessions from previous runs.
 _SESSION_PREFIX = f"_vip_cap_{int(__import__('time').time())}_"

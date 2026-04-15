@@ -481,6 +481,113 @@ class TestPluginIntegration:
             assert r["concise_error"] is None
 
 
+class TestXdistCompatibility:
+    """Verify that JSON report generation works with and without xdist."""
+
+    @pytest.fixture()
+    def selftest_pytester(self, pytester):
+        pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
+        return pytester
+
+    def test_json_report_with_xdist(self, selftest_pytester):
+        """Results JSON is populated when running with -n auto."""
+        selftest_pytester.makepyfile(
+            """
+            def test_one():
+                assert True
+
+            def test_two():
+                assert True
+
+            def test_three():
+                assert False, "intentional failure"
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+            "-n",
+            "auto",
+            "--dist",
+            "loadgroup",
+        )
+        result.assert_outcomes(passed=2, failed=1)
+        assert report_path.exists()
+
+        data = json.loads(report_path.read_text())
+        assert len(data["results"]) == 3
+        passed = [r for r in data["results"] if r["outcome"] == "passed"]
+        failed = [r for r in data["results"] if r["outcome"] == "failed"]
+        assert len(passed) == 2
+        assert len(failed) == 1
+        assert failed[0]["concise_error"] is not None
+        assert failed[0]["longrepr"] is not None
+
+    def test_json_report_without_xdist(self, selftest_pytester):
+        """Results JSON is still populated with -n 0 (xdist disabled)."""
+        selftest_pytester.makepyfile(
+            """
+            def test_passes():
+                assert True
+
+            def test_fails():
+                assert False, "expected"
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+            "-n",
+            "0",
+        )
+        result.assert_outcomes(passed=1, failed=1)
+        assert report_path.exists()
+
+        data = json.loads(report_path.read_text())
+        assert len(data["results"]) == 2
+
+    def test_vip_metadata_survives_xdist(self, selftest_pytester):
+        """Custom report attributes (markers, scenario fields) survive xdist transit."""
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.connect
+            def test_with_marker():
+                assert True
+            """
+        )
+        # Connect not configured → test gets deselected, but we need a passing test.
+        # Use a plain test and check markers are present in results.
+        selftest_pytester.makepyfile(
+            test_plain="""
+            def test_plain():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+            "-n",
+            "auto",
+            "--dist",
+            "loadgroup",
+            "test_plain.py",
+        )
+        result.assert_outcomes(passed=1)
+
+        data = json.loads(report_path.read_text())
+        assert len(data["results"]) == 1
+        r = data["results"][0]
+        assert "markers" in r
+        assert isinstance(r["markers"], list)
+        assert "scenario_title" in r
+        assert "feature_description" in r
+
+
 def test_markers_in_sync():
     """Markers in pyproject.toml match those registered in plugin.py."""
     repo_root = Path(__file__).parent.parent

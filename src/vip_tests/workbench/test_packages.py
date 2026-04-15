@@ -26,6 +26,8 @@ from vip_tests.workbench.pages import (
     RStudioSession,
 )
 
+pytestmark = pytest.mark.xdist_group("workbench")
+
 _FILENAME = Path(__file__).name
 
 # Time (ms) to wait for the R console input to become visible after IDE load
