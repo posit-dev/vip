@@ -380,12 +380,14 @@ def _format_concise_error(
     is_assertion = exc_type == "AssertionError" or exc_type.endswith(".AssertionError")
 
     if not exc_message:
-        return f"{test_name}: {exc_type}"
+        if is_assertion:
+            return f"{test_name}: {exc_type}"
+        return f"{test_name}: an unexpected error occurred: {exc_type}"
 
     if is_assertion:
         # Custom assertion messages are user-actionable — show them directly.
         # Bare assertions (e.g. "assert 403 == 200") still need the type prefix.
-        if exc_message.startswith("assert "):
+        if exc_message.lstrip().startswith("assert "):
             return f"{test_name}: AssertionError: {exc_message}"
         return f"{test_name}: {exc_message}"
 

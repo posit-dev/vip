@@ -62,13 +62,21 @@ class TestFormatConciseError:
         )
         assert result == "test_package_available[numpy]: Package numpy not found"
 
-    def test_empty_message_falls_back(self):
+    def test_empty_message_assertion_falls_back(self):
         result = _format_concise_error(
             nodeid="tests/connect/test_auth.py::test_login",
             exc_type="AssertionError",
             exc_message="",
         )
         assert result == "test_login: AssertionError"
+
+    def test_empty_message_unexpected_error(self):
+        result = _format_concise_error(
+            nodeid="tests/connect/test_api.py::test_api_call",
+            exc_type="ConnectionError",
+            exc_message="",
+        )
+        assert result == "test_api_call: an unexpected error occurred: ConnectionError"
 
 
 class TestExtractExceptionInfo:
