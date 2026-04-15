@@ -210,7 +210,7 @@ class TestVerifyLocalCredentialWarnings:
         out = capsys.readouterr().out
         assert "Warning" not in out
 
-    def test_with_username_no_warning(self, tmp_path, monkeypatch, capsys):
+    def test_with_both_creds_no_warning(self, tmp_path, monkeypatch, capsys):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
@@ -218,6 +218,24 @@ class TestVerifyLocalCredentialWarnings:
         _capture_cmd(_make_args(workbench_url="https://wb.example.com"))
         out = capsys.readouterr().out
         assert "Warning" not in out
+
+    def test_username_only_still_warns(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(workbench_url="https://wb.example.com"))
+        out = capsys.readouterr().out
+        assert "Warning" in out
+
+    def test_password_only_still_warns(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
+        _capture_cmd(_make_args(workbench_url="https://wb.example.com"))
+        out = capsys.readouterr().out
+        assert "Warning" in out
 
     def test_interactive_auth_suppresses_warning(self, tmp_path, monkeypatch, capsys):
         monkeypatch.chdir(tmp_path)

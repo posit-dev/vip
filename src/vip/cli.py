@@ -195,12 +195,12 @@ def _print_credential_warnings(config_path: str | None, *, interactive_auth: boo
     if interactive_auth:
         return
 
-    has_username = bool(cfg.auth.username)
+    has_creds = bool(cfg.auth.username and cfg.auth.password)
     needs_creds: list[str] = []
 
-    if cfg.connect.is_configured and not cfg.connect.api_key and not has_username:
+    if cfg.connect.is_configured and not cfg.connect.api_key and not has_creds:
         needs_creds.append("Connect")
-    if cfg.workbench.is_configured and not has_username:
+    if cfg.workbench.is_configured and not has_creds:
         needs_creds.append("Workbench")
 
     if needs_creds:
