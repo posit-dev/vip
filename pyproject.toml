@@ -87,6 +87,11 @@ filterwarnings = [
     # gherkin-official 29.0.0 passes maxsplit positionally to re.split;
     # fixed upstream but pulled transitively via pytest-bdd.
     "ignore:'maxsplit' is passed as positional argument:DeprecationWarning:gherkin",
+    # TLS downgrade tests deliberately use deprecated TLS 1.0/1.1 versions.
+    "ignore:ssl.TLSVersion.TLSv1:DeprecationWarning",
+    "ignore:ssl.TLSVersion.TLSv1_1:DeprecationWarning",
+    # pytest-bdd scenario functions return fixture values; not a real issue.
+    "ignore::pytest.PytestReturnNotNoneWarning",
 ]
 markers = [
     "connect: tests for Posit Connect",

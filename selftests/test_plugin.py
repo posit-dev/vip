@@ -139,11 +139,7 @@ class TestExtractExceptionInfo:
         assert exc_message == "something weird happened"
 
     def test_multiline_message(self):
-        longrepr = (
-            "tests/test_foo.py:5: in test_it\n"
-            "E   ValueError: line one\n"
-            "E       line two"
-        )
+        longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError: line one\nE       line two"
         exc_type, exc_message = _extract_exception_info(longrepr)
         assert exc_type == "ValueError"
         assert exc_message == "line one line two"
@@ -245,6 +241,80 @@ class TestPluginIntegration:
         result.stdout.fnmatch_lines(["*1 deselected*"])
         # Must NOT appear as SKIPPED
         assert "SKIPPED" not in result.stdout.str()
+
+    def test_bdd_given_configured_product_not_deselected(self, selftest_pytester):
+        """A BDD scenario with 'Given Connect is configured' should run
+        when Connect IS configured."""
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://example.com"\n'
+            ),
+        )
+        selftest_pytester.makefile(
+            ".feature",
+            test_configured=(
+                "@performance\n"
+                "Feature: Perf test\n"
+                "  Scenario: Load test Connect\n"
+                "    Given Connect is configured in vip.toml\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_configured="""
+            from pytest_bdd import scenario, given, then
+
+            @scenario("test_configured.feature", "Load test Connect")
+            def test_load():
+                pass
+
+            @given("Connect is configured in vip.toml")
+            def connect_configured():
+                pass
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+
+    def test_bdd_when_step_not_deselected(self, selftest_pytester):
+        """A 'When' step matching a product name should NOT trigger deselection."""
+        selftest_pytester.makefile(
+            ".feature",
+            test_when=(
+                "@performance\n"
+                "Feature: When step test\n"
+                "  Scenario: When Connect is configured check\n"
+                "    When Connect is configured in the report\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_when="""
+            from pytest_bdd import scenario, when, then
+
+            @scenario("test_when.feature", "When Connect is configured check")
+            def test_when_step():
+                pass
+
+            @when("Connect is configured in the report")
+            def connect_in_report():
+                pass
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+        # Ensure no tests were deselected (check the summary line, not raw text
+        # which may contain "deselected" in the tmpdir path).
+        assert "deselected" not in result.stdout.lines[-1]
 
     def test_version_skip(self, selftest_pytester):
         selftest_pytester.makefile(
@@ -541,9 +611,9 @@ class TestHeartbeat:
         from vip.plugin import _Heartbeat
 
         output: list[str] = []
-        hb = _Heartbeat(output.append, interval=0.1)
+        hb = _Heartbeat(output.append, interval=0.2)
         hb.start()
-        time.sleep(0.35)
+        time.sleep(0.7)
         hb.stop()
         assert len(output) >= 2
         assert "still running" in output[0]
@@ -561,9 +631,9 @@ class TestHeartbeat:
         from vip.plugin import _Heartbeat
 
         output: list[str] = []
-        hb = _Heartbeat(output.append, interval=0.1)
+        hb = _Heartbeat(output.append, interval=0.2)
         hb.start()
-        time.sleep(0.15)
+        time.sleep(0.5)
         hb.stop()
         assert len(output) >= 1
         # Should contain a number of seconds in parentheses

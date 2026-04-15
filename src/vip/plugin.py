@@ -297,11 +297,13 @@ def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
             if not pc.is_configured:
                 return True
 
-    # Check BDD scenario steps for product-configuration guards.
+    # Check BDD scenario "Given" steps for product-configuration guards.
     fn = getattr(item, "obj", None)
     scenario_obj = getattr(fn, "__scenario__", None) if fn else None
     if scenario_obj is not None:
         for step in getattr(scenario_obj, "steps", []):
+            if step.type != "given":
+                continue
             for prefix, product_key in _GIVEN_PRODUCT_STEPS.items():
                 if step.name.startswith(prefix):
                     pc = cfg.product_config(product_key)
@@ -390,9 +392,11 @@ def _extract_exception_info(longrepr: str) -> tuple[str, str]:
     )
     if m:
         msg_lines = [m.group(2).strip()]
-        # Gather continuation E-lines that follow immediately.
-        rest = longrepr[m.end() :]
-        for cont in re.finditer(r"^E\s{3,}(.+)", rest, re.MULTILINE):
+        # Gather only the contiguous block of E-lines that follow immediately.
+        for line in longrepr[m.end() :].lstrip("\n").splitlines():
+            cont = re.match(r"^E\s{3,}(.+)", line)
+            if not cont:
+                break
             msg_lines.append(cont.group(1).strip())
         return m.group(1), " ".join(line for line in msg_lines if line)
 
@@ -480,7 +484,7 @@ class _Heartbeat:
     def _run(self) -> None:
         while not self._stop_event.wait(self._interval):
             elapsed = int(time.monotonic() - self._start)
-            self._writer(f"  ... still running ({elapsed}s)\n")
+            self._writer(f"  ... still running ({elapsed}s)")
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -490,7 +494,7 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem) -> None:  # noqa: ARG00
     if _active_config is not None:
         tr = _active_config.pluginmanager.get_plugin("terminalreporter")
         if tr is not None:
-            heartbeat = _Heartbeat(tr._tw.write)
+            heartbeat = _Heartbeat(tr.write_line)
             heartbeat.start()
     try:
         yield

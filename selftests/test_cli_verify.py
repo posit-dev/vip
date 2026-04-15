@@ -248,6 +248,30 @@ class TestVerifyLocalCredentialCheck:
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
         _capture_cmd(_make_args(package_manager_url="https://pm.example.com"))
 
+    def test_category_filter_skips_unselected_product(self, tmp_path, monkeypatch):
+        """Workbench configured but only package-manager category selected."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text(
+            "[general]\n"
+            '[workbench]\nurl = "https://wb.example.com"\n'
+            '[package_manager]\nurl = "https://pm.example.com"\n'
+        )
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(config=str(cfg), categories="package_manager"))
+
+    def test_category_filter_still_exits_for_selected_product(self, tmp_path, monkeypatch):
+        """Workbench category selected without credentials should still exit."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text(
+            "[general]\n"
+            '[workbench]\nurl = "https://wb.example.com"\n'
+            '[package_manager]\nurl = "https://pm.example.com"\n'
+        )
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        self._run_and_expect_exit(_make_args(config=str(cfg), categories="workbench"))
+
 
 class TestVerifyLocalVerbose:
     """Review #87: verify -v is included by default in local runs."""
