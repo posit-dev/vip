@@ -405,7 +405,7 @@ def _run_verify_local(args: argparse.Namespace) -> None:
             categories=args.categories,
         )
 
-    cmd = [sys.executable, "-m", "pytest", "-v"]
+    cmd = [sys.executable, "-m", "pytest", "-v", "--no-header"]
 
     # Resolve the installed vip_tests package so pytest finds tests even
     # when running outside the source tree (e.g. ``pip install posit-vip``).
