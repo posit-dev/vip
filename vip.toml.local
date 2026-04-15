@@ -11,9 +11,10 @@
 deployment_name = "Local Docker Dev"
 
 [connect]
-# Disabled by default — Connect requires manual admin user bootstrap after first boot.
-# To enable: start with `just compose-up --profile connect`, create an admin at
-# http://localhost:3939, generate an API key, then set enabled = true and api_key below.
+# Disabled by default — Connect has self-registration enabled, but you must visit
+# http://localhost:3939 once after first boot to create the initial admin account.
+# To enable: start with `just compose-up --profile connect`, complete the one-time
+# admin setup, generate an API key, then set enabled = true and api_key below.
 enabled = false
 url = "http://localhost:3939"
 # api_key = "..."

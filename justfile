@@ -90,11 +90,10 @@ test-local *ARGS:
     uv run vip verify --config vip.toml.local --categories workbench {{ ARGS }}
 
 # Run VIP tests against the full local stack (requires RSC_LICENSE and RSPM_LICENSE).
-# NOTE: Connect and PM are disabled in vip.toml.local by default. Enable them in the
-# config after bootstrapping (create admin user in Connect, etc.) before running this.
+# Passes URL flags directly so Connect and PM don't need to be enabled in vip.toml.local.
 test-local-full *ARGS:
     docker compose --profile full up -d --wait
-    uv run vip verify --config vip.toml.local {{ ARGS }}
+    uv run vip verify --connect-url http://localhost:3939 --workbench-url http://localhost:8787 --package-manager-url http://localhost:4242 {{ ARGS }}
 
 # Generate a Quarto report from selftests (for CI / demo purposes)
 report-selftest:

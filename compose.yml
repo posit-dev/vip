@@ -15,6 +15,13 @@
 #     RSC_LICENSE        - Posit Connect license key
 #     RSPM_LICENSE       - Posit Package Manager license key
 #
+# Image versions:
+#   Image tags default to :latest for convenience. To pin versions for
+#   reproducible test environments, create a .env file (see .env.example):
+#     RSW_VERSION=2024.09.0
+#     RSC_VERSION=2024.09.0
+#     RSPM_VERSION=2024.09.0
+#
 # Limitations:
 #   - K8s-specific features (session capacity with resource profiles,
 #     cluster commands) cannot be tested locally.
@@ -22,7 +29,7 @@
 
 services:
   workbench:
-    image: rstudio/rstudio-workbench:latest
+    image: rstudio/rstudio-workbench:${RSW_VERSION:-latest}
     ports:
       - "8787:8787"
     environment:
@@ -41,7 +48,7 @@ services:
       start_period: 30s
 
   connect:
-    image: ghcr.io/rstudio/rstudio-connect:latest
+    image: ghcr.io/rstudio/rstudio-connect:${RSC_VERSION:-latest}
     ports:
       - "3939:3939"
     environment:
@@ -60,7 +67,7 @@ services:
       - connect
 
   packagemanager:
-    image: rstudio/rstudio-pm:latest
+    image: rstudio/rstudio-pm:${RSPM_VERSION:-latest}
     ports:
       - "4242:4242"
     environment:
