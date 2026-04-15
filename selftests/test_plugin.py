@@ -113,6 +113,24 @@ class TestExtractExceptionInfo:
         assert exc_type == "AssertionError"
         assert exc_message == "assert 403 == 200"
 
+    def test_bare_assert_no_type_prefix(self):
+        """pytest assertion rewriting produces 'E   assert ...' without AssertionError prefix."""
+        longrepr = (
+            "tests/connect/test_auth.py:10: in test_login\n"
+            "E       assert 403 == 200\n"
+            "E        +  where 403 = response.status_code"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "AssertionError"
+        assert exc_message == "assert 403 == 200"
+
+    def test_empty_message_after_type(self):
+        """ExcType with colon but no message text."""
+        longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError:"
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        # The regex requires at least one char after the colon, so this falls through.
+        assert exc_type == "UnknownError"
+
     def test_unknown_format_falls_back(self):
         longrepr = "something weird happened"
         exc_type, exc_message = _extract_exception_info(longrepr)
