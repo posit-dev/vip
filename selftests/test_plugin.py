@@ -376,6 +376,44 @@ class TestPluginIntegration:
             line.startswith("E") and "AssertionError" in line for line in result.stdout.lines
         ), "Expected a traceback 'E ... AssertionError' line in verbose output"
 
+    def test_concise_output_end_to_end(self, selftest_pytester):
+        """Full flow: concise terminal output + JSON report with both fields."""
+        selftest_pytester.makepyfile(
+            """
+            def test_passes():
+                assert True
+
+            def test_assertion_fails():
+                assert False, "Deployment check failed"
+
+            def test_error_fails():
+                raise RuntimeError("connection lost")
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+            "-v",
+        )
+        result.assert_outcomes(passed=1, failed=2)
+
+        # Terminal: concise output
+        result.stdout.fnmatch_lines(["*Deployment check failed*"])
+        result.stdout.fnmatch_lines(["*an unexpected error occurred*RuntimeError*connection lost*"])
+
+        # JSON: both fields present
+        data = json.loads(report_path.read_text())
+        failed = [r for r in data["results"] if r["outcome"] == "failed"]
+        for r in failed:
+            assert r["concise_error"] is not None
+            assert r["longrepr"] is not None
+            assert len(r["longrepr"]) > len(r["concise_error"])
+
+        passed = [r for r in data["results"] if r["outcome"] == "passed"]
+        for r in passed:
+            assert r["concise_error"] is None
+
 
 def test_markers_in_sync():
     """Markers in pyproject.toml match those registered in plugin.py."""
