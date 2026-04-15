@@ -272,9 +272,20 @@ class TestNormalizeCategories:
         assert _normalize_categories("package-manager") == "package_manager"
         assert _normalize_categories("cross-product") == "cross_product"
 
-    def test_underscore_category_rejected(self):
+    def test_underscore_category_accepted_for_backward_compat(self):
         from vip.cli import _normalize_categories
 
-        with pytest.raises(SystemExit) as exc_info:
-            _normalize_categories("package_manager")
-        assert exc_info.value.code == 1
+        assert _normalize_categories("package_manager") == "package_manager"
+        assert _normalize_categories("cross_product") == "cross_product"
+
+    def test_nested_parentheses(self):
+        from vip.cli import _normalize_categories
+
+        result = _normalize_categories("(connect and (workbench or performance))")
+        assert result == "(connect and (workbench or performance))"
+
+    def test_parenthesized_expression(self):
+        from vip.cli import _normalize_categories
+
+        result = _normalize_categories("(package-manager or cross-product)")
+        assert result == "(package_manager or cross_product)"

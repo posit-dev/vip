@@ -23,14 +23,16 @@ if TYPE_CHECKING:
 _JOB_CLEANUP_BUFFER_SECONDS = 60
 _JOB_MIN_PYTEST_TIMEOUT_SECONDS = 60
 
-# Valid test categories. Keys are the user-facing names (hyphenated); values
-# are the pytest marker names (underscored) used internally.
+# Valid test categories. Maps every accepted spelling (hyphenated and
+# underscored) to the internal pytest marker name.
 VALID_CATEGORIES: dict[str, str] = {
     "prerequisites": "prerequisites",
     "connect": "connect",
     "workbench": "workbench",
     "package-manager": "package_manager",
+    "package_manager": "package_manager",
     "cross-product": "cross_product",
+    "cross_product": "cross_product",
     "performance": "performance",
     "security": "security",
 }
@@ -38,31 +40,38 @@ VALID_CATEGORIES: dict[str, str] = {
 # Marker expression keywords that are not category names.
 _MARKER_KEYWORDS = {"and", "or", "not"}
 
+# Regex matching a single identifier token (may contain hyphens or underscores).
+_IDENT_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
+
 
 def _normalize_categories(expr: str) -> str:
     """Validate and normalize a ``--categories`` expression.
 
-    Accepts user-facing hyphenated names (e.g. ``package-manager``) and
-    translates them to the underscore-based pytest marker names.  Raises
-    :class:`SystemExit` if any token is not a valid category.
+    Accepts user-facing hyphenated names (e.g. ``package-manager``) as well
+    as underscore names (``package_manager``) and translates both to the
+    internal pytest marker names.  Raises :class:`SystemExit` if any
+    identifier token is not a recognised category or keyword.
     """
-    tokens = re.split(r"([\s()]+)", expr)
-    normalized: list[str] = []
-    for tok in tokens:
-        stripped = tok.strip()
-        if not stripped or stripped in ("(", ")") or stripped in _MARKER_KEYWORDS:
-            normalized.append(tok)
-            continue
-        if stripped in VALID_CATEGORIES:
-            normalized.append(tok.replace(stripped, VALID_CATEGORIES[stripped]))
-        else:
-            valid = ", ".join(sorted(VALID_CATEGORIES))
-            print(
-                f"Error: unknown category '{stripped}'. Valid categories: {valid}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-    return "".join(normalized)
+
+    def _replace(match: re.Match[str]) -> str:
+        word = match.group(0)
+        if word in _MARKER_KEYWORDS:
+            return word
+        if word in VALID_CATEGORIES:
+            return VALID_CATEGORIES[word]
+        # Show one name per category, preferring the hyphenated form.
+        seen: dict[str, str] = {}
+        for k, v in VALID_CATEGORIES.items():
+            if v not in seen or "-" in k:
+                seen[v] = k
+        valid = ", ".join(sorted(seen.values()))
+        print(
+            f"Error: unknown category '{word}'. Valid categories: {valid}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return _IDENT_RE.sub(_replace, expr)
 
 
 def _connect_cluster(cluster_config) -> Path:
