@@ -84,12 +84,18 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     _log(">>> Okta: password submitted.")
 
     # Step 3: wait for either MFA challenge or redirect back to product.
-    # Okta MFA pages have "/challenge" in the URL.  Wait for the URL to
-    # settle (either on a challenge page or elsewhere).
-    _log(">>> Okta: checking for MFA challenge ...")
-    try:
-        page.wait_for_url(lambda url: "/challenge" in url.lower(), timeout=_MFA_DETECT_TIMEOUT)
-    except PlaywrightTimeout:
+    # Okta MFA pages often have "/challenge" in the URL, but some flows
+    # use "/verify" or other patterns.  Wait for the page to settle after
+    # password submission, then check the URL.
+    page.wait_for_load_state("networkidle")
+    current_url = page.url
+    _log(f">>> Okta: post-password URL: {current_url}")
+
+    # Check for MFA by looking at the URL and page content.
+    mfa_url_patterns = ("/challenge", "/verify", "/mfa", "/factor")
+    is_mfa = any(pattern in current_url.lower() for pattern in mfa_url_patterns)
+
+    if not is_mfa:
         _log(">>> Okta: no MFA challenge detected, proceeding.")
         return
 
