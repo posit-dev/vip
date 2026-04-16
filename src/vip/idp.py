@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 # Keycloak selectors — validated by PPM's e2e test suite.
 _KC_USERNAME = "input[id='username']"
@@ -44,7 +45,7 @@ def _fill_keycloak_login(page: Page, username: str, password: str) -> None:
     otp_field = page.locator(_KC_OTP)
     try:
         otp_field.wait_for(state="visible", timeout=_MFA_DETECT_TIMEOUT)
-    except Exception:
+    except PlaywrightTimeout:
         # No OTP field appeared — we're either redirecting or already redirected.
         return
 
@@ -70,18 +71,18 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     # settle (either on a challenge page or elsewhere).
     try:
         page.wait_for_url(lambda url: "/challenge" in url.lower(), timeout=_MFA_DETECT_TIMEOUT)
-    except Exception:
+    except PlaywrightTimeout:
         # No MFA challenge — already redirecting back to product.
         return
 
     # Determine MFA type from page content.
     totp_input = page.locator("input[name='credentials.passcode']")
     try:
-        totp_input.wait_for(state="visible", timeout=5_000)
+        totp_input.wait_for(state="visible", timeout=_MFA_DETECT_TIMEOUT)
         code = input(">>> Enter your verification code: ").strip()
         totp_input.fill(code)
         page.locator(_OKTA_SUBMIT).first.click()
-    except Exception:
+    except PlaywrightTimeout:
         # Push notification or other factor — wait for user to approve.
         print(">>> Approve the notification on your device, then press Enter.")
         input()

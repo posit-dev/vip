@@ -264,6 +264,13 @@ def start_headless_auth(
     The *idp* parameter selects which form automation strategy to use
     (e.g. ``"keycloak"``, ``"okta"``).
     """
+    # Check for a valid cached session before validating credentials/idp,
+    # so a warm cache works even when env vars are not set.
+    if cache_path:
+        cached = _load_cached_auth(cache_path)
+        if cached is not None:
+            return cached
+
     from vip.idp import get_idp_strategy
 
     if not connect_url and not workbench_url:
@@ -277,12 +284,6 @@ def start_headless_auth(
         )
 
     fill_login = get_idp_strategy(idp)
-
-    # Check for a valid cached session.
-    if cache_path:
-        cached = _load_cached_auth(cache_path)
-        if cached is not None:
-            return cached
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
