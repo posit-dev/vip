@@ -278,27 +278,32 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     except PlaywrightTimeout:
         pass
 
-    # Now wait for the TOTP input to appear.  Try multiple selectors
-    # since the field name may differ after authenticator selection.
+    # Now wait for the TOTP input to appear.  Try each selector in
+    # priority order and use the first one that becomes visible.
     totp_selectors = (
         "input[name='credentials.passcode']",
         "input[name='credentials.totp']",
         "input[autocomplete='one-time-code']",
         "input[data-se='credentials.passcode']",
-        "input[type='tel']",
     )
-    totp_input = page.locator(", ".join(totp_selectors))
-    try:
-        totp_input.first.wait_for(state="visible", timeout=_MFA_DETECT_TIMEOUT)
-        totp_visible = True
-    except PlaywrightTimeout:
-        totp_visible = False
-    if totp_visible:
+    totp_field = None
+    deadline_totp = _time.monotonic() + _MFA_DETECT_TIMEOUT / 1000
+    while _time.monotonic() < deadline_totp:
+        for sel in totp_selectors:
+            loc = page.locator(sel)
+            if loc.count() > 0 and loc.first.is_visible():
+                totp_field = loc.first
+                break
+        if totp_field:
+            break
+        page.wait_for_timeout(500)
+
+    if totp_field:
         _log(">>> Okta: TOTP input detected.")
-        totp_input.first.clear()
+        totp_field.clear()
         code = input(">>> Enter your verification code: ").strip()
         _log(">>> Okta: filling TOTP code ...")
-        totp_input.first.fill(code)
+        totp_field.fill(code)
         _log(">>> Okta: clicking verify ...")
         page.locator(_OKTA_SUBMIT).first.click()
         _log(">>> Okta: TOTP code submitted.")
