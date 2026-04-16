@@ -173,6 +173,41 @@ def pytest_configure(config: pytest.Config) -> None:
                 "API-based tests will likely fail. Set VIP_CONNECT_API_KEY to fix.",
                 stacklevel=1,
             )
+    elif config.getoption("--headless-auth"):
+        connect_url = vip_cfg.connect.url if vip_cfg.connect.is_configured else None
+        wb_url = vip_cfg.workbench.url if vip_cfg.workbench.is_configured else None
+
+        if not connect_url and not wb_url:
+            raise pytest.UsageError(
+                "--headless-auth requires at least one product URL (Connect or Workbench)"
+            )
+        if not vip_cfg.auth.idp:
+            raise pytest.UsageError(
+                '--headless-auth requires [auth] idp in vip.toml (e.g. idp = "keycloak")'
+            )
+
+        from pathlib import Path
+
+        from vip.auth import start_headless_auth
+
+        cache_path = Path(config.rootpath) / ".vip-auth-cache.json"
+        session = start_headless_auth(
+            connect_url=connect_url,
+            workbench_url=wb_url,
+            idp=vip_cfg.auth.idp,
+            username=vip_cfg.auth.username,
+            password=vip_cfg.auth.password,
+            cache_path=cache_path,
+        )
+        config.stash[_auth_session_key] = session
+        if session.api_key:
+            vip_cfg.connect.api_key = session.api_key
+        elif connect_url:
+            warnings.warn(
+                "VIP: --headless-auth could not mint an API key. "
+                "API-based tests will likely fail. Set VIP_CONNECT_API_KEY to fix.",
+                stacklevel=1,
+            )
 
 
 def _restore_worker_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
