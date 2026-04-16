@@ -226,10 +226,14 @@ class TestClassifyRepos:
         assert cran == ["good"]
 
     def test_empty_list(self):
-        from vip.load_engine import classify_repos
-
         cran, pypi = classify_repos([])
         assert cran == []
+        assert pypi == []
+
+    def test_non_dict_items_skipped(self):
+        repos = [None, "bad", 42, {"name": "cran", "type": "R"}]
+        cran, pypi = classify_repos(repos)
+        assert cran == ["cran"]
         assert pypi == []
 
 

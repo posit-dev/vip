@@ -247,6 +247,8 @@ def classify_repos(repos: list[dict]) -> tuple[list[str], list[str]]:
     cran: list[str] = []
     pypi: list[str] = []
     for repo in repos:
+        if not isinstance(repo, dict):
+            continue
         name = repo.get("name", "")
         if not name:
             continue
