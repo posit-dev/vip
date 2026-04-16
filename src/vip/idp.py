@@ -31,61 +31,86 @@ _MFA_DETECT_TIMEOUT = 10_000
 _MFA_TIMEOUT = 300_000  # 5 minutes
 
 
+def _print_flush(msg: str) -> None:
+    """Print a message and flush immediately so it appears in subprocess output."""
+    print(msg, flush=True)
+
+
 def _fill_keycloak_login(page: Page, username: str, password: str) -> None:
     """Fill Keycloak's single-page login form and handle optional TOTP."""
+    _log = _print_flush
+    _log(">>> Keycloak: waiting for login form ...")
     page.locator(_KC_SUBMIT).wait_for(timeout=_FORM_TIMEOUT)
 
     page.locator(_KC_USERNAME).fill(username)
     page.locator(_KC_PASSWORD).fill(password)
     page.locator(_KC_SUBMIT).click()
+    _log(">>> Keycloak: credentials submitted.")
 
     # After submit, either we redirect back to the product (no MFA) or we
     # land on an OTP page.  Wait for either the OTP field to appear or for
     # the URL to leave the Keycloak domain (redirect back to product).
+    _log(">>> Keycloak: checking for MFA challenge ...")
     otp_field = page.locator(_KC_OTP)
     try:
         otp_field.wait_for(state="visible", timeout=_MFA_DETECT_TIMEOUT)
     except PlaywrightTimeout:
-        # No OTP field appeared — we're either redirecting or already redirected.
+        _log(">>> Keycloak: no MFA challenge detected, proceeding.")
         return
 
+    _log(">>> Keycloak: TOTP input detected.")
     code = input(">>> Enter your verification code: ").strip()
     otp_field.fill(code)
     page.locator(_KC_SUBMIT).click()
+    _log(">>> Keycloak: TOTP code submitted.")
 
 
 def _fill_okta_login(page: Page, username: str, password: str) -> None:
     """Fill Okta's multi-step login form and handle optional MFA."""
+    _log = _print_flush
+
     # Step 1: identifier page.
+    _log(">>> Okta: waiting for identifier field ...")
     page.locator(_OKTA_IDENTIFIER).wait_for(timeout=_FORM_TIMEOUT)
     page.locator(_OKTA_IDENTIFIER).fill(username)
     page.locator(_OKTA_SUBMIT).first.click()
+    _log(">>> Okta: identifier submitted.")
 
     # Step 2: password page.
+    _log(">>> Okta: waiting for password field ...")
     page.locator(_OKTA_PASSCODE).wait_for(timeout=_FORM_TIMEOUT)
     page.locator(_OKTA_PASSCODE).fill(password)
     page.locator(_OKTA_SUBMIT).first.click()
+    _log(">>> Okta: password submitted.")
 
     # Step 3: wait for either MFA challenge or redirect back to product.
     # Okta MFA pages have "/challenge" in the URL.  Wait for the URL to
     # settle (either on a challenge page or elsewhere).
+    _log(">>> Okta: checking for MFA challenge ...")
     try:
         page.wait_for_url(lambda url: "/challenge" in url.lower(), timeout=_MFA_DETECT_TIMEOUT)
     except PlaywrightTimeout:
-        # No MFA challenge — already redirecting back to product.
+        _log(">>> Okta: no MFA challenge detected, proceeding.")
         return
+
+    _log(f">>> Okta: MFA challenge detected at {page.url}")
 
     # Determine MFA type from page content.
     totp_input = page.locator("input[name='credentials.passcode']")
     try:
         totp_input.wait_for(state="visible", timeout=_MFA_DETECT_TIMEOUT)
+        _log(">>> Okta: TOTP input detected.")
         code = input(">>> Enter your verification code: ").strip()
         totp_input.fill(code)
         page.locator(_OKTA_SUBMIT).first.click()
+        _log(">>> Okta: TOTP code submitted.")
     except PlaywrightTimeout:
         # Push notification or other factor — wait for user to approve.
-        print(">>> Approve the notification on your device, then press Enter.")
+        _log(">>> Okta: no TOTP input found — assuming push/other MFA factor.")
+        print(">>> Approve the notification on your device, then press Enter.",
+              flush=True)
         input()
+        _log(">>> Okta: waiting for MFA approval redirect ...")
         page.wait_for_url(
             lambda url: "/challenge" not in url.lower(),
             timeout=_MFA_TIMEOUT,

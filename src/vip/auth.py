@@ -316,16 +316,18 @@ def start_headless_auth(
         page = context.new_page()
 
         target = f"{primary_url}{login_path}"
-        print(f"\n>>> Headless auth: navigating to {target} ...")
+        print(f"\n>>> Headless auth: navigating to {target} ...", flush=True)
         page.goto(target)
         page.wait_for_load_state("domcontentloaded")
+        print(f">>> Page loaded, URL: {page.url}", flush=True)
 
         # Follow redirects to the IdP login page.  The product may show
         # a "Sign in with OpenID" button (Workbench) or auto-redirect
         # (Connect).  Click through if needed.
         _navigate_to_idp(page, primary_url)
+        print(f">>> At IdP login page: {page.url}", flush=True)
 
-        print(f">>> Filling credentials for {username} ...")
+        print(f">>> Filling credentials for {username} ...", flush=True)
         fill_login(page, username, password)
 
         # Wait for redirect back to the product.
