@@ -89,61 +89,89 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     page.locator(_OKTA_PASSCODE).wait_for(timeout=_FORM_TIMEOUT)
     page.locator(_OKTA_PASSCODE).fill(password)
 
+    # Record the submit button text so we can detect when the form changes.
+    # Okta relabels the submit button between steps (e.g. "Next" → "Verify").
+    submit_text_before = page.locator(_OKTA_SUBMIT).first.text_content() or ""
     page.locator(_OKTA_SUBMIT).first.click()
     _log(">>> Okta: password submitted, waiting for response ...")
 
     # Step 3: detect what happened after password submission.
     #
-    # Okta's login widget is a SPA — the URL may NOT change when
-    # transitioning between steps (password → MFA → authenticator
-    # selection all happen at the same /authorize URL).  Instead of
-    # waiting for a URL change, wait for the password field to
-    # disappear (indicating Okta accepted the credentials and moved
-    # to the next view) OR an error banner to appear.
+    # Okta's login widget is a SPA — the URL often does NOT change
+    # between steps.  The TOTP MFA step reuses the same
+    # input[name='credentials.passcode'] field, so we can't rely on
+    # it disappearing.  Instead, poll for state changes:
+    # - URL changed (redirect to product = no MFA)
+    # - Error banner appeared (bad credentials)
+    # - Page heading/submit button text changed (form transitioned)
+    # - New MFA-specific elements appeared
+    import time as _time
+
     from vip.auth import AuthConfigError
 
-    error_banner = page.locator(
-        "[data-se='o-form-error-container'], "
-        ".okta-form-infobox-error, "
+    pre_submit_url = page.url
+    deadline = _time.monotonic() + 30
+
+    error_selectors = (
+        "[data-se='o-form-error-container'],"
+        ".okta-form-infobox-error,"
         "[class*='error-message']"
     )
+    mfa_selectors = (
+        "[data-se='authenticator-verify-list'],"
+        "[data-se='okta_verify-push'],"
+        "[data-se='google_otp'],"
+        "[class*='authenticator-button'],"
+        "[data-se='phone_number']"
+    )
 
-    try:
-        # Wait for either: password field hidden (success) or error visible.
-        page.locator(f"{_OKTA_PASSCODE}:not(:visible)").or_(error_banner).first.wait_for(
-            timeout=30_000,
-        )
-    except PlaywrightTimeout:
-        _log(f">>> Okta: page stuck after password submit: {_sanitize_url(page.url)}")
+    while _time.monotonic() < deadline:
+        # Check: URL changed (redirect to product).
+        if page.url != pre_submit_url:
+            _log(f">>> Okta: URL changed to: {_sanitize_url(page.url)}")
+            break
+
+        # Check: error banner visible.
+        error = page.locator(error_selectors).first
+        if error.is_visible():
+            error_msg = (error.text_content() or "").strip()
+            _log(f">>> Okta: login error: {error_msg}")
+            raise AuthConfigError(f"Okta login failed: {error_msg}")
+
+        # Check: MFA-specific elements appeared.
+        if page.locator(mfa_selectors).first.is_visible():
+            _log(">>> Okta: MFA authenticator elements detected.")
+            break
+
+        # Check: submit button text changed (form transitioned).
+        submit_text_now = page.locator(_OKTA_SUBMIT).first.text_content() or ""
+        if submit_text_now and submit_text_now != submit_text_before:
+            _log(f">>> Okta: form transitioned (button changed to {submit_text_now!r})")
+            break
+
+        # Check: a heading with "verify" suggests MFA.
+        heading = page.locator("h2, [data-se='o-form-head']").first
+        heading_text = (heading.text_content() or "").lower() if heading.is_visible() else ""
+        if "verify" in heading_text or "factor" in heading_text or "authenticator" in heading_text:
+            _log(f">>> Okta: MFA heading detected: {heading_text.strip()!r}")
+            break
+
+        page.wait_for_timeout(500)
+    else:
+        _log(f">>> Okta: no state change after 30s: {_sanitize_url(page.url)}")
         raise AuthConfigError(
             "Okta login did not respond after password submission. "
             "Check credentials and IdP configuration."
         )
 
-    # Check if an error appeared.
-    if error_banner.first.is_visible():
-        error_msg = error_banner.first.text_content() or ""
-        _log(f">>> Okta: login error: {error_msg.strip()}")
-        raise AuthConfigError(f"Okta login failed: {error_msg.strip()}")
-
     _log(f">>> Okta: password accepted. URL: {_sanitize_url(page.url)}")
 
-    # The password field is gone — Okta moved to the next view.
-    # This could be: MFA challenge (same URL), or redirect to product
-    # (URL changed to callback).  Check both.
+    # Determine whether we're in an MFA flow or already redirecting.
     current_url = page.url.lower()
     mfa_url_patterns = ("/challenge", "/verify", "/mfa", "/factor")
     url_has_mfa = any(p in current_url for p in mfa_url_patterns)
 
-    # Also check for MFA-related page content (Okta may stay at the
-    # authorize URL while showing an authenticator selection view).
-    mfa_content = page.locator(
-        "[data-se='authenticator-verify-list'], "
-        "[data-se='okta_verify-push'], "
-        "[data-se='google_otp'], "
-        "input[name='credentials.passcode'], "
-        "[class*='authenticator']"
-    )
+    mfa_content = page.locator(f"{mfa_selectors},input[name='credentials.passcode']")
     has_mfa_content = mfa_content.first.is_visible()
 
     if not url_has_mfa and not has_mfa_content:
