@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import os
 import statistics
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -235,6 +235,11 @@ def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestRe
 # ---------------------------------------------------------------------------
 
 
+def _stderr(msg: str) -> None:
+    """Write *msg* directly to fd 2, bypassing Python/gevent buffering."""
+    os.write(2, (msg + "\n").encode())
+
+
 def _log_request(
     request_type: str,
     name: str,
@@ -246,13 +251,9 @@ def _log_request(
     """Print a single Locust request to stderr for ``--verbose`` diagnostics."""
     elapsed_s = (response_time or 0) / 1000.0
     if exception:
-        print(
-            f"[locust] {request_type} {name} {elapsed_s:.2f}s FAIL {exception}",
-            file=sys.stderr,
-            flush=True,
-        )
+        _stderr(f"[locust] {request_type} {name} {elapsed_s:.2f}s FAIL {exception}")
     else:
-        print(f"[locust] {request_type} {name} {elapsed_s:.2f}s", file=sys.stderr, flush=True)
+        _stderr(f"[locust] {request_type} {name} {elapsed_s:.2f}s")
 
 
 def run_user_simulation(
@@ -314,20 +315,18 @@ def run_user_simulation(
     env._vip_credentials = credentials or {}  # type: ignore[attr-defined]
     if verbose:
         env.events.request.add_listener(_log_request)
-        print(
+        _stderr(
             f"[locust] starting {users} {user_class_name} users against {host} "
-            f"for {config.load_test_duration}s",
-            file=sys.stderr,
-            flush=True,
+            f"for {config.load_test_duration}s"
         )
     runner = env.create_local_runner()
     runner.start(users, spawn_rate=config.load_test_spawn_rate)
     gevent.sleep(config.load_test_duration)
     if verbose:
-        print("[locust] duration elapsed, stopping runner...", file=sys.stderr, flush=True)
+        _stderr("[locust] duration elapsed, stopping runner...")
     runner.stop()
     if verbose:
-        print("[locust] runner stopped, quitting...", file=sys.stderr, flush=True)
+        _stderr("[locust] runner stopped, quitting...")
     runner.quit()
 
     stats = env.stats.total

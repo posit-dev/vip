@@ -171,9 +171,9 @@ class TestErrors:
 
 
 class TestLogRequest:
-    """The _log_request callback prints a line per Locust request to stderr."""
+    """The _log_request callback writes to fd 2 (bypasses gevent buffering)."""
 
-    def test_success_line(self, capsys):
+    def test_success_line(self, capfd):
         _log_request(
             request_type="GET",
             name="/__api__/repos",
@@ -181,12 +181,12 @@ class TestLogRequest:
             response_length=1024,
             exception=None,
         )
-        line = capsys.readouterr().err.strip()
+        line = capfd.readouterr().err.strip()
         assert "[locust] GET /__api__/repos" in line
         assert "0.34s" in line
         assert "200" not in line  # no status code in success line
 
-    def test_failure_line(self, capsys):
+    def test_failure_line(self, capfd):
         _log_request(
             request_type="GET",
             name="/timeout",
@@ -194,12 +194,12 @@ class TestLogRequest:
             response_length=0,
             exception=ConnectionError("timed out"),
         )
-        line = capsys.readouterr().err.strip()
+        line = capfd.readouterr().err.strip()
         assert "[locust] GET /timeout" in line
         assert "FAIL" in line
         assert "timed out" in line
 
-    def test_zero_response_time(self, capsys):
+    def test_zero_response_time(self, capfd):
         _log_request(
             request_type="GET",
             name="/fast",
@@ -207,5 +207,5 @@ class TestLogRequest:
             response_length=0,
             exception=None,
         )
-        line = capsys.readouterr().err.strip()
+        line = capfd.readouterr().err.strip()
         assert "0.00s" in line
