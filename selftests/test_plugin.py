@@ -715,7 +715,7 @@ class TestHeadlessAuthPluginWiring:
         )
         pytester.makepyfile("def test_placeholder(): pass")
         result = pytester.runpytest("--vip-config=vip.toml", "--headless-auth")
-        assert result.ret != 0
+        assert result.ret == pytest.ExitCode.USAGE_ERROR
         result.stderr.fnmatch_lines(["*--headless-auth requires*idp*"])
 
 
