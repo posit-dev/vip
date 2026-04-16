@@ -1,4 +1,5 @@
 ; Posit Connect configuration for local VIP development.
+; WARNING: This config is for local dev only — do not use in production.
 ; Uses password auth so tests can run without SSO.
 
 [Server]
@@ -13,6 +14,7 @@ Provider = password
 
 [Password]
 ; Allow self-registration so the first user can create an admin account.
+; WARNING: Open registration — anyone who can reach port 3939 can create accounts.
 SelfRegistration = true
 
 [Python]
