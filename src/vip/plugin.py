@@ -199,6 +199,7 @@ def pytest_configure(config: pytest.Config) -> None:
                 username=vip_cfg.auth.username,
                 password=vip_cfg.auth.password,
                 cache_path=cache_path,
+                verbose=config.getoption("--vip-verbose", default=False),
             )
         except AuthConfigError as exc:
             raise pytest.UsageError(str(exc)) from None

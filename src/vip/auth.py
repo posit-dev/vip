@@ -256,6 +256,7 @@ def start_headless_auth(
     username: str = "",
     password: str = "",
     cache_path: Path | None = None,
+    verbose: bool = False,
 ) -> InteractiveAuthSession:
     """Launch a headless browser, automate OIDC login, and optionally
     mint a Connect API key through the UI.
@@ -269,6 +270,10 @@ def start_headless_auth(
     The *idp* parameter selects which form automation strategy to use
     (e.g. ``"keycloak"``, ``"okta"``).
     """
+    import vip.idp as _idp_mod
+
+    _idp_mod._verbose = verbose
+
     if not connect_url and not workbench_url:
         raise AuthConfigError(
             "--headless-auth requires at least one product URL (Connect or Workbench)"
@@ -315,21 +320,19 @@ def start_headless_auth(
         context = browser.new_context()
         page = context.new_page()
 
+        from vip.idp import _log_verbose, _sanitize_url
+
         target = f"{primary_url}{login_path}"
-        print(f"\n>>> Headless auth: navigating to {target} ...", flush=True)
+        print(f"\n>>> Headless auth: authenticating to {primary_url} ...", flush=True)
         page.goto(target)
         page.wait_for_load_state("domcontentloaded")
-        from vip.idp import _sanitize_url
-
-        print(f">>> Page loaded, URL: {_sanitize_url(page.url)}", flush=True)
+        _log_verbose(f">>> Page loaded, URL: {_sanitize_url(page.url)}")
 
         # Follow redirects to the IdP login page.  The product may show
         # a "Sign in with OpenID" button (Workbench) or auto-redirect
         # (Connect).  Click through if needed.
         _navigate_to_idp(page, primary_url)
-        print(f">>> At IdP login page: {_sanitize_url(page.url)}", flush=True)
-
-        print(f">>> Filling credentials for {username} ...", flush=True)
+        _log_verbose(f">>> At IdP login page: {_sanitize_url(page.url)}")
         fill_login(page, username, password)
 
         # Wait for redirect back to the product.
