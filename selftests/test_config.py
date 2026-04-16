@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from vip.config import (
+    AuthConfig,
     ClusterConfig,
     ConnectConfig,
     Mode,
@@ -13,6 +14,24 @@ from vip.config import (
     VIPConfig,
     load_config,
 )
+
+
+class TestAuthConfig:
+    def test_idp_defaults_to_empty(self):
+        ac = AuthConfig()
+        assert ac.idp == ""
+
+    def test_idp_from_constructor(self):
+        ac = AuthConfig(idp="keycloak")
+        assert ac.idp == "keycloak"
+
+    def test_from_dict_with_idp(self):
+        ac = AuthConfig.from_dict({"provider": "oidc", "idp": "okta"})
+        assert ac.idp == "okta"
+
+    def test_from_dict_without_idp(self):
+        ac = AuthConfig.from_dict({"provider": "password"})
+        assert ac.idp == ""
 
 
 class TestProductConfig:

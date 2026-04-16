@@ -133,6 +133,7 @@ class AuthConfig:
     provider: str = "password"
     username: str = ""
     password: str = ""
+    idp: str = ""
 
     def __post_init__(self) -> None:
         if not self.username:
@@ -146,6 +147,7 @@ class AuthConfig:
             provider=raw.get("provider", "password"),
             username=raw.get("username", ""),
             password=raw.get("password", ""),
+            idp=raw.get("idp", ""),
         )
 
 
