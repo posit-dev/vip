@@ -796,7 +796,7 @@ def main() -> None:
         "--headless-auth",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Automate OIDC login in a headless browser (requires [auth] idp in config)",
+        help="Automate login in a headless browser (OIDC/SAML requires [auth] idp in config)",
     )
     verify_parser.add_argument(
         "--no-auth",

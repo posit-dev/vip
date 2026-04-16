@@ -286,20 +286,19 @@ def start_headless_auth(
         if cached is not None:
             return cached
 
-    from vip.idp import get_idp_strategy
-
-    if not idp:
-        raise AuthConfigError(
-            "--headless-auth requires [auth] idp in vip.toml"
-            ' (supported: "keycloak", "okta")'
-        )
     if not username or not password:
         raise AuthConfigError(
             "--headless-auth requires test credentials. "
             "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD."
         )
 
-    fill_login = get_idp_strategy(idp)
+    # When an IdP is configured (OIDC/SAML), use IdP-specific form
+    # automation.  Otherwise, fill the product's native login form.
+    fill_login = None
+    if idp:
+        from vip.idp import get_idp_strategy
+
+        fill_login = get_idp_strategy(idp)
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
@@ -328,12 +327,14 @@ def start_headless_auth(
         page.wait_for_load_state("domcontentloaded")
         _log_verbose(f">>> Page loaded, URL: {_sanitize_url(page.url)}")
 
-        # Follow redirects to the IdP login page.  The product may show
-        # a "Sign in with OpenID" button (Workbench) or auto-redirect
-        # (Connect).  Click through if needed.
-        _navigate_to_idp(page, primary_url)
-        _log_verbose(f">>> At IdP login page: {_sanitize_url(page.url)}")
-        fill_login(page, username, password)
+        if fill_login:
+            # OIDC/SAML: navigate to IdP and automate its login form.
+            _navigate_to_idp(page, primary_url)
+            _log_verbose(f">>> At IdP login page: {_sanitize_url(page.url)}")
+            fill_login(page, username, password)
+        else:
+            # Password/LDAP: fill the product's native login form directly.
+            _fill_product_login(page, username, password)
 
         # Wait for redirect back to the product.
         _wait_for_product_redirect(page, primary_url)
@@ -415,6 +416,31 @@ def _navigate_to_idp(page: Page, product_url: str) -> None:
         )
     except Exception:
         pass
+
+
+def _fill_product_login(page: Page, username: str, password: str) -> None:
+    """Fill a product's native login form (password/LDAP auth).
+
+    Works for Connect and Workbench login forms that present username
+    and password fields directly (not OIDC/SAML redirect flows).
+    """
+    from vip.idp import _log_verbose
+
+    # Common selectors for Connect and Workbench login forms.
+    username_selectors = "#username, input[name='username'], input[type='text']"
+    password_selectors = "#password, input[name='password'], input[type='password']"
+    submit_selectors = (
+        "#signinbutton, #kc-login, "
+        "button[type='submit'], input[type='submit'], "
+        "button:has-text('Sign in'), button:has-text('Log in')"
+    )
+
+    _log_verbose(">>> Filling product login form ...")
+    page.locator(username_selectors).first.wait_for(timeout=15_000)
+    page.locator(username_selectors).first.fill(username)
+    page.locator(password_selectors).first.fill(password)
+    page.locator(submit_selectors).first.click()
+    _log_verbose(">>> Product login form submitted.")
 
 
 def _wait_for_product_redirect(page: Page, product_url: str) -> None:
