@@ -24,6 +24,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "pytest_args": [],
         "verbose": False,
         "test_timeout": 180,
+        "headless_auth": False,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -508,3 +509,19 @@ class TestVerifyLocalTestTimeout:
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "timed out" in err.lower()
+
+
+class TestHeadlessAuth:
+    def test_headless_auth_flag_passed_to_pytest(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), headless_auth=True))
+        assert "--headless-auth" in cmd
+
+    def test_headless_auth_skips_credential_check(self, tmp_path, capsys):
+        """--headless-auth should skip the credential check like --interactive-auth."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text('[general]\n[connect]\nurl = "https://c.example.com"\n')
+        # No credentials set, but headless_auth is True — should not error
+        cmd = _capture_cmd(_make_args(config=str(cfg), headless_auth=True))
+        assert "--headless-auth" in cmd

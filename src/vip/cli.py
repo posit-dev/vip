@@ -233,8 +233,8 @@ def _check_credentials(
         products = " and ".join(needs_creds)
         print(
             f"\033[1mError: {products} tests selected but no credentials provided.\033[0m\n"
-            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD, use --interactive-auth,\n"
-            "or use --no-auth to skip tests that require authentication.",
+            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD, use --interactive-auth or\n"
+            "--headless-auth, or use --no-auth to skip tests that require authentication.",
             file=sys.stderr,
             flush=True,
         )
@@ -395,13 +395,21 @@ def _run_verify_local(args: argparse.Namespace) -> None:
             )
             sys.exit(1)
 
+    if args.interactive_auth and args.headless_auth:
+        print(
+            "\033[1mError: --interactive-auth and --headless-auth are mutually exclusive.\033[0m",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
+
     # Print notes for products that are not configured so the user knows
     # upfront which categories will be skipped.
     _print_skip_notes(config_path)
     if not args.no_auth:
         _check_credentials(
             config_path,
-            interactive_auth=args.interactive_auth,
+            interactive_auth=args.interactive_auth or args.headless_auth,
             categories=args.categories,
         )
 
@@ -423,6 +431,8 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append(f"--vip-report={args.report}")
     if args.interactive_auth:
         cmd.append("--interactive-auth")
+    if args.headless_auth:
+        cmd.append("--headless-auth")
     if args.no_auth:
         cmd.append("--no-auth")
     for ext in args.extensions or []:
@@ -740,6 +750,12 @@ def main() -> None:
         default=False,
         help="Launch a browser for OIDC login (default: disabled, use "
         "--interactive-auth to enable)",
+    )
+    verify_parser.add_argument(
+        "--headless-auth",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Automate OIDC login in a headless browser (requires [auth] idp in config)",
     )
     verify_parser.add_argument(
         "--no-auth",
