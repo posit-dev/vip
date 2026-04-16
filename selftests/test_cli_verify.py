@@ -371,6 +371,18 @@ class TestVerifyLocalVerboseFlag:
         cmd = _capture_cmd(_make_args(config=str(cfg), verbose=True))
         assert "--vip-verbose" in cmd
 
+    def test_verbose_flag_disables_capture(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), verbose=True))
+        assert "-s" in cmd
+
+    def test_no_verbose_does_not_disable_capture(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), verbose=False))
+        assert "-s" not in cmd
+
     def test_no_verbose_flag_omits_vip_verbose(self, tmp_path):
         cfg = tmp_path / "vip.toml"
         cfg.write_text("[general]\n")
