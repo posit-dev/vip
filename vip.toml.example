@@ -63,6 +63,10 @@ url = "https://packagemanager.example.com"
 # Authentication provider in use: "password", "ldap", "saml", "oidc", "oauth2"
 provider = "password"
 
+# Identity provider for --headless-auth: "keycloak", "okta"
+# Only required when using --headless-auth.
+# idp = "keycloak"
+
 # Test user credentials.
 # Prefer setting VIP_TEST_USERNAME and VIP_TEST_PASSWORD environment variables.
 # username = "..."

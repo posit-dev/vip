@@ -21,6 +21,12 @@ uv run playwright install chromium
 vip verify --connect-url https://connect.example.com --interactive-auth
 ```
 
+On a headless server (no display), use `--headless-auth` instead:
+
+```bash
+vip verify --config vip.toml --headless-auth
+```
+
 Run a specific test by name:
 
 ```bash

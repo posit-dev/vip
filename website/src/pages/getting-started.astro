@@ -80,6 +80,16 @@ uv run playwright install chromium</code></pre>
           </p>
           <pre><code>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre>
 
+          <h3>Headless auth (no display)</h3>
+          <p>
+            On a headless Linux server, use <code>--headless-auth</code> to
+            automate the OIDC login in a headless browser. Set
+            <code>idp</code> in your <code>vip.toml</code> to tell VIP which
+            identity provider to automate. If MFA is enabled, VIP prompts for
+            the verification code in the terminal.
+          </p>
+          <pre><code>vip verify --config vip.toml --headless-auth</code></pre>
+
           <h3>Credential-based auth</h3>
           <p>
             If you have API keys or test user credentials, disable interactive

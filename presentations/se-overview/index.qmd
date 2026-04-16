@@ -63,7 +63,7 @@ vip app   # opens a graphical test runner
 ```
 
 ::: {.notes}
-Simplest path: pip install, one command. The --interactive-auth flag opens a browser for SSO/OIDC — you log in once, then tests run headlessly. vip app gives you a Shiny UI if you'd rather click than type. You can scope runs with --categories: just 'connect', just 'security', whatever you need.
+Simplest path: pip install, one command. The --interactive-auth flag opens a browser for SSO/OIDC — you log in once, then tests run headlessly. On headless servers, --headless-auth automates the IdP login form instead. vip app gives you a Shiny UI if you'd rather click than type. You can scope runs with --categories: just 'connect', just 'security', whatever you need.
 :::
 
 ## Your Sign-Off Document
