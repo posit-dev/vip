@@ -285,8 +285,34 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     # the code-based option to get to the TOTP input.
     _select_totp_authenticator(page)
 
-    # Now wait for the TOTP input to appear.
-    totp_input = page.locator("input[name='credentials.passcode']")
+    # Wait for the page to settle after authenticator selection.
+    try:
+        page.wait_for_load_state("networkidle", timeout=10_000)
+    except PlaywrightTimeout:
+        pass
+
+    # Dump page content after selection for debugging.
+    _log(">>> Okta: --- post-selection page content ---")
+    try:
+        widget = page.locator("#okta-sign-in, [data-se='auth-container'], form").first
+        if widget.is_visible():
+            _log(widget.inner_text())
+        else:
+            _log(page.locator("body").inner_text()[:2000])
+    except Exception:
+        _log("(could not read page content)")
+    _log(">>> Okta: --- end post-selection content ---")
+
+    # Now wait for the TOTP input to appear.  Try multiple selectors
+    # since the field name may differ after authenticator selection.
+    totp_selectors = (
+        "input[name='credentials.passcode']",
+        "input[name='credentials.totp']",
+        "input[autocomplete='one-time-code']",
+        "input[data-se='credentials.passcode']",
+        "input[type='tel']",
+    )
+    totp_input = page.locator(", ".join(totp_selectors))
     try:
         totp_input.first.wait_for(state="visible", timeout=_MFA_DETECT_TIMEOUT)
         totp_visible = True
