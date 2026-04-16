@@ -115,15 +115,22 @@ class PackageManagerUser(HttpUser):
     def on_start(self):
         self._token = getattr(self.environment, "_vip_credentials", {}).get("token", "")
         self._headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
-        # Pre-fetch repo names for package index lookups.
-        self._repos: list[str] = []
+        # Pre-fetch repo names by type so CRAN tasks hit R repos and PyPI
+        # tasks hit Python repos.  Using the wrong repo type causes 404s.
+        self._cran_repos: list[str] = []
+        self._pypi_repos: list[str] = []
         try:
             resp = self.client.get("/__api__/repos", headers=self._headers)
             if resp.status_code == 200:
                 for repo in resp.json():
                     name = repo.get("name", "")
-                    if name:
-                        self._repos.append(name)
+                    if not name:
+                        continue
+                    repo_type = repo.get("type", "")
+                    if repo_type == "R":
+                        self._cran_repos.append(name)
+                    elif repo_type == "Python":
+                        self._pypi_repos.append(name)
         except Exception:
             pass
 
@@ -133,8 +140,8 @@ class PackageManagerUser(HttpUser):
 
     @task(10)
     def fetch_cran_index(self):
-        if self._repos:
-            repo = self._repos[0]
+        if self._cran_repos:
+            repo = self._cran_repos[0]
             self.client.get(
                 f"/{repo}/latest/src/contrib/PACKAGES",
                 name="/[repo]/latest/src/contrib/PACKAGES",
@@ -142,8 +149,8 @@ class PackageManagerUser(HttpUser):
 
     @task(5)
     def fetch_pypi_index(self):
-        if self._repos:
-            repo = self._repos[0]
+        if self._pypi_repos:
+            repo = self._pypi_repos[0]
             self.client.get(
                 f"/{repo}/latest/simple/numpy/",
                 name="/[repo]/latest/simple/[pkg]/",
