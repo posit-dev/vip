@@ -472,9 +472,9 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append("--vip-verbose")
         cmd.append("-s")
     cmd.extend(args.pytest_args)
-    if args.headless_auth and "-s" not in cmd:
-        # MFA prompting needs stdin; pytest captures it by default.
-        # Appended last so it overrides any conflicting --capture args.
+    if args.headless_auth:
+        # MFA prompting needs stdin; always append -s last so it
+        # overrides any conflicting --capture args from user or verbose.
         cmd.append("-s")
 
     try:
