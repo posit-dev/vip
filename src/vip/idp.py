@@ -267,19 +267,6 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
 
     _log(f">>> Okta: MFA challenge detected at {_sanitize_url(page.url)}")
 
-    # Dump the visible page text so we can see what Okta is showing.
-    _log(">>> Okta: --- page content ---")
-    try:
-        # Get the main form/widget text content.
-        widget = page.locator("#okta-sign-in, [data-se='auth-container'], form").first
-        if widget.is_visible():
-            _log(widget.inner_text())
-        else:
-            _log(page.locator("body").inner_text()[:2000])
-    except Exception:
-        _log("(could not read page content)")
-    _log(">>> Okta: --- end page content ---")
-
     # Handle authenticator selection page — Okta may present a list of
     # MFA options (TOTP, push, security key).  Click "Select" next to
     # the code-based option to get to the TOTP input.
@@ -290,18 +277,6 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         page.wait_for_load_state("networkidle", timeout=10_000)
     except PlaywrightTimeout:
         pass
-
-    # Dump page content after selection for debugging.
-    _log(">>> Okta: --- post-selection page content ---")
-    try:
-        widget = page.locator("#okta-sign-in, [data-se='auth-container'], form").first
-        if widget.is_visible():
-            _log(widget.inner_text())
-        else:
-            _log(page.locator("body").inner_text()[:2000])
-    except Exception:
-        _log("(could not read page content)")
-    _log(">>> Okta: --- end post-selection content ---")
 
     # Now wait for the TOTP input to appear.  Try multiple selectors
     # since the field name may differ after authenticator selection.
