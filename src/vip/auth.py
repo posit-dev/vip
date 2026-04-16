@@ -22,6 +22,11 @@ from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
 
+
+class AuthConfigError(ValueError):
+    """Raised for user-facing authentication configuration errors."""
+
+
 # Prefix for VIP-managed API keys.  A timestamp is appended per run.
 _KEY_NAME_PREFIX = "_vip_interactive_"
 
@@ -265,7 +270,9 @@ def start_headless_auth(
     (e.g. ``"keycloak"``, ``"okta"``).
     """
     if not connect_url and not workbench_url:
-        raise ValueError("--headless-auth requires at least one product URL (Connect or Workbench)")
+        raise AuthConfigError(
+            "--headless-auth requires at least one product URL (Connect or Workbench)"
+        )
 
     # Check for a valid cached session before validating credentials/idp,
     # so a warm cache works even when env vars are not set.
@@ -277,12 +284,12 @@ def start_headless_auth(
     from vip.idp import get_idp_strategy
 
     if not idp:
-        raise ValueError(
+        raise AuthConfigError(
             "--headless-auth requires [auth] idp in vip.toml"
             ' (supported: "keycloak", "okta")'
         )
     if not username or not password:
-        raise ValueError(
+        raise AuthConfigError(
             "--headless-auth requires test credentials. "
             "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD."
         )

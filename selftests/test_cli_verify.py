@@ -640,3 +640,23 @@ class TestAuthCliFlags:
             assert cfg.auth.idp == "keycloak"
         finally:
             Path(path).unlink(missing_ok=True)
+
+    def test_partial_override_inherits_other_field(self, tmp_path, monkeypatch):
+        """--idp on CLI should still inherit provider from vip.toml."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text(
+            '[general]\n[auth]\nprovider = "oidc"\nidp = "okta"\n'
+        )
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", idp="keycloak")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.idp == "keycloak"  # CLI override
+            assert cfg.auth.provider == "oidc"  # inherited from vip.toml
+        finally:
+            Path(path).unlink(missing_ok=True)

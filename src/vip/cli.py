@@ -291,19 +291,20 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     auth_provider = getattr(args, "auth_provider", None)
     idp = getattr(args, "idp", None)
 
-    # If auth flags aren't on the CLI, inherit from an existing vip.toml so
-    # that ``vip verify --workbench-url ... --headless-auth`` picks up the
-    # [auth] section the user already configured.
-    if not auth_provider and not idp:
-        from vip.config import load_config
+    # Inherit per-field from an existing vip.toml when CLI flags are missing,
+    # so ``vip verify --workbench-url ... --headless-auth`` picks up the
+    # [auth] section the user already configured.  CLI flags take precedence.
+    if not auth_provider or not idp:
+        env = os.environ.get("VIP_CONFIG")
+        default_path = Path(env) if env else Path("vip.toml")
+        if default_path.is_file():
+            from vip.config import load_config
 
-        try:
-            existing = load_config()
-            if existing.auth.provider != "password" or existing.auth.idp:
-                auth_provider = auth_provider or existing.auth.provider
-                idp = idp or existing.auth.idp or None
-        except Exception:
-            pass  # No existing config to read — that's fine.
+            existing = load_config(default_path)
+            if not auth_provider and existing.auth.provider != "password":
+                auth_provider = existing.auth.provider
+            if not idp and existing.auth.idp:
+                idp = existing.auth.idp
 
     if auth_provider or idp:
         lines.append("[auth]")

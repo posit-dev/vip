@@ -188,7 +188,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
         from pathlib import Path
 
-        from vip.auth import start_headless_auth
+        from vip.auth import AuthConfigError, start_headless_auth
 
         cache_path = Path(config.rootpath) / ".vip-auth-cache.json"
         try:
@@ -200,7 +200,7 @@ def pytest_configure(config: pytest.Config) -> None:
                 password=vip_cfg.auth.password,
                 cache_path=cache_path,
             )
-        except ValueError as exc:
+        except AuthConfigError as exc:
             raise pytest.UsageError(str(exc)) from None
         config.stash[_auth_session_key] = session
         if session.api_key:

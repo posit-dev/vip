@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from vip.auth import start_headless_auth
+from vip.auth import AuthConfigError, start_headless_auth
 
 
 class TestStartHeadlessAuthValidation:
@@ -15,7 +15,7 @@ class TestStartHeadlessAuthValidation:
         cache.write_text("{}")
         cache.touch()
 
-        with pytest.raises(ValueError, match="at least one product URL"):
+        with pytest.raises(AuthConfigError, match="at least one product URL"):
             start_headless_auth(
                 connect_url=None,
                 workbench_url=None,
@@ -26,5 +26,5 @@ class TestStartHeadlessAuthValidation:
             )
 
     def test_no_urls_raises_without_cache(self):
-        with pytest.raises(ValueError, match="at least one product URL"):
+        with pytest.raises(AuthConfigError, match="at least one product URL"):
             start_headless_auth()
