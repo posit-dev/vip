@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import io
 import os
 import statistics
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -236,8 +238,15 @@ def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestRe
 
 
 def _stderr(msg: str) -> None:
-    """Write *msg* directly to fd 2, bypassing Python/gevent buffering."""
-    os.write(2, (msg + "\n").encode())
+    """Write *msg* to stderr at the fd level, bypassing Python/gevent buffering."""
+    try:
+        fd = sys.stderr.fileno()
+    except (AttributeError, io.UnsupportedOperation):
+        fd = 2
+    data = (msg + "\n").encode()
+    while data:
+        written = os.write(fd, data)
+        data = data[written:]
 
 
 def _log_request(
