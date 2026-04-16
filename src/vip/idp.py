@@ -36,6 +36,14 @@ def _print_flush(msg: str) -> None:
     print(msg, flush=True)
 
 
+def _sanitize_url(url: str) -> str:
+    """Return origin + path, stripping query params that may contain secrets."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+
+
 def _fill_keycloak_login(page: Page, username: str, password: str) -> None:
     """Fill Keycloak's single-page login form and handle optional TOTP."""
     _log = _print_flush
@@ -96,17 +104,23 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
             timeout=30_000,
         )
     except PlaywrightTimeout:
-        # URL didn't change — credentials may have failed.  Log what we see.
-        _log(f">>> Okta: URL unchanged after password submit: {page.url}")
+        # URL didn't change — credentials may have failed.
+        from vip.auth import AuthConfigError
+
+        _log(f">>> Okta: URL unchanged after password submit: {_sanitize_url(page.url)}")
         _log(">>> Okta: page title: " + (page.title() or "(empty)"))
         # Check for an error message on the page.
         error = page.locator("[data-se='o-form-error-container'], .okta-form-infobox-error")
-        if error.is_visible():
-            _log(f">>> Okta: login error: {error.text_content()}")
-        return
+        error_msg = error.text_content() if error.is_visible() else None
+        if error_msg:
+            _log(f">>> Okta: login error: {error_msg}")
+        raise AuthConfigError(
+            "Okta login did not proceed after password submission. "
+            + (f"Okta error: {error_msg}" if error_msg else "Check credentials and IdP config.")
+        )
 
     current_url = page.url
-    _log(f">>> Okta: post-password URL: {current_url}")
+    _log(f">>> Okta: post-password URL: {_sanitize_url(current_url)}")
 
     # Check for MFA by looking at the URL and page content.
     mfa_url_patterns = ("/challenge", "/verify", "/mfa", "/factor")
@@ -116,7 +130,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         _log(">>> Okta: no MFA challenge detected, proceeding.")
         return
 
-    _log(f">>> Okta: MFA challenge detected at {page.url}")
+    _log(f">>> Okta: MFA challenge detected at {_sanitize_url(page.url)}")
 
     # Determine MFA type from page content.
     totp_input = page.locator("input[name='credentials.passcode']")

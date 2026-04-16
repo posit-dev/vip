@@ -319,13 +319,15 @@ def start_headless_auth(
         print(f"\n>>> Headless auth: navigating to {target} ...", flush=True)
         page.goto(target)
         page.wait_for_load_state("domcontentloaded")
-        print(f">>> Page loaded, URL: {page.url}", flush=True)
+        from vip.idp import _sanitize_url
+
+        print(f">>> Page loaded, URL: {_sanitize_url(page.url)}", flush=True)
 
         # Follow redirects to the IdP login page.  The product may show
         # a "Sign in with OpenID" button (Workbench) or auto-redirect
         # (Connect).  Click through if needed.
         _navigate_to_idp(page, primary_url)
-        print(f">>> At IdP login page: {page.url}", flush=True)
+        print(f">>> At IdP login page: {_sanitize_url(page.url)}", flush=True)
 
         print(f">>> Filling credentials for {username} ...", flush=True)
         fill_login(page, username, password)
