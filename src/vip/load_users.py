@@ -58,6 +58,7 @@ class ConnectUser(HttpUser):
             self.client.get(
                 f"/__api__/v1/content/{self._content_guid}",
                 headers=self._headers,
+                name="/__api__/v1/content/[guid]",
             )
 
     @task(3)
@@ -121,15 +122,9 @@ class PackageManagerUser(HttpUser):
         try:
             resp = self.client.get("/__api__/repos", headers=self._headers)
             if resp.status_code == 200:
-                for repo in resp.json():
-                    name = repo.get("name", "")
-                    if not name:
-                        continue
-                    repo_type = repo.get("type", "")
-                    if repo_type == "R":
-                        self._cran_repos.append(name)
-                    elif repo_type == "Python":
-                        self._pypi_repos.append(name)
+                from vip.load_engine import classify_repos
+
+                self._cran_repos, self._pypi_repos = classify_repos(resp.json())
         except Exception:
             pass
 

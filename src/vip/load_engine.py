@@ -233,6 +233,32 @@ def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestRe
 
 
 # ---------------------------------------------------------------------------
+# Repo classification
+# ---------------------------------------------------------------------------
+
+
+def classify_repos(repos: list[dict]) -> tuple[list[str], list[str]]:
+    """Classify repos into ``(cran_repos, pypi_repos)`` by their type field.
+
+    Accepts canonical API values (``"R"``, ``"Python"``) and common aliases
+    (``"cran"``, ``"pypi"``), case-insensitively.  Repos with unknown or
+    missing types are silently skipped.
+    """
+    cran: list[str] = []
+    pypi: list[str] = []
+    for repo in repos:
+        name = repo.get("name", "")
+        if not name:
+            continue
+        repo_type = str(repo.get("type", "")).strip().lower()
+        if repo_type in ("r", "cran"):
+            cran.append(name)
+        elif repo_type in ("python", "pypi"):
+            pypi.append(name)
+    return cran, pypi
+
+
+# ---------------------------------------------------------------------------
 # User simulation (multi-endpoint, realistic behavior)
 # ---------------------------------------------------------------------------
 

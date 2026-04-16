@@ -8,7 +8,13 @@ import threading
 import pytest
 
 from vip.config import PerformanceConfig
-from vip.load_engine import LoadTestResult, _build_result, _log_request, run_load_test
+from vip.load_engine import (
+    LoadTestResult,
+    _build_result,
+    _log_request,
+    classify_repos,
+    run_load_test,
+)
 
 # ---------------------------------------------------------------------------
 # Mock HTTP server
@@ -163,6 +169,68 @@ class TestErrors:
         config = PerformanceConfig(load_test_tool="locust")
         with pytest.raises(RuntimeError, match="locust not installed"):
             run_load_test(mock_server, {}, 10, config)
+
+
+# ---------------------------------------------------------------------------
+# Repo classification
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyRepos:
+    """classify_repos should route repos to CRAN/PyPI lists by type."""
+
+    def test_mixed_repo_list(self):
+        repos = [
+            {"name": "cran", "type": "R"},
+            {"name": "pypi", "type": "Python"},
+            {"name": "bio", "type": "Bioconductor"},
+        ]
+        cran, pypi = classify_repos(repos)
+        assert cran == ["cran"]
+        assert pypi == ["pypi"]
+
+    def test_case_insensitive(self):
+        repos = [
+            {"name": "a", "type": "r"},
+            {"name": "b", "type": "PYTHON"},
+            {"name": "c", "type": " R "},
+        ]
+        cran, pypi = classify_repos(repos)
+        assert cran == ["a", "c"]
+        assert pypi == ["b"]
+
+    def test_aliases(self):
+        repos = [
+            {"name": "x", "type": "cran"},
+            {"name": "y", "type": "pypi"},
+        ]
+        cran, pypi = classify_repos(repos)
+        assert cran == ["x"]
+        assert pypi == ["y"]
+
+    def test_unknown_type_ignored(self):
+        repos = [{"name": "vsx", "type": "VSX"}, {"name": "snap", "type": "Snapshot"}]
+        cran, pypi = classify_repos(repos)
+        assert cran == []
+        assert pypi == []
+
+    def test_missing_type_ignored(self):
+        repos = [{"name": "mystery"}]
+        cran, pypi = classify_repos(repos)
+        assert cran == []
+        assert pypi == []
+
+    def test_empty_name_skipped(self):
+        repos = [{"name": "", "type": "R"}, {"name": "good", "type": "R"}]
+        cran, pypi = classify_repos(repos)
+        assert cran == ["good"]
+
+    def test_empty_list(self):
+        from vip.load_engine import classify_repos
+
+        cran, pypi = classify_repos([])
+        assert cran == []
+        assert pypi == []
 
 
 # ---------------------------------------------------------------------------
