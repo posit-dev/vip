@@ -80,14 +80,31 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     _log(">>> Okta: waiting for password field ...")
     page.locator(_OKTA_PASSCODE).wait_for(timeout=_FORM_TIMEOUT)
     page.locator(_OKTA_PASSCODE).fill(password)
-    page.locator(_OKTA_SUBMIT).first.click()
-    _log(">>> Okta: password submitted.")
 
-    # Step 3: wait for either MFA challenge or redirect back to product.
-    # Okta MFA pages often have "/challenge" in the URL, but some flows
-    # use "/verify" or other patterns.  Wait for the page to settle after
-    # password submission, then check the URL.
-    page.wait_for_load_state("networkidle")
+    # Capture the current URL before submitting — Okta's login widget is a
+    # SPA that keeps the authorize URL through identifier and password steps.
+    # The URL only changes once Okta processes the credentials (either to an
+    # MFA page or back to the product callback).
+    pre_submit_url = page.url
+    page.locator(_OKTA_SUBMIT).first.click()
+    _log(">>> Okta: password submitted, waiting for navigation ...")
+
+    # Step 3: wait for the URL to change from the authorize endpoint.
+    try:
+        page.wait_for_url(
+            lambda url: url != pre_submit_url,
+            timeout=30_000,
+        )
+    except PlaywrightTimeout:
+        # URL didn't change — credentials may have failed.  Log what we see.
+        _log(f">>> Okta: URL unchanged after password submit: {page.url}")
+        _log(">>> Okta: page title: " + (page.title() or "(empty)"))
+        # Check for an error message on the page.
+        error = page.locator("[data-se='o-form-error-container'], .okta-form-infobox-error")
+        if error.is_visible():
+            _log(f">>> Okta: login error: {error.text_content()}")
+        return
+
     current_url = page.url
     _log(f">>> Okta: post-password URL: {current_url}")
 
