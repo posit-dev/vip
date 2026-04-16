@@ -585,7 +585,10 @@ class TestAuthCliFlags:
         finally:
             Path(path).unlink(missing_ok=True)
 
-    def test_no_auth_section_when_flags_omitted(self):
+    def test_no_auth_section_when_flags_omitted(self, tmp_path, monkeypatch):
+        """Without flags or existing vip.toml, auth defaults are used."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
@@ -596,5 +599,44 @@ class TestAuthCliFlags:
             cfg = load_config(path)
             assert cfg.auth.provider == "password"  # default
             assert cfg.auth.idp == ""  # default
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_auth_inherited_from_existing_vip_toml(self, tmp_path, monkeypatch):
+        """When no --auth-provider/--idp flags, inherit from existing vip.toml."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text(
+            '[general]\n[auth]\nprovider = "oidc"\nidp = "okta"\n'
+        )
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "oidc"
+            assert cfg.auth.idp == "okta"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_cli_flags_override_existing_vip_toml(self, tmp_path, monkeypatch):
+        """Explicit --idp/--auth-provider flags take precedence over vip.toml."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text(
+            '[general]\n[auth]\nprovider = "oidc"\nidp = "okta"\n'
+        )
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", idp="keycloak")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.idp == "keycloak"
         finally:
             Path(path).unlink(missing_ok=True)
