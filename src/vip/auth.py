@@ -298,7 +298,7 @@ def start_headless_auth(
 
     # Choose login flow based on auth provider, not idp presence.
     # OIDC/SAML/OAuth2 → IdP form automation; password/LDAP → native form.
-    uses_idp = provider in _IDP_PROVIDERS
+    uses_idp = provider.strip().lower() in _IDP_PROVIDERS
     fill_login = None
     if uses_idp:
         if not idp:
