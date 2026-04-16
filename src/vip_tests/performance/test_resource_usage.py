@@ -63,12 +63,20 @@ def generate_traffic_and_measure_response_times(vip_config, vip_verbose):
                 elapsed = time.monotonic() - start
                 results.append({"elapsed": elapsed, "status": resp.status_code, "error": None})
                 if verbose:
-                    print(f"[load] GET {url} {resp.status_code} {elapsed:.2f}s", file=sys.stderr)
+                    print(
+                        f"[load] GET {url} {resp.status_code} {elapsed:.2f}s",
+                        file=sys.stderr,
+                        flush=True,
+                    )
             except Exception as exc:
                 elapsed = time.monotonic() - start
                 results.append({"elapsed": elapsed, "status": None, "error": str(exc)})
                 if verbose:
-                    print(f"[load] GET {url} FAIL {elapsed:.2f}s {exc}", file=sys.stderr)
+                    print(
+                        f"[load] GET {url} FAIL {elapsed:.2f}s {exc}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
             time.sleep(0.1)
 
     with ThreadPoolExecutor(max_workers=4) as pool:
