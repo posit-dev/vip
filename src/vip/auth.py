@@ -249,10 +249,14 @@ def start_interactive_auth(
                 pass
 
 
+_IDP_PROVIDERS = frozenset({"oidc", "saml", "oauth2"})
+
+
 def start_headless_auth(
     connect_url: str | None = None,
     workbench_url: str | None = None,
     idp: str = "",
+    provider: str = "password",
     username: str = "",
     password: str = "",
     cache_path: Path | None = None,
@@ -292,10 +296,16 @@ def start_headless_auth(
             "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD."
         )
 
-    # When an IdP is configured (OIDC/SAML), use IdP-specific form
-    # automation.  Otherwise, fill the product's native login form.
+    # Choose login flow based on auth provider, not idp presence.
+    # OIDC/SAML/OAuth2 → IdP form automation; password/LDAP → native form.
+    uses_idp = provider in _IDP_PROVIDERS
     fill_login = None
-    if idp:
+    if uses_idp:
+        if not idp:
+            raise AuthConfigError(
+                f"--headless-auth with provider={provider!r} requires"
+                ' [auth] idp in vip.toml (supported: "keycloak", "okta")'
+            )
         from vip.idp import get_idp_strategy
 
         fill_login = get_idp_strategy(idp)

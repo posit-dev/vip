@@ -703,8 +703,10 @@ class TestHeadlessAuthFixture:
 class TestHeadlessAuthPluginWiring:
     """Verify that pytest_configure validates config for --headless-auth."""
 
-    def test_headless_auth_requires_idp(self, pytester):
-        """--headless-auth fails fast when idp is not set in config."""
+    def test_headless_auth_requires_idp_for_oidc(self, pytester, monkeypatch):
+        """--headless-auth with provider=oidc fails when idp is missing."""
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
         pytester.makefile(
             ".toml",
             vip=(
@@ -715,7 +717,7 @@ class TestHeadlessAuthPluginWiring:
         )
         pytester.makepyfile("def test_placeholder(): pass")
         result = pytester.runpytest("--vip-config=vip.toml", "--headless-auth")
-        assert result.ret == pytest.ExitCode.USAGE_ERROR
+        assert result.ret != 0
         result.stderr.fnmatch_lines(["*--headless-auth*requires*idp*keycloak*okta*"])
 
 

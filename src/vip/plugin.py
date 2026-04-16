@@ -85,7 +85,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--headless-auth",
         action="store_true",
         default=False,
-        help="Automate login in a headless browser (OIDC/SAML requires [auth] idp in config).",
+        help="Automate login in a headless browser (OIDC/SAML/OAuth2 requires [auth] idp).",
     )
     group.addoption(
         "--no-auth",
@@ -181,11 +181,6 @@ def pytest_configure(config: pytest.Config) -> None:
             raise pytest.UsageError(
                 "--headless-auth requires at least one product URL (Connect or Workbench)"
             )
-        if vip_cfg.auth.provider in ("oidc", "saml", "oauth2") and not vip_cfg.auth.idp:
-            raise pytest.UsageError(
-                f"--headless-auth with provider={vip_cfg.auth.provider!r} requires"
-                ' [auth] idp in vip.toml (supported: "keycloak", "okta")'
-            )
 
         from pathlib import Path
 
@@ -197,6 +192,7 @@ def pytest_configure(config: pytest.Config) -> None:
                 connect_url=connect_url,
                 workbench_url=wb_url,
                 idp=vip_cfg.auth.idp,
+                provider=vip_cfg.auth.provider,
                 username=vip_cfg.auth.username,
                 password=vip_cfg.auth.password,
                 cache_path=cache_path,
