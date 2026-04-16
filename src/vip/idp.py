@@ -89,44 +89,64 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     page.locator(_OKTA_PASSCODE).wait_for(timeout=_FORM_TIMEOUT)
     page.locator(_OKTA_PASSCODE).fill(password)
 
-    # Capture the current URL before submitting — Okta's login widget is a
-    # SPA that keeps the authorize URL through identifier and password steps.
-    # The URL only changes once Okta processes the credentials (either to an
-    # MFA page or back to the product callback).
-    pre_submit_url = page.url
     page.locator(_OKTA_SUBMIT).first.click()
-    _log(">>> Okta: password submitted, waiting for navigation ...")
+    _log(">>> Okta: password submitted, waiting for response ...")
 
-    # Step 3: wait for the URL to change from the authorize endpoint.
+    # Step 3: detect what happened after password submission.
+    #
+    # Okta's login widget is a SPA — the URL may NOT change when
+    # transitioning between steps (password → MFA → authenticator
+    # selection all happen at the same /authorize URL).  Instead of
+    # waiting for a URL change, wait for the password field to
+    # disappear (indicating Okta accepted the credentials and moved
+    # to the next view) OR an error banner to appear.
+    from vip.auth import AuthConfigError
+
+    error_banner = page.locator(
+        "[data-se='o-form-error-container'], "
+        ".okta-form-infobox-error, "
+        "[class*='error-message']"
+    )
+
     try:
-        page.wait_for_url(
-            lambda url: url != pre_submit_url,
+        # Wait for either: password field hidden (success) or error visible.
+        page.locator(f"{_OKTA_PASSCODE}:not(:visible)").or_(error_banner).first.wait_for(
             timeout=30_000,
         )
     except PlaywrightTimeout:
-        # URL didn't change — credentials may have failed.
-        from vip.auth import AuthConfigError
-
-        _log(f">>> Okta: URL unchanged after password submit: {_sanitize_url(page.url)}")
-        _log(">>> Okta: page title: " + (page.title() or "(empty)"))
-        # Check for an error message on the page.
-        error = page.locator("[data-se='o-form-error-container'], .okta-form-infobox-error")
-        error_msg = error.text_content() if error.is_visible() else None
-        if error_msg:
-            _log(f">>> Okta: login error: {error_msg}")
+        _log(f">>> Okta: page stuck after password submit: {_sanitize_url(page.url)}")
         raise AuthConfigError(
-            "Okta login did not proceed after password submission. "
-            + (f"Okta error: {error_msg}" if error_msg else "Check credentials and IdP config.")
+            "Okta login did not respond after password submission. "
+            "Check credentials and IdP configuration."
         )
 
-    current_url = page.url
-    _log(f">>> Okta: post-password URL: {_sanitize_url(current_url)}")
+    # Check if an error appeared.
+    if error_banner.first.is_visible():
+        error_msg = error_banner.first.text_content() or ""
+        _log(f">>> Okta: login error: {error_msg.strip()}")
+        raise AuthConfigError(f"Okta login failed: {error_msg.strip()}")
 
-    # Check for MFA by looking at the URL and page content.
+    _log(f">>> Okta: password accepted. URL: {_sanitize_url(page.url)}")
+
+    # The password field is gone — Okta moved to the next view.
+    # This could be: MFA challenge (same URL), or redirect to product
+    # (URL changed to callback).  Check both.
+    current_url = page.url.lower()
     mfa_url_patterns = ("/challenge", "/verify", "/mfa", "/factor")
-    is_mfa = any(pattern in current_url.lower() for pattern in mfa_url_patterns)
+    url_has_mfa = any(p in current_url for p in mfa_url_patterns)
 
-    if not is_mfa:
+    # Also check for MFA-related page content (Okta may stay at the
+    # authorize URL while showing an authenticator selection view).
+    mfa_content = page.locator(
+        "[data-se='authenticator-verify-list'], "
+        "[data-se='okta_verify-push'], "
+        "[data-se='google_otp'], "
+        "input[name='credentials.passcode'], "
+        "[class*='authenticator']"
+    )
+    has_mfa_content = mfa_content.first.is_visible()
+
+    if not url_has_mfa and not has_mfa_content:
         _log(">>> Okta: no MFA challenge detected, proceeding.")
         return
 
