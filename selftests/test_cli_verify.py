@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,6 +26,8 @@ def _make_args(**overrides) -> argparse.Namespace:
         "verbose": False,
         "test_timeout": 180,
         "headless_auth": False,
+        "auth_provider": None,
+        "idp": None,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -533,3 +536,65 @@ class TestHeadlessAuth:
         _capture_cmd(_make_args(config=str(cfg), headless_auth=True))
         err = capsys.readouterr().err
         assert "no credentials provided" not in err
+
+
+class TestAuthCliFlags:
+    """--auth-provider and --idp are included in the generated temp config."""
+
+    def test_idp_included_in_temp_config(self):
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", idp="okta")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.idp == "okta"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_auth_provider_included_in_temp_config(self):
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(connect_url="https://c.example.com", auth_provider="oidc")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "oidc"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_both_auth_flags_in_temp_config(self):
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(
+                workbench_url="https://wb.example.com",
+                auth_provider="oidc",
+                idp="keycloak",
+            )
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "oidc"
+            assert cfg.auth.idp == "keycloak"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_no_auth_section_when_flags_omitted(self):
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(connect_url="https://c.example.com")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "password"  # default
+            assert cfg.auth.idp == ""  # default
+        finally:
+            Path(path).unlink(missing_ok=True)

@@ -277,7 +277,10 @@ def start_headless_auth(
     from vip.idp import get_idp_strategy
 
     if not idp:
-        raise ValueError('--headless-auth requires [auth] idp in vip.toml (supported: "keycloak", "okta")')
+        raise ValueError(
+            "--headless-auth requires [auth] idp in vip.toml"
+            ' (supported: "keycloak", "okta")'
+        )
     if not username or not password:
         raise ValueError(
             "--headless-auth requires test credentials. "

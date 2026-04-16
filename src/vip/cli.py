@@ -288,6 +288,16 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     else:
         lines.extend(["[package_manager]", "enabled = false", ""])
 
+    auth_provider = getattr(args, "auth_provider", None)
+    idp = getattr(args, "idp", None)
+    if auth_provider or idp:
+        lines.append("[auth]")
+        if auth_provider:
+            lines.append(f'provider = "{auth_provider}"')
+        if idp:
+            lines.append(f'idp = "{idp}"')
+        lines.append("")
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
         f.write("\n".join(lines) + "\n")
         return f.name
@@ -744,6 +754,17 @@ def main() -> None:
     )
 
     # Auth
+    auth_group = verify_parser.add_argument_group("authentication")
+    auth_group.add_argument(
+        "--auth-provider",
+        default=None,
+        help='Auth provider: "password", "ldap", "saml", "oidc", "oauth2" (default: password)',
+    )
+    auth_group.add_argument(
+        "--idp",
+        default=None,
+        help='Identity provider for --headless-auth: "keycloak", "okta"',
+    )
     verify_parser.add_argument(
         "--interactive-auth",
         action=argparse.BooleanOptionalAction,
