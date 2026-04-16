@@ -91,47 +91,44 @@ def _select_totp_authenticator(page: Page) -> None:
     if page.locator("input[name='credentials.passcode']").first.is_visible():
         return
 
-    # Look for the "Enter a code" authenticator option.
-    # Okta renders each option as a list item with description text and
-    # a "Select" button/link.  Try several strategies:
+    # Look for the "Enter a code" authenticator option and click its
+    # "Select" button.  We only click when we can confirm the button
+    # belongs to the code-based option (not push or security key).
 
-    # Strategy 1: Find a container with "Enter a code" text and click
-    # the Select button within it.
+    # Strategy 1: Okta data attribute for the TOTP option container.
     code_option = page.locator(
         "[data-se='authenticator-verify-list'] "
         "[data-se='okta_verify-totp']"
     )
     if code_option.count() > 0:
-        select_btn = code_option.locator("a, button").first
-        if select_btn.is_visible():
-            _log(">>> Okta: selecting 'Enter a code' authenticator ...")
-            select_btn.click()
+        select_btn = code_option.get_by_role("link", name="Select")
+        if select_btn.count() == 0:
+            select_btn = code_option.get_by_role("button", name="Select")
+        if select_btn.count() > 0 and select_btn.first.is_visible():
+            _log(">>> Okta: selecting 'Enter a code' authenticator (data-se) ...")
+            select_btn.first.click()
             page.wait_for_load_state("domcontentloaded")
             return
 
-    # Strategy 2: Find any element containing "Enter a code" and click
-    # the nearest "Select" link/button.
-    code_text = page.get_by_text("Enter a code", exact=False)
-    if code_text.count() > 0:
-        # The "Select" button is typically a sibling or nearby element.
-        parent = code_text.first.locator("xpath=ancestor::div[contains(@class,'authenticator')]")
+    # Strategy 2: Find "Enter a code" text, walk up to the containing
+    # authenticator div, and click "Select" within that container.
+    code_texts = page.get_by_text("Enter a code", exact=False).all()
+    for ct in code_texts:
+        if not ct.is_visible():
+            continue
+        parent = ct.locator("xpath=ancestor::div[contains(@class,'authenticator')]")
+        if parent.count() == 0:
+            # Try a broader ancestor search.
+            parent = ct.locator("xpath=ancestor::li | ancestor::div[@data-se]")
         if parent.count() > 0:
-            select_link = parent.locator("a:has-text('Select'), button:has-text('Select')")
+            select_link = parent.first.get_by_role("link", name="Select")
+            if select_link.count() == 0:
+                select_link = parent.first.get_by_role("button", name="Select")
             if select_link.count() > 0 and select_link.first.is_visible():
-                _log(">>> Okta: selecting 'Enter a code' authenticator ...")
+                _log(">>> Okta: selecting 'Enter a code' authenticator (text) ...")
                 select_link.first.click()
                 page.wait_for_load_state("domcontentloaded")
                 return
-
-    # Strategy 3: Broader search — find all "Select" links and click
-    # the one closest to "Enter a code" text.  Okta renders options in
-    # order, and "Enter a code" is typically first.
-    select_links = page.get_by_role("link", name="Select").all()
-    if select_links:
-        _log(f">>> Okta: found {len(select_links)} 'Select' links, clicking first ...")
-        select_links[0].click()
-        page.wait_for_load_state("domcontentloaded")
-        return
 
     _log(">>> Okta: no authenticator selection page detected.")
 
