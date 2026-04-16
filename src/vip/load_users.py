@@ -58,7 +58,6 @@ class ConnectUser(HttpUser):
             self.client.get(
                 f"/__api__/v1/content/{self._content_guid}",
                 headers=self._headers,
-                name="/__api__/v1/content/[guid]",
             )
 
     @task(3)
@@ -142,19 +141,13 @@ class PackageManagerUser(HttpUser):
     def fetch_cran_index(self):
         if self._cran_repos:
             repo = self._cran_repos[0]
-            self.client.get(
-                f"/{repo}/latest/src/contrib/PACKAGES",
-                name="/[repo]/latest/src/contrib/PACKAGES",
-            )
+            self.client.get(f"/{repo}/latest/src/contrib/PACKAGES")
 
     @task(5)
     def fetch_pypi_index(self):
         if self._pypi_repos:
             repo = self._pypi_repos[0]
-            self.client.get(
-                f"/{repo}/latest/simple/numpy/",
-                name="/[repo]/latest/simple/[pkg]/",
-            )
+            self.client.get(f"/{repo}/latest/simple/numpy/")
 
     @task(1)
     def server_status(self):
