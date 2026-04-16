@@ -24,6 +24,8 @@ _OKTA_SUBMIT = "input[type='submit'], button[type='submit']"
 
 # Timeout for waiting on form elements (ms).
 _FORM_TIMEOUT = 15_000
+# Timeout for detecting whether MFA is required after login submit (ms).
+_MFA_DETECT_TIMEOUT = 10_000
 # Timeout for MFA completion after user is prompted (ms).
 _MFA_TIMEOUT = 300_000  # 5 minutes
 
@@ -37,14 +39,18 @@ def _fill_keycloak_login(page: Page, username: str, password: str) -> None:
     page.locator(_KC_SUBMIT).click()
 
     # After submit, either we redirect back to the product (no MFA) or we
-    # land on an OTP page.  Wait briefly for either state.
-    page.wait_for_load_state("domcontentloaded")
-
+    # land on an OTP page.  Wait for either the OTP field to appear or for
+    # the URL to leave the Keycloak domain (redirect back to product).
     otp_field = page.locator(_KC_OTP)
-    if otp_field.is_visible():
-        code = input(">>> Enter your verification code: ").strip()
-        otp_field.fill(code)
-        page.locator(_KC_SUBMIT).click()
+    try:
+        otp_field.wait_for(state="visible", timeout=_MFA_DETECT_TIMEOUT)
+    except Exception:
+        # No OTP field appeared — we're either redirecting or already redirected.
+        return
+
+    code = input(">>> Enter your verification code: ").strip()
+    otp_field.fill(code)
+    page.locator(_KC_SUBMIT).click()
 
 
 def _fill_okta_login(page: Page, username: str, password: str) -> None:
@@ -59,25 +65,30 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     page.locator(_OKTA_PASSCODE).fill(password)
     page.locator(_OKTA_SUBMIT).first.click()
 
-    # Step 3: check for MFA challenge.
-    page.wait_for_load_state("domcontentloaded")
+    # Step 3: wait for either MFA challenge or redirect back to product.
+    # Okta MFA pages have "/challenge" in the URL.  Wait for the URL to
+    # settle (either on a challenge page or elsewhere).
+    try:
+        page.wait_for_url(lambda url: "/challenge" in url.lower(), timeout=_MFA_DETECT_TIMEOUT)
+    except Exception:
+        # No MFA challenge — already redirecting back to product.
+        return
 
-    if "/challenge" in page.url.lower():
-        # Determine MFA type from page content.
-        totp_input = page.locator("input[name='credentials.passcode']")
-        if totp_input.is_visible():
-            code = input(">>> Enter your verification code: ").strip()
-            totp_input.fill(code)
-            page.locator(_OKTA_SUBMIT).first.click()
-        else:
-            # Push notification or other factor — wait for user to approve.
-            print(">>> Approve the notification on your device, then press Enter.")
-            input()
-            # The page should auto-redirect after approval.  Give it time.
-            page.wait_for_url(
-                lambda url: "/challenge" not in url.lower(),
-                timeout=_MFA_TIMEOUT,
-            )
+    # Determine MFA type from page content.
+    totp_input = page.locator("input[name='credentials.passcode']")
+    try:
+        totp_input.wait_for(state="visible", timeout=5_000)
+        code = input(">>> Enter your verification code: ").strip()
+        totp_input.fill(code)
+        page.locator(_OKTA_SUBMIT).first.click()
+    except Exception:
+        # Push notification or other factor — wait for user to approve.
+        print(">>> Approve the notification on your device, then press Enter.")
+        input()
+        page.wait_for_url(
+            lambda url: "/challenge" not in url.lower(),
+            timeout=_MFA_TIMEOUT,
+        )
 
 
 _IDP_STRATEGIES: dict[str, Callable[[Page, str, str], None]] = {
@@ -91,9 +102,11 @@ SUPPORTED_IDPS = frozenset(_IDP_STRATEGIES.keys())
 def get_idp_strategy(idp: str) -> Callable[[Page, str, str], None]:
     """Return the form-filling function for the given IdP name.
 
+    The *idp* value is normalized (stripped, lowercased) before lookup.
     Raises ``ValueError`` if *idp* is not supported.
     """
-    strategy = _IDP_STRATEGIES.get(idp)
+    normalized = idp.strip().lower()
+    strategy = _IDP_STRATEGIES.get(normalized)
     if strategy is None:
         supported = ", ".join(sorted(SUPPORTED_IDPS))
         raise ValueError(f"Unsupported IdP {idp!r}. Supported: {supported}")

@@ -20,6 +20,11 @@ class TestGetIdpStrategy:
         with pytest.raises(ValueError, match="Unsupported IdP.*unknown.*keycloak.*okta"):
             get_idp_strategy("unknown")
 
+    def test_case_insensitive_lookup(self):
+        assert get_idp_strategy("Keycloak") is get_idp_strategy("keycloak")
+        assert get_idp_strategy("OKTA") is get_idp_strategy("okta")
+        assert get_idp_strategy("  Okta  ") is get_idp_strategy("okta")
+
     def test_supported_idps_contains_expected(self):
         assert "keycloak" in SUPPORTED_IDPS
         assert "okta" in SUPPORTED_IDPS

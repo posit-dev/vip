@@ -518,8 +518,11 @@ class TestHeadlessAuth:
         cmd = _capture_cmd(_make_args(config=str(cfg), headless_auth=True))
         assert "--headless-auth" in cmd
 
-    def test_headless_auth_skips_credential_check(self, tmp_path, capsys):
+    def test_headless_auth_skips_credential_check(self, tmp_path, capsys, monkeypatch):
         """--headless-auth should skip the credential check like --interactive-auth."""
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
         cfg = tmp_path / "vip.toml"
         cfg.write_text('[general]\n[connect]\nurl = "https://c.example.com"\n')
         # Without headless_auth, missing credentials produce an error message.
