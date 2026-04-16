@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import statistics
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -234,6 +235,22 @@ def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestRe
 # ---------------------------------------------------------------------------
 
 
+def _log_request(
+    request_type: str,
+    name: str,
+    response_time: float,
+    response_length: int,
+    exception: Exception | None = None,
+    **_kwargs,
+) -> None:
+    """Print a single Locust request to stderr for ``--verbose`` diagnostics."""
+    elapsed_s = (response_time or 0) / 1000.0
+    if exception:
+        print(f"[locust] {request_type} {name} {elapsed_s:.2f}s FAIL {exception}", file=sys.stderr)
+    else:
+        print(f"[locust] {request_type} {name} {elapsed_s:.2f}s", file=sys.stderr)
+
+
 def run_user_simulation(
     host: str,
     user_class_name: str,
@@ -241,6 +258,7 @@ def run_user_simulation(
     config,
     *,
     credentials: dict[str, str] | None = None,
+    verbose: bool = False,
 ) -> LoadTestResult:
     """Run a realistic user simulation using product-specific Locust user classes.
 
@@ -290,6 +308,8 @@ def run_user_simulation(
     # Pass credentials via a custom attribute on the environment.
     env = Environment(user_classes=[concrete])
     env._vip_credentials = credentials or {}  # type: ignore[attr-defined]
+    if verbose:
+        env.events.request.add_listener(_log_request)
     runner = env.create_local_runner()
     runner.start(users, spawn_rate=config.load_test_spawn_rate)
     gevent.sleep(config.load_test_duration)

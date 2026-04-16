@@ -8,7 +8,7 @@ import threading
 import pytest
 
 from vip.config import PerformanceConfig
-from vip.load_engine import LoadTestResult, _build_result, run_load_test
+from vip.load_engine import LoadTestResult, _build_result, _log_request, run_load_test
 
 # ---------------------------------------------------------------------------
 # Mock HTTP server
@@ -163,3 +163,49 @@ class TestErrors:
         config = PerformanceConfig(load_test_tool="locust")
         with pytest.raises(RuntimeError, match="locust not installed"):
             run_load_test(mock_server, {}, 10, config)
+
+
+# ---------------------------------------------------------------------------
+# User simulation verbose output
+# ---------------------------------------------------------------------------
+
+
+class TestLogRequest:
+    """The _log_request callback prints a line per Locust request to stderr."""
+
+    def test_success_line(self, capsys):
+        _log_request(
+            request_type="GET",
+            name="/__api__/repos",
+            response_time=342.5,
+            response_length=1024,
+            exception=None,
+        )
+        line = capsys.readouterr().err.strip()
+        assert "[locust] GET /__api__/repos" in line
+        assert "0.34s" in line
+        assert "200" not in line  # no status code in success line
+
+    def test_failure_line(self, capsys):
+        _log_request(
+            request_type="GET",
+            name="/timeout",
+            response_time=30000.0,
+            response_length=0,
+            exception=ConnectionError("timed out"),
+        )
+        line = capsys.readouterr().err.strip()
+        assert "[locust] GET /timeout" in line
+        assert "FAIL" in line
+        assert "timed out" in line
+
+    def test_zero_response_time(self, capsys):
+        _log_request(
+            request_type="GET",
+            name="/fast",
+            response_time=0,
+            response_length=0,
+            exception=None,
+        )
+        line = capsys.readouterr().err.strip()
+        assert "0.00s" in line
