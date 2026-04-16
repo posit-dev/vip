@@ -538,20 +538,28 @@ class _Heartbeat:
             self._writer(f"  ... still running ({elapsed}s)")
 
 
+# Exposed so that code importing gevent/locust (which calls monkey.patch_all)
+# can stop the heartbeat thread first to avoid a deadlock.
+_current_heartbeat: _Heartbeat | None = None
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_protocol(item: pytest.Item, nextitem) -> None:  # noqa: ARG001
     """Print periodic heartbeat messages while a test is running."""
+    global _current_heartbeat
     heartbeat: _Heartbeat | None = None
     if _active_config is not None:
         tr = _active_config.pluginmanager.get_plugin("terminalreporter")
         if tr is not None:
             heartbeat = _Heartbeat(tr.write_line)
             heartbeat.start()
+            _current_heartbeat = heartbeat
     try:
         yield
     finally:
         if heartbeat is not None:
             heartbeat.stop()
+            _current_heartbeat = None
 
 
 @pytest.hookimpl(hookwrapper=True)
