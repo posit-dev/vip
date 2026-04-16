@@ -197,6 +197,19 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
 
     _log(f">>> Okta: MFA challenge detected at {_sanitize_url(page.url)}")
 
+    # Dump the visible page text so we can see what Okta is showing.
+    _log(">>> Okta: --- page content ---")
+    try:
+        # Get the main form/widget text content.
+        widget = page.locator("#okta-sign-in, [data-se='auth-container'], form").first
+        if widget.is_visible():
+            _log(widget.inner_text())
+        else:
+            _log(page.locator("body").inner_text()[:2000])
+    except Exception:
+        _log("(could not read page content)")
+    _log(">>> Okta: --- end page content ---")
+
     # Determine MFA type from page content.
     # Re-locate the passcode field fresh — the DOM may have changed.
     # Wait briefly for TOTP input to render (the form transition may
