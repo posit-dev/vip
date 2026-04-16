@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from playwright.sync_api import Page
+from playwright.sync_api import Error, Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 # Keycloak selectors — validated by PPM's e2e test suite.
@@ -171,7 +171,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
             break  # MFA selector loop broke — exit outer loop too
         except AuthConfigError:
             raise
-        except Exception:
+        except (PlaywrightTimeout, Error):
             # Transient Playwright error during widget transition — retry.
             page.wait_for_timeout(500)
     else:
@@ -199,8 +199,15 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
 
     # Determine MFA type from page content.
     # Re-locate the passcode field fresh — the DOM may have changed.
+    # Wait briefly for TOTP input to render (the form transition may
+    # not be instant).
     totp_input = page.locator("input[name='credentials.passcode']")
-    if totp_input.first.is_visible():
+    try:
+        totp_input.first.wait_for(state="visible", timeout=_MFA_DETECT_TIMEOUT)
+        totp_visible = True
+    except PlaywrightTimeout:
+        totp_visible = False
+    if totp_visible:
         _log(">>> Okta: TOTP input detected.")
         # Clear the field first — it may still contain the password from
         # the previous step if Okta reuses the same input element.
