@@ -480,7 +480,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
                     "duration": report.duration,
                     "longrepr": longrepr_str,
                     "concise_error": concise_error,
-                    "markers": getattr(report, "vip_markers", []),
+                    "markers": list(getattr(report, "vip_markers", ())),
                     "scenario_title": getattr(report, "vip_scenario_title", None),
                     "feature_description": getattr(report, "vip_feature_description", None),
                 }
