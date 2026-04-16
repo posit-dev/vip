@@ -183,7 +183,7 @@ def pytest_configure(config: pytest.Config) -> None:
             )
         if not vip_cfg.auth.idp:
             raise pytest.UsageError(
-                '--headless-auth requires [auth] idp in vip.toml (e.g. idp = "keycloak")'
+                '--headless-auth requires [auth] idp in vip.toml (supported: "keycloak", "okta")'
             )
 
         from pathlib import Path
