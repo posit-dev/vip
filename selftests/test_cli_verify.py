@@ -522,6 +522,11 @@ class TestHeadlessAuth:
         """--headless-auth should skip the credential check like --interactive-auth."""
         cfg = tmp_path / "vip.toml"
         cfg.write_text('[general]\n[connect]\nurl = "https://c.example.com"\n')
-        # No credentials set, but headless_auth is True — should not error
-        cmd = _capture_cmd(_make_args(config=str(cfg), headless_auth=True))
-        assert "--headless-auth" in cmd
+        # Without headless_auth, missing credentials produce an error message.
+        _capture_cmd(_make_args(config=str(cfg)))
+        err = capsys.readouterr().err
+        assert "no credentials provided" in err
+        # With headless_auth, credential check is bypassed — no error.
+        _capture_cmd(_make_args(config=str(cfg), headless_auth=True))
+        err = capsys.readouterr().err
+        assert "no credentials provided" not in err
