@@ -10,6 +10,9 @@
 # With this config file:
 #   vip verify --config vip.toml --no-interactive-auth
 #
+# Headless OIDC auth (requires [auth] idp):
+#   vip verify --config vip.toml --headless-auth
+#
 # Kubernetes mode (auto-configure from PTD Site CR, requires posit-dev/team-operator):
 #   vip verify --k8s --site main --namespace posit-team
 
