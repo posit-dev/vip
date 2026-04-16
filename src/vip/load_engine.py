@@ -299,12 +299,11 @@ def run_user_simulation(
     # Locust's import triggers gevent monkey.patch_all(), which deadlocks if
     # any threading.Thread instances are alive.  The VIP plugin's heartbeat
     # thread is running at this point, so stop it before importing.
-    try:
-        from vip.plugin import _current_heartbeat
-    except ImportError:
-        _current_heartbeat = None
-    if _current_heartbeat is not None:
-        _current_heartbeat.stop()
+    import vip.plugin as _plugin
+
+    heartbeat = getattr(_plugin, "_current_heartbeat", None)
+    if heartbeat is not None:
+        heartbeat.stop()
 
     import gevent
     from locust.env import Environment
