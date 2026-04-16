@@ -264,6 +264,9 @@ def start_headless_auth(
     The *idp* parameter selects which form automation strategy to use
     (e.g. ``"keycloak"``, ``"okta"``).
     """
+    if not connect_url and not workbench_url:
+        raise ValueError("--headless-auth requires at least one product URL (Connect or Workbench)")
+
     # Check for a valid cached session before validating credentials/idp,
     # so a warm cache works even when env vars are not set.
     if cache_path:
@@ -273,8 +276,6 @@ def start_headless_auth(
 
     from vip.idp import get_idp_strategy
 
-    if not connect_url and not workbench_url:
-        raise ValueError("--headless-auth requires at least one product URL (Connect or Workbench)")
     if not idp:
         raise ValueError('--headless-auth requires [auth] idp in vip.toml (e.g. idp = "keycloak")')
     if not username or not password:

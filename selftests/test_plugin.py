@@ -700,6 +700,24 @@ class TestHeadlessAuthFixture:
         result.assert_outcomes(passed=1)
 
 
+class TestHeadlessAuthPluginWiring:
+    """Verify that pytest_configure validates config for --headless-auth."""
+
+    def test_headless_auth_requires_idp(self, pytester):
+        """--headless-auth fails fast when idp is not set in config."""
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "oidc"\n'
+            ),
+        )
+        pytester.makepyfile("def test_placeholder(): pass")
+        result = pytester.runpytest("--vip-config=vip.toml", "--headless-auth")
+        result.stderr.fnmatch_lines(["*--headless-auth requires*idp*"])
+
+
 class TestHeartbeat:
     """Unit tests for the long-running test heartbeat."""
 
