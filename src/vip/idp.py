@@ -73,6 +73,69 @@ def _fill_keycloak_login(page: Page, username: str, password: str) -> None:
     _log(">>> Keycloak: TOTP code submitted.")
 
 
+def _select_totp_authenticator(page: Page) -> None:
+    """If Okta shows an authenticator selection page, click the TOTP option.
+
+    Okta Identity Engine may present a list of authenticators (TOTP,
+    push, security key) after password verification.  This function
+    looks for the "Enter a code" option and clicks its "Select" button
+    to navigate to the TOTP input page.
+
+    If the page is already showing a TOTP input (no selection needed),
+    or there's no recognizable selection page, this function returns
+    without action.
+    """
+    _log = _print_flush
+
+    # Already on a TOTP input page? Nothing to do.
+    if page.locator("input[name='credentials.passcode']").first.is_visible():
+        return
+
+    # Look for the "Enter a code" authenticator option.
+    # Okta renders each option as a list item with description text and
+    # a "Select" button/link.  Try several strategies:
+
+    # Strategy 1: Find a container with "Enter a code" text and click
+    # the Select button within it.
+    code_option = page.locator(
+        "[data-se='authenticator-verify-list'] "
+        "[data-se='okta_verify-totp']"
+    )
+    if code_option.count() > 0:
+        select_btn = code_option.locator("a, button").first
+        if select_btn.is_visible():
+            _log(">>> Okta: selecting 'Enter a code' authenticator ...")
+            select_btn.click()
+            page.wait_for_load_state("domcontentloaded")
+            return
+
+    # Strategy 2: Find any element containing "Enter a code" and click
+    # the nearest "Select" link/button.
+    code_text = page.get_by_text("Enter a code", exact=False)
+    if code_text.count() > 0:
+        # The "Select" button is typically a sibling or nearby element.
+        parent = code_text.first.locator("xpath=ancestor::div[contains(@class,'authenticator')]")
+        if parent.count() > 0:
+            select_link = parent.locator("a:has-text('Select'), button:has-text('Select')")
+            if select_link.count() > 0 and select_link.first.is_visible():
+                _log(">>> Okta: selecting 'Enter a code' authenticator ...")
+                select_link.first.click()
+                page.wait_for_load_state("domcontentloaded")
+                return
+
+    # Strategy 3: Broader search — find all "Select" links and click
+    # the one closest to "Enter a code" text.  Okta renders options in
+    # order, and "Enter a code" is typically first.
+    select_links = page.get_by_role("link", name="Select").all()
+    if select_links:
+        _log(f">>> Okta: found {len(select_links)} 'Select' links, clicking first ...")
+        select_links[0].click()
+        page.wait_for_load_state("domcontentloaded")
+        return
+
+    _log(">>> Okta: no authenticator selection page detected.")
+
+
 def _fill_okta_login(page: Page, username: str, password: str) -> None:
     """Fill Okta's multi-step login form and handle optional MFA."""
     _log = _print_flush
@@ -210,10 +273,12 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         _log("(could not read page content)")
     _log(">>> Okta: --- end page content ---")
 
-    # Determine MFA type from page content.
-    # Re-locate the passcode field fresh — the DOM may have changed.
-    # Wait briefly for TOTP input to render (the form transition may
-    # not be instant).
+    # Handle authenticator selection page — Okta may present a list of
+    # MFA options (TOTP, push, security key).  Click "Select" next to
+    # the code-based option to get to the TOTP input.
+    _select_totp_authenticator(page)
+
+    # Now wait for the TOTP input to appear.
     totp_input = page.locator("input[name='credentials.passcode']")
     try:
         totp_input.first.wait_for(state="visible", timeout=_MFA_DETECT_TIMEOUT)
@@ -222,8 +287,6 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         totp_visible = False
     if totp_visible:
         _log(">>> Okta: TOTP input detected.")
-        # Clear the field first — it may still contain the password from
-        # the previous step if Okta reuses the same input element.
         totp_input.first.clear()
         code = input(">>> Enter your verification code: ").strip()
         _log(">>> Okta: filling TOTP code ...")
@@ -232,7 +295,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         page.locator(_OKTA_SUBMIT).first.click()
         _log(">>> Okta: TOTP code submitted.")
     else:
-        # Push notification or other factor — wait for user to approve.
+        # No TOTP input after selection — fall back to push/wait.
         _log(">>> Okta: no TOTP input found — assuming push/other MFA factor.")
         print(">>> Approve the notification on your device, then press Enter.",
               flush=True)
