@@ -128,38 +128,52 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     )
 
     while _time.monotonic() < deadline:
-        # Check: URL changed (redirect to product).
-        if page.url != pre_submit_url:
-            _log(f">>> Okta: URL changed to: {_sanitize_url(page.url)}")
-            break
+        try:
+            # Check: URL changed (redirect to product).
+            if page.url != pre_submit_url:
+                _log(f">>> Okta: URL changed to: {_sanitize_url(page.url)}")
+                break
 
-        # Check: error banner visible.
-        error = page.locator(error_selectors).first
-        if error.is_visible():
-            error_msg = (error.text_content() or "").strip()
-            _log(f">>> Okta: login error: {error_msg}")
-            raise AuthConfigError(f"Okta login failed: {error_msg}")
+            # Check: error banner visible.
+            for sel in error_selectors.split(","):
+                loc = page.locator(sel.strip())
+                if loc.count() > 0 and loc.first.is_visible():
+                    error_msg = (loc.first.text_content() or "").strip()
+                    _log(f">>> Okta: login error: {error_msg}")
+                    raise AuthConfigError(f"Okta login failed: {error_msg}")
 
-        # Check: MFA-specific elements appeared.
-        if page.locator(mfa_selectors).first.is_visible():
-            _log(">>> Okta: MFA authenticator elements detected.")
-            break
+            # Check: MFA-specific elements appeared.
+            for sel in mfa_selectors.split(","):
+                loc = page.locator(sel.strip())
+                if loc.count() > 0 and loc.first.is_visible():
+                    _log(">>> Okta: MFA authenticator elements detected.")
+                    break
+            else:
+                # Check: submit button text changed (form transitioned).
+                submit_loc = page.locator(_OKTA_SUBMIT).first
+                submit_text_now = ""
+                if submit_loc.count() > 0:
+                    submit_text_now = submit_loc.text_content() or ""
+                if submit_text_now and submit_text_now != submit_text_before:
+                    _log(f">>> Okta: form transitioned (button: {submit_text_now!r})")
+                    break
 
-        # Check: submit button text changed (form transitioned).
-        submit_text_now = page.locator(_OKTA_SUBMIT).first.text_content() or ""
-        if submit_text_now and submit_text_now != submit_text_before:
-            _log(f">>> Okta: form transitioned (button: {submit_text_now!r})")
-            break
+                # Check: heading changed (form transitioned to a new step).
+                heading_now = ""
+                if heading_el.count() > 0 and heading_el.is_visible():
+                    heading_now = (heading_el.text_content() or "").lower().strip()
+                if heading_now and heading_now != heading_before:
+                    _log(f">>> Okta: heading changed to: {heading_now!r}")
+                    break
 
-        # Check: heading changed (form transitioned to a new step).
-        heading_now = ""
-        if heading_el.is_visible():
-            heading_now = (heading_el.text_content() or "").lower().strip()
-        if heading_now and heading_now != heading_before:
-            _log(f">>> Okta: heading changed: {heading_before!r} -> {heading_now!r}")
-            break
-
-        page.wait_for_timeout(500)
+                page.wait_for_timeout(500)
+                continue
+            break  # MFA selector loop broke — exit outer loop too
+        except AuthConfigError:
+            raise
+        except Exception:
+            # Transient Playwright error during widget transition — retry.
+            page.wait_for_timeout(500)
     else:
         _log(f">>> Okta: no state change after 30s: {_sanitize_url(page.url)}")
         raise AuthConfigError(
