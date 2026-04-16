@@ -244,6 +244,183 @@ def start_interactive_auth(
                 pass
 
 
+def start_headless_auth(
+    connect_url: str | None = None,
+    workbench_url: str | None = None,
+    idp: str = "",
+    username: str = "",
+    password: str = "",
+    cache_path: Path | None = None,
+) -> InteractiveAuthSession:
+    """Launch a headless browser, automate OIDC login, and optionally
+    mint a Connect API key through the UI.
+
+    This is the headless counterpart to ``start_interactive_auth()``.
+    Instead of showing a browser window for manual login, it fills the
+    IdP login form automatically and prompts via the terminal for MFA
+    codes when needed.
+
+    At least one of *connect_url* or *workbench_url* must be provided.
+    The *idp* parameter selects which form automation strategy to use
+    (e.g. ``"keycloak"``, ``"okta"``).
+    """
+    from vip.idp import get_idp_strategy
+
+    if not connect_url and not workbench_url:
+        raise ValueError("--headless-auth requires at least one product URL (Connect or Workbench)")
+    if not idp:
+        raise ValueError('--headless-auth requires [auth] idp in vip.toml (e.g. idp = "keycloak")')
+    if not username or not password:
+        raise ValueError(
+            "--headless-auth requires test credentials. "
+            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD."
+        )
+
+    fill_login = get_idp_strategy(idp)
+
+    # Check for a valid cached session.
+    if cache_path:
+        cached = _load_cached_auth(cache_path)
+        if cached is not None:
+            return cached
+
+    # Determine the primary login target.
+    primary_url = connect_url or workbench_url
+    assert primary_url is not None
+    login_path = "/__login__" if connect_url else ""
+
+    tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
+    storage_state_path = Path(tmpdir) / "vip-auth-state.json"
+    os.chmod(tmpdir, 0o700)
+
+    key_name = f"{_KEY_NAME_PREFIX}{int(time.time())}"
+
+    pw = None
+    browser = None
+    try:
+        pw = sync_playwright().start()
+        browser = pw.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+
+        target = f"{primary_url}{login_path}"
+        print(f"\n>>> Headless auth: navigating to {target} ...")
+        page.goto(target)
+        page.wait_for_load_state("domcontentloaded")
+
+        # Follow redirects to the IdP login page.  The product may show
+        # a "Sign in with OpenID" button (Workbench) or auto-redirect
+        # (Connect).  Click through if needed.
+        _navigate_to_idp(page, primary_url)
+
+        print(f">>> Filling credentials for {username} ...")
+        fill_login(page, username, password)
+
+        # Wait for redirect back to the product.
+        _wait_for_product_redirect(page, primary_url)
+        print(">>> Authentication complete.")
+
+        # Mint Connect API key only if Connect is configured.
+        api_key = None
+        if connect_url:
+            api_key = _create_api_key_via_ui(page, connect_url, key_name)
+
+        # Visit Workbench so the storage state includes its session cookies.
+        if workbench_url and connect_url:
+            _authenticate_workbench(page, workbench_url)
+
+        context.storage_state(path=str(storage_state_path))
+
+        session = InteractiveAuthSession(
+            storage_state_path=storage_state_path,
+            api_key=api_key,
+            key_name=key_name,
+            _connect_url=connect_url or "",
+            _tmpdir=tmpdir,
+        )
+
+        if cache_path:
+            _save_auth_cache(session, cache_path)
+
+        return session
+    except Exception:
+        if tmpdir and os.path.isdir(tmpdir):
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        raise
+    finally:
+        if browser is not None:
+            try:
+                browser.close()
+            except Exception:
+                pass
+        if pw is not None:
+            try:
+                pw.stop()
+            except Exception:
+                pass
+
+
+def _navigate_to_idp(page: Page, product_url: str) -> None:
+    """Click through to the IdP login page if needed.
+
+    Workbench shows a "Sign in with OpenID" button that needs clicking.
+    Connect often auto-redirects.  This function handles both cases.
+    """
+    product_base = product_url.rstrip("/").lower()
+
+    # If we're already on an external page (IdP), we're done.
+    if not page.url.lower().startswith(product_base):
+        return
+
+    # Try clicking sign-in buttons (Workbench pattern).
+    for selector in (
+        "a:has-text('Sign in with OpenID')",
+        "a:has-text('Sign in')",
+        "button:has-text('Sign in')",
+        "#auth-sign-in-link",
+    ):
+        try:
+            page.click(selector, timeout=3_000)
+            page.wait_for_load_state("domcontentloaded")
+            # Check if we left the product page.
+            if not page.url.lower().startswith(product_base):
+                return
+        except Exception:
+            continue
+
+    # If we're still on the product page, wait briefly for auto-redirect.
+    try:
+        page.wait_for_url(
+            lambda url: not url.lower().startswith(product_base),
+            timeout=10_000,
+        )
+    except Exception:
+        pass
+
+
+def _wait_for_product_redirect(page: Page, product_url: str) -> None:
+    """Wait until the browser has returned to the product after IdP auth."""
+    base = product_url.rstrip("/").lower()
+    deadline = time.monotonic() + 300  # 5-minute timeout
+
+    while time.monotonic() < deadline:
+        try:
+            url = page.url.lower()
+        except Exception:
+            break
+        if url.startswith(base) and not _on_login_page(url):
+            return
+        try:
+            page.wait_for_timeout(500)
+        except Exception:
+            break
+
+    raise RuntimeError(
+        "OIDC login did not complete within 5 minutes. "
+        "Check credentials, IdP configuration, and MFA setup."
+    )
+
+
 _LOGIN_KEYWORDS = ("sign-in", "login", "auth-sign-in")
 
 
