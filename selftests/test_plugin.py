@@ -644,6 +644,14 @@ class TestPluginIntegration:
             assert r["concise_error"] is None
 
 
+class TestHeadlessAuthOption:
+    def test_headless_auth_option_registered(self, pytester):
+        """The --headless-auth option should be registered by the plugin."""
+        pytester.makeconftest("")
+        result = pytester.runpytest("--help")
+        result.stdout.fnmatch_lines(["*--headless-auth*"])
+
+
 class TestHeartbeat:
     """Unit tests for the long-running test heartbeat."""
 

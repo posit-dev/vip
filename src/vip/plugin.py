@@ -82,6 +82,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Launch a browser for manual OIDC login before running tests.",
     )
     group.addoption(
+        "--headless-auth",
+        action="store_true",
+        default=False,
+        help="Automate OIDC login in a headless browser (requires [auth] idp in config).",
+    )
+    group.addoption(
         "--no-auth",
         action="store_true",
         default=False,
