@@ -89,9 +89,15 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     page.locator(_OKTA_PASSCODE).wait_for(timeout=_FORM_TIMEOUT)
     page.locator(_OKTA_PASSCODE).fill(password)
 
-    # Record the submit button text so we can detect when the form changes.
-    # Okta relabels the submit button between steps (e.g. "Next" → "Verify").
+    # Snapshot the current form state before clicking submit so we can
+    # detect when the form transitions.  Okta's SPA often keeps the same
+    # URL and reuses the same input fields between steps.
     submit_text_before = page.locator(_OKTA_SUBMIT).first.text_content() or ""
+    heading_before = ""
+    heading_el = page.locator("h2, [data-se='o-form-head']").first
+    if heading_el.is_visible():
+        heading_before = (heading_el.text_content() or "").lower().strip()
+
     page.locator(_OKTA_SUBMIT).first.click()
     _log(">>> Okta: password submitted, waiting for response ...")
 
@@ -99,12 +105,8 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     #
     # Okta's login widget is a SPA — the URL often does NOT change
     # between steps.  The TOTP MFA step reuses the same
-    # input[name='credentials.passcode'] field, so we can't rely on
-    # it disappearing.  Instead, poll for state changes:
-    # - URL changed (redirect to product = no MFA)
-    # - Error banner appeared (bad credentials)
-    # - Page heading/submit button text changed (form transitioned)
-    # - New MFA-specific elements appeared
+    # input[name='credentials.passcode'] field.  We poll for state
+    # changes by comparing against the pre-submit snapshot.
     import time as _time
 
     from vip.auth import AuthConfigError
@@ -146,14 +148,15 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         # Check: submit button text changed (form transitioned).
         submit_text_now = page.locator(_OKTA_SUBMIT).first.text_content() or ""
         if submit_text_now and submit_text_now != submit_text_before:
-            _log(f">>> Okta: form transitioned (button changed to {submit_text_now!r})")
+            _log(f">>> Okta: form transitioned (button: {submit_text_now!r})")
             break
 
-        # Check: a heading with "verify" suggests MFA.
-        heading = page.locator("h2, [data-se='o-form-head']").first
-        heading_text = (heading.text_content() or "").lower() if heading.is_visible() else ""
-        if "verify" in heading_text or "factor" in heading_text or "authenticator" in heading_text:
-            _log(f">>> Okta: MFA heading detected: {heading_text.strip()!r}")
+        # Check: heading changed (form transitioned to a new step).
+        heading_now = ""
+        if heading_el.is_visible():
+            heading_now = (heading_el.text_content() or "").lower().strip()
+        if heading_now and heading_now != heading_before:
+            _log(f">>> Okta: heading changed: {heading_before!r} -> {heading_now!r}")
             break
 
         page.wait_for_timeout(500)
@@ -181,15 +184,20 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     _log(f">>> Okta: MFA challenge detected at {_sanitize_url(page.url)}")
 
     # Determine MFA type from page content.
+    # Re-locate the passcode field fresh — the DOM may have changed.
     totp_input = page.locator("input[name='credentials.passcode']")
-    try:
-        totp_input.wait_for(state="visible", timeout=_MFA_DETECT_TIMEOUT)
+    if totp_input.first.is_visible():
         _log(">>> Okta: TOTP input detected.")
+        # Clear the field first — it may still contain the password from
+        # the previous step if Okta reuses the same input element.
+        totp_input.first.clear()
         code = input(">>> Enter your verification code: ").strip()
-        totp_input.fill(code)
+        _log(">>> Okta: filling TOTP code ...")
+        totp_input.first.fill(code)
+        _log(">>> Okta: clicking verify ...")
         page.locator(_OKTA_SUBMIT).first.click()
         _log(">>> Okta: TOTP code submitted.")
-    except PlaywrightTimeout:
+    else:
         # Push notification or other factor — wait for user to approve.
         _log(">>> Okta: no TOTP input found — assuming push/other MFA factor.")
         print(">>> Approve the notification on your device, then press Enter.",
