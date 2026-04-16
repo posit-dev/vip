@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from vip.auth import AuthConfigError
 from vip.idp import SUPPORTED_IDPS, get_idp_strategy
 
 
@@ -17,7 +18,7 @@ class TestGetIdpStrategy:
         assert callable(strategy)
 
     def test_unknown_idp_raises(self):
-        with pytest.raises(ValueError, match="Unsupported IdP.*unknown.*keycloak.*okta"):
+        with pytest.raises(AuthConfigError, match="Unsupported IdP.*unknown.*keycloak.*okta"):
             get_idp_strategy("unknown")
 
     def test_case_insensitive_lookup(self):

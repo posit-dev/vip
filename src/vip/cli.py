@@ -473,15 +473,8 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append("-s")
     cmd.extend(args.pytest_args)
 
-    # Headless/interactive auth runs inside pytest_configure and may need
-    # time for MFA prompts.  Add 5 minutes to the timeout to avoid killing
-    # the subprocess during authentication.
-    timeout = args.test_timeout
-    if args.headless_auth or args.interactive_auth:
-        timeout = max(timeout, timeout + 300)
-
     try:
-        result = subprocess.run(cmd, timeout=timeout)
+        result = subprocess.run(cmd, timeout=args.test_timeout)
         sys.exit(result.returncode)
     except subprocess.TimeoutExpired:
         print(

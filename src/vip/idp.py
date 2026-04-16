@@ -129,11 +129,13 @@ def get_idp_strategy(idp: str) -> Callable[[Page, str, str], None]:
     """Return the form-filling function for the given IdP name.
 
     The *idp* value is normalized (stripped, lowercased) before lookup.
-    Raises ``ValueError`` if *idp* is not supported.
+    Raises ``AuthConfigError`` if *idp* is not supported.
     """
+    from vip.auth import AuthConfigError
+
     normalized = idp.strip().lower()
     strategy = _IDP_STRATEGIES.get(normalized)
     if strategy is None:
         supported = ", ".join(sorted(SUPPORTED_IDPS))
-        raise ValueError(f"Unsupported IdP {idp!r}. Supported: {supported}")
+        raise AuthConfigError(f"Unsupported IdP {idp!r}. Supported: {supported}")
     return strategy
