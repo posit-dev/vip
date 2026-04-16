@@ -437,8 +437,15 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     cmd.extend(args.pytest_args)
 
     try:
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, timeout=args.test_timeout)
         sys.exit(result.returncode)
+    except subprocess.TimeoutExpired:
+        print(
+            f"Error: tests timed out after {args.test_timeout} seconds. "
+            "Increase with --test-timeout or investigate hung tests.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     finally:
         if temp_config:
             Path(temp_config).unlink(missing_ok=True)
@@ -772,6 +779,12 @@ def main() -> None:
         action="append",
         default=[],
         help="Additional directories containing custom test cases (repeatable)",
+    )
+    verify_parser.add_argument(
+        "--test-timeout",
+        type=int,
+        default=180,
+        help="Timeout in seconds for the pytest subprocess (default: 180)",
     )
 
     # K8s mode

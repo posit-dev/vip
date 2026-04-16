@@ -23,17 +23,18 @@ def _make_args(**overrides) -> argparse.Namespace:
         "filter_expr": None,
         "pytest_args": [],
         "verbose": False,
+        "test_timeout": 180,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
 
 
-def _capture_cmd(args: argparse.Namespace) -> list[str]:
-    """Run _run_verify_local with mocked subprocess and return the command."""
-    captured: list[list[str]] = []
+def _capture_call(args: argparse.Namespace) -> tuple[list[str], dict]:
+    """Run _run_verify_local with mocked subprocess and return (cmd, kwargs)."""
+    captured: list[tuple[list[str], dict]] = []
 
-    def fake_run(cmd, **_kwargs):
-        captured.append(list(cmd))
+    def fake_run(cmd, **kwargs):
+        captured.append((list(cmd), kwargs))
         result = MagicMock()
         result.returncode = 0
         return result
@@ -48,6 +49,12 @@ def _capture_cmd(args: argparse.Namespace) -> list[str]:
 
     assert captured, "subprocess.run was never called"
     return captured[0]
+
+
+def _capture_cmd(args: argparse.Namespace) -> list[str]:
+    """Run _run_verify_local with mocked subprocess and return the command."""
+    cmd, _kwargs = _capture_call(args)
+    return cmd
 
 
 def _vip_tests_path() -> str:
@@ -452,3 +459,40 @@ class TestNormalizeCategories:
         with pytest.raises(SystemExit) as exc_info:
             _normalize_categories("1connect")
         assert exc_info.value.code == 1
+
+
+class TestVerifyLocalTestTimeout:
+    """--test-timeout should limit how long the subprocess can run."""
+
+    def test_default_timeout_is_180(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        _cmd, kwargs = _capture_call(_make_args(config=str(cfg)))
+        assert kwargs["timeout"] == 180
+
+    def test_custom_timeout_passed_through(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        _cmd, kwargs = _capture_call(_make_args(config=str(cfg), test_timeout=600))
+        assert kwargs["timeout"] == 600
+
+    def test_timeout_expired_exits_with_error(self, tmp_path, capsys):
+        import subprocess as real_subprocess
+
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+
+        def fake_run(cmd, **kwargs):
+            raise real_subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 180))
+
+        with (
+            patch("vip.cli.subprocess.run", side_effect=fake_run),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            from vip.cli import _run_verify_local
+
+            _run_verify_local(_make_args(config=str(cfg)))
+
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "timed out" in err.lower()
