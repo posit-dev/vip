@@ -87,8 +87,6 @@ uv run playwright install chromium</code></pre>
             <code>idp</code> in your <code>vip.toml</code> to tell VIP which
             identity provider to automate. If MFA is enabled, VIP prompts for
             the verification code in the terminal.
-            Add <code>--verbose</code> to see step-by-step progress through
-            the IdP login flow.
           </p>
           <pre><code>vip verify --config vip.toml --headless-auth</code></pre>
 
@@ -215,6 +213,14 @@ vip verify --connect-url https://connect.example.com -- -x --tb=long -k 'login'<
           <pre><code>@pytest.mark.min_version(product="connect", version="2024.05.0")
 def test_new_api_feature():
     ...</code></pre>
+
+          <h3>Troubleshooting</h3>
+          <p>
+            Add <code>--verbose</code> for detailed output, including full
+            tracebacks, authentication progress, and IdP login steps. This is
+            especially helpful when diagnosing headless auth or MFA issues.
+          </p>
+          <pre><code>vip verify --connect-url https://connect.example.com --headless-auth --verbose</code></pre>
         </section>
 
         <section id="configuration-file">
