@@ -118,6 +118,9 @@ def pytest_configure(config: pytest.Config) -> None:
         "ignore:ssl.TLSVersion.TLSv1_1:DeprecationWarning",
         # pytest-bdd scenario functions return fixture values; not a real issue.
         "ignore::pytest.PytestReturnNotNoneWarning",
+        # gevent monkey-patching happens after ssl is imported by other plugins;
+        # unavoidable without patching at process start.  Only affects Python ≤3.7.
+        "ignore:Monkey-patching ssl:gevent.monkey.MonkeyPatchWarning",
     ):
         config.addinivalue_line("filterwarnings", line)
 
