@@ -119,7 +119,7 @@ def pytest_configure(config: pytest.Config) -> None:
         # pytest-bdd scenario functions return fixture values; not a real issue.
         "ignore::pytest.PytestReturnNotNoneWarning",
         # gevent monkey-patching happens after ssl is imported by other plugins;
-        # unavoidable without patching at process start.  Only affects Python ≤3.7.
+        # unavoidable without patching at process start.
         "ignore:Monkey-patching ssl",
     ):
         config.addinivalue_line("filterwarnings", line)
