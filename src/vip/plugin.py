@@ -528,9 +528,12 @@ class _Heartbeat:
         self._thread.start()
 
     def stop(self) -> None:
+        # Join without a timeout: callers (notably before locust/gevent import)
+        # rely on no heartbeat thread being alive, and _run exits promptly once
+        # the stop event is set.
         self._stop_event.set()
         if self._thread is not None:
-            self._thread.join(timeout=2)
+            self._thread.join()
             self._thread = None
 
     def _run(self) -> None:

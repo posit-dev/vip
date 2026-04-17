@@ -171,6 +171,20 @@ def _locust_available() -> bool:
     return importlib.util.find_spec("locust") is not None
 
 
+def _stop_plugin_heartbeat_before_gevent() -> None:
+    """Stop the VIP plugin heartbeat thread before importing locust/gevent.
+
+    Locust's import triggers ``gevent.monkey.patch_all()``, which can deadlock
+    or misbehave when non-gevent ``threading.Thread`` instances are alive.
+    Every code path that imports locust/gevent must call this first.
+    """
+    import vip.plugin as _plugin
+
+    heartbeat = getattr(_plugin, "_current_heartbeat", None)
+    if heartbeat is not None:
+        heartbeat.stop()
+
+
 def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestResult:
     """Run a headless Locust load test and return aggregated results."""
     if not _locust_available():
@@ -179,6 +193,8 @@ def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestRe
             "pip install 'posit-vip[load]'"
         )
         raise RuntimeError(msg)
+
+    _stop_plugin_heartbeat_before_gevent()
 
     # Parse base URL and path from the full URL.
     from urllib.parse import urlparse
@@ -324,14 +340,7 @@ def run_user_simulation(
         msg = "locust not installed; user simulation requires: pip install 'posit-vip[load]'"
         raise RuntimeError(msg)
 
-    # Locust's import triggers gevent monkey.patch_all(), which deadlocks if
-    # any threading.Thread instances are alive.  The VIP plugin's heartbeat
-    # thread is running at this point, so stop it before importing.
-    import vip.plugin as _plugin
-
-    heartbeat = getattr(_plugin, "_current_heartbeat", None)
-    if heartbeat is not None:
-        heartbeat.stop()
+    _stop_plugin_heartbeat_before_gevent()
 
     import gevent
     from locust.env import Environment
