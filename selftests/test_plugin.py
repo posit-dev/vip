@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 
 import pytest
@@ -138,10 +139,21 @@ class TestExtractExceptionInfo:
         assert exc_message == "something weird happened"
 
     def test_multiline_message(self):
-        longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError: line one\nE   line two"
+        longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError: line one\nE       line two"
         exc_type, exc_message = _extract_exception_info(longrepr)
         assert exc_type == "ValueError"
-        assert exc_message == "line one"
+        assert exc_message == "line one line two"
+
+    def test_multiline_assertion_with_details(self):
+        """Multi-line assertion messages should include continuation lines."""
+        longrepr = (
+            "tests/test_foo.py:5: in test_it\n"
+            "E       AssertionError: Prometheus metrics endpoint check failed:\n"
+            "E         Connect: /metrics returned 403 (expected 200)"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "AssertionError"
+        assert "Connect: /metrics returned 403" in exc_message
 
 
 class TestVersionTuple:
@@ -192,6 +204,157 @@ class TestPluginIntegration:
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
         result.assert_outcomes()
         result.stdout.fnmatch_lines(["*1 deselected*"])
+
+    def test_bdd_given_configured_step_deselected(self, selftest_pytester):
+        """A BDD scenario with 'Given Connect is configured in vip.toml'
+        should be deselected (not skipped) when Connect is not configured."""
+        selftest_pytester.makefile(
+            ".feature",
+            test_perf=(
+                "@performance\n"
+                "Feature: Perf test\n"
+                "  Scenario: Load test Connect\n"
+                "    Given Connect is configured in vip.toml\n"
+                "    Then something passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_perf="""
+            import pytest
+            from pytest_bdd import scenario, given, then
+
+            @scenario("test_perf.feature", "Load test Connect")
+            def test_load():
+                pass
+
+            @given("Connect is configured in vip.toml")
+            def connect_configured():
+                pytest.skip("Connect is not configured")
+
+            @then("something passes")
+            def something_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes()
+        result.stdout.fnmatch_lines(["*1 deselected*"])
+        # Must NOT appear as SKIPPED
+        assert "SKIPPED" not in result.stdout.str()
+
+    def test_bdd_given_configured_product_not_deselected(self, selftest_pytester):
+        """A BDD scenario with 'Given Connect is configured' should run
+        when Connect IS configured."""
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://example.com"\n'
+            ),
+        )
+        selftest_pytester.makefile(
+            ".feature",
+            test_configured=(
+                "@performance\n"
+                "Feature: Perf test\n"
+                "  Scenario: Load test Connect\n"
+                "    Given Connect is configured in vip.toml\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_configured="""
+            from pytest_bdd import scenario, given, then
+
+            @scenario("test_configured.feature", "Load test Connect")
+            def test_load():
+                pass
+
+            @given("Connect is configured in vip.toml")
+            def connect_configured():
+                pass
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+
+    def test_bdd_when_step_not_deselected(self, selftest_pytester):
+        """A 'When' step matching a product name should NOT trigger deselection."""
+        selftest_pytester.makefile(
+            ".feature",
+            test_when=(
+                "@performance\n"
+                "Feature: When step test\n"
+                "  Scenario: When Connect is configured check\n"
+                "    When Connect is configured in the report\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_when="""
+            from pytest_bdd import scenario, when, then
+
+            @scenario("test_when.feature", "When Connect is configured check")
+            def test_when_step():
+                pass
+
+            @when("Connect is configured in the report")
+            def connect_in_report():
+                pass
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+        # Ensure no tests were deselected (check the summary line, not raw text
+        # which may contain "deselected" in the tmpdir path).
+        assert "deselected" not in result.stdout.lines[-1]
+
+    def test_bdd_parameterized_unconfigured_deselected(self, selftest_pytester):
+        """A parameterized '<product> is configured' step should deselect
+        when the product is not configured."""
+        selftest_pytester.makefile(
+            ".feature",
+            test_param=(
+                "@performance\n"
+                "Feature: Param test\n"
+                "  Scenario Outline: <product> check\n"
+                "    Given <product> is configured in vip.toml\n"
+                "    Then it passes\n"
+                "\n"
+                "    Examples:\n"
+                "      | product   |\n"
+                "      | Connect   |\n"
+                "      | CustomApp |\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_param="""
+            import pytest
+            from pytest_bdd import scenarios, given, then, parsers
+
+            scenarios("test_param.feature")
+
+            @given(parsers.parse("{product} is configured in vip.toml"))
+            def product_configured(product):
+                pytest.skip(f"{product} is not configured")
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        # Connect is not configured → deselected.
+        # CustomApp is unrecognized → not deselected, runs and skips at runtime.
+        result.stdout.fnmatch_lines(["*1 deselected*"])
+        result.stdout.fnmatch_lines(["*SKIPPED*"])
 
     def test_version_skip(self, selftest_pytester):
         selftest_pytester.makefile(
@@ -479,6 +642,42 @@ class TestPluginIntegration:
         passed = [r for r in data["results"] if r["outcome"] == "passed"]
         for r in passed:
             assert r["concise_error"] is None
+
+
+class TestHeartbeat:
+    """Unit tests for the long-running test heartbeat."""
+
+    def test_heartbeat_fires(self):
+        from vip.plugin import _Heartbeat
+
+        output: list[str] = []
+        hb = _Heartbeat(output.append, interval=0.2)
+        hb.start()
+        time.sleep(0.7)
+        hb.stop()
+        assert len(output) >= 2
+        assert "still running" in output[0]
+
+    def test_heartbeat_stop_is_immediate(self):
+        from vip.plugin import _Heartbeat
+
+        output: list[str] = []
+        hb = _Heartbeat(output.append, interval=10)
+        hb.start()
+        hb.stop()
+        assert len(output) == 0
+
+    def test_heartbeat_shows_elapsed_seconds(self):
+        from vip.plugin import _Heartbeat
+
+        output: list[str] = []
+        hb = _Heartbeat(output.append, interval=0.2)
+        hb.start()
+        time.sleep(0.5)
+        hb.stop()
+        assert len(output) >= 1
+        # Should contain a number of seconds in parentheses
+        assert re.search(r"\(\d+s\)", output[0])
 
 
 def test_markers_in_sync():

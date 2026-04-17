@@ -20,7 +20,10 @@ from __future__ import annotations
 import json
 import re
 import sys
+import threading
+import time
 import warnings
+from collections.abc import Generator
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -78,6 +81,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         default=False,
         help="Launch a browser for manual OIDC login before running tests.",
+    )
+    group.addoption(
+        "--no-auth",
+        action="store_true",
+        default=False,
+        help="Skip all tests that require authentication credentials (Connect and Workbench).",
     )
     group.addoption(
         "--vip-verbose",
@@ -214,7 +223,7 @@ def pytest_collection_modifyitems(
     """Deselect tests whose product is not configured, skip tests whose
     version requirement is not met, and ensure prerequisites run first."""
     vip_cfg: VIPConfig = config.stash[_vip_config_key]
-    using_interactive_auth = config.stash.get(_auth_session_key, None) is not None
+    no_auth = config.getoption("--no-auth", default=False)
 
     # Sort so prerequisites run before everything else, and assign xdist
     # groups so that each product's tests land on a dedicated worker.
@@ -227,8 +236,10 @@ def pytest_collection_modifyitems(
         if _should_deselect_for_product(item, vip_cfg):
             deselected.append(item)
             continue
+        if no_auth and _requires_auth(item):
+            deselected.append(item)
+            continue
         _maybe_skip_for_version(item, vip_cfg)
-        _maybe_skip_credential_check(item, using_interactive_auth)
         _assign_xdist_group(item)
         _stash_scenario_metadata(item)
         if item.get_closest_marker("prerequisites"):
@@ -258,30 +269,99 @@ def _assign_xdist_group(item: pytest.Item) -> None:
     item.add_marker(pytest.mark.xdist_group(group))
 
 
-def _maybe_skip_credential_check(item: pytest.Item, using_interactive_auth: bool) -> None:
-    """Skip the credential prerequisite test when using interactive auth."""
-    if not using_interactive_auth:
-        return
-    # Match precisely to avoid skipping unrelated tests with similar names.
-    fspath = getattr(item, "path", None) or Path()
-    if (
-        fspath.name == "test_auth_configured.py"
-        and fspath.parent.name == "prerequisites"
-        and item.name == "test_credentials_provided"
-    ):
-        item.add_marker(
-            pytest.mark.skip(reason="--interactive-auth is active, credential check not needed")
-        )
+# Mapping from "Given" step name prefix to product config key.
+# Steps like "Connect is configured in vip.toml" gate a scenario on
+# a product being configured; when it isn't, the test should be
+# deselected rather than skipped so it doesn't clutter the output.
+_GIVEN_PRODUCT_STEPS = {
+    "Connect is configured": "connect",
+    "Workbench is configured": "workbench",
+    "Package Manager is configured": "package_manager",
+}
+
+# Display name → config key for parameterized "<product>" placeholders.
+_PRODUCT_DISPLAY_NAMES = {
+    "Connect": "connect",
+    "Workbench": "workbench",
+    "Package Manager": "package_manager",
+}
+
+
+def _get_bdd_param_product(item: pytest.Item) -> str | None:
+    """Extract the product display name from a pytest-bdd parameterized item.
+
+    pytest-bdd stores Scenario Outline examples in ``callspec.params`` as
+    ``{'_pytest_bdd_example': {'product': 'Connect', ...}}``.
+    """
+    callspec = getattr(item, "callspec", None)
+    if callspec is None:
+        return None
+    example = callspec.params.get("_pytest_bdd_example")
+    if isinstance(example, dict):
+        return example.get("product")
+    return None
 
 
 def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
     """Return True if *item* should be deselected because its product is not configured."""
+    # Check explicit product markers (@connect, @workbench, @package_manager).
     for marker_name, product_key in _PRODUCT_MARKERS.items():
         marker = item.get_closest_marker(marker_name)
         if marker is not None:
             pc = cfg.product_config(product_key)
             if not pc.is_configured:
                 return True
+
+    # Check BDD scenario "Given" steps for product-configuration guards.
+    fn = getattr(item, "obj", None)
+    scenario_obj = getattr(fn, "__scenario__", None) if fn else None
+    if scenario_obj is not None:
+        for step in getattr(scenario_obj, "steps", []):
+            if step.type != "given":
+                continue
+            # Direct match: "Connect is configured in vip.toml"
+            for prefix, product_key in _GIVEN_PRODUCT_STEPS.items():
+                if step.name.startswith(prefix):
+                    pc = cfg.product_config(product_key)
+                    if not pc.is_configured:
+                        return True
+            # Parameterized match: "<product> is configured in vip.toml"
+            # pytest-bdd stores Scenario Outline examples in callspec.params
+            # as {'_pytest_bdd_example': {'product': 'Connect', ...}}.
+            if step.name.startswith("<") and "is configured" in step.name:
+                product_name = _get_bdd_param_product(item)
+                if product_name:
+                    resolved_key = _PRODUCT_DISPLAY_NAMES.get(product_name)
+                    if resolved_key:
+                        pc = cfg.product_config(resolved_key)
+                        if not pc.is_configured:
+                            return True
+
+    return False
+
+
+# Products that require username/password credentials.
+_AUTH_PRODUCTS = {"connect", "workbench"}
+
+
+def _requires_auth(item: pytest.Item) -> bool:
+    """Return True if *item* requires authentication credentials."""
+    # Explicit product markers.
+    for marker_name in _AUTH_PRODUCTS:
+        if item.get_closest_marker(marker_name) is not None:
+            return True
+
+    # BDD "Given" steps that reference an auth-required product.
+    fn = getattr(item, "obj", None)
+    scenario_obj = getattr(fn, "__scenario__", None) if fn else None
+    if scenario_obj is not None:
+        for step in getattr(scenario_obj, "steps", []):
+            if step.type != "given":
+                continue
+            for prefix, product_key in _GIVEN_PRODUCT_STEPS.items():
+                if product_key in _AUTH_PRODUCTS and step.name.startswith(prefix):
+                    return True
+
     return False
 
 
@@ -355,13 +435,22 @@ def _extract_exception_info(longrepr: str) -> tuple[str, str]:
     Returns ``("UnknownError", <truncated string>)`` if parsing fails.
     """
     # Look for pytest's "E   ExcType: message" line format (message may be empty).
+    # Multi-line assertion messages produce continuation "E   ..." lines that
+    # we join together so the concise output keeps the full details.
     m = re.search(
         r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.*)",
         longrepr,
         re.MULTILINE,
     )
     if m:
-        return m.group(1), m.group(2).strip()
+        msg_lines = [m.group(2).strip()]
+        # Gather only the contiguous block of E-lines that follow immediately.
+        for line in longrepr[m.end() :].lstrip("\n").splitlines():
+            cont = re.match(r"^E\s{3,}(.+)", line)
+            if not cont:
+                break
+            msg_lines.append(cont.group(1).strip())
+        return m.group(1), " ".join(line for line in msg_lines if line)
 
     # Bare assertion from pytest's assertion rewriting: "E   assert 403 == 200"
     m = re.search(r"^E\s+(assert\s+.+)", longrepr, re.MULTILINE)
@@ -413,6 +502,68 @@ def _format_concise_error(
         return f"{test_name}: {exc_message}"
 
     return f"{test_name}: an unexpected error occurred: {exc_type}: {exc_message}"
+
+
+# ---------------------------------------------------------------------------
+# Long-running test heartbeat
+# ---------------------------------------------------------------------------
+
+_HEARTBEAT_INTERVAL = 30  # seconds between "still running" messages
+
+
+class _Heartbeat:
+    """Print periodic elapsed-time messages while a test is running."""
+
+    def __init__(self, writer, interval: int = _HEARTBEAT_INTERVAL):
+        self._writer = writer
+        self._interval = interval
+        self._start: float = 0
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        self._start = time.monotonic()
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        # Join without a timeout: callers (notably before locust/gevent import)
+        # rely on no heartbeat thread being alive, and _run exits promptly once
+        # the stop event is set.
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join()
+            self._thread = None
+
+    def _run(self) -> None:
+        while not self._stop_event.wait(self._interval):
+            elapsed = int(time.monotonic() - self._start)
+            self._writer(f"  ... still running ({elapsed}s)")
+
+
+# Exposed so that code importing gevent/locust (which calls monkey.patch_all)
+# can stop the heartbeat thread first to avoid a deadlock.
+_current_heartbeat: _Heartbeat | None = None
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item: pytest.Item, nextitem) -> Generator[None, None, None]:  # noqa: ARG001
+    """Print periodic heartbeat messages while a test is running."""
+    global _current_heartbeat
+    heartbeat: _Heartbeat | None = None
+    if _active_config is not None:
+        tr = _active_config.pluginmanager.get_plugin("terminalreporter")
+        if tr is not None:
+            heartbeat = _Heartbeat(tr.write_line)
+            heartbeat.start()
+            _current_heartbeat = heartbeat
+    try:
+        yield
+    finally:
+        if heartbeat is not None:
+            heartbeat.stop()
+            _current_heartbeat = None
 
 
 @pytest.hookimpl(hookwrapper=True)

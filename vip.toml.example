@@ -56,7 +56,7 @@ url = "https://packagemanager.example.com"
 # version = "2024.09.0"
 
 # Token for a Package Manager user.
-# Prefer setting the VIP_PM_TOKEN environment variable.
+# Prefer setting the VIP_PACKAGE_MANAGER_TOKEN environment variable.
 # token = "..."
 
 [auth]

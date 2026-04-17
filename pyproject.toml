@@ -31,6 +31,7 @@ dependencies = [
     "tomli>=2.0;python_version<'3.11'",
     "requests>=2.33.0",  # transitive via pytest-playwright; pinned to track updates
     "pygments>=2.20.0",  # CVE-2026-4539 fix
+    "python-multipart>=0.0.26",  # CVE-2026-40347 fix; transitive via shiny
 ]
 
 [project.optional-dependencies]
@@ -87,6 +88,14 @@ filterwarnings = [
     # gherkin-official 29.0.0 passes maxsplit positionally to re.split;
     # fixed upstream but pulled transitively via pytest-bdd.
     "ignore:'maxsplit' is passed as positional argument:DeprecationWarning:gherkin",
+    # TLS downgrade tests deliberately use deprecated TLS 1.0/1.1 versions.
+    "ignore:ssl.TLSVersion.TLSv1:DeprecationWarning",
+    "ignore:ssl.TLSVersion.TLSv1_1:DeprecationWarning",
+    # pytest-bdd scenario functions return fixture values; not a real issue.
+    "ignore::pytest.PytestReturnNotNoneWarning",
+    # gevent monkey-patching happens after ssl is imported by other plugins;
+    # unavoidable without patching at process start.  Only affects Python ≤3.7.
+    "ignore:Monkey-patching ssl:gevent.monkey.MonkeyPatchWarning",
 ]
 markers = [
     "connect: tests for Posit Connect",

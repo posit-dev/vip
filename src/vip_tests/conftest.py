@@ -27,6 +27,12 @@ def vip_config(request: pytest.FixtureRequest) -> VIPConfig:
     return request.config.stash[_vip_config_key]
 
 
+@pytest.fixture(scope="session")
+def vip_verbose(request: pytest.FixtureRequest) -> bool:
+    """Whether --vip-verbose was passed on the command line."""
+    return request.config.getoption("--vip-verbose", default=False)
+
+
 # ---------------------------------------------------------------------------
 # Product client fixtures
 # ---------------------------------------------------------------------------

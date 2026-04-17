@@ -17,22 +17,24 @@ def _make_args(**overrides) -> argparse.Namespace:
         "package_manager_url": None,
         "report": "report/results.json",
         "interactive_auth": False,
+        "no_auth": False,
         "extensions": [],
         "categories": None,
         "filter_expr": None,
         "pytest_args": [],
         "verbose": False,
+        "test_timeout": 180,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
 
 
-def _capture_cmd(args: argparse.Namespace) -> list[str]:
-    """Run _run_verify_local with mocked subprocess and return the command."""
-    captured: list[list[str]] = []
+def _capture_call(args: argparse.Namespace) -> tuple[list[str], dict]:
+    """Run _run_verify_local with mocked subprocess and return (cmd, kwargs)."""
+    captured: list[tuple[list[str], dict]] = []
 
-    def fake_run(cmd, **_kwargs):
-        captured.append(list(cmd))
+    def fake_run(cmd, **kwargs):
+        captured.append((list(cmd), kwargs))
         result = MagicMock()
         result.returncode = 0
         return result
@@ -47,6 +49,12 @@ def _capture_cmd(args: argparse.Namespace) -> list[str]:
 
     assert captured, "subprocess.run was never called"
     return captured[0]
+
+
+def _capture_cmd(args: argparse.Namespace) -> list[str]:
+    """Run _run_verify_local with mocked subprocess and return the command."""
+    cmd, _kwargs = _capture_call(args)
+    return cmd
 
 
 def _vip_tests_path() -> str:
@@ -160,6 +168,155 @@ class TestVerifyLocalSkipNotes:
         assert "Package Manager" not in out
 
 
+class TestVerifyLocalCredentialCheck:
+    """Exit early when products are configured but credentials are missing."""
+
+    def _run_and_expect_exit(self, args):
+        from vip.cli import _run_verify_local
+
+        with pytest.raises(SystemExit) as exc_info:
+            _run_verify_local(args)
+        assert exc_info.value.code == 1
+
+    def test_workbench_url_without_creds_exits(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        self._run_and_expect_exit(_make_args(workbench_url="https://wb.example.com"))
+        err = capsys.readouterr().err
+        assert "Workbench" in err
+        assert "VIP_TEST_USERNAME" in err
+
+    def test_connect_url_without_creds_exits(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
+        self._run_and_expect_exit(_make_args(connect_url="https://c.example.com"))
+        err = capsys.readouterr().err
+        assert "Connect" in err
+
+    def test_both_urls_without_creds_exits(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
+        self._run_and_expect_exit(
+            _make_args(
+                connect_url="https://c.example.com",
+                workbench_url="https://wb.example.com",
+            )
+        )
+        err = capsys.readouterr().err
+        assert "Connect and Workbench" in err
+
+    def test_username_only_still_exits(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        self._run_and_expect_exit(_make_args(workbench_url="https://wb.example.com"))
+
+    def test_password_only_still_exits(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
+        self._run_and_expect_exit(_make_args(workbench_url="https://wb.example.com"))
+
+    def test_connect_with_api_key_still_exits(self, tmp_path, monkeypatch):
+        """Connect UI/user-management scenarios need username/password even with an API key."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        monkeypatch.setenv("VIP_CONNECT_API_KEY", "abc123")
+        self._run_and_expect_exit(_make_args(connect_url="https://c.example.com"))
+
+    def test_with_both_creds_no_exit(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
+        _capture_cmd(_make_args(workbench_url="https://wb.example.com"))
+
+    def test_interactive_auth_no_exit(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(workbench_url="https://wb.example.com", interactive_auth=True))
+
+    def test_package_manager_only_no_exit(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(package_manager_url="https://pm.example.com"))
+
+    def test_category_filter_skips_unselected_product(self, tmp_path, monkeypatch):
+        """Workbench configured but only package-manager category selected."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text(
+            "[general]\n"
+            '[workbench]\nurl = "https://wb.example.com"\n'
+            '[package_manager]\nurl = "https://pm.example.com"\n'
+        )
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(config=str(cfg), categories="package_manager"))
+
+    def test_category_filter_still_exits_for_selected_product(self, tmp_path, monkeypatch):
+        """Workbench category selected without credentials should still exit."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text(
+            "[general]\n"
+            '[workbench]\nurl = "https://wb.example.com"\n'
+            '[package_manager]\nurl = "https://pm.example.com"\n'
+        )
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        self._run_and_expect_exit(_make_args(config=str(cfg), categories="workbench"))
+
+    def test_negated_category_skips_credential_check(self, tmp_path, monkeypatch):
+        """'not workbench' should NOT require workbench credentials."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text(
+            "[general]\n"
+            '[workbench]\nurl = "https://wb.example.com"\n'
+            '[package_manager]\nurl = "https://pm.example.com"\n'
+        )
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(config=str(cfg), categories="not workbench"))
+
+    def test_no_auth_bypasses_credential_check(self, tmp_path, monkeypatch):
+        """--no-auth should not exit even without credentials."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        _capture_cmd(_make_args(workbench_url="https://wb.example.com", no_auth=True))
+
+    def test_no_auth_passes_flag_to_pytest(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        cmd = _capture_cmd(_make_args(workbench_url="https://wb.example.com", no_auth=True))
+        assert "--no-auth" in cmd
+
+    def test_error_message_mentions_no_auth(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        self._run_and_expect_exit(_make_args(workbench_url="https://wb.example.com"))
+        err = capsys.readouterr().err
+        assert "--no-auth" in err
+
+
 class TestVerifyLocalVerbose:
     """Review #87: verify -v is included by default in local runs."""
 
@@ -214,6 +371,18 @@ class TestVerifyLocalVerboseFlag:
         cfg.write_text("[general]\n")
         cmd = _capture_cmd(_make_args(config=str(cfg), verbose=True))
         assert "--vip-verbose" in cmd
+
+    def test_verbose_flag_disables_capture(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), verbose=True))
+        assert "-s" in cmd
+
+    def test_no_verbose_does_not_disable_capture(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), verbose=False))
+        assert "-s" not in cmd
 
     def test_no_verbose_flag_omits_vip_verbose(self, tmp_path):
         cfg = tmp_path / "vip.toml"
@@ -303,3 +472,40 @@ class TestNormalizeCategories:
         with pytest.raises(SystemExit) as exc_info:
             _normalize_categories("1connect")
         assert exc_info.value.code == 1
+
+
+class TestVerifyLocalTestTimeout:
+    """--test-timeout should limit how long the subprocess can run."""
+
+    def test_default_timeout_is_180(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        _cmd, kwargs = _capture_call(_make_args(config=str(cfg)))
+        assert kwargs["timeout"] == 180
+
+    def test_custom_timeout_passed_through(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        _cmd, kwargs = _capture_call(_make_args(config=str(cfg), test_timeout=600))
+        assert kwargs["timeout"] == 600
+
+    def test_timeout_expired_exits_with_error(self, tmp_path, capsys):
+        import subprocess as real_subprocess
+
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+
+        def fake_run(cmd, **kwargs):
+            raise real_subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 180))
+
+        with (
+            patch("vip.cli.subprocess.run", side_effect=fake_run),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            from vip.cli import _run_verify_local
+
+            _run_verify_local(_make_args(config=str(cfg)))
+
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "timed out" in err.lower()

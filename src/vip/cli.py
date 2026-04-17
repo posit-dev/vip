@@ -187,6 +187,59 @@ def _print_skip_notes(config_path: str | None) -> None:
             print(f"Note: {name} {reason} — {name} tests will not be collected.", flush=True)
 
 
+def _check_credentials(
+    config_path: str | None,
+    *,
+    interactive_auth: bool,
+    categories: str | None,
+) -> None:
+    """Exit early when products are configured but credentials are missing.
+
+    When *categories* is provided, only check products whose marker appears
+    in the expression.  Without categories all configured products are checked.
+    """
+    from vip.config import load_config
+
+    cfg = load_config(config_path)
+    if interactive_auth:
+        return
+
+    has_creds = bool(cfg.auth.username and cfg.auth.password)
+    needs_creds: list[str] = []
+
+    # When a category filter is active, only enforce credential checks for
+    # products that are actually selected.  We tokenize the expression and
+    # check that the marker appears as a positive term (not negated by "not").
+    def _category_selected(marker: str) -> bool:
+        if categories is None:
+            return True
+        tokens = re.findall(r"\w+", categories)
+        for i, tok in enumerate(tokens):
+            if tok == marker and (i == 0 or tokens[i - 1] != "not"):
+                return True
+        return False
+
+    # Connect tests include UI login and user-management scenarios that use
+    # VIP_TEST_USERNAME/VIP_TEST_PASSWORD even when VIP_CONNECT_API_KEY is set,
+    # so require credentials whenever Connect is selected (users can pass
+    # --no-auth to deselect Connect tests entirely).
+    if cfg.connect.is_configured and not has_creds and _category_selected("connect"):
+        needs_creds.append("Connect")
+    if cfg.workbench.is_configured and not has_creds and _category_selected("workbench"):
+        needs_creds.append("Workbench")
+
+    if needs_creds:
+        products = " and ".join(needs_creds)
+        print(
+            f"\033[1mError: {products} tests selected but no credentials provided.\033[0m\n"
+            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD, use --interactive-auth,\n"
+            "or use --no-auth to skip tests that require authentication.",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
+
+
 # Pytest options that consume the next argument as a directory path.
 # We skip these values so they aren't mistaken for positional test targets.
 _CONSUMES_DIR_VALUE = frozenset({"--rootdir", "--confcutdir", "--basetemp"})
@@ -344,8 +397,14 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     # Print notes for products that are not configured so the user knows
     # upfront which categories will be skipped.
     _print_skip_notes(config_path)
+    if not args.no_auth:
+        _check_credentials(
+            config_path,
+            interactive_auth=args.interactive_auth,
+            categories=args.categories,
+        )
 
-    cmd = [sys.executable, "-m", "pytest", "-v"]
+    cmd = [sys.executable, "-m", "pytest", "-v", "--no-header"]
 
     # Resolve the installed vip_tests package so pytest finds tests even
     # when running outside the source tree (e.g. ``pip install posit-vip``).
@@ -363,6 +422,8 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append(f"--vip-report={args.report}")
     if args.interactive_auth:
         cmd.append("--interactive-auth")
+    if args.no_auth:
+        cmd.append("--no-auth")
     for ext in args.extensions or []:
         cmd.append(f"--vip-extensions={ext}")
     if args.categories:
@@ -372,11 +433,19 @@ def _run_verify_local(args: argparse.Namespace) -> None:
 
     if args.verbose:
         cmd.append("--vip-verbose")
+        cmd.append("-s")
     cmd.extend(args.pytest_args)
 
     try:
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, timeout=args.test_timeout)
         sys.exit(result.returncode)
+    except subprocess.TimeoutExpired:
+        print(
+            f"Error: tests timed out after {args.test_timeout} seconds. "
+            "Increase with --test-timeout or investigate hung tests.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     finally:
         if temp_config:
             Path(temp_config).unlink(missing_ok=True)
@@ -671,6 +740,12 @@ def main() -> None:
         help="Launch a browser for OIDC login (default: disabled, use "
         "--interactive-auth to enable)",
     )
+    verify_parser.add_argument(
+        "--no-auth",
+        action="store_true",
+        default=False,
+        help="Skip all tests that require authentication (Connect and Workbench)",
+    )
 
     # Test selection
     verify_parser.add_argument(
@@ -704,6 +779,12 @@ def main() -> None:
         action="append",
         default=[],
         help="Additional directories containing custom test cases (repeatable)",
+    )
+    verify_parser.add_argument(
+        "--test-timeout",
+        type=int,
+        default=180,
+        help="Timeout in seconds for the pytest subprocess (default: 180)",
     )
 
     # K8s mode

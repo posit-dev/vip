@@ -145,7 +145,7 @@ def mint_interactive_credentials(
         "VIP_CONNECT_API_KEY": auth_session.api_key,
         "VIP_CONNECT_KEY_NAME": auth_session.key_name,
         "VIP_WORKBENCH_API_KEY": workbench_token,
-        "VIP_PM_TOKEN": pm_token,
+        "VIP_PACKAGE_MANAGER_TOKEN": pm_token,
     }
 
     print("Saving credentials to K8s Secret...")
