@@ -12,8 +12,11 @@ from vip.load_engine import (
     LoadTestResult,
     _build_result,
     _log_request,
+    _run_locust,
+    _stop_plugin_heartbeat_before_gevent,
     classify_repos,
     run_load_test,
+    run_user_simulation,
 )
 
 # ---------------------------------------------------------------------------
@@ -281,3 +284,93 @@ class TestLogRequest:
         )
         line = capfd.readouterr().err.strip()
         assert "0.00s" in line
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat stop before gevent import
+# ---------------------------------------------------------------------------
+
+
+class _RecordingHeartbeat:
+    def __init__(self):
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+
+class TestStopPluginHeartbeatBeforeGevent:
+    """``_stop_plugin_heartbeat_before_gevent`` must shut down the plugin
+    heartbeat thread before any caller triggers ``gevent.monkey.patch_all``.
+    The locust/gevent import path deadlocks if a live ``threading.Thread``
+    is running, so both ``_run_locust`` and ``run_user_simulation`` must
+    invoke this helper first.
+    """
+
+    def test_stops_active_heartbeat(self, monkeypatch):
+        import vip.plugin as plugin
+
+        hb = _RecordingHeartbeat()
+        monkeypatch.setattr(plugin, "_current_heartbeat", hb)
+        _stop_plugin_heartbeat_before_gevent()
+        assert hb.stopped is True
+
+    def test_noop_when_no_heartbeat(self, monkeypatch):
+        import vip.plugin as plugin
+
+        monkeypatch.setattr(plugin, "_current_heartbeat", None)
+        # Must not raise even though no heartbeat is registered.
+        _stop_plugin_heartbeat_before_gevent()
+
+    def test_run_locust_calls_helper_before_gevent_import(self):
+        """_run_locust must call the helper before any locust/gevent import."""
+        self._assert_helper_precedes_gevent_import(_run_locust)
+
+    def test_run_user_simulation_calls_helper_before_gevent_import(self):
+        """run_user_simulation must call the helper before any locust/gevent import."""
+        self._assert_helper_precedes_gevent_import(run_user_simulation)
+
+    @staticmethod
+    def _assert_helper_precedes_gevent_import(func):
+        """Inspect the function AST: helper call must precede any locust/gevent
+        import statement. Running the function would deadlock on real gevent
+        coroutines when the ordering is wrong, so verify statically instead.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        source = textwrap.dedent(inspect.getsource(func))
+        tree = ast.parse(source)
+        func_def = tree.body[0]
+        assert isinstance(func_def, ast.FunctionDef)
+
+        helper_line = None
+        gevent_line = None
+        locust_line = None
+        for node in ast.walk(func_def):
+            if (
+                helper_line is None
+                and isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "_stop_plugin_heartbeat_before_gevent"
+            ):
+                helper_line = node.lineno
+            elif gevent_line is None and isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "gevent":
+                        gevent_line = node.lineno
+            elif locust_line is None and isinstance(node, ast.ImportFrom):
+                if node.module and node.module.startswith("locust"):
+                    locust_line = node.lineno
+
+        name = func.__name__
+        assert helper_line is not None, f"{name} does not call the heartbeat helper"
+        assert gevent_line is not None, f"{name} does not import gevent"
+        assert locust_line is not None, f"{name} does not import from locust"
+        assert helper_line < gevent_line, (
+            f"{name} imports gevent before calling the heartbeat helper"
+        )
+        assert helper_line < locust_line, (
+            f"{name} imports locust before calling the heartbeat helper"
+        )
