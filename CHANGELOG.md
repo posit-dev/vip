@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.24.0 (2026-04-17)
+
+### Features
+
+- Headless auth support ([#166](https://github.com/posit-dev/vip/pull/166),
+  [`8ed0997`](https://github.com/posit-dev/vip/commit/8ed0997ae7d9333c6a2dc15cd70424e562f3991a))
+
+
 ## v0.23.0 (2026-04-17)
 
 ### Features
