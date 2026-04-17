@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.23.0 (2026-04-17)
+
+### Features
+
+- Auth and PPM load testing usability ([#165](https://github.com/posit-dev/vip/pull/165),
+  [`b8159ce`](https://github.com/posit-dev/vip/commit/b8159ce072ac004c18cee63320e1b860dc5e8b63))
+
+
 ## v0.22.0 (2026-04-15)
 
 ### Features
