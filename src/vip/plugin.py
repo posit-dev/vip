@@ -106,6 +106,21 @@ def pytest_configure(config: pytest.Config) -> None:
     global _active_config
     _active_config = config
 
+    # Register warning filters so they apply regardless of the pytest rootdir.
+    # Mirrors the filterwarnings list in pyproject.toml for users who install
+    # vip into an unrelated project.
+    for line in (
+        # gherkin-official 29.0.0 passes maxsplit positionally to re.split;
+        # fixed upstream but pulled transitively via pytest-bdd.
+        "ignore:'maxsplit' is passed as positional argument:DeprecationWarning:gherkin",
+        # TLS downgrade tests deliberately use deprecated TLS 1.0/1.1 versions.
+        "ignore:ssl.TLSVersion.TLSv1:DeprecationWarning",
+        "ignore:ssl.TLSVersion.TLSv1_1:DeprecationWarning",
+        # pytest-bdd scenario functions return fixture values; not a real issue.
+        "ignore::pytest.PytestReturnNotNoneWarning",
+    ):
+        config.addinivalue_line("filterwarnings", line)
+
     # Register markers
     config.addinivalue_line("markers", "connect: tests for Posit Connect")
     config.addinivalue_line("markers", "workbench: tests for Posit Workbench")
