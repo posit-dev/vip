@@ -232,8 +232,8 @@ def _check_credentials(
         products = " and ".join(needs_creds)
         print(
             f"\033[1mError: {products} tests selected but no credentials provided.\033[0m\n"
-            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD, use --interactive-auth or\n"
-            "--headless-auth, or use --no-auth to skip tests that require authentication.",
+            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD, then use --interactive-auth or --headless-auth.\n"
+            "Or use --no-auth to skip tests that require authentication.",
             file=sys.stderr,
             flush=True,
         )
