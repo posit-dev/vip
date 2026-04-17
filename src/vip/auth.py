@@ -20,7 +20,16 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import (
+    Error as PlaywrightError,
+)
+from playwright.sync_api import (
+    Page,
+    sync_playwright,
+)
+from playwright.sync_api import (
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 
 class AuthConfigError(ValueError):
@@ -333,21 +342,32 @@ def start_headless_auth(
 
         target = f"{primary_url}{login_path}"
         print(f"\n>>> Headless auth: authenticating to {primary_url} ...", flush=True)
-        page.goto(target)
-        page.wait_for_load_state("domcontentloaded")
-        _log_verbose(f">>> Page loaded, URL: {_sanitize_url(page.url)}")
+        try:
+            page.goto(target)
+            page.wait_for_load_state("domcontentloaded")
+            _log_verbose(f">>> Page loaded, URL: {_sanitize_url(page.url)}")
 
-        if fill_login:
-            # OIDC/SAML: navigate to IdP and automate its login form.
-            _navigate_to_idp(page, primary_url)
-            _log_verbose(f">>> At IdP login page: {_sanitize_url(page.url)}")
-            fill_login(page, username, password)
-        else:
-            # Password/LDAP: fill the product's native login form directly.
-            _fill_product_login(page, username, password)
+            if fill_login:
+                # OIDC/SAML: navigate to IdP and automate its login form.
+                _navigate_to_idp(page, primary_url)
+                _log_verbose(f">>> At IdP login page: {_sanitize_url(page.url)}")
+                fill_login(page, username, password)
+            else:
+                # Password/LDAP: fill the product's native login form directly.
+                _fill_product_login(page, username, password)
 
-        # Wait for redirect back to the product.
-        _wait_for_product_redirect(page, primary_url)
+            # Wait for redirect back to the product.
+            _wait_for_product_redirect(page, primary_url)
+        except PlaywrightTimeoutError as exc:
+            raise AuthConfigError(
+                "Headless auth timed out during login. "
+                "Check the product URL and IdP configuration, or rerun with "
+                "--verbose for details."
+            ) from exc
+        except PlaywrightError as exc:
+            raise AuthConfigError(
+                f"Headless auth failed during login: {exc}. Rerun with --verbose for details."
+            ) from exc
         print(">>> Authentication complete.")
 
         # Mint Connect API key only if Connect is configured.
