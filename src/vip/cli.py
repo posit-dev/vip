@@ -288,30 +288,41 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
         lines.extend(["[package_manager]", "enabled = false", ""])
 
     idp = getattr(args, "idp", None)
-    auth_provider: str | None = None
+    inherited_provider: str | None = None
 
-    # Inherit from an existing vip.toml when the CLI doesn't specify --idp,
-    # so ``vip verify --workbench-url ... --headless-auth`` picks up the
-    # [auth] section the user already configured.  Also pick up a non-default
-    # provider so saml/oauth2/ldap values from vip.toml survive.  CLI --idp
-    # wins when supplied.
+    # Inherit from an existing vip.toml so ``vip verify --workbench-url ...
+    # --headless-auth`` can pick up the [auth] section the user already
+    # configured.  Done best-effort: a malformed vip.toml should not break a
+    # URL-driven command that doesn't depend on it.
     env = os.environ.get("VIP_CONFIG")
     default_path = Path(env) if env else Path("vip.toml")
     if default_path.is_file():
         from vip.config import load_config
 
-        existing = load_config(default_path)
-        if not idp and existing.auth.idp:
-            idp = existing.auth.idp
-        if existing.auth.provider and existing.auth.provider != "password":
-            auth_provider = existing.auth.provider
+        try:
+            existing = load_config(default_path)
+        except Exception:
+            existing = None
+        if existing is not None:
+            if not idp and existing.auth.idp:
+                idp = existing.auth.idp
+            if existing.auth.provider and existing.auth.provider != "password":
+                inherited_provider = existing.auth.provider
 
-    # Infer provider from idp presence: any --idp implies an IdP-based flow.
-    # ``oidc`` is the representative value — auth.py and test fixtures only
-    # distinguish IdP vs native, never oidc vs saml vs oauth2.  Users who
-    # need a specific non-oidc value can set it in vip.toml.
-    if auth_provider is None and idp:
-        auth_provider = "oidc"
+    # Resolve the provider:
+    # - With --idp set, the user wants IdP-based auth.  Keep an inherited
+    #   IdP-class value (saml/oauth2) so specific declarations survive; but
+    #   ignore inherited non-IdP providers (ldap) that would contradict the
+    #   CLI intent — auth.py's flow selection keys off provider, not idp.
+    # - Without --idp, just honour whatever vip.toml declared.
+    _IDP_PROVIDERS = ("oidc", "saml", "oauth2")
+    if idp:
+        if inherited_provider in _IDP_PROVIDERS:
+            auth_provider: str | None = inherited_provider
+        else:
+            auth_provider = "oidc"
+    else:
+        auth_provider = inherited_provider
 
     if auth_provider or idp:
         lines.append("[auth]")

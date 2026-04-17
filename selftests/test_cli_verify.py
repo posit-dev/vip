@@ -620,3 +620,61 @@ class TestAuthCliFlags:
             assert cfg.auth.idp == ""
         finally:
             Path(path).unlink(missing_ok=True)
+
+    def test_cli_idp_overrides_conflicting_non_idp_provider(self, tmp_path, monkeypatch):
+        """--idp must win over a non-IdP inherited provider (e.g. ldap).
+
+        Without this, auth.py's flow selection would key off provider=ldap and
+        fill the native login form, ignoring the requested IdP strategy.
+        """
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "ldap"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", idp="keycloak")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "oidc"  # ldap dropped because it conflicts
+            assert cfg.auth.idp == "keycloak"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_cli_idp_preserves_inherited_idp_class_provider(self, tmp_path, monkeypatch):
+        """--idp should keep an inherited IdP-class provider (saml/oauth2)."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "oauth2"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", idp="keycloak")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "oauth2"  # IdP-class — preserved
+            assert cfg.auth.idp == "keycloak"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_malformed_vip_toml_does_not_break_url_driven_path(self, tmp_path, monkeypatch):
+        """A malformed local vip.toml should not crash a URL-driven CLI invocation."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text("this is = not valid toml [[[")
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", idp="keycloak")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.idp == "keycloak"
+            assert cfg.auth.provider == "oidc"
+        finally:
+            Path(path).unlink(missing_ok=True)
