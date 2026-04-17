@@ -26,7 +26,6 @@ def _make_args(**overrides) -> argparse.Namespace:
         "verbose": False,
         "test_timeout": 180,
         "headless_auth": False,
-        "auth_provider": None,
         "idp": None,
     }
     defaults.update(overrides)
@@ -540,62 +539,31 @@ class TestHeadlessAuth:
 
 
 class TestAuthCliFlags:
-    """--auth-provider and --idp are included in the generated temp config."""
+    """--idp is written to the generated temp config and implies provider."""
 
-    def test_idp_included_in_temp_config(self):
-        from vip.cli import _generate_temp_config
-        from vip.config import load_config
-
-        path = _generate_temp_config(
-            _make_args(workbench_url="https://wb.example.com", idp="okta")
-        )
-        try:
-            cfg = load_config(path)
-            assert cfg.auth.idp == "okta"
-        finally:
-            Path(path).unlink(missing_ok=True)
-
-    def test_auth_provider_included_in_temp_config(self):
-        from vip.cli import _generate_temp_config
-        from vip.config import load_config
-
-        path = _generate_temp_config(
-            _make_args(connect_url="https://c.example.com", auth_provider="oidc")
-        )
-        try:
-            cfg = load_config(path)
-            assert cfg.auth.provider == "oidc"
-        finally:
-            Path(path).unlink(missing_ok=True)
-
-    def test_both_auth_flags_in_temp_config(self):
-        from vip.cli import _generate_temp_config
-        from vip.config import load_config
-
-        path = _generate_temp_config(
-            _make_args(
-                workbench_url="https://wb.example.com",
-                auth_provider="oidc",
-                idp="keycloak",
-            )
-        )
-        try:
-            cfg = load_config(path)
-            assert cfg.auth.provider == "oidc"
-            assert cfg.auth.idp == "keycloak"
-        finally:
-            Path(path).unlink(missing_ok=True)
-
-    def test_no_auth_section_when_flags_omitted(self, tmp_path, monkeypatch):
-        """Without flags or existing vip.toml, auth defaults are used."""
+    def test_idp_implies_oidc_provider(self, tmp_path, monkeypatch):
+        """--idp alone infers provider = 'oidc' in the temp config."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
-        path = _generate_temp_config(
-            _make_args(connect_url="https://c.example.com")
-        )
+        path = _generate_temp_config(_make_args(workbench_url="https://wb.example.com", idp="okta"))
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.idp == "okta"
+            assert cfg.auth.provider == "oidc"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_no_auth_section_when_idp_omitted(self, tmp_path, monkeypatch):
+        """Without --idp or an existing vip.toml, auth defaults are used."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(connect_url="https://c.example.com"))
         try:
             cfg = load_config(path)
             assert cfg.auth.provider == "password"  # default
@@ -604,51 +572,26 @@ class TestAuthCliFlags:
             Path(path).unlink(missing_ok=True)
 
     def test_auth_inherited_from_existing_vip_toml(self, tmp_path, monkeypatch):
-        """When no --auth-provider/--idp flags, inherit from existing vip.toml."""
+        """With no --idp flag, inherit provider and idp from existing vip.toml."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        (tmp_path / "vip.toml").write_text(
-            '[general]\n[auth]\nprovider = "oidc"\nidp = "okta"\n'
-        )
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "saml"\nidp = "okta"\n')
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
-        path = _generate_temp_config(
-            _make_args(workbench_url="https://wb.example.com")
-        )
+        path = _generate_temp_config(_make_args(workbench_url="https://wb.example.com"))
         try:
             cfg = load_config(path)
-            assert cfg.auth.provider == "oidc"
+            assert cfg.auth.provider == "saml"
             assert cfg.auth.idp == "okta"
         finally:
             Path(path).unlink(missing_ok=True)
 
-    def test_cli_flags_override_existing_vip_toml(self, tmp_path, monkeypatch):
-        """Explicit --idp/--auth-provider flags take precedence over vip.toml."""
+    def test_cli_idp_overrides_existing_vip_toml(self, tmp_path, monkeypatch):
+        """Explicit --idp takes precedence over vip.toml's idp."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        (tmp_path / "vip.toml").write_text(
-            '[general]\n[auth]\nprovider = "oidc"\nidp = "okta"\n'
-        )
-        from vip.cli import _generate_temp_config
-        from vip.config import load_config
-
-        path = _generate_temp_config(
-            _make_args(workbench_url="https://wb.example.com", idp="keycloak")
-        )
-        try:
-            cfg = load_config(path)
-            assert cfg.auth.idp == "keycloak"
-        finally:
-            Path(path).unlink(missing_ok=True)
-
-    def test_partial_override_inherits_other_field(self, tmp_path, monkeypatch):
-        """--idp on CLI should still inherit provider from vip.toml."""
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("VIP_CONFIG", raising=False)
-        (tmp_path / "vip.toml").write_text(
-            '[general]\n[auth]\nprovider = "oidc"\nidp = "okta"\n'
-        )
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "saml"\nidp = "okta"\n')
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
@@ -658,6 +601,22 @@ class TestAuthCliFlags:
         try:
             cfg = load_config(path)
             assert cfg.auth.idp == "keycloak"  # CLI override
-            assert cfg.auth.provider == "oidc"  # inherited from vip.toml
+            assert cfg.auth.provider == "saml"  # provider preserved from vip.toml
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_non_oidc_provider_preserved_from_vip_toml(self, tmp_path, monkeypatch):
+        """A non-default provider (ldap) in vip.toml is inherited even without idp."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "ldap"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(workbench_url="https://wb.example.com"))
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "ldap"
+            assert cfg.auth.idp == ""
         finally:
             Path(path).unlink(missing_ok=True)

@@ -287,23 +287,31 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     else:
         lines.extend(["[package_manager]", "enabled = false", ""])
 
-    auth_provider = getattr(args, "auth_provider", None)
     idp = getattr(args, "idp", None)
+    auth_provider: str | None = None
 
-    # Inherit per-field from an existing vip.toml when CLI flags are missing,
+    # Inherit from an existing vip.toml when the CLI doesn't specify --idp,
     # so ``vip verify --workbench-url ... --headless-auth`` picks up the
-    # [auth] section the user already configured.  CLI flags take precedence.
-    if not auth_provider or not idp:
-        env = os.environ.get("VIP_CONFIG")
-        default_path = Path(env) if env else Path("vip.toml")
-        if default_path.is_file():
-            from vip.config import load_config
+    # [auth] section the user already configured.  Also pick up a non-default
+    # provider so saml/oauth2/ldap values from vip.toml survive.  CLI --idp
+    # wins when supplied.
+    env = os.environ.get("VIP_CONFIG")
+    default_path = Path(env) if env else Path("vip.toml")
+    if default_path.is_file():
+        from vip.config import load_config
 
-            existing = load_config(default_path)
-            if not auth_provider and existing.auth.provider != "password":
-                auth_provider = existing.auth.provider
-            if not idp and existing.auth.idp:
-                idp = existing.auth.idp
+        existing = load_config(default_path)
+        if not idp and existing.auth.idp:
+            idp = existing.auth.idp
+        if existing.auth.provider and existing.auth.provider != "password":
+            auth_provider = existing.auth.provider
+
+    # Infer provider from idp presence: any --idp implies an IdP-based flow.
+    # ``oidc`` is the representative value — auth.py and test fixtures only
+    # distinguish IdP vs native, never oidc vs saml vs oauth2.  Users who
+    # need a specific non-oidc value can set it in vip.toml.
+    if auth_provider is None and idp:
+        auth_provider = "oidc"
 
     if auth_provider or idp:
         lines.append("[auth]")
@@ -775,14 +783,10 @@ def main() -> None:
     # Auth
     auth_group = verify_parser.add_argument_group("authentication")
     auth_group.add_argument(
-        "--auth-provider",
-        default=None,
-        help='Auth provider: "password", "ldap", "saml", "oidc", "oauth2" (default: password)',
-    )
-    auth_group.add_argument(
         "--idp",
         default=None,
-        help='Identity provider for --headless-auth: "keycloak", "okta"',
+        help='Identity provider for --headless-auth: "keycloak", "okta". '
+        'Presence implies provider = "oidc" unless overridden in vip.toml.',
     )
     verify_parser.add_argument(
         "--interactive-auth",
