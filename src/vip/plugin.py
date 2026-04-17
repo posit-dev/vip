@@ -120,7 +120,7 @@ def pytest_configure(config: pytest.Config) -> None:
         "ignore::pytest.PytestReturnNotNoneWarning",
         # gevent monkey-patching happens after ssl is imported by other plugins;
         # unavoidable without patching at process start.  Only affects Python ≤3.7.
-        "ignore:Monkey-patching ssl:gevent.monkey.MonkeyPatchWarning",
+        "ignore:Monkey-patching ssl",
     ):
         config.addinivalue_line("filterwarnings", line)
 
