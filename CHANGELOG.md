@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.24.1 (2026-04-17)
+
+### Bug Fixes
+
+- Remove warnings when running from install ([#168](https://github.com/posit-dev/vip/pull/168),
+  [`b5b5f09`](https://github.com/posit-dev/vip/commit/b5b5f093dccc553753d31fe716fe4fe346e610ba))
+
+
 ## v0.24.0 (2026-04-17)
 
 ### Features
