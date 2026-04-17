@@ -219,12 +219,11 @@ def _check_credentials(
                 return True
         return False
 
-    if (
-        cfg.connect.is_configured
-        and not cfg.connect.api_key
-        and not has_creds
-        and _category_selected("connect")
-    ):
+    # Connect tests include UI login and user-management scenarios that use
+    # VIP_TEST_USERNAME/VIP_TEST_PASSWORD even when VIP_CONNECT_API_KEY is set,
+    # so require credentials whenever Connect is selected (users can pass
+    # --no-auth to deselect Connect tests entirely).
+    if cfg.connect.is_configured and not has_creds and _category_selected("connect"):
         needs_creds.append("Connect")
     if cfg.workbench.is_configured and not has_creds and _category_selected("workbench"):
         needs_creds.append("Workbench")

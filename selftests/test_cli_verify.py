@@ -231,13 +231,14 @@ class TestVerifyLocalCredentialCheck:
         monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
         self._run_and_expect_exit(_make_args(workbench_url="https://wb.example.com"))
 
-    def test_connect_with_api_key_no_exit(self, tmp_path, monkeypatch):
+    def test_connect_with_api_key_still_exits(self, tmp_path, monkeypatch):
+        """Connect UI/user-management scenarios need username/password even with an API key."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
         monkeypatch.setenv("VIP_CONNECT_API_KEY", "abc123")
-        _capture_cmd(_make_args(connect_url="https://c.example.com"))
+        self._run_and_expect_exit(_make_args(connect_url="https://c.example.com"))
 
     def test_with_both_creds_no_exit(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
