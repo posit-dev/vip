@@ -23,6 +23,7 @@ import sys
 import threading
 import time
 import warnings
+from collections.abc import Generator
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -330,9 +331,9 @@ def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
             if step.name.startswith("<") and "is configured" in step.name:
                 product_name = _get_bdd_param_product(item)
                 if product_name:
-                    product_key = _PRODUCT_DISPLAY_NAMES.get(product_name)
-                    if product_key:
-                        pc = cfg.product_config(product_key)
+                    resolved_key = _PRODUCT_DISPLAY_NAMES.get(product_name)
+                    if resolved_key:
+                        pc = cfg.product_config(resolved_key)
                         if not pc.is_configured:
                             return True
 
@@ -544,7 +545,7 @@ _current_heartbeat: _Heartbeat | None = None
 
 
 @pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_protocol(item: pytest.Item, nextitem) -> None:  # noqa: ARG001
+def pytest_runtest_protocol(item: pytest.Item, nextitem) -> Generator[None, None, None]:  # noqa: ARG001
     """Print periodic heartbeat messages while a test is running."""
     global _current_heartbeat
     heartbeat: _Heartbeat | None = None
