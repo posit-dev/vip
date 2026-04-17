@@ -106,6 +106,24 @@ def pytest_configure(config: pytest.Config) -> None:
     global _active_config
     _active_config = config
 
+    # Register the canonical warning filters in the plugin so they apply
+    # regardless of the pytest rootdir, including when vip is installed into
+    # an unrelated project.
+    for line in (
+        # gherkin-official 29.0.0 passes maxsplit positionally to re.split;
+        # fixed upstream but pulled transitively via pytest-bdd.
+        "ignore:'maxsplit' is passed as positional argument:DeprecationWarning:gherkin",
+        # TLS downgrade tests deliberately use deprecated TLS 1.0/1.1 versions.
+        "ignore:ssl.TLSVersion.TLSv1:DeprecationWarning",
+        "ignore:ssl.TLSVersion.TLSv1_1:DeprecationWarning",
+        # pytest-bdd scenario functions return fixture values; not a real issue.
+        "ignore::pytest.PytestReturnNotNoneWarning",
+        # gevent monkey-patching happens after ssl is imported by other plugins;
+        # unavoidable without patching at process start.
+        "ignore:Monkey-patching ssl",
+    ):
+        config.addinivalue_line("filterwarnings", line)
+
     # Register markers
     config.addinivalue_line("markers", "connect: tests for Posit Connect")
     config.addinivalue_line("markers", "workbench: tests for Posit Workbench")

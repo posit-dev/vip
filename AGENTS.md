@@ -302,6 +302,10 @@ This runs `showboat verify demo.md`, then moves it to `validation_docs/demo-my-f
 
 CI will run `showboat verify` on any new or changed files in `validation_docs/` for PRs that include them.
 
+## Pytest warning filters
+
+Register warning filters in `src/vip/plugin.py::pytest_configure` (via `config.addinivalue_line("filterwarnings", ...)`), not in `pyproject.toml`'s `[tool.pytest.ini_options]`. Filters in `pyproject.toml` only apply when pytest runs from this repo's rootdir -- users who install vip into another project pick up the plugin but not the config, so the warnings reappear there. Keeping the filters in the plugin means they travel with the installed package.
+
 ## Common mistakes to avoid
 
 -   Forgetting to include `examples/` in ruff check paths.
