@@ -106,9 +106,9 @@ def pytest_configure(config: pytest.Config) -> None:
     global _active_config
     _active_config = config
 
-    # Register warning filters so they apply regardless of the pytest rootdir.
-    # Mirrors the filterwarnings list in pyproject.toml for users who install
-    # vip into an unrelated project.
+    # Register the canonical warning filters in the plugin so they apply
+    # regardless of the pytest rootdir, including when vip is installed into
+    # an unrelated project.
     for line in (
         # gherkin-official 29.0.0 passes maxsplit positionally to re.split;
         # fixed upstream but pulled transitively via pytest-bdd.
