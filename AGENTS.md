@@ -141,6 +141,8 @@ Key principles:
 |------------------------------------|------------------------------------|
 | `src/vip/cli.py` | CLI entry point: verify, cleanup, cluster, auth commands |
 | `src/vip/config.py` | TOML config loader, dataclasses, `Mode` enum, per-mode validation |
+| `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers |
+| `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
 | `src/vip/plugin.py` | pytest plugin: markers, auto-skip, JSON report output |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
 | `src/vip/clients/connect.py` | httpx client for Connect API |

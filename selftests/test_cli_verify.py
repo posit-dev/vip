@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,6 +25,8 @@ def _make_args(**overrides) -> argparse.Namespace:
         "pytest_args": [],
         "verbose": False,
         "test_timeout": 180,
+        "headless_auth": False,
+        "idp": None,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -509,3 +512,169 @@ class TestVerifyLocalTestTimeout:
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "timed out" in err.lower()
+
+
+class TestHeadlessAuth:
+    def test_headless_auth_flag_passed_to_pytest(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), headless_auth=True))
+        assert "--headless-auth" in cmd
+
+    def test_headless_auth_skips_credential_check(self, tmp_path, capsys, monkeypatch):
+        """--headless-auth should skip the credential check like --interactive-auth."""
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text('[general]\n[connect]\nurl = "https://c.example.com"\n')
+        # Without headless_auth, missing credentials produce an error message.
+        _capture_cmd(_make_args(config=str(cfg)))
+        err = capsys.readouterr().err
+        assert "no credentials provided" in err
+        # With headless_auth, credential check is bypassed — no error.
+        _capture_cmd(_make_args(config=str(cfg), headless_auth=True))
+        err = capsys.readouterr().err
+        assert "no credentials provided" not in err
+
+
+class TestAuthCliFlags:
+    """--idp is written to the generated temp config and implies provider."""
+
+    def test_idp_implies_oidc_provider(self, tmp_path, monkeypatch):
+        """--idp alone infers provider = 'oidc' in the temp config."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(workbench_url="https://wb.example.com", idp="okta"))
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.idp == "okta"
+            assert cfg.auth.provider == "oidc"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_no_auth_section_when_idp_omitted(self, tmp_path, monkeypatch):
+        """Without --idp or an existing vip.toml, auth defaults are used."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(connect_url="https://c.example.com"))
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "password"  # default
+            assert cfg.auth.idp == ""  # default
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_auth_inherited_from_existing_vip_toml(self, tmp_path, monkeypatch):
+        """With no --idp flag, inherit provider and idp from existing vip.toml."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "saml"\nidp = "okta"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(workbench_url="https://wb.example.com"))
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "saml"
+            assert cfg.auth.idp == "okta"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_cli_idp_overrides_existing_vip_toml(self, tmp_path, monkeypatch):
+        """Explicit --idp takes precedence over vip.toml's idp."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "saml"\nidp = "okta"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", idp="keycloak")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.idp == "keycloak"  # CLI override
+            assert cfg.auth.provider == "saml"  # provider preserved from vip.toml
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_non_oidc_provider_preserved_from_vip_toml(self, tmp_path, monkeypatch):
+        """A non-default provider (ldap) in vip.toml is inherited even without idp."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "ldap"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(workbench_url="https://wb.example.com"))
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "ldap"
+            assert cfg.auth.idp == ""
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_cli_idp_overrides_conflicting_non_idp_provider(self, tmp_path, monkeypatch):
+        """--idp must win over a non-IdP inherited provider (e.g. ldap).
+
+        Without this, auth.py's flow selection would key off provider=ldap and
+        fill the native login form, ignoring the requested IdP strategy.
+        """
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "ldap"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", idp="keycloak")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "oidc"  # ldap dropped because it conflicts
+            assert cfg.auth.idp == "keycloak"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_cli_idp_preserves_inherited_idp_class_provider(self, tmp_path, monkeypatch):
+        """--idp should keep an inherited IdP-class provider (saml/oauth2)."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "oauth2"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", idp="keycloak")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "oauth2"  # IdP-class — preserved
+            assert cfg.auth.idp == "keycloak"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_malformed_vip_toml_does_not_break_url_driven_path(self, tmp_path, monkeypatch):
+        """A malformed local vip.toml should not crash a URL-driven CLI invocation."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text("this is = not valid toml [[[")
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", idp="keycloak")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.idp == "keycloak"
+            assert cfg.auth.provider == "oidc"
+        finally:
+            Path(path).unlink(missing_ok=True)

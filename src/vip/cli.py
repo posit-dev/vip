@@ -232,8 +232,9 @@ def _check_credentials(
         products = " and ".join(needs_creds)
         print(
             f"\033[1mError: {products} tests selected but no credentials provided.\033[0m\n"
-            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD, use --interactive-auth,\n"
-            "or use --no-auth to skip tests that require authentication.",
+            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD (optionally with --headless-auth),\n"
+            "or use --interactive-auth, or --no-auth to skip tests that require "
+            "authentication.",
             file=sys.stderr,
             flush=True,
         )
@@ -286,6 +287,51 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
         lines.extend(["[package_manager]", f'url = "{args.package_manager_url}"', ""])
     else:
         lines.extend(["[package_manager]", "enabled = false", ""])
+
+    idp = getattr(args, "idp", None)
+    inherited_provider: str | None = None
+
+    # Inherit from an existing vip.toml so ``vip verify --workbench-url ...
+    # --headless-auth`` can pick up the [auth] section the user already
+    # configured.  Done best-effort: a malformed vip.toml should not break a
+    # URL-driven command that doesn't depend on it.
+    env = os.environ.get("VIP_CONFIG")
+    default_path = Path(env) if env else Path("vip.toml")
+    if default_path.is_file():
+        from vip.config import load_config
+
+        try:
+            existing = load_config(default_path)
+        except Exception:
+            existing = None
+        if existing is not None:
+            if not idp and existing.auth.idp:
+                idp = existing.auth.idp
+            if existing.auth.provider and existing.auth.provider != "password":
+                inherited_provider = existing.auth.provider
+
+    # Resolve the provider:
+    # - With --idp set, the user wants IdP-based auth.  Keep an inherited
+    #   IdP-class value (saml/oauth2) so specific declarations survive; but
+    #   ignore inherited non-IdP providers (ldap) that would contradict the
+    #   CLI intent — auth.py's flow selection keys off provider, not idp.
+    # - Without --idp, just honour whatever vip.toml declared.
+    _IDP_PROVIDERS = ("oidc", "saml", "oauth2")
+    if idp:
+        if inherited_provider in _IDP_PROVIDERS:
+            auth_provider: str | None = inherited_provider
+        else:
+            auth_provider = "oidc"
+    else:
+        auth_provider = inherited_provider
+
+    if auth_provider or idp:
+        lines.append("[auth]")
+        if auth_provider:
+            lines.append(f'provider = "{auth_provider}"')
+        if idp:
+            lines.append(f'idp = "{idp}"')
+        lines.append("")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
         f.write("\n".join(lines) + "\n")
@@ -394,13 +440,21 @@ def _run_verify_local(args: argparse.Namespace) -> None:
             )
             sys.exit(1)
 
+    if args.interactive_auth and args.headless_auth:
+        print(
+            "\033[1mError: --interactive-auth and --headless-auth are mutually exclusive.\033[0m",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
+
     # Print notes for products that are not configured so the user knows
     # upfront which categories will be skipped.
     _print_skip_notes(config_path)
     if not args.no_auth:
         _check_credentials(
             config_path,
-            interactive_auth=args.interactive_auth,
+            interactive_auth=args.interactive_auth or args.headless_auth,
             categories=args.categories,
         )
 
@@ -422,6 +476,8 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append(f"--vip-report={args.report}")
     if args.interactive_auth:
         cmd.append("--interactive-auth")
+    if args.headless_auth:
+        cmd.append("--headless-auth")
     if args.no_auth:
         cmd.append("--no-auth")
     for ext in args.extensions or []:
@@ -435,6 +491,10 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append("--vip-verbose")
         cmd.append("-s")
     cmd.extend(args.pytest_args)
+    if args.headless_auth:
+        # MFA prompting needs stdin; always append -s last so it
+        # overrides any conflicting --capture args from user or verbose.
+        cmd.append("-s")
 
     try:
         result = subprocess.run(cmd, timeout=args.test_timeout)
@@ -733,12 +793,25 @@ def main() -> None:
     )
 
     # Auth
+    auth_group = verify_parser.add_argument_group("authentication")
+    auth_group.add_argument(
+        "--idp",
+        default=None,
+        help='Identity provider for --headless-auth: "keycloak", "okta". '
+        'Presence implies provider = "oidc" unless overridden in vip.toml.',
+    )
     verify_parser.add_argument(
         "--interactive-auth",
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Launch a browser for OIDC login (default: disabled, use "
         "--interactive-auth to enable)",
+    )
+    verify_parser.add_argument(
+        "--headless-auth",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Automate login in a headless browser (OIDC/SAML/OAuth2 requires [auth] idp)",
     )
     verify_parser.add_argument(
         "--no-auth",

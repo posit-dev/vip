@@ -644,6 +644,83 @@ class TestPluginIntegration:
             assert r["concise_error"] is None
 
 
+class TestHeadlessAuthOption:
+    def test_headless_auth_option_registered(self, pytester):
+        """The --headless-auth option should be registered by the plugin."""
+        pytester.makeconftest("")
+        result = pytester.runpytest("--help")
+        result.stdout.fnmatch_lines(["*--headless-auth*"])
+
+
+class TestHeadlessAuthFixture:
+    def test_headless_auth_requires_product_url(self, pytester):
+        """--headless-auth fails fast when no product URL is configured."""
+        pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
+        pytester.makepyfile(
+            """
+            def test_placeholder():
+                assert True
+            """
+        )
+        result = pytester.runpytest(
+            "--vip-config=vip.toml",
+            "--headless-auth",
+        )
+        result.stderr.fnmatch_lines(["*--headless-auth requires at least one product URL*"])
+
+    def test_interactive_auth_fixture_true_for_headless(self, pytester):
+        """The interactive_auth fixture should return True when --headless-auth is active."""
+        pytester.makeconftest(
+            """
+            import pytest
+            from vip.plugin import _auth_session_key
+            from vip.auth import InteractiveAuthSession
+            from pathlib import Path
+
+            @pytest.fixture(scope="session", autouse=True)
+            def fake_auth_session(request):
+                session = InteractiveAuthSession(
+                    storage_state_path=Path("/dev/null"),
+                )
+                request.config.stash[_auth_session_key] = session
+
+            @pytest.fixture(scope="session")
+            def interactive_auth(request):
+                session = request.config.stash.get(_auth_session_key, None)
+                return session is not None
+            """
+        )
+        pytester.makepyfile(
+            """
+            def test_fixture_value(interactive_auth):
+                assert interactive_auth is True
+            """
+        )
+        result = pytester.runpytest("-v")
+        result.assert_outcomes(passed=1)
+
+
+class TestHeadlessAuthPluginWiring:
+    """Verify that pytest_configure validates config for --headless-auth."""
+
+    def test_headless_auth_requires_idp_for_oidc(self, pytester, monkeypatch):
+        """--headless-auth with provider=oidc fails when idp is missing."""
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "oidc"\n'
+            ),
+        )
+        pytester.makepyfile("def test_placeholder(): pass")
+        result = pytester.runpytest("--vip-config=vip.toml", "--headless-auth")
+        assert result.ret == pytest.ExitCode.USAGE_ERROR
+        result.stderr.fnmatch_lines(["*--headless-auth*requires*idp*keycloak*okta*"])
+
+
 class TestHeartbeat:
     """Unit tests for the long-running test heartbeat."""
 

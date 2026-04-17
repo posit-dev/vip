@@ -20,7 +20,21 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import (
+    Error as PlaywrightError,
+)
+from playwright.sync_api import (
+    Page,
+    sync_playwright,
+)
+from playwright.sync_api import (
+    TimeoutError as PlaywrightTimeoutError,
+)
+
+
+class AuthConfigError(ValueError):
+    """Raised for user-facing authentication configuration errors."""
+
 
 # Prefix for VIP-managed API keys.  A timestamp is appended per run.
 _KEY_NAME_PREFIX = "_vip_interactive_"
@@ -242,6 +256,244 @@ def start_interactive_auth(
                 pw.stop()
             except Exception:
                 pass
+
+
+_IDP_PROVIDERS = frozenset({"oidc", "saml", "oauth2"})
+
+
+def start_headless_auth(
+    connect_url: str | None = None,
+    workbench_url: str | None = None,
+    idp: str = "",
+    provider: str = "password",
+    username: str = "",
+    password: str = "",
+    cache_path: Path | None = None,
+    verbose: bool = False,
+) -> InteractiveAuthSession:
+    """Launch a headless browser, automate OIDC login, and optionally
+    mint a Connect API key through the UI.
+
+    This is the headless counterpart to ``start_interactive_auth()``.
+    Instead of showing a browser window for manual login, it fills the
+    IdP login form automatically and prompts via the terminal for MFA
+    codes when needed.
+
+    At least one of *connect_url* or *workbench_url* must be provided.
+    The *idp* parameter selects which form automation strategy to use
+    (e.g. ``"keycloak"``, ``"okta"``).
+    """
+    import vip.idp as _idp_mod
+
+    _idp_mod._verbose = verbose
+
+    if not connect_url and not workbench_url:
+        raise AuthConfigError(
+            "--headless-auth requires at least one product URL (Connect or Workbench)"
+        )
+
+    # Check for a valid cached session before validating credentials/idp,
+    # so a warm cache works even when env vars are not set.
+    if cache_path:
+        cached = _load_cached_auth(cache_path)
+        if cached is not None:
+            return cached
+
+    if not username or not password:
+        raise AuthConfigError(
+            "--headless-auth requires test credentials. "
+            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD."
+        )
+
+    # Choose login flow based on auth provider, not idp presence.
+    # OIDC/SAML/OAuth2 → IdP form automation; password/LDAP → native form.
+    uses_idp = provider.strip().lower() in _IDP_PROVIDERS
+    fill_login = None
+    if uses_idp:
+        if not idp:
+            raise AuthConfigError(
+                f"--headless-auth with provider={provider!r} requires"
+                ' [auth] idp in vip.toml (supported: "keycloak", "okta")'
+            )
+        from vip.idp import get_idp_strategy
+
+        fill_login = get_idp_strategy(idp)
+
+    # Determine the primary login target.
+    primary_url = connect_url or workbench_url
+    assert primary_url is not None
+    login_path = "/__login__" if connect_url else ""
+
+    tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
+    storage_state_path = Path(tmpdir) / "vip-auth-state.json"
+    os.chmod(tmpdir, 0o700)
+
+    key_name = f"{_KEY_NAME_PREFIX}{int(time.time())}"
+
+    pw = None
+    browser = None
+    try:
+        pw = sync_playwright().start()
+        browser = pw.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+
+        from vip.idp import _log_verbose, _sanitize_url
+
+        target = f"{primary_url}{login_path}"
+        print(f"\n>>> Headless auth: authenticating to {primary_url} ...", flush=True)
+        try:
+            page.goto(target)
+            page.wait_for_load_state("domcontentloaded")
+            _log_verbose(f">>> Page loaded, URL: {_sanitize_url(page.url)}")
+
+            if fill_login:
+                # OIDC/SAML: navigate to IdP and automate its login form.
+                _navigate_to_idp(page, primary_url)
+                _log_verbose(f">>> At IdP login page: {_sanitize_url(page.url)}")
+                fill_login(page, username, password)
+            else:
+                # Password/LDAP: fill the product's native login form directly.
+                _fill_product_login(page, username, password)
+
+            # Wait for redirect back to the product.
+            _wait_for_product_redirect(page, primary_url)
+        except PlaywrightTimeoutError as exc:
+            raise AuthConfigError(
+                "Headless auth timed out during login. "
+                "Check the product URL and IdP configuration, or rerun with "
+                "--verbose for details."
+            ) from exc
+        except PlaywrightError as exc:
+            raise AuthConfigError(
+                f"Headless auth failed during login: {exc}. Rerun with --verbose for details."
+            ) from exc
+        print(">>> Authentication complete.")
+
+        # Mint Connect API key only if Connect is configured.
+        api_key = None
+        if connect_url:
+            api_key = _create_api_key_via_ui(page, connect_url, key_name)
+
+        # Visit Workbench so the storage state includes its session cookies.
+        if workbench_url and connect_url:
+            _authenticate_workbench(page, workbench_url)
+
+        context.storage_state(path=str(storage_state_path))
+
+        session = InteractiveAuthSession(
+            storage_state_path=storage_state_path,
+            api_key=api_key,
+            key_name=key_name,
+            _connect_url=connect_url or "",
+            _tmpdir=tmpdir,
+        )
+
+        if cache_path:
+            _save_auth_cache(session, cache_path)
+
+        return session
+    except Exception:
+        if tmpdir and os.path.isdir(tmpdir):
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        raise
+    finally:
+        if browser is not None:
+            try:
+                browser.close()
+            except Exception:
+                pass
+        if pw is not None:
+            try:
+                pw.stop()
+            except Exception:
+                pass
+
+
+def _navigate_to_idp(page: Page, product_url: str) -> None:
+    """Click through to the IdP login page if needed.
+
+    Workbench shows a "Sign in with OpenID" button that needs clicking.
+    Connect often auto-redirects.  This function handles both cases.
+    """
+    product_base = product_url.rstrip("/").lower()
+
+    # If we're already on an external page (IdP), we're done.
+    if not page.url.lower().startswith(product_base):
+        return
+
+    # Try clicking sign-in buttons (Workbench pattern).
+    for selector in (
+        "a:has-text('Sign in with OpenID')",
+        "a:has-text('Sign in')",
+        "button:has-text('Sign in')",
+        "#auth-sign-in-link",
+    ):
+        try:
+            page.click(selector, timeout=3_000)
+            page.wait_for_load_state("domcontentloaded")
+            # Check if we left the product page.
+            if not page.url.lower().startswith(product_base):
+                return
+        except Exception:
+            continue
+
+    # If we're still on the product page, wait briefly for auto-redirect.
+    try:
+        page.wait_for_url(
+            lambda url: not url.lower().startswith(product_base),
+            timeout=10_000,
+        )
+    except Exception:
+        pass
+
+
+def _fill_product_login(page: Page, username: str, password: str) -> None:
+    """Fill a product's native login form (password/LDAP auth).
+
+    Works for Connect and Workbench login forms that present username
+    and password fields directly (not OIDC/SAML redirect flows).
+    """
+    from vip.idp import _log_verbose
+
+    # Common selectors for Connect and Workbench login forms.
+    username_selectors = "#username, input[name='username'], input[type='text']"
+    password_selectors = "#password, input[name='password'], input[type='password']"
+    submit_selectors = (
+        "#signinbutton, #kc-login, "
+        "button[type='submit'], input[type='submit'], "
+        "button:has-text('Sign in'), button:has-text('Log in')"
+    )
+
+    _log_verbose(">>> Filling product login form ...")
+    page.locator(username_selectors).first.wait_for(timeout=15_000)
+    page.locator(username_selectors).first.fill(username)
+    page.locator(password_selectors).first.fill(password)
+    page.locator(submit_selectors).first.click()
+    _log_verbose(">>> Product login form submitted.")
+
+
+def _wait_for_product_redirect(page: Page, product_url: str) -> None:
+    """Wait until the browser has returned to the product after IdP auth."""
+    base = product_url.rstrip("/").lower()
+    deadline = time.monotonic() + 300  # 5-minute timeout
+
+    while time.monotonic() < deadline:
+        try:
+            url = page.url.lower()
+        except Exception:
+            break
+        if url.startswith(base) and not _on_login_page(url):
+            return
+        try:
+            page.wait_for_timeout(500)
+        except Exception:
+            break
+
+    raise RuntimeError(
+        "OIDC login did not complete within 5 minutes. "
+        "Check credentials, IdP configuration, and MFA setup."
+    )
 
 
 _LOGIN_KEYWORDS = ("sign-in", "login", "auth-sign-in")
