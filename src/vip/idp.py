@@ -101,10 +101,7 @@ def _select_totp_authenticator(page: Page) -> None:
     # belongs to the code-based option (not push or security key).
 
     # Strategy 1: Okta data attribute for the TOTP option container.
-    code_option = page.locator(
-        "[data-se='authenticator-verify-list'] "
-        "[data-se='okta_verify-totp']"
-    )
+    code_option = page.locator("[data-se='authenticator-verify-list'] [data-se='okta_verify-totp']")
     if code_option.count() > 0:
         select_btn = code_option.get_by_role("link", name="Select")
         if select_btn.count() == 0:
@@ -187,9 +184,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     deadline = _time.monotonic() + 30
 
     error_selectors = (
-        "[data-se='o-form-error-container'],"
-        ".okta-form-infobox-error,"
-        "[class*='error-message']"
+        "[data-se='o-form-error-container'],.okta-form-infobox-error,[class*='error-message']"
     )
     mfa_selectors = (
         "[data-se='authenticator-verify-list'],"
@@ -312,8 +307,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     else:
         # No TOTP input after selection — fall back to push/wait.
         _log_verbose(">>> Okta: no TOTP input found — assuming push/other MFA factor.")
-        print(">>> Approve the notification on your device, then press Enter.",
-              flush=True)
+        print(">>> Approve the notification on your device, then press Enter.", flush=True)
         input()
         _log_verbose(">>> Okta: waiting for MFA approval redirect ...")
         page.wait_for_url(
