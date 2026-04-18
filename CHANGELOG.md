@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.24.3 (2026-04-18)
+
+### Bug Fixes
+
+- **performance**: Update locust install instructions to use uv
+  ([#190](https://github.com/posit-dev/vip/pull/190),
+  [`58614ab`](https://github.com/posit-dev/vip/commit/58614abb8192c932607b81963bfe3d64cec1edba))
+
+
 ## v0.24.2 (2026-04-18)
 
 ### Bug Fixes
