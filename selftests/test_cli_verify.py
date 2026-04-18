@@ -366,6 +366,36 @@ class TestVerifyLocalMissingConfig:
         assert any("--vip-config" in arg for arg in cmd)
 
 
+class TestVerifyLocalConfigPath:
+    """Regression: the resolved config path must be passed to pytest as an
+    absolute path so downstream CWD/rootdir changes cannot cause pytest to
+    load a different (or missing) vip.toml (issue #170)."""
+
+    def test_default_vip_toml_passed_as_absolute_path(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text(
+            '[general]\ndeployment_name = "x"\n'
+            '[connect]\nurl = "https://myserver.example.com/pct"\n'
+        )
+        cmd = _capture_cmd(_make_args())
+        cfg_args = [c for c in cmd if c.startswith("--vip-config=")]
+        assert cfg_args, "pytest command must include --vip-config"
+        cfg_path = cfg_args[0].split("=", 1)[1]
+        assert Path(cfg_path).is_absolute()
+        assert Path(cfg_path).resolve() == cfg.resolve()
+
+    def test_explicit_config_passed_as_absolute_path(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cfg = tmp_path / "custom.toml"
+        cfg.write_text('[general]\ndeployment_name = "x"\n')
+        cmd = _capture_cmd(_make_args(config="custom.toml"))
+        cfg_args = [c for c in cmd if c.startswith("--vip-config=")]
+        assert cfg_args
+        assert Path(cfg_args[0].split("=", 1)[1]).is_absolute()
+
+
 class TestVerifyLocalVerboseFlag:
     """vip verify --verbose should pass --vip-verbose to pytest."""
 
