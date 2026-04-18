@@ -55,13 +55,15 @@ relative to its own rootdir, which could drift to the installed `vip_tests`
 package.
 
 ```bash
-cd /tmp/vip-170-demo && uv --project /home/user/vip run python -c "
+uv run python -c "
+import os
 from pathlib import Path
-default = Path(\"vip.toml\")
+os.chdir('/tmp/vip-170-demo')
+default = Path('vip.toml')
 resolved = str(default.resolve())
-print(f\"--vip-config={resolved}\")
-assert Path(resolved).is_absolute(), \"not absolute\"
-assert Path(resolved).is_file(), \"not a file\"
+print(f'--vip-config={resolved}')
+assert Path(resolved).is_absolute(), 'not absolute'
+assert Path(resolved).is_file(), 'not a file'
 "
 ```
 
@@ -78,12 +80,12 @@ hard-coded in `vip.toml.example`, which some users had copied but never
 customised).
 
 ```bash
-uv --project /home/user/vip run python -c "
+uv run python -c "
 from vip.config import load_config
-cfg = load_config(\"/tmp/vip-170-demo/vip.toml\")
-print(f\"connect.url = {cfg.connect.url}\")
-assert cfg.connect.url == \"https://connect.customer.internal\"
-assert \"example.com\" not in cfg.connect.url
+cfg = load_config('/tmp/vip-170-demo/vip.toml')
+print(f'connect.url = {cfg.connect.url}')
+assert cfg.connect.url == 'https://connect.customer.internal'
+assert 'example.com' not in cfg.connect.url
 "
 ```
 
