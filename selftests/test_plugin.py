@@ -754,21 +754,29 @@ class TestHeadlessAuthFixture:
         result = pytester.runpytest("-v")
         result.assert_outcomes(passed=1)
 
-    def test_headless_auth_fixture_true_only_for_headless(self, pytester):
-        """The headless_auth fixture is True for --headless-auth, False for --interactive-auth."""
+    def test_headless_auth_fixture_true_only_for_headless(self, pytester, monkeypatch):
+        """The headless_auth fixture is True for --headless-auth, False otherwise."""
+        # Patch the auth startup so the plugin doesn't launch a real browser.
+        # monkeypatch auto-undoes after the test, so later tests see the real
+        # functions (e.g. TestHeadlessAuthPluginWiring which asserts
+        # AuthConfigError propagates).
+        from pathlib import Path
+
+        import vip.auth
+        from vip.auth import InteractiveAuthSession
+
+        def fake_start_auth(*args, **kwargs):
+            return InteractiveAuthSession(storage_state_path=Path("/dev/null"))
+
+        monkeypatch.setattr(vip.auth, "start_headless_auth", fake_start_auth)
+        monkeypatch.setattr(vip.auth, "start_interactive_auth", fake_start_auth)
+
+        # Mirror the real headless_auth fixture — pytester's tmp dir doesn't
+        # auto-load src/vip_tests/conftest.py.
         pytester.makeconftest(
             """
             import pytest
             from vip.plugin import _auth_session_key
-            from vip.auth import InteractiveAuthSession
-            from pathlib import Path
-
-            @pytest.fixture(scope="session", autouse=True)
-            def fake_auth_session(request):
-                session = InteractiveAuthSession(
-                    storage_state_path=Path("/dev/null"),
-                )
-                request.config.stash[_auth_session_key] = session
 
             @pytest.fixture(scope="session")
             def headless_auth(request):
@@ -777,14 +785,32 @@ class TestHeadlessAuthFixture:
                 return request.config.stash.get(_auth_session_key, None) is not None
             """
         )
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "password"\n'
+            ),
+        )
         pytester.makepyfile(
             """
-            def test_fixture_value(headless_auth):
-                assert headless_auth is False
+            def test_fixture_value(request, headless_auth):
+                expected = bool(request.config.getoption("--headless-auth", default=False))
+                assert headless_auth is expected
             """
         )
-        # Without --headless-auth, the fixture should be False even with a session.
-        result = pytester.runpytest("-v")
+
+        # --headless-auth: fixture is True.
+        result = pytester.runpytest("-v", "--vip-config=vip.toml", "--headless-auth")
+        result.assert_outcomes(passed=1)
+
+        # --interactive-auth: session is populated but headless_auth is False.
+        result = pytester.runpytest("-v", "--vip-config=vip.toml", "--interactive-auth")
+        result.assert_outcomes(passed=1)
+
+        # No auth flag: headless_auth is False.
+        result = pytester.runpytest("-v", "--vip-config=vip.toml")
         result.assert_outcomes(passed=1)
 
 

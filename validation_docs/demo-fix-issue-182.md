@@ -129,11 +129,11 @@ collected 100 items / 99 deselected / 1 skipped / 1 selected
 243 existing tests plus 6 new tests covering the new behavior (default exclusion, explicit opt-in, normalizer accepting `config-hygiene`, `_default_marker_expr`, `headless_auth` fixture):
 
 ```bash
-uv run pytest selftests/ -q 2>&1 | grep -E 'passed|failed|error' | sed 's/ in [0-9.]*s//'
+uv run pytest selftests/ -q 2>&1 | grep -E 'passed|failed|error' | sed -E 's/ in [0-9.]*s//; s/, [0-9]+ warnings?//'
 ```
 
 ```output
-249 passed, 5 warnings
+249 passed
 ```
 
 ## Lint and format checks
