@@ -171,7 +171,7 @@ def pytest_configure(config: pytest.Config) -> None:
         wb_url = vip_cfg.workbench.url if vip_cfg.workbench.is_configured else None
 
         if not connect_url and not wb_url:
-            # No auth-requiring product is enabled (e.g. only Package Manager).
+            # No auth-requiring product is configured (e.g. only Package Manager).
             # Skip the browser flow entirely rather than erroring out.
             warnings.warn(
                 "VIP: --interactive-auth was requested but no auth-requiring products "
@@ -179,8 +179,6 @@ def pytest_configure(config: pytest.Config) -> None:
                 stacklevel=1,
             )
         else:
-            from pathlib import Path
-
             from vip.auth import start_interactive_auth
 
             cache_path = Path(config.rootpath) / ".vip-auth-cache.json"
@@ -201,7 +199,7 @@ def pytest_configure(config: pytest.Config) -> None:
         wb_url = vip_cfg.workbench.url if vip_cfg.workbench.is_configured else None
 
         if not connect_url and not wb_url:
-            # No auth-requiring product is enabled (e.g. only Package Manager).
+            # No auth-requiring product is configured (e.g. only Package Manager).
             # Skip the browser flow entirely rather than erroring out.
             warnings.warn(
                 "VIP: --headless-auth was requested but no auth-requiring products "
@@ -209,8 +207,6 @@ def pytest_configure(config: pytest.Config) -> None:
                 stacklevel=1,
             )
         else:
-            from pathlib import Path
-
             from vip.auth import AuthConfigError, start_headless_auth
 
             cache_path = Path(config.rootpath) / ".vip-auth-cache.json"

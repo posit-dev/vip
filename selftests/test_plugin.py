@@ -457,7 +457,7 @@ class TestPluginIntegration:
     def test_interactive_auth_skipped_when_no_auth_products(self, selftest_pytester):
         """--interactive-auth skips the browser flow when no auth-requiring products are enabled.
 
-        When only Package Manager (which needs no auth) is configured, running with
+        When no products requiring authentication are configured, running with
         --interactive-auth should not error out; the auth flow should be skipped and
         tests should proceed normally.  See issue #173.
         """
