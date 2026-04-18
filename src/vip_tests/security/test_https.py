@@ -71,7 +71,7 @@ def inspect_headers(product, vip_config):
     try:
         resp = httpx.get(pc.url, follow_redirects=True, timeout=15)
     except httpx.ConnectError:
-        pytest.skip(
+        pytest.fail(
             f"Could not reach {product} at {pc.url}: connection refused. "
             "Check firewall rules, proxy configuration, DNS resolution, and port. "
             "This is a connectivity issue, not a security finding."

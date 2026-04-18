@@ -38,7 +38,7 @@ def measure_load_time(product, vip_config, performance_config):
         )
         elapsed = time.monotonic() - start
     except httpx.ConnectError:
-        pytest.skip(
+        pytest.fail(
             f"Could not reach {product} at {pc.url}{path}: connection refused. "
             "Check firewall rules, proxy configuration, DNS resolution, and port."
         )
