@@ -281,7 +281,17 @@ jobs:
         timeout-minutes: 10
         env:
           QUARTO_JUPYTER_FLUSH_LOGS: "true"
-        run: cd report && uv run quarto render --no-execute-daemon
+          QUARTO_LOG_LEVEL: "info"
+        # Belt-and-suspenders against CI hangs:
+        #  - `</dev/null` stops Deno/Node child processes blocking on stdin
+        #  - `timeout` kills the process if it stalls past 8 minutes,
+        #    with SIGKILL after SIGTERM, so the job finishes with logs
+        #    attached instead of idling until the 10-minute step cap
+        #  - `--no-execute-daemon` forces a fresh kernel per render
+        run: |
+          cd report
+          timeout --kill-after=60s 8m \
+            uv run quarto render --no-execute-daemon </dev/null
 
       # Stop Connect
       - name: Stop Connect
