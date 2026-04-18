@@ -188,7 +188,11 @@ def _stop_plugin_heartbeat_before_gevent() -> None:
 def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestResult:
     """Run a headless Locust load test and return aggregated results."""
     if not _locust_available():
-        msg = f"locust not installed; {n} users with tool='locust' requires: uv sync --extra load"
+        msg = (
+            f"locust not installed; {n} users with tool='locust' requires the load extra "
+            '(`uv pip install "posit-vip[load]"` for an installed package, '
+            "or `uv sync --extra load` from a source checkout)"
+        )
         raise RuntimeError(msg)
 
     _stop_plugin_heartbeat_before_gevent()
@@ -334,7 +338,11 @@ def run_user_simulation(
         ``{"token": "..."}`` for Package Manager).
     """
     if not _locust_available():
-        msg = "locust not installed; user simulation requires: uv sync --extra load"
+        msg = (
+            "locust not installed; user simulation requires the load extra "
+            '(`uv pip install "posit-vip[load]"` for an installed package, '
+            "or `uv sync --extra load` from a source checkout)"
+        )
         raise RuntimeError(msg)
 
     _stop_plugin_heartbeat_before_gevent()
