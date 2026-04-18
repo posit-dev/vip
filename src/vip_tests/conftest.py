@@ -89,9 +89,21 @@ def pm_url(vip_config: VIPConfig) -> str:
 
 @pytest.fixture(scope="session")
 def interactive_auth(request: pytest.FixtureRequest) -> bool:
-    """Whether interactive auth was used for this session."""
+    """Whether interactive auth was used for this session.
+
+    True for either ``--interactive-auth`` or ``--headless-auth`` — both
+    populate the auth session stash and produce a browser storage state.
+    """
     session = request.config.stash.get(_auth_session_key, None)
     return session is not None
+
+
+@pytest.fixture(scope="session")
+def headless_auth(request: pytest.FixtureRequest) -> bool:
+    """Whether ``--headless-auth`` specifically was used for this session."""
+    if not request.config.getoption("--headless-auth", default=False):
+        return False
+    return request.config.stash.get(_auth_session_key, None) is not None
 
 
 @pytest.fixture(scope="session")

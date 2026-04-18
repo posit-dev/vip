@@ -79,7 +79,7 @@ paired with a `.py` file containing step definitions.
 | | `test_resource_usage` | Load avg and memory during traffic burst | Implemented |
 | **Security** | `test_https` | HTTPS enforced, no version headers | Implemented |
 | | `test_auth_policy` | Provider matches config, unauthed denied | Implemented |
-| | `test_secrets` | No plaintext secrets in config, API key from env | Implemented |
+| **Config hygiene** (opt-in) | `test_secrets` | No plaintext secrets in config, API key from env | Implemented |
 
 **Selftests** (38 tests): config loading, plugin behavior (via pytester),
 reporting module. All pass in CI.
@@ -159,7 +159,7 @@ anything.  To implement it:
 - Option C (session): Start a session, run `getOption("repos")` in the R
   console, and verify the output contains the expected URL.
 
-**`src/vip_tests/security/test_secrets.py` - plaintext detection**
+**`src/vip_tests/config_hygiene/test_secrets.py` - plaintext detection**
 
 The current placeholder list (`{"...", "your-api-key", "changeme", ""}`) works
 for basic cases.  To harden it:

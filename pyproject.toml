@@ -94,6 +94,7 @@ markers = [
     "cross_product: tests that span multiple products",
     "performance: performance validation tests",
     "security: security validation tests",
+    "config_hygiene: checks of VIP's own configuration (opt-in; excluded by default)",
     "min_version(product, version): only run when product meets minimum version",
     "if_applicable: test is skipped when the feature is not configured",
 ]
