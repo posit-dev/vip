@@ -55,16 +55,17 @@ relative to its own rootdir, which could drift to the installed `vip_tests`
 package.
 
 ```bash
-uv run python -c "
+cat > /tmp/vip-170-demo/show_config.py <<'PYEOF'
 import os
 from pathlib import Path
-os.chdir('/tmp/vip-170-demo')
-default = Path('vip.toml')
+os.chdir("/tmp/vip-170-demo")
+default = Path("vip.toml")
 resolved = str(default.resolve())
-print(f'--vip-config={resolved}')
-assert Path(resolved).is_absolute(), 'not absolute'
-assert Path(resolved).is_file(), 'not a file'
-"
+print("--vip-config=" + resolved)
+assert Path(resolved).is_absolute()
+assert Path(resolved).is_file()
+PYEOF
+uv run python /tmp/vip-170-demo/show_config.py
 ```
 
 ```output
@@ -80,13 +81,14 @@ hard-coded in `vip.toml.example`, which some users had copied but never
 customised).
 
 ```bash
-uv run python -c "
+cat > /tmp/vip-170-demo/show_url.py <<'PYEOF'
 from vip.config import load_config
-cfg = load_config('/tmp/vip-170-demo/vip.toml')
-print(f'connect.url = {cfg.connect.url}')
-assert cfg.connect.url == 'https://connect.customer.internal'
-assert 'example.com' not in cfg.connect.url
-"
+cfg = load_config("/tmp/vip-170-demo/vip.toml")
+print("connect.url = " + cfg.connect.url)
+assert cfg.connect.url == "https://connect.customer.internal"
+assert "example.com" not in cfg.connect.url
+PYEOF
+uv run python /tmp/vip-170-demo/show_url.py
 ```
 
 ```output
