@@ -110,7 +110,7 @@ uv run pytest selftests/ -q 2>&1 | grep -E 'passed|failed|error' | sed -E 's/ in
 ```
 
 ```output
-249 passed
+251 passed
 ```
 
 ## Lint and format checks
