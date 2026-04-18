@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.24.5 (2026-04-18)
+
+### Bug Fixes
+
+- **auth**: Skip headless auth when no auth-requiring products configured
+  ([#193](https://github.com/posit-dev/vip/pull/193),
+  [`f330e13`](https://github.com/posit-dev/vip/commit/f330e13f2e8a601c3d270c26a0aab85079150c7c))
+
+Co-authored-by: Claude <noreply@anthropic.com>
+
+### Chores
+
+- **deps**: Bump github/gh-aw-actions from 0.67.1 to 0.67.3 in the actions-dependencies group
+  ([#164](https://github.com/posit-dev/vip/pull/164),
+  [`9c141eb`](https://github.com/posit-dev/vip/commit/9c141eb1ed0cc92fd6e9a77f309cabc1eeb701ea))
+
+
 ## v0.24.4 (2026-04-18)
 
 ### Bug Fixes
