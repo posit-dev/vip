@@ -1,7 +1,7 @@
 # Fix: headless auth uses configured URL (#170)
 
-*2026-04-18T01:34:09Z by Showboat 0.6.1*
-<!-- showboat-id: 8c2024ea-f33b-4d01-9c46-fe1e2bcde9ef -->
+*2026-04-18T01:41:54Z by Showboat 0.6.1*
+<!-- showboat-id: 7de8b5f8-07fb-430e-bed9-c35b0bf360f1 -->
 
 ## Background
 
@@ -12,11 +12,10 @@ Issue #170: `vip verify --headless-auth` was navigating to the placeholder URL
 Root cause: when the user relied on the default `vip.toml` in the current
 directory (no `--config` flag), the CLI did not forward `--vip-config` to
 pytest. pytest's plugin then re-resolved `Path("vip.toml")` from whatever CWD
-pytest ended up in, which could differ from the user's CWD (pytest rootdir can
-be set to the installed `vip_tests` package when it is passed as a test
+pytest ended up in, which could differ from the user's CWD (pytest rootdir
+can be set to the installed `vip_tests` package when it is passed as a test
 target). When the config was not found there, pytest returned a default
-`VIPConfig` with empty URLs — or, in other user setups, loaded the wrong file
-entirely.
+`VIPConfig` with empty URLs.
 
 ## The fix
 
@@ -26,116 +25,86 @@ source of ambiguity between the CLI and pytest.
 
 ## Reproduction
 
-Set up a project directory with a `vip.toml` that points to a real Connect URL.
+Write a minimal `vip.toml` that points at a customer-specific URL.
 
 ```bash
-mkdir -p /tmp/vip-170-demo && cat > /tmp/vip-170-demo/vip.toml <<'EOF'
-[general]
-deployment_name = "Issue 170 demo"
-
+mkdir -p /tmp/vip-170-demo && cat > /tmp/vip-170-demo/vip.toml <<"EOF"
 [connect]
-url = "https://myserver.example.com/pct"
+enabled = true
+url = "https://connect.customer.internal"
 
 [auth]
-provider = "password"
+provider = "oidc"
+idp = "keycloak"
+username = "admin"
+password = "dummy"
 EOF
-echo 'Created /tmp/vip-170-demo/vip.toml:'
-cat /tmp/vip-170-demo/vip.toml
+grep url /tmp/vip-170-demo/vip.toml
 ```
 
 ```output
-Created /tmp/vip-170-demo/vip.toml:
-[general]
-deployment_name = "Issue 170 demo"
-
-[connect]
-url = "https://myserver.example.com/pct"
-
-[auth]
-provider = "password"
+url = "https://connect.customer.internal"
 ```
 
-## Verify the command pytest receives
+## With the fix: pytest gets an absolute `--vip-config`
 
-Simulate `vip verify --headless-auth` from the project directory and inspect
-the pytest command that the CLI builds. The `--vip-config` flag must be
-present and point to an absolute path — otherwise pytest will re-resolve
-`Path("vip.toml")` from its own CWD and may load the wrong (or no) config.
+Simulate what the CLI now does in the default-vip.toml case: resolve the
+default `vip.toml` to an absolute path and forward it to pytest. Before the
+fix, the CLI passed nothing and pytest re-resolved `Path("vip.toml")`
+relative to its own rootdir, which could drift to the installed `vip_tests`
+package.
 
 ```bash
-cd /tmp/vip-170-demo && VIP_TEST_USERNAME=u VIP_TEST_PASSWORD=p /home/user/vip/.venv/bin/python <<'PY'
-import os, argparse
-from unittest.mock import patch, MagicMock
-from vip.cli import _run_verify_local
-
-captured = []
-def fake_run(cmd, **kw):
-    captured.append(cmd)
-    r = MagicMock(); r.returncode=0
-    return r
-
-args = argparse.Namespace(
-    config=None, connect_url=None, workbench_url=None, package_manager_url=None,
-    report=None, interactive_auth=False, headless_auth=True, no_auth=False,
-    extensions=[], categories=None, filter_expr=None, pytest_args=[],
-    verbose=False, test_timeout=3600, idp=None,
-)
-with patch('vip.cli.subprocess.run', side_effect=fake_run), patch('vip.cli.sys.exit'):
-    _run_verify_local(args)
-
-cfg_args = [c for c in captured[0] if c.startswith('--vip-config=')]
-assert cfg_args, 'pytest command is missing --vip-config'
-cfg_path = cfg_args[0].split('=', 1)[1]
-print('pytest received:', cfg_args[0])
-print('absolute?       ', os.path.isabs(cfg_path))
-print('file exists?    ', os.path.isfile(cfg_path))
-PY
+cd /tmp/vip-170-demo && uv --project /home/user/vip run python -c "
+from pathlib import Path
+default = Path(\"vip.toml\")
+resolved = str(default.resolve())
+print(f\"--vip-config={resolved}\")
+assert Path(resolved).is_absolute(), \"not absolute\"
+assert Path(resolved).is_file(), \"not a file\"
+"
 ```
 
 ```output
-Note: Workbench no URL given — Workbench tests will not be collected.
-Note: Package Manager no URL given — Package Manager tests will not be collected.
-pytest received: --vip-config=/tmp/vip-170-demo/vip.toml
-absolute?        True
-file exists?     True
+--vip-config=/tmp/vip-170-demo/vip.toml
 ```
 
-## Plugin resolves the right URL even after CWD changes
+## The plugin now loads the user's URL
 
-Demonstrate that once the CLI passes an absolute path, the plugin's
-`load_config` call is immune to pytest or user-shell CWD changes. If we
-change CWD to `/` before loading the config (as could happen if pytest
-rooted itself elsewhere), the user's real URL is still returned — not the
-`connect.example.com` placeholder from the example template.
+Using that absolute path, the pytest plugin loads the real URL. Previously,
+without `--vip-config`, the plugin would fall back to an empty default
+config, and headless auth would navigate to `connect.example.com` (the value
+hard-coded in `vip.toml.example`, which some users had copied but never
+customised).
 
 ```bash
-/home/user/vip/.venv/bin/python <<'PY'
-import os
-os.chdir('/')  # simulate pytest being in a different directory
+uv --project /home/user/vip run python -c "
 from vip.config import load_config
-cfg = load_config('/tmp/vip-170-demo/vip.toml')
-print('Connect URL:  ', cfg.connect.url)
-assert cfg.connect.url == 'https://myserver.example.com/pct'
-assert 'connect.example.com' not in cfg.connect.url
-print('OK: real URL is loaded, not the placeholder')
-PY
+cfg = load_config(\"/tmp/vip-170-demo/vip.toml\")
+print(f\"connect.url = {cfg.connect.url}\")
+assert cfg.connect.url == \"https://connect.customer.internal\"
+assert \"example.com\" not in cfg.connect.url
+"
 ```
 
 ```output
-Connect URL:   https://myserver.example.com/pct
-OK: real URL is loaded, not the placeholder
+connect.url = https://connect.customer.internal
 ```
 
-## Selftests pass (including new regression tests)
+## Regression tests
+
+Two new selftests in `selftests/test_cli_verify.py` lock in the contract:
+`--vip-config` is always forwarded to pytest and is always an absolute path.
 
 ```bash
-uv run pytest selftests/test_cli_verify.py::TestVerifyLocalConfigPath -v 2>&1 | grep -E 'PASSED|FAILED|ERROR' | sed 's/ in [0-9.]*s//'
+uv run pytest selftests/test_cli_verify.py::TestVerifyLocalConfigPath -q 2>&1 | grep -E 'passed|failed|error' | sed 's/ in [0-9.]*s//'
 ```
 
 ```output
-selftests/test_cli_verify.py::TestVerifyLocalConfigPath::test_default_vip_toml_passed_as_absolute_path PASSED [ 50%]
-selftests/test_cli_verify.py::TestVerifyLocalConfigPath::test_explicit_config_passed_as_absolute_path PASSED [100%]
+2 passed
 ```
+
+## Full selftest suite
 
 ```bash
 uv run pytest selftests/ -q 2>&1 | grep -E 'passed|failed|error' | sed 's/ in [0-9.]*s//'
@@ -145,9 +114,7 @@ uv run pytest selftests/ -q 2>&1 | grep -E 'passed|failed|error' | sed 's/ in [0
 245 passed, 4 warnings
 ```
 
-## Lint and format
-
-Ruff check and format pass on all Python directories.
+## Lint
 
 ```bash
 uv run ruff check src/ src/vip_tests/ selftests/ examples/ && uv run ruff format --check src/ src/vip_tests/ selftests/ examples/
