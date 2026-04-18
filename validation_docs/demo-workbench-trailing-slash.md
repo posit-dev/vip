@@ -1,4 +1,4 @@
-# fix(workbench): normalize product URLs to include trailing slash
+# fix(config): normalize product URLs to include trailing slash
 
 *2026-04-18T00:30:53Z by Showboat 0.6.1*
 <!-- showboat-id: b0ee60d2-f349-4503-ad8c-ecb6143181c6 -->
