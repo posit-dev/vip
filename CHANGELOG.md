@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.24.6 (2026-04-18)
+
+### Bug Fixes
+
+- **security**: Move config hygiene tests to opt-in category
+  ([#195](https://github.com/posit-dev/vip/pull/195),
+  [`aea86af`](https://github.com/posit-dev/vip/commit/aea86af33e42cfdb9c0199bc881a899e126e511a))
+
+### Continuous Integration
+
+- **report**: Prevent Quarto render from hanging in example report job
+  ([#196](https://github.com/posit-dev/vip/pull/196),
+  [`5206402`](https://github.com/posit-dev/vip/commit/5206402c2116084b81effe38040b15e8c057d482))
+
+### Refactoring
+
+- **cli**: Share DEFAULT_TEST_TIMEOUT_SECONDS and fix TOML help wording
+  ([#192](https://github.com/posit-dev/vip/pull/192),
+  [`bde0a11`](https://github.com/posit-dev/vip/commit/bde0a11501c3a11f15546e5ec9e1ee8079f5681a))
+
+
 ## v0.24.5 (2026-04-18)
 
 ### Bug Fixes
