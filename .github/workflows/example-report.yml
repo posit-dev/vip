@@ -279,12 +279,30 @@ jobs:
 
       - name: Diagnose Quarto/Python environment
         run: |
+          mkdir -p /tmp/quarto-logs
+          LOG=/tmp/quarto-logs/diagnose.log
           set -x
-          quarto --version
-          quarto check jupyter || true
-          uv run python -c "import sys, jupyter_client, nbclient, nbformat; print(sys.executable); print('jupyter_client', jupyter_client.__version__); print('nbclient', nbclient.__version__); print('nbformat', nbformat.__version__)"
-          uv run python -c "from jupyter_client.kernelspec import KernelSpecManager; print(KernelSpecManager().get_all_specs())"
-          ls -la report/
+          {
+            quarto --version
+            echo "---"
+            quarto check jupyter || true
+            echo "---"
+            uv run python -c "import sys, jupyter_client, nbclient, nbformat; print(sys.executable); print('jupyter_client', jupyter_client.__version__); print('nbclient', nbclient.__version__); print('nbformat', nbformat.__version__)"
+            uv run python -c "from jupyter_client.kernelspec import KernelSpecManager; print(KernelSpecManager().get_all_specs())"
+            echo "---"
+            echo "report/ contents:"
+            ls -la report/
+            echo "---"
+            echo "env relevant to jupyter:"
+            env | grep -iE 'jupyter|quarto|python|uv_' | sort || true
+          } 2>&1 | tee "$LOG"
+          {
+            echo "## Diagnose output"
+            echo ''
+            echo '```'
+            cat "$LOG"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Render index.qmd
         timeout-minutes: 4
@@ -293,19 +311,28 @@ jobs:
           QUARTO_LOG_LEVEL: "info"
           QUARTO_PRINT_STACK: "true"
         run: |
+          LOG=/tmp/quarto-logs/render-index.log
+          mkdir -p /tmp/quarto-logs
           set -x
           cd report
           mkdir -p _output
           date -Iseconds
+          set +e
           timeout --kill-after=30s 3m \
             uv run quarto render index.qmd \
               --no-execute-daemon \
-              --output-dir _output </dev/null &
-          RENDER_PID=$!
-          wait "${RENDER_PID}"
-          STATUS=$?
+              --output-dir _output </dev/null 2>&1 | tee "$LOG"
+          STATUS=${PIPESTATUS[0]}
+          set -e
           date -Iseconds
           echo "index.qmd render exit status: ${STATUS}"
+          {
+            echo "## Render index.qmd — exit ${STATUS}"
+            echo ''
+            echo '```'
+            tail -300 "$LOG" 2>/dev/null || echo "(no log captured)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
           exit "${STATUS}"
 
       - name: Render details.qmd
@@ -316,20 +343,37 @@ jobs:
           QUARTO_LOG_LEVEL: "info"
           QUARTO_PRINT_STACK: "true"
         run: |
+          LOG=/tmp/quarto-logs/render-details.log
+          mkdir -p /tmp/quarto-logs
           set -x
           cd report
           mkdir -p _output
           date -Iseconds
+          set +e
           timeout --kill-after=30s 3m \
             uv run quarto render details.qmd \
               --no-execute-daemon \
-              --output-dir _output </dev/null &
-          RENDER_PID=$!
-          wait "${RENDER_PID}"
-          STATUS=$?
+              --output-dir _output </dev/null 2>&1 | tee "$LOG"
+          STATUS=${PIPESTATUS[0]}
+          set -e
           date -Iseconds
           echo "details.qmd render exit status: ${STATUS}"
+          {
+            echo "## Render details.qmd — exit ${STATUS}"
+            echo ''
+            echo '```'
+            tail -300 "$LOG" 2>/dev/null || echo "(no log captured)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
           exit "${STATUS}"
+
+      - name: Upload Quarto logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: quarto-logs
+          path: /tmp/quarto-logs/
+          if-no-files-found: warn
 
       # Stop Connect
       - name: Stop Connect
