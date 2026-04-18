@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.24.4 (2026-04-18)
+
+### Bug Fixes
+
+- **cli**: Raise default --test-timeout to 3600s for Connect deploys
+  ([#191](https://github.com/posit-dev/vip/pull/191),
+  [`15b1c3e`](https://github.com/posit-dev/vip/commit/15b1c3e9a2c568a1f451bcf863032c89599f7092))
+
+
+## v0.24.3 (2026-04-18)
+
+### Bug Fixes
+
+- **performance**: Update locust install instructions to use uv
+  ([#190](https://github.com/posit-dev/vip/pull/190),
+  [`58614ab`](https://github.com/posit-dev/vip/commit/58614abb8192c932607b81963bfe3d64cec1edba))
+
+
+## v0.24.2 (2026-04-18)
+
+### Bug Fixes
+
+- **security**: Catch ConnectError with helpful skip message
+  ([#189](https://github.com/posit-dev/vip/pull/189),
+  [`c5dc180`](https://github.com/posit-dev/vip/commit/c5dc180695712d16ccf724f436de68fdc77a9fb0))
+
+
 ## v0.24.1 (2026-04-17)
 
 ### Bug Fixes
