@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.24.7 (2026-04-18)
+
+### Bug Fixes
+
+- **cli**: Always pass absolute --vip-config to pytest
+  ([#194](https://github.com/posit-dev/vip/pull/194),
+  [`93d0eb4`](https://github.com/posit-dev/vip/commit/93d0eb4969974fcbe32decb5d5b36f1f694260af))
+
+
 ## v0.24.6 (2026-04-18)
 
 ### Bug Fixes
