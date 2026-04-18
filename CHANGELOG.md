@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.24.4 (2026-04-18)
+
+### Bug Fixes
+
+- **cli**: Raise default --test-timeout to 3600s for Connect deploys
+  ([#191](https://github.com/posit-dev/vip/pull/191),
+  [`15b1c3e`](https://github.com/posit-dev/vip/commit/15b1c3e9a2c568a1f451bcf863032c89599f7092))
+
+
 ## v0.24.3 (2026-04-18)
 
 ### Bug Fixes
