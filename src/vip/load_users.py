@@ -13,7 +13,7 @@ from __future__ import annotations
 try:
     from locust import HttpUser, between, task
 except ImportError as _err:
-    msg = "locust is required for user simulation: pip install 'posit-vip[load]'"
+    msg = "locust is required for user simulation: uv sync --extra load"
     raise ImportError(msg) from _err
 
 

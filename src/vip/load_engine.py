@@ -188,10 +188,7 @@ def _stop_plugin_heartbeat_before_gevent() -> None:
 def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestResult:
     """Run a headless Locust load test and return aggregated results."""
     if not _locust_available():
-        msg = (
-            f"locust not installed; {n} users with tool='locust' requires: "
-            "pip install 'posit-vip[load]'"
-        )
+        msg = f"locust not installed; {n} users with tool='locust' requires: uv sync --extra load"
         raise RuntimeError(msg)
 
     _stop_plugin_heartbeat_before_gevent()
@@ -337,7 +334,7 @@ def run_user_simulation(
         ``{"token": "..."}`` for Package Manager).
     """
     if not _locust_available():
-        msg = "locust not installed; user simulation requires: pip install 'posit-vip[load]'"
+        msg = "locust not installed; user simulation requires: uv sync --extra load"
         raise RuntimeError(msg)
 
     _stop_plugin_heartbeat_before_gevent()
