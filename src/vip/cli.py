@@ -460,6 +460,12 @@ def _run_verify_local(args: argparse.Namespace) -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
+        # Pin the resolved default so pytest loads the same file the CLI
+        # validated, regardless of pytest's rootdir or subprocess CWD.
+        config_path = str(default.resolve())
+
+    # Resolve explicit paths too so --vip-config always gets an absolute path.
+    config_path = str(Path(config_path).resolve())
 
     if args.interactive_auth and args.headless_auth:
         print(
