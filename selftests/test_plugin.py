@@ -454,19 +454,30 @@ class TestPluginIntegration:
         assert result["scenario_title"] is None
         assert result["feature_description"] is None
 
-    def test_interactive_auth_requires_product_url(self, selftest_pytester):
-        """--interactive-auth fails fast when no product URL is configured."""
+    def test_interactive_auth_skipped_when_no_auth_products(self, selftest_pytester):
+        """--interactive-auth skips the browser flow when no auth-requiring products are enabled.
+
+        When only Package Manager (which needs no auth) is configured, running with
+        --interactive-auth should not error out; the auth flow should be skipped and
+        tests should proceed normally.  See issue #173.
+        """
         selftest_pytester.makepyfile(
             """
             def test_placeholder():
                 assert True
             """
         )
-        result = selftest_pytester.runpytest(
+        result = selftest_pytester.runpytest_subprocess(
             "--vip-config=vip.toml",
             "--interactive-auth",
+            "-W",
+            "always",
         )
-        result.stderr.fnmatch_lines(["*--interactive-auth requires at least one product URL*"])
+        assert result.ret == 0
+        result.assert_outcomes(passed=1)
+        result.stderr.fnmatch_lines(
+            ["*no auth-requiring products*skipping browser authentication*"]
+        )
 
     def test_json_report_includes_concise_error(self, selftest_pytester):
         selftest_pytester.makepyfile(
@@ -653,8 +664,12 @@ class TestHeadlessAuthOption:
 
 
 class TestHeadlessAuthFixture:
-    def test_headless_auth_requires_product_url(self, pytester):
-        """--headless-auth fails fast when no product URL is configured."""
+    def test_headless_auth_skipped_when_no_auth_products(self, pytester):
+        """--headless-auth skips the browser flow when no auth-requiring products are enabled.
+
+        If only Package Manager is enabled (or no products at all), --headless-auth
+        should warn and continue rather than failing with UsageError -- see issue #173.
+        """
         pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
         pytester.makepyfile(
             """
@@ -662,11 +677,51 @@ class TestHeadlessAuthFixture:
                 assert True
             """
         )
-        result = pytester.runpytest(
+        result = pytester.runpytest_subprocess(
             "--vip-config=vip.toml",
             "--headless-auth",
+            "-W",
+            "always",
         )
-        result.stderr.fnmatch_lines(["*--headless-auth requires at least one product URL*"])
+        assert result.ret == 0
+        result.assert_outcomes(passed=1)
+        result.stderr.fnmatch_lines(
+            ["*no auth-requiring products*skipping browser authentication*"]
+        )
+
+    def test_headless_auth_skipped_when_only_package_manager_enabled(self, pytester):
+        """--headless-auth skips auth when only Package Manager is enabled.
+
+        Reproduces the scenario from issue #173: Connect/Workbench disabled,
+        Package Manager enabled -- headless auth should be skipped.
+        """
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                "[connect]\nenabled = false\n"
+                "[workbench]\nenabled = false\n"
+                "[package_manager]\nenabled = true\n"
+                'url = "https://pm.example.com"\n'
+            ),
+        )
+        pytester.makepyfile(
+            """
+            def test_placeholder():
+                assert True
+            """
+        )
+        result = pytester.runpytest_subprocess(
+            "--vip-config=vip.toml",
+            "--headless-auth",
+            "-W",
+            "always",
+        )
+        assert result.ret == 0
+        result.assert_outcomes(passed=1)
+        result.stderr.fnmatch_lines(
+            ["*no auth-requiring products*skipping browser authentication*"]
+        )
 
     def test_interactive_auth_fixture_true_for_headless(self, pytester):
         """The interactive_auth fixture should return True when --headless-auth is active."""
