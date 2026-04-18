@@ -277,28 +277,59 @@ jobs:
             --vip-config=vip.toml \
           || true
 
-      - name: Render Quarto report
-        timeout-minutes: 10
+      - name: Diagnose Quarto/Python environment
+        run: |
+          set -x
+          quarto --version
+          quarto check jupyter || true
+          uv run python -c "import sys, jupyter_client, nbclient, nbformat; print(sys.executable); print('jupyter_client', jupyter_client.__version__); print('nbclient', nbclient.__version__); print('nbformat', nbformat.__version__)"
+          uv run python -c "from jupyter_client.kernelspec import KernelSpecManager; print(KernelSpecManager().get_all_specs())"
+          ls -la report/
+
+      - name: Render index.qmd
+        timeout-minutes: 4
         env:
           QUARTO_JUPYTER_FLUSH_LOGS: "true"
           QUARTO_LOG_LEVEL: "info"
-        # Render each .qmd individually instead of as a website project.
-        # Previous runs showed the hang happens AFTER execution completes,
-        # during the website-project finalization step. Rendering files
-        # one-by-one skips that step. Each `timeout` guard kills the
-        # process if a single render stalls past 5 minutes, so the job
-        # finishes with logs attached instead of idling.
+          QUARTO_PRINT_STACK: "true"
         run: |
+          set -x
           cd report
           mkdir -p _output
-          for doc in index.qmd details.qmd; do
-            echo "::group::Rendering ${doc}"
-            timeout --kill-after=30s 5m \
-              uv run quarto render "${doc}" \
-                --no-execute-daemon \
-                --output-dir _output </dev/null
-            echo "::endgroup::"
-          done
+          date -Iseconds
+          timeout --kill-after=30s 3m \
+            uv run quarto render index.qmd \
+              --no-execute-daemon \
+              --output-dir _output </dev/null &
+          RENDER_PID=$!
+          wait "${RENDER_PID}"
+          STATUS=$?
+          date -Iseconds
+          echo "index.qmd render exit status: ${STATUS}"
+          exit "${STATUS}"
+
+      - name: Render details.qmd
+        if: always()
+        timeout-minutes: 4
+        env:
+          QUARTO_JUPYTER_FLUSH_LOGS: "true"
+          QUARTO_LOG_LEVEL: "info"
+          QUARTO_PRINT_STACK: "true"
+        run: |
+          set -x
+          cd report
+          mkdir -p _output
+          date -Iseconds
+          timeout --kill-after=30s 3m \
+            uv run quarto render details.qmd \
+              --no-execute-daemon \
+              --output-dir _output </dev/null &
+          RENDER_PID=$!
+          wait "${RENDER_PID}"
+          STATUS=$?
+          date -Iseconds
+          echo "details.qmd render exit status: ${STATUS}"
+          exit "${STATUS}"
 
       # Stop Connect
       - name: Stop Connect
