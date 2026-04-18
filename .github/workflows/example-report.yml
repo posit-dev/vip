@@ -211,6 +211,11 @@ jobs:
         with:
           version: 1.9.37
 
+      - name: Register Jupyter Python kernel
+        run: |
+          uv run python -m ipykernel install --user --name python3 --display-name "Python 3"
+          uv run jupyter kernelspec list
+
       # Generate vip.toml from with-connect and PM outputs
       - name: Configure VIP for CI
         run: |
@@ -374,6 +379,32 @@ jobs:
           name: quarto-logs
           path: /tmp/quarto-logs/
           if-no-files-found: warn
+
+      - name: Post render logs as PR comment on failure
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "## Quarto render diagnostic logs (commit ${GITHUB_SHA:0:7})"
+            echo ""
+            echo "### diagnose.log"
+            echo '```'
+            tail -200 /tmp/quarto-logs/diagnose.log 2>/dev/null || echo "(no diagnose.log)"
+            echo '```'
+            echo ""
+            echo "### render-index.log"
+            echo '```'
+            tail -200 /tmp/quarto-logs/render-index.log 2>/dev/null || echo "(no render-index.log)"
+            echo '```'
+            echo ""
+            echo "### render-details.log"
+            echo '```'
+            tail -200 /tmp/quarto-logs/render-details.log 2>/dev/null || echo "(no render-details.log)"
+            echo '```'
+          } > /tmp/comment-body.md
+          gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --body-file /tmp/comment-body.md
 
       # Stop Connect
       - name: Stop Connect
