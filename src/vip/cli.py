@@ -23,6 +23,11 @@ if TYPE_CHECKING:
 _JOB_CLEANUP_BUFFER_SECONDS = 60
 _JOB_MIN_PYTEST_TIMEOUT_SECONDS = 60
 
+# Default for ``vip verify --test-timeout``.  Generous enough for a full
+# Connect suite with several content deployments (each can take 3-5 minutes
+# for R package restore or Python venv creation).
+DEFAULT_TEST_TIMEOUT_SECONDS = 3600
+
 # Valid test categories. Maps every accepted spelling (hyphenated and
 # underscored) to the internal pytest marker name.
 VALID_CATEGORIES: dict[str, str] = {
@@ -856,12 +861,15 @@ def main() -> None:
     verify_parser.add_argument(
         "--test-timeout",
         type=int,
-        default=3600,
-        help="Timeout in seconds for the pytest subprocess (default: 3600). "
-        "A full Connect run includes content deployments that each take several "
-        "minutes (R package restore, Python venv creation), so raise this further "
-        "for large suites or slow servers. For per-deploy limits, see "
-        "connect.deploy_timeout in vip.toml.",
+        default=DEFAULT_TEST_TIMEOUT_SECONDS,
+        help=(
+            "Timeout in seconds for the pytest subprocess "
+            f"(default: {DEFAULT_TEST_TIMEOUT_SECONDS}). "
+            "A full Connect run includes content deployments that each take "
+            "several minutes (R package restore, Python venv creation), so "
+            "raise this further for large suites or slow servers. For "
+            "per-deploy limits, set deploy_timeout under [connect] in vip.toml."
+        ),
     )
 
     # K8s mode
