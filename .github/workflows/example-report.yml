@@ -282,16 +282,23 @@ jobs:
         env:
           QUARTO_JUPYTER_FLUSH_LOGS: "true"
           QUARTO_LOG_LEVEL: "info"
-        # Belt-and-suspenders against CI hangs:
-        #  - `</dev/null` stops Deno/Node child processes blocking on stdin
-        #  - `timeout` kills the process if it stalls past 8 minutes,
-        #    with SIGKILL after SIGTERM, so the job finishes with logs
-        #    attached instead of idling until the 10-minute step cap
-        #  - `--no-execute-daemon` forces a fresh kernel per render
+        # Render each .qmd individually instead of as a website project.
+        # Previous runs showed the hang happens AFTER execution completes,
+        # during the website-project finalization step. Rendering files
+        # one-by-one skips that step. Each `timeout` guard kills the
+        # process if a single render stalls past 5 minutes, so the job
+        # finishes with logs attached instead of idling.
         run: |
           cd report
-          timeout --kill-after=60s 8m \
-            uv run quarto render --no-execute-daemon </dev/null
+          mkdir -p _output
+          for doc in index.qmd details.qmd; do
+            echo "::group::Rendering ${doc}"
+            timeout --kill-after=30s 5m \
+              uv run quarto render "${doc}" \
+                --no-execute-daemon \
+                --output-dir _output </dev/null
+            echo "::endgroup::"
+          done
 
       # Stop Connect
       - name: Stop Connect

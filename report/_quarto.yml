@@ -1,19 +1,12 @@
-project:
-  type: website
-  output-dir: _output
+# Render each .qmd as a standalone HTML document. We intentionally do NOT
+# declare `project.type: website` here — the website-project finalization
+# step (search index, navbar, resource copying) reliably hangs in CI after
+# execution completes. Rendering each file individually sidesteps that
+# finalization entirely. See the CI workflow for the per-file render calls.
 
-website:
-  title: "VIP - Verified Installation of Posit"
-  navbar:
-    left:
-      - href: index.qmd
-        text: Summary
-      - href: details.qmd
-        text: Detailed Results
-
-# Disable the Jupyter kernel daemon so `quarto render` exits cleanly after
-# the last document. The daemon is a known source of CI hangs — it keeps a
-# kernel alive between renders, but in one-shot CI runs it can block exit.
+# Disable the Jupyter kernel daemon so each render starts fresh and exits
+# cleanly. The daemon keeps a kernel alive between renders, which in
+# one-shot CI runs can block the process from exiting.
 execute:
   daemon: false
 

@@ -6,6 +6,8 @@ format:
 jupyter: python3
 ---
 
+[Summary](index.html) · [Detailed Results](details.html)
+
 # Verified Installation of Posit
 
 ```{python}
