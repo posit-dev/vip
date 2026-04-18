@@ -1,8 +1,8 @@
-@security
-Feature: Secure storage of secrets and tokens
-  As a Posit Team administrator
-  I want to verify that secrets and tokens are stored securely
-  So that credentials are not exposed
+@config_hygiene
+Feature: Secure storage of VIP's own secrets and tokens
+  As a VIP user
+  I want to verify that my VIP configuration keeps credentials out of plaintext files
+  So that secrets are not accidentally committed or shared
 
   Scenario: API keys are not stored in the VIP config file
     Given a VIP configuration file is in use

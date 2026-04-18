@@ -40,7 +40,14 @@ VALID_CATEGORIES: dict[str, str] = {
     "cross_product": "cross_product",
     "performance": "performance",
     "security": "security",
+    "config-hygiene": "config_hygiene",
+    "config_hygiene": "config_hygiene",
 }
+
+# Categories that are excluded from the default ``vip verify`` run and only
+# executed when the user opts in via ``--categories``.  These tests check
+# VIP's own configuration rather than the Posit deployment.
+_OPT_IN_CATEGORIES = frozenset({"config_hygiene"})
 
 # Marker expression keywords that are not category names.
 _MARKER_KEYWORDS = {"and", "or", "not"}
@@ -58,6 +65,15 @@ def _valid_categories_message() -> str:
         if v not in seen or "-" in k:
             seen[v] = k
     return ", ".join(sorted(seen.values()))
+
+
+def _default_marker_expr() -> str:
+    """Marker expression applied when the user doesn't pass ``--categories``.
+
+    Excludes every opt-in category so that ``vip verify`` runs only the
+    product-verification tests by default.
+    """
+    return " and ".join(f"not {name}" for name in sorted(_OPT_IN_CATEGORIES))
 
 
 def _normalize_categories(expr: str) -> str:
@@ -489,6 +505,8 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append(f"--vip-extensions={ext}")
     if args.categories:
         cmd.extend(["-m", _normalize_categories(args.categories)])
+    else:
+        cmd.extend(["-m", _default_marker_expr()])
     if args.filter_expr:
         cmd.extend(["-k", args.filter_expr])
 
@@ -567,7 +585,11 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             namespace,
             cm_name,
             image=args.image,
-            categories=_normalize_categories(args.categories) if args.categories else None,
+            categories=(
+                _normalize_categories(args.categories)
+                if args.categories
+                else _default_marker_expr()
+            ),
             filter_expr=getattr(args, "filter_expr", None),
             timeout_seconds=pytest_timeout,
             verbose=getattr(args, "verbose", False),

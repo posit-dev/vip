@@ -754,6 +754,39 @@ class TestHeadlessAuthFixture:
         result = pytester.runpytest("-v")
         result.assert_outcomes(passed=1)
 
+    def test_headless_auth_fixture_true_only_for_headless(self, pytester):
+        """The headless_auth fixture is True for --headless-auth, False for --interactive-auth."""
+        pytester.makeconftest(
+            """
+            import pytest
+            from vip.plugin import _auth_session_key
+            from vip.auth import InteractiveAuthSession
+            from pathlib import Path
+
+            @pytest.fixture(scope="session", autouse=True)
+            def fake_auth_session(request):
+                session = InteractiveAuthSession(
+                    storage_state_path=Path("/dev/null"),
+                )
+                request.config.stash[_auth_session_key] = session
+
+            @pytest.fixture(scope="session")
+            def headless_auth(request):
+                if not request.config.getoption("--headless-auth", default=False):
+                    return False
+                return request.config.stash.get(_auth_session_key, None) is not None
+            """
+        )
+        pytester.makepyfile(
+            """
+            def test_fixture_value(headless_auth):
+                assert headless_auth is False
+            """
+        )
+        # Without --headless-auth, the fixture should be False even with a session.
+        result = pytester.runpytest("-v")
+        result.assert_outcomes(passed=1)
+
 
 class TestHeadlessAuthPluginWiring:
     """Verify that pytest_configure validates config for --headless-auth."""

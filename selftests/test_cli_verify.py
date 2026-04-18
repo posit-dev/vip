@@ -478,6 +478,56 @@ class TestNormalizeCategories:
             _normalize_categories("1connect")
         assert exc_info.value.code == 1
 
+    def test_config_hygiene_category_accepted(self):
+        from vip.cli import _normalize_categories
+
+        assert _normalize_categories("config-hygiene") == "config_hygiene"
+        assert _normalize_categories("config_hygiene") == "config_hygiene"
+
+
+class TestConfigHygieneOptIn:
+    """config_hygiene tests are excluded from the default vip verify run."""
+
+    @staticmethod
+    def _marker_expr(cmd: list[str]) -> str:
+        """Return the pytest marker expression, skipping ``python -m pytest``."""
+        # cmd looks like [python, "-m", "pytest", ..., "-m", "<expr>", ...]
+        # The first "-m" introduces the pytest module; the second is the
+        # marker filter we want to inspect.
+        first = cmd.index("-m")
+        second = cmd.index("-m", first + 1)
+        return cmd[second + 1]
+
+    def test_default_filter_excludes_config_hygiene(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg)))
+        assert "not config_hygiene" in self._marker_expr(cmd)
+
+    def test_explicit_category_overrides_default_filter(self, tmp_path):
+        """When the user passes --categories, the default exclusion is replaced."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), categories="package-manager"))
+        # Exactly two "-m" tokens: ``python -m pytest`` and ``-m <expr>``.
+        assert cmd.count("-m") == 2
+        assert self._marker_expr(cmd) == "package_manager"
+
+    def test_opt_in_runs_config_hygiene_tests(self, tmp_path):
+        """Passing --categories config-hygiene runs exactly that category."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), categories="config-hygiene"))
+        assert self._marker_expr(cmd) == "config_hygiene"
+
+    def test_default_marker_expr_names_every_opt_in_category(self):
+        """_default_marker_expr excludes each category in _OPT_IN_CATEGORIES."""
+        from vip.cli import _OPT_IN_CATEGORIES, _default_marker_expr
+
+        expr = _default_marker_expr()
+        for category in _OPT_IN_CATEGORIES:
+            assert f"not {category}" in expr
+
 
 class TestVerifyLocalTestTimeout:
     """--test-timeout should limit how long the subprocess can run."""
