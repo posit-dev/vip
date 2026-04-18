@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from vip.cli import DEFAULT_TEST_TIMEOUT_SECONDS
+
 
 def _make_args(**overrides) -> argparse.Namespace:
     """Build a minimal args namespace for _run_verify_local."""
@@ -24,7 +26,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "filter_expr": None,
         "pytest_args": [],
         "verbose": False,
-        "test_timeout": 3600,
+        "test_timeout": DEFAULT_TEST_TIMEOUT_SECONDS,
         "headless_auth": False,
         "idp": None,
     }
@@ -480,11 +482,41 @@ class TestNormalizeCategories:
 class TestVerifyLocalTestTimeout:
     """--test-timeout should limit how long the subprocess can run."""
 
-    def test_default_timeout_is_3600(self, tmp_path):
+    def test_argparse_default_matches_constant(self, tmp_path, monkeypatch):
+        """The real CLI parser must resolve ``--test-timeout`` to the shared
+        ``DEFAULT_TEST_TIMEOUT_SECONDS`` constant.
+
+        Guards against regressing the argparse default in isolation from the
+        constant (or vice versa) — the two must stay in lockstep.
+        """
+        import sys
+
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+
+        captured: dict[str, int] = {}
+
+        def fake_run_verify(args):
+            captured["test_timeout"] = args.test_timeout
+            raise SystemExit(0)
+
+        monkeypatch.setattr("vip.cli.run_verify", fake_run_verify)
+        monkeypatch.setattr(sys, "argv", ["vip", "verify", "--config", str(cfg)])
+
+        from vip.cli import main
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 0
+        assert captured["test_timeout"] == DEFAULT_TEST_TIMEOUT_SECONDS
+        # Guard against a surprise change to the expected default itself.
+        assert DEFAULT_TEST_TIMEOUT_SECONDS == 3600
+
+    def test_default_timeout_passed_to_subprocess(self, tmp_path):
         cfg = tmp_path / "vip.toml"
         cfg.write_text("[general]\n")
         _cmd, kwargs = _capture_call(_make_args(config=str(cfg)))
-        assert kwargs["timeout"] == 3600
+        assert kwargs["timeout"] == DEFAULT_TEST_TIMEOUT_SECONDS
 
     def test_custom_timeout_passed_through(self, tmp_path):
         cfg = tmp_path / "vip.toml"
@@ -499,7 +531,9 @@ class TestVerifyLocalTestTimeout:
         cfg.write_text("[general]\n")
 
         def fake_run(cmd, **kwargs):
-            raise real_subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 3600))
+            raise real_subprocess.TimeoutExpired(
+                cmd, kwargs.get("timeout", DEFAULT_TEST_TIMEOUT_SECONDS)
+            )
 
         with (
             patch("vip.cli.subprocess.run", side_effect=fake_run),
