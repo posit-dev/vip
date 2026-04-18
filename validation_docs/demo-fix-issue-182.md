@@ -37,7 +37,7 @@ when they want to audit their VIP configuration.
 ## New layout
 
 ```bash
-ls src/vip_tests/config_hygiene/ | grep -v __pycache__
+ls src/vip_tests/config_hygiene/ | grep -v __pycache__ | LC_ALL=C sort
 ```
 
 ```output
@@ -75,53 +75,30 @@ enabled = false
 EOF
 ```
 
+Check that no `config_hygiene` tests are collected when running the default
+`vip verify` — the filter looks for any module path under `config_hygiene/`:
+
 ```bash
-uv run vip verify --config /tmp/vip-demo.toml --no-auth -- --collect-only -q 2>&1 | grep -v 'Note:' | sed 's/ in [0-9.]*s//' | tail -20
+uv run vip verify --config /tmp/vip-demo.toml --no-auth -- --collect-only -q 2>&1 \
+    | grep -c 'config_hygiene' | awk '{print "config_hygiene matches:", $1}'
 ```
 
 ```output
-<Dir vip>
-  <Dir src>
-    <Package vip_tests>
-      <Package connect>
-        <Module test_data_sources.py>
-          <Function test_connectivity>
-      <Package cross_product>
-        <Module test_monitoring.py>
-          <Function test_monitoring_configured>
-        <Module test_resources.py>
-          <Function test_product_health>
-      <Package performance>
-        <Module test_resource_usage.py>
-          <Function test_response_time_under_load>
-          <Function test_prometheus_metrics>
-      <Package security>
-        <Module test_auth_policy.py>
-          <Function test_auth_provider>
-
-================ 6/100 tests collected (94 deselected) ================
+config_hygiene matches: 0
 ```
-
-Note that no `config_hygiene` tests were collected.
 
 ## Opt in with `--categories config-hygiene`
 
+With the opt-in flag, `test_no_plaintext_secrets` is collected:
+
 ```bash
-uv run vip verify --config /tmp/vip-demo.toml --no-auth --categories config-hygiene -- --collect-only -q 2>&1 | grep -v 'Note:' | sed 's/ in [0-9.]*s//' | tail -20
+uv run vip verify --config /tmp/vip-demo.toml --no-auth --categories config-hygiene -- --collect-only -q 2>&1 \
+    | grep -E 'Function test_no_plaintext_secrets|Package config_hygiene' | sed 's/^ *//'
 ```
 
 ```output
-============================= test session starts ==============================
-collected 100 items / 99 deselected / 1 skipped / 1 selected
-
-<Dir vip>
-  <Dir src>
-    <Package vip_tests>
-      <Package config_hygiene>
-        <Module test_secrets.py>
-          <Function test_no_plaintext_secrets>
-
-================ 1/100 tests collected (99 deselected) ================
+<Package config_hygiene>
+<Function test_no_plaintext_secrets>
 ```
 
 ## Selftests pass
