@@ -856,8 +856,12 @@ def main() -> None:
     verify_parser.add_argument(
         "--test-timeout",
         type=int,
-        default=180,
-        help="Timeout in seconds for the pytest subprocess (default: 180)",
+        default=3600,
+        help="Timeout in seconds for the pytest subprocess (default: 3600). "
+        "A full Connect run includes content deployments that each take several "
+        "minutes (R package restore, Python venv creation), so raise this further "
+        "for large suites or slow servers. For per-deploy limits, see "
+        "connect.deploy_timeout in vip.toml.",
     )
 
     # K8s mode

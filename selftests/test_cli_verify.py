@@ -24,7 +24,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "filter_expr": None,
         "pytest_args": [],
         "verbose": False,
-        "test_timeout": 180,
+        "test_timeout": 3600,
         "headless_auth": False,
         "idp": None,
     }
@@ -480,11 +480,11 @@ class TestNormalizeCategories:
 class TestVerifyLocalTestTimeout:
     """--test-timeout should limit how long the subprocess can run."""
 
-    def test_default_timeout_is_180(self, tmp_path):
+    def test_default_timeout_is_3600(self, tmp_path):
         cfg = tmp_path / "vip.toml"
         cfg.write_text("[general]\n")
         _cmd, kwargs = _capture_call(_make_args(config=str(cfg)))
-        assert kwargs["timeout"] == 180
+        assert kwargs["timeout"] == 3600
 
     def test_custom_timeout_passed_through(self, tmp_path):
         cfg = tmp_path / "vip.toml"
@@ -499,7 +499,7 @@ class TestVerifyLocalTestTimeout:
         cfg.write_text("[general]\n")
 
         def fake_run(cmd, **kwargs):
-            raise real_subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 180))
+            raise real_subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 3600))
 
         with (
             patch("vip.cli.subprocess.run", side_effect=fake_run),
