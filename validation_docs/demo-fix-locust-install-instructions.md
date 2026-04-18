@@ -1,22 +1,22 @@
 # fix(performance): update locust install instructions to use uv
 
-*2026-04-18T00:52:52Z by Showboat 0.6.1*
-<!-- showboat-id: cfe3f95c-d3fa-4eb0-8a45-66e2a1c9e8a9 -->
+*2026-04-18T01:00:18Z by Showboat 0.6.1*
+<!-- showboat-id: 3ca4640c-58db-4a03-abe0-ad5bb43e6c75 -->
 
-Fixed three error messages that incorrectly suggested 'pip install posit-vip[load]' when locust is not installed. Updated all occurrences in src/vip/load_engine.py and src/vip/load_users.py to suggest 'uv sync --extra load' instead, consistent with VIP's uv-first toolchain policy.
+Fixed three error messages that incorrectly suggested 'pip install posit-vip[load]' when locust is not installed. Updated all occurrences in src/vip/load_engine.py and src/vip/load_users.py to suggest both install paths: uv pip install for PyPI users and uv sync --extra load for source checkout developers.
 
 ```bash
-grep -n 'uv sync' src/vip/load_engine.py src/vip/load_users.py
+grep -n 'posit-vip\[load\]' src/vip/load_engine.py src/vip/load_users.py
 ```
 
 ```output
-src/vip/load_engine.py:191:        msg = f"locust not installed; {n} users with tool='locust' requires: uv sync --extra load"
-src/vip/load_engine.py:337:        msg = "locust not installed; user simulation requires: uv sync --extra load"
-src/vip/load_users.py:16:    msg = "locust is required for user simulation: uv sync --extra load"
+src/vip/load_engine.py:193:            '(`uv pip install "posit-vip[load]"` for an installed package, '
+src/vip/load_engine.py:343:            '(`uv pip install "posit-vip[load]"` for an installed package, '
+src/vip/load_users.py:18:        '(`uv pip install "posit-vip[load]"` for an installed package, '
 ```
 
 ```bash
-uv run pytest selftests/ 2>&1 | grep -oE "[0-9]+ passed"
+uv run pytest selftests/ 2>&1 | grep -oE '[0-9]+ passed'
 ```
 
 ```output
