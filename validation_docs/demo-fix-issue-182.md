@@ -60,6 +60,22 @@ src/vip_tests/config_hygiene/test_secrets.feature:@config_hygiene
 Set up a minimal vip.toml for the demo:
 
 ```bash
+cat > /tmp/vip-demo.toml <<'EOF'
+[general]
+deployment_name = "Demo"
+
+[connect]
+enabled = false
+
+[workbench]
+enabled = false
+
+[package_manager]
+enabled = false
+EOF
+```
+
+```bash
 uv run vip verify --config /tmp/vip-demo.toml --no-auth -- --collect-only -q 2>&1 | grep -v 'Note:' | sed 's/ in [0-9.]*s//' | tail -20
 ```
 
