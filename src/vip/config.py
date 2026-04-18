@@ -29,11 +29,19 @@ class Mode(str, enum.Enum):
 
 
 def _normalize_url(url: str) -> str:
-    """Ensure a URL has a scheme (default to http if missing)."""
+    """Ensure a URL has a scheme (default to http if missing) and a trailing slash.
+
+    The trailing slash prevents nginx from issuing an HTTP redirect when the
+    URL points to a sub-path (e.g. ``/pwb``).  Without it, nginx redirects
+    ``https://host/pwb`` → ``http://host/pwb/`` (note: HTTP, not HTTPS), which
+    Playwright cannot follow in a headless HTTPS context.
+    """
     if not url:
         return url
     if not url.startswith(("http://", "https://")):
-        return f"http://{url}"
+        url = f"http://{url}"
+    if not url.endswith("/"):
+        url = f"{url}/"
     return url
 
 
