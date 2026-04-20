@@ -1,14 +1,9 @@
 """Interactive browser authentication for OIDC providers.
 
 Opens a headed Chromium browser for the user to complete an OIDC login
-flow, mints a temporary Connect API key via the UI, saves the browser
-storage state, then closes the browser before tests start.
-
-.. warning::
-
-    The UI automation in ``_create_api_key_via_ui`` is inherently fragile
-    and may break across Connect versions.  If Connect gains a programmatic
-    endpoint for temporary key creation, this should be replaced.
+flow, mints a temporary Connect API key by calling the Connect REST API
+with the browser's session cookies, saves the browser storage state, then
+closes the browser before tests start.
 """
 
 from __future__ import annotations
@@ -614,132 +609,6 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> None:
         ">>> Warning: Workbench authentication did not complete within 2 minutes.\n"
         ">>> Workbench browser tests may skip.\n"
     )
-
-
-def _create_api_key_via_ui(page: Page, connect_url: str, key_name: str) -> str | None:
-    """Navigate the Connect UI to create an API key.
-
-    Also deletes any orphaned ``_vip_interactive_*`` keys left over from
-    previous runs that crashed before cleanup.
-
-    Returns the API key string, or None on failure.
-    """
-    base = connect_url.rstrip("/")
-
-    try:
-        # Navigate to the Connect dashboard
-        page.goto(f"{base}/connect/#/")
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(2_000)
-
-        # Open user dropdown by clicking the user panel area (top-right).
-        # Uses JS to find the element by position since Connect versions
-        # vary in their markup.
-        page.evaluate(
-            """() => {
-            const els = document.querySelectorAll('a, button, [role="button"], span');
-            for (const el of els) {
-                const rect = el.getBoundingClientRect();
-                if (rect.right > window.innerWidth - 200 && rect.top < 60) {
-                    const text = el.textContent || '';
-                    if (text.includes('.') && text.length < 30) {
-                        el.click();
-                        return;
-                    }
-                }
-            }
-        }"""
-        )
-        page.wait_for_timeout(1_000)
-
-        page.get_by_text("Manage Your API Keys").click(timeout=5_000)
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(1_000)
-
-        # Delete orphaned VIP keys from previous runs
-        _delete_orphaned_keys(page)
-
-        # Click "+ New API Key"
-        page.locator("text=New API Key").first.click(timeout=5_000)
-        page.wait_for_timeout(1_000)
-
-        # Fill in the key name
-        name_input = page.locator("input[type='text']").first
-        name_input.fill(key_name)
-        page.wait_for_timeout(300)
-
-        # Click Create button
-        page.locator("button:has-text('Create'),button[type='submit']").first.click(timeout=5_000)
-        page.wait_for_timeout(1_000)
-
-        # Extract the generated key — Connect shows it in a read-only
-        # input, a code block, or a text element in the dialog
-        api_key = None
-        for selector in [
-            "input[readonly]",
-            "code",
-            ".api-key-value",
-            "pre",
-            "[data-automation='api-key-value']",
-        ]:
-            el = page.locator(selector).first
-            try:
-                val = el.input_value(timeout=2_000)
-            except Exception:
-                try:
-                    val = el.text_content(timeout=2_000) or ""
-                except Exception:
-                    continue
-            if val and len(val) > 20:
-                api_key = val.strip()
-                break
-
-        if not api_key:
-            print(">>> Warning: Could not read API key from Connect UI.")
-            print(">>> Set VIP_CONNECT_API_KEY manually for API-based tests.\n")
-            return None
-
-        print(">>> Connect API key created via UI.\n")
-
-        # Close the dialog
-        try:
-            page.locator(
-                "button:has-text('Close'),"
-                "button:has-text('Done'),"
-                "button:has-text('OK'),"
-                "[aria-label='Close']"
-            ).first.click(timeout=3_000)
-        except Exception:
-            page.keyboard.press("Escape")
-
-        return api_key
-    except Exception as exc:
-        print(f">>> Warning: Could not create API key via UI: {exc}")
-        print(">>> Set VIP_CONNECT_API_KEY manually for API-based tests.\n")
-        return None
-
-
-def _delete_orphaned_keys(page: Page) -> None:
-    """Delete any leftover _vip_interactive_* keys visible on the API Keys page."""
-    try:
-        rows = page.locator("tr, [role='row']").all()
-        for row in rows:
-            text = row.text_content() or ""
-            if _KEY_NAME_PREFIX in text:
-                delete_btn = row.locator(
-                    "button[aria-label='Delete'], button:has-text('Delete'), [title='Delete']"
-                ).first
-                try:
-                    delete_btn.click(timeout=2_000)
-                    # Confirm deletion if a dialog appears
-                    page.locator("button:has-text('Yes'),button:has-text('Delete')").first.click(
-                        timeout=2_000
-                    )
-                    page.wait_for_timeout(500)
-                except Exception:
-                    pass
-    except Exception:
-        pass  # Best-effort cleanup of orphans
 
 
 def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
