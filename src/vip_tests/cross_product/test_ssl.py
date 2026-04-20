@@ -145,8 +145,11 @@ def _attempt_tls(
     loaded (and ``SSL_CERT_FILE`` / ``SSL_CERT_DIR`` are honored).
 
     Returns a dict with:
-      - ``status``: ``"connected"``, ``"rejected"``, or
-        ``"cert_verify_failed"``.
+      - ``status``: ``"connected"``, ``"rejected"``,
+        ``"cert_verify_failed"``, or ``"client_unsupported"``
+        (the last means the runner could not even configure the
+        requested TLS version — the caller should skip rather than
+        report this as a server rejection).
       - ``detail``: error string (empty when status is ``"connected"``).
 
     Raises ``_ConnectError`` when the TCP connect fails — the caller is
@@ -172,10 +175,14 @@ def _attempt_tls(
             if max_version is not None:
                 ctx.maximum_version = max_version
         except (ssl.SSLError, ValueError) as exc:
-            # Some runtimes refuse to configure legacy TLS versions at all
-            # (e.g. OpenSSL compiled without TLS 1.0/1.1).  Treat this as a
-            # rejection — the effect matches "server refuses legacy TLS".
-            return {"status": "rejected", "detail": str(exc)}
+            # Some runtimes refuse to *configure* a given TLS version at all
+            # (e.g. OpenSSL compiled without TLS 1.0/1.1 support).  Report
+            # this honestly: the client cannot attempt that version, so we
+            # have no data about the server's behavior.  The calling step
+            # converts this into a skip for that scenario — silently
+            # counting it as a server rejection would mask a client gap as
+            # a server property.
+            return {"status": "client_unsupported", "detail": str(exc)}
 
         try:
             with ctx.wrap_socket(sock, server_hostname=hostname):

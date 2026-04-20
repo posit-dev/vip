@@ -107,3 +107,35 @@ def test_attempt_tls_raises_connect_error_when_host_unreachable(monkeypatch):
         _attempt_tls("example.com", 443, min_version=ssl.TLSVersion.TLSv1_2)
 
     assert "connection refused" in str(info.value)
+
+
+def test_attempt_tls_classifies_context_config_failure_as_client_unsupported(
+    monkeypatch,
+):
+    """Context-config failure (e.g. OpenSSL without TLS 1.0) reports
+    ``client_unsupported`` so the caller can skip honestly instead of
+    falsely counting it as a server rejection."""
+    _patch_connect(monkeypatch)
+
+    # Simulate the real-world case: setting maximum_version raises because
+    # the runtime cannot configure that legacy version at all.
+    original_create = ssl.create_default_context
+
+    def fake_create():
+        ctx = original_create()
+
+        class _Blocked:
+            def __set__(self, obj, value):
+                raise ssl.SSLError("no protocols available")
+
+        type(ctx).maximum_version = _Blocked()
+        return ctx
+
+    monkeypatch.setattr(ssl, "create_default_context", fake_create)
+    # Handshake won't run, but stub it anyway in case the helper reaches it.
+    _patch_handshake(monkeypatch, None)
+
+    result = _attempt_tls("example.com", 443, max_version=ssl.TLSVersion.TLSv1)
+
+    assert result["status"] == "client_unsupported"
+    assert "no protocols available" in result["detail"]
