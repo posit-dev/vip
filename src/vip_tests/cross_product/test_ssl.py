@@ -220,8 +220,18 @@ def attempt_tls_connection(product, vip_config):
 
     try:
         results = {
-            "tls1_0": _attempt_tls(hostname, port, max_version=ssl.TLSVersion.TLSv1),
-            "tls1_1": _attempt_tls(hostname, port, max_version=ssl.TLSVersion.TLSv1_1),
+            "tls1_0": _attempt_tls(
+                hostname,
+                port,
+                min_version=ssl.TLSVersion.TLSv1,
+                max_version=ssl.TLSVersion.TLSv1,
+            ),
+            "tls1_1": _attempt_tls(
+                hostname,
+                port,
+                min_version=ssl.TLSVersion.TLSv1_1,
+                max_version=ssl.TLSVersion.TLSv1_1,
+            ),
             "tls1_2": _attempt_tls(hostname, port, min_version=ssl.TLSVersion.TLSv1_2),
         }
     except _ConnectError as exc:
