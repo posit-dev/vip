@@ -40,6 +40,38 @@ class AuthConfigError(ValueError):
 _KEY_NAME_PREFIX = "_vip_interactive_"
 
 
+# Substrings that indicate the chromium launch failed because host-level
+# system libraries (libatk, libgbm, libasound, ...) are not installed.  See
+# https://github.com/posit-dev/vip/issues/169.
+_MISSING_DEPS_SIGNALS = (
+    "host system is missing dependencies",
+    "error while loading shared libraries",
+)
+
+_MISSING_DEPS_HINT = (
+    "Chromium could not launch because required system libraries are missing "
+    "on this host. Install them with:\n\n"
+    "    uv run playwright install --with-deps chromium\n\n"
+    "(On Linux this uses sudo + apt-get to install the missing packages.)"
+)
+
+
+def _launch_chromium(pw, *, headless: bool):
+    """Launch Chromium via Playwright, turning missing-system-deps errors
+    into a clear :class:`AuthConfigError` with a remediation command.
+
+    Other Playwright errors (e.g. an already-running browser) propagate
+    unchanged so callers can surface them as needed.
+    """
+    try:
+        return pw.chromium.launch(headless=headless)
+    except PlaywrightError as exc:
+        text = str(exc).lower()
+        if any(signal in text for signal in _MISSING_DEPS_SIGNALS):
+            raise AuthConfigError(_MISSING_DEPS_HINT) from exc
+        raise
+
+
 @dataclass
 class InteractiveAuthSession:
     """Result of an interactive OIDC authentication flow.
@@ -172,7 +204,7 @@ def start_interactive_auth(
     browser = None
     try:
         pw = sync_playwright().start()
-        browser = pw.chromium.launch(headless=False)
+        browser = _launch_chromium(pw, headless=False)
         context = browser.new_context()
         page = context.new_page()
 
@@ -334,7 +366,7 @@ def start_headless_auth(
     browser = None
     try:
         pw = sync_playwright().start()
-        browser = pw.chromium.launch(headless=True)
+        browser = _launch_chromium(pw, headless=True)
         context = browser.new_context()
         page = context.new_page()
 

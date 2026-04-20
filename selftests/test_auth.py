@@ -66,3 +66,39 @@ class TestStartHeadlessAuthPlaywrightErrors:
                     username="user",
                     password="pass",
                 )
+
+    def test_missing_chromium_system_deps_gives_remediation(self):
+        """Missing host libraries at chromium launch must surface the
+        ``playwright install --with-deps chromium`` remediation command
+        (see issue #169)."""
+        from playwright.sync_api import Error as PlaywrightError
+
+        pw = MagicMock()
+        pw.start.return_value.chromium.launch.side_effect = PlaywrightError(
+            "Host system is missing dependencies to run browsers.\n"
+            "Please install them with the following command:\n"
+            "    sudo playwright install-deps"
+        )
+        with patch("vip.auth.sync_playwright", return_value=pw):
+            with pytest.raises(AuthConfigError, match=r"playwright install --with-deps chromium"):
+                start_headless_auth(
+                    connect_url="https://c.example.com",
+                    username="user",
+                    password="pass",
+                )
+
+    def test_unrelated_playwright_launch_error_propagates(self):
+        """Launch errors that aren't missing-deps must not be rewritten."""
+        from playwright.sync_api import Error as PlaywrightError
+
+        pw = MagicMock()
+        pw.start.return_value.chromium.launch.side_effect = PlaywrightError(
+            "Browser closed unexpectedly"
+        )
+        with patch("vip.auth.sync_playwright", return_value=pw):
+            with pytest.raises(PlaywrightError, match="Browser closed unexpectedly"):
+                start_headless_auth(
+                    connect_url="https://c.example.com",
+                    username="user",
+                    password="pass",
+                )
