@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.24.8 (2026-04-20)
+
+### Bug Fixes
+
+- **config**: Normalize product URLs — trailing slash for sub-path URLs only
+  ([#188](https://github.com/posit-dev/vip/pull/188),
+  [`7f7a1d1`](https://github.com/posit-dev/vip/commit/7f7a1d1df2508b976f78a5e31201c78b0fe47e64))
+
+### Continuous Integration
+
+- Remove showboat from GHA workflows ([#199](https://github.com/posit-dev/vip/pull/199),
+  [`aea18d6`](https://github.com/posit-dev/vip/commit/aea18d6a20875e4860c19261b4a378b15e6d4ef1))
+
+
 ## v0.24.7 (2026-04-18)
 
 ### Bug Fixes
