@@ -58,9 +58,7 @@ def test_attempt_tls_returns_connected_on_success(monkeypatch):
     _patch_connect(monkeypatch)
     _patch_handshake(monkeypatch, None)
 
-    result = _attempt_tls(
-        "example.com", 443, min_version=ssl.TLSVersion.TLSv1_2
-    )
+    result = _attempt_tls("example.com", 443, min_version=ssl.TLSVersion.TLSv1_2)
 
     assert result == {"status": "connected", "detail": ""}
 
@@ -73,9 +71,7 @@ def test_attempt_tls_classifies_cert_verify_failure(monkeypatch):
     )
     _patch_handshake(monkeypatch, exc)
 
-    result = _attempt_tls(
-        "example.com", 443, min_version=ssl.TLSVersion.TLSv1_2
-    )
+    result = _attempt_tls("example.com", 443, min_version=ssl.TLSVersion.TLSv1_2)
 
     assert result["status"] == "cert_verify_failed"
     assert "CERTIFICATE_VERIFY_FAILED" in result["detail"]
@@ -85,9 +81,7 @@ def test_attempt_tls_classifies_plain_ssl_error_as_rejected(monkeypatch):
     _patch_connect(monkeypatch)
     _patch_handshake(monkeypatch, ssl.SSLError("unsupported protocol"))
 
-    result = _attempt_tls(
-        "example.com", 443, max_version=ssl.TLSVersion.TLSv1
-    )
+    result = _attempt_tls("example.com", 443, max_version=ssl.TLSVersion.TLSv1)
 
     assert result["status"] == "rejected"
     assert "unsupported protocol" in result["detail"]
@@ -97,9 +91,7 @@ def test_attempt_tls_classifies_oserror_as_rejected(monkeypatch):
     _patch_connect(monkeypatch)
     _patch_handshake(monkeypatch, OSError("handshake aborted"))
 
-    result = _attempt_tls(
-        "example.com", 443, max_version=ssl.TLSVersion.TLSv1_1
-    )
+    result = _attempt_tls("example.com", 443, max_version=ssl.TLSVersion.TLSv1_1)
 
     assert result["status"] == "rejected"
     assert "handshake aborted" in result["detail"]
@@ -112,8 +104,6 @@ def test_attempt_tls_raises_connect_error_when_host_unreachable(monkeypatch):
     _patch_handshake(monkeypatch, None)
 
     with pytest.raises(_ConnectError) as info:
-        _attempt_tls(
-            "example.com", 443, min_version=ssl.TLSVersion.TLSv1_2
-        )
+        _attempt_tls("example.com", 443, min_version=ssl.TLSVersion.TLSv1_2)
 
     assert "connection refused" in str(info.value)
