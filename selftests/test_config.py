@@ -65,15 +65,15 @@ class TestConnectConfig:
 
     def test_url_normalized_when_scheme_missing(self):
         cc = ConnectConfig(url="connect.example.com")
-        assert cc.url == "http://connect.example.com/"
+        assert cc.url == "http://connect.example.com"
 
-    def test_url_gets_trailing_slash(self):
+    def test_url_host_only_no_trailing_slash(self):
         cc = ConnectConfig(url="https://connect.example.com")
-        assert cc.url == "https://connect.example.com/"
+        assert cc.url == "https://connect.example.com"
 
-    def test_url_trailing_slash_not_doubled(self):
+    def test_url_host_only_trailing_slash_stripped(self):
         cc = ConnectConfig(url="https://connect.example.com/")
-        assert cc.url == "https://connect.example.com/"
+        assert cc.url == "https://connect.example.com"
 
     def test_url_subpath_gets_trailing_slash(self):
         cc = ConnectConfig(url="https://host.example.com/connect")
@@ -142,9 +142,9 @@ class TestVIPConfig:
             workbench=ProductConfig(url="https://w.example.com"),
             package_manager=ProductConfig(url="https://p.example.com"),
         )
-        assert cfg.product_config("connect").url == "https://c.example.com/"
-        assert cfg.product_config("workbench").url == "https://w.example.com/"
-        assert cfg.product_config("package_manager").url == "https://p.example.com/"
+        assert cfg.product_config("connect").url == "https://c.example.com"
+        assert cfg.product_config("workbench").url == "https://w.example.com"
+        assert cfg.product_config("package_manager").url == "https://p.example.com"
 
     def test_product_config_unknown_raises(self):
         cfg = VIPConfig()
@@ -177,7 +177,7 @@ url = "https://connect.test"
         )
         cfg = load_config(path)
         assert cfg.deployment_name == "Test Deployment"
-        assert cfg.connect.url == "https://connect.test/"
+        assert cfg.connect.url == "https://connect.test"
         assert cfg.connect.is_configured is True
         assert cfg.workbench.is_configured is False
 
@@ -352,7 +352,7 @@ policy_checks_enabled = true
         )
         cfg = load_config(path)
         assert cfg.deployment_name == "Full Config"
-        assert cfg.connect.url == "https://connect.example.com/"
+        assert cfg.connect.url == "https://connect.example.com"
         assert cfg.connect.api_key == "key123"
         assert cfg.workbench.is_configured is True
         assert cfg.package_manager.is_configured is False

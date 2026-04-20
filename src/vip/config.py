@@ -8,6 +8,7 @@ import sys
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -29,20 +30,33 @@ class Mode(str, enum.Enum):
 
 
 def _normalize_url(url: str) -> str:
-    """Ensure a URL has a scheme (default to http if missing) and a trailing slash.
+    """Ensure a URL has a scheme and, for sub-path URLs, a trailing slash.
 
-    The trailing slash prevents nginx from issuing an HTTP redirect when the
-    URL points to a sub-path (e.g. ``/pwb``).  Without it, nginx redirects
-    ``https://host/pwb`` → ``http://host/pwb/`` (note: HTTP, not HTTPS), which
-    Playwright cannot follow in a headless HTTPS context.
+    Scheme normalization: if no scheme is present, ``http://`` is added.
+
+    Trailing-slash normalization: a trailing slash is added **only** when the
+    URL has a non-root path component (e.g. ``/pwb`` or ``/connect``).  Without
+    it, nginx redirects ``https://host/pwb`` → ``http://host/pwb/`` (note: HTTP,
+    not HTTPS), which Playwright cannot follow in a headless HTTPS context.
+
+    Host-only URLs (e.g. ``https://connect.example.com``) are left without a
+    trailing slash so that callers can safely build API URLs via
+    ``f"{url}/__api__/..."`` without introducing double slashes.
     """
     if not url:
         return url
     if not url.startswith(("http://", "https://")):
         url = f"http://{url}"
-    if not url.endswith("/"):
-        url = f"{url}/"
-    return url
+    parsed = urlparse(url)
+    path = parsed.path
+    if path and path != "/":
+        # Sub-path URL: ensure trailing slash to prevent the nginx HTTP redirect.
+        if not path.endswith("/"):
+            path = path + "/"
+    else:
+        # Host-only URL: normalise to no trailing slash so f"{url}/..." is safe.
+        path = ""
+    return urlunparse(parsed._replace(path=path))
 
 
 @dataclass
