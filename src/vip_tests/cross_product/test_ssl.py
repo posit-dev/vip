@@ -119,6 +119,79 @@ def http_port_closed(http_response):
 
 
 # ---------------------------------------------------------------------------
+# TLS attempt helper
+# ---------------------------------------------------------------------------
+
+
+class _ConnectError(Exception):
+    """Raised by ``_attempt_tls`` when the TCP connect itself fails.
+
+    Callers convert this into ``pytest.skip`` — an unreachable host is
+    not a security finding.
+    """
+
+
+def _attempt_tls(
+    hostname: str,
+    port: int,
+    *,
+    min_version: ssl.TLSVersion | None = None,
+    max_version: ssl.TLSVersion | None = None,
+    timeout: float = 10.0,
+) -> dict:
+    """Attempt one TLS handshake and classify the result.
+
+    Uses ``ssl.create_default_context()`` so the system CA bundle is
+    loaded (and ``SSL_CERT_FILE`` / ``SSL_CERT_DIR`` are honored).
+
+    Returns a dict with:
+      - ``status``: ``"connected"``, ``"rejected"``, or
+        ``"cert_verify_failed"``.
+      - ``detail``: error string (empty when status is ``"connected"``).
+
+    Raises ``_ConnectError`` when the TCP connect fails — the caller is
+    expected to convert that into ``pytest.skip``.
+    """
+    try:
+        sock = socket.create_connection((hostname, port), timeout=timeout)
+    except OSError as exc:
+        raise _ConnectError(str(exc)) from exc
+
+    try:
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = True
+            ctx.verify_mode = ssl.CERT_REQUIRED
+            # ``create_default_context`` sets minimum_version = TLS 1.2 on
+            # Python 3.10+.  Reset to the library minimum first so the
+            # caller-specified window is applied cleanly — otherwise
+            # ``max_version = TLSv1`` would violate the existing minimum.
+            ctx.minimum_version = ssl.TLSVersion.MINIMUM_SUPPORTED
+            if min_version is not None:
+                ctx.minimum_version = min_version
+            if max_version is not None:
+                ctx.maximum_version = max_version
+        except (ssl.SSLError, ValueError) as exc:
+            # Some runtimes refuse to configure legacy TLS versions at all
+            # (e.g. OpenSSL compiled without TLS 1.0/1.1).  Treat this as a
+            # rejection — the effect matches "server refuses legacy TLS".
+            return {"status": "rejected", "detail": str(exc)}
+
+        try:
+            with ctx.wrap_socket(sock, server_hostname=hostname):
+                return {"status": "connected", "detail": ""}
+        except ssl.SSLCertVerificationError as exc:
+            return {"status": "cert_verify_failed", "detail": str(exc)}
+        except (ssl.SSLError, OSError) as exc:
+            return {"status": "rejected", "detail": str(exc)}
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Steps - TLS version enforcement
 # ---------------------------------------------------------------------------
 
