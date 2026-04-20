@@ -667,10 +667,16 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
         entries = list_resp.json()
     except ValueError:
         return
+    if not isinstance(entries, list):
+        print(f">>> Warning: key list response was {type(entries).__name__}, not list.")
+        return
 
     for k in entries:
+        if not isinstance(k, dict):
+            continue
         name = k.get("name") or ""
-        if not name.startswith(_KEY_NAME_PREFIX):
+        key_id = k.get("id")
+        if not name.startswith(_KEY_NAME_PREFIX) or not key_id:
             continue
         suffix = name[len(_KEY_NAME_PREFIX) :]
         try:
@@ -681,9 +687,9 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
         if now - created_ts < _ORPHAN_MIN_AGE_SECONDS:
             continue  # belongs to a concurrent run
         try:
-            client.delete(f"/v1/users/{guid}/keys/{k['id']}")
+            client.delete(f"/v1/users/{guid}/keys/{key_id}")
         except httpx.HTTPError as exc:
-            print(f">>> Warning: could not delete stale key {k.get('id')}: {exc}")
+            print(f">>> Warning: could not delete stale key {key_id}: {exc}")
 
 
 def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> str | None:

@@ -374,6 +374,79 @@ class TestCreateApiKeyViaSession:
         for h in seen_headers:
             assert "x-rsc-xsrf" not in {k.lower() for k in h}
 
+    def test_unexpected_key_list_shape_does_not_crash(self, monkeypatch):
+        """If Connect returns a non-list (or a list with non-dict items) for
+        the keys endpoint, creation must still succeed — cleanup is
+        best-effort and shape surprises must not raise."""
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        # First call: list returns a dict (wrong shape).
+        # Then the create call should still succeed.
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET" and request.url.path == "/__api__/v1/user":
+                return httpx.Response(200, json={"guid": "g"})
+            if request.method == "GET" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(200, json={"error": "nope"})  # dict, not list
+            if request.method == "POST" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(200, json={"id": "9", "key": "K" * 30})
+            return httpx.Response(404)
+
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+        page = self._page_with_cookies([{"name": "RSC-XSRF", "value": "x"}])
+        assert _create_api_key_via_session(page, "https://c.example.com", "k") == "K" * 30
+
+    def test_non_dict_entries_in_key_list_are_skipped(self, monkeypatch):
+        """List entries that aren't dicts (and dicts missing id) must be
+        silently skipped rather than crashing cleanup."""
+        import time
+
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        old_ts = int(time.time()) - 7200
+        deletes: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET" and request.url.path == "/__api__/v1/user":
+                return httpx.Response(200, json={"guid": "g"})
+            if request.method == "GET" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(
+                    200,
+                    json=[
+                        "not a dict",
+                        {"name": f"_vip_interactive_{old_ts}"},  # no id
+                        {"id": "5", "name": f"_vip_interactive_{old_ts}"},  # deletable
+                    ],
+                )
+            if request.method == "DELETE":
+                deletes.append(request.url.path.rsplit("/", 1)[-1])
+                return httpx.Response(204)
+            if request.method == "POST" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(200, json={"id": "9", "key": "K" * 30})
+            return httpx.Response(404)
+
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+        page = self._page_with_cookies([{"name": "RSC-XSRF", "value": "x"}])
+        assert _create_api_key_via_session(page, "https://c.example.com", "k") == "K" * 30
+        assert deletes == ["5"]  # only the well-formed entry was deleted
+
     def test_missing_user_guid_returns_none(self, monkeypatch):
         """If /v1/user returns no guid, function returns None and skips POST."""
         import httpx
