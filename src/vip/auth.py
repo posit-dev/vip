@@ -51,8 +51,7 @@ _MISSING_DEPS_SIGNALS = (
 _MISSING_DEPS_HINT = (
     "Chromium could not launch because required system libraries are missing "
     "on this host. Install them with:\n\n"
-    "    uv run playwright install --with-deps chromium\n\n"
-    "(On Linux this uses sudo + apt-get to install the missing packages.)"
+    "    uv run playwright install --with-deps chromium"
 )
 
 

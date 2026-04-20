@@ -50,8 +50,6 @@ with patch('vip.auth.sync_playwright', return_value=pw):
 Chromium could not launch because required system libraries are missing on this host. Install them with:
 
     uv run playwright install --with-deps chromium
-
-(On Linux this uses sudo + apt-get to install the missing packages.)
 ```
 
 ## 3. Full selftest suite — no regressions
