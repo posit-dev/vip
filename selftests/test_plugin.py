@@ -912,6 +912,43 @@ class TestAuthModeStash:
         result = pytester.runpytest("--vip-config=vip.toml", "--headless-auth", "-v")
         result.assert_outcomes(passed=1)
 
+    @pytest.mark.parametrize(
+        ("auth_flag", "expected_mode"),
+        [("--interactive-auth", "interactive"), ("--headless-auth", "headless")],
+    )
+    def test_auth_mode_forwarded_to_xdist_workers(
+        self, pytester, monkeypatch, auth_flag, expected_mode
+    ):
+        """Controller forwards vip_auth_mode via workerinput; workers restore it."""
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "password"\n'
+            ),
+        )
+        pytester.makeconftest(self._FAKE_AUTH_CONFTEST)
+        # Two tests so both xdist workers receive a test and must have the mode
+        # restored from workerinput.
+        pytester.makepyfile(
+            f"""
+            from vip.plugin import _auth_mode_key
+
+            def test_worker_mode_a(request):
+                assert hasattr(request.config, "workerinput"), "expected xdist worker"
+                assert request.config.stash[_auth_mode_key] == {expected_mode!r}
+
+            def test_worker_mode_b(request):
+                assert hasattr(request.config, "workerinput"), "expected xdist worker"
+                assert request.config.stash[_auth_mode_key] == {expected_mode!r}
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", auth_flag, "-n", "2", "-v")
+        result.assert_outcomes(passed=2)
+
 
 class TestHeartbeat:
     """Unit tests for the long-running test heartbeat."""
