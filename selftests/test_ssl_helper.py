@@ -117,21 +117,21 @@ def test_attempt_tls_classifies_context_config_failure_as_client_unsupported(
     falsely counting it as a server rejection."""
     _patch_connect(monkeypatch)
 
-    # Simulate the real-world case: setting maximum_version raises because
-    # the runtime cannot configure that legacy version at all.
-    original_create = ssl.create_default_context
+    class _FakeContext:
+        check_hostname = False
+        verify_mode = ssl.CERT_NONE
+        minimum_version = ssl.TLSVersion.MINIMUM_SUPPORTED
+        _max = ssl.TLSVersion.MAXIMUM_SUPPORTED
 
-    def fake_create():
-        ctx = original_create()
+        @property
+        def maximum_version(self):
+            return self._max
 
-        class _Blocked:
-            def __set__(self, obj, value):
-                raise ssl.SSLError("no protocols available")
+        @maximum_version.setter
+        def maximum_version(self, value):
+            raise ssl.SSLError("no protocols available")
 
-        type(ctx).maximum_version = _Blocked()
-        return ctx
-
-    monkeypatch.setattr(ssl, "create_default_context", fake_create)
+    monkeypatch.setattr(ssl, "create_default_context", lambda: _FakeContext())
     # Handshake won't run, but stub it anyway in case the helper reaches it.
     _patch_handshake(monkeypatch, None)
 
