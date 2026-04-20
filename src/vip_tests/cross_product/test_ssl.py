@@ -264,6 +264,25 @@ def old_tls_rejected(tls_results):
 
 @then("TLS 1.2 or higher succeeds")
 def modern_tls_succeeds(tls_results):
-    assert tls_results.get("tls1_2") == "connected", (
-        f"TLS 1.2 connection failed: {tls_results.get('tls1_2')}"
-    )
+    result = tls_results.get("tls1_2", {})
+    status = result.get("status")
+    detail = result.get("detail", "")
+
+    if status == "connected":
+        return
+
+    if status == "cert_verify_failed":
+        raise AssertionError(
+            "TLS 1.2 handshake reached the server, but the test runner "
+            "could not verify the server's certificate. This is a "
+            "certificate-trust issue on the runner, not a TLS-enforcement "
+            "issue on the server. If the server uses a valid public "
+            "certificate (e.g. behind an AWS ALB with an ACM cert), set "
+            "SSL_CERT_FILE to a CA bundle that includes public roots: "
+            "`/etc/ssl/certs/ca-certificates.crt` on Debian/Ubuntu, "
+            "`/etc/pki/tls/certs/ca-bundle.crt` on RHEL, or the path "
+            "produced by `python -m certifi`. "
+            f"Detail: {detail}"
+        )
+
+    raise AssertionError(f"TLS 1.2 connection failed: {detail or status!r}")
