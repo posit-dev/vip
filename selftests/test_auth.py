@@ -151,18 +151,15 @@ class TestCreateApiKeyViaSession:
                 )
             return httpx.Response(404)
 
-        # Patch httpx.Client so _create_api_key_via_session uses our transport.
+        # auth.py imports httpx inside the function, so patching the real
+        # module's Client is what the call site will resolve via sys.modules.
         real_client = httpx.Client
 
         def fake_client(*args, **kwargs):
             kwargs["transport"] = self._transport(handler)
             return real_client(*args, **kwargs)
 
-        monkeypatch.setattr("vip.auth.httpx.Client", fake_client, raising=False)
-        # auth.py imports httpx inside the function; patch the module attr too.
-        import httpx as _httpx
-
-        monkeypatch.setattr(_httpx, "Client", fake_client)
+        monkeypatch.setattr(httpx, "Client", fake_client)
 
         page = self._page_with_cookies(
             [
@@ -176,6 +173,12 @@ class TestCreateApiKeyViaSession:
         )
 
         assert result == "SECRETKEY" * 3
+
+        # Every outbound request must carry the session cookie so Connect's
+        # cookie-based auth accepts it.
+        for req in captured["requests"]:
+            assert "connect-session=sess-123" in req.headers.get("cookie", "")
+
         # The POST request must include the XSRF header and the expected body.
         post_reqs = [r for r in captured["requests"] if r.method == "POST"]
         assert len(post_reqs) == 1
