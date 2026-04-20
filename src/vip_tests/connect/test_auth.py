@@ -32,10 +32,10 @@ def enter_credentials(page, test_username, test_password, auth_provider, interac
         if not interactive_auth:
             pytest.skip(
                 f"Login form not available for auth provider {auth_provider!r}. "
-                "Pass --interactive-auth when browser storage state is pre-loaded."
+                "Pass --interactive-auth or --headless-auth to pre-load browser storage state."
             )
-        # With --interactive-auth the browser is already authenticated via storage
-        # state - just wait for any redirect away from the login page to complete.
+        # Browser already authenticated via pre-loaded storage state - just wait
+        # for any redirect away from the login page to complete.
         page.wait_for_load_state("networkidle")
         return
     page.fill("[name='username'], #username", test_username)

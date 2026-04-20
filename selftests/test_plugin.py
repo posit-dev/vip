@@ -835,6 +835,84 @@ class TestHeadlessAuthPluginWiring:
         result.stderr.fnmatch_lines(["*--headless-auth*requires*idp*keycloak*okta*"])
 
 
+class TestAuthModeStash:
+    """The plugin stashes the active auth mode so tests can distinguish modes."""
+
+    _FAKE_AUTH_CONFTEST = """
+        import vip.auth
+        from pathlib import Path
+        from vip.auth import InteractiveAuthSession
+
+        def _fake_session(*args, **kwargs):
+            return InteractiveAuthSession(
+                storage_state_path=Path("/dev/null"),
+                api_key="fake-key",
+            )
+
+        vip.auth.start_interactive_auth = _fake_session
+        vip.auth.start_headless_auth = _fake_session
+        """
+
+    def test_no_auth_option_leaves_mode_none(self, pytester):
+        """With no auth option, auth_mode defaults to 'none'."""
+        pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
+        pytester.makepyfile(
+            """
+            from vip.plugin import _auth_mode_key
+
+            def test_mode(request):
+                assert request.config.stash.get(_auth_mode_key, "none") == "none"
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+
+    def test_interactive_auth_sets_mode(self, pytester):
+        """--interactive-auth sets _auth_mode_key to 'interactive'."""
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+            ),
+        )
+        pytester.makeconftest(self._FAKE_AUTH_CONFTEST)
+        pytester.makepyfile(
+            """
+            from vip.plugin import _auth_mode_key
+
+            def test_mode(request):
+                assert request.config.stash.get(_auth_mode_key, None) == "interactive"
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "--interactive-auth", "-v")
+        result.assert_outcomes(passed=1)
+
+    def test_headless_auth_sets_mode(self, pytester, monkeypatch):
+        """--headless-auth sets _auth_mode_key to 'headless'."""
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "password"\n'
+            ),
+        )
+        pytester.makeconftest(self._FAKE_AUTH_CONFTEST)
+        pytester.makepyfile(
+            """
+            from vip.plugin import _auth_mode_key
+
+            def test_mode(request):
+                assert request.config.stash.get(_auth_mode_key, None) == "headless"
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "--headless-auth", "-v")
+        result.assert_outcomes(passed=1)
+
+
 class TestHeartbeat:
     """Unit tests for the long-running test heartbeat."""
 
