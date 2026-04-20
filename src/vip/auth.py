@@ -766,3 +766,72 @@ def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
                     return
             break
         print(">>> Warning: Could not find API key to delete.\n")
+
+
+def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> str | None:
+    """Create a Connect API key using the browser's session cookies.
+
+    Lifts cookies from the authenticated Playwright context and POSTs to
+    ``/__api__/v1/users/{guid}/keys`` — the same endpoint the Connect
+    dashboard's "+ New API Key" button uses.  See
+    https://docs.posit.co/connect/api/ (operationId: createKey).
+
+    Before creating the new key, deletes any lingering ``_vip_interactive_*``
+    keys left over from previous runs that crashed before cleanup.
+
+    Returns the API key string, or ``None`` on failure (no exception).
+    """
+    import httpx
+
+    base = connect_url.rstrip("/")
+    cookies = {c["name"]: c["value"] for c in page.context.cookies()}
+    xsrf = cookies.get("RSC-XSRF", "")
+    headers = {"X-Rsc-Xsrf": xsrf} if xsrf else {}
+
+    try:
+        with httpx.Client(
+            base_url=f"{base}/__api__",
+            cookies=cookies,
+            headers=headers,
+            timeout=10.0,
+        ) as client:
+            me_resp = client.get("/v1/user")
+            if not me_resp.is_success:
+                print(f">>> Warning: GET /v1/user returned HTTP {me_resp.status_code}")
+                return None
+            guid = me_resp.json().get("guid")
+            if not guid:
+                print(">>> Warning: Connect did not return a user guid.")
+                return None
+
+            # Best-effort cleanup of orphaned keys from prior runs.
+            try:
+                list_resp = client.get(f"/v1/users/{guid}/keys")
+                if list_resp.is_success:
+                    for k in list_resp.json():
+                        if (k.get("name") or "").startswith(_KEY_NAME_PREFIX):
+                            client.delete(f"/v1/users/{guid}/keys/{k['id']}")
+            except Exception:
+                pass  # orphans are best-effort; keep going
+
+            create_resp = client.post(
+                f"/v1/users/{guid}/keys",
+                json={"name": key_name},
+            )
+            if not create_resp.is_success:
+                print(
+                    f">>> Warning: POST /v1/users/{guid}/keys returned HTTP "
+                    f"{create_resp.status_code}"
+                )
+                return None
+
+            api_key = create_resp.json().get("key")
+            if not api_key:
+                print(">>> Warning: Connect response did not include a key string.")
+                return None
+
+            print(">>> Connect API key created.\n")
+            return api_key
+    except Exception as exc:
+        print(f">>> Warning: Could not create API key: {exc}")
+        return None
