@@ -919,7 +919,14 @@ class TestAuthModeStash:
     def test_auth_mode_forwarded_to_xdist_workers(
         self, pytester, monkeypatch, auth_flag, expected_mode
     ):
-        """Controller forwards vip_auth_mode via workerinput; workers restore it."""
+        """Controller forwards vip_auth_mode via workerinput; workers restore it.
+
+        Each test records ``workerid`` into a shared marker dir; we then assert
+        that *both* xdist workers actually executed tests (not just that every
+        test saw the restored mode). With only 2 tests the load scheduler can
+        assign both to one worker, so we parametrize 8 tests and check the
+        distinct-workerid set.
+        """
         monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
         monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
         pytester.makefile(
@@ -930,24 +937,30 @@ class TestAuthModeStash:
                 '[auth]\nprovider = "password"\n'
             ),
         )
+        marker_dir = pytester.path / "worker_markers"
+        marker_dir.mkdir()
         pytester.makeconftest(self._FAKE_AUTH_CONFTEST)
-        # Two tests so both xdist workers receive a test and must have the mode
-        # restored from workerinput.
         pytester.makepyfile(
             f"""
+            import pytest
             from vip.plugin import _auth_mode_key
 
-            def test_worker_mode_a(request):
-                assert hasattr(request.config, "workerinput"), "expected xdist worker"
-                assert request.config.stash[_auth_mode_key] == {expected_mode!r}
+            MARKER_DIR = {str(marker_dir)!r}
 
-            def test_worker_mode_b(request):
+            @pytest.mark.parametrize("i", list(range(8)))
+            def test_worker_mode(request, i):
                 assert hasattr(request.config, "workerinput"), "expected xdist worker"
                 assert request.config.stash[_auth_mode_key] == {expected_mode!r}
+                workerid = request.config.workerinput["workerid"]
+                open(f"{{MARKER_DIR}}/{{workerid}}", "a").close()
             """
         )
         result = pytester.runpytest("--vip-config=vip.toml", auth_flag, "-n", "2", "-v")
-        result.assert_outcomes(passed=2)
+        result.assert_outcomes(passed=8)
+        workerids = {p.name for p in marker_dir.iterdir()}
+        assert len(workerids) == 2, (
+            f"expected both xdist workers to restore mode, got workerids={workerids}"
+        )
 
 
 class TestHeartbeat:
