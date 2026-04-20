@@ -175,7 +175,7 @@ def test_old_tls_rejected_fails_on_connected_tls_1_0():
         {"status": "rejected", "detail": ""},
         {"status": "connected", "detail": ""},
     )
-    with pytest.raises(Exception) as info:
+    with pytest.raises(AssertionError) as info:
         old_tls_rejected(results)
     msg = str(info.value)
     assert "TLS 1.0" in msg
@@ -191,7 +191,7 @@ def test_old_tls_rejected_fails_on_cert_verify_for_legacy_version():
         },
         {"status": "connected", "detail": ""},
     )
-    with pytest.raises(Exception) as info:
+    with pytest.raises(AssertionError) as info:
         old_tls_rejected(results)
     msg = str(info.value)
     assert "TLS 1.1" in msg
@@ -217,7 +217,7 @@ def test_modern_tls_succeeds_surfaces_cert_verify_with_guidance():
             "detail": "[SSL: CERTIFICATE_VERIFY_FAILED] unable to get local issuer",
         },
     )
-    with pytest.raises(Exception) as info:
+    with pytest.raises(AssertionError) as info:
         modern_tls_succeeds(results)
     msg = str(info.value)
     assert "certificate-trust issue" in msg
@@ -232,7 +232,7 @@ def test_modern_tls_succeeds_reports_plain_rejection_clearly():
         {"status": "rejected", "detail": ""},
         {"status": "rejected", "detail": "unsupported protocol"},
     )
-    with pytest.raises(Exception) as info:
+    with pytest.raises(AssertionError) as info:
         modern_tls_succeeds(results)
     msg = str(info.value)
     assert "TLS 1.2 connection failed" in msg
