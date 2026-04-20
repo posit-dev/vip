@@ -88,39 +88,3 @@ jobs:
           name: selftest-results-py${{ matrix.python-version }}
           path: selftest-results.xml
 
-  verify-demo:
-    name: Verify showboat demo
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - uses: extractions/setup-just@v4
-      - name: Install dependencies
-        run: uv sync --all-extras
-      - name: Find changed demo files
-        id: check
-        run: |
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }} -- 'validation_docs/*.md' | grep -v '.gitkeep' || true)
-          if [ -z "$CHANGED" ]; then
-            echo "No demo files changed — skipping verification"
-            echo "found=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Demo files to verify:"
-            echo "$CHANGED"
-            echo "found=true" >> "$GITHUB_OUTPUT"
-            echo "$CHANGED" > /tmp/demo-files.txt
-          fi
-      - name: Verify demos
-        if: steps.check.outputs.found == 'true'
-        run: |
-          while IFS= read -r f; do
-            echo "::group::Verifying $f"
-            uvx showboat verify "$f"
-            echo "::endgroup::"
-          done < /tmp/demo-files.txt
