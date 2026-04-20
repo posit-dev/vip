@@ -186,3 +186,138 @@ class TestCreateApiKeyViaSession:
         import json as _json
 
         assert _json.loads(post_reqs[0].content) == {"name": "_vip_interactive_1"}
+
+    def test_deletes_orphan_vip_keys_before_creating(self, monkeypatch):
+        """Keys whose name starts with _vip_interactive_ must be deleted first."""
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        deletes: list[str] = []
+        posts: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET" and request.url.path == "/__api__/v1/user":
+                return httpx.Response(200, json={"guid": "g"})
+            if request.method == "GET" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(
+                    200,
+                    json=[
+                        {"id": "1", "name": "_vip_interactive_old1"},
+                        {"id": "2", "name": "my-personal-key"},
+                        {"id": "3", "name": "_vip_interactive_old2"},
+                    ],
+                )
+            if request.method == "DELETE" and request.url.path.startswith(
+                "/__api__/v1/users/g/keys/"
+            ):
+                deletes.append(request.url.path.rsplit("/", 1)[-1])
+                return httpx.Response(204)
+            if request.method == "POST" and request.url.path == "/__api__/v1/users/g/keys":
+                posts.append(request)
+                return httpx.Response(200, json={"id": "9", "key": "NEWKEY" * 5})
+            return httpx.Response(404)
+
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+        page = self._page_with_cookies([{"name": "RSC-XSRF", "value": "x"}])
+        result = _create_api_key_via_session(page, "https://c.example.com", "_vip_interactive_new")
+
+        assert result == "NEWKEY" * 5
+        assert sorted(deletes) == ["1", "3"]
+        assert len(posts) == 1  # create ran after cleanup
+
+    def test_create_failure_returns_none(self, monkeypatch):
+        """HTTP 500 on the create call must yield None, not an exception."""
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET" and request.url.path == "/__api__/v1/user":
+                return httpx.Response(200, json={"guid": "g"})
+            if request.method == "GET" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(200, json=[])
+            if request.method == "POST" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(500, text="boom")
+            return httpx.Response(404)
+
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+        page = self._page_with_cookies([{"name": "RSC-XSRF", "value": "x"}])
+        assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
+
+    def test_missing_xsrf_cookie_still_runs(self, monkeypatch):
+        """With no RSC-XSRF cookie the call still runs; no X-Rsc-Xsrf header sent."""
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        seen_headers: list[dict] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen_headers.append(dict(request.headers))
+            if request.method == "GET" and request.url.path == "/__api__/v1/user":
+                return httpx.Response(200, json={"guid": "g"})
+            if request.method == "GET" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(200, json=[])
+            if request.method == "POST" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(200, json={"id": "1", "key": "K" * 30})
+            return httpx.Response(404)
+
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+        page = self._page_with_cookies(
+            [{"name": "connect-session", "value": "sess"}]  # no RSC-XSRF
+        )
+        result = _create_api_key_via_session(page, "https://c.example.com", "k")
+
+        assert result == "K" * 30
+        for h in seen_headers:
+            assert "x-rsc-xsrf" not in {k.lower() for k in h}
+
+    def test_missing_user_guid_returns_none(self, monkeypatch):
+        """If /v1/user returns no guid, function returns None and skips POST."""
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        post_calls = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal post_calls
+            if request.method == "GET" and request.url.path == "/__api__/v1/user":
+                return httpx.Response(200, json={})  # no guid
+            if request.method == "POST":
+                post_calls += 1
+            return httpx.Response(404)
+
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+        page = self._page_with_cookies([{"name": "RSC-XSRF", "value": "x"}])
+        assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
+        assert post_calls == 0
