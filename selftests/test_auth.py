@@ -102,3 +102,84 @@ class TestStartHeadlessAuthPlaywrightErrors:
                     username="user",
                     password="pass",
                 )
+
+
+class TestCreateApiKeyViaSession:
+    """_create_api_key_via_session talks to Connect's REST API using
+    cookies lifted from the authenticated Playwright context."""
+
+    def _page_with_cookies(self, cookies: list[dict]) -> MagicMock:
+        """Return a stub Playwright Page whose context.cookies() is set."""
+        page = MagicMock()
+        page.context.cookies.return_value = cookies
+        return page
+
+    def _transport(self, handler):
+        """Wrap a request -> Response handler in a MockTransport."""
+        import httpx
+
+        return httpx.MockTransport(handler)
+
+    def test_happy_path_creates_key_and_sends_xsrf(self, monkeypatch):
+        """List is empty (no orphans), POST returns a key string."""
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        captured: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured.setdefault("requests", []).append(request)
+            if request.method == "GET" and request.url.path == "/__api__/v1/user":
+                return httpx.Response(200, json={"guid": "user-guid-abc"})
+            if (
+                request.method == "GET"
+                and request.url.path == "/__api__/v1/users/user-guid-abc/keys"
+            ):
+                return httpx.Response(200, json=[])
+            if (
+                request.method == "POST"
+                and request.url.path == "/__api__/v1/users/user-guid-abc/keys"
+            ):
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": "7",
+                        "name": "_vip_interactive_1",
+                        "key": "SECRETKEY" * 3,
+                    },
+                )
+            return httpx.Response(404)
+
+        # Patch httpx.Client so _create_api_key_via_session uses our transport.
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = self._transport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr("vip.auth.httpx.Client", fake_client, raising=False)
+        # auth.py imports httpx inside the function; patch the module attr too.
+        import httpx as _httpx
+
+        monkeypatch.setattr(_httpx, "Client", fake_client)
+
+        page = self._page_with_cookies(
+            [
+                {"name": "connect-session", "value": "sess-123"},
+                {"name": "RSC-XSRF", "value": "xsrf-token"},
+            ]
+        )
+
+        result = _create_api_key_via_session(
+            page, "https://connect.example.com", "_vip_interactive_1"
+        )
+
+        assert result == "SECRETKEY" * 3
+        # The POST request must include the XSRF header and the expected body.
+        post_reqs = [r for r in captured["requests"] if r.method == "POST"]
+        assert len(post_reqs) == 1
+        assert post_reqs[0].headers.get("X-Rsc-Xsrf") == "xsrf-token"
+        import json as _json
+
+        assert _json.loads(post_reqs[0].content) == {"name": "_vip_interactive_1"}
