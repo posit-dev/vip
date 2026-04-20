@@ -218,53 +218,25 @@ def attempt_tls_connection(product, vip_config):
     hostname = parsed.hostname
     port = parsed.port or 443
 
-    results = {}
-
-    # Attempt TLS 1.0 — should fail on modern servers.
     try:
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        ctx.check_hostname = True
-        ctx.verify_mode = ssl.CERT_REQUIRED
-        ctx.maximum_version = ssl.TLSVersion.TLSv1
-        with socket.create_connection((hostname, port), timeout=10) as sock:
-            with ctx.wrap_socket(sock, server_hostname=hostname):
-                results["tls1_0"] = "connected"
-    except ssl.SSLError:
-        results["tls1_0"] = "rejected"
-    except OSError:
-        results["tls1_0"] = "rejected"
-    except Exception as exc:
+        results = {
+            "tls1_0": _attempt_tls(hostname, port, max_version=ssl.TLSVersion.TLSv1),
+            "tls1_1": _attempt_tls(hostname, port, max_version=ssl.TLSVersion.TLSv1_1),
+            "tls1_2": _attempt_tls(hostname, port, min_version=ssl.TLSVersion.TLSv1_2),
+        }
+    except _ConnectError as exc:
         pytest.skip(f"Could not reach {hostname}:{port}: {exc}")
 
-    # Attempt TLS 1.1 — should fail on modern servers.
-    try:
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        ctx.check_hostname = True
-        ctx.verify_mode = ssl.CERT_REQUIRED
-        ctx.maximum_version = ssl.TLSVersion.TLSv1_1
-        with socket.create_connection((hostname, port), timeout=10) as sock:
-            with ctx.wrap_socket(sock, server_hostname=hostname):
-                results["tls1_1"] = "connected"
-    except ssl.SSLError:
-        results["tls1_1"] = "rejected"
-    except OSError:
-        results["tls1_1"] = "rejected"
-    except Exception as exc:
-        pytest.skip(f"Could not reach {hostname}:{port}: {exc}")
-
-    # Attempt TLS 1.2 — must succeed.
-    try:
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        ctx.check_hostname = True
-        ctx.verify_mode = ssl.CERT_REQUIRED
-        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-        with socket.create_connection((hostname, port), timeout=10) as sock:
-            with ctx.wrap_socket(sock, server_hostname=hostname):
-                results["tls1_2"] = "connected"
-    except ssl.SSLError as exc:
-        results["tls1_2"] = f"failed: {exc}"
-    except Exception as exc:
-        pytest.skip(f"Could not reach {hostname}:{port}: {exc}")
+    unsupported = [
+        label
+        for label, key in (("TLS 1.0", "tls1_0"), ("TLS 1.1", "tls1_1"), ("TLS 1.2", "tls1_2"))
+        if results[key]["status"] == "client_unsupported"
+    ]
+    if unsupported:
+        pytest.skip(
+            f"Runner cannot configure {', '.join(unsupported)} — cannot "
+            f"assess server TLS enforcement on this client."
+        )
 
     return results
 
