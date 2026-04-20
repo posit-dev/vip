@@ -104,6 +104,32 @@ class TestStartHeadlessAuthPlaywrightErrors:
                 )
 
 
+class TestAuthenticateWorkbench:
+    """_authenticate_workbench establishes the Workbench SSO session after
+    Connect auth has already succeeded.  Network failures here must NOT
+    crash the pytest session — Connect tests should still run."""
+
+    def test_playwright_error_on_goto_is_non_fatal(self, capsys):
+        """A PlaywrightError from page.goto() (e.g. ERR_CONNECTION_REFUSED,
+        redirect-to-http) must be caught, logged as a warning, and return
+        cleanly.  Otherwise the whole pytest session dies with INTERNALERROR.
+        See issue #171."""
+        from playwright.sync_api import Error as PlaywrightError
+
+        from vip.auth import _authenticate_workbench
+
+        page = MagicMock()
+        page.goto.side_effect = PlaywrightError(
+            "net::ERR_CONNECTION_REFUSED at https://wb.example.com/pwb"
+        )
+
+        _authenticate_workbench(page, "https://wb.example.com/pwb")
+
+        out = capsys.readouterr().out
+        assert "Could not reach Workbench" in out
+        assert "https://wb.example.com/pwb" in out
+
+
 class TestCreateApiKeyViaSession:
     """_create_api_key_via_session talks to Connect's REST API using
     cookies lifted from the authenticated Playwright context."""

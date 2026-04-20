@@ -559,8 +559,16 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> None:
     wb_base = workbench_url.rstrip("/").lower()
     print(f"\n>>> Authenticating to Workbench at {workbench_url} ...")
 
-    page.goto(workbench_url)
-    page.wait_for_load_state("networkidle")
+    try:
+        page.goto(workbench_url)
+        page.wait_for_load_state("networkidle")
+    except PlaywrightError as exc:
+        print(
+            f">>> Warning: Could not reach Workbench at {workbench_url}: {exc}\n"
+            ">>> Verify the URL is correct and accessible. "
+            "Workbench tests may be skipped.\n"
+        )
+        return
 
     # Quick check — already on the Workbench dashboard?
     url = page.url
