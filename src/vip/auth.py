@@ -257,7 +257,7 @@ def start_interactive_auth(
         # Mint Connect API key only if Connect is configured.
         api_key = None
         if connect_url:
-            api_key = _create_api_key_via_ui(page, connect_url, key_name)
+            api_key = _create_api_key_via_session(page, connect_url, key_name)
 
         # Visit Workbench so the storage state includes its session cookies.
         if workbench_url and connect_url:
@@ -410,7 +410,7 @@ def start_headless_auth(
         # Mint Connect API key only if Connect is configured.
         api_key = None
         if connect_url:
-            api_key = _create_api_key_via_ui(page, connect_url, key_name)
+            api_key = _create_api_key_via_session(page, connect_url, key_name)
 
         # Visit Workbench so the storage state includes its session cookies.
         if workbench_url and connect_url:
