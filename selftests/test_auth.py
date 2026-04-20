@@ -188,13 +188,16 @@ class TestCreateApiKeyViaSession:
         assert _json.loads(post_reqs[0].content) == {"name": "_vip_interactive_1"}
 
     def test_deletes_orphan_vip_keys_before_creating(self, monkeypatch):
-        """Keys whose name starts with _vip_interactive_ must be deleted first."""
+        """Old _vip_interactive_<ts> keys must be deleted before the POST."""
+        import time
+
         import httpx
 
         from vip.auth import _create_api_key_via_session
 
-        deletes: list[str] = []
-        posts: list[httpx.Request] = []
+        # Two stale keys (2h old) and one unrelated key.
+        old_ts = int(time.time()) - 7200
+        call_order: list[tuple[str, str | None]] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
             if request.method == "GET" and request.url.path == "/__api__/v1/user":
@@ -203,18 +206,18 @@ class TestCreateApiKeyViaSession:
                 return httpx.Response(
                     200,
                     json=[
-                        {"id": "1", "name": "_vip_interactive_old1"},
+                        {"id": "1", "name": f"_vip_interactive_{old_ts}"},
                         {"id": "2", "name": "my-personal-key"},
-                        {"id": "3", "name": "_vip_interactive_old2"},
+                        {"id": "3", "name": f"_vip_interactive_{old_ts - 100}"},
                     ],
                 )
             if request.method == "DELETE" and request.url.path.startswith(
                 "/__api__/v1/users/g/keys/"
             ):
-                deletes.append(request.url.path.rsplit("/", 1)[-1])
+                call_order.append(("DELETE", request.url.path.rsplit("/", 1)[-1]))
                 return httpx.Response(204)
             if request.method == "POST" and request.url.path == "/__api__/v1/users/g/keys":
-                posts.append(request)
+                call_order.append(("POST", None))
                 return httpx.Response(200, json={"id": "9", "key": "NEWKEY" * 5})
             return httpx.Response(404)
 
@@ -230,8 +233,85 @@ class TestCreateApiKeyViaSession:
         result = _create_api_key_via_session(page, "https://c.example.com", "_vip_interactive_new")
 
         assert result == "NEWKEY" * 5
-        assert sorted(deletes) == ["1", "3"]
-        assert len(posts) == 1  # create ran after cleanup
+
+        deleted_ids = [kid for (op, kid) in call_order if op == "DELETE"]
+        assert sorted(deleted_ids) == ["1", "3"]
+
+        # All DELETEs must come strictly before the POST — otherwise a flaky
+        # Connect version could see the new key during listing and delete it.
+        post_index = next(i for i, (op, _) in enumerate(call_order) if op == "POST")
+        assert all(op == "DELETE" for op, _ in call_order[:post_index])
+        assert post_index == len(call_order) - 1  # POST is last, ran once
+
+    def test_skips_recent_orphan_keys(self, monkeypatch):
+        """Keys younger than _ORPHAN_MIN_AGE_SECONDS must NOT be deleted —
+        they likely belong to a concurrent vip verify run."""
+        import time
+
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        recent_ts = int(time.time()) - 60  # 60s old: belongs to a live run
+        deletes: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET" and request.url.path == "/__api__/v1/user":
+                return httpx.Response(200, json={"guid": "g"})
+            if request.method == "GET" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(
+                    200,
+                    json=[{"id": "42", "name": f"_vip_interactive_{recent_ts}"}],
+                )
+            if request.method == "DELETE":
+                deletes.append(request.url.path.rsplit("/", 1)[-1])
+                return httpx.Response(204)
+            if request.method == "POST" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(200, json={"id": "9", "key": "K" * 30})
+            return httpx.Response(404)
+
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+        page = self._page_with_cookies([{"name": "RSC-XSRF", "value": "x"}])
+        result = _create_api_key_via_session(page, "https://c.example.com", "_vip_interactive_new")
+
+        assert result == "K" * 30
+        assert deletes == []  # recent key was left alone
+
+    def test_cookies_filtered_to_connect_host(self, monkeypatch):
+        """Cookies must be scoped to the Connect URL so IdP cookies don't leak."""
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET" and request.url.path == "/__api__/v1/user":
+                return httpx.Response(200, json={"guid": "g"})
+            if request.method == "GET" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(200, json=[])
+            if request.method == "POST" and request.url.path == "/__api__/v1/users/g/keys":
+                return httpx.Response(200, json={"id": "1", "key": "K" * 30})
+            return httpx.Response(404)
+
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+        page = self._page_with_cookies([{"name": "connect-session", "value": "s"}])
+        connect_url = "https://connect.example.com"
+        _create_api_key_via_session(page, connect_url, "k")
+
+        page.context.cookies.assert_called_with(connect_url)
 
     def test_create_failure_returns_none(self, monkeypatch):
         """HTTP 500 on the create call must yield None, not an exception."""

@@ -39,6 +39,12 @@ class AuthConfigError(ValueError):
 # Prefix for VIP-managed API keys.  A timestamp is appended per run.
 _KEY_NAME_PREFIX = "_vip_interactive_"
 
+# Orphan keys younger than this are left alone so a concurrent ``vip verify``
+# run does not have its freshly-minted key yanked out from under it.  Cleanup
+# is for keys whose process crashed before running ``cleanup()``; anything
+# recent enough to still belong to a live run is out of scope.
+_ORPHAN_MIN_AGE_SECONDS = 3600
+
 
 # Substrings that indicate the chromium launch failed because host-level
 # system libraries (libatk, libgbm, libasound, ...) are not installed.  See
@@ -768,6 +774,49 @@ def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
         print(">>> Warning: Could not find API key to delete.\n")
 
 
+def _delete_stale_vip_keys(client, guid: str) -> None:
+    """Delete ``_vip_interactive_<ts>`` keys older than
+    :data:`_ORPHAN_MIN_AGE_SECONDS`.
+
+    Best-effort: network failures and unparseable names are swallowed so a
+    single stuck orphan does not block fresh key creation.  Keys younger than
+    the threshold are left alone because they probably belong to another
+    ``vip verify`` still running.
+    """
+    import httpx
+
+    try:
+        list_resp = client.get(f"/v1/users/{guid}/keys")
+    except httpx.HTTPError as exc:
+        print(f">>> Warning: listing stale keys failed: {exc}")
+        return
+    if not list_resp.is_success:
+        return
+
+    now = int(time.time())
+    try:
+        entries = list_resp.json()
+    except ValueError:
+        return
+
+    for k in entries:
+        name = k.get("name") or ""
+        if not name.startswith(_KEY_NAME_PREFIX):
+            continue
+        suffix = name[len(_KEY_NAME_PREFIX) :]
+        try:
+            created_ts = int(suffix)
+        except ValueError:
+            # Legacy key without a timestamp suffix — treat as old.
+            created_ts = 0
+        if now - created_ts < _ORPHAN_MIN_AGE_SECONDS:
+            continue  # belongs to a concurrent run
+        try:
+            client.delete(f"/v1/users/{guid}/keys/{k['id']}")
+        except httpx.HTTPError as exc:
+            print(f">>> Warning: could not delete stale key {k.get('id')}: {exc}")
+
+
 def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> str | None:
     """Create a Connect API key using the browser's session cookies.
 
@@ -777,14 +826,18 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
     https://docs.posit.co/connect/api/ (operationId: createKey).
 
     Before creating the new key, deletes any lingering ``_vip_interactive_*``
-    keys left over from previous runs that crashed before cleanup.
+    keys left over from previous runs that crashed before cleanup.  Keys
+    younger than :data:`_ORPHAN_MIN_AGE_SECONDS` are skipped so we do not
+    delete a concurrent run's live key.
 
     Returns the API key string, or ``None`` on failure (no exception).
     """
     import httpx
 
     base = connect_url.rstrip("/")
-    cookies = {c["name"]: c["value"] for c in page.context.cookies()}
+    # Scope cookies to the Connect host so IdP cookies (which can be large
+    # and irrelevant) aren't sent to Connect.
+    cookies = {c["name"]: c["value"] for c in page.context.cookies(connect_url)}
     xsrf = cookies.get("RSC-XSRF", "")
     headers = {"X-Rsc-Xsrf": xsrf} if xsrf else {}
 
@@ -804,15 +857,7 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
                 print(">>> Warning: Connect did not return a user guid.")
                 return None
 
-            # Best-effort cleanup of orphaned keys from prior runs.
-            try:
-                list_resp = client.get(f"/v1/users/{guid}/keys")
-                if list_resp.is_success:
-                    for k in list_resp.json():
-                        if (k.get("name") or "").startswith(_KEY_NAME_PREFIX):
-                            client.delete(f"/v1/users/{guid}/keys/{k['id']}")
-            except Exception:
-                pass  # orphans are best-effort; keep going
+            _delete_stale_vip_keys(client, guid)
 
             create_resp = client.post(
                 f"/v1/users/{guid}/keys",
@@ -832,6 +877,6 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
 
             print(">>> Connect API key created.\n")
             return api_key
-    except Exception as exc:
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
         print(f">>> Warning: Could not create API key: {exc}")
         return None
