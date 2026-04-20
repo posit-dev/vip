@@ -243,12 +243,23 @@ def attempt_tls_connection(product, vip_config):
 
 @then("TLS 1.0 and TLS 1.1 connections are rejected")
 def old_tls_rejected(tls_results):
-    assert tls_results.get("tls1_0") == "rejected", (
-        "Server accepted a TLS 1.0 connection — legacy TLS is not disabled"
-    )
-    assert tls_results.get("tls1_1") == "rejected", (
-        "Server accepted a TLS 1.1 connection — legacy TLS is not disabled"
-    )
+    for label, key in (("TLS 1.0", "tls1_0"), ("TLS 1.1", "tls1_1")):
+        result = tls_results.get(key, {})
+        status = result.get("status")
+        if status == "rejected":
+            continue
+        if status == "connected":
+            raise AssertionError(
+                f"Server accepted a {label} connection. Legacy TLS is not disabled."
+            )
+        if status == "cert_verify_failed":
+            raise AssertionError(
+                f"Server accepted a {label} handshake (the client then "
+                f"failed cert verification, which happens after TLS version "
+                f"negotiation). Legacy TLS is not disabled. "
+                f"Detail: {result.get('detail', '')}"
+            )
+        raise AssertionError(f"Unexpected {label} result: {result!r}")
 
 
 @then("TLS 1.2 or higher succeeds")
