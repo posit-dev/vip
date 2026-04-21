@@ -197,7 +197,8 @@ def pytest_configure(config: pytest.Config) -> None:
             elif connect_url:
                 warnings.warn(
                     "VIP: --interactive-auth could not mint an API key. "
-                    "API-based tests will likely fail. Set VIP_CONNECT_API_KEY to fix.",
+                    "API-based tests will likely fail. "
+                    "Try again or set VIP_CONNECT_API_KEY to fix.",
                     stacklevel=1,
                 )
     elif config.getoption("--headless-auth"):
@@ -236,7 +237,8 @@ def pytest_configure(config: pytest.Config) -> None:
             elif connect_url:
                 warnings.warn(
                     "VIP: --headless-auth could not mint an API key. "
-                    "API-based tests will likely fail. Set VIP_CONNECT_API_KEY to fix.",
+                    "API-based tests will likely fail. "
+                    "Try again or set VIP_CONNECT_API_KEY to fix.",
                     stacklevel=1,
                 )
 
