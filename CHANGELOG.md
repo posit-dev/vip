@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.26.0 (2026-04-21)
+
+### Features
+
+- **plugin**: Enable pytest-xdist parallel execution without breaking report generation
+  ([#205](https://github.com/posit-dev/vip/pull/205),
+  [`440a0b3`](https://github.com/posit-dev/vip/commit/440a0b37bfd78ff020e799618d859c8c21f48aa1))
+
+
 ## v0.25.0 (2026-04-21)
 
 ### Bug Fixes
