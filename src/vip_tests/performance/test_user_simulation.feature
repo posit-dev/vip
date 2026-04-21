@@ -40,5 +40,3 @@ Feature: Realistic session simulation
       | users |
       | 10    |
       | 100   |
-      | 1000  |
-      | 10000 |

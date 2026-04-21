@@ -41,7 +41,7 @@ def _check_user_count(users: int, performance_config) -> None:
     parsers.parse("I simulate {users:d} concurrent users on Connect"),
     target_fixture="simulation_result",
 )
-def simulate_connect(users, vip_config, performance_config):
+def simulate_connect(users, vip_config, performance_config, vip_verbose):
     _check_user_count(users, performance_config)
     if not vip_config.connect.api_key:
         pytest.skip("Connect API key is not configured")
@@ -51,6 +51,7 @@ def simulate_connect(users, vip_config, performance_config):
         users=users,
         config=performance_config,
         credentials={"api_key": vip_config.connect.api_key},
+        verbose=vip_verbose,
     )
 
 
@@ -58,7 +59,7 @@ def simulate_connect(users, vip_config, performance_config):
     parsers.parse("I simulate {users:d} concurrent users on Workbench"),
     target_fixture="simulation_result",
 )
-def simulate_workbench(users, vip_config, performance_config):
+def simulate_workbench(users, vip_config, performance_config, vip_verbose):
     _check_user_count(users, performance_config)
     if not vip_config.workbench.api_key:
         pytest.skip("Workbench API key is not configured")
@@ -68,6 +69,7 @@ def simulate_workbench(users, vip_config, performance_config):
         users=users,
         config=performance_config,
         credentials={"api_key": vip_config.workbench.api_key},
+        verbose=vip_verbose,
     )
 
 
@@ -75,7 +77,7 @@ def simulate_workbench(users, vip_config, performance_config):
     parsers.parse("I simulate {users:d} concurrent users on Package Manager"),
     target_fixture="simulation_result",
 )
-def simulate_pm(users, vip_config, performance_config):
+def simulate_pm(users, vip_config, performance_config, vip_verbose):
     _check_user_count(users, performance_config)
     if not vip_config.package_manager.url:
         pytest.skip("Package Manager URL is not configured")
@@ -86,6 +88,7 @@ def simulate_pm(users, vip_config, performance_config):
         users=users,
         config=performance_config,
         credentials={"token": token},
+        verbose=vip_verbose,
     )
 
 

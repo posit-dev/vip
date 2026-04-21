@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 
 import pytest
@@ -138,10 +139,21 @@ class TestExtractExceptionInfo:
         assert exc_message == "something weird happened"
 
     def test_multiline_message(self):
-        longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError: line one\nE   line two"
+        longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError: line one\nE       line two"
         exc_type, exc_message = _extract_exception_info(longrepr)
         assert exc_type == "ValueError"
-        assert exc_message == "line one"
+        assert exc_message == "line one line two"
+
+    def test_multiline_assertion_with_details(self):
+        """Multi-line assertion messages should include continuation lines."""
+        longrepr = (
+            "tests/test_foo.py:5: in test_it\n"
+            "E       AssertionError: Prometheus metrics endpoint check failed:\n"
+            "E         Connect: /metrics returned 403 (expected 200)"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "AssertionError"
+        assert "Connect: /metrics returned 403" in exc_message
 
 
 class TestVersionTuple:
@@ -192,6 +204,157 @@ class TestPluginIntegration:
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
         result.assert_outcomes()
         result.stdout.fnmatch_lines(["*1 deselected*"])
+
+    def test_bdd_given_configured_step_deselected(self, selftest_pytester):
+        """A BDD scenario with 'Given Connect is configured in vip.toml'
+        should be deselected (not skipped) when Connect is not configured."""
+        selftest_pytester.makefile(
+            ".feature",
+            test_perf=(
+                "@performance\n"
+                "Feature: Perf test\n"
+                "  Scenario: Load test Connect\n"
+                "    Given Connect is configured in vip.toml\n"
+                "    Then something passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_perf="""
+            import pytest
+            from pytest_bdd import scenario, given, then
+
+            @scenario("test_perf.feature", "Load test Connect")
+            def test_load():
+                pass
+
+            @given("Connect is configured in vip.toml")
+            def connect_configured():
+                pytest.skip("Connect is not configured")
+
+            @then("something passes")
+            def something_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes()
+        result.stdout.fnmatch_lines(["*1 deselected*"])
+        # Must NOT appear as SKIPPED
+        assert "SKIPPED" not in result.stdout.str()
+
+    def test_bdd_given_configured_product_not_deselected(self, selftest_pytester):
+        """A BDD scenario with 'Given Connect is configured' should run
+        when Connect IS configured."""
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://example.com"\n'
+            ),
+        )
+        selftest_pytester.makefile(
+            ".feature",
+            test_configured=(
+                "@performance\n"
+                "Feature: Perf test\n"
+                "  Scenario: Load test Connect\n"
+                "    Given Connect is configured in vip.toml\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_configured="""
+            from pytest_bdd import scenario, given, then
+
+            @scenario("test_configured.feature", "Load test Connect")
+            def test_load():
+                pass
+
+            @given("Connect is configured in vip.toml")
+            def connect_configured():
+                pass
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+
+    def test_bdd_when_step_not_deselected(self, selftest_pytester):
+        """A 'When' step matching a product name should NOT trigger deselection."""
+        selftest_pytester.makefile(
+            ".feature",
+            test_when=(
+                "@performance\n"
+                "Feature: When step test\n"
+                "  Scenario: When Connect is configured check\n"
+                "    When Connect is configured in the report\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_when="""
+            from pytest_bdd import scenario, when, then
+
+            @scenario("test_when.feature", "When Connect is configured check")
+            def test_when_step():
+                pass
+
+            @when("Connect is configured in the report")
+            def connect_in_report():
+                pass
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+        # Ensure no tests were deselected (check the summary line, not raw text
+        # which may contain "deselected" in the tmpdir path).
+        assert "deselected" not in result.stdout.lines[-1]
+
+    def test_bdd_parameterized_unconfigured_deselected(self, selftest_pytester):
+        """A parameterized '<product> is configured' step should deselect
+        when the product is not configured."""
+        selftest_pytester.makefile(
+            ".feature",
+            test_param=(
+                "@performance\n"
+                "Feature: Param test\n"
+                "  Scenario Outline: <product> check\n"
+                "    Given <product> is configured in vip.toml\n"
+                "    Then it passes\n"
+                "\n"
+                "    Examples:\n"
+                "      | product   |\n"
+                "      | Connect   |\n"
+                "      | CustomApp |\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_param="""
+            import pytest
+            from pytest_bdd import scenarios, given, then, parsers
+
+            scenarios("test_param.feature")
+
+            @given(parsers.parse("{product} is configured in vip.toml"))
+            def product_configured(product):
+                pytest.skip(f"{product} is not configured")
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        # Connect is not configured → deselected.
+        # CustomApp is unrecognized → not deselected, runs and skips at runtime.
+        result.stdout.fnmatch_lines(["*1 deselected*"])
+        result.stdout.fnmatch_lines(["*SKIPPED*"])
 
     def test_version_skip(self, selftest_pytester):
         selftest_pytester.makefile(
@@ -291,19 +454,30 @@ class TestPluginIntegration:
         assert result["scenario_title"] is None
         assert result["feature_description"] is None
 
-    def test_interactive_auth_requires_product_url(self, selftest_pytester):
-        """--interactive-auth fails fast when no product URL is configured."""
+    def test_interactive_auth_skipped_when_no_auth_products(self, selftest_pytester):
+        """--interactive-auth skips the browser flow when no auth-requiring products are enabled.
+
+        When no products requiring authentication are configured, running with
+        --interactive-auth should not error out; the auth flow should be skipped and
+        tests should proceed normally.  See issue #173.
+        """
         selftest_pytester.makepyfile(
             """
             def test_placeholder():
                 assert True
             """
         )
-        result = selftest_pytester.runpytest(
+        result = selftest_pytester.runpytest_subprocess(
             "--vip-config=vip.toml",
             "--interactive-auth",
+            "-W",
+            "always",
         )
-        result.stderr.fnmatch_lines(["*--interactive-auth requires at least one product URL*"])
+        assert result.ret == 0
+        result.assert_outcomes(passed=1)
+        result.stderr.fnmatch_lines(
+            ["*no auth-requiring products*skipping browser authentication*"]
+        )
 
     def test_json_report_includes_concise_error(self, selftest_pytester):
         selftest_pytester.makepyfile(
@@ -576,6 +750,350 @@ class TestXdistCompatibility:
         assert isinstance(r["markers"], list)
         assert "scenario_title" in r
         assert "feature_description" in r
+
+
+class TestHeadlessAuthOption:
+    def test_headless_auth_option_registered(self, pytester):
+        """The --headless-auth option should be registered by the plugin."""
+        pytester.makeconftest("")
+        result = pytester.runpytest("--help")
+        result.stdout.fnmatch_lines(["*--headless-auth*"])
+
+
+class TestHeadlessAuthFixture:
+    def test_headless_auth_skipped_when_no_auth_products(self, pytester):
+        """--headless-auth skips the browser flow when no auth-requiring products are enabled.
+
+        If only Package Manager is enabled (or no products at all), --headless-auth
+        should warn and continue rather than failing with UsageError -- see issue #173.
+        """
+        pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
+        pytester.makepyfile(
+            """
+            def test_placeholder():
+                assert True
+            """
+        )
+        result = pytester.runpytest_subprocess(
+            "--vip-config=vip.toml",
+            "--headless-auth",
+            "-W",
+            "always",
+        )
+        assert result.ret == 0
+        result.assert_outcomes(passed=1)
+        result.stderr.fnmatch_lines(
+            ["*no auth-requiring products*skipping browser authentication*"]
+        )
+
+    def test_headless_auth_skipped_when_only_package_manager_enabled(self, pytester):
+        """--headless-auth skips auth when only Package Manager is enabled.
+
+        Reproduces the scenario from issue #173: Connect/Workbench disabled,
+        Package Manager enabled -- headless auth should be skipped.
+        """
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                "[connect]\nenabled = false\n"
+                "[workbench]\nenabled = false\n"
+                "[package_manager]\nenabled = true\n"
+                'url = "https://pm.example.com"\n'
+            ),
+        )
+        pytester.makepyfile(
+            """
+            def test_placeholder():
+                assert True
+            """
+        )
+        result = pytester.runpytest_subprocess(
+            "--vip-config=vip.toml",
+            "--headless-auth",
+            "-W",
+            "always",
+        )
+        assert result.ret == 0
+        result.assert_outcomes(passed=1)
+        result.stderr.fnmatch_lines(
+            ["*no auth-requiring products*skipping browser authentication*"]
+        )
+
+    def test_interactive_auth_fixture_true_for_headless(self, pytester):
+        """The interactive_auth fixture should return True when --headless-auth is active."""
+        pytester.makeconftest(
+            """
+            import pytest
+            from vip.plugin import _auth_session_key
+            from vip.auth import InteractiveAuthSession
+            from pathlib import Path
+
+            @pytest.fixture(scope="session", autouse=True)
+            def fake_auth_session(request):
+                session = InteractiveAuthSession(
+                    storage_state_path=Path("/dev/null"),
+                )
+                request.config.stash[_auth_session_key] = session
+
+            @pytest.fixture(scope="session")
+            def interactive_auth(request):
+                session = request.config.stash.get(_auth_session_key, None)
+                return session is not None
+            """
+        )
+        pytester.makepyfile(
+            """
+            def test_fixture_value(interactive_auth):
+                assert interactive_auth is True
+            """
+        )
+        result = pytester.runpytest("-v")
+        result.assert_outcomes(passed=1)
+
+    def test_headless_auth_fixture_true_only_for_headless(self, pytester, monkeypatch):
+        """The headless_auth fixture is True for --headless-auth, False otherwise."""
+        # Patch the auth startup so the plugin doesn't launch a real browser.
+        # monkeypatch auto-undoes after the test, so later tests see the real
+        # functions (e.g. TestHeadlessAuthPluginWiring which asserts
+        # AuthConfigError propagates).
+        from pathlib import Path
+
+        import vip.auth
+        from vip.auth import InteractiveAuthSession
+
+        def fake_start_auth(*args, **kwargs):
+            return InteractiveAuthSession(storage_state_path=Path("/dev/null"))
+
+        monkeypatch.setattr(vip.auth, "start_headless_auth", fake_start_auth)
+        monkeypatch.setattr(vip.auth, "start_interactive_auth", fake_start_auth)
+
+        # Mirror the real headless_auth fixture — pytester's tmp dir doesn't
+        # auto-load src/vip_tests/conftest.py.
+        pytester.makeconftest(
+            """
+            import pytest
+            from vip.plugin import _auth_session_key
+
+            @pytest.fixture(scope="session")
+            def headless_auth(request):
+                if not request.config.getoption("--headless-auth", default=False):
+                    return False
+                return request.config.stash.get(_auth_session_key, None) is not None
+            """
+        )
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "password"\n'
+            ),
+        )
+        pytester.makepyfile(
+            """
+            def test_fixture_value(request, headless_auth):
+                expected = bool(request.config.getoption("--headless-auth", default=False))
+                assert headless_auth is expected
+            """
+        )
+
+        # --headless-auth: fixture is True.
+        result = pytester.runpytest("-v", "--vip-config=vip.toml", "--headless-auth")
+        result.assert_outcomes(passed=1)
+
+        # --interactive-auth: session is populated but headless_auth is False.
+        result = pytester.runpytest("-v", "--vip-config=vip.toml", "--interactive-auth")
+        result.assert_outcomes(passed=1)
+
+        # No auth flag: headless_auth is False.
+        result = pytester.runpytest("-v", "--vip-config=vip.toml")
+        result.assert_outcomes(passed=1)
+
+
+class TestHeadlessAuthPluginWiring:
+    """Verify that pytest_configure validates config for --headless-auth."""
+
+    def test_headless_auth_requires_idp_for_oidc(self, pytester, monkeypatch):
+        """--headless-auth with provider=oidc fails when idp is missing."""
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "oidc"\n'
+            ),
+        )
+        pytester.makepyfile("def test_placeholder(): pass")
+        result = pytester.runpytest("--vip-config=vip.toml", "--headless-auth")
+        assert result.ret == pytest.ExitCode.USAGE_ERROR
+        result.stderr.fnmatch_lines(["*--headless-auth*requires*idp*keycloak*okta*"])
+
+
+class TestAuthModeStash:
+    """The plugin stashes the active auth mode so tests can distinguish modes."""
+
+    _FAKE_AUTH_CONFTEST = """
+        import vip.auth
+        from pathlib import Path
+        from vip.auth import InteractiveAuthSession
+
+        def _fake_session(*args, **kwargs):
+            return InteractiveAuthSession(
+                storage_state_path=Path("/dev/null"),
+                api_key="fake-key",
+            )
+
+        vip.auth.start_interactive_auth = _fake_session
+        vip.auth.start_headless_auth = _fake_session
+        """
+
+    def test_no_auth_option_leaves_mode_none(self, pytester):
+        """With no auth option, auth_mode defaults to 'none'."""
+        pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
+        pytester.makepyfile(
+            """
+            from vip.plugin import _auth_mode_key
+
+            def test_mode(request):
+                assert request.config.stash.get(_auth_mode_key, "none") == "none"
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+
+    def test_interactive_auth_sets_mode(self, pytester):
+        """--interactive-auth sets _auth_mode_key to 'interactive'."""
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+            ),
+        )
+        pytester.makeconftest(self._FAKE_AUTH_CONFTEST)
+        pytester.makepyfile(
+            """
+            from vip.plugin import _auth_mode_key
+
+            def test_mode(request):
+                assert request.config.stash.get(_auth_mode_key, None) == "interactive"
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "--interactive-auth", "-v")
+        result.assert_outcomes(passed=1)
+
+    def test_headless_auth_sets_mode(self, pytester, monkeypatch):
+        """--headless-auth sets _auth_mode_key to 'headless'."""
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "password"\n'
+            ),
+        )
+        pytester.makeconftest(self._FAKE_AUTH_CONFTEST)
+        pytester.makepyfile(
+            """
+            from vip.plugin import _auth_mode_key
+
+            def test_mode(request):
+                assert request.config.stash.get(_auth_mode_key, None) == "headless"
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "--headless-auth", "-v")
+        result.assert_outcomes(passed=1)
+
+    @pytest.mark.parametrize(
+        ("auth_flag", "expected_mode"),
+        [("--interactive-auth", "interactive"), ("--headless-auth", "headless")],
+    )
+    def test_auth_mode_forwarded_to_xdist_workers(
+        self, pytester, monkeypatch, auth_flag, expected_mode
+    ):
+        """Controller forwards vip_auth_mode via workerinput; workers restore it.
+
+        Each test records ``workerid`` into a shared marker dir; we then assert
+        that *both* xdist workers actually executed tests (not just that every
+        test saw the restored mode). With only 2 tests the load scheduler can
+        assign both to one worker, so we parametrize 8 tests and check the
+        distinct-workerid set.
+        """
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "password"\n'
+            ),
+        )
+        marker_dir = pytester.path / "worker_markers"
+        marker_dir.mkdir()
+        pytester.makeconftest(self._FAKE_AUTH_CONFTEST)
+        pytester.makepyfile(
+            f"""
+            import pytest
+            from vip.plugin import _auth_mode_key
+
+            MARKER_DIR = {str(marker_dir)!r}
+
+            @pytest.mark.parametrize("i", list(range(8)))
+            def test_worker_mode(request, i):
+                assert hasattr(request.config, "workerinput"), "expected xdist worker"
+                assert request.config.stash[_auth_mode_key] == {expected_mode!r}
+                workerid = request.config.workerinput["workerid"]
+                open(f"{{MARKER_DIR}}/{{workerid}}", "a").close()
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", auth_flag, "-n", "2", "-v")
+        result.assert_outcomes(passed=8)
+        workerids = {p.name for p in marker_dir.iterdir()}
+        assert len(workerids) == 2, (
+            f"expected both xdist workers to restore mode, got workerids={workerids}"
+        )
+
+
+class TestHeartbeat:
+    """Unit tests for the long-running test heartbeat."""
+
+    def test_heartbeat_fires(self):
+        from vip.plugin import _Heartbeat
+
+        output: list[str] = []
+        hb = _Heartbeat(output.append, interval=0.2)
+        hb.start()
+        time.sleep(0.7)
+        hb.stop()
+        assert len(output) >= 2
+        assert "still running" in output[0]
+
+    def test_heartbeat_stop_is_immediate(self):
+        from vip.plugin import _Heartbeat
+
+        output: list[str] = []
+        hb = _Heartbeat(output.append, interval=10)
+        hb.start()
+        hb.stop()
+        assert len(output) == 0
+
+    def test_heartbeat_shows_elapsed_seconds(self):
+        from vip.plugin import _Heartbeat
+
+        output: list[str] = []
+        hb = _Heartbeat(output.append, interval=0.2)
+        hb.start()
+        time.sleep(0.5)
+        hb.stop()
+        assert len(output) >= 1
+        # Should contain a number of seconds in parentheses
+        assert re.search(r"\(\d+s\)", output[0])
 
 
 def test_markers_in_sync():

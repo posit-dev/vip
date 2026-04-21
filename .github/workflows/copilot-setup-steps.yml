@@ -26,5 +26,3 @@ jobs:
           version: v0.48.1
       - name: Install uv
         uses: astral-sh/setup-uv@v7
-      - name: Install showboat
-        run: uv tool install showboat
