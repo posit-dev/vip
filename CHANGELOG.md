@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.24.10 (2026-04-21)
+
+### Bug Fixes
+
+- **ssl**: Tls verification test fails with unclear error behind SSL-terminating proxy
+  ([#198](https://github.com/posit-dev/vip/pull/198),
+  [`c057b80`](https://github.com/posit-dev/vip/commit/c057b805f48484bc0da10339edb4a8dc56ab42a1))
+
+
 ## v0.24.9 (2026-04-21)
 
 ### Bug Fixes
