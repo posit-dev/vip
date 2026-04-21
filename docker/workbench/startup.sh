@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # Create a test user for VIP on first boot.
 # This script runs as a cont-init.d script inside the Workbench container.
 
