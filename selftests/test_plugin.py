@@ -835,6 +835,134 @@ class TestHeadlessAuthPluginWiring:
         result.stderr.fnmatch_lines(["*--headless-auth*requires*idp*keycloak*okta*"])
 
 
+class TestAuthModeStash:
+    """The plugin stashes the active auth mode so tests can distinguish modes."""
+
+    _FAKE_AUTH_CONFTEST = """
+        import vip.auth
+        from pathlib import Path
+        from vip.auth import InteractiveAuthSession
+
+        def _fake_session(*args, **kwargs):
+            return InteractiveAuthSession(
+                storage_state_path=Path("/dev/null"),
+                api_key="fake-key",
+            )
+
+        vip.auth.start_interactive_auth = _fake_session
+        vip.auth.start_headless_auth = _fake_session
+        """
+
+    def test_no_auth_option_leaves_mode_none(self, pytester):
+        """With no auth option, auth_mode defaults to 'none'."""
+        pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
+        pytester.makepyfile(
+            """
+            from vip.plugin import _auth_mode_key
+
+            def test_mode(request):
+                assert request.config.stash.get(_auth_mode_key, "none") == "none"
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+
+    def test_interactive_auth_sets_mode(self, pytester):
+        """--interactive-auth sets _auth_mode_key to 'interactive'."""
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+            ),
+        )
+        pytester.makeconftest(self._FAKE_AUTH_CONFTEST)
+        pytester.makepyfile(
+            """
+            from vip.plugin import _auth_mode_key
+
+            def test_mode(request):
+                assert request.config.stash.get(_auth_mode_key, None) == "interactive"
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "--interactive-auth", "-v")
+        result.assert_outcomes(passed=1)
+
+    def test_headless_auth_sets_mode(self, pytester, monkeypatch):
+        """--headless-auth sets _auth_mode_key to 'headless'."""
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "password"\n'
+            ),
+        )
+        pytester.makeconftest(self._FAKE_AUTH_CONFTEST)
+        pytester.makepyfile(
+            """
+            from vip.plugin import _auth_mode_key
+
+            def test_mode(request):
+                assert request.config.stash.get(_auth_mode_key, None) == "headless"
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "--headless-auth", "-v")
+        result.assert_outcomes(passed=1)
+
+    @pytest.mark.parametrize(
+        ("auth_flag", "expected_mode"),
+        [("--interactive-auth", "interactive"), ("--headless-auth", "headless")],
+    )
+    def test_auth_mode_forwarded_to_xdist_workers(
+        self, pytester, monkeypatch, auth_flag, expected_mode
+    ):
+        """Controller forwards vip_auth_mode via workerinput; workers restore it.
+
+        Each test records ``workerid`` into a shared marker dir; we then assert
+        that *both* xdist workers actually executed tests (not just that every
+        test saw the restored mode). With only 2 tests the load scheduler can
+        assign both to one worker, so we parametrize 8 tests and check the
+        distinct-workerid set.
+        """
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "password"\n'
+            ),
+        )
+        marker_dir = pytester.path / "worker_markers"
+        marker_dir.mkdir()
+        pytester.makeconftest(self._FAKE_AUTH_CONFTEST)
+        pytester.makepyfile(
+            f"""
+            import pytest
+            from vip.plugin import _auth_mode_key
+
+            MARKER_DIR = {str(marker_dir)!r}
+
+            @pytest.mark.parametrize("i", list(range(8)))
+            def test_worker_mode(request, i):
+                assert hasattr(request.config, "workerinput"), "expected xdist worker"
+                assert request.config.stash[_auth_mode_key] == {expected_mode!r}
+                workerid = request.config.workerinput["workerid"]
+                open(f"{{MARKER_DIR}}/{{workerid}}", "a").close()
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", auth_flag, "-n", "2", "-v")
+        result.assert_outcomes(passed=8)
+        workerids = {p.name for p in marker_dir.iterdir()}
+        assert len(workerids) == 2, (
+            f"expected both xdist workers to restore mode, got workerids={workerids}"
+        )
+
+
 class TestHeartbeat:
     """Unit tests for the long-running test heartbeat."""
 

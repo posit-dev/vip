@@ -9,7 +9,7 @@ from vip.clients.connect import ConnectClient
 from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
 from vip.config import PerformanceConfig, VIPConfig
-from vip.plugin import _auth_session_key, _vip_config_key
+from vip.plugin import _auth_mode_key, _auth_session_key, _vip_config_key
 
 # pytest-bdd step definitions with target_fixture return values intentionally;
 # pytest 9.x warns about non-None returns from test functions. Scoped to
@@ -89,21 +89,19 @@ def pm_url(vip_config: VIPConfig) -> str:
 
 @pytest.fixture(scope="session")
 def interactive_auth(request: pytest.FixtureRequest) -> bool:
-    """Whether interactive auth was used for this session.
+    """Whether any pre-test auth flow established a browser session.
 
-    True for either ``--interactive-auth`` or ``--headless-auth`` — both
-    populate the auth session stash and produce a browser storage state.
+    Returns True for both ``--interactive-auth`` and ``--headless-auth``; use
+    the ``auth_mode`` fixture to distinguish which mode is active.
     """
     session = request.config.stash.get(_auth_session_key, None)
     return session is not None
 
 
 @pytest.fixture(scope="session")
-def headless_auth(request: pytest.FixtureRequest) -> bool:
-    """Whether ``--headless-auth`` specifically was used for this session."""
-    if not request.config.getoption("--headless-auth", default=False):
-        return False
-    return request.config.stash.get(_auth_session_key, None) is not None
+def auth_mode(request: pytest.FixtureRequest) -> str:
+    """The active auth mode: ``"interactive"``, ``"headless"``, or ``"none"``."""
+    return request.config.stash.get(_auth_mode_key, "none")
 
 
 @pytest.fixture(scope="session")

@@ -33,7 +33,7 @@ import Footer from "../components/Footer.astro";
           <h2>Quick start</h2>
           <p>Install VIP, then point it at your server:</p>
           <pre><code>uv pip install posit-vip
-uv run playwright install chromium</code></pre>
+uv run playwright install --with-deps chromium</code></pre>
 
           <h3>Using RStudio or Positron?</h3>
           <p>
@@ -43,7 +43,7 @@ uv run playwright install chromium</code></pre>
             the Repository URL. Then install dependencies from the Terminal tab:
           </p>
           <pre><code>uv sync
-uv run playwright install chromium</code></pre>
+uv run playwright install --with-deps chromium</code></pre>
           <p>
             See the <a href="../shiny-app/">Shiny app</a> page for the full
             graphical workflow.

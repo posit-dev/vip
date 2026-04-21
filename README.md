@@ -17,7 +17,7 @@ that can be published to a Connect server.
 
 ```bash
 uv pip install posit-vip
-uv run playwright install chromium
+uv run playwright install --with-deps chromium
 vip verify --connect-url https://connect.example.com --interactive-auth
 ```
 

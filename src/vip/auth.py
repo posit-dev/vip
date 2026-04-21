@@ -1,14 +1,9 @@
 """Interactive browser authentication for OIDC providers.
 
 Opens a headed Chromium browser for the user to complete an OIDC login
-flow, mints a temporary Connect API key via the UI, saves the browser
-storage state, then closes the browser before tests start.
-
-.. warning::
-
-    The UI automation in ``_create_api_key_via_ui`` is inherently fragile
-    and may break across Connect versions.  If Connect gains a programmatic
-    endpoint for temporary key creation, this should be replaced.
+flow, mints a temporary Connect API key by calling the Connect REST API
+with the browser's session cookies, saves the browser storage state, then
+closes the browser before tests start.
 """
 
 from __future__ import annotations
@@ -17,8 +12,10 @@ import os
 import shutil
 import tempfile
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from playwright.sync_api import (
     Error as PlaywrightError,
@@ -39,6 +36,43 @@ class AuthConfigError(ValueError):
 # Prefix for VIP-managed API keys.  A timestamp is appended per run.
 _KEY_NAME_PREFIX = "_vip_interactive_"
 
+# Orphan keys younger than this are left alone so a concurrent ``vip verify``
+# run does not have its freshly-minted key yanked out from under it.  Cleanup
+# is for keys whose process crashed before running ``cleanup()``; anything
+# recent enough to still belong to a live run is out of scope.
+_ORPHAN_MIN_AGE_SECONDS = 3600
+
+
+# Substrings that indicate the chromium launch failed because host-level
+# system libraries (libatk, libgbm, libasound, ...) are not installed.  See
+# https://github.com/posit-dev/vip/issues/169.
+_MISSING_DEPS_SIGNALS = (
+    "host system is missing dependencies",
+    "error while loading shared libraries",
+)
+
+_MISSING_DEPS_HINT = (
+    "Chromium could not launch because required system libraries are missing "
+    "on this host. Install them with:\n\n"
+    "    uv run playwright install --with-deps chromium"
+)
+
+
+def _launch_chromium(pw, *, headless: bool):
+    """Launch Chromium via Playwright, turning missing-system-deps errors
+    into a clear :class:`AuthConfigError` with a remediation command.
+
+    Other Playwright errors (e.g. an already-running browser) propagate
+    unchanged so callers can surface them as needed.
+    """
+    try:
+        return pw.chromium.launch(headless=headless)
+    except PlaywrightError as exc:
+        text = str(exc).lower()
+        if any(signal in text for signal in _MISSING_DEPS_SIGNALS):
+            raise AuthConfigError(_MISSING_DEPS_HINT) from exc
+        raise
+
 
 @dataclass
 class InteractiveAuthSession:
@@ -55,10 +89,45 @@ class InteractiveAuthSession:
 
     _connect_url: str = field(default="", repr=False)
     _tmpdir: str = field(default="", repr=False)
+    _cache_path: Path | None = field(default=None, repr=False)
+
+    def _cache_references_this_key(self) -> bool:
+        """True when the on-disk cache still points at our ``api_key``.
+
+        If so, deleting the key at cleanup would break the next run's
+        cache hit (it would load a dead key and 401 on every request).
+        We'd rather leave the key alive; ``_delete_stale_vip_keys`` at
+        the next real mint reaps anything older than the orphan window.
+
+        Both the storage-state file *and* the companion meta file must
+        exist *and be valid JSON*: a stale meta without the state file,
+        or a corrupted state file Playwright can't load, is not
+        reachable as a cache hit, so our key isn't truly referenced and
+        should be deleted rather than orphaned.
+        """
+        if not self._cache_path or not self.api_key:
+            return False
+        if not self._cache_path.exists():
+            return False
+        meta_path = self._cache_path.with_suffix(".meta.json")
+        if not meta_path.exists():
+            return False
+        try:
+            import json
+
+            # Validate the cache state file is parseable JSON.  A corrupt
+            # state file would make Playwright's ``storage_state=`` load
+            # fail on the next run; treating it as a live reference would
+            # leak the API key until the next mint-time sweep.
+            json.loads(self._cache_path.read_text())
+            meta = json.loads(meta_path.read_text())
+        except (OSError, ValueError):
+            return False
+        return meta.get("api_key") == self.api_key
 
     def cleanup(self) -> None:
         """Delete the minted API key and remove the temp directory."""
-        if self.api_key and self._connect_url:
+        if self.api_key and self._connect_url and not self._cache_references_this_key():
             try:
                 _delete_api_key(self._connect_url, self.api_key, self.key_name)
             except Exception as exc:
@@ -101,13 +170,28 @@ def _load_cached_auth(cache_path: Path) -> InteractiveAuthSession | None:
         key_name=key_name,
         _connect_url=connect_url,
         _tmpdir="",
+        _cache_path=cache_path,
     )
 
 
 def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
-    """Save auth session metadata alongside the storage state."""
+    """Save auth session metadata alongside the storage state.
+
+    Skips the write when Connect was configured but key minting failed
+    (``_connect_url`` set, ``api_key`` falsy).  Caching that state
+    short-circuits subsequent runs via :func:`_load_cached_auth` and
+    suppresses the retry — so a single transient mint failure would
+    poison the cache for four hours and hide the specific warning that
+    explains *why* minting failed.
+    """
     import json
     import shutil as _shutil
+
+    if session._connect_url and not session.api_key:
+        print(
+            ">>> Skipping auth cache: API key minting failed; next run will retry authentication."
+        )
+        return
 
     # Copy storage state to the cache location.
     _shutil.copy2(session.storage_state_path, cache_path)
@@ -172,7 +256,7 @@ def start_interactive_auth(
     browser = None
     try:
         pw = sync_playwright().start()
-        browser = pw.chromium.launch(headless=False)
+        browser = _launch_chromium(pw, headless=False)
         context = browser.new_context()
         page = context.new_page()
 
@@ -220,7 +304,7 @@ def start_interactive_auth(
         # Mint Connect API key only if Connect is configured.
         api_key = None
         if connect_url:
-            api_key = _create_api_key_via_ui(page, connect_url, key_name)
+            api_key = _create_api_key_via_session(page, connect_url, key_name)
 
         # Visit Workbench so the storage state includes its session cookies.
         if workbench_url and connect_url:
@@ -234,6 +318,7 @@ def start_interactive_auth(
             key_name=key_name,
             _connect_url=connect_url or "",
             _tmpdir=tmpdir,
+            _cache_path=cache_path,
         )
 
         # Cache the session for reuse across runs.
@@ -334,7 +419,7 @@ def start_headless_auth(
     browser = None
     try:
         pw = sync_playwright().start()
-        browser = pw.chromium.launch(headless=True)
+        browser = _launch_chromium(pw, headless=True)
         context = browser.new_context()
         page = context.new_page()
 
@@ -373,7 +458,7 @@ def start_headless_auth(
         # Mint Connect API key only if Connect is configured.
         api_key = None
         if connect_url:
-            api_key = _create_api_key_via_ui(page, connect_url, key_name)
+            api_key = _create_api_key_via_session(page, connect_url, key_name)
 
         # Visit Workbench so the storage state includes its session cookies.
         if workbench_url and connect_url:
@@ -387,6 +472,7 @@ def start_headless_auth(
             key_name=key_name,
             _connect_url=connect_url or "",
             _tmpdir=tmpdir,
+            _cache_path=cache_path,
         )
 
         if cache_path:
@@ -527,8 +613,16 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> None:
     wb_base = workbench_url.rstrip("/").lower()
     print(f"\n>>> Authenticating to Workbench at {workbench_url} ...")
 
-    page.goto(workbench_url)
-    page.wait_for_load_state("networkidle")
+    try:
+        page.goto(workbench_url)
+        page.wait_for_load_state("networkidle")
+    except PlaywrightError as exc:
+        print(
+            f">>> Warning: Could not reach Workbench at {workbench_url}: {exc}\n"
+            ">>> Verify the URL is correct and accessible. "
+            "Workbench tests may be skipped.\n"
+        )
+        return
 
     # Quick check — already on the Workbench dashboard?
     url = page.url
@@ -579,132 +673,6 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> None:
     )
 
 
-def _create_api_key_via_ui(page: Page, connect_url: str, key_name: str) -> str | None:
-    """Navigate the Connect UI to create an API key.
-
-    Also deletes any orphaned ``_vip_interactive_*`` keys left over from
-    previous runs that crashed before cleanup.
-
-    Returns the API key string, or None on failure.
-    """
-    base = connect_url.rstrip("/")
-
-    try:
-        # Navigate to the Connect dashboard
-        page.goto(f"{base}/connect/#/")
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(2_000)
-
-        # Open user dropdown by clicking the user panel area (top-right).
-        # Uses JS to find the element by position since Connect versions
-        # vary in their markup.
-        page.evaluate(
-            """() => {
-            const els = document.querySelectorAll('a, button, [role="button"], span');
-            for (const el of els) {
-                const rect = el.getBoundingClientRect();
-                if (rect.right > window.innerWidth - 200 && rect.top < 60) {
-                    const text = el.textContent || '';
-                    if (text.includes('.') && text.length < 30) {
-                        el.click();
-                        return;
-                    }
-                }
-            }
-        }"""
-        )
-        page.wait_for_timeout(1_000)
-
-        page.get_by_text("Manage Your API Keys").click(timeout=5_000)
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(1_000)
-
-        # Delete orphaned VIP keys from previous runs
-        _delete_orphaned_keys(page)
-
-        # Click "+ New API Key"
-        page.locator("text=New API Key").first.click(timeout=5_000)
-        page.wait_for_timeout(1_000)
-
-        # Fill in the key name
-        name_input = page.locator("input[type='text']").first
-        name_input.fill(key_name)
-        page.wait_for_timeout(300)
-
-        # Click Create button
-        page.locator("button:has-text('Create'),button[type='submit']").first.click(timeout=5_000)
-        page.wait_for_timeout(1_000)
-
-        # Extract the generated key — Connect shows it in a read-only
-        # input, a code block, or a text element in the dialog
-        api_key = None
-        for selector in [
-            "input[readonly]",
-            "code",
-            ".api-key-value",
-            "pre",
-            "[data-automation='api-key-value']",
-        ]:
-            el = page.locator(selector).first
-            try:
-                val = el.input_value(timeout=2_000)
-            except Exception:
-                try:
-                    val = el.text_content(timeout=2_000) or ""
-                except Exception:
-                    continue
-            if val and len(val) > 20:
-                api_key = val.strip()
-                break
-
-        if not api_key:
-            print(">>> Warning: Could not read API key from Connect UI.")
-            print(">>> Set VIP_CONNECT_API_KEY manually for API-based tests.\n")
-            return None
-
-        print(">>> Connect API key created via UI.\n")
-
-        # Close the dialog
-        try:
-            page.locator(
-                "button:has-text('Close'),"
-                "button:has-text('Done'),"
-                "button:has-text('OK'),"
-                "[aria-label='Close']"
-            ).first.click(timeout=3_000)
-        except Exception:
-            page.keyboard.press("Escape")
-
-        return api_key
-    except Exception as exc:
-        print(f">>> Warning: Could not create API key via UI: {exc}")
-        print(">>> Set VIP_CONNECT_API_KEY manually for API-based tests.\n")
-        return None
-
-
-def _delete_orphaned_keys(page: Page) -> None:
-    """Delete any leftover _vip_interactive_* keys visible on the API Keys page."""
-    try:
-        rows = page.locator("tr, [role='row']").all()
-        for row in rows:
-            text = row.text_content() or ""
-            if _KEY_NAME_PREFIX in text:
-                delete_btn = row.locator(
-                    "button[aria-label='Delete'], button:has-text('Delete'), [title='Delete']"
-                ).first
-                try:
-                    delete_btn.click(timeout=2_000)
-                    # Confirm deletion if a dialog appears
-                    page.locator("button:has-text('Yes'),button:has-text('Delete')").first.click(
-                        timeout=2_000
-                    )
-                    page.wait_for_timeout(500)
-                except Exception:
-                    pass
-    except Exception:
-        pass  # Best-effort cleanup of orphans
-
-
 def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
     """Delete the VIP API key using the key itself for authentication."""
     import httpx
@@ -735,3 +703,240 @@ def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
                     return
             break
         print(">>> Warning: Could not find API key to delete.\n")
+
+
+_XSRF_COOKIE_NAMES = ("RSC-XSRF", "RSC-XSRF-legacy")
+
+
+def _xsrf_from_page(page: Page, request_url: str) -> str:
+    """Read the XSRF cookie value from the browser context for ``request_url``.
+
+    Connect's XSRF check compares the cookie value to the ``X-Rsc-Xsrf``
+    header.  Production deployments use one of two cookie names:
+
+    * ``RSC-XSRF`` — default on fresh installs.
+    * ``RSC-XSRF-legacy`` — set when the server runs in legacy cookie
+      mode (e.g. ``connect.posit.it``).  The paired session cookie is
+      ``rsconnect-legacy``.  The header name stays ``X-Rsc-Xsrf``.
+
+    Playwright's ``cookies(url)`` filter implements RFC 6265 path
+    matching: ``Path=/__api__/`` only matches request paths *under*
+    ``/__api__/``.  Pass the actual endpoint URL (e.g.
+    ``.../__api__/v1/user``) — not the bare ``/__api__`` base — or
+    cookies set with a trailing-slash path get silently excluded and
+    Connect replies ``HTTP 403 XSRF token mismatch``.  Reading via the
+    cookie jar rather than ``document.cookie`` also handles
+    ``HttpOnly`` uniformly.
+    """
+    try:
+        jar = page.context.cookies(request_url) or []
+    except PlaywrightError:
+        return ""
+    by_name = {c.get("name"): c.get("value") or "" for c in jar}
+    for name in _XSRF_COOKIE_NAMES:
+        if by_name.get(name):
+            return by_name[name]
+    return ""
+
+
+def _summarize_cookies(jar: Sequence[Mapping[str, Any]]) -> list[dict]:
+    return [
+        {
+            "name": c.get("name"),
+            "domain": c.get("domain"),
+            "path": c.get("path"),
+            "httpOnly": c.get("httpOnly"),
+            "len": len(c.get("value") or ""),
+        }
+        for c in jar
+    ]
+
+
+def _log_mint_cookie_diagnostic(page: Page, request_url: str) -> None:
+    """Print what we see in the browser when minting fails.
+
+    Turns an opaque XSRF mismatch into actionable evidence: the page
+    URL, the full jar (to spot cross-domain shadows), the jar filtered
+    to the actual endpoint URL under ``/__api__/`` (what truly rides
+    the request, respecting RFC 6265 path matching), and
+    ``document.cookie`` names.  If these two cookie lists disagree on
+    ``RSC-XSRF`` / ``RSC-XSRF-legacy``, the mismatch is almost certainly
+    another domain — or a path-scoped cookie — poisoning the unfiltered
+    view.
+    """
+    try:
+        current_url = page.url
+    except Exception:
+        current_url = "<unknown>"
+    print(f">>> Mint diagnostic: browser is on {current_url}")
+    try:
+        jar = page.context.cookies() or []
+        print(f">>> Mint diagnostic: full cookie jar ({len(jar)} entries):")
+        for entry in _summarize_cookies(jar):
+            print(f"    {entry}")
+    except Exception as exc:
+        print(f">>> Mint diagnostic: could not read cookie jar: {exc}")
+    try:
+        scoped = page.context.cookies(request_url) or []
+        print(f">>> Mint diagnostic: cookies sent to {request_url} ({len(scoped)} entries):")
+        for entry in _summarize_cookies(scoped):
+            print(f"    {entry}")
+    except Exception as exc:
+        print(f">>> Mint diagnostic: could not read scoped cookies: {exc}")
+    try:
+        doc_cookie = page.evaluate("() => document.cookie") or ""
+        doc_names = [p.strip().partition("=")[0] for p in doc_cookie.split(";") if p.strip()]
+        print(f">>> Mint diagnostic: document.cookie names: {doc_names}")
+    except Exception as exc:
+        print(f">>> Mint diagnostic: could not read document.cookie: {exc}")
+
+
+def _response_text(resp) -> str:
+    """Read a response body, tolerating both Playwright and httpx shapes.
+
+    Playwright's ``APIResponse.text`` is a method; httpx's is a property.
+    Tests sometimes stub it as a plain string.  Duck-type all three.
+    """
+    text_attr = getattr(resp, "text", None)
+    if callable(text_attr):
+        return text_attr() or ""
+    return text_attr or ""
+
+
+def _delete_stale_vip_keys(req, base_url: str, guid: str, headers: dict[str, str]) -> None:
+    """Delete ``_vip_interactive_<ts>`` keys older than
+    :data:`_ORPHAN_MIN_AGE_SECONDS`.
+
+    Best-effort: network failures and unparseable names are swallowed so a
+    single stuck orphan does not block fresh key creation.  Keys younger than
+    the threshold are left alone because they probably belong to another
+    ``vip verify`` still running.
+    """
+    try:
+        list_resp = req.get(f"{base_url}/v1/users/{guid}/keys", headers=headers)
+    except PlaywrightError as exc:
+        print(f">>> Warning: listing stale keys failed: {exc}")
+        return
+    if not list_resp.ok:
+        return
+
+    now = int(time.time())
+    try:
+        entries = list_resp.json()
+    except (ValueError, PlaywrightError):
+        return
+    if not isinstance(entries, list):
+        print(f">>> Warning: key list response was {type(entries).__name__}, not list.")
+        return
+
+    for k in entries:
+        if not isinstance(k, dict):
+            continue
+        name = k.get("name") or ""
+        key_id = k.get("id")
+        if not name.startswith(_KEY_NAME_PREFIX) or not key_id:
+            continue
+        suffix = name[len(_KEY_NAME_PREFIX) :]
+        try:
+            created_ts = int(suffix)
+        except ValueError:
+            # Legacy key without a timestamp suffix — treat as old.
+            created_ts = 0
+        if now - created_ts < _ORPHAN_MIN_AGE_SECONDS:
+            continue  # belongs to a concurrent run
+        try:
+            req.delete(f"{base_url}/v1/users/{guid}/keys/{key_id}", headers=headers)
+        except PlaywrightError as exc:
+            print(f">>> Warning: could not delete stale key {key_id}: {exc}")
+
+
+def _body_snippet(resp, limit: int = 200) -> str:
+    """Return a short, single-line preview of an HTTP response body.
+
+    Connect's API error responses include ``error``/``code`` fields that name
+    the actual failure reason (CSRF rejection, MFA step-up, etc.).  Including
+    a trimmed body snippet in failure warnings turns opaque ``HTTP 403`` into
+    something the user can act on.
+    """
+    try:
+        text = _response_text(resp).strip()
+    except Exception:
+        return "<unreadable body>"
+    text = " ".join(text.split())
+    return text[:limit] if text else "<empty body>"
+
+
+def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> str | None:
+    """Create a Connect API key by reusing the browser's authenticated session.
+
+    Routes every request through ``page.context.request`` (Playwright's
+    ``APIRequestContext``) so cookies ride the same wire format the browser
+    uses, and reads the XSRF cookie via ``page.context.cookies()``.  The
+    cookie is named ``RSC-XSRF`` on fresh Connect installs but
+    ``RSC-XSRF-legacy`` on servers running in legacy cookie mode;
+    :func:`_xsrf_from_page` tries both.  Missing the correct name entirely
+    yields ``HTTP 403 XSRF token mismatch`` from Connect's double-submit
+    check.
+
+    Hits ``/__api__/v1/users/{guid}/keys`` — the same endpoint the Connect
+    dashboard's "+ New API Key" button uses.  See
+    https://docs.posit.co/connect/api/ (operationId: createKey).
+
+    Before creating the new key, deletes any lingering ``_vip_interactive_*``
+    keys left over from previous runs that crashed before cleanup.  Keys
+    younger than :data:`_ORPHAN_MIN_AGE_SECONDS` are skipped so we do not
+    delete a concurrent run's live key.
+
+    Returns the API key string, or ``None`` on failure (no exception).
+    """
+    base = connect_url.rstrip("/") + "/__api__"
+    me_url = f"{base}/v1/user"
+    # Scope cookie lookup to an actual endpoint path.  RFC 6265 cookie
+    # path matching means ``Path=/__api__/`` does *not* match a request
+    # to ``/__api__`` (no trailing slash).  Using ``me_url`` matches
+    # whatever path the server set the cookie under.
+    xsrf = _xsrf_from_page(page, me_url)
+    headers = {"X-Rsc-Xsrf": xsrf} if xsrf else {}
+
+    req = page.context.request
+
+    try:
+        me_resp = req.get(me_url, headers=headers)
+        if not me_resp.ok:
+            print(
+                f">>> Warning: GET /v1/user returned HTTP {me_resp.status}: "
+                f"{_body_snippet(me_resp)}"
+            )
+            xsrf_preview = f"{xsrf[:4]}…(len={len(xsrf)})" if xsrf else "<none>"
+            print(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
+            _log_mint_cookie_diagnostic(page, me_url)
+            return None
+        guid = me_resp.json().get("guid")
+        if not guid:
+            print(">>> Warning: Connect did not return a user guid.")
+            return None
+
+        _delete_stale_vip_keys(req, base, guid, headers)
+
+        create_resp = req.post(
+            f"{base}/v1/users/{guid}/keys",
+            headers=headers,
+            data={"name": key_name},
+        )
+        if not create_resp.ok:
+            print(
+                f">>> Warning: POST /v1/users/{guid}/keys returned HTTP "
+                f"{create_resp.status}: {_body_snippet(create_resp)}"
+            )
+            return None
+
+        api_key = create_resp.json().get("key")
+        if not api_key:
+            print(">>> Warning: Connect response did not include a key string.")
+            return None
+
+        print(">>> Connect API key created.\n")
+        return api_key
+    except (PlaywrightError, ValueError, KeyError) as exc:
+        print(f">>> Warning: Could not create API key: {exc}")
+        return None

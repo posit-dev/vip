@@ -10,7 +10,7 @@ VIP is a BDD test suite that validates Posit Team deployments (Connect, Workbenc
 
 ``` bash
 uv sync                          # install dependencies
-uv run playwright install chromium
+uv run playwright install --with-deps chromium
 ```
 
 Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `python` or `pip` -- everything runs through uv.

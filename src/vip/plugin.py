@@ -40,6 +40,7 @@ _vip_config_key = pytest.StashKey[VIPConfig]()
 _ext_dirs_key = pytest.StashKey[list[str]]()
 _results_key = pytest.StashKey[list[dict[str, Any]]]()
 _auth_session_key = pytest.StashKey[Any]()
+_auth_mode_key = pytest.StashKey[str]()
 
 # Module-level reference to the active pytest.Config, set in pytest_configure.
 # Safe because pytester runs in a subprocess (fresh import each time).
@@ -171,6 +172,7 @@ def pytest_configure(config: pytest.Config) -> None:
         # xdist worker — restore auth data shared by the controller.
         _restore_worker_auth(config, vip_cfg)
     elif config.getoption("--interactive-auth"):
+        config.stash[_auth_mode_key] = "interactive"
         connect_url = vip_cfg.connect.url if vip_cfg.connect.is_configured else None
         wb_url = vip_cfg.workbench.url if vip_cfg.workbench.is_configured else None
 
@@ -195,10 +197,12 @@ def pytest_configure(config: pytest.Config) -> None:
             elif connect_url:
                 warnings.warn(
                     "VIP: --interactive-auth could not mint an API key. "
-                    "API-based tests will likely fail. Set VIP_CONNECT_API_KEY to fix.",
+                    "API-based tests will likely fail. "
+                    "Try again or set VIP_CONNECT_API_KEY to fix.",
                     stacklevel=1,
                 )
     elif config.getoption("--headless-auth"):
+        config.stash[_auth_mode_key] = "headless"
         connect_url = vip_cfg.connect.url if vip_cfg.connect.is_configured else None
         wb_url = vip_cfg.workbench.url if vip_cfg.workbench.is_configured else None
 
@@ -233,7 +237,8 @@ def pytest_configure(config: pytest.Config) -> None:
             elif connect_url:
                 warnings.warn(
                     "VIP: --headless-auth could not mint an API key. "
-                    "API-based tests will likely fail. Set VIP_CONNECT_API_KEY to fix.",
+                    "API-based tests will likely fail. "
+                    "Try again or set VIP_CONNECT_API_KEY to fix.",
                     stacklevel=1,
                 )
 
@@ -257,6 +262,9 @@ def _restore_worker_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
         _tmpdir="",  # Workers don't own the temp dir; controller cleans up.
     )
     config.stash[_auth_session_key] = session
+    mode = wi.get("vip_auth_mode")
+    if mode:
+        config.stash[_auth_mode_key] = mode
 
 
 def pytest_configure_node(node) -> None:
@@ -268,6 +276,7 @@ def pytest_configure_node(node) -> None:
         node.workerinput["vip_storage_state"] = str(auth.storage_state_path)
         node.workerinput["vip_key_name"] = auth.key_name
         node.workerinput["vip_connect_url"] = auth._connect_url
+        node.workerinput["vip_auth_mode"] = node.config.stash.get(_auth_mode_key, "")
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
