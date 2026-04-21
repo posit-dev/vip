@@ -439,25 +439,28 @@ else:
         f"**Passed:** {passed} · **Failed:** {failed}"
     ))
 
-    def _escape_md_table_cell(value):
-        text = html.escape(str(value or ""), quote=True)
-        text = text.replace("|", "&#124;")
-        return text.replace("\n", "<br>")
-
-    rows = []
+    # Render as raw HTML rather than a large Markdown pipe table.
+    # Pandoc's pipe-table reader hangs on tables with many rows that
+    # contain long/pre-escaped cells (observed >3min on ~300 rows in CI);
+    # raw HTML is passed through verbatim.
+    _rows_html = []
     for r in results:
-        group = _escape_md_table_cell(r.get("group", {}).get("name", ""))
-        test = _escape_md_table_cell(r.get("test", {}).get("name", ""))
+        group = html.escape(str(r.get("group", {}).get("name", "") or ""))
+        test = html.escape(str(r.get("test", {}).get("name", "") or ""))
         status = "✅" if r.get("passed") else "❌"
-        output = _escape_md_table_cell(r.get("output", "").strip())
-        error = _escape_md_table_cell(r.get("error", "").strip())
-        detail = error if error else output
-        rows.append(f"| {status} | {group} | {test} | {detail} |")
+        raw_output = str(r.get("output", "") or "").strip()
+        raw_error = str(r.get("error", "") or "").strip()
+        raw_detail = raw_error if raw_error else raw_output
+        detail = html.escape(raw_detail).replace("\n", "<br>")
+        _rows_html.append(
+            f"<tr><td>{status}</td><td>{group}</td>"
+            f"<td>{test}</td><td>{detail}</td></tr>"
+        )
 
-    table = (
-        "| | Group | Check | Detail |\n"
-        "|---|-------|-------|--------|\n"
-        + "\n".join(rows)
-    )
-    display(Markdown(table))
+    display(HTML(
+        "<table><thead><tr><th></th><th>Group</th>"
+        "<th>Check</th><th>Detail</th></tr></thead><tbody>"
+        + "".join(_rows_html)
+        + "</tbody></table>"
+    ))
 ```

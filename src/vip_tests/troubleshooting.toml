@@ -55,7 +55,7 @@ likely_causes = [
 suggested_steps = [
     "Export credentials: `export VIP_TEST_USERNAME=... VIP_TEST_PASSWORD=...`",
     "Or add them to your .envrc and run `direnv allow`",
-    "If using Okta/OIDC, use `--interactive-auth` instead of credentials",
+    "If using Okta/OIDC, use `--interactive-auth` or `--headless-auth` instead of credentials",
 ]
 
 ["User can log in via the web UI"]
@@ -69,8 +69,8 @@ likely_causes = [
 suggested_steps = [
     "Verify credentials work by logging in manually at the Connect URL",
     "Check auth provider settings in Connect admin panel",
-    "Run `uv run playwright install chromium` to ensure browser is available",
-    "If using external IdP, try `--interactive-auth`",
+    "Run `uv run playwright install --with-deps chromium` to ensure the browser and its system libraries are installed",
+    "If using external IdP, try `--interactive-auth` or `--headless-auth`",
 ]
 docs_url = "https://docs.posit.co/connect/admin/authentication/"
 

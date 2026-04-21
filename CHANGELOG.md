@@ -1,6 +1,148 @@
 # CHANGELOG
 
 
+## v0.24.10 (2026-04-21)
+
+### Bug Fixes
+
+- **ssl**: Tls verification test fails with unclear error behind SSL-terminating proxy
+  ([#198](https://github.com/posit-dev/vip/pull/198),
+  [`c057b80`](https://github.com/posit-dev/vip/commit/c057b805f48484bc0da10339edb4a8dc56ab42a1))
+
+
+## v0.24.9 (2026-04-21)
+
+### Bug Fixes
+
+- **auth**: Fix a number of auth test issues recently discovered
+  ([#201](https://github.com/posit-dev/vip/pull/201),
+  [`ec5882c`](https://github.com/posit-dev/vip/commit/ec5882cbfb57089d38b790de4b35a1c02300a7f8))
+
+### Chores
+
+- **deps**: Bump the python-dependencies group across 1 directory with 4 updates
+  ([#200](https://github.com/posit-dev/vip/pull/200),
+  [`481f2c7`](https://github.com/posit-dev/vip/commit/481f2c7287047b65d7949b1e534e913fbb2ae12f))
+
+### Continuous Integration
+
+- **report**: Guard Quarto render against remaining hang causes
+  ([#197](https://github.com/posit-dev/vip/pull/197),
+  [`ad7b6c6`](https://github.com/posit-dev/vip/commit/ad7b6c6ddc57835f272a0de2d2e31315000efb07))
+
+
+## v0.24.8 (2026-04-20)
+
+### Bug Fixes
+
+- **config**: Normalize product URLs — trailing slash for sub-path URLs only
+  ([#188](https://github.com/posit-dev/vip/pull/188),
+  [`7f7a1d1`](https://github.com/posit-dev/vip/commit/7f7a1d1df2508b976f78a5e31201c78b0fe47e64))
+
+### Continuous Integration
+
+- Remove showboat from GHA workflows ([#199](https://github.com/posit-dev/vip/pull/199),
+  [`aea18d6`](https://github.com/posit-dev/vip/commit/aea18d6a20875e4860c19261b4a378b15e6d4ef1))
+
+
+## v0.24.7 (2026-04-18)
+
+### Bug Fixes
+
+- **cli**: Always pass absolute --vip-config to pytest
+  ([#194](https://github.com/posit-dev/vip/pull/194),
+  [`93d0eb4`](https://github.com/posit-dev/vip/commit/93d0eb4969974fcbe32decb5d5b36f1f694260af))
+
+
+## v0.24.6 (2026-04-18)
+
+### Bug Fixes
+
+- **security**: Move config hygiene tests to opt-in category
+  ([#195](https://github.com/posit-dev/vip/pull/195),
+  [`aea86af`](https://github.com/posit-dev/vip/commit/aea86af33e42cfdb9c0199bc881a899e126e511a))
+
+### Continuous Integration
+
+- **report**: Prevent Quarto render from hanging in example report job
+  ([#196](https://github.com/posit-dev/vip/pull/196),
+  [`5206402`](https://github.com/posit-dev/vip/commit/5206402c2116084b81effe38040b15e8c057d482))
+
+### Refactoring
+
+- **cli**: Share DEFAULT_TEST_TIMEOUT_SECONDS and fix TOML help wording
+  ([#192](https://github.com/posit-dev/vip/pull/192),
+  [`bde0a11`](https://github.com/posit-dev/vip/commit/bde0a11501c3a11f15546e5ec9e1ee8079f5681a))
+
+
+## v0.24.5 (2026-04-18)
+
+### Bug Fixes
+
+- **auth**: Skip headless auth when no auth-requiring products configured
+  ([#193](https://github.com/posit-dev/vip/pull/193),
+  [`f330e13`](https://github.com/posit-dev/vip/commit/f330e13f2e8a601c3d270c26a0aab85079150c7c))
+
+Co-authored-by: Claude <noreply@anthropic.com>
+
+### Chores
+
+- **deps**: Bump github/gh-aw-actions from 0.67.1 to 0.67.3 in the actions-dependencies group
+  ([#164](https://github.com/posit-dev/vip/pull/164),
+  [`9c141eb`](https://github.com/posit-dev/vip/commit/9c141eb1ed0cc92fd6e9a77f309cabc1eeb701ea))
+
+
+## v0.24.4 (2026-04-18)
+
+### Bug Fixes
+
+- **cli**: Raise default --test-timeout to 3600s for Connect deploys
+  ([#191](https://github.com/posit-dev/vip/pull/191),
+  [`15b1c3e`](https://github.com/posit-dev/vip/commit/15b1c3e9a2c568a1f451bcf863032c89599f7092))
+
+
+## v0.24.3 (2026-04-18)
+
+### Bug Fixes
+
+- **performance**: Update locust install instructions to use uv
+  ([#190](https://github.com/posit-dev/vip/pull/190),
+  [`58614ab`](https://github.com/posit-dev/vip/commit/58614abb8192c932607b81963bfe3d64cec1edba))
+
+
+## v0.24.2 (2026-04-18)
+
+### Bug Fixes
+
+- **security**: Catch ConnectError with helpful skip message
+  ([#189](https://github.com/posit-dev/vip/pull/189),
+  [`c5dc180`](https://github.com/posit-dev/vip/commit/c5dc180695712d16ccf724f436de68fdc77a9fb0))
+
+
+## v0.24.1 (2026-04-17)
+
+### Bug Fixes
+
+- Remove warnings when running from install ([#168](https://github.com/posit-dev/vip/pull/168),
+  [`b5b5f09`](https://github.com/posit-dev/vip/commit/b5b5f093dccc553753d31fe716fe4fe346e610ba))
+
+
+## v0.24.0 (2026-04-17)
+
+### Features
+
+- Headless auth support ([#166](https://github.com/posit-dev/vip/pull/166),
+  [`8ed0997`](https://github.com/posit-dev/vip/commit/8ed0997ae7d9333c6a2dc15cd70424e562f3991a))
+
+
+## v0.23.0 (2026-04-17)
+
+### Features
+
+- Auth and PPM load testing usability ([#165](https://github.com/posit-dev/vip/pull/165),
+  [`b8159ce`](https://github.com/posit-dev/vip/commit/b8159ce072ac004c18cee63320e1b860dc5e8b63))
+
+
 ## v0.22.0 (2026-04-15)
 
 ### Features

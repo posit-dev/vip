@@ -5,7 +5,8 @@ USAGE:
 
 Derives semantic "test areas" by normalising feature file stems across
 categories, then cross-tabulates which products each area covers.  For
-cross-cutting categories (cross_product, performance, security, prerequisites)
+cross-cutting categories (cross_product, performance, security, prerequisites,
+config_hygiene)
 product coverage is inferred from scenario step text and secondary tags.
 """
 
@@ -33,7 +34,13 @@ PRODUCT_LABELS = {
 
 # Product-specific categories map 1:1 to a product.
 PRODUCT_CATEGORIES = {"connect", "workbench", "package_manager"}
-CROSS_CUTTING_CATEGORIES = {"prerequisites", "cross_product", "performance", "security"}
+CROSS_CUTTING_CATEGORIES = {
+    "prerequisites",
+    "cross_product",
+    "performance",
+    "security",
+    "config_hygiene",
+}
 
 # Human-friendly area names keyed by feature file stem.
 AREA_NAMES: dict[str, str] = {
@@ -81,6 +88,7 @@ CATEGORY_LABELS: dict[str, str] = {
     "cross_product": "Cross-Product",
     "performance": "Performance",
     "security": "Security",
+    "config_hygiene": "Config Hygiene",
 }
 
 
