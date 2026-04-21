@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given, scenario, then, when
 
 from vip_tests.workbench.conftest import (
@@ -64,9 +65,29 @@ def test_launch_positron():
 
 
 @pytest.fixture
-def session_context():
-    """Holds session name across steps."""
-    return {"name": None, "ide_type": None}
+def session_context(page: Page, workbench_url: str):
+    """Holds session name across steps, with best-effort cleanup on skip/fail.
+
+    If a session was started (``name`` is set) and the test aborted before the
+    "session is cleaned up" step ran, this finalizer navigates back to the
+    homepage and quits the session to prevent resource leaks.
+    """
+    ctx: dict = {"name": None, "ide_type": None, "cleaned_up": False}
+    yield ctx
+    if not ctx.get("name") or ctx.get("cleaned_up"):
+        return
+    try:
+        home_url = workbench_url.rstrip("/") + "/home"
+        page.goto(home_url)
+        checkbox = page.locator(Homepage.session_checkbox(ctx["name"]))
+        if checkbox.count() > 0:
+            checkbox.click()
+            quit_btn = page.locator(Homepage.QUIT_BUTTON)
+            if quit_btn.count() > 0:
+                quit_btn.click()
+    except Exception:
+        # Best-effort cleanup — don't mask the original failure/skip.
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -181,16 +202,13 @@ def rstudio_functional(page: Page):
 def _expect_ide_or_skip(page: Page, locator_str: str, ide_name: str) -> None:
     """Wait for the primary IDE element; skip if it times out (IDE may not be installed).
 
-    Playwright's ``expect().to_be_visible()`` raises ``AssertionError`` on timeout.
-    We match "timeout" in the message to distinguish timeouts from other assertion
-    failures.  This couples to Playwright's current message format — if it changes,
-    the guard will re-raise instead of skipping, which is the safe failure mode.
+    Uses ``Locator.wait_for(state="visible")`` which raises a Playwright
+    ``TimeoutError`` on timeout — a stable, typed distinction from other
+    assertion failures.  Any other exception propagates normally.
     """
     try:
-        expect(page.locator(locator_str)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-    except AssertionError as exc:
-        if "timeout" not in str(exc).lower():
-            raise
+        page.locator(locator_str).wait_for(state="visible", timeout=TIMEOUT_IDE_LOAD)
+    except PlaywrightTimeoutError as exc:
         pytest.skip(
             f"{ide_name} did not load within timeout — "
             f"the IDE may not be installed on this Workbench instance ({exc})"
@@ -317,6 +335,7 @@ def positron_console_accessible(page: Page):
 def session_cleaned_up(page: Page, workbench_url: str, session_context: dict):
     """Navigate back to homepage and quit the session."""
     session_name = session_context["name"]
+    session_context["cleaned_up"] = True
 
     # Navigate back to homepage (use /home to avoid login redirect)
     home_url = workbench_url.rstrip("/") + "/home"
