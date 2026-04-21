@@ -17,8 +17,14 @@ that can be published to a Connect server.
 
 ```bash
 uv pip install posit-vip
-uv run playwright install chromium
+uv run playwright install --with-deps chromium
 vip verify --connect-url https://connect.example.com --interactive-auth
+```
+
+On a headless server (no display), use `--headless-auth` instead:
+
+```bash
+vip verify --config vip.toml --headless-auth
 ```
 
 Run a specific test by name:

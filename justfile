@@ -7,7 +7,7 @@ default:
 # Install all dependencies with uv
 setup:
     uv sync
-    uv run playwright install chromium
+    uv run playwright install --with-deps chromium
 
 # Run ruff linter
 lint:

@@ -209,7 +209,7 @@ jobs:
 
       - uses: quarto-dev/quarto-actions/setup@v2
         with:
-          cache: true
+          version: 1.9.37
 
       # Generate vip.toml from with-connect and PM outputs
       - name: Configure VIP for CI

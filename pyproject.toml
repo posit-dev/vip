@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "0.22.0"
+version = "0.24.10"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -31,6 +31,7 @@ dependencies = [
     "tomli>=2.0;python_version<'3.11'",
     "requests>=2.33.0",  # transitive via pytest-playwright; pinned to track updates
     "pygments>=2.20.0",  # CVE-2026-4539 fix
+    "python-multipart>=0.0.26",  # CVE-2026-40347 fix; transitive via shiny
 ]
 
 [project.optional-dependencies]
@@ -83,11 +84,8 @@ packages = ["src/vip", "src/vip_tests"]
 [tool.pytest.ini_options]
 testpaths = ["src/vip_tests"]
 addopts = "--dist loadgroup"
-filterwarnings = [
-    # gherkin-official 29.0.0 passes maxsplit positionally to re.split;
-    # fixed upstream but pulled transitively via pytest-bdd.
-    "ignore:'maxsplit' is passed as positional argument:DeprecationWarning:gherkin",
-]
+# Warning filters live in src/vip/plugin.py::pytest_configure so they apply
+# anywhere vip is installed, not just runs from this repo.
 markers = [
     "connect: tests for Posit Connect",
     "workbench: tests for Posit Workbench",
@@ -96,6 +94,7 @@ markers = [
     "cross_product: tests that span multiple products",
     "performance: performance validation tests",
     "security: security validation tests",
+    "config_hygiene: checks of VIP's own configuration (opt-in; excluded by default)",
     "min_version(product, version): only run when product meets minimum version",
     "if_applicable: test is skipped when the feature is not configured",
 ]
