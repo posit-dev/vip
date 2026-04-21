@@ -137,9 +137,23 @@ def _load_cached_auth(cache_path: Path) -> InteractiveAuthSession | None:
 
 
 def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
-    """Save auth session metadata alongside the storage state."""
+    """Save auth session metadata alongside the storage state.
+
+    Skips the write when Connect was configured but key minting failed
+    (``_connect_url`` set, ``api_key`` falsy).  Caching that state
+    short-circuits subsequent runs via :func:`_load_cached_auth` and
+    suppresses the retry — so a single transient mint failure would
+    poison the cache for four hours and hide the specific warning that
+    explains *why* minting failed.
+    """
     import json
     import shutil as _shutil
+
+    if session._connect_url and not session.api_key:
+        print(
+            ">>> Skipping auth cache: API key minting failed; next run will retry authentication."
+        )
+        return
 
     # Copy storage state to the cache location.
     _shutil.copy2(session.storage_state_path, cache_path)

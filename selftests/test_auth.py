@@ -104,6 +104,66 @@ class TestStartHeadlessAuthPlaywrightErrors:
                 )
 
 
+class TestSaveAuthCache:
+    """_save_auth_cache must not poison the cache with failed mint attempts.
+
+    When Connect is configured but key minting failed, api_key is None.
+    Caching that state means subsequent runs short-circuit via the cache
+    and never re-attempt the mint — the specific warning explaining why
+    it failed is lost, and the user sees an opaque "set VIP_CONNECT_API_KEY"
+    warning for 4 hours."""
+
+    def _make_session(self, tmp_path, *, connect_url: str, api_key: str | None):
+        from vip.auth import InteractiveAuthSession
+
+        state = tmp_path / "state.json"
+        state.write_text('{"cookies": []}')
+        return InteractiveAuthSession(
+            storage_state_path=state,
+            api_key=api_key,
+            key_name="_vip_interactive_123",
+            _connect_url=connect_url,
+        )
+
+    def test_skips_cache_when_connect_configured_but_mint_failed(self, tmp_path):
+        from vip.auth import _save_auth_cache
+
+        session = self._make_session(tmp_path, connect_url="https://c.example.com", api_key=None)
+        cache = tmp_path / ".vip-auth-cache.json"
+
+        _save_auth_cache(session, cache)
+
+        assert not cache.exists(), "cache must not be written when mint failed"
+        assert not cache.with_suffix(".meta.json").exists()
+
+    def test_writes_cache_on_successful_mint(self, tmp_path):
+        from vip.auth import _save_auth_cache
+
+        session = self._make_session(
+            tmp_path, connect_url="https://c.example.com", api_key="REAL_KEY"
+        )
+        cache = tmp_path / ".vip-auth-cache.json"
+
+        _save_auth_cache(session, cache)
+
+        assert cache.exists()
+        meta = cache.with_suffix(".meta.json")
+        import json
+
+        assert json.loads(meta.read_text())["api_key"] == "REAL_KEY"
+
+    def test_writes_cache_when_connect_not_configured(self, tmp_path):
+        """Workbench-only flows: api_key=None is legitimate, cache storage state."""
+        from vip.auth import _save_auth_cache
+
+        session = self._make_session(tmp_path, connect_url="", api_key=None)
+        cache = tmp_path / ".vip-auth-cache.json"
+
+        _save_auth_cache(session, cache)
+
+        assert cache.exists()
+
+
 class TestAuthenticateWorkbench:
     """_authenticate_workbench establishes the Workbench SSO session after
     Connect auth has already succeeded.  Network failures here must NOT
