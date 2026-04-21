@@ -335,11 +335,14 @@ _PRODUCT_DIRS = {"connect", "workbench", "package_manager"}
 def _assign_xdist_group(item: pytest.Item) -> None:
     """Assign an ``xdist_group`` marker so each product runs on its own worker.
 
-    Tests under ``tests/connect/``, ``tests/workbench/``, or
-    ``tests/package_manager/`` are grouped by directory name.  Everything
-    else (prerequisites, cross_product, performance, security) lands in a
-    shared ``general`` group.
+    Respects any existing ``xdist_group`` marker (set via conftest.py
+    ``pytestmark`` or per-test decorators).  Otherwise, tests under
+    ``tests/connect/``, ``tests/workbench/``, or ``tests/package_manager/``
+    are grouped by directory name, and everything else (prerequisites,
+    cross_product, performance, security) lands in a shared ``general`` group.
     """
+    if item.get_closest_marker("xdist_group") is not None:
+        return
     fspath = getattr(item, "path", None) or Path()
     dir_name = fspath.parent.name
     group = dir_name if dir_name in _PRODUCT_DIRS else "general"
@@ -645,52 +648,76 @@ def pytest_runtest_protocol(item: pytest.Item, nextitem) -> Generator[None, None
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
+    """Attach VIP metadata to the report so it survives xdist serialization.
+
+    Under xdist, ``TestReport.__dict__`` is serialized and sent from worker
+    to controller.  Custom attributes set here travel with the report, making
+    them available in ``pytest_runtest_logreport`` on the controller where
+    result collection happens.
+    """
     outcome = yield
     report: pytest.TestReport = outcome.get_result()
+    if _active_config is None:
+        return
     if report.when == "call" or (report.when == "setup" and report.skipped):
-        if _active_config is None:
-            return
-        results = _active_config.stash.get(_results_key, None)
-        if results is None:
-            return
         markers: list[str] = []
-        scenario_meta: dict[str, str | None] = {}
         try:
             markers = [m.name for m in item.iter_markers()]
         except Exception:
             pass
+
         item_stash = getattr(item, "stash", None)
+        scenario_meta: dict[str, str | None] = {}
         if item_stash is not None:
             scenario_meta = item_stash.get(_scenario_stash_key, {})
-        longrepr_str = str(report.longrepr) if report.longrepr else None
-        concise_error = None
-        if report.outcome == "failed" and longrepr_str:
-            exc_type, exc_message = _extract_exception_info(longrepr_str)
-            concise_error = _format_concise_error(report.nodeid, exc_type, exc_message)
 
-        results.append(
-            {
-                "nodeid": report.nodeid,
-                "outcome": report.outcome,
-                "duration": report.duration,
-                "longrepr": longrepr_str,
-                "concise_error": concise_error,
-                "markers": markers,
-                "scenario_title": scenario_meta.get("scenario_title"),
-                "feature_description": scenario_meta.get("feature_description"),
-            }
-        )
+        # These attributes survive xdist worker→controller serialization.
+        report.vip_markers = markers  # type: ignore[attr-defined]
+        report.vip_scenario_title = scenario_meta.get("scenario_title")  # type: ignore[attr-defined]
+        report.vip_feature_description = scenario_meta.get("feature_description")  # type: ignore[attr-defined]
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
-    """Replace verbose tracebacks with concise error messages for terminal display.
+    """Collect results for JSON report and apply concise terminal display.
 
-    Runs after pytest_runtest_makereport has captured the full longrepr for
-    JSON reporting. This modifies report.longrepr in-place so the terminal
-    reporter shows the concise format.
+    Under xdist, ``pytest_runtest_makereport`` runs on workers but the
+    controller never sees the worker's stash.  This hook fires on the
+    controller for every forwarded result (via ``dsession.worker_testreport``),
+    making it the right place to aggregate results.  The ``workerinput``
+    guard skips processing on workers so results are collected exactly once.
     """
     if _active_config is None:
         return
+
+    # On xdist workers, skip all processing — the controller handles it.
+    # _active_config is a pytest.Config; xdist sets workerinput on worker configs.
+    if hasattr(_active_config, "workerinput"):
+        return
+
+    # --- Result collection (for JSON report) ---
+    if report.when == "call" or (report.when == "setup" and report.skipped):
+        results = _active_config.stash.get(_results_key, None)
+        if results is not None:
+            longrepr_str = str(report.longrepr) if report.longrepr else None
+            concise_error = None
+            if report.outcome == "failed" and longrepr_str:
+                exc_type, exc_message = _extract_exception_info(longrepr_str)
+                concise_error = _format_concise_error(report.nodeid, exc_type, exc_message)
+
+            results.append(
+                {
+                    "nodeid": report.nodeid,
+                    "outcome": report.outcome,
+                    "duration": report.duration,
+                    "longrepr": longrepr_str,
+                    "concise_error": concise_error,
+                    "markers": list(getattr(report, "vip_markers", ())),
+                    "scenario_title": getattr(report, "vip_scenario_title", None),
+                    "feature_description": getattr(report, "vip_feature_description", None),
+                }
+            )
+
+    # --- Concise terminal display ---
     if _active_config.getoption("--vip-verbose", default=False):
         return
     if report.outcome not in ("failed", "error"):

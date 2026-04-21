@@ -152,6 +152,9 @@ jobs:
 
       # Run the subset of tests that work against Docker Workbench
       - name: Run Workbench smoke tests
+        # -n 0 disables xdist (overriding -n auto from pyproject.toml) because
+        # the Docker Workbench returns "Temporary server error" when multiple
+        # workers attempt concurrent logins.
         run: |
           uv run pytest \
             src/vip_tests/prerequisites/test_components.py \
@@ -159,7 +162,7 @@ jobs:
             src/vip_tests/workbench/test_ide_launch.py \
             src/vip_tests/workbench/test_packages.py \
             src/vip_tests/workbench/test_data_sources.py \
-            -v -k "workbench" \
+            -v -k "workbench" -n 0 \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
 

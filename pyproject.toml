@@ -83,7 +83,7 @@ packages = ["src/vip", "src/vip_tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["src/vip_tests"]
-addopts = "--dist loadgroup"
+addopts = "-n auto --dist loadgroup"
 # Warning filters live in src/vip/plugin.py::pytest_configure so they apply
 # anywhere vip is installed, not just runs from this repo.
 markers = [
