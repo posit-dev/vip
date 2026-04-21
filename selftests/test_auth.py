@@ -164,6 +164,90 @@ class TestSaveAuthCache:
         assert cache.exists()
 
 
+class TestInteractiveAuthSessionCleanup:
+    """Cleanup must not delete an API key that the on-disk cache still
+    references.  Otherwise run 1 mints K, writes cache(K), then deletes
+    K at cleanup — run 2 loads cache(K), tries to authenticate, 401s.
+    Orphan cleanup at the next mint (via ``_delete_stale_vip_keys``)
+    reaps keys older than :data:`_ORPHAN_MIN_AGE_SECONDS`.
+    """
+
+    def _session_with_cache(self, tmp_path, *, api_key: str, cache_key: str | None):
+        """Return a session whose ``_cache_path`` points at a cache whose
+        meta.json holds ``cache_key`` (or no cache file at all if None)."""
+        import json
+
+        from vip.auth import InteractiveAuthSession
+
+        state = tmp_path / "state.json"
+        state.write_text('{"cookies": []}')
+        cache = tmp_path / ".vip-auth-cache.json"
+        if cache_key is not None:
+            cache.write_text('{"cookies": []}')
+            cache.with_suffix(".meta.json").write_text(
+                json.dumps({"api_key": cache_key, "key_name": "_vip_interactive_1"})
+            )
+        return (
+            InteractiveAuthSession(
+                storage_state_path=state,
+                api_key=api_key,
+                key_name="_vip_interactive_1",
+                _connect_url="https://c.example.com",
+                _cache_path=cache,
+            ),
+            cache,
+        )
+
+    def test_skips_delete_when_cache_still_references_the_key(self, tmp_path):
+        """Happy path: cache.meta.api_key == session.api_key → don't delete.
+        Next run will cache-hit and reuse the same key successfully."""
+        session, _ = self._session_with_cache(tmp_path, api_key="LIVE", cache_key="LIVE")
+
+        with patch("vip.auth._delete_api_key") as deleter:
+            session.cleanup()
+
+        deleter.assert_not_called()
+
+    def test_deletes_when_cache_file_is_missing(self, tmp_path):
+        """No cache on disk → no future run will reference this key → delete it
+        now so we don't leave orphans accumulating between mint-time cleanups."""
+        session, _ = self._session_with_cache(tmp_path, api_key="LIVE", cache_key=None)
+
+        with patch("vip.auth._delete_api_key") as deleter:
+            session.cleanup()
+
+        deleter.assert_called_once_with("https://c.example.com", "LIVE", "_vip_interactive_1")
+
+    def test_deletes_when_cache_references_a_different_key(self, tmp_path):
+        """Concurrent run overwrote the cache with its own key → our key is
+        no longer referenced and should be deleted so it doesn't linger."""
+        session, _ = self._session_with_cache(tmp_path, api_key="MINE", cache_key="OTHER")
+
+        with patch("vip.auth._delete_api_key") as deleter:
+            session.cleanup()
+
+        deleter.assert_called_once_with("https://c.example.com", "MINE", "_vip_interactive_1")
+
+    def test_deletes_when_session_has_no_cache_path(self, tmp_path):
+        """Sessions created outside the caching flow (``_cache_path`` unset)
+        behave like before: delete on cleanup."""
+        from vip.auth import InteractiveAuthSession
+
+        state = tmp_path / "state.json"
+        state.write_text('{"cookies": []}')
+        session = InteractiveAuthSession(
+            storage_state_path=state,
+            api_key="LIVE",
+            key_name="_vip_interactive_1",
+            _connect_url="https://c.example.com",
+        )
+
+        with patch("vip.auth._delete_api_key") as deleter:
+            session.cleanup()
+
+        deleter.assert_called_once_with("https://c.example.com", "LIVE", "_vip_interactive_1")
+
+
 class TestAuthenticateWorkbench:
     """_authenticate_workbench establishes the Workbench SSO session after
     Connect auth has already succeeded.  Network failures here must NOT
@@ -549,24 +633,29 @@ class TestCreateApiKeyViaSession:
         assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
         req.post.assert_not_called()
 
-    def test_xsrf_cookie_is_scoped_to_connect_url(self):
+    def test_xsrf_cookie_is_scoped_to_api_url(self):
         """Cookie jars from ``page.context.cookies()`` span every domain the
-        browser has touched — IdP, related subdomains, etc.  Reading
-        unfiltered means a ``RSC-XSRF`` from another site can shadow the
-        real Connect one and produce ``HTTP 403 XSRF token mismatch``.
-        The implementation must pass ``connect_url`` to ``cookies()`` so
-        Playwright filters by host/path before we pick a value.
+        browser has touched — IdP, related subdomains, etc.  Unfiltered
+        reads let a ``RSC-XSRF`` from another site shadow Connect's and
+        yield ``HTTP 403 XSRF token mismatch``.  Playwright's ``cookies(url)``
+        filter is host *and path* aware, so the URL we pass must match
+        the path the request will actually hit (``/__api__/...``), not
+        just the root — otherwise a cookie set with ``Path=/__api__``
+        will be silently excluded.
         """
         from vip.auth import _create_api_key_via_session
 
         page = MagicMock()
+        api_base = "https://connect.example.com/__api__"
 
         def cookies_for(url=None):
-            # Playwright filters server-side; our stub must mirror that.
-            if url == "https://connect.example.com":
-                return [{"name": "RSC-XSRF", "value": "real", "domain": "connect.example.com"}]
+            # Playwright filters server-side; our stub mirrors that: the
+            # real cookie lives at ``/__api__/`` and must be included, the
+            # unrelated domain's cookie must not.
+            if url and url.startswith(api_base):
+                return [{"name": "RSC-XSRF", "value": "real", "path": "/__api__"}]
             return [
-                {"name": "RSC-XSRF", "value": "real", "domain": "connect.example.com"},
+                {"name": "RSC-XSRF", "value": "real", "path": "/__api__"},
                 {"name": "RSC-XSRF", "value": "stranger", "domain": "idp.elsewhere.io"},
             ]
 
@@ -582,10 +671,18 @@ class TestCreateApiKeyViaSession:
         result = _create_api_key_via_session(page, "https://connect.example.com", "k")
 
         assert result == "K" * 30
-        # Must be the Connect cookie, never the IdP one.
         assert req.get.call_args_list[0].kwargs["headers"]["X-Rsc-Xsrf"] == "real"
-        # And the URL must have been supplied so Playwright does the scoping.
-        page.context.cookies.assert_any_call("https://connect.example.com")
+        # URL passed to cookies() must be under /__api__ so path-scoped
+        # cookies aren't excluded by Playwright's path filter.
+        scoped_calls = [
+            call for call in page.context.cookies.call_args_list if call.args and call.args[0]
+        ]
+        assert scoped_calls, "page.context.cookies() was never called with a URL"
+        for call in scoped_calls:
+            assert call.args[0].startswith(api_base), (
+                f"cookies() URL {call.args[0]!r} is not under {api_base!r}; "
+                "path-scoped RSC-XSRF cookies would be missed."
+            )
 
     def test_uses_page_context_request_so_xsrf_matches_cookie(self):
         """Regression guard: requests must go through ``page.context.request``

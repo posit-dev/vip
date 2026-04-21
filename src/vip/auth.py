@@ -87,10 +87,32 @@ class InteractiveAuthSession:
 
     _connect_url: str = field(default="", repr=False)
     _tmpdir: str = field(default="", repr=False)
+    _cache_path: Path | None = field(default=None, repr=False)
+
+    def _cache_references_this_key(self) -> bool:
+        """True when the on-disk cache still points at our ``api_key``.
+
+        If so, deleting the key at cleanup would break the next run's
+        cache hit (it would load a dead key and 401 on every request).
+        We'd rather leave the key alive; ``_delete_stale_vip_keys`` at
+        the next real mint reaps anything older than the orphan window.
+        """
+        if not self._cache_path or not self.api_key:
+            return False
+        meta_path = self._cache_path.with_suffix(".meta.json")
+        if not meta_path.exists():
+            return False
+        try:
+            import json
+
+            meta = json.loads(meta_path.read_text())
+        except (OSError, ValueError):
+            return False
+        return meta.get("api_key") == self.api_key
 
     def cleanup(self) -> None:
         """Delete the minted API key and remove the temp directory."""
-        if self.api_key and self._connect_url:
+        if self.api_key and self._connect_url and not self._cache_references_this_key():
             try:
                 _delete_api_key(self._connect_url, self.api_key, self.key_name)
             except Exception as exc:
@@ -133,6 +155,7 @@ def _load_cached_auth(cache_path: Path) -> InteractiveAuthSession | None:
         key_name=key_name,
         _connect_url=connect_url,
         _tmpdir="",
+        _cache_path=cache_path,
     )
 
 
@@ -280,6 +303,7 @@ def start_interactive_auth(
             key_name=key_name,
             _connect_url=connect_url or "",
             _tmpdir=tmpdir,
+            _cache_path=cache_path,
         )
 
         # Cache the session for reuse across runs.
@@ -433,6 +457,7 @@ def start_headless_auth(
             key_name=key_name,
             _connect_url=connect_url or "",
             _tmpdir=tmpdir,
+            _cache_path=cache_path,
         )
 
         if cache_path:
@@ -668,8 +693,8 @@ def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
 _XSRF_COOKIE_NAMES = ("RSC-XSRF", "RSC-XSRF-legacy")
 
 
-def _xsrf_from_page(page: Page, connect_url: str) -> str:
-    """Read the XSRF cookie value from the browser context for ``connect_url``.
+def _xsrf_from_page(page: Page, api_url: str) -> str:
+    """Read the XSRF cookie value from the browser context for ``api_url``.
 
     Connect's XSRF check compares the cookie value to the ``X-Rsc-Xsrf``
     header.  Production deployments use one of two cookie names:
@@ -679,14 +704,15 @@ def _xsrf_from_page(page: Page, connect_url: str) -> str:
       mode (e.g. ``connect.posit.it``).  The paired session cookie is
       ``rsconnect-legacy``.  The header name stays ``X-Rsc-Xsrf``.
 
-    Playwright's cookie jar spans every domain the browser has visited
-    (including the IdP).  Passing ``connect_url`` filters to cookies
-    actually sent to Connect, so a same-named cookie from another host
-    can't shadow the real one.  Reading via ``page.context.cookies()``
-    rather than ``document.cookie`` also handles HttpOnly uniformly.
+    Playwright's ``cookies(url)`` filter is host *and path* aware, so
+    the URL we pass must match what the request actually hits
+    (``/__api__/...``).  Scoping to the root (``connect_url``) would
+    exclude any cookie set with ``Path=/__api__`` and falsely yield
+    ``HTTP 403 XSRF token mismatch``.  Reading via the cookie jar
+    rather than ``document.cookie`` also handles ``HttpOnly`` uniformly.
     """
     try:
-        jar = page.context.cookies(connect_url) or []
+        jar = page.context.cookies(api_url) or []
     except PlaywrightError:
         return ""
     by_name = {c.get("name"): c.get("value") or "" for c in jar}
@@ -709,15 +735,16 @@ def _summarize_cookies(jar: list[dict]) -> list[dict]:
     ]
 
 
-def _log_mint_cookie_diagnostic(page: Page, connect_url: str) -> None:
+def _log_mint_cookie_diagnostic(page: Page, api_url: str) -> None:
     """Print what we see in the browser when minting fails.
 
     Turns an opaque XSRF mismatch into actionable evidence: the page
     URL, the full jar (to spot cross-domain shadows), the jar filtered
-    to the Connect host (what actually rides the API request), and
-    ``document.cookie`` names.  If these two cookie lists disagree on
-    ``RSC-XSRF`` / ``RSC-XSRF-legacy``, the mismatch is almost certainly
-    another domain poisoning the unfiltered view.
+    to the actual ``/__api__`` endpoint (what actually rides the API
+    request, respecting path scoping), and ``document.cookie`` names.
+    If these two cookie lists disagree on ``RSC-XSRF`` /
+    ``RSC-XSRF-legacy``, the mismatch is almost certainly another
+    domain — or a path-scoped cookie — poisoning the unfiltered view.
     """
     try:
         current_url = page.url
@@ -732,8 +759,8 @@ def _log_mint_cookie_diagnostic(page: Page, connect_url: str) -> None:
     except Exception as exc:
         print(f">>> Mint diagnostic: could not read cookie jar: {exc}")
     try:
-        scoped = page.context.cookies(connect_url) or []
-        print(f">>> Mint diagnostic: cookies sent to {connect_url} ({len(scoped)} entries):")
+        scoped = page.context.cookies(api_url) or []
+        print(f">>> Mint diagnostic: cookies sent to {api_url} ({len(scoped)} entries):")
         for entry in _summarize_cookies(scoped):
             print(f"    {entry}")
     except Exception as exc:
@@ -845,7 +872,7 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
     Returns the API key string, or ``None`` on failure (no exception).
     """
     base = connect_url.rstrip("/") + "/__api__"
-    xsrf = _xsrf_from_page(page, connect_url)
+    xsrf = _xsrf_from_page(page, base)
     headers = {"X-Rsc-Xsrf": xsrf} if xsrf else {}
 
     req = page.context.request
@@ -859,7 +886,7 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
             )
             xsrf_preview = f"{xsrf[:4]}…(len={len(xsrf)})" if xsrf else "<none>"
             print(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
-            _log_mint_cookie_diagnostic(page, connect_url)
+            _log_mint_cookie_diagnostic(page, base)
             return None
         guid = me_resp.json().get("guid")
         if not guid:
