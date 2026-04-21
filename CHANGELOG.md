@@ -1,6 +1,29 @@
 # CHANGELOG
 
 
+## v0.25.0 (2026-04-21)
+
+### Bug Fixes
+
+- **connect**: Short-circuit login form fill when using interactive auth
+  ([#202](https://github.com/posit-dev/vip/pull/202),
+  [`7578e6c`](https://github.com/posit-dev/vip/commit/7578e6c3019a99c516ff8ef55370e0de5435257b))
+
+- **workbench**: Skip gracefully when IDE not installed instead of opaque error
+  ([#203](https://github.com/posit-dev/vip/pull/203),
+  [`245e394`](https://github.com/posit-dev/vip/commit/245e39470daf4ef4898e7f61f3c3da46b3b8c0f8))
+
+- **workbench**: Skip gracefully when session suspend/resume not supported
+  ([#204](https://github.com/posit-dev/vip/pull/204),
+  [`0810284`](https://github.com/posit-dev/vip/commit/08102849e08893f4ac1454e2bbe2a32c417a7e38))
+
+### Features
+
+- Add local docker-compose environment for Playwright test development
+  ([#206](https://github.com/posit-dev/vip/pull/206),
+  [`0891335`](https://github.com/posit-dev/vip/commit/0891335819a78776aa81ad97c70d064dbe34d5e2))
+
+
 ## v0.24.10 (2026-04-21)
 
 ### Bug Fixes
