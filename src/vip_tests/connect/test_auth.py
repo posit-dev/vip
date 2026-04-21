@@ -28,16 +28,24 @@ def navigate_to_login(page, connect_url):
 
 @when("enters valid credentials")
 def enter_credentials(page, test_username, test_password, auth_provider, interactive_auth):
-    if auth_provider != "password":
-        if not interactive_auth:
-            pytest.skip(
-                f"Login form not available for auth provider {auth_provider!r}. "
-                "Pass --interactive-auth or --headless-auth to pre-load browser storage state."
-            )
-        # Browser already authenticated via pre-loaded storage state - just wait
-        # for any redirect away from the login page to complete.
-        page.wait_for_load_state("networkidle")
+    if interactive_auth:
+        # With --interactive-auth (or --headless-auth) the browser is already
+        # authenticated via pre-loaded storage state. The login page will
+        # redirect immediately — wait for the URL to leave /__login__ rather
+        # than relying on networkidle, which can fire before a JS-triggered
+        # redirect completes.
+        page.wait_for_url(lambda url: "/__login__" not in url, timeout=10000)
         return
+    if auth_provider != "password":
+        pytest.skip(
+            f"Login form not available for auth provider {auth_provider!r}. "
+            "Pass --interactive-auth or --headless-auth to pre-load browser storage state."
+        )
+    if not test_username or not test_password:
+        pytest.fail(
+            "UI login test requires VIP_TEST_USERNAME and VIP_TEST_PASSWORD "
+            "to be set when auth_provider is 'password'."
+        )
     page.fill("[name='username'], #username", test_username)
     page.fill("[name='password'], #password", test_password)
     page.click("[data-automation='login-panel-submit']")
