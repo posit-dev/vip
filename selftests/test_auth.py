@@ -213,10 +213,18 @@ class TestCreateApiKeyViaSession:
         return resp
 
     @staticmethod
-    def _page(cookie_str: str = "RSC-XSRF=x; connect-session=s") -> MagicMock:
-        """Stub a Playwright Page with ``document.cookie`` pre-populated."""
+    def _page(cookies: list[dict] | None = None) -> MagicMock:
+        """Stub a Playwright Page with a cookie jar pre-populated.
+
+        Defaults to a jar containing an ``HttpOnly`` RSC-XSRF cookie —
+        that's how Connect actually sets the token, which is why the
+        implementation reads via ``page.context.cookies()`` rather than
+        ``document.cookie``.
+        """
+        if cookies is None:
+            cookies = [{"name": "RSC-XSRF", "value": "x", "httpOnly": True}]
         page = MagicMock()
-        page.evaluate.return_value = cookie_str
+        page.context.cookies.return_value = cookies
         return page
 
     def test_happy_path_creates_key_and_sends_xsrf(self):
@@ -225,7 +233,12 @@ class TestCreateApiKeyViaSession:
         XSRF header taken from ``document.cookie``."""
         from vip.auth import _create_api_key_via_session
 
-        page = self._page("RSC-XSRF=xsrf-token; connect-session=sess-123")
+        page = self._page(
+            [
+                {"name": "RSC-XSRF", "value": "xsrf-token", "httpOnly": True},
+                {"name": "connect-session", "value": "sess-123", "httpOnly": True},
+            ]
+        )
         req = page.context.request
 
         me = self._api_response(json_data={"guid": "user-guid-abc"})
@@ -335,12 +348,44 @@ class TestCreateApiKeyViaSession:
         assert result == "K" * 30
         req.delete.assert_not_called()  # recent key was left alone
 
-    def test_xsrf_read_from_document_cookie(self):
-        """The XSRF header value must come from ``document.cookie`` — that's
-        the URL-decoded form Connect's double-submit check expects."""
+    def test_xsrf_falls_back_to_legacy_cookie_name(self):
+        """Servers in legacy cookie mode (e.g. ``connect.posit.it``) set
+        ``RSC-XSRF-legacy`` instead of ``RSC-XSRF``.  The paired session
+        cookie is ``rsconnect-legacy``; the header name stays the same.
+        Without this fallback, Connect rejects every request with
+        ``HTTP 403 XSRF token mismatch``."""
         from vip.auth import _create_api_key_via_session
 
-        page = self._page("other=v1; RSC-XSRF=tok%20en; another=v2")
+        page = self._page(
+            [
+                {"name": "RSC-XSRF-legacy", "value": "legacy-tok"},
+                {"name": "rsconnect-legacy", "value": "sess", "httpOnly": True},
+            ]
+        )
+        req = page.context.request
+
+        req.get.side_effect = [
+            self._api_response(json_data={"guid": "g"}),
+            self._api_response(json_data=[]),
+        ]
+        req.post.return_value = self._api_response(json_data={"id": "1", "key": "K" * 30})
+
+        result = _create_api_key_via_session(page, "https://c.example.com", "k")
+
+        assert result == "K" * 30
+        assert req.get.call_args_list[0].kwargs["headers"]["X-Rsc-Xsrf"] == "legacy-tok"
+
+    def test_xsrf_prefers_modern_name_when_both_present(self):
+        """If both ``RSC-XSRF`` and ``RSC-XSRF-legacy`` are set, use the
+        modern one — servers mid-migration tend to honor the new name."""
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page(
+            [
+                {"name": "RSC-XSRF", "value": "new-tok"},
+                {"name": "RSC-XSRF-legacy", "value": "old-tok"},
+            ]
+        )
         req = page.context.request
 
         req.get.side_effect = [
@@ -351,10 +396,37 @@ class TestCreateApiKeyViaSession:
 
         _create_api_key_via_session(page, "https://c.example.com", "k")
 
-        page.evaluate.assert_called_once_with("() => document.cookie")
+        assert req.get.call_args_list[0].kwargs["headers"]["X-Rsc-Xsrf"] == "new-tok"
+
+    def test_xsrf_read_from_cookie_jar_including_httponly(self):
+        """Connect marks ``RSC-XSRF`` ``HttpOnly`` — the real reason earlier
+        attempts saw ``HTTP 403 XSRF token mismatch``.  ``document.cookie``
+        is blind to HttpOnly cookies, so the XSRF value must come from
+        ``page.context.cookies()`` (the browser's cookie jar), which
+        Playwright exposes regardless of the flag."""
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page(
+            [
+                {"name": "other", "value": "v1"},
+                {"name": "RSC-XSRF", "value": "tok-n", "httpOnly": True},
+                {"name": "another", "value": "v2"},
+            ]
+        )
+        req = page.context.request
+
+        req.get.side_effect = [
+            self._api_response(json_data={"guid": "g"}),
+            self._api_response(json_data=[]),
+        ]
+        req.post.return_value = self._api_response(json_data={"id": "1", "key": "K" * 30})
+
+        _create_api_key_via_session(page, "https://c.example.com", "k")
+
+        page.context.cookies.assert_called()
         post_call = req.post.call_args
         # Exact byte-for-byte match: no URL-decoding, no quoting, no stripping.
-        assert post_call.kwargs["headers"]["X-Rsc-Xsrf"] == "tok%20en"
+        assert post_call.kwargs["headers"]["X-Rsc-Xsrf"] == "tok-n"
 
     def test_create_failure_returns_none(self, capsys):
         """HTTP 500 on the create call must yield None, not an exception.
@@ -398,7 +470,7 @@ class TestCreateApiKeyViaSession:
         """With no RSC-XSRF cookie the call still runs; no X-Rsc-Xsrf header sent."""
         from vip.auth import _create_api_key_via_session
 
-        page = self._page("connect-session=sess")  # no RSC-XSRF
+        page = self._page([{"name": "connect-session", "value": "sess"}])  # no RSC-XSRF
         req = page.context.request
 
         req.get.side_effect = [
@@ -486,7 +558,12 @@ class TestCreateApiKeyViaSession:
         """
         from vip.auth import _create_api_key_via_session
 
-        page = self._page("RSC-XSRF=live-token; connect-session=s")
+        page = self._page(
+            [
+                {"name": "RSC-XSRF", "value": "live-token", "httpOnly": True},
+                {"name": "connect-session", "value": "s", "httpOnly": True},
+            ]
+        )
         req = page.context.request
 
         req.get.side_effect = [

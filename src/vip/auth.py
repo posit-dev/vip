@@ -665,25 +665,70 @@ def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
         print(">>> Warning: Could not find API key to delete.\n")
 
 
-def _xsrf_from_page(page: Page) -> str:
-    """Read the ``RSC-XSRF`` cookie value the way ``document.cookie`` sees it.
+_XSRF_COOKIE_NAMES = ("RSC-XSRF", "RSC-XSRF-legacy")
 
-    Connect's double-submit XSRF check compares the ``RSC-XSRF`` cookie to
-    the ``X-Rsc-Xsrf`` header.  Browsers URL-encode cookie values on the
-    wire and URL-decode them for ``document.cookie``, so the header value a
-    real JS client sends is the decoded form.  ``page.evaluate`` runs in
-    the page and returns that same decoded value, sidestepping the
-    cookiejar-encoding mismatches that bit us when we reached for httpx.
+
+def _xsrf_from_page(page: Page) -> str:
+    """Read the XSRF cookie value from the browser context.
+
+    Connect's XSRF check compares the cookie value to the ``X-Rsc-Xsrf``
+    header.  Production deployments use one of two cookie names:
+
+    * ``RSC-XSRF`` — default on fresh installs.
+    * ``RSC-XSRF-legacy`` — set when the server runs in legacy cookie
+      mode (e.g. ``connect.posit.it``).  The paired session cookie is
+      ``rsconnect-legacy``.  The header name stays ``X-Rsc-Xsrf``.
+
+    Reading from ``page.context.cookies()`` rather than ``document.cookie``
+    handles both HttpOnly and non-HttpOnly flavors uniformly.
     """
     try:
-        cookie_str = page.evaluate("() => document.cookie") or ""
+        jar = page.context.cookies() or []
     except PlaywrightError:
         return ""
-    for part in cookie_str.split(";"):
-        name, _, value = part.strip().partition("=")
-        if name == "RSC-XSRF":
-            return value
+    by_name = {c.get("name"): c.get("value") or "" for c in jar}
+    for name in _XSRF_COOKIE_NAMES:
+        if by_name.get(name):
+            return by_name[name]
     return ""
+
+
+def _log_mint_cookie_diagnostic(page: Page) -> None:
+    """Print what we see in the browser when minting fails.
+
+    Turns an opaque XSRF mismatch into actionable evidence (page URL,
+    cookie names, ``HttpOnly`` flags, ``document.cookie`` contents) so
+    we do not have to iterate through hypotheses blind.
+    """
+    try:
+        current_url = page.url
+    except Exception:
+        current_url = "<unknown>"
+    print(f">>> Mint diagnostic: browser is on {current_url}")
+    try:
+        jar = page.context.cookies() or []
+        print(f">>> Mint diagnostic: browser cookie jar ({len(jar)} entries):")
+        for c in jar:
+            print(
+                "    "
+                + str(
+                    {
+                        "name": c.get("name"),
+                        "domain": c.get("domain"),
+                        "path": c.get("path"),
+                        "httpOnly": c.get("httpOnly"),
+                        "len": len(c.get("value") or ""),
+                    }
+                )
+            )
+    except Exception as exc:
+        print(f">>> Mint diagnostic: could not read cookie jar: {exc}")
+    try:
+        doc_cookie = page.evaluate("() => document.cookie") or ""
+        doc_names = [p.strip().partition("=")[0] for p in doc_cookie.split(";") if p.strip()]
+        print(f">>> Mint diagnostic: document.cookie names: {doc_names}")
+    except Exception as exc:
+        print(f">>> Mint diagnostic: could not read document.cookie: {exc}")
 
 
 def _response_text(resp) -> str:
@@ -766,12 +811,12 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
 
     Routes every request through ``page.context.request`` (Playwright's
     ``APIRequestContext``) so cookies ride the same wire format the browser
-    uses — critical for Connect's double-submit XSRF check, which compares
-    the ``RSC-XSRF`` cookie value to the ``X-Rsc-Xsrf`` header byte-for-byte.
-    An earlier httpx-based implementation failed because httpx re-quoted
-    cookie values via ``http.cookiejar``, producing ``HTTP 403 XSRF token
-    mismatch`` once real XSRF tokens contained characters that trigger
-    RFC 6265 quoting.
+    uses, and reads the XSRF cookie via ``page.context.cookies()``.  The
+    cookie is named ``RSC-XSRF`` on fresh Connect installs but
+    ``RSC-XSRF-legacy`` on servers running in legacy cookie mode;
+    :func:`_xsrf_from_page` tries both.  Missing the correct name entirely
+    yields ``HTTP 403 XSRF token mismatch`` from Connect's double-submit
+    check.
 
     Hits ``/__api__/v1/users/{guid}/keys`` — the same endpoint the Connect
     dashboard's "+ New API Key" button uses.  See
@@ -797,6 +842,7 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
                 f">>> Warning: GET /v1/user returned HTTP {me_resp.status}: "
                 f"{_body_snippet(me_resp)}"
             )
+            _log_mint_cookie_diagnostic(page)
             return None
         guid = me_resp.json().get("guid")
         if not guid:
