@@ -20,7 +20,7 @@ VIP includes a <a href="https://shiny.posit.co/py/" target="_blank" rel="noopene
 </p> <pre data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>git clone https://github.com/posit-dev/vip.git
 cd vip
 uv sync
-uv run playwright install chromium
+uv run playwright install --with-deps chromium
 
 uv run vip app</code></pre> <p data-astro-cid-sgeiollp>
 The app launches in your default browser. If you are inside an
@@ -42,7 +42,7 @@ In Positron, use <em data-astro-cid-sgeiollp>File &rarr; New Project From Git</e
               IDE (the Terminal tab in RStudio, or <code data-astro-cid-sgeiollp>Ctrl+`</code> in
               Positron) and run:
 <pre data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>uv sync
-uv run playwright install chromium</code></pre> </li> <li data-astro-cid-sgeiollp> <strong data-astro-cid-sgeiollp>Configure credentials.</strong> Either create a
+uv run playwright install --with-deps chromium</code></pre> </li> <li data-astro-cid-sgeiollp> <strong data-astro-cid-sgeiollp>Configure credentials.</strong> Either create a
 <code data-astro-cid-sgeiollp>vip.toml</code> file:
 <pre data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>cp vip.toml.example vip.toml
 # Edit vip.toml with your deployment details</code></pre> <p data-astro-cid-sgeiollp>Or set environment variables:</p> <pre data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>export VIP_CONNECT_API_KEY="your-api-key"
@@ -73,7 +73,7 @@ Styled HTML report with summary metrics, results grouped by
                     category, expandable error tracebacks, and troubleshooting
                     hints. Updates automatically when a run completes.
 </td> </tr> </tbody> </table> </div> </section> <section id="cli-options" data-astro-cid-sgeiollp> <h2 data-astro-cid-sgeiollp>CLI options</h2> <pre data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>vip app [--config PATH] [--host HOST] [--port PORT] [--no-browser]</code></pre> <div class="table-wrap" data-astro-cid-sgeiollp> <table data-astro-cid-sgeiollp> <thead data-astro-cid-sgeiollp> <tr data-astro-cid-sgeiollp> <th data-astro-cid-sgeiollp>Flag</th> <th data-astro-cid-sgeiollp>Default</th> <th data-astro-cid-sgeiollp>Description</th> </tr> </thead> <tbody data-astro-cid-sgeiollp> <tr data-astro-cid-sgeiollp> <td data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>--config</code></td> <td data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>vip.toml</code></td> <td data-astro-cid-sgeiollp>Path to <code data-astro-cid-sgeiollp>vip.toml</code> (sets default in the app)</td> </tr> <tr data-astro-cid-sgeiollp> <td data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>--host</code></td> <td data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>127.0.0.1</code></td> <td data-astro-cid-sgeiollp>Host to bind</td> </tr> <tr data-astro-cid-sgeiollp> <td data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>--port</code></td> <td data-astro-cid-sgeiollp>auto</td> <td data-astro-cid-sgeiollp>Port number (0&nbsp;=&nbsp;pick a free port)</td> </tr> <tr data-astro-cid-sgeiollp> <td data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>--no-browser</code></td> <td data-astro-cid-sgeiollp>off</td> <td data-astro-cid-sgeiollp>Don&rsquo;t open a browser window automatically</td> </tr> </tbody> </table> </div> <h3 data-astro-cid-sgeiollp>Installing with pip</h3> <p data-astro-cid-sgeiollp>If you don&rsquo;t use uv:</p> <pre data-astro-cid-sgeiollp><code data-astro-cid-sgeiollp>pip install posit-vip
-playwright install chromium
+playwright install --with-deps chromium
 vip app</code></pre> </section> </article> </div> </main> <footer class="footer" data-astro-cid-sz7xmlte> <div class="footer-inner" data-astro-cid-sz7xmlte> <p class="copyright" data-astro-cid-sz7xmlte>
 &copy; 2026 <a href="https://posit.co" target="_blank" rel="noopener" data-astro-cid-sz7xmlte>Posit, PBC</a>.
       VIP is open source under the
