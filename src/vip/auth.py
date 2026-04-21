@@ -12,8 +12,10 @@ import os
 import shutil
 import tempfile
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from playwright.sync_api import (
     Error as PlaywrightError,
@@ -737,7 +739,7 @@ def _xsrf_from_page(page: Page, request_url: str) -> str:
     return ""
 
 
-def _summarize_cookies(jar: list[dict]) -> list[dict]:
+def _summarize_cookies(jar: Sequence[Mapping[str, Any]]) -> list[dict]:
     return [
         {
             "name": c.get("name"),
