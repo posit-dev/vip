@@ -119,6 +119,86 @@ def http_port_closed(http_response):
 
 
 # ---------------------------------------------------------------------------
+# TLS attempt helper
+# ---------------------------------------------------------------------------
+
+
+class _ConnectError(Exception):
+    """Raised by ``_attempt_tls`` when the TCP connect itself fails.
+
+    Callers convert this into ``pytest.skip`` — an unreachable host is
+    not a security finding.
+    """
+
+
+def _attempt_tls(
+    hostname: str,
+    port: int,
+    *,
+    min_version: ssl.TLSVersion | None = None,
+    max_version: ssl.TLSVersion | None = None,
+    timeout: float = 10.0,
+) -> dict:
+    """Attempt one TLS handshake and classify the result.
+
+    Uses ``ssl.create_default_context()`` so the system CA bundle is
+    loaded (and ``SSL_CERT_FILE`` / ``SSL_CERT_DIR`` are honored).
+
+    Returns a dict with:
+      - ``status``: ``"connected"``, ``"rejected"``,
+        ``"cert_verify_failed"``, or ``"client_unsupported"``
+        (the last means the runner could not even configure the
+        requested TLS version — the caller should skip rather than
+        report this as a server rejection).
+      - ``detail``: error string (empty when status is ``"connected"``).
+
+    Raises ``_ConnectError`` when the TCP connect fails — the caller is
+    expected to convert that into ``pytest.skip``.
+    """
+    try:
+        sock = socket.create_connection((hostname, port), timeout=timeout)
+    except OSError as exc:
+        raise _ConnectError(str(exc)) from exc
+
+    try:
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = True
+            ctx.verify_mode = ssl.CERT_REQUIRED
+            # ``create_default_context`` sets minimum_version = TLS 1.2 on
+            # Python 3.10+.  Reset to the library minimum first so the
+            # caller-specified window is applied cleanly — otherwise
+            # ``max_version = TLSv1`` would violate the existing minimum.
+            ctx.minimum_version = ssl.TLSVersion.MINIMUM_SUPPORTED
+            if min_version is not None:
+                ctx.minimum_version = min_version
+            if max_version is not None:
+                ctx.maximum_version = max_version
+        except (ssl.SSLError, ValueError) as exc:
+            # Some runtimes refuse to *configure* a given TLS version at all
+            # (e.g. OpenSSL compiled without TLS 1.0/1.1 support).  Report
+            # this honestly: the client cannot attempt that version, so we
+            # have no data about the server's behavior.  The calling step
+            # converts this into a skip for that scenario — silently
+            # counting it as a server rejection would mask a client gap as
+            # a server property.
+            return {"status": "client_unsupported", "detail": str(exc)}
+
+        try:
+            with ctx.wrap_socket(sock, server_hostname=hostname):
+                return {"status": "connected", "detail": ""}
+        except ssl.SSLCertVerificationError as exc:
+            return {"status": "cert_verify_failed", "detail": str(exc)}
+        except (ssl.SSLError, OSError) as exc:
+            return {"status": "rejected", "detail": str(exc)}
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Steps - TLS version enforcement
 # ---------------------------------------------------------------------------
 
@@ -138,69 +218,81 @@ def attempt_tls_connection(product, vip_config):
     hostname = parsed.hostname
     port = parsed.port or 443
 
-    results = {}
-
-    # Attempt TLS 1.0 — should fail on modern servers.
     try:
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        ctx.check_hostname = True
-        ctx.verify_mode = ssl.CERT_REQUIRED
-        ctx.maximum_version = ssl.TLSVersion.TLSv1
-        with socket.create_connection((hostname, port), timeout=10) as sock:
-            with ctx.wrap_socket(sock, server_hostname=hostname):
-                results["tls1_0"] = "connected"
-    except ssl.SSLError:
-        results["tls1_0"] = "rejected"
-    except OSError:
-        results["tls1_0"] = "rejected"
-    except Exception as exc:
+        results = {
+            "tls1_0": _attempt_tls(
+                hostname,
+                port,
+                min_version=ssl.TLSVersion.TLSv1,
+                max_version=ssl.TLSVersion.TLSv1,
+            ),
+            "tls1_1": _attempt_tls(
+                hostname,
+                port,
+                min_version=ssl.TLSVersion.TLSv1_1,
+                max_version=ssl.TLSVersion.TLSv1_1,
+            ),
+            "tls1_2": _attempt_tls(hostname, port, min_version=ssl.TLSVersion.TLSv1_2),
+        }
+    except _ConnectError as exc:
         pytest.skip(f"Could not reach {hostname}:{port}: {exc}")
 
-    # Attempt TLS 1.1 — should fail on modern servers.
-    try:
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        ctx.check_hostname = True
-        ctx.verify_mode = ssl.CERT_REQUIRED
-        ctx.maximum_version = ssl.TLSVersion.TLSv1_1
-        with socket.create_connection((hostname, port), timeout=10) as sock:
-            with ctx.wrap_socket(sock, server_hostname=hostname):
-                results["tls1_1"] = "connected"
-    except ssl.SSLError:
-        results["tls1_1"] = "rejected"
-    except OSError:
-        results["tls1_1"] = "rejected"
-    except Exception as exc:
-        pytest.skip(f"Could not reach {hostname}:{port}: {exc}")
-
-    # Attempt TLS 1.2 — must succeed.
-    try:
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        ctx.check_hostname = True
-        ctx.verify_mode = ssl.CERT_REQUIRED
-        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-        with socket.create_connection((hostname, port), timeout=10) as sock:
-            with ctx.wrap_socket(sock, server_hostname=hostname):
-                results["tls1_2"] = "connected"
-    except ssl.SSLError as exc:
-        results["tls1_2"] = f"failed: {exc}"
-    except Exception as exc:
-        pytest.skip(f"Could not reach {hostname}:{port}: {exc}")
+    unsupported = [
+        label
+        for label, key in (("TLS 1.0", "tls1_0"), ("TLS 1.1", "tls1_1"), ("TLS 1.2", "tls1_2"))
+        if results[key]["status"] == "client_unsupported"
+    ]
+    if unsupported:
+        pytest.skip(
+            f"Runner cannot configure {', '.join(unsupported)} — cannot "
+            f"assess server TLS enforcement on this client."
+        )
 
     return results
 
 
 @then("TLS 1.0 and TLS 1.1 connections are rejected")
 def old_tls_rejected(tls_results):
-    assert tls_results.get("tls1_0") == "rejected", (
-        "Server accepted a TLS 1.0 connection — legacy TLS is not disabled"
-    )
-    assert tls_results.get("tls1_1") == "rejected", (
-        "Server accepted a TLS 1.1 connection — legacy TLS is not disabled"
-    )
+    for label, key in (("TLS 1.0", "tls1_0"), ("TLS 1.1", "tls1_1")):
+        result = tls_results.get(key, {})
+        status = result.get("status")
+        if status == "rejected":
+            continue
+        if status == "connected":
+            raise AssertionError(
+                f"Server accepted a {label} connection. Legacy TLS is not disabled."
+            )
+        if status == "cert_verify_failed":
+            raise AssertionError(
+                f"Server accepted a {label} handshake (the client then "
+                f"failed cert verification, which happens after TLS version "
+                f"negotiation). Legacy TLS is not disabled. "
+                f"Detail: {result.get('detail', '')}"
+            )
+        raise AssertionError(f"Unexpected {label} result: {result!r}")
 
 
 @then("TLS 1.2 or higher succeeds")
 def modern_tls_succeeds(tls_results):
-    assert tls_results.get("tls1_2") == "connected", (
-        f"TLS 1.2 connection failed: {tls_results.get('tls1_2')}"
-    )
+    result = tls_results.get("tls1_2", {})
+    status = result.get("status")
+    detail = result.get("detail", "")
+
+    if status == "connected":
+        return
+
+    if status == "cert_verify_failed":
+        raise AssertionError(
+            "TLS 1.2 handshake reached the server, but the test runner "
+            "could not verify the server's certificate. This is a "
+            "certificate-trust issue on the runner, not a TLS-enforcement "
+            "issue on the server. If the server uses a valid public "
+            "certificate (e.g. behind an AWS ALB with an ACM cert), set "
+            "SSL_CERT_FILE to a CA bundle that includes public roots: "
+            "`/etc/ssl/certs/ca-certificates.crt` on Debian/Ubuntu, "
+            "`/etc/pki/tls/certs/ca-bundle.crt` on RHEL, or the path "
+            "produced by `python -m certifi`. "
+            f"Detail: {detail}"
+        )
+
+    raise AssertionError(f"TLS 1.2 connection failed: {detail or status!r}")
