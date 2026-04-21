@@ -10,7 +10,7 @@ VIP is a BDD test suite that validates Posit Team deployments (Connect, Workbenc
 
 ``` bash
 uv sync                          # install dependencies
-uv run playwright install chromium
+uv run playwright install --with-deps chromium
 ```
 
 Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `python` or `pip` -- everything runs through uv.
@@ -141,6 +141,8 @@ Key principles:
 |------------------------------------|------------------------------------|
 | `src/vip/cli.py` | CLI entry point: verify, cleanup, cluster, auth commands |
 | `src/vip/config.py` | TOML config loader, dataclasses, `Mode` enum, per-mode validation |
+| `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers |
+| `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
 | `src/vip/plugin.py` | pytest plugin: markers, auto-skip, JSON report output |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
 | `src/vip/clients/connect.py` | httpx client for Connect API |
@@ -274,6 +276,24 @@ uvx showboat exec demo.md bash "just check"
 
 Use `uvx showboat image demo.md <path>` if screenshots are relevant.
 
+### Avoiding timing-sensitive output
+
+`showboat verify` re-runs every code block and diffs the output exactly. Commands that include wall-clock timing (e.g. pytest's `N passed in X.XXs`) will fail verification because the time changes on each run.
+
+Two safe patterns:
+
+1.  **Strip the timing suffix with `sed`:**
+
+    ``` bash
+    uv run pytest selftests/ -q 2>&1 | grep -E "passed|failed|error" | sed 's/ in [0-9.]*s//'
+    ```
+
+    Expected output becomes `243 passed, 4 warnings` (no time).
+
+2.  **Use `--no-header -rN` and filter aggressively** if you need a one-liner count without any pytest preamble.
+
+Similarly, avoid capturing absolute timestamps, PID numbers, or any other value that varies between runs. When `just` is not available in the environment, replace `just check` with the underlying `uv run ruff ...` commands directly.
+
 ### What to demonstrate
 
 -   **New tests:** run the new tests and show them passing
@@ -299,6 +319,10 @@ This runs `showboat verify demo.md`, then moves it to `validation_docs/demo-my-f
 3.  Paste the contents into the PR body under `## Demo`
 
 CI will run `showboat verify` on any new or changed files in `validation_docs/` for PRs that include them.
+
+## Pytest warning filters
+
+Register warning filters in `src/vip/plugin.py::pytest_configure` (via `config.addinivalue_line("filterwarnings", ...)`), not in `pyproject.toml`'s `[tool.pytest.ini_options]`. Filters in `pyproject.toml` only apply when pytest runs from this repo's rootdir -- users who install vip into another project pick up the plugin but not the config, so the warnings reappear there. Keeping the filters in the plugin means they travel with the installed package.
 
 ## Common mistakes to avoid
 

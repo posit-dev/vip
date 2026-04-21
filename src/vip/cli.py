@@ -23,6 +23,11 @@ if TYPE_CHECKING:
 _JOB_CLEANUP_BUFFER_SECONDS = 60
 _JOB_MIN_PYTEST_TIMEOUT_SECONDS = 60
 
+# Default for ``vip verify --test-timeout``.  Generous enough for a full
+# Connect suite with several content deployments (each can take 3-5 minutes
+# for R package restore or Python venv creation).
+DEFAULT_TEST_TIMEOUT_SECONDS = 3600
+
 # Valid test categories. Maps every accepted spelling (hyphenated and
 # underscored) to the internal pytest marker name.
 VALID_CATEGORIES: dict[str, str] = {
@@ -35,7 +40,14 @@ VALID_CATEGORIES: dict[str, str] = {
     "cross_product": "cross_product",
     "performance": "performance",
     "security": "security",
+    "config-hygiene": "config_hygiene",
+    "config_hygiene": "config_hygiene",
 }
+
+# Categories that are excluded from the default ``vip verify`` run and only
+# executed when the user opts in via ``--categories``.  These tests check
+# VIP's own configuration rather than the Posit deployment.
+_OPT_IN_CATEGORIES = frozenset({"config_hygiene"})
 
 # Marker expression keywords that are not category names.
 _MARKER_KEYWORDS = {"and", "or", "not"}
@@ -53,6 +65,15 @@ def _valid_categories_message() -> str:
         if v not in seen or "-" in k:
             seen[v] = k
     return ", ".join(sorted(seen.values()))
+
+
+def _default_marker_expr() -> str:
+    """Marker expression applied when the user doesn't pass ``--categories``.
+
+    Excludes every opt-in category so that ``vip verify`` runs only the
+    product-verification tests by default.
+    """
+    return " and ".join(f"not {name}" for name in sorted(_OPT_IN_CATEGORIES))
 
 
 def _normalize_categories(expr: str) -> str:
@@ -187,6 +208,60 @@ def _print_skip_notes(config_path: str | None) -> None:
             print(f"Note: {name} {reason} — {name} tests will not be collected.", flush=True)
 
 
+def _check_credentials(
+    config_path: str | None,
+    *,
+    interactive_auth: bool,
+    categories: str | None,
+) -> None:
+    """Exit early when products are configured but credentials are missing.
+
+    When *categories* is provided, only check products whose marker appears
+    in the expression.  Without categories all configured products are checked.
+    """
+    from vip.config import load_config
+
+    cfg = load_config(config_path)
+    if interactive_auth:
+        return
+
+    has_creds = bool(cfg.auth.username and cfg.auth.password)
+    needs_creds: list[str] = []
+
+    # When a category filter is active, only enforce credential checks for
+    # products that are actually selected.  We tokenize the expression and
+    # check that the marker appears as a positive term (not negated by "not").
+    def _category_selected(marker: str) -> bool:
+        if categories is None:
+            return True
+        tokens = re.findall(r"\w+", categories)
+        for i, tok in enumerate(tokens):
+            if tok == marker and (i == 0 or tokens[i - 1] != "not"):
+                return True
+        return False
+
+    # Connect tests include UI login and user-management scenarios that use
+    # VIP_TEST_USERNAME/VIP_TEST_PASSWORD even when VIP_CONNECT_API_KEY is set,
+    # so require credentials whenever Connect is selected (users can pass
+    # --no-auth to deselect Connect tests entirely).
+    if cfg.connect.is_configured and not has_creds and _category_selected("connect"):
+        needs_creds.append("Connect")
+    if cfg.workbench.is_configured and not has_creds and _category_selected("workbench"):
+        needs_creds.append("Workbench")
+
+    if needs_creds:
+        products = " and ".join(needs_creds)
+        print(
+            f"\033[1mError: {products} tests selected but no credentials provided.\033[0m\n"
+            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD (optionally with --headless-auth),\n"
+            "or use --interactive-auth, or --no-auth to skip tests that require "
+            "authentication.",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
+
+
 # Pytest options that consume the next argument as a directory path.
 # We skip these values so they aren't mistaken for positional test targets.
 _CONSUMES_DIR_VALUE = frozenset({"--rootdir", "--confcutdir", "--basetemp"})
@@ -233,6 +308,51 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
         lines.extend(["[package_manager]", f'url = "{args.package_manager_url}"', ""])
     else:
         lines.extend(["[package_manager]", "enabled = false", ""])
+
+    idp = getattr(args, "idp", None)
+    inherited_provider: str | None = None
+
+    # Inherit from an existing vip.toml so ``vip verify --workbench-url ...
+    # --headless-auth`` can pick up the [auth] section the user already
+    # configured.  Done best-effort: a malformed vip.toml should not break a
+    # URL-driven command that doesn't depend on it.
+    env = os.environ.get("VIP_CONFIG")
+    default_path = Path(env) if env else Path("vip.toml")
+    if default_path.is_file():
+        from vip.config import load_config
+
+        try:
+            existing = load_config(default_path)
+        except Exception:
+            existing = None
+        if existing is not None:
+            if not idp and existing.auth.idp:
+                idp = existing.auth.idp
+            if existing.auth.provider and existing.auth.provider != "password":
+                inherited_provider = existing.auth.provider
+
+    # Resolve the provider:
+    # - With --idp set, the user wants IdP-based auth.  Keep an inherited
+    #   IdP-class value (saml/oauth2) so specific declarations survive; but
+    #   ignore inherited non-IdP providers (ldap) that would contradict the
+    #   CLI intent — auth.py's flow selection keys off provider, not idp.
+    # - Without --idp, just honour whatever vip.toml declared.
+    _IDP_PROVIDERS = ("oidc", "saml", "oauth2")
+    if idp:
+        if inherited_provider in _IDP_PROVIDERS:
+            auth_provider: str | None = inherited_provider
+        else:
+            auth_provider = "oidc"
+    else:
+        auth_provider = inherited_provider
+
+    if auth_provider or idp:
+        lines.append("[auth]")
+        if auth_provider:
+            lines.append(f'provider = "{auth_provider}"')
+        if idp:
+            lines.append(f'idp = "{idp}"')
+        lines.append("")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
         f.write("\n".join(lines) + "\n")
@@ -340,12 +460,32 @@ def _run_verify_local(args: argparse.Namespace) -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
+        # Pin the resolved default so pytest loads the same file the CLI
+        # validated, regardless of pytest's rootdir or subprocess CWD.
+        config_path = str(default.resolve())
+
+    # Resolve explicit paths too so --vip-config always gets an absolute path.
+    config_path = str(Path(config_path).resolve())
+
+    if args.interactive_auth and args.headless_auth:
+        print(
+            "\033[1mError: --interactive-auth and --headless-auth are mutually exclusive.\033[0m",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
 
     # Print notes for products that are not configured so the user knows
     # upfront which categories will be skipped.
     _print_skip_notes(config_path)
+    if not args.no_auth:
+        _check_credentials(
+            config_path,
+            interactive_auth=args.interactive_auth or args.headless_auth,
+            categories=args.categories,
+        )
 
-    cmd = [sys.executable, "-m", "pytest", "-v"]
+    cmd = [sys.executable, "-m", "pytest", "-v", "--no-header"]
 
     # Resolve the installed vip_tests package so pytest finds tests even
     # when running outside the source tree (e.g. ``pip install posit-vip``).
@@ -363,20 +503,38 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append(f"--vip-report={args.report}")
     if args.interactive_auth:
         cmd.append("--interactive-auth")
+    if args.headless_auth:
+        cmd.append("--headless-auth")
+    if args.no_auth:
+        cmd.append("--no-auth")
     for ext in args.extensions or []:
         cmd.append(f"--vip-extensions={ext}")
     if args.categories:
         cmd.extend(["-m", _normalize_categories(args.categories)])
+    else:
+        cmd.extend(["-m", _default_marker_expr()])
     if args.filter_expr:
         cmd.extend(["-k", args.filter_expr])
 
     if args.verbose:
         cmd.append("--vip-verbose")
+        cmd.append("-s")
     cmd.extend(args.pytest_args)
+    if args.headless_auth:
+        # MFA prompting needs stdin; always append -s last so it
+        # overrides any conflicting --capture args from user or verbose.
+        cmd.append("-s")
 
     try:
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, timeout=args.test_timeout)
         sys.exit(result.returncode)
+    except subprocess.TimeoutExpired:
+        print(
+            f"Error: tests timed out after {args.test_timeout} seconds. "
+            "Increase with --test-timeout or investigate hung tests.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     finally:
         if temp_config:
             Path(temp_config).unlink(missing_ok=True)
@@ -433,7 +591,11 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             namespace,
             cm_name,
             image=args.image,
-            categories=_normalize_categories(args.categories) if args.categories else None,
+            categories=(
+                _normalize_categories(args.categories)
+                if args.categories
+                else _default_marker_expr()
+            ),
             filter_expr=getattr(args, "filter_expr", None),
             timeout_seconds=pytest_timeout,
             verbose=getattr(args, "verbose", False),
@@ -664,12 +826,31 @@ def main() -> None:
     )
 
     # Auth
+    auth_group = verify_parser.add_argument_group("authentication")
+    auth_group.add_argument(
+        "--idp",
+        default=None,
+        help='Identity provider for --headless-auth: "keycloak", "okta". '
+        'Presence implies provider = "oidc" unless overridden in vip.toml.',
+    )
     verify_parser.add_argument(
         "--interactive-auth",
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Launch a browser for OIDC login (default: disabled, use "
         "--interactive-auth to enable)",
+    )
+    verify_parser.add_argument(
+        "--headless-auth",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Automate login in a headless browser (OIDC/SAML/OAuth2 requires [auth] idp)",
+    )
+    verify_parser.add_argument(
+        "--no-auth",
+        action="store_true",
+        default=False,
+        help="Skip all tests that require authentication (Connect and Workbench)",
     )
 
     # Test selection
@@ -704,6 +885,19 @@ def main() -> None:
         action="append",
         default=[],
         help="Additional directories containing custom test cases (repeatable)",
+    )
+    verify_parser.add_argument(
+        "--test-timeout",
+        type=int,
+        default=DEFAULT_TEST_TIMEOUT_SECONDS,
+        help=(
+            "Timeout in seconds for the pytest subprocess "
+            f"(default: {DEFAULT_TEST_TIMEOUT_SECONDS}). "
+            "A full Connect run includes content deployments that each take "
+            "several minutes (R package restore, Python venv creation), so "
+            "raise this further for large suites or slow servers. For "
+            "per-deploy limits, set deploy_timeout under [connect] in vip.toml."
+        ),
     )
 
     # K8s mode

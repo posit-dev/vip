@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import io
+import os
 import statistics
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -168,14 +171,31 @@ def _locust_available() -> bool:
     return importlib.util.find_spec("locust") is not None
 
 
+def _stop_plugin_heartbeat_before_gevent() -> None:
+    """Stop the VIP plugin heartbeat thread before importing locust/gevent.
+
+    Locust's import triggers ``gevent.monkey.patch_all()``, which can deadlock
+    or misbehave when non-gevent ``threading.Thread`` instances are alive.
+    Every code path that imports locust/gevent must call this first.
+    """
+    import vip.plugin as _plugin
+
+    heartbeat = getattr(_plugin, "_current_heartbeat", None)
+    if heartbeat is not None:
+        heartbeat.stop()
+
+
 def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestResult:
     """Run a headless Locust load test and return aggregated results."""
     if not _locust_available():
         msg = (
-            f"locust not installed; {n} users with tool='locust' requires: "
-            "pip install 'posit-vip[load]'"
+            f"locust not installed; {n} users with tool='locust' requires the load extra "
+            '(`uv pip install "posit-vip[load]"` for an installed package, '
+            "or `uv sync --extra load` from a source checkout)"
         )
         raise RuntimeError(msg)
+
+    _stop_plugin_heartbeat_before_gevent()
 
     # Parse base URL and path from the full URL.
     from urllib.parse import urlparse
@@ -230,8 +250,64 @@ def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestRe
 
 
 # ---------------------------------------------------------------------------
+# Repo classification
+# ---------------------------------------------------------------------------
+
+
+def classify_repos(repos: list[dict]) -> tuple[list[str], list[str]]:
+    """Classify repos into ``(cran_repos, pypi_repos)`` by their type field.
+
+    Accepts canonical API values (``"R"``, ``"Python"``) and common aliases
+    (``"cran"``, ``"pypi"``), case-insensitively.  Repos with unknown or
+    missing types are silently skipped.
+    """
+    cran: list[str] = []
+    pypi: list[str] = []
+    for repo in repos:
+        if not isinstance(repo, dict):
+            continue
+        name = repo.get("name", "")
+        if not name:
+            continue
+        repo_type = str(repo.get("type", "")).strip().lower()
+        if repo_type in ("r", "cran"):
+            cran.append(name)
+        elif repo_type in ("python", "pypi"):
+            pypi.append(name)
+    return cran, pypi
+
+
+# ---------------------------------------------------------------------------
 # User simulation (multi-endpoint, realistic behavior)
 # ---------------------------------------------------------------------------
+
+
+def _stderr(msg: str) -> None:
+    """Write *msg* to stderr at the fd level, bypassing Python/gevent buffering."""
+    try:
+        fd = sys.stderr.fileno()
+    except (AttributeError, io.UnsupportedOperation):
+        fd = 2
+    data = (msg + "\n").encode()
+    while data:
+        written = os.write(fd, data)
+        data = data[written:]
+
+
+def _log_request(
+    request_type: str,
+    name: str,
+    response_time: float,
+    response_length: int,
+    exception: Exception | None = None,
+    **_kwargs,
+) -> None:
+    """Print a single Locust request to stderr for ``--verbose`` diagnostics."""
+    elapsed_s = (response_time or 0) / 1000.0
+    if exception:
+        _stderr(f"[locust] {request_type} {name} {elapsed_s:.2f}s FAIL {exception}")
+    else:
+        _stderr(f"[locust] {request_type} {name} {elapsed_s:.2f}s")
 
 
 def run_user_simulation(
@@ -241,6 +317,7 @@ def run_user_simulation(
     config,
     *,
     credentials: dict[str, str] | None = None,
+    verbose: bool = False,
 ) -> LoadTestResult:
     """Run a realistic user simulation using product-specific Locust user classes.
 
@@ -261,8 +338,14 @@ def run_user_simulation(
         ``{"token": "..."}`` for Package Manager).
     """
     if not _locust_available():
-        msg = "locust not installed; user simulation requires: pip install 'posit-vip[load]'"
+        msg = (
+            "locust not installed; user simulation requires the load extra "
+            '(`uv pip install "posit-vip[load]"` for an installed package, '
+            "or `uv sync --extra load` from a source checkout)"
+        )
         raise RuntimeError(msg)
+
+    _stop_plugin_heartbeat_before_gevent()
 
     import gevent
     from locust.env import Environment
@@ -290,10 +373,20 @@ def run_user_simulation(
     # Pass credentials via a custom attribute on the environment.
     env = Environment(user_classes=[concrete])
     env._vip_credentials = credentials or {}  # type: ignore[attr-defined]
+    if verbose:
+        env.events.request.add_listener(_log_request)
+        _stderr(
+            f"[locust] starting {users} {user_class_name} users against {host} "
+            f"for {config.load_test_duration}s"
+        )
     runner = env.create_local_runner()
     runner.start(users, spawn_rate=config.load_test_spawn_rate)
     gevent.sleep(config.load_test_duration)
+    if verbose:
+        _stderr("[locust] duration elapsed, stopping runner...")
     runner.stop()
+    if verbose:
+        _stderr("[locust] runner stopped, quitting...")
     runner.quit()
 
     stats = env.stats.total

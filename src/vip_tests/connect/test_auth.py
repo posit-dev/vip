@@ -29,16 +29,17 @@ def navigate_to_login(page, connect_url):
 @when("enters valid credentials")
 def enter_credentials(page, test_username, test_password, auth_provider, interactive_auth):
     if interactive_auth:
-        # With --interactive-auth the browser is already authenticated via storage
-        # state. The login page will redirect immediately — wait for the URL to
-        # leave /__login__ rather than relying on networkidle, which can fire
-        # before a JS-triggered redirect completes.
+        # With --interactive-auth (or --headless-auth) the browser is already
+        # authenticated via pre-loaded storage state. The login page will
+        # redirect immediately — wait for the URL to leave /__login__ rather
+        # than relying on networkidle, which can fire before a JS-triggered
+        # redirect completes.
         page.wait_for_url(lambda url: "/__login__" not in url, timeout=10000)
         return
     if auth_provider != "password":
         pytest.skip(
             f"Login form not available for auth provider {auth_provider!r}. "
-            "Pass --interactive-auth when browser storage state is pre-loaded."
+            "Pass --interactive-auth or --headless-auth to pre-load browser storage state."
         )
     if not test_username or not test_password:
         pytest.fail(

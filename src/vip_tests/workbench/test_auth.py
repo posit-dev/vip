@@ -20,12 +20,12 @@ def test_workbench_login():
 
 
 @given("Workbench is accessible at the configured URL")
-def workbench_accessible(workbench_client, auth_provider: str, interactive_auth: bool):
+def workbench_accessible(workbench_client, auth_provider: str, auth_mode: str):
     # This test only validates password-based login form flow
     if auth_provider != "password":
         pytest.skip(f"test_auth only supports password auth, not {auth_provider!r}")
-    if interactive_auth:
-        pytest.skip("test_auth is not compatible with --interactive-auth")
+    if auth_mode != "none":
+        pytest.skip(f"test_auth is not compatible with --{auth_mode}-auth")
 
     assert workbench_client is not None, "Workbench client not configured"
     status = workbench_client.health()

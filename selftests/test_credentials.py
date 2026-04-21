@@ -138,7 +138,7 @@ class TestMintInteractiveCredentials:
         assert "VIP_CONNECT_API_KEY" in saved_credentials
         assert "VIP_CONNECT_KEY_NAME" in saved_credentials
         assert "VIP_WORKBENCH_API_KEY" in saved_credentials
-        assert "VIP_PM_TOKEN" in saved_credentials
+        assert "VIP_PACKAGE_MANAGER_TOKEN" in saved_credentials
 
         # Old key names must NOT be present
         assert "connect-api-key" not in saved_credentials
@@ -178,7 +178,7 @@ class TestMintInteractiveCredentials:
         assert saved_credentials["VIP_CONNECT_API_KEY"] == "my-api-key"
         assert saved_credentials["VIP_CONNECT_KEY_NAME"] == "my-key-name"
         assert saved_credentials["VIP_WORKBENCH_API_KEY"] == "wb-tok"
-        assert saved_credentials["VIP_PM_TOKEN"] == "pm-tok"
+        assert saved_credentials["VIP_PACKAGE_MANAGER_TOKEN"] == "pm-tok"
 
     def test_skips_when_credentials_already_exist(self, capsys):
         from vip.verify.credentials import mint_interactive_credentials

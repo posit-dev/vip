@@ -68,7 +68,14 @@ def inspect_headers(product, vip_config):
     pc = vip_config.product_config(product_key)
     if not pc.is_configured:
         pytest.skip(f"{product} is not configured")
-    resp = httpx.get(pc.url, follow_redirects=True, timeout=15)
+    try:
+        resp = httpx.get(pc.url, follow_redirects=True, timeout=15)
+    except httpx.ConnectError:
+        pytest.fail(
+            f"Could not reach {product} at {pc.url}: connection refused. "
+            "Check firewall rules, proxy configuration, DNS resolution, and port. "
+            "This is a connectivity issue, not a security finding."
+        )
     return dict(resp.headers)
 
 

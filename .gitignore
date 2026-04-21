@@ -10,6 +10,7 @@ demo.md
 .positai/settings.json
 .claude/worktrees/
 .claude/settings.local.json
+.worktrees/
 docs/superpowers
 
 # Website
