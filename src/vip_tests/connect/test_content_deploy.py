@@ -7,6 +7,7 @@ easy identification and cleanup.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 
@@ -170,6 +171,34 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         r_versions = connect_client.r_versions()
         if not r_versions:
             pytest.skip("No R versions available on Connect — cannot deploy R Markdown")
+        # Connect's R-side pipeline calls ``packrat`` on the manifest's
+        # ``packages`` block; an empty dict triggers
+        # ``[.data.frame(lockInfo, , "Package") : undefined columns selected``
+        # because the expected ``Package`` column is missing.  We must
+        # populate ``packages`` with at least the packages this Rmd needs
+        # (``rmarkdown``, ``knitr``) in the same shape used by Connect's
+        # publishing clients.  See shiny_manifest.json for the reference
+        # schema.
+        rmd_packages = {
+            "rmarkdown": {
+                "Source": "CRAN",
+                "Repository": "https://cloud.r-project.org",
+                "description": {
+                    "Package": "rmarkdown",
+                    "Version": "2.25",
+                    "Imports": "knitr",
+                },
+            },
+            "knitr": {
+                "Source": "CRAN",
+                "Repository": "https://cloud.r-project.org",
+                "description": {
+                    "Package": "knitr",
+                    "Version": "1.45",
+                    "Imports": "",
+                },
+            },
+        }
         return {
             "index.Rmd": (
                 "---\ntitle: VIP RMarkdown Test\noutput: html_document\n---\n\n"
@@ -185,7 +214,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
                         "content_category": "",
                         "has_parameters": False,
                     },
-                    "packages": {},
+                    "packages": rmd_packages,
                 }
             ),
         }
@@ -223,6 +252,16 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
                 ],
             }
         )
+        # Connect's jupyter-static renderer uses ``entrypoint`` (and a ``files``
+        # block listing every bundled file with an MD5 checksum) to find the
+        # notebook to pass to ``nbconvert``.  ``primary_document`` alone is
+        # insufficient: if ``files`` is missing or ``entrypoint`` is unset,
+        # nbconvert is invoked with an empty filename argument.
+        requirements_content = ""
+
+        def _md5(text: str) -> str:
+            return hashlib.md5(text.encode("utf-8")).hexdigest()
+
         return {
             "notebook.ipynb": notebook_content,
             "manifest.json": json.dumps(
@@ -230,6 +269,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
                     "version": 1,
                     "metadata": {
                         "appmode": "jupyter-static",
+                        "entrypoint": "notebook.ipynb",
                         "primary_document": "notebook.ipynb",
                         "content_category": "",
                         "has_parameters": False,
@@ -242,9 +282,13 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
                             "package_file": "requirements.txt",
                         },
                     },
+                    "files": {
+                        "notebook.ipynb": {"checksum": _md5(notebook_content)},
+                        "requirements.txt": {"checksum": _md5(requirements_content)},
+                    },
                 }
             ),
-            "requirements.txt": "",
+            "requirements.txt": requirements_content,
         }
 
     if name == "vip-fastapi-test":
@@ -403,10 +447,13 @@ _EXPECTED_OUTPUT: dict[str, dict] = {
         "key": "message",
         "value": "VIP test OK",
     },
-    # Shiny apps serve an HTML page with Shiny bootstrap markup.
+    # Shiny apps serve an HTML page that contains the app's rendered content.
+    # The test app renders `fluidPage("vip test")`, so the text "vip test"
+    # appears inside the HTML.  We also check for "shiny" as a framework
+    # marker (present in the framework-injected <script> tags).
     "vip-shiny-test": {
         "type": "html",
-        "markers": ["shiny", "bootstraplib"],
+        "markers": ["shiny", "vip test"],
     },
     # Dash apps serve an HTML page with Dash-specific markup.
     "vip-dash-test": {
