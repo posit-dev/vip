@@ -24,6 +24,15 @@ _GIT_BRANCH = "main"
 _GIT_DIRECTORY = "extensions/quarto-document"
 
 
+def _md5(text: str) -> str:
+    """Return the MD5 hex digest of *text*.
+
+    ``usedforsecurity=False`` is required on FIPS-enabled runners; this is a
+    non-cryptographic content checksum consumed by Connect's manifest schema.
+    """
+    return hashlib.md5(text.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+
 @scenario("test_content_deploy.feature", "Deploy and execute a Quarto document")
 def test_deploy_quarto():
     pass
@@ -181,6 +190,8 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         # schema.
         # Versions below are placeholders that satisfy packrat's column-shape
         # requirement; they do not need to match what is installed on the server.
+        # TODO: if Connect starts validating additional fields (Hash, Requirements)
+        # from newer packrat/renv lockfile schemas, expand these entries accordingly.
         rmd_packages = {
             "rmarkdown": {
                 "Source": "CRAN",
@@ -201,22 +212,27 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
                 },
             },
         }
+        rmd_content = (
+            "---\ntitle: VIP RMarkdown Test\noutput: html_document\n---\n\n"
+            "Hello from VIP RMarkdown.\n"
+        )
         return {
-            "index.Rmd": (
-                "---\ntitle: VIP RMarkdown Test\noutput: html_document\n---\n\n"
-                "Hello from VIP RMarkdown.\n"
-            ),
+            "index.Rmd": rmd_content,
             "manifest.json": json.dumps(
                 {
                     "version": 1,
                     "platform": r_versions[0],
                     "metadata": {
                         "appmode": "rmd-static",
+                        "entrypoint": "index.Rmd",
                         "primary_rmd": "index.Rmd",
                         "content_category": "",
                         "has_parameters": False,
                     },
                     "packages": rmd_packages,
+                    "files": {
+                        "index.Rmd": {"checksum": _md5(rmd_content)},
+                    },
                 }
             ),
         }
@@ -260,12 +276,6 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         # insufficient: if ``files`` is missing or ``entrypoint`` is unset,
         # nbconvert is invoked with an empty filename argument.
         requirements_content = ""
-
-        def _md5(text: str) -> str:
-            # usedforsecurity=False: this is a non-cryptographic content checksum
-            # consumed by Connect; needed for FIPS-enabled runners.
-            return hashlib.md5(text.encode("utf-8"), usedforsecurity=False).hexdigest()
-
         return {
             "notebook.ipynb": notebook_content,
             "manifest.json": json.dumps(
@@ -452,9 +462,11 @@ _EXPECTED_OUTPUT: dict[str, dict] = {
         "value": "VIP test OK",
     },
     # Shiny apps serve an HTML page that contains the app's rendered content.
-    # The test app renders `fluidPage("vip test")`, so the text "vip test"
-    # appears inside the HTML.  We also check for "shiny" as a framework
-    # marker (present in the framework-injected <script> tags).
+    # "shiny" is a framework marker present in the framework-injected <script>
+    # tags.  "vip test" appears in the page title/chrome (Connect uses the app
+    # name as the page title) and also as the text node rendered by
+    # `fluidPage("vip test")`.  Note: this is a chrome-level check — a
+    # failed render that still produces Shiny scaffolding would pass.
     "vip-shiny-test": {
         "type": "html",
         "markers": ["shiny", "vip test"],
