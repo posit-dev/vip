@@ -96,8 +96,15 @@ class InteractiveAuthSession:
         cache hit (it would load a dead key and 401 on every request).
         We'd rather leave the key alive; ``_delete_stale_vip_keys`` at
         the next real mint reaps anything older than the orphan window.
+
+        Both the storage-state file *and* the companion meta file must
+        exist: a stale meta without the state file is unusable by the
+        next run (``_load_cached_auth`` returns ``None``), so our key
+        isn't actually reachable from the cache and should be deleted.
         """
         if not self._cache_path or not self.api_key:
+            return False
+        if not self._cache_path.exists():
             return False
         meta_path = self._cache_path.with_suffix(".meta.json")
         if not meta_path.exists():
@@ -693,8 +700,8 @@ def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
 _XSRF_COOKIE_NAMES = ("RSC-XSRF", "RSC-XSRF-legacy")
 
 
-def _xsrf_from_page(page: Page, api_url: str) -> str:
-    """Read the XSRF cookie value from the browser context for ``api_url``.
+def _xsrf_from_page(page: Page, request_url: str) -> str:
+    """Read the XSRF cookie value from the browser context for ``request_url``.
 
     Connect's XSRF check compares the cookie value to the ``X-Rsc-Xsrf``
     header.  Production deployments use one of two cookie names:
@@ -704,15 +711,17 @@ def _xsrf_from_page(page: Page, api_url: str) -> str:
       mode (e.g. ``connect.posit.it``).  The paired session cookie is
       ``rsconnect-legacy``.  The header name stays ``X-Rsc-Xsrf``.
 
-    Playwright's ``cookies(url)`` filter is host *and path* aware, so
-    the URL we pass must match what the request actually hits
-    (``/__api__/...``).  Scoping to the root (``connect_url``) would
-    exclude any cookie set with ``Path=/__api__`` and falsely yield
-    ``HTTP 403 XSRF token mismatch``.  Reading via the cookie jar
-    rather than ``document.cookie`` also handles ``HttpOnly`` uniformly.
+    Playwright's ``cookies(url)`` filter implements RFC 6265 path
+    matching: ``Path=/__api__/`` only matches request paths *under*
+    ``/__api__/``.  Pass the actual endpoint URL (e.g.
+    ``.../__api__/v1/user``) — not the bare ``/__api__`` base — or
+    cookies set with a trailing-slash path get silently excluded and
+    Connect replies ``HTTP 403 XSRF token mismatch``.  Reading via the
+    cookie jar rather than ``document.cookie`` also handles
+    ``HttpOnly`` uniformly.
     """
     try:
-        jar = page.context.cookies(api_url) or []
+        jar = page.context.cookies(request_url) or []
     except PlaywrightError:
         return ""
     by_name = {c.get("name"): c.get("value") or "" for c in jar}
@@ -735,16 +744,17 @@ def _summarize_cookies(jar: list[dict]) -> list[dict]:
     ]
 
 
-def _log_mint_cookie_diagnostic(page: Page, api_url: str) -> None:
+def _log_mint_cookie_diagnostic(page: Page, request_url: str) -> None:
     """Print what we see in the browser when minting fails.
 
     Turns an opaque XSRF mismatch into actionable evidence: the page
     URL, the full jar (to spot cross-domain shadows), the jar filtered
-    to the actual ``/__api__`` endpoint (what actually rides the API
-    request, respecting path scoping), and ``document.cookie`` names.
-    If these two cookie lists disagree on ``RSC-XSRF`` /
-    ``RSC-XSRF-legacy``, the mismatch is almost certainly another
-    domain — or a path-scoped cookie — poisoning the unfiltered view.
+    to the actual endpoint URL under ``/__api__/`` (what truly rides
+    the request, respecting RFC 6265 path matching), and
+    ``document.cookie`` names.  If these two cookie lists disagree on
+    ``RSC-XSRF`` / ``RSC-XSRF-legacy``, the mismatch is almost certainly
+    another domain — or a path-scoped cookie — poisoning the unfiltered
+    view.
     """
     try:
         current_url = page.url
@@ -759,8 +769,8 @@ def _log_mint_cookie_diagnostic(page: Page, api_url: str) -> None:
     except Exception as exc:
         print(f">>> Mint diagnostic: could not read cookie jar: {exc}")
     try:
-        scoped = page.context.cookies(api_url) or []
-        print(f">>> Mint diagnostic: cookies sent to {api_url} ({len(scoped)} entries):")
+        scoped = page.context.cookies(request_url) or []
+        print(f">>> Mint diagnostic: cookies sent to {request_url} ({len(scoped)} entries):")
         for entry in _summarize_cookies(scoped):
             print(f"    {entry}")
     except Exception as exc:
@@ -872,13 +882,18 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
     Returns the API key string, or ``None`` on failure (no exception).
     """
     base = connect_url.rstrip("/") + "/__api__"
-    xsrf = _xsrf_from_page(page, base)
+    me_url = f"{base}/v1/user"
+    # Scope cookie lookup to an actual endpoint path.  RFC 6265 cookie
+    # path matching means ``Path=/__api__/`` does *not* match a request
+    # to ``/__api__`` (no trailing slash).  Using ``me_url`` matches
+    # whatever path the server set the cookie under.
+    xsrf = _xsrf_from_page(page, me_url)
     headers = {"X-Rsc-Xsrf": xsrf} if xsrf else {}
 
     req = page.context.request
 
     try:
-        me_resp = req.get(f"{base}/v1/user", headers=headers)
+        me_resp = req.get(me_url, headers=headers)
         if not me_resp.ok:
             print(
                 f">>> Warning: GET /v1/user returned HTTP {me_resp.status}: "
@@ -886,7 +901,7 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
             )
             xsrf_preview = f"{xsrf[:4]}…(len={len(xsrf)})" if xsrf else "<none>"
             print(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
-            _log_mint_cookie_diagnostic(page, base)
+            _log_mint_cookie_diagnostic(page, me_url)
             return None
         guid = me_resp.json().get("guid")
         if not guid:

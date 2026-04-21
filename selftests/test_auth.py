@@ -218,6 +218,38 @@ class TestInteractiveAuthSessionCleanup:
 
         deleter.assert_called_once_with("https://c.example.com", "LIVE", "_vip_interactive_1")
 
+    def test_deletes_when_cache_state_file_is_missing(self, tmp_path):
+        """Meta without state is stale metadata — there is no cache the next
+        run could actually load from, so our key is not reachable by
+        future runs.  Delete it now so it doesn't orphan until the next
+        mint sweeps stale keys."""
+        import json
+
+        from vip.auth import InteractiveAuthSession
+
+        state = tmp_path / "state.json"
+        state.write_text('{"cookies": []}')
+        cache = tmp_path / ".vip-auth-cache.json"
+        # Meta exists and references our key, but the cache state file was
+        # removed (disk pressure, manual cleanup, etc.).
+        cache.with_suffix(".meta.json").write_text(
+            json.dumps({"api_key": "LIVE", "key_name": "_vip_interactive_1"})
+        )
+        assert not cache.exists()
+
+        session = InteractiveAuthSession(
+            storage_state_path=state,
+            api_key="LIVE",
+            key_name="_vip_interactive_1",
+            _connect_url="https://c.example.com",
+            _cache_path=cache,
+        )
+
+        with patch("vip.auth._delete_api_key") as deleter:
+            session.cleanup()
+
+        deleter.assert_called_once_with("https://c.example.com", "LIVE", "_vip_interactive_1")
+
     def test_deletes_when_cache_references_a_different_key(self, tmp_path):
         """Concurrent run overwrote the cache with its own key → our key is
         no longer referenced and should be deleted so it doesn't linger."""
@@ -632,6 +664,47 @@ class TestCreateApiKeyViaSession:
 
         assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
         req.post.assert_not_called()
+
+    def test_xsrf_cookie_with_trailing_slash_path_is_included(self):
+        """RFC 6265 path matching: a cookie with ``Path=/__api__/`` is sent
+        only with requests whose path is under ``/__api__/`` — ``/__api__``
+        alone (no trailing slash) does *not* match.  Scoping ``cookies()``
+        to the base (``/__api__``) excludes these cookies even though they
+        *will* ride every real API call.  Use an actual endpoint URL so
+        Playwright's filter sees a matching request-path.
+        """
+        from vip.auth import _create_api_key_via_session
+
+        page = MagicMock()
+
+        def cookies_for(url=None):
+            # Stub RFC 6265-compliant filtering: return the cookie only if
+            # the URL's path is under ``/__api__/``.
+            if not url:
+                return [{"name": "RSC-XSRF", "value": "tok", "path": "/__api__/"}]
+            from urllib.parse import urlparse
+
+            path = urlparse(url).path
+            if path.startswith("/__api__/"):
+                return [{"name": "RSC-XSRF", "value": "tok", "path": "/__api__/"}]
+            return []
+
+        page.context.cookies.side_effect = cookies_for
+        req = page.context.request
+
+        req.get.side_effect = [
+            self._api_response(json_data={"guid": "g"}),
+            self._api_response(json_data=[]),
+        ]
+        req.post.return_value = self._api_response(json_data={"id": "1", "key": "K" * 30})
+
+        result = _create_api_key_via_session(page, "https://connect.example.com", "k")
+
+        assert result == "K" * 30, (
+            "cookie with Path=/__api__/ must be read; request to /__api__ "
+            "(no trailing slash) would miss it under RFC 6265 path matching."
+        )
+        assert req.get.call_args_list[0].kwargs["headers"]["X-Rsc-Xsrf"] == "tok"
 
     def test_xsrf_cookie_is_scoped_to_api_url(self):
         """Cookie jars from ``page.context.cookies()`` span every domain the
