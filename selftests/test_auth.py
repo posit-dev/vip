@@ -399,8 +399,10 @@ class TestCreateApiKeyViaSession:
 
         page.context.cookies.assert_called_with(connect_url)
 
-    def test_create_failure_returns_none(self, monkeypatch):
-        """HTTP 500 on the create call must yield None, not an exception."""
+    def test_create_failure_returns_none(self, monkeypatch, capsys):
+        """HTTP 500 on the create call must yield None, not an exception.
+        The warning must include a snippet of the response body so the user
+        can diagnose what Connect rejected."""
         import httpx
 
         from vip.auth import _create_api_key_via_session
@@ -424,6 +426,37 @@ class TestCreateApiKeyViaSession:
 
         page = self._page_with_cookies([{"name": "RSC-XSRF", "value": "x"}])
         assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
+        assert "boom" in capsys.readouterr().out
+
+    def test_user_endpoint_403_warning_includes_body(self, monkeypatch, capsys):
+        """When cookie auth is rejected at /v1/user, the response body often
+        tells us why (CSRF, Origin, MFA step-up).  Include it in the warning
+        so users can report the real failure instead of an opaque 403."""
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.method == "GET" and request.url.path == "/__api__/v1/user":
+                return httpx.Response(
+                    403,
+                    json={"code": 23, "error": "CSRF token is required"},
+                )
+            return httpx.Response(404)
+
+        real_client = httpx.Client
+
+        def fake_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return real_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", fake_client)
+
+        page = self._page_with_cookies([{"name": "RSC-XSRF", "value": "x"}])
+        assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
+        out = capsys.readouterr().out
+        assert "HTTP 403" in out
+        assert "CSRF token is required" in out
 
     def test_missing_xsrf_cookie_still_runs(self, monkeypatch):
         """With no RSC-XSRF cookie the call still runs; no X-Rsc-Xsrf header sent."""

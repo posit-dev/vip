@@ -714,6 +714,22 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
             print(f">>> Warning: could not delete stale key {key_id}: {exc}")
 
 
+def _body_snippet(resp, limit: int = 200) -> str:
+    """Return a short, single-line preview of an HTTP response body.
+
+    Connect's API error responses include ``error``/``code`` fields that name
+    the actual failure reason (CSRF rejection, MFA step-up, etc.).  Including
+    a trimmed body snippet in failure warnings turns opaque ``HTTP 403`` into
+    something the user can act on.
+    """
+    try:
+        text = (resp.text or "").strip()
+    except Exception:
+        return "<unreadable body>"
+    text = " ".join(text.split())
+    return text[:limit] if text else "<empty body>"
+
+
 def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> str | None:
     """Create a Connect API key using the browser's session cookies.
 
@@ -747,7 +763,10 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
         ) as client:
             me_resp = client.get("/v1/user")
             if not me_resp.is_success:
-                print(f">>> Warning: GET /v1/user returned HTTP {me_resp.status_code}")
+                print(
+                    f">>> Warning: GET /v1/user returned HTTP {me_resp.status_code}: "
+                    f"{_body_snippet(me_resp)}"
+                )
                 return None
             guid = me_resp.json().get("guid")
             if not guid:
@@ -763,7 +782,7 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
             if not create_resp.is_success:
                 print(
                     f">>> Warning: POST /v1/users/{guid}/keys returned HTTP "
-                    f"{create_resp.status_code}"
+                    f"{create_resp.status_code}: {_body_snippet(create_resp)}"
                 )
                 return None
 
