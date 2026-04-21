@@ -5,9 +5,10 @@
 # remote deployment.
 #
 # Usage:
-#   just compose-up              # start all services
-#   just compose-up workbench    # start only Workbench
-#   just test-local              # start services + run tests
+#   just compose-up              # start Workbench only (default service)
+#   just compose-up workbench    # start only Workbench (explicit)
+#   docker compose --profile full up -d    # start Workbench + Connect + Package Manager
+#   just test-local              # start Workbench + run tests
 #
 # License keys:
 #   Set these environment variables (or add them to .env):
@@ -31,7 +32,7 @@ services:
   workbench:
     image: rstudio/rstudio-workbench:${RSW_VERSION:-latest}
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787"
     environment:
       RSW_LICENSE: ${RSW_LICENSE:-}
       VIP_TEST_USERNAME: ${VIP_TEST_USERNAME:-vip_test}
@@ -50,7 +51,7 @@ services:
   connect:
     image: ghcr.io/rstudio/rstudio-connect:${RSC_VERSION:-latest}
     ports:
-      - "3939:3939"
+      - "127.0.0.1:3939:3939"
     environment:
       RSC_LICENSE: ${RSC_LICENSE:-}
     volumes:
@@ -69,7 +70,7 @@ services:
   packagemanager:
     image: rstudio/rstudio-pm:${RSPM_VERSION:-latest}
     ports:
-      - "4242:4242"
+      - "127.0.0.1:4242:4242"
     environment:
       RSPM_LICENSE: ${RSPM_LICENSE:-}
     volumes:
