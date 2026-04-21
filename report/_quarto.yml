@@ -11,12 +11,6 @@ website:
       - href: details.qmd
         text: Detailed Results
 
-# Disable the Jupyter kernel daemon so `quarto render` exits cleanly after
-# the last document. The daemon is a known source of CI hangs — it keeps a
-# kernel alive between renders, but in one-shot CI runs it can block exit.
-execute:
-  daemon: false
-
 format:
   html:
     theme: cosmo

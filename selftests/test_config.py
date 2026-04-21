@@ -67,6 +67,18 @@ class TestConnectConfig:
         cc = ConnectConfig(url="connect.example.com")
         assert cc.url == "http://connect.example.com"
 
+    def test_url_host_only_no_trailing_slash(self):
+        cc = ConnectConfig(url="https://connect.example.com")
+        assert cc.url == "https://connect.example.com"
+
+    def test_url_host_only_trailing_slash_stripped(self):
+        cc = ConnectConfig(url="https://connect.example.com/")
+        assert cc.url == "https://connect.example.com"
+
+    def test_url_subpath_gets_trailing_slash(self):
+        cc = ConnectConfig(url="https://host.example.com/connect")
+        assert cc.url == "https://host.example.com/connect/"
+
     def test_default_deploy_timeout(self):
         cc = ConnectConfig(url="https://connect.example.com")
         assert cc.deploy_timeout == 600

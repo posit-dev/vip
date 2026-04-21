@@ -278,10 +278,7 @@ jobs:
           || true
 
       - name: Render Quarto report
-        timeout-minutes: 10
-        env:
-          QUARTO_JUPYTER_FLUSH_LOGS: "true"
-        run: cd report && uv run quarto render --no-execute-daemon
+        run: cd report && uv run quarto render
 
       # Stop Connect
       - name: Stop Connect

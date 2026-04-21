@@ -11,7 +11,7 @@ Resource profiles are resolved at runtime:
 - If not set, the test auto-detects available profiles from the UI
   dropdown.
 
-Requires ``--interactive-auth`` since session launching is browser-driven.
+Requires ``--interactive-auth`` or ``--headless-auth`` since session launching is browser-driven.
 """
 
 from __future__ import annotations
