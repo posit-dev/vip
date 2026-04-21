@@ -98,9 +98,10 @@ class InteractiveAuthSession:
         the next real mint reaps anything older than the orphan window.
 
         Both the storage-state file *and* the companion meta file must
-        exist: a stale meta without the state file is unusable by the
-        next run (``_load_cached_auth`` returns ``None``), so our key
-        isn't actually reachable from the cache and should be deleted.
+        exist *and be valid JSON*: a stale meta without the state file,
+        or a corrupted state file Playwright can't load, is not
+        reachable as a cache hit, so our key isn't truly referenced and
+        should be deleted rather than orphaned.
         """
         if not self._cache_path or not self.api_key:
             return False
@@ -112,6 +113,11 @@ class InteractiveAuthSession:
         try:
             import json
 
+            # Validate the cache state file is parseable JSON.  A corrupt
+            # state file would make Playwright's ``storage_state=`` load
+            # fail on the next run; treating it as a live reference would
+            # leak the API key until the next mint-time sweep.
+            json.loads(self._cache_path.read_text())
             meta = json.loads(meta_path.read_text())
         except (OSError, ValueError):
             return False

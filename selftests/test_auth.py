@@ -250,6 +250,34 @@ class TestInteractiveAuthSessionCleanup:
 
         deleter.assert_called_once_with("https://c.example.com", "LIVE", "_vip_interactive_1")
 
+    def test_deletes_when_cache_state_file_is_malformed(self, tmp_path):
+        """A corrupted cache state file is unusable — Playwright will fail to
+        load it, so the next run won't actually reuse our key.  Treat the
+        cache as unreachable and delete the key now rather than leaving
+        an orphan until the next mint-time sweep."""
+        import json
+
+        from vip.auth import InteractiveAuthSession
+
+        cache = tmp_path / ".vip-auth-cache.json"
+        cache.write_text("{not valid json")
+        cache.with_suffix(".meta.json").write_text(
+            json.dumps({"api_key": "LIVE", "key_name": "_vip_interactive_1"})
+        )
+
+        session = InteractiveAuthSession(
+            storage_state_path=cache,
+            api_key="LIVE",
+            key_name="_vip_interactive_1",
+            _connect_url="https://c.example.com",
+            _cache_path=cache,
+        )
+
+        with patch("vip.auth._delete_api_key") as deleter:
+            session.cleanup()
+
+        deleter.assert_called_once_with("https://c.example.com", "LIVE", "_vip_interactive_1")
+
     def test_deletes_when_cache_references_a_different_key(self, tmp_path):
         """Concurrent run overwrote the cache with its own key → our key is
         no longer referenced and should be deleted so it doesn't linger."""
