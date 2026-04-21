@@ -1,0 +1,37 @@
+# VIP configuration for local docker-compose development.
+#
+# Usage:
+#   just compose-up
+#   vip verify --config vip.toml.local --categories workbench -- -v
+#
+# Or use the shortcut:
+#   just test-local
+
+[general]
+deployment_name = "Local Docker Dev"
+
+[connect]
+# Disabled by default — Connect has self-registration enabled, but you must visit
+# http://localhost:3939 once after first boot to create the initial admin account.
+# To enable: start with `just compose-up --profile connect`, complete the one-time
+# admin setup, generate an API key, then set enabled = true and api_key below.
+enabled = false
+url = "http://localhost:3939"
+# api_key = "..."
+
+[workbench]
+enabled = true
+url = "http://localhost:8787"
+
+[package_manager]
+# Disabled by default — requires RSPM_LICENSE and the packagemanager profile.
+# To enable: start with `just compose-up --profile packagemanager` and set enabled = true.
+enabled = false
+url = "http://localhost:4242"
+
+[auth]
+provider = "password"
+# Local-dev-only defaults matching docker/workbench/startup.sh.
+# These are not secrets — they only work against the local Docker container.
+username = "vip_test"
+password = "vip_test_password"

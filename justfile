@@ -75,6 +75,26 @@ website-data:
     uv run python scripts/generate-test-catalog.py
     uv run python scripts/generate-feature-matrix.py
 
+# Start the local docker-compose dev environment
+compose-up *SERVICES:
+    docker compose up -d --wait {{ SERVICES }}
+    @docker compose ps
+
+# Stop the local docker-compose dev environment
+compose-down:
+    docker compose down
+
+# Run VIP tests against the local docker-compose environment (Workbench only by default)
+test-local *ARGS:
+    docker compose up -d --wait
+    uv run vip verify --config vip.toml.local --categories workbench {{ ARGS }}
+
+# Run VIP tests against the full local stack (requires RSC_LICENSE and RSPM_LICENSE).
+# Passes URL flags directly so Connect and PM don't need to be enabled in vip.toml.local.
+test-local-full *ARGS:
+    docker compose --profile full up -d --wait
+    uv run vip verify --connect-url http://localhost:3939 --workbench-url http://localhost:8787 --package-manager-url http://localhost:4242 {{ ARGS }}
+
 # Generate a Quarto report from selftests (for CI / demo purposes)
 report-selftest:
     uv run pytest selftests/

@@ -1,0 +1,92 @@
+# Local development environment for VIP Playwright tests.
+#
+# Spins up Workbench, Connect, and Package Manager with local password auth
+# so you can iterate on Playwright selectors and run UI tests without a
+# remote deployment.
+#
+# Usage:
+#   just compose-up              # start Workbench only (default service)
+#   just compose-up workbench    # start only Workbench (explicit)
+#   docker compose --profile full up -d    # start Workbench + Connect + Package Manager
+#   just test-local              # start Workbench + run tests
+#
+# License keys:
+#   Set these environment variables (or add them to .env):
+#     RSW_LICENSE        - Posit Workbench license key
+#     RSC_LICENSE        - Posit Connect license key
+#     RSPM_LICENSE       - Posit Package Manager license key
+#
+# Image versions:
+#   Image tags default to :latest for convenience. To pin versions for
+#   reproducible test environments, create a .env file (see .env.example):
+#     RSW_VERSION=2024.09.0
+#     RSC_VERSION=2024.09.0
+#     RSPM_VERSION=2024.09.0
+#
+# Limitations:
+#   - K8s-specific features (session capacity with resource profiles,
+#     cluster commands) cannot be tested locally.
+#   - Trial licenses may limit features or session duration.
+
+services:
+  workbench:
+    image: rstudio/rstudio-workbench:${RSW_VERSION:-latest}
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      RSW_LICENSE: ${RSW_LICENSE:-}
+      VIP_TEST_USERNAME: ${VIP_TEST_USERNAME:-vip_test}
+      VIP_TEST_PASSWORD: ${VIP_TEST_PASSWORD:-vip_test_password}
+      WORKBENCH_JUPYTER_PATH: /usr/local/bin/jupyter
+    volumes:
+      - workbench-home:/home
+      - ./docker/workbench/startup.sh:/etc/cont-init.d/99-vip-setup:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  connect:
+    image: ghcr.io/rstudio/rstudio-connect:${RSC_VERSION:-latest}
+    ports:
+      - "127.0.0.1:3939:3939"
+    environment:
+      RSC_LICENSE: ${RSC_LICENSE:-}
+    volumes:
+      - connect-data:/var/lib/rstudio-connect
+      - ./docker/connect/rstudio-connect.gcfg:/etc/rstudio-connect/rstudio-connect.gcfg:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3939/__ping__"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    profiles:
+      - full
+      - connect
+
+  packagemanager:
+    image: rstudio/rstudio-pm:${RSPM_VERSION:-latest}
+    ports:
+      - "127.0.0.1:4242:4242"
+    environment:
+      RSPM_LICENSE: ${RSPM_LICENSE:-}
+    volumes:
+      - pm-data:/var/lib/rstudio-pm
+      - ./docker/packagemanager/rstudio-pm.gcfg:/etc/rstudio-pm/rstudio-pm.gcfg:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4242/__ping__"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    profiles:
+      - full
+      - packagemanager
+
+volumes:
+  workbench-home:
+  connect-data:
+  pm-data:
