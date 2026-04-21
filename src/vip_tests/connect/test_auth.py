@@ -30,8 +30,10 @@ def navigate_to_login(page, connect_url):
 def enter_credentials(page, test_username, test_password, auth_provider, interactive_auth):
     if interactive_auth:
         # With --interactive-auth the browser is already authenticated via storage
-        # state.  The login page will redirect immediately — no form to fill.
-        page.wait_for_load_state("networkidle")
+        # state. The login page will redirect immediately — wait for the URL to
+        # leave /__login__ rather than relying on networkidle, which can fire
+        # before a JS-triggered redirect completes.
+        page.wait_for_url(lambda url: "/__login__" not in url, timeout=10000)
         return
     if auth_provider != "password":
         pytest.skip(
