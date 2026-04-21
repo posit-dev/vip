@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ssl
+
 import httpx
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
@@ -70,7 +72,28 @@ def inspect_headers(product, vip_config):
         pytest.skip(f"{product} is not configured")
     try:
         resp = httpx.get(pc.url, follow_redirects=True, timeout=15)
-    except httpx.ConnectError:
+    except httpx.ConnectError as exc:
+        # httpx wraps ssl.SSLCertVerificationError in httpx.ConnectError.
+        # A cert-verification failure is a trust-bundle issue on the test
+        # runner (e.g. missing public roots when fronted by an ALB with an
+        # ACM cert), not a server security finding — skip with clear
+        # guidance rather than failing as "connection refused".  See
+        # test_ssl.py (commit c057b80 / PR #198) for the same
+        # classification applied to the TLS-version test.
+        cause = exc.__cause__
+        if isinstance(cause, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(
+            exc
+        ):
+            pytest.skip(
+                f"Could not verify TLS certificate for {product} at {pc.url}: {exc}. "
+                "This is a certificate-trust issue on the test runner, not a "
+                "server security finding.  If the server uses a valid public "
+                "certificate (e.g. behind an AWS ALB with an ACM cert), set "
+                "SSL_CERT_FILE to a CA bundle that includes public roots: "
+                "/etc/ssl/certs/ca-certificates.crt on Debian/Ubuntu, "
+                "/etc/pki/tls/certs/ca-bundle.crt on RHEL, or the path "
+                "produced by `python -m certifi`."
+            )
         pytest.fail(
             f"Could not reach {product} at {pc.url}: connection refused. "
             "Check firewall rules, proxy configuration, DNS resolution, and port. "
