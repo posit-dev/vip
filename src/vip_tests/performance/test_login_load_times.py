@@ -40,8 +40,12 @@ def measure_load_time(product, vip_config, performance_config):
         elapsed = time.monotonic() - start
     except (httpx.ConnectError, httpx.ProxyError, httpx.ConnectTimeout) as exc:
         # Connectivity problem between the test runner and the product URL
-        # (proxy/firewall/DNS/closed port) is not a login-performance
-        # finding — skip with a clear diagnostic instead of failing.
+        # (proxy/firewall/DNS/closed port) is not a login-performance finding.
+        # We catch exactly these three pre-connect failures (not the broader
+        # httpx.TransportError) so that mid-transfer errors like ReadError or
+        # ReadTimeout still surface as hard failures rather than silently skipping.
+        # Reachability itself is already verified by the prerequisites suite
+        # (test_components.py), so a skip here avoids double-reporting.
         pytest.skip(
             f"{product} login URL not reachable from test runner "
             f"({url}): {exc}. Check network path, proxy configuration, "

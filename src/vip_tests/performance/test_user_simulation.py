@@ -81,11 +81,11 @@ def simulate_pm(users, vip_config, performance_config, vip_verbose):
     _check_user_count(users, performance_config)
     if not vip_config.package_manager.url:
         pytest.skip("Package Manager URL is not configured")
-    # Match the token guard in test_load.py so the PM tests behave
-    # symmetrically: both skip when the token is missing rather than one
-    # silently running unauthenticated.  Running load against PM's
-    # authenticated endpoints without a token produces 401s that masquerade
-    # as load-capacity results.
+    # Mirror the identical guard in test_load.py (line 67:
+    # `if not vip_config.package_manager.token`) so both PM test modules
+    # skip when the token is missing rather than one silently running
+    # unauthenticated.  Running load against PM's authenticated endpoints
+    # without a token produces 401s that masquerade as load-capacity results.
     if not vip_config.package_manager.token:
         pytest.skip("Package Manager token is not configured")
     return run_user_simulation(
