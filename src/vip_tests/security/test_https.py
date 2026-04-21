@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import ssl
 
 import httpx
@@ -77,8 +78,11 @@ def inspect_headers(product, vip_config):
         # A cert-verification failure is a trust-bundle issue on the test
         # runner (e.g. missing public roots when fronted by an ALB with an
         # ACM cert), not a server security finding — skip with clear
-        # guidance rather than failing as "connection refused". See
-        # test_ssl.py for the same classification applied to the TLS-version test.
+        # guidance rather than failing as "connection refused".
+        # src/vip_tests/cross_product/test_ssl.py applies the same cert-trust
+        # classification — it raises there because that test is specifically
+        # about TLS enforcement; here we skip because the test is about
+        # response headers, not certificate validity.
         cause = exc.__cause__
         if isinstance(cause, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(
             exc
@@ -109,8 +113,6 @@ def no_version_headers(response_headers):
         value = response_headers.get(header, "")
         # Having the header is OK, but it shouldn't contain version numbers.
         if value:
-            import re
-
             version_pattern = re.compile(r"\d+\.\d+")
             if version_pattern.search(value):
                 pytest.fail(
