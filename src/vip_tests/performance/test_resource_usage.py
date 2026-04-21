@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import statistics
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -35,7 +36,7 @@ def product_configured(vip_config):
 
 
 @when("I generate moderate API traffic for 10 seconds", target_fixture="load_test_results")
-def generate_traffic_and_measure_response_times(vip_config):
+def generate_traffic_and_measure_response_times(vip_config, vip_verbose):
     """Generate concurrent API traffic and collect response times."""
     # Collect health check URLs from configured products
     urls = []
@@ -51,6 +52,7 @@ def generate_traffic_and_measure_response_times(vip_config):
 
     stop_at = time.monotonic() + 10
     results = []
+    verbose = vip_verbose
 
     def _fetch_loop(url: str):
         """Continuously fetch URL until stop_at, collecting timing and status."""
@@ -60,9 +62,21 @@ def generate_traffic_and_measure_response_times(vip_config):
                 resp = httpx.get(url, timeout=10)
                 elapsed = time.monotonic() - start
                 results.append({"elapsed": elapsed, "status": resp.status_code, "error": None})
+                if verbose:
+                    print(
+                        f"[load] GET {url} {resp.status_code} {elapsed:.2f}s",
+                        file=sys.stderr,
+                        flush=True,
+                    )
             except Exception as exc:
                 elapsed = time.monotonic() - start
                 results.append({"elapsed": elapsed, "status": None, "error": str(exc)})
+                if verbose:
+                    print(
+                        f"[load] GET {url} FAIL {elapsed:.2f}s {exc}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
             time.sleep(0.1)
 
     with ThreadPoolExecutor(max_workers=4) as pool:

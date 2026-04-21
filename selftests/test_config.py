@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from vip.config import (
+    AuthConfig,
     ClusterConfig,
     ConnectConfig,
     Mode,
@@ -13,6 +14,24 @@ from vip.config import (
     VIPConfig,
     load_config,
 )
+
+
+class TestAuthConfig:
+    def test_idp_defaults_to_empty(self):
+        ac = AuthConfig()
+        assert ac.idp == ""
+
+    def test_idp_from_constructor(self):
+        ac = AuthConfig(idp="keycloak")
+        assert ac.idp == "keycloak"
+
+    def test_from_dict_with_idp(self):
+        ac = AuthConfig.from_dict({"provider": "oidc", "idp": "okta"})
+        assert ac.idp == "okta"
+
+    def test_from_dict_without_idp(self):
+        ac = AuthConfig.from_dict({"provider": "password"})
+        assert ac.idp == ""
 
 
 class TestProductConfig:
@@ -47,6 +66,18 @@ class TestConnectConfig:
     def test_url_normalized_when_scheme_missing(self):
         cc = ConnectConfig(url="connect.example.com")
         assert cc.url == "http://connect.example.com"
+
+    def test_url_host_only_no_trailing_slash(self):
+        cc = ConnectConfig(url="https://connect.example.com")
+        assert cc.url == "https://connect.example.com"
+
+    def test_url_host_only_trailing_slash_stripped(self):
+        cc = ConnectConfig(url="https://connect.example.com/")
+        assert cc.url == "https://connect.example.com"
+
+    def test_url_subpath_gets_trailing_slash(self):
+        cc = ConnectConfig(url="https://host.example.com/connect")
+        assert cc.url == "https://host.example.com/connect/"
 
     def test_default_deploy_timeout(self):
         cc = ConnectConfig(url="https://connect.example.com")

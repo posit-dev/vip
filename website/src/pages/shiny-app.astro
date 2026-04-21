@@ -39,7 +39,7 @@ import Footer from "../components/Footer.astro";
           <pre><code>git clone https://github.com/posit-dev/vip.git
 cd vip
 uv sync
-uv run playwright install chromium
+uv run playwright install --with-deps chromium
 
 uv run vip app</code></pre>
 
@@ -99,7 +99,7 @@ uv run vip app</code></pre>
               IDE (the Terminal tab in RStudio, or <code>Ctrl+`</code> in
               Positron) and run:
               <pre><code>uv sync
-uv run playwright install chromium</code></pre>
+uv run playwright install --with-deps chromium</code></pre>
             </li>
             <li>
               <strong>Configure credentials.</strong> Either create a
@@ -240,7 +240,7 @@ export VIP_TEST_PASSWORD="test-password"</code></pre>
           <h3>Installing with pip</h3>
           <p>If you don&rsquo;t use uv:</p>
           <pre><code>pip install posit-vip
-playwright install chromium
+playwright install --with-deps chromium
 vip app</code></pre>
         </section>
       </article>

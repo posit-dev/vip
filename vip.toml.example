@@ -10,6 +10,9 @@
 # With this config file:
 #   vip verify --config vip.toml --no-interactive-auth
 #
+# Headless auth (OIDC/SAML/OAuth2 requires [auth] idp):
+#   vip verify --config vip.toml --headless-auth
+#
 # Kubernetes mode (auto-configure from PTD Site CR, requires posit-dev/team-operator):
 #   vip verify --k8s --site main --namespace posit-team
 
@@ -56,12 +59,16 @@ url = "https://packagemanager.example.com"
 # version = "2024.09.0"
 
 # Token for a Package Manager user.
-# Prefer setting the VIP_PM_TOKEN environment variable.
+# Prefer setting the VIP_PACKAGE_MANAGER_TOKEN environment variable.
 # token = "..."
 
 [auth]
 # Authentication provider in use: "password", "ldap", "saml", "oidc", "oauth2"
 provider = "password"
+
+# Identity provider for --headless-auth: "keycloak", "okta"
+# Only required when provider is "oidc", "saml", or "oauth2".
+# idp = "keycloak"
 
 # Test user credentials.
 # Prefer setting VIP_TEST_USERNAME and VIP_TEST_PASSWORD environment variables.

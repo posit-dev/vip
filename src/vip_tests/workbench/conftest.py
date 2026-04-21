@@ -69,7 +69,7 @@ def workbench_login(
 
     This function:
     - Navigates directly to Workbench's URL
-    - Handles OIDC/SSO via --interactive-auth storage state
+    - Handles OIDC/SSO via pre-loaded storage state (--interactive-auth / --headless-auth)
     - Only fills login form for password auth
     - Retries on transient server errors (e.g., too many logins)
 
@@ -79,22 +79,23 @@ def workbench_login(
         username: Login username
         password: Login password
         auth_provider: Auth type (e.g., "password", "oidc", "saml")
-        interactive_auth: True if --interactive-auth was used (browser has storage state)
+        interactive_auth: True when an auth session is pre-loaded (either
+            --interactive-auth or --headless-auth)
         max_retries: Max login attempts on transient errors (default 3)
         retry_delay: Seconds to wait between retries (default 2.0)
 
     Raises:
-        pytest.skip: For non-password auth without interactive_auth, or when
-            interactive_auth storage state doesn't cover Workbench
+        pytest.skip: For non-password auth without a pre-loaded auth session,
+            or when the session's storage state doesn't cover Workbench
         AssertionError: When password login fails after retries
     """
     homepage_logo = page.locator(Homepage.POSIT_LOGO)
 
-    # For non-password auth without interactive auth, skip immediately
+    # For non-password auth without a pre-loaded auth session, skip immediately
     if auth_provider != "password" and not interactive_auth:
         pytest.skip(
             f"Login form not available for auth provider {auth_provider!r}. "
-            "Pass --interactive-auth when browser storage state is pre-loaded."
+            "Pass --interactive-auth or --headless-auth to pre-load browser storage state."
         )
 
     page.goto(workbench_url)
@@ -226,8 +227,8 @@ def wb_login(
     """Log in to Workbench and verify homepage loads.
 
     This fixture handles the complete login flow using rstudio-pro patterns.
-    Handles password auth, OIDC via --interactive-auth, and skips gracefully
-    when auth type is unsupported.
+    Handles password auth, OIDC via pre-loaded storage state (--interactive-auth /
+    --headless-auth), and skips gracefully when auth type is unsupported.
 
     Returns the page for further interactions.
     """
