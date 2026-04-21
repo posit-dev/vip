@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.24.9 (2026-04-21)
+
+### Bug Fixes
+
+- **auth**: Fix a number of auth test issues recently discovered
+  ([#201](https://github.com/posit-dev/vip/pull/201),
+  [`ec5882c`](https://github.com/posit-dev/vip/commit/ec5882cbfb57089d38b790de4b35a1c02300a7f8))
+
+### Chores
+
+- **deps**: Bump the python-dependencies group across 1 directory with 4 updates
+  ([#200](https://github.com/posit-dev/vip/pull/200),
+  [`481f2c7`](https://github.com/posit-dev/vip/commit/481f2c7287047b65d7949b1e534e913fbb2ae12f))
+
+### Continuous Integration
+
+- **report**: Guard Quarto render against remaining hang causes
+  ([#197](https://github.com/posit-dev/vip/pull/197),
+  [`ad7b6c6`](https://github.com/posit-dev/vip/commit/ad7b6c6ddc57835f272a0de2d2e31315000efb07))
+
+
 ## v0.24.8 (2026-04-20)
 
 ### Bug Fixes
