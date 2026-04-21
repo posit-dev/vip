@@ -665,7 +665,40 @@ def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
         print(">>> Warning: Could not find API key to delete.\n")
 
 
-def _delete_stale_vip_keys(client, guid: str) -> None:
+def _xsrf_from_page(page: Page) -> str:
+    """Read the ``RSC-XSRF`` cookie value the way ``document.cookie`` sees it.
+
+    Connect's double-submit XSRF check compares the ``RSC-XSRF`` cookie to
+    the ``X-Rsc-Xsrf`` header.  Browsers URL-encode cookie values on the
+    wire and URL-decode them for ``document.cookie``, so the header value a
+    real JS client sends is the decoded form.  ``page.evaluate`` runs in
+    the page and returns that same decoded value, sidestepping the
+    cookiejar-encoding mismatches that bit us when we reached for httpx.
+    """
+    try:
+        cookie_str = page.evaluate("() => document.cookie") or ""
+    except PlaywrightError:
+        return ""
+    for part in cookie_str.split(";"):
+        name, _, value = part.strip().partition("=")
+        if name == "RSC-XSRF":
+            return value
+    return ""
+
+
+def _response_text(resp) -> str:
+    """Read a response body, tolerating both Playwright and httpx shapes.
+
+    Playwright's ``APIResponse.text`` is a method; httpx's is a property.
+    Tests sometimes stub it as a plain string.  Duck-type all three.
+    """
+    text_attr = getattr(resp, "text", None)
+    if callable(text_attr):
+        return text_attr() or ""
+    return text_attr or ""
+
+
+def _delete_stale_vip_keys(req, base_url: str, guid: str, headers: dict[str, str]) -> None:
     """Delete ``_vip_interactive_<ts>`` keys older than
     :data:`_ORPHAN_MIN_AGE_SECONDS`.
 
@@ -674,20 +707,18 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
     the threshold are left alone because they probably belong to another
     ``vip verify`` still running.
     """
-    import httpx
-
     try:
-        list_resp = client.get(f"/v1/users/{guid}/keys")
-    except httpx.HTTPError as exc:
+        list_resp = req.get(f"{base_url}/v1/users/{guid}/keys", headers=headers)
+    except PlaywrightError as exc:
         print(f">>> Warning: listing stale keys failed: {exc}")
         return
-    if not list_resp.is_success:
+    if not list_resp.ok:
         return
 
     now = int(time.time())
     try:
         entries = list_resp.json()
-    except ValueError:
+    except (ValueError, PlaywrightError):
         return
     if not isinstance(entries, list):
         print(f">>> Warning: key list response was {type(entries).__name__}, not list.")
@@ -709,8 +740,8 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
         if now - created_ts < _ORPHAN_MIN_AGE_SECONDS:
             continue  # belongs to a concurrent run
         try:
-            client.delete(f"/v1/users/{guid}/keys/{key_id}")
-        except httpx.HTTPError as exc:
+            req.delete(f"{base_url}/v1/users/{guid}/keys/{key_id}", headers=headers)
+        except PlaywrightError as exc:
             print(f">>> Warning: could not delete stale key {key_id}: {exc}")
 
 
@@ -723,7 +754,7 @@ def _body_snippet(resp, limit: int = 200) -> str:
     something the user can act on.
     """
     try:
-        text = (resp.text or "").strip()
+        text = _response_text(resp).strip()
     except Exception:
         return "<unreadable body>"
     text = " ".join(text.split())
@@ -731,10 +762,18 @@ def _body_snippet(resp, limit: int = 200) -> str:
 
 
 def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> str | None:
-    """Create a Connect API key using the browser's session cookies.
+    """Create a Connect API key by reusing the browser's authenticated session.
 
-    Lifts cookies from the authenticated Playwright context and POSTs to
-    ``/__api__/v1/users/{guid}/keys`` — the same endpoint the Connect
+    Routes every request through ``page.context.request`` (Playwright's
+    ``APIRequestContext``) so cookies ride the same wire format the browser
+    uses — critical for Connect's double-submit XSRF check, which compares
+    the ``RSC-XSRF`` cookie value to the ``X-Rsc-Xsrf`` header byte-for-byte.
+    An earlier httpx-based implementation failed because httpx re-quoted
+    cookie values via ``http.cookiejar``, producing ``HTTP 403 XSRF token
+    mismatch`` once real XSRF tokens contained characters that trigger
+    RFC 6265 quoting.
+
+    Hits ``/__api__/v1/users/{guid}/keys`` — the same endpoint the Connect
     dashboard's "+ New API Key" button uses.  See
     https://docs.posit.co/connect/api/ (operationId: createKey).
 
@@ -745,54 +784,46 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
 
     Returns the API key string, or ``None`` on failure (no exception).
     """
-    import httpx
-
-    base = connect_url.rstrip("/")
-    # Scope cookies to the Connect host so IdP cookies (which can be large
-    # and irrelevant) aren't sent to Connect.
-    cookies = {c["name"]: c["value"] for c in page.context.cookies(connect_url)}
-    xsrf = cookies.get("RSC-XSRF", "")
+    base = connect_url.rstrip("/") + "/__api__"
+    xsrf = _xsrf_from_page(page)
     headers = {"X-Rsc-Xsrf": xsrf} if xsrf else {}
 
+    req = page.context.request
+
     try:
-        with httpx.Client(
-            base_url=f"{base}/__api__",
-            cookies=cookies,
-            headers=headers,
-            timeout=10.0,
-        ) as client:
-            me_resp = client.get("/v1/user")
-            if not me_resp.is_success:
-                print(
-                    f">>> Warning: GET /v1/user returned HTTP {me_resp.status_code}: "
-                    f"{_body_snippet(me_resp)}"
-                )
-                return None
-            guid = me_resp.json().get("guid")
-            if not guid:
-                print(">>> Warning: Connect did not return a user guid.")
-                return None
-
-            _delete_stale_vip_keys(client, guid)
-
-            create_resp = client.post(
-                f"/v1/users/{guid}/keys",
-                json={"name": key_name},
+        me_resp = req.get(f"{base}/v1/user", headers=headers)
+        if not me_resp.ok:
+            print(
+                f">>> Warning: GET /v1/user returned HTTP {me_resp.status}: "
+                f"{_body_snippet(me_resp)}"
             )
-            if not create_resp.is_success:
-                print(
-                    f">>> Warning: POST /v1/users/{guid}/keys returned HTTP "
-                    f"{create_resp.status_code}: {_body_snippet(create_resp)}"
-                )
-                return None
+            return None
+        guid = me_resp.json().get("guid")
+        if not guid:
+            print(">>> Warning: Connect did not return a user guid.")
+            return None
 
-            api_key = create_resp.json().get("key")
-            if not api_key:
-                print(">>> Warning: Connect response did not include a key string.")
-                return None
+        _delete_stale_vip_keys(req, base, guid, headers)
 
-            print(">>> Connect API key created.\n")
-            return api_key
-    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        create_resp = req.post(
+            f"{base}/v1/users/{guid}/keys",
+            headers=headers,
+            data={"name": key_name},
+        )
+        if not create_resp.ok:
+            print(
+                f">>> Warning: POST /v1/users/{guid}/keys returned HTTP "
+                f"{create_resp.status}: {_body_snippet(create_resp)}"
+            )
+            return None
+
+        api_key = create_resp.json().get("key")
+        if not api_key:
+            print(">>> Warning: Connect response did not include a key string.")
+            return None
+
+        print(">>> Connect API key created.\n")
+        return api_key
+    except (PlaywrightError, ValueError, KeyError) as exc:
         print(f">>> Warning: Could not create API key: {exc}")
         return None
