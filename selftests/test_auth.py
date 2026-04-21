@@ -549,6 +549,44 @@ class TestCreateApiKeyViaSession:
         assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
         req.post.assert_not_called()
 
+    def test_xsrf_cookie_is_scoped_to_connect_url(self):
+        """Cookie jars from ``page.context.cookies()`` span every domain the
+        browser has touched — IdP, related subdomains, etc.  Reading
+        unfiltered means a ``RSC-XSRF`` from another site can shadow the
+        real Connect one and produce ``HTTP 403 XSRF token mismatch``.
+        The implementation must pass ``connect_url`` to ``cookies()`` so
+        Playwright filters by host/path before we pick a value.
+        """
+        from vip.auth import _create_api_key_via_session
+
+        page = MagicMock()
+
+        def cookies_for(url=None):
+            # Playwright filters server-side; our stub must mirror that.
+            if url == "https://connect.example.com":
+                return [{"name": "RSC-XSRF", "value": "real", "domain": "connect.example.com"}]
+            return [
+                {"name": "RSC-XSRF", "value": "real", "domain": "connect.example.com"},
+                {"name": "RSC-XSRF", "value": "stranger", "domain": "idp.elsewhere.io"},
+            ]
+
+        page.context.cookies.side_effect = cookies_for
+        req = page.context.request
+
+        req.get.side_effect = [
+            self._api_response(json_data={"guid": "g"}),
+            self._api_response(json_data=[]),
+        ]
+        req.post.return_value = self._api_response(json_data={"id": "1", "key": "K" * 30})
+
+        result = _create_api_key_via_session(page, "https://connect.example.com", "k")
+
+        assert result == "K" * 30
+        # Must be the Connect cookie, never the IdP one.
+        assert req.get.call_args_list[0].kwargs["headers"]["X-Rsc-Xsrf"] == "real"
+        # And the URL must have been supplied so Playwright does the scoping.
+        page.context.cookies.assert_any_call("https://connect.example.com")
+
     def test_uses_page_context_request_so_xsrf_matches_cookie(self):
         """Regression guard: requests must go through ``page.context.request``
         (Playwright's APIRequestContext), which shares the browser's cookie

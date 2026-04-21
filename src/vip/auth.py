@@ -668,8 +668,8 @@ def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
 _XSRF_COOKIE_NAMES = ("RSC-XSRF", "RSC-XSRF-legacy")
 
 
-def _xsrf_from_page(page: Page) -> str:
-    """Read the XSRF cookie value from the browser context.
+def _xsrf_from_page(page: Page, connect_url: str) -> str:
+    """Read the XSRF cookie value from the browser context for ``connect_url``.
 
     Connect's XSRF check compares the cookie value to the ``X-Rsc-Xsrf``
     header.  Production deployments use one of two cookie names:
@@ -679,11 +679,14 @@ def _xsrf_from_page(page: Page) -> str:
       mode (e.g. ``connect.posit.it``).  The paired session cookie is
       ``rsconnect-legacy``.  The header name stays ``X-Rsc-Xsrf``.
 
-    Reading from ``page.context.cookies()`` rather than ``document.cookie``
-    handles both HttpOnly and non-HttpOnly flavors uniformly.
+    Playwright's cookie jar spans every domain the browser has visited
+    (including the IdP).  Passing ``connect_url`` filters to cookies
+    actually sent to Connect, so a same-named cookie from another host
+    can't shadow the real one.  Reading via ``page.context.cookies()``
+    rather than ``document.cookie`` also handles HttpOnly uniformly.
     """
     try:
-        jar = page.context.cookies() or []
+        jar = page.context.cookies(connect_url) or []
     except PlaywrightError:
         return ""
     by_name = {c.get("name"): c.get("value") or "" for c in jar}
@@ -693,12 +696,28 @@ def _xsrf_from_page(page: Page) -> str:
     return ""
 
 
-def _log_mint_cookie_diagnostic(page: Page) -> None:
+def _summarize_cookies(jar: list[dict]) -> list[dict]:
+    return [
+        {
+            "name": c.get("name"),
+            "domain": c.get("domain"),
+            "path": c.get("path"),
+            "httpOnly": c.get("httpOnly"),
+            "len": len(c.get("value") or ""),
+        }
+        for c in jar
+    ]
+
+
+def _log_mint_cookie_diagnostic(page: Page, connect_url: str) -> None:
     """Print what we see in the browser when minting fails.
 
-    Turns an opaque XSRF mismatch into actionable evidence (page URL,
-    cookie names, ``HttpOnly`` flags, ``document.cookie`` contents) so
-    we do not have to iterate through hypotheses blind.
+    Turns an opaque XSRF mismatch into actionable evidence: the page
+    URL, the full jar (to spot cross-domain shadows), the jar filtered
+    to the Connect host (what actually rides the API request), and
+    ``document.cookie`` names.  If these two cookie lists disagree on
+    ``RSC-XSRF`` / ``RSC-XSRF-legacy``, the mismatch is almost certainly
+    another domain poisoning the unfiltered view.
     """
     try:
         current_url = page.url
@@ -707,22 +726,18 @@ def _log_mint_cookie_diagnostic(page: Page) -> None:
     print(f">>> Mint diagnostic: browser is on {current_url}")
     try:
         jar = page.context.cookies() or []
-        print(f">>> Mint diagnostic: browser cookie jar ({len(jar)} entries):")
-        for c in jar:
-            print(
-                "    "
-                + str(
-                    {
-                        "name": c.get("name"),
-                        "domain": c.get("domain"),
-                        "path": c.get("path"),
-                        "httpOnly": c.get("httpOnly"),
-                        "len": len(c.get("value") or ""),
-                    }
-                )
-            )
+        print(f">>> Mint diagnostic: full cookie jar ({len(jar)} entries):")
+        for entry in _summarize_cookies(jar):
+            print(f"    {entry}")
     except Exception as exc:
         print(f">>> Mint diagnostic: could not read cookie jar: {exc}")
+    try:
+        scoped = page.context.cookies(connect_url) or []
+        print(f">>> Mint diagnostic: cookies sent to {connect_url} ({len(scoped)} entries):")
+        for entry in _summarize_cookies(scoped):
+            print(f"    {entry}")
+    except Exception as exc:
+        print(f">>> Mint diagnostic: could not read scoped cookies: {exc}")
     try:
         doc_cookie = page.evaluate("() => document.cookie") or ""
         doc_names = [p.strip().partition("=")[0] for p in doc_cookie.split(";") if p.strip()]
@@ -830,7 +845,7 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
     Returns the API key string, or ``None`` on failure (no exception).
     """
     base = connect_url.rstrip("/") + "/__api__"
-    xsrf = _xsrf_from_page(page)
+    xsrf = _xsrf_from_page(page, connect_url)
     headers = {"X-Rsc-Xsrf": xsrf} if xsrf else {}
 
     req = page.context.request
@@ -842,7 +857,9 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
                 f">>> Warning: GET /v1/user returned HTTP {me_resp.status}: "
                 f"{_body_snippet(me_resp)}"
             )
-            _log_mint_cookie_diagnostic(page)
+            xsrf_preview = f"{xsrf[:4]}…(len={len(xsrf)})" if xsrf else "<none>"
+            print(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
+            _log_mint_cookie_diagnostic(page, connect_url)
             return None
         guid = me_resp.json().get("guid")
         if not guid:
