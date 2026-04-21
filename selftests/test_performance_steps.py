@@ -53,7 +53,7 @@ class TestLoginLoadTimeSkips:
         assert "proxy refused" in msg
 
     def test_connect_timeout_skips(self, monkeypatch):
-        msg = self._run_measure(monkeypatch, httpx.ConnectTimeout("timed out", request=None))
+        msg = self._run_measure(monkeypatch, httpx.ConnectTimeout("timed out"))
         assert "not reachable from test runner" in msg
 
     def test_connect_error_skips(self, monkeypatch):
@@ -77,9 +77,10 @@ class TestLoginLoadTimeSkips:
 class TestSimulatePmTokenGuard:
     """simulate_pm should skip when package_manager.token is falsy."""
 
-    # Use a user count that is in the default load_user_counts list so the
-    # _check_user_count guard does not fire before the token/URL guard.
-    _VALID_USERS = 10
+    # Derive from config defaults so the tests stay decoupled: if load_user_counts
+    # ever changes, _check_user_count fires with the first valid count rather than
+    # skipping before the token/URL guard and silently regressing coverage.
+    _VALID_USERS = PerformanceConfig().load_user_counts[0]
 
     def _run_simulate_pm(self, token: str, url: str = "http://pm.example.com"):
         """Call simulate_pm with a config built from *token* and *url*."""
@@ -106,7 +107,7 @@ class TestSimulatePmTokenGuard:
         assert "package manager" in msg.lower()
 
     def test_no_url_skips_before_token_check(self):
-        """If the URL is also missing, it should still skip (on URL check)."""
+        """URL guard fires before token guard when both are missing."""
         import vip_tests.performance.test_user_simulation as mod
 
         cfg = _make_config(url="", token="")
@@ -119,5 +120,5 @@ class TestSimulatePmTokenGuard:
                 performance_config=pc,
                 vip_verbose=False,
             )
-        # Either the URL check or the token check fires — both are skips.
-        assert exc_info.value.msg  # just confirm it's a non-empty skip message
+        # simulate_pm checks URL first, so the message should name the URL.
+        assert "url" in exc_info.value.msg.lower()
