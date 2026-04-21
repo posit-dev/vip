@@ -247,11 +247,14 @@ _PRODUCT_DIRS = {"connect", "workbench", "package_manager"}
 def _assign_xdist_group(item: pytest.Item) -> None:
     """Assign an ``xdist_group`` marker so each product runs on its own worker.
 
-    Tests under ``tests/connect/``, ``tests/workbench/``, or
-    ``tests/package_manager/`` are grouped by directory name.  Everything
-    else (prerequisites, cross_product, performance, security) lands in a
-    shared ``general`` group.
+    Respects any existing ``xdist_group`` marker (set via conftest.py
+    ``pytestmark`` or per-test decorators).  Otherwise, tests under
+    ``tests/connect/``, ``tests/workbench/``, or ``tests/package_manager/``
+    are grouped by directory name, and everything else (prerequisites,
+    cross_product, performance, security) lands in a shared ``general`` group.
     """
+    if item.get_closest_marker("xdist_group") is not None:
+        return
     fspath = getattr(item, "path", None) or Path()
     dir_name = fspath.parent.name
     group = dir_name if dir_name in _PRODUCT_DIRS else "general"

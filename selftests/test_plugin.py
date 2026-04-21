@@ -490,7 +490,7 @@ class TestXdistCompatibility:
         return pytester
 
     def test_json_report_with_xdist(self, selftest_pytester):
-        """Results JSON is populated when running with -n auto."""
+        """Results JSON is populated when running with -n 2 (multi-worker)."""
         selftest_pytester.makepyfile(
             """
             def test_one():
