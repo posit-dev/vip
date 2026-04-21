@@ -34,16 +34,14 @@ class TestLoginLoadTimeSkips:
         """Invoke measure_load_time with httpx.get patched to raise *exc*."""
         import vip_tests.performance.test_login_load_times as mod
 
-        monkeypatch.setattr(
-            "vip_tests.performance.test_login_load_times.httpx.get",
-            lambda *_a, **_kw: (_ for _ in ()).throw(exc),
-        )
+        def _raise(*_a, **_kw):
+            raise exc
+
+        monkeypatch.setattr("vip_tests.performance.test_login_load_times.httpx.get", _raise)
         pc = PerformanceConfig()
         cfg = VIPConfig()
-        # product_config("connect") returns cfg.connect which has url="" by
-        # default, so set it to something non-empty so is_configured is True.
+        # Set a non-empty URL so is_configured is True (enabled defaults to True).
         cfg.connect.url = "http://connect.example.com"
-        cfg.connect.enabled = True
 
         with pytest.raises(pytest.skip.Exception) as exc_info:
             mod.measure_load_time(product, cfg, pc)
@@ -83,7 +81,7 @@ class TestSimulatePmTokenGuard:
     # _check_user_count guard does not fire before the token/URL guard.
     _VALID_USERS = 10
 
-    def _run_simulate_pm(self, monkeypatch, token: str, url: str = "http://pm.example.com"):
+    def _run_simulate_pm(self, token: str, url: str = "http://pm.example.com"):
         """Call simulate_pm with a config built from *token* and *url*."""
         import vip_tests.performance.test_user_simulation as mod
 
@@ -99,15 +97,15 @@ class TestSimulatePmTokenGuard:
             )
         return exc_info.value.msg
 
-    def test_empty_token_skips(self, monkeypatch):
-        msg = self._run_simulate_pm(monkeypatch, token="")
+    def test_empty_token_skips(self):
+        msg = self._run_simulate_pm(token="")
         assert "token" in msg.lower()
 
-    def test_skip_message_mentions_package_manager(self, monkeypatch):
-        msg = self._run_simulate_pm(monkeypatch, token="")
+    def test_skip_message_mentions_package_manager(self):
+        msg = self._run_simulate_pm(token="")
         assert "package manager" in msg.lower()
 
-    def test_no_url_skips_before_token_check(self, monkeypatch):
+    def test_no_url_skips_before_token_check(self):
         """If the URL is also missing, it should still skip (on URL check)."""
         import vip_tests.performance.test_user_simulation as mod
 
