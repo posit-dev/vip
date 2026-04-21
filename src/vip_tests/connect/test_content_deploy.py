@@ -179,6 +179,8 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         # (``rmarkdown``, ``knitr``) in the same shape used by Connect's
         # publishing clients.  See shiny_manifest.json for the reference
         # schema.
+        # Versions below are placeholders that satisfy packrat's column-shape
+        # requirement; they do not need to match what is installed on the server.
         rmd_packages = {
             "rmarkdown": {
                 "Source": "CRAN",
@@ -260,7 +262,9 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         requirements_content = ""
 
         def _md5(text: str) -> str:
-            return hashlib.md5(text.encode("utf-8")).hexdigest()
+            # usedforsecurity=False: this is a non-cryptographic content checksum
+            # consumed by Connect; needed for FIPS-enabled runners.
+            return hashlib.md5(text.encode("utf-8"), usedforsecurity=False).hexdigest()
 
         return {
             "notebook.ipynb": notebook_content,
