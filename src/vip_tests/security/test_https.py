@@ -83,6 +83,10 @@ def inspect_headers(product, vip_config):
         # classification — it raises there because that test is specifically
         # about TLS enforcement; here we skip because the test is about
         # response headers, not certificate validity.
+        # Primary check: httpx sets __cause__ to ssl.SSLCertVerificationError when
+        # the TLS handshake fails due to certificate verification.  String fallback
+        # covers transports where httpx does not populate __cause__ but still
+        # surfaces the OpenSSL error token in the exception message.
         cause = exc.__cause__
         if isinstance(cause, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(
             exc
