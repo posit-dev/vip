@@ -508,7 +508,7 @@ class TestXdistCompatibility:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
             "-n",
-            "auto",
+            "2",
             "--dist",
             "loadgroup",
         )
@@ -562,7 +562,7 @@ class TestXdistCompatibility:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
             "-n",
-            "auto",
+            "2",
             "--dist",
             "loadgroup",
             "test_plain.py",
