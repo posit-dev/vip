@@ -463,10 +463,10 @@ _EXPECTED_OUTPUT: dict[str, dict] = {
     },
     # Shiny apps serve an HTML page that contains the app's rendered content.
     # "shiny" is a framework marker present in the framework-injected <script>
-    # tags.  "vip test" appears in the page title/chrome (Connect uses the app
-    # name as the page title) and also as the text node rendered by
-    # `fluidPage("vip test")`.  Note: this is a chrome-level check — a
-    # failed render that still produces Shiny scaffolding would pass.
+    # tags.  "vip test" matches the text node rendered by
+    # `fluidPage("VIP test")` (checked case-insensitively).  Note: this is a
+    # chrome-level check — a failed render that still produces Shiny
+    # scaffolding would pass because "shiny" appears in error-page JS too.
     "vip-shiny-test": {
         "type": "html",
         "markers": ["shiny", "vip test"],
