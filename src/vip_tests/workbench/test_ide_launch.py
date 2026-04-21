@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -187,7 +188,7 @@ def _start_session(page: Page, ide_type: str, session_name: str):
     launch_btn.click(timeout=TIMEOUT_QUICK)
 
 
-def _dismiss_dialog_and_skip(page: Page, reason: str) -> None:
+def _dismiss_dialog_and_skip(page: Page, reason: str) -> NoReturn:
     """Best-effort cancel of the New Session dialog, then ``pytest.skip``.
 
     Uses a short timeout on the cancel click so a missing or unreachable
@@ -360,6 +361,12 @@ def positron_console_accessible(page: Page):
     selector never appears, this may be an older Positron version or the
     DOM structure may have changed — skip rather than hard-fail, matching
     the ``_expect_ide_or_skip`` pattern used for the IDE workbench itself.
+
+    The timeout used here is ``TIMEOUT_IDE_LOAD`` (60 s), which is longer than
+    the previous ``TIMEOUT_CODE_EXEC`` (30 s) used before this step delegated
+    to ``_expect_ide_or_skip``.  The extra headroom is intentional: the console
+    panel appearing confirms the runtime is live, so a generous wait is
+    preferable to a false skip on slow deployments.
     """
     _expect_ide_or_skip(page, PositronSession.CONSOLE_PANEL, "Positron console")
 
