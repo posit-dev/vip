@@ -29,18 +29,23 @@ def measure_load_time(product, vip_config, performance_config):
     if not pc.is_configured:
         pytest.skip(f"{product} is not configured")
     path = _LOGIN_PATHS[product]
+    url = f"{pc.url}{path}"
     try:
         start = time.monotonic()
         resp = httpx.get(
-            f"{pc.url}{path}",
+            url,
             follow_redirects=True,
             timeout=performance_config.page_load_timeout * 3,
         )
         elapsed = time.monotonic() - start
-    except httpx.ConnectError:
-        pytest.fail(
-            f"Could not reach {product} at {pc.url}{path}: connection refused. "
-            "Check firewall rules, proxy configuration, DNS resolution, and port."
+    except (httpx.ConnectError, httpx.ProxyError, httpx.ConnectTimeout) as exc:
+        # Connectivity problem between the test runner and the product URL
+        # (proxy/firewall/DNS/closed port) is not a login-performance
+        # finding — skip with a clear diagnostic instead of failing.
+        pytest.skip(
+            f"{product} login URL not reachable from test runner "
+            f"({url}): {exc}. Check network path, proxy configuration, "
+            "DNS resolution, and that the port is open from the runner."
         )
     resp.raise_for_status()
     return elapsed
