@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.26.2 (2026-04-22)
+
+### Bug Fixes
+
+- **connect**: Correct rmd, jupyter, and shiny content bundles
+  ([#207](https://github.com/posit-dev/vip/pull/207),
+  [`bf4854f`](https://github.com/posit-dev/vip/commit/bf4854f9aa1e355dc94ac3d1787b951dec8f68b9))
+
+- **performance**: Skip on proxy errors and enforce PM token guard
+  ([#209](https://github.com/posit-dev/vip/pull/209),
+  [`d709c2b`](https://github.com/posit-dev/vip/commit/d709c2b66fd8337a3fc4a7c48805ffceec4d9113))
+
+- **security**: Skip with clear diagnostic on TLS cert verify failure
+  ([#210](https://github.com/posit-dev/vip/pull/210),
+  [`0da623e`](https://github.com/posit-dev/vip/commit/0da623ed070aa394a5ffe01e491a3168f19c2e3f))
+
+- **workbench**: Skip IDE tests gracefully when IDE is unavailable
+  ([#208](https://github.com/posit-dev/vip/pull/208),
+  [`f51b6f6`](https://github.com/posit-dev/vip/commit/f51b6f6ca6ecca28c8413b17561407e42c2bedb5))
+
+
 ## v0.26.1 (2026-04-22)
 
 ### Bug Fixes
