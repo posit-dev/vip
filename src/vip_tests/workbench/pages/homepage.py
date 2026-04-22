@@ -153,7 +153,7 @@ class Homepage:
     @staticmethod
     def session_rename_button(name: str) -> str:
         """Selector for session rename button."""
-        return f"[aria-label*='{name}'] button[aria-label='Rename session']"
+        return f"tr[aria-label$='{name}'] button[aria-label='Rename session']"
 
     @staticmethod
     def session_state(state: str) -> str:
@@ -162,8 +162,13 @@ class Homepage:
 
     @staticmethod
     def session_row(name: str) -> str:
-        """Selector for session row by session name using aria-label."""
-        return f"tr[aria-label*='{name}']"
+        """Selector for session row by session name using aria-label.
+
+        Workbench sets aria-label to e.g. "No project: <session_name>",
+        so match with ends-with ($=) to anchor on the session name and
+        avoid strict-mode collisions when one name is a substring of another.
+        """
+        return f"tr[aria-label$='{name}']"
 
     @staticmethod
     def session_row_status(name: str, status: str) -> str:
@@ -172,4 +177,4 @@ class Homepage:
         Finds the row containing the session name, then matches if
         that row's status cell contains the given status.
         """
-        return f"tr[aria-label*='{name}'] div[aria-label='{status}']"
+        return f"tr[aria-label$='{name}'] div[aria-label='{status}']"
