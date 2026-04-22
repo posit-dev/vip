@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.26.4 (2026-04-22)
+
+### Bug Fixes
+
+- **connect**: Resolve relative Location headers on redirect
+  ([#216](https://github.com/posit-dev/vip/pull/216),
+  [`7a163e5`](https://github.com/posit-dev/vip/commit/7a163e58675d9b42595e14b120120e2d25a8e678))
+
+
 ## v0.26.3 (2026-04-22)
 
 ### Bug Fixes
