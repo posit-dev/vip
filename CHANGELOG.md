@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.26.5 (2026-04-22)
+
+### Bug Fixes
+
+- **connect**: Declare rmarkdown closure and raise deploy timeout
+  ([#218](https://github.com/posit-dev/vip/pull/218),
+  [`c006838`](https://github.com/posit-dev/vip/commit/c006838a581de5bb6bf99e544c4863da1922abc1))
+
+
 ## v0.26.4 (2026-04-22)
 
 ### Bug Fixes
