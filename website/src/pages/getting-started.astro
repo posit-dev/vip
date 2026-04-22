@@ -154,8 +154,15 @@ vip verify --package-manager-url https://pm.example.com --categories package-man
 # Combine markers
 vip verify --connect-url https://connect.example.com --categories "performance and connect"
 
+# Filter by test name (shortcut for pytest -k)
+vip verify --connect-url https://connect.example.com --filter login
+vip verify --connect-url https://connect.example.com -f "login and not saml"
+
+# Skip tests whose names match an expression
+vip verify --connect-url https://connect.example.com --filter "not login"
+
 # Pass extra flags to pytest
-vip verify --connect-url https://connect.example.com -- -x --tb=long -k 'login'</code></pre>
+vip verify --connect-url https://connect.example.com -- -x --tb=long</code></pre>
 
           <h3>Test categories</h3>
           <div class="table-wrap">
