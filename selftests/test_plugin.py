@@ -722,6 +722,31 @@ class TestXdistCompatibility:
         data = json.loads(report_path.read_text())
         assert len(data["results"]) == 2
 
+    def test_gw_worker_prefix_suppressed(self, selftest_pytester):
+        """Under xdist with -v, the built-in ``[gw<N>]`` prefix should be hidden."""
+        selftest_pytester.makepyfile(
+            """
+            def test_one():
+                assert True
+
+            def test_two():
+                assert True
+            """
+        )
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            "-n",
+            "2",
+            "--dist",
+            "loadgroup",
+            "-v",
+        )
+        result.assert_outcomes(passed=2)
+        for line in result.stdout.lines:
+            assert not re.search(r"\[gw\d+\]", line), (
+                f"Found xdist worker prefix in output line: {line!r}"
+            )
+
     def test_vip_metadata_survives_xdist(self, selftest_pytester):
         """Custom report attributes (markers, scenario fields) survive xdist transit."""
         # Use a plain test file and verify markers/scenario fields are present in results.

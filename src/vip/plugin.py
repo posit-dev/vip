@@ -677,6 +677,7 @@ def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
         report.vip_feature_description = scenario_meta.get("feature_description")  # type: ignore[attr-defined]
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     """Collect results for JSON report and apply concise terminal display.
 
@@ -686,6 +687,12 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     making it the right place to aggregate results.  The ``workerinput``
     guard skips processing on workers so results are collected exactly once.
     """
+    # Strip the xdist worker attribute so pytest's built-in TerminalReporter
+    # does not prefix each verbose line with ``[gw<N>]``.  Runs before the
+    # terminal reporter thanks to ``tryfirst=True``.
+    if hasattr(report, "node"):
+        del report.node
+
     if _active_config is None:
         return
 
