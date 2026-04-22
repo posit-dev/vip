@@ -6,6 +6,7 @@ Patterns adapted from rstudio-pro/e2e tests.
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import NoReturn
@@ -116,7 +117,8 @@ def user_logged_in(
 
 def _start_ide_session(session_context: dict, page: Page, ide_name: str) -> None:
     """Set session context and start a new IDE session of the given type."""
-    session_name = f"VIP {_FILENAME} - {int(time.time())}"
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
+    session_name = f"VIP {_FILENAME} - {worker}-{time.time_ns()}"
     session_context["name"] = session_name
     session_context["ide_type"] = ide_name
     _start_session(page, ide_name, session_name)
