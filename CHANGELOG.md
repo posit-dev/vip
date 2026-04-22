@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.26.6 (2026-04-22)
+
+### Bug Fixes
+
+- **workbench**: Disambiguate IDE session names under xdist
+  ([#220](https://github.com/posit-dev/vip/pull/220),
+  [`950cec8`](https://github.com/posit-dev/vip/commit/950cec83bb41a7f96ae65dd434058dfbc6fcb46d))
+
+
 ## v0.26.5 (2026-04-22)
 
 ### Bug Fixes
