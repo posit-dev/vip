@@ -35,9 +35,9 @@ url = "https://connect.example.com"
 # Prefer setting the VIP_CONNECT_API_KEY environment variable.
 # api_key = "..."
 
-# Timeout in seconds for content deployments (default: 600)
+# Timeout in seconds for content deployments (default: 1200)
 # Increase this for environments with slower package installation.
-deploy_timeout = 600
+deploy_timeout = 1200
 
 [workbench]
 enabled = true
