@@ -6,7 +6,6 @@ Patterns adapted from test_ide_launch.py.
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 import pytest
@@ -20,6 +19,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
     assert_homepage_loaded,
+    unique_session_name,
     workbench_login,
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
@@ -69,7 +69,7 @@ def user_logged_in(
 @when("the user starts a new RStudio Pro session")
 def start_rstudio_pro_session(page: Page, session_context: dict):
     """Start a new RStudio Pro session without auto-joining."""
-    session_name = f"VIP {_FILENAME} - {int(time.time())}"
+    session_name = unique_session_name(_FILENAME)
     session_context["name"] = session_name
 
     page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)

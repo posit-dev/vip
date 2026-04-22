@@ -16,6 +16,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
     assert_homepage_loaded,
+    unique_session_name,
     workbench_login,
 )
 from vip_tests.workbench.pages import (
@@ -145,7 +146,7 @@ def verify_connectivity(
     )
     assert_homepage_loaded(page)
 
-    session_name = f"VIP {_FILENAME} - {int(time.time())}"
+    session_name = unique_session_name(_FILENAME)
     _start_session(page, session_name)
     _wait_for_active_and_join(page, session_name)
 

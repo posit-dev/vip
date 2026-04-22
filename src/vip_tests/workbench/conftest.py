@@ -5,6 +5,7 @@ Page selectors are in the pages/ subpackage
 
 from __future__ import annotations
 
+import os
 import time
 
 import httpx
@@ -28,6 +29,20 @@ TIMEOUT_IDE_LOAD = 60_000
 TIMEOUT_SESSION_START = 90_000
 
 # ---------------------------------------------------------------------------
+
+
+def unique_session_name(filename: str) -> str:
+    """Generate a Workbench session name unique across xdist workers.
+
+    Session tests look up rows via aria-label locators. Using only
+    ``int(time.time())`` collided across workers that entered the same
+    second, producing strict-mode failures once locators were tightened
+    to ends-with matches. Worker id + nanosecond timestamp guarantees
+    uniqueness for any practical parallelism.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
+    return f"VIP {filename} - {worker}-{time.time_ns()}"
+
 
 # Keywords indicating the URL is a login/auth page (used for OIDC detection)
 _LOGIN_KEYWORDS = ("sign-in", "login", "auth")

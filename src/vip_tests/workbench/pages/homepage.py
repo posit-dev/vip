@@ -153,7 +153,7 @@ class Homepage:
     @staticmethod
     def session_rename_button(name: str) -> str:
         """Selector for session rename button."""
-        return f"[aria-label$='{name}'] button[aria-label='Rename session']"
+        return f"tr[aria-label$='{name}'] button[aria-label='Rename session']"
 
     @staticmethod
     def session_state(state: str) -> str:
