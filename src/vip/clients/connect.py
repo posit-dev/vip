@@ -271,7 +271,7 @@ class ConnectClient(BaseClient):
         This avoids leaking the API key to external domains if Connect
         redirects to a CDN or OAuth provider.
         """
-        from urllib.parse import urlparse
+        from urllib.parse import urljoin, urlparse
 
         origin = urlparse(self.base_url)
         max_redirects = 10
@@ -285,12 +285,15 @@ class ConnectClient(BaseClient):
             if not resp.is_redirect:
                 break
             location = resp.headers.get("location", "")
-            target = urlparse(location)
+            # Resolve relative Location values (e.g. "/content/{guid}/x.html")
+            # against the current response URL before checking the origin.
+            absolute_location = urljoin(str(resp.url), location)
+            target = urlparse(absolute_location)
             # Only follow redirects to the same origin.
             if target.hostname and target.hostname != origin.hostname:
                 break
             resp = httpx.get(
-                location,
+                absolute_location,
                 headers={"Authorization": self._client.headers["Authorization"]},
                 follow_redirects=False,
                 timeout=timeout,
