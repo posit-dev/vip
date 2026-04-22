@@ -15,6 +15,17 @@ from vip.clients.base import BaseClient
 _VIP_CONTENT_TAG = "_vip_test"
 
 
+def _normalized_port(scheme: str | None, port: int | None) -> int | None:
+    """Return the effective TCP port for a URL, filling in defaults for http/https."""
+    if port is not None:
+        return port
+    if scheme == "https":
+        return 443
+    if scheme == "http":
+        return 80
+    return None
+
+
 class ConnectClient(BaseClient):
     """Minimal Connect API wrapper."""
 
@@ -269,11 +280,14 @@ class ConnectClient(BaseClient):
         """Fetch a content URL with API-key auth, following only same-origin redirects.
 
         This avoids leaking the API key to external domains if Connect
-        redirects to a CDN or OAuth provider.
+        redirects to a CDN or OAuth provider.  A redirect is followed only
+        when ALL of scheme, hostname, and effective port match the client's
+        base URL, and the target scheme is http or https.
         """
-        from urllib.parse import urlparse
+        from urllib.parse import urljoin, urlparse
 
         origin = urlparse(self.base_url)
+        origin_key = (origin.scheme, origin.hostname, _normalized_port(origin.scheme, origin.port))
         max_redirects = 10
         resp = httpx.get(
             url,
@@ -285,12 +299,23 @@ class ConnectClient(BaseClient):
             if not resp.is_redirect:
                 break
             location = resp.headers.get("location", "")
-            target = urlparse(location)
-            # Only follow redirects to the same origin.
-            if target.hostname and target.hostname != origin.hostname:
+            # Resolve relative Location values (e.g. "/content/{guid}/x.html")
+            # against the current response URL before checking the origin.
+            absolute_location = urljoin(str(resp.url), location)
+            target = urlparse(absolute_location)
+            # Reject non-http(s) schemes (e.g. file:, javascript:, ftp:).
+            if target.scheme not in ("http", "https"):
+                break
+            # Only follow redirects to the exact same origin (scheme + host + port).
+            target_key = (
+                target.scheme,
+                target.hostname,
+                _normalized_port(target.scheme, target.port),
+            )
+            if target_key != origin_key:
                 break
             resp = httpx.get(
-                location,
+                absolute_location,
                 headers={"Authorization": self._client.headers["Authorization"]},
                 follow_redirects=False,
                 timeout=timeout,
