@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.26.1 (2026-04-22)
+
+### Bug Fixes
+
+- **deps**: Pin nbconvert>=7.17.1 for CVE-2026-39377/39378
+  ([#212](https://github.com/posit-dev/vip/pull/212),
+  [`1823e9a`](https://github.com/posit-dev/vip/commit/1823e9af4006f2a3b598a2acfadedcca15879654))
+
+
 ## v0.26.0 (2026-04-21)
 
 ### Features
