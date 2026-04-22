@@ -17,6 +17,24 @@ scenarios("test_https.feature")
 
 
 # ---------------------------------------------------------------------------
+# Shared diagnostic text
+# ---------------------------------------------------------------------------
+
+# CA-bundle guidance reused in the cert-verification skip below.
+# src/vip_tests/cross_product/test_ssl.py has a similar message in the
+# ``modern_tls_succeeds`` step — keep the two in sync when updating guidance.
+_CERT_TRUST_HINT = (
+    "This is a certificate-trust issue on the test runner, not a "
+    "server security finding. If the server uses a valid public "
+    "certificate (e.g. behind an AWS ALB with an ACM cert), set "
+    "SSL_CERT_FILE to a CA bundle that includes public roots: "
+    "/etc/ssl/certs/ca-certificates.crt on Debian/Ubuntu, "
+    "/etc/pki/tls/certs/ca-bundle.crt on RHEL, or the path "
+    "produced by `python -m certifi`."
+)
+
+
+# ---------------------------------------------------------------------------
 # Steps - HTTPS enforcement
 # ---------------------------------------------------------------------------
 
@@ -80,9 +98,9 @@ def inspect_headers(product, vip_config):
         # ACM cert), not a server security finding — skip with clear
         # guidance rather than failing as "connection refused".
         # src/vip_tests/cross_product/test_ssl.py applies the same cert-trust
-        # classification — it raises there because that test is specifically
-        # about TLS enforcement; here we skip because the test is about
-        # response headers, not certificate validity.
+        # classification; it raises there because that test is specifically
+        # about TLS enforcement, whereas here we skip because the test is
+        # about response headers, not certificate validity.
         # Primary check: httpx sets __cause__ to ssl.SSLCertVerificationError when
         # the TLS handshake fails due to certificate verification.  String fallback
         # covers transports where httpx does not populate __cause__ but still
@@ -93,13 +111,7 @@ def inspect_headers(product, vip_config):
         ):
             pytest.skip(
                 f"Could not verify TLS certificate for {product} at {pc.url}: {exc}. "
-                "This is a certificate-trust issue on the test runner, not a "
-                "server security finding. If the server uses a valid public "
-                "certificate (e.g. behind an AWS ALB with an ACM cert), set "
-                "SSL_CERT_FILE to a CA bundle that includes public roots: "
-                "/etc/ssl/certs/ca-certificates.crt on Debian/Ubuntu, "
-                "/etc/pki/tls/certs/ca-bundle.crt on RHEL, or the path "
-                "produced by `python -m certifi`."
+                + _CERT_TRUST_HINT
             )
         pytest.fail(
             f"Could not reach {product} at {pc.url}: connection refused. "
