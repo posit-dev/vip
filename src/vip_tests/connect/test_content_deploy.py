@@ -270,11 +270,12 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
                 ],
             }
         )
-        # Connect's jupyter-static renderer uses ``entrypoint`` (and a ``files``
-        # block listing every bundled file with an MD5 checksum) to find the
-        # notebook to pass to ``nbconvert``.  ``primary_document`` alone is
-        # insufficient: if ``files`` is missing or ``entrypoint`` is unset,
-        # nbconvert is invoked with an empty filename argument.
+        # Connect's jupyter-static renderer uses ``entrypoint`` and a ``files``
+        # block listing the bundled content files (notebook, requirements) each
+        # keyed by path with an MD5 checksum.  ``manifest.json`` itself is not
+        # listed in ``files``.  ``primary_document`` alone is insufficient: if
+        # ``files`` is missing or ``entrypoint`` is unset, nbconvert is invoked
+        # with an empty filename argument.
         requirements_content = ""
         return {
             "notebook.ipynb": notebook_content,
@@ -462,9 +463,11 @@ _EXPECTED_OUTPUT: dict[str, dict] = {
         "value": "VIP test OK",
     },
     # Shiny apps serve an HTML page that contains the app's rendered content.
+    # The test app renders `fluidPage("VIP test")` (capital letters).
     # "shiny" is a framework marker present in the framework-injected <script>
-    # tags.  "vip test" matches the text node rendered by
-    # `fluidPage("VIP test")` (checked case-insensitively).  Note: this is a
+    # tags.  "vip test" matches the rendered text node because the marker
+    # check lowercases the response body before comparing, so the lowercase
+    # marker matches the mixed-case rendered output.  Note: this is a
     # chrome-level check — a failed render that still produces Shiny
     # scaffolding would pass because "shiny" appears in error-page JS too.
     "vip-shiny-test": {
