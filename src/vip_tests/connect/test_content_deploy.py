@@ -7,6 +7,7 @@ easy identification and cleanup.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 
@@ -21,6 +22,15 @@ _GIT_REPO_URL = "https://github.com/posit-dev/connect-extensions"
 # Connect's git integration requires a branch name (not a commit SHA).
 _GIT_BRANCH = "main"
 _GIT_DIRECTORY = "extensions/quarto-document"
+
+
+def _md5(text: str) -> str:
+    """Return the MD5 hex digest of *text*.
+
+    ``usedforsecurity=False`` is required on FIPS-enabled runners; this is a
+    non-cryptographic content checksum consumed by Connect's manifest schema.
+    """
+    return hashlib.md5(text.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 @scenario("test_content_deploy.feature", "Deploy and execute a Quarto document")
@@ -170,22 +180,59 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         r_versions = connect_client.r_versions()
         if not r_versions:
             pytest.skip("No R versions available on Connect — cannot deploy R Markdown")
+        # Connect's R-side pipeline calls ``packrat`` on the manifest's
+        # ``packages`` block; an empty dict triggers
+        # ``[.data.frame(lockInfo, , "Package") : undefined columns selected``
+        # because the expected ``Package`` column is missing.  We must
+        # populate ``packages`` with at least the packages this Rmd needs
+        # (``rmarkdown``, ``knitr``) in the same shape used by Connect's
+        # publishing clients.  See shiny_manifest.json for the reference
+        # schema.
+        # Versions below are placeholders that satisfy packrat's column-shape
+        # requirement; they do not need to match what is installed on the server.
+        # TODO: if Connect starts validating additional fields (Hash, Requirements)
+        # from newer packrat/renv lockfile schemas, expand these entries accordingly.
+        rmd_packages = {
+            "rmarkdown": {
+                "Source": "CRAN",
+                "Repository": "https://cloud.r-project.org",
+                "description": {
+                    "Package": "rmarkdown",
+                    "Version": "2.25",
+                    "Imports": "knitr",
+                },
+            },
+            "knitr": {
+                "Source": "CRAN",
+                "Repository": "https://cloud.r-project.org",
+                "description": {
+                    "Package": "knitr",
+                    "Version": "1.45",
+                    "Imports": "",
+                },
+            },
+        }
+        rmd_content = (
+            "---\ntitle: VIP RMarkdown Test\noutput: html_document\n---\n\n"
+            "Hello from VIP RMarkdown.\n"
+        )
         return {
-            "index.Rmd": (
-                "---\ntitle: VIP RMarkdown Test\noutput: html_document\n---\n\n"
-                "Hello from VIP RMarkdown.\n"
-            ),
+            "index.Rmd": rmd_content,
             "manifest.json": json.dumps(
                 {
                     "version": 1,
                     "platform": r_versions[0],
                     "metadata": {
                         "appmode": "rmd-static",
+                        "entrypoint": "index.Rmd",
                         "primary_rmd": "index.Rmd",
                         "content_category": "",
                         "has_parameters": False,
                     },
-                    "packages": {},
+                    "packages": rmd_packages,
+                    "files": {
+                        "index.Rmd": {"checksum": _md5(rmd_content)},
+                    },
                 }
             ),
         }
@@ -223,6 +270,13 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
                 ],
             }
         )
+        # Connect's jupyter-static renderer uses ``entrypoint`` and a ``files``
+        # block listing the bundled content files (notebook, requirements) each
+        # keyed by path with an MD5 checksum.  ``manifest.json`` itself is not
+        # listed in ``files``.  ``primary_document`` alone is insufficient: if
+        # ``files`` is missing or ``entrypoint`` is unset, nbconvert is invoked
+        # with an empty filename argument.
+        requirements_content = ""
         return {
             "notebook.ipynb": notebook_content,
             "manifest.json": json.dumps(
@@ -230,6 +284,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
                     "version": 1,
                     "metadata": {
                         "appmode": "jupyter-static",
+                        "entrypoint": "notebook.ipynb",
                         "primary_document": "notebook.ipynb",
                         "content_category": "",
                         "has_parameters": False,
@@ -242,9 +297,13 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
                             "package_file": "requirements.txt",
                         },
                     },
+                    "files": {
+                        "notebook.ipynb": {"checksum": _md5(notebook_content)},
+                        "requirements.txt": {"checksum": _md5(requirements_content)},
+                    },
                 }
             ),
-            "requirements.txt": "",
+            "requirements.txt": requirements_content,
         }
 
     if name == "vip-fastapi-test":
@@ -403,10 +462,17 @@ _EXPECTED_OUTPUT: dict[str, dict] = {
         "key": "message",
         "value": "VIP test OK",
     },
-    # Shiny apps serve an HTML page with Shiny bootstrap markup.
+    # Shiny apps serve an HTML page that contains the app's rendered content.
+    # The test app renders `fluidPage("VIP test")` (capital letters).
+    # "shiny" is a framework marker present in the framework-injected <script>
+    # tags.  "vip test" matches the rendered text node because the marker
+    # check lowercases the response body before comparing, so the lowercase
+    # marker matches the mixed-case rendered output.  Note: this is a
+    # chrome-level check — a failed render that still produces Shiny
+    # scaffolding would pass because "shiny" appears in error-page JS too.
     "vip-shiny-test": {
         "type": "html",
-        "markers": ["shiny", "bootstraplib"],
+        "markers": ["shiny", "vip test"],
     },
     # Dash apps serve an HTML page with Dash-specific markup.
     "vip-dash-test": {
