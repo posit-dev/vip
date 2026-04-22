@@ -180,61 +180,21 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         r_versions = connect_client.r_versions()
         if not r_versions:
             pytest.skip("No R versions available on Connect — cannot deploy R Markdown")
-        # Connect's R-side pipeline calls ``packrat`` on the manifest's
-        # ``packages`` block; an empty dict triggers
-        # ``[.data.frame(lockInfo, , "Package") : undefined columns selected``
-        # because the expected ``Package`` column is missing.  We must
-        # populate ``packages`` with at least the packages this Rmd needs
-        # (``rmarkdown``, ``knitr``) in the same shape used by Connect's
-        # publishing clients.  See shiny_manifest.json for the reference
-        # schema.
-        # Versions below are placeholders that satisfy packrat's column-shape
-        # requirement; they do not need to match what is installed on the server.
-        # TODO: if Connect starts validating additional fields (Hash, Requirements)
-        # from newer packrat/renv lockfile schemas, expand these entries accordingly.
-        rmd_packages = {
-            "rmarkdown": {
-                "Source": "CRAN",
-                "Repository": "https://cloud.r-project.org",
-                "description": {
-                    "Package": "rmarkdown",
-                    "Version": "2.25",
-                    "Imports": "knitr",
-                },
-            },
-            "knitr": {
-                "Source": "CRAN",
-                "Repository": "https://cloud.r-project.org",
-                "description": {
-                    "Package": "knitr",
-                    "Version": "1.45",
-                    "Imports": "",
-                },
-            },
-        }
-        rmd_content = (
-            "---\ntitle: VIP RMarkdown Test\noutput: html_document\n---\n\n"
-            "Hello from VIP RMarkdown.\n"
+        # Use the pre-built manifest with the full transitive dependency closure
+        # (rmarkdown → knitr → evaluate/highr/xfun/yaml, bslib, stringr, etc.).
+        # An incomplete ``packages`` block causes packrat-restore to fail with
+        # ``r-cannot-access-repo`` when PPM does not serve transitive deps
+        # anonymously.  See rmarkdown_manifest.json for the reference schema.
+        manifest = json.loads(
+            (pathlib.Path(__file__).parent / "rmarkdown_manifest.json").read_text()
         )
+        manifest["platform"] = r_versions[0]
         return {
-            "index.Rmd": rmd_content,
-            "manifest.json": json.dumps(
-                {
-                    "version": 1,
-                    "platform": r_versions[0],
-                    "metadata": {
-                        "appmode": "rmd-static",
-                        "entrypoint": "index.Rmd",
-                        "primary_rmd": "index.Rmd",
-                        "content_category": "",
-                        "has_parameters": False,
-                    },
-                    "packages": rmd_packages,
-                    "files": {
-                        "index.Rmd": {"checksum": _md5(rmd_content)},
-                    },
-                }
+            "index.Rmd": (
+                "---\ntitle: VIP RMarkdown Test\noutput: html_document\n---\n\n"
+                "Hello from VIP RMarkdown.\n"
             ),
+            "manifest.json": json.dumps(manifest),
         }
 
     if name == "vip-jupyter-test":

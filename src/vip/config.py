@@ -80,7 +80,7 @@ class ConnectConfig(ProductConfig):
     """Connect-specific configuration."""
 
     api_key: str = ""
-    deploy_timeout: int = 600
+    deploy_timeout: int = 1200
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -94,7 +94,7 @@ class ConnectConfig(ProductConfig):
             url=raw.get("url", ""),
             version=raw.get("version"),
             api_key=raw.get("api_key", ""),
-            deploy_timeout=raw.get("deploy_timeout", 600),
+            deploy_timeout=raw.get("deploy_timeout", 1200),
         )
 
 
