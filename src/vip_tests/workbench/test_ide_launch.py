@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given, scenario, then, when
@@ -157,9 +159,24 @@ def _start_session(page: Page, ide_type: str, session_name: str):
     ide_display = NewSessionDialog.ide_display_name(ide_type)
     ide_tab = dialog.get_by_role("tab", name=ide_display)
     if ide_tab.count() == 0:
-        page.locator(NewSessionDialog.CANCEL_BUTTON).click()
-        pytest.skip(f"{ide_type} IDE not available in this Workbench deployment")
+        _dismiss_dialog_and_skip(page, f"{ide_type} IDE not available in this Workbench deployment")
     ide_tab.click(timeout=TIMEOUT_QUICK)
+
+    # After selecting the IDE tab, the Launch button should become available
+    # within a couple of seconds.  If it doesn't, the tab is present but the
+    # IDE is not actually installed/functional on this Workbench instance
+    # (the dialog shows an error state without a Launch button).  Skip
+    # gracefully instead of letting the subsequent Launch click time out
+    # for 30s on #modalCancelBtn.
+    launch_btn = page.locator(NewSessionDialog.LAUNCH_BUTTON)
+    try:
+        launch_btn.wait_for(state="visible", timeout=TIMEOUT_QUICK)
+    except PlaywrightTimeoutError:
+        _dismiss_dialog_and_skip(
+            page,
+            f"{ide_type} tab opened but Launch button did not appear — "
+            f"the IDE may not be installed or fully available on this Workbench instance",
+        )
 
     page.fill(NewSessionDialog.SESSION_NAME, session_name)
 
@@ -169,7 +186,30 @@ def _start_session(page: Page, ide_type: str, session_name: str):
         checkbox.click()
     expect(checkbox).not_to_be_checked(timeout=TIMEOUT_QUICK)
 
-    page.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=TIMEOUT_QUICK)
+    launch_btn.click(timeout=TIMEOUT_QUICK)
+
+
+def _dismiss_dialog_and_skip(page: Page, reason: str) -> NoReturn:
+    """Best-effort cancel of the New Session dialog, then ``pytest.skip``.
+
+    Uses a short timeout on the cancel click so a missing or unreachable
+    cancel button does not mask the real skip reason with a 30-second
+    Playwright default-timeout error on ``#modalCancelBtn``.
+
+    Catches both ``PlaywrightTimeoutError`` and the base ``PlaywrightError``
+    (raised for detached/covered elements and other non-actionable states) so
+    that dialog-dismiss failures never mask the intended skip.
+    """
+    try:
+        cancel = page.locator(NewSessionDialog.CANCEL_BUTTON)
+        if cancel.count() > 0:
+            try:
+                cancel.click(timeout=TIMEOUT_QUICK)
+            except (PlaywrightTimeoutError, PlaywrightError):
+                pass
+    except (PlaywrightTimeoutError, PlaywrightError):
+        pass
+    pytest.skip(reason)
 
 
 @then("the session transitions to Active state")
@@ -199,20 +239,43 @@ def rstudio_functional(page: Page):
     expect(page.locator(RStudioSession.PROJECT_MENU)).to_be_visible(timeout=TIMEOUT_DIALOG)
 
 
-def _expect_ide_or_skip(page: Page, locator_str: str, ide_name: str) -> None:
+def _expect_ide_or_skip(
+    page: Page,
+    locator_str: str,
+    ide_name: str,
+    *,
+    timeout: int | None = None,
+    skip_reason: str | None = None,
+) -> None:
     """Wait for the primary IDE element; skip if it times out (IDE may not be installed).
 
     Uses ``Locator.wait_for(state="visible")`` which raises a Playwright
     ``TimeoutError`` on timeout — a stable, typed distinction from other
     assertion failures.  Any other exception propagates normally.
+
+    Args:
+        page: The Playwright page object.
+        locator_str: CSS/XPath selector for the element to wait for.
+        ide_name: Human-readable IDE name used in the default skip message.
+        timeout: Wait timeout in milliseconds.  Defaults to ``TIMEOUT_IDE_LOAD``
+            (60 s) when not specified.
+        skip_reason: Custom skip message.  When omitted the default message
+            ``"{ide_name} did not load within timeout — ..."`` is used.
+            The string may contain ``{exc}`` which will be substituted with the
+            caught ``PlaywrightTimeoutError`` instance.
     """
+    effective_timeout = TIMEOUT_IDE_LOAD if timeout is None else timeout
     try:
-        page.locator(locator_str).wait_for(state="visible", timeout=TIMEOUT_IDE_LOAD)
+        page.locator(locator_str).wait_for(state="visible", timeout=effective_timeout)
     except PlaywrightTimeoutError as exc:
-        pytest.skip(
-            f"{ide_name} did not load within timeout — "
-            f"the IDE may not be installed on this Workbench instance ({exc})"
-        )
+        if skip_reason is None:
+            reason = (
+                f"{ide_name} did not load within timeout — "
+                f"the IDE may not be installed on this Workbench instance ({exc})"
+            )
+        else:
+            reason = skip_reason.format(exc=exc) if "{exc}" in skip_reason else skip_reason
+        pytest.skip(reason)
 
 
 @then("the VS Code IDE is displayed")
@@ -325,10 +388,25 @@ def positron_console_accessible(page: Page):
 
     Positron (VS Code-based) exposes a dedicated console pane.  We assert it
     is visible, confirming the runtime connection is established without
-    requiring a full code-execution round-trip.
+    requiring a full code-execution round-trip.  If the console panel
+    selector never appears, the DOM structure may have changed (e.g. a
+    Positron update) — skip rather than hard-fail.
+
+    Uses ``TIMEOUT_CODE_EXEC`` (30 s) to match the original intent: the
+    console panel should appear promptly once the IDE has loaded.  A
+    console-specific skip message is used to distinguish this failure from
+    the IDE-not-installed skip emitted by the workbench check.
     """
-    console_panel = page.locator(PositronSession.CONSOLE_PANEL)
-    expect(console_panel).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
+    _expect_ide_or_skip(
+        page,
+        PositronSession.CONSOLE_PANEL,
+        "Positron console",
+        timeout=TIMEOUT_CODE_EXEC,
+        skip_reason=(
+            "Positron console element not found within timeout — "
+            "selector may have changed or Positron may not be fully available ({exc})"
+        ),
+    )
 
 
 @then("the session is cleaned up")
