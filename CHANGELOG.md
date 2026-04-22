@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.26.3 (2026-04-22)
+
+### Bug Fixes
+
+- **output**: Small fixup for output and docs ([#217](https://github.com/posit-dev/vip/pull/217),
+  [`15ff959`](https://github.com/posit-dev/vip/commit/15ff959eabef0b1fb7c0d4aa4d311f61915f1d86))
+
+
 ## v0.26.2 (2026-04-22)
 
 ### Bug Fixes
