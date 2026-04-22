@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "0.26.0"
+version = "0.26.1"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -41,6 +41,7 @@ report = [
     "ipykernel",
     "nbformat>=5.7",
     "nbclient>=0.8",
+    "nbconvert>=7.17.1",  # CVE-2026-39377, CVE-2026-39378 fix; transitive via jupyter
     "tornado>=6.5.5",  # CVE-2026-31958 fix; transitive via jupyter
 ]
 cluster = [
