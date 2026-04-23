@@ -77,7 +77,7 @@ jobs:
 
       # Rename the check run so the job title shows the resolved version
       - name: Update job title with resolved version
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const resolvedVersion = '${{ steps.version.outputs.resolved }}';
@@ -99,7 +99,7 @@ jobs:
             }
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v8.0.0
         with:
           enable-cache: true
 
