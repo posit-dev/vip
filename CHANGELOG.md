@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.26.7 (2026-04-24)
+
+### Bug Fixes
+
+- **docs**: Use venv in quick start instructions in README
+  ([#221](https://github.com/posit-dev/vip/pull/221),
+  [`0d93b74`](https://github.com/posit-dev/vip/commit/0d93b7431782ae0eef4a629027131170f6a6d836))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 4 updates
+  ([#219](https://github.com/posit-dev/vip/pull/219),
+  [`7d7e1d2`](https://github.com/posit-dev/vip/commit/7d7e1d2f08afd9795298622079cb605662b2b012))
+
+
 ## v0.26.6 (2026-04-22)
 
 ### Bug Fixes
