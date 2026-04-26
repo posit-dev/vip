@@ -243,3 +243,10 @@ __marimo__/
 .positai
 presentations/se-overview/index.html
 presentations/se-overview/index_files/
+
+# Riptide artifacts (cloud-synced)
+.humanlayer/tasks/
+
+# local dev license files
+/*.lic
+
