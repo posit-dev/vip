@@ -73,7 +73,7 @@ paired with a `.py` file containing step definitions.
 | **Cross-product** | `test_ssl` | SSL cert valid, HTTP-to-HTTPS redirect | Implemented |
 | | `test_monitoring` | Health endpoints respond | Implemented |
 | | `test_resources` | Disk < 90%, memory > 10% available | Implemented |
-| **Performance** | `test_login_load_times` | Page load < 10s per product | Implemented |
+| **Performance** (opt-in) | `test_login_load_times` | Page load < 10s per product — enable with `--performance-tests` | Implemented |
 | | `test_package_install_speed` | CRAN/PyPI download < 30s | Implemented |
 | | `test_concurrency` | 10 concurrent requests succeed, avg < 5s | Implemented |
 | | `test_resource_usage` | Load avg and memory during traffic burst | Implemented |

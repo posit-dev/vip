@@ -62,7 +62,7 @@ src/vip_tests/package_manager/   # CRAN/PyPI mirrors, repos
 src/vip_tests/connect/           # Auth, deploy, data sources, packages, email
 src/vip_tests/workbench/         # Auth, IDE launch, sessions, packages
 src/vip_tests/cross_product/     # SSL, monitoring, system resources
-src/vip_tests/performance/       # Load times, concurrency
+src/vip_tests/performance/       # Load times, concurrency (opt-in, not run by default)
 src/vip_tests/security/          # HTTPS, auth policy, secrets
 ```
 
@@ -75,6 +75,17 @@ uv run vip verify --config vip.toml --categories package-manager -- -v
 ```
 
 Pass extra pytest args after `--` (e.g. `-k pattern` to filter, `-v` for verbose).
+
+### Opt-in categories
+
+Two categories are excluded from `vip verify` by default:
+
+- `performance` — run with `--performance-tests` (or `--categories performance`).
+  Treat these as a **starting point** for performance testing, not a
+  comprehensive benchmark. Real load testing requires a dedicated environment
+  and tuning per deployment.
+- `config_hygiene` — run with `--categories config-hygiene`. Checks VIP's
+  own configuration rather than the Posit deployment.
 
 ## How tests are structured
 
