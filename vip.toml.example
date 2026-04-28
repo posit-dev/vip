@@ -99,7 +99,14 @@ enabled = false
 enabled = false
 
 [performance]
-# Thresholds for performance tests.  All time values are in seconds.
+# Thresholds for the opt-in performance category.  Performance tests are
+# excluded from the default `vip verify` run; enable them with
+# --performance-tests.  They are intended as a starting point for performance
+# testing — a smoke check that login, concurrency, and package install speed
+# are in a reasonable range.  They are not a substitute for dedicated load
+# testing with a tuned environment and realistic workloads.
+#
+# All time values are in seconds.
 # page_load_timeout = 10.0
 # download_timeout = 30.0
 # p95_response_time = 5.0
