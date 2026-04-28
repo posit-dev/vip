@@ -77,6 +77,22 @@ def _default_marker_expr() -> str:
     return " and ".join(f"not {name}" for name in sorted(_OPT_IN_CATEGORIES))
 
 
+def _effective_marker_expr(args: argparse.Namespace) -> str:
+    """Return the pytest marker expression for the given CLI args.
+
+    ``--categories`` always wins (explicit user selection).  Otherwise the
+    default exclusion list is used, with ``performance`` re-included when
+    ``--performance-tests`` is set.  Used by both the local and K8s code paths
+    so the two stay in sync.
+    """
+    if args.categories:
+        return _normalize_categories(args.categories)
+    opt_in = set(_OPT_IN_CATEGORIES)
+    if getattr(args, "performance_tests", False):
+        opt_in.discard("performance")
+    return " and ".join(f"not {name}" for name in sorted(opt_in))
+
+
 def _normalize_categories(expr: str) -> str:
     """Validate and normalize a ``--categories`` expression.
 
@@ -510,14 +526,7 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append("--no-auth")
     for ext in args.extensions or []:
         cmd.append(f"--vip-extensions={ext}")
-    if args.categories:
-        cmd.extend(["-m", _normalize_categories(args.categories)])
-    else:
-        opt_in = set(_OPT_IN_CATEGORIES)
-        if getattr(args, "performance_tests", False):
-            opt_in.discard("performance")
-        expr = " and ".join(f"not {name}" for name in sorted(opt_in))
-        cmd.extend(["-m", expr])
+    cmd.extend(["-m", _effective_marker_expr(args)])
     if args.filter_expr:
         cmd.extend(["-k", args.filter_expr])
 
@@ -596,11 +605,7 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             namespace,
             cm_name,
             image=args.image,
-            categories=(
-                _normalize_categories(args.categories)
-                if args.categories
-                else _default_marker_expr()
-            ),
+            categories=_effective_marker_expr(args),
             filter_expr=getattr(args, "filter_expr", None),
             timeout_seconds=pytest_timeout,
             verbose=getattr(args, "verbose", False),

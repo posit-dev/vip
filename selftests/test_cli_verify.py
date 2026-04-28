@@ -598,6 +598,84 @@ class TestPerformanceOptIn:
         assert "performance" in _OPT_IN_CATEGORIES
 
 
+class TestEffectiveMarkerExpr:
+    """The same marker-expression helper drives both local and K8s code paths."""
+
+    def test_default_excludes_all_opt_in(self):
+        from vip.cli import _OPT_IN_CATEGORIES, _effective_marker_expr
+
+        expr = _effective_marker_expr(_make_args())
+        for category in _OPT_IN_CATEGORIES:
+            assert f"not {category}" in expr
+
+    def test_performance_tests_flag_re_includes_performance(self):
+        from vip.cli import _effective_marker_expr
+
+        expr = _effective_marker_expr(_make_args(performance_tests=True))
+        assert "not performance" not in expr
+        assert "not config_hygiene" in expr
+
+    def test_categories_overrides_performance_tests_flag(self):
+        from vip.cli import _effective_marker_expr
+
+        expr = _effective_marker_expr(_make_args(categories="connect", performance_tests=True))
+        assert expr == "connect"
+
+
+class TestVerifyK8sCategories:
+    """K8s mode must honor --performance-tests just like local mode."""
+
+    @staticmethod
+    def _capture_k8s_categories(args: argparse.Namespace) -> str:
+        """Run _run_k8s_job with mocks and return the ``categories`` arg passed
+        to ``create_job``."""
+        captured: dict[str, object] = {}
+
+        def fake_create_job(*pos, **kwargs):
+            captured.update(kwargs)
+
+        with (
+            patch("vip.verify.job.create_config_map"),
+            patch("vip.verify.job.create_job", side_effect=fake_create_job),
+            patch("vip.verify.job.stream_logs"),
+            patch("vip.verify.job.wait_for_job", return_value=True),
+            patch("vip.verify.job.cleanup"),
+        ):
+            from vip.cli import _run_k8s_job
+
+            _run_k8s_job("[general]\n", args)
+
+        assert "categories" in captured, "create_job was not called"
+        return str(captured["categories"])
+
+    def _k8s_args(self, **overrides) -> argparse.Namespace:
+        defaults = {
+            "image": "ghcr.io/posit-dev/vip:latest",
+            "timeout": 900,
+            "namespace": "posit-team",
+        }
+        defaults.update(overrides)
+        # Inherit verify defaults plus K8s-specific ones.
+        return _make_args(**defaults)
+
+    def test_k8s_default_excludes_performance(self):
+        categories = self._capture_k8s_categories(self._k8s_args())
+        assert "not performance" in categories
+        assert "not config_hygiene" in categories
+
+    def test_k8s_performance_tests_flag_includes_performance(self):
+        """Bug fix: --k8s --performance-tests must drop ``not performance``."""
+        categories = self._capture_k8s_categories(self._k8s_args(performance_tests=True))
+        assert "not performance" not in categories
+        assert "not config_hygiene" in categories
+
+    def test_k8s_explicit_categories_wins(self):
+        categories = self._capture_k8s_categories(
+            self._k8s_args(categories="connect", performance_tests=True)
+        )
+        assert categories == "connect"
+
+
 class TestVerifyLocalTestTimeout:
     """--test-timeout should limit how long the subprocess can run."""
 
