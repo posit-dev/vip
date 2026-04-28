@@ -45,9 +45,10 @@ VALID_CATEGORIES: dict[str, str] = {
 }
 
 # Categories that are excluded from the default ``vip verify`` run and only
-# executed when the user opts in via ``--categories``.  These tests check
-# VIP's own configuration rather than the Posit deployment.
-_OPT_IN_CATEGORIES = frozenset({"config_hygiene"})
+# executed when the user opts in (via ``--performance-tests`` for performance,
+# or ``--categories`` for config-hygiene).  These are heavyweight or
+# VIP-internal tests that most users do not want on every run.
+_OPT_IN_CATEGORIES = frozenset({"config_hygiene", "performance"})
 
 # Marker expression keywords that are not category names.
 _MARKER_KEYWORDS = {"and", "or", "not"}
@@ -512,7 +513,11 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     if args.categories:
         cmd.extend(["-m", _normalize_categories(args.categories)])
     else:
-        cmd.extend(["-m", _default_marker_expr()])
+        opt_in = set(_OPT_IN_CATEGORIES)
+        if getattr(args, "performance_tests", False):
+            opt_in.discard("performance")
+        expr = " and ".join(f"not {name}" for name in sorted(opt_in))
+        cmd.extend(["-m", expr])
     if args.filter_expr:
         cmd.extend(["-k", args.filter_expr])
 
@@ -859,6 +864,17 @@ def main() -> None:
         default=None,
         help="Test categories as a pytest marker expression "
         "(e.g. 'connect', 'package-manager', 'performance and workbench')",
+    )
+    verify_parser.add_argument(
+        "--performance-tests",
+        action="store_true",
+        default=False,
+        dest="performance_tests",
+        help=(
+            "Run the opt-in performance category. Performance tests are "
+            "excluded by default — they are meant as a starting point for "
+            "performance testing, not a comprehensive benchmark."
+        ),
     )
     verify_parser.add_argument(
         "-f",
