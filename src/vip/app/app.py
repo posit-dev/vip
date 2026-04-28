@@ -21,7 +21,7 @@ CATEGORIES: dict[str, str] = {
     "workbench": "Workbench",
     "package_manager": "Package Manager",
     "cross_product": "Cross Product",
-    "performance": "Performance",
+    "performance": "Performance (opt-in)",
     "security": "Security",
 }
 
