@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Build and run the RHEL headless Chromium smoke test for the given UBI version.
+# Usage: ./scripts/rhel-smoke.sh <9|10>
+set -euo pipefail
+
+version="${1:-}"
+case "$version" in
+    9|10) ;;
+    *) echo "Usage: $0 <9|10>" >&2; exit 2 ;;
+esac
+
+docker build --platform linux/amd64 \
+    -f "docker/rhel${version}/Dockerfile" \
+    -t "vip-rhel${version}-smoke" .
+docker run --rm --platform linux/amd64 "vip-rhel${version}-smoke"
