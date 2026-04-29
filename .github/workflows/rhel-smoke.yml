@@ -1,0 +1,66 @@
+name: RHEL Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker/rhel*/**'
+      - 'docker/rhel-smoke.py'
+      - 'scripts/rhel-smoke.sh'
+      - 'justfile'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'src/**'
+      - 'selftests/**'
+      - '.github/workflows/rhel-smoke.yml'
+  pull_request:
+    paths:
+      - 'docker/rhel*/**'
+      - 'docker/rhel-smoke.py'
+      - 'scripts/rhel-smoke.sh'
+      - 'justfile'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'src/**'
+      - 'selftests/**'
+      - '.github/workflows/rhel-smoke.yml'
+
+jobs:
+  smoke:
+    name: ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [rhel9, rhel10]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ matrix.version }}-${{ hashFiles(format('docker/{0}/Dockerfile', matrix.version), 'pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-${{ matrix.version }}-
+
+      - name: Build smoke image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/${{ matrix.version }}/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: vip-${{ matrix.version }}-smoke
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Run smoke
+        run: docker run --rm --platform linux/amd64 vip-${{ matrix.version }}-smoke
