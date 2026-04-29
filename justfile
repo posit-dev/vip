@@ -4,10 +4,16 @@
 default:
     @just --list
 
-# Install all dependencies with uv
+# Install all dependencies with uv (Ubuntu/Debian only — RHEL users: see `setup-rhel`)
 setup:
     uv sync
     uv run playwright install --with-deps chromium
+
+# Install all dependencies on RHEL/Rocky/Alma/Oracle/CentOS hosts.
+# Requires Chromium system libs to be installed via dnf first; see docs/rhel.md.
+setup-rhel:
+    uv sync
+    uv run playwright install chromium
 
 # Run ruff linter
 lint:
@@ -99,3 +105,11 @@ test-local-full *ARGS:
 report-selftest:
     uv run pytest selftests/
     cd report && uv run quarto render
+
+# Build and run the RHEL 9 headless Chromium smoke test
+rhel9-smoke:
+    ./scripts/rhel-smoke.sh 9
+
+# Build and run the RHEL 10 headless Chromium smoke test
+rhel10-smoke:
+    ./scripts/rhel-smoke.sh 10
