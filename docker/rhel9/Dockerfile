@@ -27,4 +27,4 @@ RUN uv sync --frozen
 # A "BEWARE: your OS is not officially supported" warning here is expected.
 RUN uv run playwright install chromium
 
-CMD ["bash", "-c", "uv run python /app/docker/rhel9/smoke.py && uv run pytest selftests/ -v"]
+CMD ["bash", "-c", "uv run python /app/docker/rhel-smoke.py && uv run pytest selftests/ -v"]
