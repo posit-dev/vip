@@ -13,6 +13,10 @@ uv sync                          # install dependencies
 uv run playwright install --with-deps chromium
 ```
 
+On RHEL / Rocky / Alma / Oracle / CentOS, `--with-deps` does not work
+(Playwright only knows `apt-get`). See [`docs/rhel.md`](docs/rhel.md) for the
+manual `dnf` setup, or run `just setup-rhel` after installing the system libs.
+
 Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `python` or `pip` -- everything runs through uv.
 
 ## Code quality
