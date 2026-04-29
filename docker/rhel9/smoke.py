@@ -16,14 +16,19 @@ def main() -> None:
         page.goto(
             "data:text/html,<title>RHEL9 smoke</title><h1 id=h>ok</h1><input id=i><div id=r></div>"
         )
-        assert page.title() == "RHEL9 smoke"
+        title = page.title()
+        if title != "RHEL9 smoke":
+            raise RuntimeError(f"unexpected title: {title!r}")
         page.fill("#i", "hello from rhel9")
         page.evaluate(
             "document.getElementById('r').textContent = document.getElementById('i').value"
         )
-        assert page.text_content("#r") == "hello from rhel9"
+        text = page.text_content("#r")
+        if text != "hello from rhel9":
+            raise RuntimeError(f"unexpected DOM text: {text!r}")
         ua = page.evaluate("navigator.userAgent")
-        assert "HeadlessChrome" in ua, f"unexpected UA: {ua}"
+        if "HeadlessChrome" not in ua:
+            raise RuntimeError(f"unexpected UA: {ua!r}")
         page.screenshot(path="/tmp/smoke.png")
         browser.close()
     print("PASS: rhel9 headless chromium smoke")
