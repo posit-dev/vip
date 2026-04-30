@@ -42,16 +42,17 @@ them yourself.
 
 ## What you'll see
 
-When `vip install` runs `playwright install chromium`, you'll see:
+When `vip install` runs `playwright install chromium`, it streams Playwright's
+output through and prints a one-line summary at the end:
 
 ```
-BEWARE: your OS is not officially supported by Playwright;
-downloading fallback build for ubuntu24.04-x64.
+Installed Playwright Chromium (Ubuntu 24.04 fallback build for unsupported-OS hosts).
 ```
 
-This is expected. Playwright detects an unrecognized distro and downloads the
-Ubuntu 24.04 Chromium build, which links against the libraries `vip install`
-provisioned for you.
+vip suppresses Playwright's `BEWARE: your OS is not officially supported`
+preamble because it sounds alarming and applies to every RHEL-family install.
+The fallback build is the supported path here: it's the Ubuntu 24.04 Chromium
+binary, which links against the libraries `vip install` provisioned for you.
 
 ## RHEL 9 vs RHEL 10
 
