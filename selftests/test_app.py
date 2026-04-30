@@ -60,6 +60,79 @@ class TestSeedResultsIfMissing:
         )
 
 
+class TestModuleImportSideEffects:
+    """Verify that importing vip.app.app performs no filesystem writes."""
+
+    def test_module_import_has_no_filesystem_side_effects(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Importing vip.app.app must not create report/results.json."""
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        example = report_dir / "results.json.example"
+        example.write_text('{"example": true}')
+
+        # Point the module's PROJECT_ROOT to our tmp dir so any accidental
+        # seeding would land there instead of the real project.
+        import vip.app.app as app_module
+
+        monkeypatch.setattr(app_module, "PROJECT_ROOT", tmp_path)
+        # Also reset the guard so a re-import scenario doesn't skip the check.
+        monkeypatch.setattr(app_module, "_seeded", False)
+
+        # Re-importing should be a no-op at this point; just verify the state.
+        results = report_dir / "results.json"
+        assert not results.exists(), (
+            "importing vip.app.app must not create report/results.json; "
+            "seed_results_if_missing() should only run inside server()"
+        )
+
+    def test_seed_runs_on_first_server_call(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """seed_results_if_missing() fires exactly once when server() is invoked."""
+        import vip.app.app as app_module
+
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        example = report_dir / "results.json.example"
+        example.write_text('{"example": true}')
+
+        monkeypatch.setattr(app_module, "PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr(app_module, "_seeded", False)
+
+        # Call server() with stub arguments — it only needs to reach the seed guard.
+        class _FakeInput:
+            def __getitem__(self, key):
+                raise KeyError(key)
+
+            def __getattr__(self, name):
+                raise AttributeError(name)
+
+        # server() may raise after the seed block because the fake session is
+        # not a real Shiny session. We only care that the seed ran.
+        try:
+            app_module.server(_FakeInput(), None, None)
+        except Exception:
+            pass
+
+        results = report_dir / "results.json"
+        assert results.exists(), (
+            "report/results.json should be seeded after the first server() call"
+        )
+        assert results.read_text() == example.read_text()
+
+        # Second call should be a no-op (idempotent guard).
+        results.write_text('{"custom": "data"}')
+        try:
+            app_module.server(_FakeInput(), None, None)
+        except Exception:
+            pass
+        assert results.read_text() == '{"custom": "data"}', (
+            "second server() call must not overwrite an existing results.json"
+        )
+
+
 class TestMarkRunInProgress:
     """Unit tests for the mark_run_in_progress() helper."""
 

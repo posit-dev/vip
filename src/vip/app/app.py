@@ -346,8 +346,17 @@ app_ui = ui.page_sidebar(
 # Server
 # ---------------------------------------------------------------------------
 
+# Guard so seed_results_if_missing() runs at most once per process, on the
+# first real Shiny session rather than at import time.
+_seeded: bool = False
+
 
 def server(input, output, session):
+    global _seeded
+    if not _seeded:
+        seed_results_if_missing()
+        _seeded = True
+
     # Reactive state
     output_lines: reactive.Value[list[str]] = reactive.value([])
     run_status: reactive.Value[str] = reactive.value("idle")  # idle | running | passed | failed
@@ -673,10 +682,9 @@ def server(input, output, session):
 def create_app() -> App:
     """Construct and return the Shiny App instance.
 
-    Seeding is done here rather than at module scope so that importing this
-    module (e.g. in tests or tooling) does not trigger filesystem writes.
+    Seeding is deferred to the first Shiny session (inside server()) so that
+    importing this module does not trigger any filesystem writes.
     """
-    seed_results_if_missing()
     return App(
         app_ui,
         server,
