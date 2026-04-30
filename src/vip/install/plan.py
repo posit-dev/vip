@@ -99,7 +99,7 @@ class UninstallPlan:
     delete_manifest: bool
     playwright_cache_dirs: tuple[str, ...]
     remove_venv: bool
-    system_remove_command: str | None
+    system_remove_commands: tuple[str, ...]
     chained_cleanup: str | None  # connect URL to clean up against, or None
     system_packages_by_manager: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
@@ -121,22 +121,22 @@ def build_uninstall_plan(
             by_manager.setdefault(it.manager, []).append(it.name)
     by_manager_tuples = {m: tuple(sorted(set(names))) for m, names in by_manager.items()}
 
-    system_command: str | None = None
-    if system and by_manager_tuples:
-        # Prefer the manager with the most packages; mixed-manager manifests are unusual
-        # (a host has only one of dnf or apt) but we handle the case for completeness.
-        primary = max(by_manager_tuples.items(), key=lambda kv: len(kv[1]))
-        manager, names = primary
-        if manager == "dnf":
-            system_command = "sudo dnf remove " + " ".join(names)
-        elif manager == "apt":
-            system_command = "sudo apt remove --autoremove " + " ".join(names)
+    commands: list[str] = []
+    if system:
+        for manager, names in sorted(by_manager_tuples.items()):
+            if not names:
+                continue
+            if manager == "dnf":
+                commands.append("sudo dnf remove " + " ".join(names))
+            elif manager == "apt":
+                commands.append("sudo apt remove --autoremove " + " ".join(names))
+            # Unknown manager: skip (we don't know how to remove)
 
     return UninstallPlan(
         delete_manifest=True,
         playwright_cache_dirs=cache_dirs,
         remove_venv=venv,
-        system_remove_command=system_command,
+        system_remove_commands=tuple(commands),
         chained_cleanup=connect_url,
         system_packages_by_manager=by_manager_tuples,
     )

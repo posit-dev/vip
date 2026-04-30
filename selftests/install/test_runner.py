@@ -132,7 +132,7 @@ def test_format_uninstall_plan_default():
         delete_manifest=True,
         playwright_cache_dirs=("/c",),
         remove_venv=False,
-        system_remove_command=None,
+        system_remove_commands=(),
         chained_cleanup=None,
     )
     text = rn.format_uninstall_plan(plan)
@@ -145,7 +145,7 @@ def test_format_uninstall_plan_with_all_scopes():
         delete_manifest=True,
         playwright_cache_dirs=("/c",),
         remove_venv=True,
-        system_remove_command="sudo dnf remove nss libdrm",
+        system_remove_commands=("sudo dnf remove nss libdrm",),
         chained_cleanup="https://connect.example.com",
     )
     text = rn.format_uninstall_plan(plan)
@@ -165,7 +165,7 @@ def test_execute_uninstall_plan_dry_run(monkeypatch, tmp_path: Path):
         delete_manifest=True,
         playwright_cache_dirs=(str(cache_dir),),
         remove_venv=False,
-        system_remove_command=None,
+        system_remove_commands=(),
         chained_cleanup=None,
     )
     rc = rn.execute_uninstall_plan(
@@ -190,7 +190,7 @@ def test_execute_uninstall_plan_with_yes_removes_things(tmp_path: Path):
         delete_manifest=True,
         playwright_cache_dirs=(str(cache_dir),),
         remove_venv=False,
-        system_remove_command=None,
+        system_remove_commands=(),
         chained_cleanup=None,
     )
     rc = rn.execute_uninstall_plan(
@@ -216,7 +216,7 @@ def test_execute_uninstall_plan_chained_cleanup_failure_warns(tmp_path: Path, ca
         delete_manifest=True,
         playwright_cache_dirs=(),
         remove_venv=False,
-        system_remove_command=None,
+        system_remove_commands=(),
         chained_cleanup="https://connect.example.com",
     )
     rc = rn.execute_uninstall_plan(
@@ -245,7 +245,7 @@ def test_execute_uninstall_plan_skips_unrecognized_venv(tmp_path: Path):
         delete_manifest=True,
         playwright_cache_dirs=(),
         remove_venv=True,
-        system_remove_command=None,
+        system_remove_commands=(),
         chained_cleanup=None,
     )
     rn.execute_uninstall_plan(

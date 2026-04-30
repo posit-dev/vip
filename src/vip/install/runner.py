@@ -134,9 +134,10 @@ def format_uninstall_plan(plan: UninstallPlan) -> str:
         lines.append("  remove ./.venv")
     if plan.delete_manifest:
         lines.append("  delete .vip-install.json")
-    if plan.system_remove_command:
+    if plan.system_remove_commands:
         lines.append("  system packages to remove (run yourself):")
-        lines.append(f"    {plan.system_remove_command}")
+        for cmd in plan.system_remove_commands:
+            lines.append(f"    {cmd}")
     return "\n".join(lines) + "\n"
 
 
@@ -179,9 +180,10 @@ def execute_uninstall_plan(
     if plan.delete_manifest and manifest_path.exists():
         manifest_path.unlink()
 
-    if plan.system_remove_command:
+    if plan.system_remove_commands:
         print("\nRun the following yourself to remove system packages:")
-        print(f"  {plan.system_remove_command}")
+        for cmd in plan.system_remove_commands:
+            print(f"  {cmd}")
 
     print(f"\nvip uninstall: complete (content cleanup: {cleanup_status})")
     return 0
