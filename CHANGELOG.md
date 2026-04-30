@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.26.8 (2026-04-30)
+
+### Bug Fixes
+
+- **deps**: Pin pip>=26.1 for CVE-2026-3219 ([#234](https://github.com/posit-dev/vip/pull/234),
+  [`275abd4`](https://github.com/posit-dev/vip/commit/275abd4954059c685d4522254a66e3ad5789a7ad))
+
+### Chores
+
+- Update gitignore ([#225](https://github.com/posit-dev/vip/pull/225),
+  [`302bdea`](https://github.com/posit-dev/vip/commit/302bdeacbfd4a124b61df4e287d540f0707cfc4f))
+
+
 ## v0.26.7 (2026-04-24)
 
 ### Bug Fixes
