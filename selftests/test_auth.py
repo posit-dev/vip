@@ -858,7 +858,7 @@ class TestHeadlessAuthTLSFlags:
         assert kwargs.get("ignore_https_errors") is True
 
     def test_no_insecure_does_not_set_ignore_https_errors(self):
-        """Without insecure, new_context should not receive ignore_https_errors=True."""
+        """Without insecure, new_context must receive ignore_https_errors=False."""
         stub = self._make_playwright_stub()
         browser = stub.start.return_value.chromium.launch.return_value
 
@@ -873,12 +873,11 @@ class TestHeadlessAuthTLSFlags:
 
         browser.new_context.assert_called_once()
         kwargs = browser.new_context.call_args.kwargs
-        assert not kwargs.get("ignore_https_errors")
+        assert kwargs.get("ignore_https_errors") is False
 
     def test_ca_bundle_sets_node_extra_ca_certs(self, tmp_path, monkeypatch):
         """ca_bundle must set NODE_EXTRA_CA_CERTS before sync_playwright().start()."""
         import os
-
         from pathlib import Path
 
         ca_file = tmp_path / "ca.pem"
@@ -914,7 +913,6 @@ class TestHeadlessAuthTLSFlags:
     def test_ca_bundle_env_restored_after_call(self, tmp_path, monkeypatch):
         """NODE_EXTRA_CA_CERTS must be restored to its prior value after auth."""
         import os
-
         from pathlib import Path
 
         ca_file = tmp_path / "ca.pem"

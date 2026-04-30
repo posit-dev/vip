@@ -411,6 +411,12 @@ class TestLoadConfigTLS:
         assert cfg.insecure is False
         assert cfg.ca_bundle is None
 
+    def test_ca_bundle_missing_file_raises_valueerror(self, tmp_toml):
+        """_resolve_ca_bundle must raise ValueError for a non-existent path."""
+        path = tmp_toml('[tls]\nca_bundle = "/nonexistent/path/ca.pem"\n')
+        with pytest.raises(ValueError, match="ca_bundle path does not exist"):
+            load_config(path)
+
 
 class TestMode:
     def test_enum_values(self):

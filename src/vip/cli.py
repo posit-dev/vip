@@ -193,7 +193,11 @@ def _print_skip_notes(config_path: str | None) -> None:
     """Print a note for each product that is not configured."""
     from vip.config import load_config
 
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     products = [
         ("Connect", cfg.connect),
         ("Workbench", cfg.workbench),
@@ -221,7 +225,11 @@ def _check_credentials(
     """
     from vip.config import load_config
 
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     if interactive_auth:
         return
 
@@ -369,7 +377,9 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
         if insecure:
             lines.append("insecure = true")
         if ca_bundle:
-            lines.append(f"ca_bundle = '{ca_bundle}'")
+            import json as _json
+
+            lines.append(f"ca_bundle = {_json.dumps(str(ca_bundle))}")
         lines.append("")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:

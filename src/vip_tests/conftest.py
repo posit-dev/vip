@@ -134,7 +134,16 @@ def browser_context_args(
     if vip_config.ca_bundle is not None:
         import os
 
-        os.environ.setdefault("NODE_EXTRA_CA_CERTS", str(vip_config.ca_bundle))
+        _prev = os.environ.get("NODE_EXTRA_CA_CERTS")
+        os.environ["NODE_EXTRA_CA_CERTS"] = str(vip_config.ca_bundle)
+
+        def _restore_node_ca() -> None:
+            if _prev is None:
+                os.environ.pop("NODE_EXTRA_CA_CERTS", None)
+            else:
+                os.environ["NODE_EXTRA_CA_CERTS"] = _prev
+
+        request.addfinalizer(_restore_node_ca)
     return browser_context_args
 
 

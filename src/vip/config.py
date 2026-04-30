@@ -347,9 +347,7 @@ def _resolve_ca_bundle(raw: str | None) -> Path | None:
         return None
     p = Path(raw)
     if not p.is_file():
-        raise ValueError(
-            f"[tls] ca_bundle path does not exist or is not a file: {p}"
-        )
+        raise ValueError(f"[tls] ca_bundle path does not exist or is not a file: {p}")
     return p
 
 

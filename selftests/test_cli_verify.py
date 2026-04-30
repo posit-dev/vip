@@ -843,3 +843,27 @@ class TestVerifyLocalTLSFlags:
             assert "[tls]" not in content
         finally:
             Path(path).unlink(missing_ok=True)
+
+    def test_both_insecure_and_ca_bundle_emits_warning(self, tmp_path, monkeypatch):
+        """Passing both --insecure and --ca-bundle must emit a UserWarning."""
+        import warnings
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        from vip.cli import _generate_temp_config
+
+        path = None
+        try:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                path = _generate_temp_config(
+                    _make_args(connect_url="https://c.example.com", insecure=True, ca_bundle=bundle)
+                )
+            assert any("--insecure" in str(warning.message) for warning in w), (
+                "Expected a UserWarning about --insecure and --ca-bundle"
+            )
+        finally:
+            if path:
+                Path(path).unlink(missing_ok=True)

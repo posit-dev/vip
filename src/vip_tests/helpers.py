@@ -94,6 +94,10 @@ def check_data_source_connectivity(data_sources, verify: bool | str = True) -> l
         result = {"name": ds.name, "type": ds.type, "ok": False, "error": None}
         try:
             if ds.type in ("http", "api"):
+                # `verify` controls TLS certificate validation for HTTP sources.
+                # Non-HTTP types (DB, TCP) use socket.create_connection and do
+                # not perform TLS; the verify parameter is intentionally ignored
+                # for those types.
                 resp = httpx.get(ds.connection_string, timeout=15, verify=verify)
                 result["ok"] = resp.status_code < 400
             else:
