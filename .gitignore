@@ -22,6 +22,7 @@ website/src/data/feature-matrix.json
 report/_output/
 report/_freeze/
 report/.quarto/
+report/report/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

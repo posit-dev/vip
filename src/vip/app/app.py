@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -10,6 +12,8 @@ from pathlib import Path
 from shiny import App, reactive, render, ui
 
 from vip.gherkin import parse_feature_file
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Test categories — mirrors the pytest markers defined in pyproject.toml
@@ -47,6 +51,31 @@ def _find_project_root() -> Path:
 
 # resolve() avoids symlink mismatches between cwd and Python's import paths
 PROJECT_ROOT = _find_project_root().resolve()
+
+
+def seed_results_if_missing(base: Path | None = None) -> None:
+    """Copy results.json.example to results.json if results.json does not exist.
+
+    Idempotent: does nothing when results.json is already present.
+    Logs a warning (does not raise) when the example file is also missing.
+    """
+    root = (base or PROJECT_ROOT).resolve()
+    results = root / "report" / "results.json"
+    example = root / "report" / "results.json.example"
+    if results.exists():
+        return
+    if not example.exists():
+        logger.warning(
+            "report/results.json not found and report/results.json.example is missing; "
+            "the report page will be empty until tests are run."
+        )
+        return
+    shutil.copyfile(example, results)
+    logger.info("Seeded report/results.json from report/results.json.example")
+
+
+# Seed on import so the Shiny app always has a results.json to display.
+seed_results_if_missing()
 
 # ---------------------------------------------------------------------------
 # Parse feature files at startup for the category browser
@@ -418,10 +447,6 @@ def server(input, output, session):
             return
 
         cmd, temp_config = _build_command()
-
-        # Remove stale results so the report doesn't show old data on failure
-        report_json = PROJECT_ROOT / "report" / "results.json"
-        report_json.unlink(missing_ok=True)
 
         output_lines.set([f"$ {' '.join(cmd)}", ""])
         run_status.set("running")
