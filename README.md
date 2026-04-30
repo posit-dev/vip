@@ -19,7 +19,7 @@ that can be published to a Connect server.
 uv venv
 source .venv/bin/activate
 uv pip install posit-vip
-uv run playwright install --with-deps chromium
+uv run vip install
 vip verify --connect-url https://connect.example.com --interactive-auth
 ```
 

@@ -69,8 +69,7 @@ class TestStartHeadlessAuthPlaywrightErrors:
 
     def test_missing_chromium_system_deps_gives_remediation(self):
         """Missing host libraries at chromium launch must surface the
-        ``playwright install --with-deps chromium`` remediation command
-        (see issue #169)."""
+        ``vip install`` remediation command (see issue #169)."""
         from playwright.sync_api import Error as PlaywrightError
 
         pw = MagicMock()
@@ -80,7 +79,7 @@ class TestStartHeadlessAuthPlaywrightErrors:
             "    sudo playwright install-deps"
         )
         with patch("vip.auth.sync_playwright", return_value=pw):
-            with pytest.raises(AuthConfigError, match=r"playwright install --with-deps chromium"):
+            with pytest.raises(AuthConfigError, match=r"vip install"):
                 start_headless_auth(
                     connect_url="https://c.example.com",
                     username="user",

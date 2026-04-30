@@ -69,7 +69,7 @@ likely_causes = [
 suggested_steps = [
     "Verify credentials work by logging in manually at the Connect URL",
     "Check auth provider settings in Connect admin panel",
-    "Run `uv run playwright install --with-deps chromium` to ensure the browser and its system libraries are installed",
+    "Run `uv run vip install` to ensure the browser and its system libraries are installed",
     "If using external IdP, try `--interactive-auth` or `--headless-auth`",
 ]
 docs_url = "https://docs.posit.co/connect/admin/authentication/"

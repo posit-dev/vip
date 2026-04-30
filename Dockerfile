@@ -19,8 +19,8 @@ COPY . .
 # Install the project itself
 RUN uv sync --frozen
 
-# Install playwright browsers (chromium is already in the base image, but ensure deps)
-RUN uv run playwright install --with-deps chromium
+# Install playwright browsers + system deps (chromium is already in the base image, but ensure deps)
+RUN uv run vip install
 
 # Run as the existing non-root user from the base image (ubuntu, UID 1000)
 RUN chown -R ubuntu:ubuntu /app

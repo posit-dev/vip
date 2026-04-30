@@ -107,7 +107,7 @@ jobs:
         run: uv sync
 
       - name: Install Playwright browsers
-        run: uv run playwright install chromium
+        run: uv run vip install --skip-system
 
       # Generate vip.toml from with-connect outputs
       - name: Configure VIP for CI Connect

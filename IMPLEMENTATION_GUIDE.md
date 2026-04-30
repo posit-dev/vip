@@ -310,7 +310,7 @@ Python code blocks in the `.qmd` files use only the standard library plus
 
 ```bash
 # One-time setup
-just setup                        # uv sync + playwright install
+just setup                        # uv sync + vip install
 
 # Development loop
 just check                        # ruff lint + format check

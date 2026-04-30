@@ -41,7 +41,7 @@ recorded; user-space cleanup happens automatically.
 
 ## What you'll see
 
-`uv run playwright install chromium` prints:
+When `vip install` runs `playwright install chromium`, you'll see:
 
 ```
 BEWARE: your OS is not officially supported by Playwright;
@@ -49,8 +49,8 @@ downloading fallback build for ubuntu24.04-x64.
 ```
 
 This is expected. Playwright detects an unrecognized distro and downloads the
-Ubuntu 24.04 Chromium build, which links against the libraries you installed
-in step 1.
+Ubuntu 24.04 Chromium build, which links against the libraries `vip install`
+provisioned for you.
 
 ## RHEL 9 vs RHEL 10
 
@@ -69,8 +69,8 @@ sudo dnf provides "*/libsomething.so.N"
 sudo dnf install -y <package>
 ```
 
-Then retry `uv run playwright install chromium`. If you find a missing package
-that should be in the default list above, please open an issue.
+Then retry `uv run vip install`. If you find a missing package that should be
+in `RHEL_PACKAGES` (in `src/vip/install/platform.py`), please open an issue.
 
 **Blank screenshots / glyph rendering issues**
 Install fonts:
