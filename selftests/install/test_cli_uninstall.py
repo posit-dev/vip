@@ -207,6 +207,43 @@ def test_run_uninstall_warns_on_malformed_vip_toml(tmp_path, monkeypatch, capsys
     assert "warning: failed to load vip.toml" in captured.err
 
 
+def test_install_then_uninstall_round_trip(tmp_path, monkeypatch):
+    """Full cycle: vip install (skip-system, no chromium step needed) writes manifest;
+    vip uninstall --yes reads it and removes everything."""
+    import argparse
+
+    from vip import cli
+    from vip.install import platform as plat
+    from vip.install import playwright as pw
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(plat, "detect", lambda: plat.PlatformInfo(family="macos"))
+    # Pretend chromium is already cached so playwright step is a no-op.
+    monkeypatch.setattr(pw, "chromium_installed", lambda d: True)
+
+    # Install
+    install_args = argparse.Namespace(skip_system=True, dry_run=False)
+    with pytest.raises(SystemExit) as exc_info:
+        cli.run_install(install_args)
+    assert exc_info.value.code == 0
+    manifest_path = tmp_path / ".vip-install.json"
+    assert manifest_path.exists()
+
+    # Uninstall
+    uninstall_args = argparse.Namespace(
+        yes=True,
+        venv=False,
+        system=False,
+        force_host=False,
+        connect_url=None,
+        api_key=None,
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        cli.run_uninstall(uninstall_args)
+    assert exc_info.value.code == 0
+    assert not manifest_path.exists()
+
+
 def test_run_uninstall_chained_cleanup_invokes_connect_client(tmp_path, monkeypatch):
     """When connect_url is set, run_uninstall constructs a callable that opens
     ConnectClient and calls cleanup_vip_content."""

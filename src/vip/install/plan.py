@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from vip.install import platform as plat
@@ -101,7 +101,6 @@ class UninstallPlan:
     remove_venv: bool
     system_remove_commands: tuple[str, ...]
     chained_cleanup: str | None  # connect URL to clean up against, or None
-    system_packages_by_manager: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 def build_uninstall_plan(
@@ -138,5 +137,4 @@ def build_uninstall_plan(
         remove_venv=venv,
         system_remove_commands=tuple(commands),
         chained_cleanup=connect_url,
-        system_packages_by_manager=by_manager_tuples,
     )

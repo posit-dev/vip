@@ -767,9 +767,9 @@ def run_install(args: argparse.Namespace) -> None:
         default_path,
         load,
     )
-    from vip.install.packages import installed_dpkg, installed_rpm
+    from vip.install.packages import PackageQueryError, installed_dpkg, installed_rpm
     from vip.install.plan import build_install_plan
-    from vip.install.playwright import chromium_installed, default_cache_dir
+    from vip.install.playwright import PlaywrightInstallError, chromium_installed, default_cache_dir
     from vip.install.runner import execute_install_plan, format_install_plan
 
     info = plat.detect()
@@ -777,36 +777,41 @@ def run_install(args: argparse.Namespace) -> None:
     manifest = load(manifest_path)
 
     cache_dir = default_cache_dir()
-    plan = build_install_plan(
-        platform_info=info,
-        manifest=manifest,
-        rpm_installed=lambda names: installed_rpm(names),
-        dpkg_installed=lambda names: installed_dpkg(names),
-        chromium_present=chromium_installed(cache_dir),
-        playwright_cache_dir=cache_dir,
-        skip_system=bool(getattr(args, "skip_system", False)),
-    )
 
-    if getattr(args, "dry_run", False):
-        print(format_install_plan(plan), end="")
-        return
-
-    if manifest is None:
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        from vip import __version__ as vip_version
-
-        manifest = Manifest(
-            version=SCHEMA_VERSION,
-            vip_version=vip_version,
-            created_at=now,
-            updated_at=now,
-            host=current_host(),
-            platform=info.family,
-            platform_id=info.id,
-            platform_version=info.version,
+    try:
+        plan = build_install_plan(
+            platform_info=info,
+            manifest=manifest,
+            rpm_installed=installed_rpm,
+            dpkg_installed=installed_dpkg,
+            chromium_present=chromium_installed(cache_dir),
+            playwright_cache_dir=cache_dir,
+            skip_system=bool(getattr(args, "skip_system", False)),
         )
 
-    rc = execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+        if getattr(args, "dry_run", False):
+            print(format_install_plan(plan), end="")
+            return
+
+        if manifest is None:
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            from vip import __version__ as vip_version
+
+            manifest = Manifest(
+                version=SCHEMA_VERSION,
+                vip_version=vip_version,
+                created_at=now,
+                updated_at=now,
+                host=current_host(),
+                platform=info.family,
+                platform_id=info.id,
+                platform_version=info.version,
+            )
+
+        rc = execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+    except (PlaywrightInstallError, PackageQueryError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     sys.exit(rc)
 
 
@@ -1215,7 +1220,11 @@ def main() -> None:
         "--skip-system",
         action="store_true",
         default=False,
-        help="Skip the system-package step (e.g., if you don't have sudo).",
+        help=(
+            "Skip the system-package step. VIP will not track those packages in "
+            ".vip-install.json, so vip uninstall --system will not propose to remove them. "
+            "Use this when you manage system packages yourself or don't have sudo."
+        ),
     )
     install_parser.add_argument(
         "--dry-run",
