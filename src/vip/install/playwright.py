@@ -28,17 +28,19 @@ def default_cache_dir() -> Path:
 
 def chromium_installed(cache_dir: Path) -> bool:
     """Return True if any `chromium-*` directory exists under cache_dir."""
-    if not cache_dir.exists():
+    if not cache_dir.is_dir():
         return False
     return any(p.name.startswith("chromium-") for p in cache_dir.iterdir() if p.is_dir())
 
 
 def install_chromium() -> None:
     """Run `playwright install chromium` (no --with-deps). Raises on nonzero exit."""
-    cp = subprocess.run(
-        ["playwright", "install", "chromium"],
-        check=False,
-    )
+    try:
+        cp = subprocess.run(["playwright", "install", "chromium"], check=False)
+    except OSError as exc:
+        raise PlaywrightInstallError(
+            f"could not invoke playwright (is it installed?): {exc}"
+        ) from exc
     if cp.returncode != 0:
         raise PlaywrightInstallError(
             f"playwright install chromium exited with exit {cp.returncode}"

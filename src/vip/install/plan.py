@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from vip.install import platform as plat
-from vip.install.manifest import Manifest, SystemPackageItem
+from vip.install.manifest import Manifest
 
 
 @dataclass(frozen=True)
@@ -58,24 +58,17 @@ def build_install_plan(
     claim_pending: tuple[str, ...] = ()
 
     pending = manifest.pending_packages_set() if manifest else set()
-    manifest_names = {
-        i.name for i in (manifest.items if manifest else []) if isinstance(i, SystemPackageItem)
-    }
 
     if not skip_system:
         if family == "rhel-family":
             present = rpm_installed(plat.RHEL_PACKAGES)
             claim_pending = tuple(sorted(pending & present))
-            missing = tuple(
-                p for p in plat.RHEL_PACKAGES if p not in present and p not in manifest_names
-            )
+            missing = tuple(p for p in plat.RHEL_PACKAGES if p not in present)
             system_step = SystemPackagesStep(manager="dnf", packages=missing)
         elif family == "debian-family":
             present = dpkg_installed(plat.DEBIAN_PACKAGES)
             claim_pending = tuple(sorted(pending & present))
-            missing = tuple(
-                p for p in plat.DEBIAN_PACKAGES if p not in present and p not in manifest_names
-            )
+            missing = tuple(p for p in plat.DEBIAN_PACKAGES if p not in present)
             system_step = SystemPackagesStep(manager="apt", packages=missing)
         elif family == "macos":
             system_step = None

@@ -83,3 +83,14 @@ def test_installed_rpm_empty_input_returns_empty(monkeypatch):
 def test_installed_dpkg_empty_input_returns_empty(monkeypatch):
     monkeypatch.setattr(pkg.subprocess, "run", FakeRun({}))
     assert pkg.installed_dpkg(()) == set()
+
+
+def test_installed_dpkg_accepts_hold_ok_installed(monkeypatch):
+    fake = FakeRun(
+        {
+            ("dpkg-query", "-W", "-f=${Status}", "libdrm2"): _ok("hold ok installed"),
+        }
+    )
+    monkeypatch.setattr(pkg.subprocess, "run", fake)
+    result = pkg.installed_dpkg(("libdrm2",))
+    assert "libdrm2" in result

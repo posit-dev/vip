@@ -40,6 +40,7 @@ def installed_dpkg(names: Iterable[str]) -> set[str]:
             raise PackageQueryError(
                 "dpkg-query not found on PATH; can't query Debian-family package state"
             ) from exc
-        if cp.returncode == 0 and cp.stdout.strip() == "install ok installed":
+        parts = cp.stdout.strip().split()
+        if cp.returncode == 0 and len(parts) == 3 and parts[1] == "ok" and parts[2] == "installed":
             present.add(name)
     return present

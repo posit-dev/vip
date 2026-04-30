@@ -142,7 +142,7 @@ def test_install_plan_skips_already_installed_packages(tmp_path: Path):
     assert "alsa-lib" in plan.system_step.packages
 
 
-def test_install_plan_with_existing_manifest_carries_state(tmp_path: Path):
+def test_install_plan_skips_packages_already_present_even_if_in_manifest(tmp_path: Path):
     info = PlatformInfo(family="rhel-family", id="rhel", version="10")
     m = _empty_manifest()
     m.items.append(SystemPackageItem(manager="dnf", name="nss", installed_at="t1"))
@@ -155,9 +155,27 @@ def test_install_plan_with_existing_manifest_carries_state(tmp_path: Path):
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
     )
-    # nss is present and already in manifest — not in plan.
+    # nss is present on the system — skip regardless of manifest membership.
     assert plan.system_step is not None
     assert "nss" not in plan.system_step.packages
+
+
+def test_install_plan_replans_manifest_package_when_missing_from_system(tmp_path: Path):
+    """If a manifest item is no longer installed on the system, plan re-installs it."""
+    info = PlatformInfo(family="rhel-family", id="rhel", version="10")
+    m = _empty_manifest()
+    m.items.append(SystemPackageItem(manager="dnf", name="nss", installed_at="t1"))
+    plan = pl.build_install_plan(
+        platform_info=info,
+        manifest=m,
+        rpm_installed=lambda names: set(),  # nss is gone from system
+        dpkg_installed=lambda names: set(),
+        chromium_present=False,
+        playwright_cache_dir=tmp_path / "cache",
+        skip_system=False,
+    )
+    assert plan.system_step is not None
+    assert "nss" in plan.system_step.packages
 
 
 def test_install_plan_pending_packages_now_present_get_claimed(tmp_path: Path):

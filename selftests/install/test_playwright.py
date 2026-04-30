@@ -62,3 +62,18 @@ def test_install_chromium_raises_on_failure(monkeypatch):
     monkeypatch.setattr(pw.subprocess, "run", fake_run)
     with pytest.raises(pw.PlaywrightInstallError, match="exit 1"):
         pw.install_chromium()
+
+
+def test_chromium_installed_false_when_cache_dir_is_a_file(tmp_path: Path):
+    file_path = tmp_path / "ms-playwright"
+    file_path.write_text("not a directory")
+    assert pw.chromium_installed(file_path) is False
+
+
+def test_install_chromium_raises_when_binary_missing(monkeypatch):
+    def fake_run(args, **kwargs):
+        raise FileNotFoundError("playwright not found")
+
+    monkeypatch.setattr(pw.subprocess, "run", fake_run)
+    with pytest.raises(pw.PlaywrightInstallError, match="playwright"):
+        pw.install_chromium()
