@@ -33,3 +33,24 @@ class JupyterLabSession:
     # Launcher cards (to open a new notebook from the launcher)
     LAUNCHER_CARD = ".jp-LauncherCard"
     LAUNCHER_NOTEBOOK_CARD = ".jp-LauncherCard[data-category='Notebook']"
+
+    # Extension Manager
+    EXTENSION_MANAGER_TAB = ".jp-SideBar .lm-TabBar-tab[data-id='extensionmanager.main-view']"
+    EXTENSION_SEARCH_INPUT = ".jp-extensionmanager-search input"
+
+    # Posit Workbench extension
+    POSIT_EXTENSION_ICON = "#rsw-icon"
+
+    @staticmethod
+    def installed_extension_item(name: str) -> str:
+        """Selector for an installed extension entry by name.
+
+        Targets the 'Installed' section of the Extension Manager to avoid
+        matching extensions that are merely available but not installed.
+        Uses Playwright's text= selector to avoid CSS quoting issues.
+        """
+        # Escape any regex-special characters so the name matches literally
+        import re
+
+        escaped = re.escape(name)
+        return f".jp-extensionmanager-installedlist .jp-extensionmanager-entry >> text=/{escaped}/i"

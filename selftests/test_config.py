@@ -12,6 +12,7 @@ from vip.config import (
     PerformanceConfig,
     ProductConfig,
     VIPConfig,
+    WorkbenchExtensionsConfig,
     load_config,
 )
 
@@ -86,6 +87,45 @@ class TestConnectConfig:
     def test_explicit_deploy_timeout(self):
         cc = ConnectConfig(url="https://connect.example.com", deploy_timeout=1200)
         assert cc.deploy_timeout == 1200
+
+
+class TestWorkbenchExtensionsConfig:
+    def test_defaults_empty(self):
+        ext = WorkbenchExtensionsConfig()
+        assert ext.vscode == []
+        assert ext.positron == []
+        assert ext.jupyterlab == []
+
+    def test_from_dict_with_lists(self):
+        ext = WorkbenchExtensionsConfig.from_dict(
+            {
+                "vscode": ["quarto.quarto", "posit.shiny"],
+                "positron": ["quarto.quarto"],
+                "jupyterlab": ["pwb-jupyterlab"],
+            }
+        )
+        assert ext.vscode == ["quarto.quarto", "posit.shiny"]
+        assert ext.positron == ["quarto.quarto"]
+        assert ext.jupyterlab == ["pwb-jupyterlab"]
+
+    def test_from_dict_empty(self):
+        ext = WorkbenchExtensionsConfig.from_dict({})
+        assert ext.vscode == []
+        assert ext.positron == []
+        assert ext.jupyterlab == []
+
+    def test_from_dict_partial(self):
+        ext = WorkbenchExtensionsConfig.from_dict({"vscode": ["quarto.quarto"]})
+        assert ext.vscode == ["quarto.quarto"]
+        assert ext.positron == []
+
+    def test_string_normalized_to_list(self):
+        ext = WorkbenchExtensionsConfig.from_dict({"vscode": "quarto.quarto"})
+        assert ext.vscode == ["quarto.quarto"]
+
+    def test_invalid_type_raises(self):
+        with pytest.raises(ValueError, match="must be a list of strings"):
+            WorkbenchExtensionsConfig.from_dict({"vscode": 42})
 
 
 class TestPerformanceConfig:
@@ -347,6 +387,10 @@ api_key = "key123"
 enabled = true
 url = "https://workbench.example.com"
 
+[workbench.extensions]
+vscode = ["quarto.quarto", "posit.shiny"]
+positron = ["quarto.quarto"]
+
 [package_manager]
 enabled = false
 url = "https://pm.example.com"
@@ -375,6 +419,9 @@ policy_checks_enabled = true
         assert cfg.connect.url == "https://connect.example.com"
         assert cfg.connect.api_key == "key123"
         assert cfg.workbench.is_configured is True
+        assert cfg.workbench.extensions.vscode == ["quarto.quarto", "posit.shiny"]
+        assert cfg.workbench.extensions.positron == ["quarto.quarto"]
+        assert cfg.workbench.extensions.jupyterlab == []
         assert cfg.package_manager.is_configured is False
         assert cfg.auth.provider == "ldap"
         assert cfg.auth.username == "admin"
