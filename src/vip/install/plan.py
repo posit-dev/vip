@@ -98,7 +98,6 @@ def build_install_plan(
 class UninstallPlan:
     delete_manifest: bool
     playwright_cache_dirs: tuple[str, ...]
-    remove_venv: bool
     system_remove_commands: tuple[str, ...]
     chained_cleanup: str | None  # connect URL to clean up against, or None
 
@@ -106,7 +105,6 @@ class UninstallPlan:
 def build_uninstall_plan(
     *,
     manifest: Manifest,
-    venv: bool,
     system: bool,
     connect_url: str | None,
 ) -> UninstallPlan:
@@ -134,7 +132,6 @@ def build_uninstall_plan(
     return UninstallPlan(
         delete_manifest=True,
         playwright_cache_dirs=cache_dirs,
-        remove_venv=venv,
         system_remove_commands=tuple(commands),
         chained_cleanup=connect_url,
     )

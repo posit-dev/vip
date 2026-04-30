@@ -132,8 +132,6 @@ def format_uninstall_plan(plan: UninstallPlan) -> str:
     if plan.playwright_cache_dirs:
         for d in plan.playwright_cache_dirs:
             lines.append(f"  remove playwright cache: {d}")
-    if plan.remove_venv:
-        lines.append("  remove ./.venv")
     if plan.delete_manifest:
         lines.append("  delete .vip-install.json")
     if plan.system_remove_commands:
@@ -147,7 +145,6 @@ def execute_uninstall_plan(
     plan: UninstallPlan,
     *,
     manifest_path: Path,
-    venv_path: Path,
     yes: bool,
     cleanup_callable: Callable[[str], None] | None,
 ) -> int:
@@ -169,15 +166,6 @@ def execute_uninstall_plan(
         p = Path(cache_dir)
         if p.exists():
             shutil.rmtree(p)
-
-    if plan.remove_venv:
-        if venv_path.exists() and (venv_path / "pyvenv.cfg").exists():
-            shutil.rmtree(venv_path)
-        elif venv_path.exists():
-            print(
-                f"warning: {venv_path} doesn't look like a uv-created venv "
-                "(no pyvenv.cfg); skipping."
-            )
 
     if plan.delete_manifest and manifest_path.exists():
         manifest_path.unlink()

@@ -213,28 +213,17 @@ def test_uninstall_plan_default_scope():
     m = _full_manifest()
     plan = pl.build_uninstall_plan(
         manifest=m,
-        venv=False,
         system=False,
         connect_url=None,
     )
     assert plan.delete_manifest is True
     assert plan.playwright_cache_dirs == ("/c",)
-    assert plan.remove_venv is False
     assert plan.system_remove_commands == ()
     assert plan.chained_cleanup is None
 
 
-def test_uninstall_plan_venv_flag_adds_venv():
-    plan = pl.build_uninstall_plan(
-        manifest=_full_manifest(), venv=True, system=False, connect_url=None
-    )
-    assert plan.remove_venv is True
-
-
 def test_uninstall_plan_system_flag_emits_dnf_command():
-    plan = pl.build_uninstall_plan(
-        manifest=_full_manifest(), venv=False, system=True, connect_url=None
-    )
+    plan = pl.build_uninstall_plan(manifest=_full_manifest(), system=True, connect_url=None)
     assert plan.system_remove_commands == ("sudo dnf remove libdrm nss",)
 
 
@@ -242,21 +231,20 @@ def test_uninstall_plan_system_flag_apt_when_manifest_apt():
     m = _full_manifest()
     m.items[0] = SystemPackageItem(manager="apt", name="libnss3", installed_at="t1")
     m.items[1] = SystemPackageItem(manager="apt", name="libdrm2", installed_at="t1")
-    plan = pl.build_uninstall_plan(manifest=m, venv=False, system=True, connect_url=None)
+    plan = pl.build_uninstall_plan(manifest=m, system=True, connect_url=None)
     assert plan.system_remove_commands == ("sudo apt remove --autoremove libdrm2 libnss3",)
 
 
 def test_uninstall_plan_system_flag_no_packages_no_command():
     m = _full_manifest()
     m.items = [PlaywrightItem(browser="chromium", cache_dir="/c", installed_at="t1")]
-    plan = pl.build_uninstall_plan(manifest=m, venv=False, system=True, connect_url=None)
+    plan = pl.build_uninstall_plan(manifest=m, system=True, connect_url=None)
     assert plan.system_remove_commands == ()
 
 
 def test_uninstall_plan_chains_cleanup_when_connect_url_present():
     plan = pl.build_uninstall_plan(
         manifest=_full_manifest(),
-        venv=False,
         system=False,
         connect_url="https://connect.example.com",
     )
@@ -271,7 +259,7 @@ def test_uninstall_plan_emits_command_per_manager_when_mixed():
         SystemPackageItem(manager="dnf", name="libdrm", installed_at="t"),
         SystemPackageItem(manager="apt", name="libnss3", installed_at="t"),
     ]
-    plan = pl.build_uninstall_plan(manifest=m, venv=False, system=True, connect_url=None)
+    plan = pl.build_uninstall_plan(manifest=m, system=True, connect_url=None)
     assert len(plan.system_remove_commands) == 2
     assert plan.system_remove_commands[0].startswith("sudo apt remove --autoremove")
     assert "libnss3" in plan.system_remove_commands[0]

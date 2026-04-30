@@ -873,7 +873,6 @@ def run_uninstall(args: argparse.Namespace) -> None:
 
     plan = build_uninstall_plan(
         manifest=manifest,
-        venv=bool(getattr(args, "venv", False)),
         system=bool(getattr(args, "system", False)),
         connect_url=connect_url,
     )
@@ -891,7 +890,6 @@ def run_uninstall(args: argparse.Namespace) -> None:
     rc = execute_uninstall_plan(
         plan,
         manifest_path=manifest_path,
-        venv_path=Path.cwd() / ".venv",
         yes=bool(getattr(args, "yes", False)),
         cleanup_callable=cleanup_callable,
     )
@@ -1241,14 +1239,12 @@ def main() -> None:
         description=(
             "Reverse vip install using the per-project .vip-install.json manifest. "
             "Default scope removes the Playwright cache and the manifest. "
-            "Pass --venv to also remove .venv/ and --system to print the "
-            "sudo command for removing system packages. Always prints a dry-run "
-            "plan; pass --yes to execute."
+            "Pass --system to print the sudo command for removing system packages. "
+            "Always prints a dry-run plan; pass --yes to execute."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     uninstall_parser.add_argument("--yes", action="store_true", default=False)
-    uninstall_parser.add_argument("--venv", action="store_true", default=False)
     uninstall_parser.add_argument("--system", action="store_true", default=False)
     uninstall_parser.add_argument("--force-host", action="store_true", default=False)
     uninstall_parser.add_argument(

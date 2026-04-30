@@ -49,7 +49,6 @@ To reverse what `vip install` (or `just setup`) did:
 ```bash
 uv run vip uninstall                  # dry run; prints what would happen
 uv run vip uninstall --yes            # remove Playwright cache + manifest
-uv run vip uninstall --yes --venv     # also remove ./.venv
 uv run vip uninstall --yes --system   # also print sudo command for system packages
 ```
 
