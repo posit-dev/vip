@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
 import pytest
 
-from vip.app.app import seed_results_if_missing
+from vip.app.app import mark_run_in_progress, seed_results_if_missing
 
 
 class TestSeedResultsIfMissing:
@@ -57,3 +58,31 @@ class TestSeedResultsIfMissing:
         assert any("results.json.example is missing" in r.message for r in caplog.records), (
             "Expected a warning about the missing example file"
         )
+
+
+class TestMarkRunInProgress:
+    """Unit tests for the mark_run_in_progress() helper."""
+
+    def test_writes_sentinel_to_results_json(self, tmp_path: Path) -> None:
+        """Helper writes the _running sentinel to report/results.json."""
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+
+        mark_run_in_progress(base=tmp_path)
+
+        results = report_dir / "results.json"
+        assert results.exists(), "results.json should have been written"
+        payload = json.loads(results.read_text())
+        assert payload == {"_running": True}, 'Sentinel payload must be {"_running": true}'
+
+    def test_overwrites_existing_results(self, tmp_path: Path) -> None:
+        """Helper overwrites an existing results.json with the sentinel."""
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        existing = report_dir / "results.json"
+        existing.write_text('{"exit_status": 0, "results": []}')
+
+        mark_run_in_progress(base=tmp_path)
+
+        payload = json.loads(existing.read_text())
+        assert payload == {"_running": True}

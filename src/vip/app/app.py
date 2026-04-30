@@ -74,6 +74,20 @@ def seed_results_if_missing(base: Path | None = None) -> None:
     logger.info("Seeded report/results.json from report/results.json.example")
 
 
+def mark_run_in_progress(base: Path | None = None) -> None:
+    """Write a sentinel payload to results.json to mark a run as in-progress.
+
+    This ensures that if a run fails before pytest writes a fresh results.json,
+    the report tab does not surface stale or seeded example data.  The Shiny
+    report view does not read results.json while run_status == "running" (it
+    shows a spinner), so the sentinel payload does not need to match the full
+    results schema.
+    """
+    root = (base or PROJECT_ROOT).resolve()
+    report_json = root / "report" / "results.json"
+    report_json.write_text('{"_running": true}')
+
+
 # ---------------------------------------------------------------------------
 # Parse feature files at startup for the category browser
 # ---------------------------------------------------------------------------
@@ -445,10 +459,9 @@ def server(input, output, session):
 
         cmd, temp_config = _build_command()
 
-        # Write a sentinel payload so the report tab shows "running" state
-        # rather than stale or seeded example data while the run is in progress.
-        _report_json = PROJECT_ROOT / "report" / "results.json"
-        _report_json.write_text('{"_running": true}')
+        # Overwrite results.json with a sentinel so a failed run never leaves
+        # behind stale data that looks like a successful result.
+        mark_run_in_progress()
 
         output_lines.set([f"$ {' '.join(cmd)}", ""])
         run_status.set("running")
@@ -656,13 +669,19 @@ def server(input, output, session):
 # App object — serve static assets from the app directory
 # ---------------------------------------------------------------------------
 
-# Seed results.json from the example file so the report tab is never blank
-# on a fresh clone.  Done here (not at import time) so the module is
-# side-effect-free when imported by tests or tooling.
-seed_results_if_missing()
 
-app = App(
-    app_ui,
-    server,
-    static_assets=str(APP_DIR),
-)
+def create_app() -> App:
+    """Construct and return the Shiny App instance.
+
+    Seeding is done here rather than at module scope so that importing this
+    module (e.g. in tests or tooling) does not trigger filesystem writes.
+    """
+    seed_results_if_missing()
+    return App(
+        app_ui,
+        server,
+        static_assets=str(APP_DIR),
+    )
+
+
+app = create_app()
