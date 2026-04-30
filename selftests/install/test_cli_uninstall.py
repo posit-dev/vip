@@ -6,6 +6,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 def test_vip_uninstall_help_lists_command():
     cp = subprocess.run(["uv", "run", "vip", "--help"], capture_output=True, text=True, check=True)
@@ -120,3 +122,75 @@ def test_vip_uninstall_host_mismatch_refuses(tmp_path: Path):
     )
     assert cp.returncode != 0
     assert "host" in (cp.stdout + cp.stderr).lower()
+
+
+def test_run_uninstall_chained_cleanup_invokes_connect_client(tmp_path, monkeypatch):
+    """When connect_url is set, run_uninstall constructs a callable that opens
+    ConnectClient and calls cleanup_vip_content."""
+    import argparse
+    import socket
+
+    from vip import cli
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    manifest = {
+        "version": 1,
+        "vip_version": "0.0.0",
+        "created_at": "t",
+        "updated_at": "t",
+        "host": socket.gethostname(),
+        "platform": "rhel-family",
+        "platform_id": "rhel",
+        "platform_version": "10",
+        "items": [
+            {
+                "kind": "playwright_browser",
+                "browser": "chromium",
+                "cache_dir": str(cache_dir),
+                "installed_at": "t",
+            }
+        ],
+        "pending_system_packages": [],
+    }
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+
+    monkeypatch.chdir(tmp_path)
+
+    invocations = []
+
+    class FakeConnectClient:
+        def __init__(self, url, api_key):
+            invocations.append(("init", url, api_key))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def cleanup_vip_content(self):
+            invocations.append(("cleanup",))
+            return 0
+
+    # Patch the import inside the cleanup callable.
+    import vip.clients.connect as connect_mod
+
+    monkeypatch.setattr(connect_mod, "ConnectClient", FakeConnectClient)
+
+    args = argparse.Namespace(
+        yes=True,
+        venv=False,
+        system=False,
+        force_host=False,
+        connect_url="https://connect.example.com",
+        api_key="fake-api-key",
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        cli.run_uninstall(args)
+    assert exc.value.code == 0
+    # Verify the chained cleanup was invoked.
+    assert any(call[0] == "cleanup" for call in invocations)
+    assert ("init", "https://connect.example.com", "fake-api-key") in invocations
