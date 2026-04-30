@@ -4,16 +4,13 @@
 default:
     @just --list
 
-# Install all dependencies with uv (Ubuntu/Debian only — RHEL users: see `setup-rhel`)
+# Install all dependencies (system packages where possible, plus Playwright)
 setup:
     uv sync
-    uv run playwright install --with-deps chromium
+    uv run vip install
 
-# Install all dependencies on RHEL/Rocky/Alma/Oracle/CentOS hosts.
-# Requires Chromium system libs to be installed via dnf first; see docs/rhel.md.
-setup-rhel:
-    uv sync
-    uv run playwright install chromium
+# Same as `setup` — kept for muscle memory; vip install handles RHEL detection.
+setup-rhel: setup
 
 # Run ruff linter
 lint:

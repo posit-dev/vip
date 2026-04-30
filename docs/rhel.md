@@ -18,33 +18,26 @@ and UBI 10) on every PR via the [`rhel-smoke` GitHub Actions workflow][workflow]
 
 ## Install
 
-### 1. Install Chromium's runtime libraries via dnf
-
-```bash
-sudo dnf install -y \
-    nss nspr atk at-spi2-atk at-spi2-core cups-libs dbus-libs libdrm \
-    mesa-libgbm glib2 pango cairo libX11 libxcb libXcomposite libXdamage \
-    libXext libXfixes libxkbcommon libXrandr libXtst libxshmfence alsa-lib
-```
-
-The same package set works on RHEL 9 and RHEL 10. Rocky / Alma / Oracle / CentOS
-ship the same names.
-
-### 2. Install vip via uv
-
-```bash
-just setup-rhel
-```
-
-Or manually:
+Install via vip's setup command:
 
 ```bash
 uv sync
-uv run playwright install chromium
+uv run vip install
 ```
 
-Note: do **not** pass `--with-deps` to `playwright install` on RHEL —
-it hardcodes `apt-get` and will fail.
+`vip install` detects RHEL family, computes which Chromium runtime libraries
+are missing, and (if you're not root) prints the exact `sudo dnf install`
+command to run. After running it, re-run `uv run vip install` — it will
+claim those packages in `.vip-install.json` and continue with `playwright
+install chromium`.
+
+The canonical package list lives in `src/vip/install/platform.py`
+(`RHEL_PACKAGES`). The same list works on RHEL 9 and RHEL 10; Rocky / Alma /
+Oracle / CentOS ship the same names.
+
+To uninstall everything VIP installed: `uv run vip uninstall --yes --system`.
+The `--system` flag prints the `sudo dnf remove` command for the packages it
+recorded; user-space cleanup happens automatically.
 
 ## What you'll see
 
