@@ -43,12 +43,16 @@ def test_chromium_installed_false_when_dir_missing(tmp_path: Path):
     assert pw.chromium_installed(tmp_path / "does-not-exist") is False
 
 
+def _ok(stdout: str = "", stderr: str = "", returncode: int = 0):
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
 def test_install_chromium_invokes_subprocess(monkeypatch):
     calls = []
 
     def fake_run(args, **kwargs):
         calls.append(tuple(args))
-        return subprocess.CompletedProcess(args=args, returncode=0)
+        return _ok()
 
     monkeypatch.setattr(pw.subprocess, "run", fake_run)
     pw.install_chromium()
@@ -56,10 +60,7 @@ def test_install_chromium_invokes_subprocess(monkeypatch):
 
 
 def test_install_chromium_raises_on_failure(monkeypatch):
-    def fake_run(args, **kwargs):
-        return subprocess.CompletedProcess(args=args, returncode=1, stderr="boom")
-
-    monkeypatch.setattr(pw.subprocess, "run", fake_run)
+    monkeypatch.setattr(pw.subprocess, "run", lambda *a, **kw: _ok(stderr="boom", returncode=1))
     with pytest.raises(pw.PlaywrightInstallError, match="exit 1"):
         pw.install_chromium()
 
@@ -77,3 +78,37 @@ def test_install_chromium_raises_when_binary_missing(monkeypatch):
     monkeypatch.setattr(pw.subprocess, "run", fake_run)
     with pytest.raises(pw.PlaywrightInstallError, match="playwright"):
         pw.install_chromium()
+
+
+def test_install_chromium_filters_beware_preamble_and_replaces(monkeypatch, capsys):
+    """RHEL/unsupported-OS install path: BEWARE lines are dropped, vip prints
+    its own one-line summary."""
+    stderr = (
+        "BEWARE: your OS is not officially supported by Playwright;\n"
+        "downloading fallback build for ubuntu24.04-x64.\n"
+    )
+    stdout = "Downloading Chromium 120 - 150 MB [====>] 100%\n"
+    monkeypatch.setattr(pw.subprocess, "run", lambda *a, **kw: _ok(stdout=stdout, stderr=stderr))
+
+    pw.install_chromium()
+
+    out = capsys.readouterr()
+    assert "BEWARE" not in out.out + out.err
+    assert "officially supported" not in out.out + out.err
+    assert "downloading fallback build" not in out.out + out.err
+    assert "Downloading Chromium 120" in out.out
+    assert "Installed Playwright Chromium" in out.out
+
+
+def test_install_chromium_forwards_normal_output_unchanged(monkeypatch, capsys):
+    """Officially-supported OS: no BEWARE lines, no vip summary printed."""
+    stdout = "Downloading Chromium 120 - 150 MB [====>] 100%\nChromium downloaded.\n"
+    monkeypatch.setattr(pw.subprocess, "run", lambda *a, **kw: _ok(stdout=stdout))
+
+    pw.install_chromium()
+
+    out = capsys.readouterr()
+    assert "Downloading Chromium 120" in out.out
+    assert "Chromium downloaded." in out.out
+    # No BEWARE means no vip summary line either.
+    assert "Installed Playwright Chromium" not in out.out
