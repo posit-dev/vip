@@ -269,6 +269,7 @@ def start_interactive_auth(
 
     pw = None
     browser = None
+    _prev_node_ca = os.environ.get("NODE_EXTRA_CA_CERTS")
     if ca_bundle is not None:
         os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
     try:
@@ -360,6 +361,13 @@ def start_interactive_auth(
                 pw.stop()
             except Exception:
                 pass
+        # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
+        # auth calls (or test runs) are not silently affected.
+        if ca_bundle is not None:
+            if _prev_node_ca is None:
+                os.environ.pop("NODE_EXTRA_CA_CERTS", None)
+            else:
+                os.environ["NODE_EXTRA_CA_CERTS"] = _prev_node_ca
 
 
 _IDP_PROVIDERS = frozenset({"oidc", "saml", "oauth2"})
@@ -443,6 +451,7 @@ def start_headless_auth(
 
     pw = None
     browser = None
+    _prev_node_ca = os.environ.get("NODE_EXTRA_CA_CERTS")
     if ca_bundle is not None:
         os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
     try:
@@ -524,6 +533,13 @@ def start_headless_auth(
                 pw.stop()
             except Exception:
                 pass
+        # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
+        # auth calls (or test runs) are not silently affected.
+        if ca_bundle is not None:
+            if _prev_node_ca is None:
+                os.environ.pop("NODE_EXTRA_CA_CERTS", None)
+            else:
+                os.environ["NODE_EXTRA_CA_CERTS"] = _prev_node_ca
 
 
 def _navigate_to_idp(page: Page, product_url: str) -> None:

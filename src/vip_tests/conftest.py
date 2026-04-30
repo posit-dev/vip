@@ -131,6 +131,10 @@ def browser_context_args(
         browser_context_args["storage_state"] = str(session.storage_state_path)
     if vip_config.insecure:
         browser_context_args["ignore_https_errors"] = True
+    if vip_config.ca_bundle is not None:
+        import os
+
+        os.environ.setdefault("NODE_EXTRA_CA_CERTS", str(vip_config.ca_bundle))
     return browser_context_args
 
 

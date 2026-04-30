@@ -209,7 +209,7 @@ def _cleanup_sessions(page, workbench_client):
             base_url=workbench_client.base_url,
             cookies=cookies,
             timeout=30.0,
-            verify=workbench_client._verify,
+            verify=workbench_client.verify,
         ) as tmp:
             resp = tmp.get("/api/sessions")
             sessions = resp.json() if resp.status_code == 200 else []

@@ -80,6 +80,16 @@ class BaseClient:
         """Root URL of the product, without any API path prefix."""
         return self._base_url
 
+    @property
+    def verify(self) -> bool | str:
+        """The httpx ``verify`` value for this client's TLS configuration.
+
+        ``False`` means certificate verification is disabled (insecure mode).
+        A string is the path to a custom CA bundle.
+        ``True`` means the system trust store is used (default).
+        """
+        return self._verify
+
     def close(self) -> None:
         """Close the underlying httpx client."""
         self._client.close()

@@ -336,6 +336,23 @@ class VIPConfig:
         return mapping[product]
 
 
+def _resolve_ca_bundle(raw: str | None) -> Path | None:
+    """Return a validated ``Path`` for the CA bundle, or ``None``.
+
+    Raises ``ValueError`` if the path is specified but does not point to an
+    existing file, so misconfigured deployments fail fast with a clear message
+    rather than producing an opaque SSL error on the first HTTP request.
+    """
+    if not raw:
+        return None
+    p = Path(raw)
+    if not p.is_file():
+        raise ValueError(
+            f"[tls] ca_bundle path does not exist or is not a file: {p}"
+        )
+    return p
+
+
 def load_config(path: str | Path | None = None) -> VIPConfig:
     """Load VIP configuration from a TOML file.
 
@@ -397,5 +414,5 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         monitoring_enabled=monitoring_raw.get("enabled", False),
         security_policy_checks_enabled=security_raw.get("policy_checks_enabled", False),
         insecure=tls_raw.get("insecure", False),
-        ca_bundle=Path(tls_raw["ca_bundle"]) if tls_raw.get("ca_bundle") else None,
+        ca_bundle=_resolve_ca_bundle(tls_raw.get("ca_bundle")),
     )

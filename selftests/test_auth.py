@@ -874,3 +874,63 @@ class TestHeadlessAuthTLSFlags:
         browser.new_context.assert_called_once()
         kwargs = browser.new_context.call_args.kwargs
         assert not kwargs.get("ignore_https_errors")
+
+    def test_ca_bundle_sets_node_extra_ca_certs(self, tmp_path, monkeypatch):
+        """ca_bundle must set NODE_EXTRA_CA_CERTS before sync_playwright().start()."""
+        import os
+
+        from pathlib import Path
+
+        ca_file = tmp_path / "ca.pem"
+        ca_file.write_text("# fake CA")
+
+        stub = self._make_playwright_stub()
+        captured: list[str | None] = []
+
+        original_start = stub.start
+
+        def capturing_start():
+            captured.append(os.environ.get("NODE_EXTRA_CA_CERTS"))
+            return original_start()
+
+        stub.start = capturing_start
+
+        monkeypatch.delenv("NODE_EXTRA_CA_CERTS", raising=False)
+
+        with patch("vip.auth.sync_playwright", return_value=stub):
+            with pytest.raises(Exception):
+                start_headless_auth(
+                    connect_url="https://c.example.com",
+                    username="user",
+                    password="pass",
+                    ca_bundle=Path(ca_file),
+                )
+
+        assert len(captured) == 1
+        assert captured[0] == str(ca_file)
+        # Verify env is restored after the call
+        assert os.environ.get("NODE_EXTRA_CA_CERTS") is None
+
+    def test_ca_bundle_env_restored_after_call(self, tmp_path, monkeypatch):
+        """NODE_EXTRA_CA_CERTS must be restored to its prior value after auth."""
+        import os
+
+        from pathlib import Path
+
+        ca_file = tmp_path / "ca.pem"
+        ca_file.write_text("# fake CA")
+        prev_value = "/prior/ca.pem"
+        monkeypatch.setenv("NODE_EXTRA_CA_CERTS", prev_value)
+
+        stub = self._make_playwright_stub()
+
+        with patch("vip.auth.sync_playwright", return_value=stub):
+            with pytest.raises(Exception):
+                start_headless_auth(
+                    connect_url="https://c.example.com",
+                    username="user",
+                    password="pass",
+                    ca_bundle=Path(ca_file),
+                )
+
+        assert os.environ.get("NODE_EXTRA_CA_CERTS") == prev_value

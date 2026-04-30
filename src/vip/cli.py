@@ -356,12 +356,20 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
 
     insecure = getattr(args, "insecure", False)
     ca_bundle = getattr(args, "ca_bundle", None)
+    if insecure and ca_bundle:
+        import warnings
+
+        warnings.warn(
+            "--insecure and --ca-bundle are both set; --insecure takes precedence "
+            "and the ca-bundle path will be ignored for TLS verification.",
+            stacklevel=2,
+        )
     if insecure or ca_bundle:
         lines.append("[tls]")
         if insecure:
             lines.append("insecure = true")
         if ca_bundle:
-            lines.append(f'ca_bundle = "{ca_bundle}"')
+            lines.append(f"ca_bundle = '{ca_bundle}'")
         lines.append("")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
