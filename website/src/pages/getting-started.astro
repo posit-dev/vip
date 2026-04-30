@@ -35,12 +35,9 @@ import Footer from "../components/Footer.astro";
           <pre><code>uv pip install posit-vip
 uv run vip install</code></pre>
           <p>
-            <code>vip install</code> provisions Playwright's Chromium browser
-            and the system libraries it needs. Linux (Ubuntu, Debian, RHEL,
-            Rocky, Alma, Oracle, CentOS) and macOS are supported; on Linux
-            without sudo, <code>vip install</code> prints the exact
-            <code>sudo dnf install</code> or <code>sudo apt install</code>
-            command to run, then claims those packages on the next invocation.
+            <code>vip install</code> installs Playwright's Chromium browser
+            and the system libraries it needs. These can be later removed safely,
+            along with other test artifacts, with <code>vip uninstall</code>
           </p>
 
           <h3>Using RStudio or Positron?</h3>
