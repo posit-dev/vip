@@ -2,6 +2,7 @@
 vip.toml
 report/results.json
 report/failures.json
+report/connect_system_checks.json
 demo.md
 .vip-auth-cache.json
 .vip-auth-cache.meta.json
