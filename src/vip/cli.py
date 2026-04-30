@@ -755,6 +755,61 @@ def run_app(args: argparse.Namespace) -> None:
     )
 
 
+def run_install(args: argparse.Namespace) -> None:
+    """Provision system packages and Playwright Chromium for VIP local mode."""
+    from datetime import datetime, timezone
+
+    from vip.install import platform as plat
+    from vip.install.manifest import (
+        SCHEMA_VERSION,
+        Manifest,
+        current_host,
+        default_path,
+        load,
+    )
+    from vip.install.packages import installed_dpkg, installed_rpm
+    from vip.install.plan import build_install_plan
+    from vip.install.playwright import chromium_installed, default_cache_dir
+    from vip.install.runner import execute_install_plan, format_install_plan
+
+    info = plat.detect()
+    manifest_path = default_path()
+    manifest = load(manifest_path)
+
+    cache_dir = default_cache_dir()
+    plan = build_install_plan(
+        platform_info=info,
+        manifest=manifest,
+        rpm_installed=lambda names: installed_rpm(names),
+        dpkg_installed=lambda names: installed_dpkg(names),
+        chromium_present=chromium_installed(cache_dir),
+        playwright_cache_dir=cache_dir,
+        skip_system=bool(getattr(args, "skip_system", False)),
+    )
+
+    if getattr(args, "dry_run", False):
+        print(format_install_plan(plan), end="")
+        return
+
+    if manifest is None:
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        from vip import __version__ as vip_version
+
+        manifest = Manifest(
+            version=SCHEMA_VERSION,
+            vip_version=vip_version,
+            created_at=now,
+            updated_at=now,
+            host=current_host(),
+            platform=info.family,
+            platform_id=info.id,
+            platform_version=info.version,
+        )
+
+    rc = execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+    sys.exit(rc)
+
+
 def run_cleanup(args: argparse.Namespace) -> None:
     """Delete VIP test credentials and resources.
 
@@ -1061,6 +1116,32 @@ def main() -> None:
     )
     cleanup_parser.set_defaults(func=run_cleanup)
 
+    # vip install
+    install_parser = subparsers.add_parser(
+        "install",
+        help="Install system packages and Playwright Chromium",
+        description=(
+            "Install VIP's machine-side dependencies: Chromium runtime libraries "
+            "(via dnf or apt) and Playwright's Chromium browser. "
+            "Records what was installed in .vip-install.json so vip uninstall can "
+            "reverse only what this command added."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    install_parser.add_argument(
+        "--skip-system",
+        action="store_true",
+        default=False,
+        help="Skip the system-package step (e.g., if you don't have sudo).",
+    )
+    install_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Print the plan without executing.",
+    )
+    install_parser.set_defaults(func=run_install)
+
     # vip cluster
     cluster_parser = subparsers.add_parser("cluster", help="Cluster connection tools")
     cluster_sub = cluster_parser.add_subparsers(dest="cluster_command")
@@ -1129,6 +1210,7 @@ def main() -> None:
     subcommand_parsers = {
         "verify": verify_parser,
         "cleanup": cleanup_parser,
+        "install": install_parser,
         "auth": auth_parser,
         "cluster": cluster_parser,
         "report": report_parser,
