@@ -880,7 +880,8 @@ def main() -> None:
         "--performance-tests",
         action="store_true",
         default=False,
-        help="Include performance tests in the default selection (excluded otherwise).",
+        help="Include performance tests in the default selection (excluded otherwise). "
+        "Has no effect when --categories is also specified.",
     )
     verify_parser.add_argument(
         "-f",

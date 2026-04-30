@@ -593,6 +593,60 @@ class TestPerformanceOptIn:
         )
         assert self._marker_expr(cmd) == "connect"
 
+    @staticmethod
+    def _capture_k8s_categories(args: argparse.Namespace) -> str:
+        """Run _run_k8s_job with mocked K8s helpers and return the categories= value."""
+        from unittest.mock import MagicMock, patch
+
+        captured: dict[str, str] = {}
+
+        def fake_create_job(_job_name, _namespace, _cm_name, **kwargs):
+            captured["categories"] = kwargs.get("categories", "")
+
+        with (
+            patch("vip.cli.secrets.token_hex", return_value="abcd1234"),
+            patch("vip.verify.job.create_config_map"),
+            patch("vip.verify.job.create_job", side_effect=fake_create_job),
+            patch("vip.verify.job.stream_logs"),
+            patch(
+                "vip.verify.job.wait_for_job",
+                return_value=MagicMock(status=MagicMock(failed=None)),
+            ),
+            patch("vip.verify.job.cleanup"),
+        ):
+            from vip.cli import _run_k8s_job
+
+            _run_k8s_job("[general]\n", args)
+        return captured.get("categories", "")
+
+    def test_k8s_default_excludes_performance(self):
+        """K8s path: without --performance-tests, categories expr excludes performance."""
+        args = argparse.Namespace(
+            categories=None,
+            performance_tests=False,
+            namespace="posit-team",
+            image="vip:latest",
+            timeout=3600,
+            filter_expr=None,
+            verbose=False,
+        )
+        categories = self._capture_k8s_categories(args)
+        assert "not performance" in categories
+
+    def test_k8s_flag_removes_exclusion(self):
+        """K8s path: with --performance-tests, performance is not excluded."""
+        args = argparse.Namespace(
+            categories=None,
+            performance_tests=True,
+            namespace="posit-team",
+            image="vip:latest",
+            timeout=3600,
+            filter_expr=None,
+            verbose=False,
+        )
+        categories = self._capture_k8s_categories(args)
+        assert "not performance" not in categories
+
 
 class TestExtraKeepFromArgs:
     """_extra_keep_from_args mirrors --performance-tests on both local and K8s paths."""
