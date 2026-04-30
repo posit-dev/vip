@@ -17,6 +17,25 @@ scenarios("test_https.feature")
 
 
 # ---------------------------------------------------------------------------
+# TLS verify helper
+# ---------------------------------------------------------------------------
+
+
+def _verify_from_config(vip_config) -> bool | str:
+    """Return the httpx ``verify`` value derived from the VIP TLS config.
+
+    - ``insecure=True``   → ``False`` (disable TLS verification)
+    - ``ca_bundle`` set   → path string (use custom CA bundle)
+    - otherwise           → ``True`` (use system trust store)
+    """
+    if vip_config.insecure:
+        return False
+    if vip_config.ca_bundle is not None:
+        return str(vip_config.ca_bundle)
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Shared diagnostic text
 # ---------------------------------------------------------------------------
 
@@ -51,14 +70,7 @@ def product_configured_https(product, vip_config):
 
 @when(parsers.parse("I make an HTTP request to {product}"), target_fixture="http_result")
 def make_http_request(product_url, vip_config):
-    verify: bool | str
-    if vip_config.insecure:
-        verify = False
-    elif vip_config.ca_bundle is not None:
-        verify = str(vip_config.ca_bundle)
-    else:
-        verify = True
-
+    verify = _verify_from_config(vip_config)
     http_url = product_url.replace("https://", "http://")
     try:
         resp = httpx.get(http_url, follow_redirects=False, timeout=10, verify=verify)
@@ -98,14 +110,7 @@ def inspect_headers(product, vip_config):
     if not pc.is_configured:
         pytest.skip(f"{product} is not configured")
 
-    verify: bool | str
-    if vip_config.insecure:
-        verify = False
-    elif vip_config.ca_bundle is not None:
-        verify = str(vip_config.ca_bundle)
-    else:
-        verify = True
-
+    verify = _verify_from_config(vip_config)
     try:
         resp = httpx.get(pc.url, follow_redirects=True, timeout=15, verify=verify)
     except httpx.ConnectError as exc:

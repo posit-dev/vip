@@ -867,3 +867,39 @@ class TestVerifyLocalTLSFlags:
         finally:
             if path:
                 Path(path).unlink(missing_ok=True)
+
+    def test_insecure_omits_ca_bundle_from_temp_config(self, tmp_path, monkeypatch):
+        """When --insecure is set, ca_bundle must NOT be written to the temp config.
+
+        load_config() validates ca_bundle existence; writing a nonexistent path
+        when the user passes --insecure --ca-bundle <missing> would fail
+        validation despite the user's intent to skip TLS verification entirely.
+        """
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        # Deliberately use a *missing* file to prove validation is not triggered.
+        missing_bundle = tmp_path / "does_not_exist.pem"
+        from vip.cli import _generate_temp_config
+
+        path = None
+        try:
+            import warnings
+
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                path = _generate_temp_config(
+                    _make_args(
+                        connect_url="https://c.example.com",
+                        insecure=True,
+                        ca_bundle=missing_bundle,
+                    )
+                )
+            content = Path(path).read_text()
+            assert "ca_bundle" not in content, (
+                "ca_bundle must not appear in the temp config when --insecure is set"
+            )
+            # insecure=true must still be present
+            assert "insecure = true" in content
+        finally:
+            if path:
+                Path(path).unlink(missing_ok=True)

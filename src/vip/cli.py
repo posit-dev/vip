@@ -372,14 +372,15 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
             "and the ca-bundle path will be ignored for TLS verification.",
             stacklevel=2,
         )
-    if insecure or ca_bundle:
+    effective_ca_bundle = None if insecure else ca_bundle
+    if insecure or effective_ca_bundle:
         lines.append("[tls]")
         if insecure:
             lines.append("insecure = true")
-        if ca_bundle:
+        if effective_ca_bundle:
             import json as _json
 
-            lines.append(f"ca_bundle = {_json.dumps(str(ca_bundle))}")
+            lines.append(f"ca_bundle = {_json.dumps(str(effective_ca_bundle))}")
         lines.append("")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
