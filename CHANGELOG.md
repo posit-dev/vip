@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.28.0 (2026-04-30)
+
+### Features
+
+- **plugin**: Make performance tests opt-in via --performance-tests
+  ([#231](https://github.com/posit-dev/vip/pull/231),
+  [`4a8ba2e`](https://github.com/posit-dev/vip/commit/4a8ba2e50aad66c8b09eceb82afcb13ce637e941))
+
+
 ## v0.27.0 (2026-04-30)
 
 ### Bug Fixes
