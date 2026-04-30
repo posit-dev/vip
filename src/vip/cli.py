@@ -836,7 +836,7 @@ def run_uninstall(args: argparse.Namespace) -> None:
     if manifest is None:
         print(
             f"No {manifest_path.name} found. Nothing to uninstall, or vip was "
-            "installed by a different mechanism. See docs/rhel.md for manual cleanup.",
+            "installed by a different mechanism.",
             file=sys.stderr,
         )
         sys.exit(1)

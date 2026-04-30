@@ -17,8 +17,7 @@ uv run vip install               # system packages (dnf/apt) + Playwright Chromi
 only the Chromium runtime libs that are missing, and records what it added to
 `.vip-install.json` so `vip uninstall` can reverse exactly those changes. On
 non-root Linux it prints the `sudo dnf install` / `sudo apt install` command for
-you to run, then claims those packages on the next `vip install` run. See
-[`docs/rhel.md`](docs/rhel.md) for RHEL specifics.
+you to run, then claims those packages on the next `vip install` run.
 
 Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `python` or `pip` -- everything runs through uv.
 

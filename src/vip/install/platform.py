@@ -59,7 +59,7 @@ def _read_os_release() -> dict[str, str]:
     return out
 
 
-# RHEL-family Chromium runtime libs. Single source of truth — docs/rhel.md links here.
+# RHEL-family Chromium runtime libs. Single source of truth for the package list.
 RHEL_PACKAGES: tuple[str, ...] = (
     "nss",
     "nspr",

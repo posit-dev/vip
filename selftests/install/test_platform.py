@@ -112,7 +112,7 @@ def test_detect_missing_os_release(monkeypatch, tmp_path):
 def test_rhel_packages_is_tuple_of_strings():
     assert isinstance(plat.RHEL_PACKAGES, tuple)
     assert all(isinstance(p, str) and p for p in plat.RHEL_PACKAGES)
-    # Spot check from docs/rhel.md
+    # Spot check on the canonical Chromium runtime libs
     assert "nss" in plat.RHEL_PACKAGES
     assert "libdrm" in plat.RHEL_PACKAGES
 
