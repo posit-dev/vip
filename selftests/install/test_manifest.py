@@ -119,6 +119,38 @@ def test_load_malformed_items_non_dict_entry_raises(tmp_path: Path):
         load(path)
 
 
+def test_load_items_not_a_list_raises(tmp_path: Path):
+    """'items' field that is not an array should raise ManifestError."""
+    path = tmp_path / ".vip-install.json"
+    data = {"version": SCHEMA_VERSION, "items": 42}
+    path.write_text(json.dumps(data))
+    with pytest.raises(ManifestError, match="must be an array"):
+        load(path)
+
+
+def test_save_preserves_original_error_when_cleanup_fails(tmp_path: Path, monkeypatch):
+    """If tmp.unlink itself fails, the original write error should still propagate."""
+    real_write_text = Path.write_text
+    real_unlink = Path.unlink
+
+    def write_text_boom(self, *args, **kwargs):
+        if self.name.endswith(".tmp"):
+            raise OSError("disk full")
+        return real_write_text(self, *args, **kwargs)
+
+    def unlink_boom(self, *args, **kwargs):
+        if self.name.endswith(".tmp"):
+            raise OSError("permission denied during cleanup")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", write_text_boom)
+    monkeypatch.setattr(Path, "unlink", unlink_boom)
+
+    path = tmp_path / ".vip-install.json"
+    with pytest.raises(OSError, match="disk full"):
+        save(_sample_manifest(), path)
+
+
 def test_pending_package_helpers():
     m = _sample_manifest()
     assert m.pending_packages_set() == {"libdrm"}

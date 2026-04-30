@@ -96,8 +96,11 @@ def load(path: Path) -> Manifest | None:
             f"Manifest at {path} has version {version}, newer than this vip "
             f"({SCHEMA_VERSION}). Upgrade vip and try again."
         )
+    raw_items = data.get("items", [])
+    if not isinstance(raw_items, list):
+        raise ManifestError(f"Manifest at {path} field 'items' must be an array.")
     items: list[Item] = []
-    for idx, raw in enumerate(data.get("items", [])):
+    for idx, raw in enumerate(raw_items):
         if not isinstance(raw, dict):
             raise ManifestError(f"Manifest at {path} item {idx} is not an object: {raw!r}")
         kind = raw.get("kind")
