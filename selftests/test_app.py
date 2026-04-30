@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from vip.app.app import seed_results_if_missing
+
 
 class TestSeedResultsIfMissing:
     """Unit tests for the seed_results_if_missing() helper."""
@@ -17,8 +19,6 @@ class TestSeedResultsIfMissing:
         report_dir.mkdir()
         example = report_dir / "results.json.example"
         example.write_text('{"example": true}')
-
-        from vip.app.app import seed_results_if_missing
 
         seed_results_if_missing(base=tmp_path)
 
@@ -35,8 +35,6 @@ class TestSeedResultsIfMissing:
         existing = report_dir / "results.json"
         existing.write_text('{"custom": "content"}')
 
-        from vip.app.app import seed_results_if_missing
-
         seed_results_if_missing(base=tmp_path)
 
         assert existing.read_text() == '{"custom": "content"}', (
@@ -51,8 +49,6 @@ class TestSeedResultsIfMissing:
         report_dir = tmp_path / "report"
         report_dir.mkdir()
         # Neither file exists
-
-        from vip.app.app import seed_results_if_missing
 
         with caplog.at_level(logging.WARNING, logger="vip.app.app"):
             seed_results_if_missing(base=tmp_path)

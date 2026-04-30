@@ -74,9 +74,6 @@ def seed_results_if_missing(base: Path | None = None) -> None:
     logger.info("Seeded report/results.json from report/results.json.example")
 
 
-# Seed on import so the Shiny app always has a results.json to display.
-seed_results_if_missing()
-
 # ---------------------------------------------------------------------------
 # Parse feature files at startup for the category browser
 # ---------------------------------------------------------------------------
@@ -448,6 +445,11 @@ def server(input, output, session):
 
         cmd, temp_config = _build_command()
 
+        # Write a sentinel payload so the report tab shows "running" state
+        # rather than stale or seeded example data while the run is in progress.
+        _report_json = PROJECT_ROOT / "report" / "results.json"
+        _report_json.write_text('{"_running": true}')
+
         output_lines.set([f"$ {' '.join(cmd)}", ""])
         run_status.set("running")
         ui.update_navs("tabs", selected="output")
@@ -653,6 +655,11 @@ def server(input, output, session):
 # ---------------------------------------------------------------------------
 # App object — serve static assets from the app directory
 # ---------------------------------------------------------------------------
+
+# Seed results.json from the example file so the report tab is never blank
+# on a fresh clone.  Done here (not at import time) so the module is
+# side-effect-free when imported by tests or tooling.
+seed_results_if_missing()
 
 app = App(
     app_ui,
