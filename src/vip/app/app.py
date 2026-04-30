@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -10,6 +12,8 @@ from pathlib import Path
 from shiny import App, reactive, render, ui
 
 from vip.gherkin import parse_feature_file
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Test categories — mirrors the pytest markers defined in pyproject.toml
@@ -47,6 +51,42 @@ def _find_project_root() -> Path:
 
 # resolve() avoids symlink mismatches between cwd and Python's import paths
 PROJECT_ROOT = _find_project_root().resolve()
+
+
+def seed_results_if_missing(base: Path | None = None) -> None:
+    """Copy results.json.example to results.json if results.json does not exist.
+
+    Idempotent: does nothing when results.json is already present.
+    Logs a warning (does not raise) when the example file is also missing.
+    """
+    root = (base or PROJECT_ROOT).resolve()
+    results = root / "report" / "results.json"
+    example = root / "report" / "results.json.example"
+    if results.exists():
+        return
+    if not example.exists():
+        logger.warning(
+            "report/results.json not found and report/results.json.example is missing; "
+            "the report page will be empty until tests are run."
+        )
+        return
+    shutil.copyfile(example, results)
+    logger.info("Seeded report/results.json from report/results.json.example")
+
+
+def mark_run_in_progress(base: Path | None = None) -> None:
+    """Write a sentinel payload to results.json to mark a run as in-progress.
+
+    This ensures that if a run fails before pytest writes a fresh results.json,
+    the report tab does not surface stale or seeded example data.  The Shiny
+    report view does not read results.json while run_status == "running" (it
+    shows a spinner), so the sentinel payload does not need to match the full
+    results schema.
+    """
+    root = (base or PROJECT_ROOT).resolve()
+    report_json = root / "report" / "results.json"
+    report_json.write_text('{"_running": true}')
+
 
 # ---------------------------------------------------------------------------
 # Parse feature files at startup for the category browser
@@ -306,8 +346,17 @@ app_ui = ui.page_sidebar(
 # Server
 # ---------------------------------------------------------------------------
 
+# Guard so seed_results_if_missing() runs at most once per process, on the
+# first real Shiny session rather than at import time.
+_seeded: bool = False
+
 
 def server(input, output, session):
+    global _seeded
+    if not _seeded:
+        seed_results_if_missing()
+        _seeded = True
+
     # Reactive state
     output_lines: reactive.Value[list[str]] = reactive.value([])
     run_status: reactive.Value[str] = reactive.value("idle")  # idle | running | passed | failed
@@ -419,9 +468,9 @@ def server(input, output, session):
 
         cmd, temp_config = _build_command()
 
-        # Remove stale results so the report doesn't show old data on failure
-        report_json = PROJECT_ROOT / "report" / "results.json"
-        report_json.unlink(missing_ok=True)
+        # Overwrite results.json with a sentinel so a failed run never leaves
+        # behind stale data that looks like a successful result.
+        mark_run_in_progress()
 
         output_lines.set([f"$ {' '.join(cmd)}", ""])
         run_status.set("running")
@@ -629,8 +678,18 @@ def server(input, output, session):
 # App object — serve static assets from the app directory
 # ---------------------------------------------------------------------------
 
-app = App(
-    app_ui,
-    server,
-    static_assets=str(APP_DIR),
-)
+
+def create_app() -> App:
+    """Construct and return the Shiny App instance.
+
+    Seeding is deferred to the first Shiny session (inside server()) so that
+    importing this module does not trigger any filesystem writes.
+    """
+    return App(
+        app_ui,
+        server,
+        static_assets=str(APP_DIR),
+    )
+
+
+app = create_app()

@@ -192,7 +192,11 @@ def pytest_configure(config: pytest.Config) -> None:
 
             cache_path = Path(config.rootpath) / ".vip-auth-cache.json"
             session = start_interactive_auth(
-                connect_url=connect_url, workbench_url=wb_url, cache_path=cache_path
+                connect_url=connect_url,
+                workbench_url=wb_url,
+                cache_path=cache_path,
+                insecure=vip_cfg.insecure,
+                ca_bundle=vip_cfg.ca_bundle,
             )
             config.stash[_auth_session_key] = session
             if session.api_key:
@@ -231,6 +235,8 @@ def pytest_configure(config: pytest.Config) -> None:
                     password=vip_cfg.auth.password,
                     cache_path=cache_path,
                     verbose=config.getoption("--vip-verbose", default=False),
+                    insecure=vip_cfg.insecure,
+                    ca_bundle=vip_cfg.ca_bundle,
                 )
             except AuthConfigError as exc:
                 raise pytest.UsageError(str(exc)) from None

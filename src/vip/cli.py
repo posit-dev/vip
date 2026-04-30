@@ -209,7 +209,11 @@ def _print_skip_notes(config_path: str | None) -> None:
     """Print a note for each product that is not configured."""
     from vip.config import load_config
 
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     products = [
         ("Connect", cfg.connect),
         ("Workbench", cfg.workbench),
@@ -237,7 +241,11 @@ def _check_credentials(
     """
     from vip.config import load_config
 
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     if interactive_auth:
         return
 
@@ -368,6 +376,27 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
             lines.append(f'provider = "{auth_provider}"')
         if idp:
             lines.append(f'idp = "{idp}"')
+        lines.append("")
+
+    insecure = getattr(args, "insecure", False)
+    ca_bundle = getattr(args, "ca_bundle", None)
+    if insecure and ca_bundle:
+        import warnings
+
+        warnings.warn(
+            "--insecure and --ca-bundle are both set; --insecure takes precedence "
+            "and the ca-bundle path will be ignored for TLS verification.",
+            stacklevel=2,
+        )
+    effective_ca_bundle = None if insecure else ca_bundle
+    if insecure or effective_ca_bundle:
+        lines.append("[tls]")
+        if insecure:
+            lines.append("insecure = true")
+        if effective_ca_bundle:
+            import json as _json
+
+            lines.append(f"ca_bundle = {_json.dumps(str(effective_ca_bundle))}")
         lines.append("")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
@@ -833,6 +862,32 @@ def main() -> None:
     url_group.add_argument("--connect-url", default=None, help="Connect server URL")
     url_group.add_argument("--workbench-url", default=None, help="Workbench server URL")
     url_group.add_argument("--package-manager-url", default=None, help="Package Manager server URL")
+
+    # TLS configuration
+    tls_group = verify_parser.add_argument_group("TLS configuration")
+    tls_group.add_argument(
+        "--insecure",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable TLS certificate verification (equivalent to curl -k). "
+            "Use only in trusted environments; this silently ignores certificate errors. "
+            "For Playwright browser contexts, this sets ignore_https_errors=True. "
+            "Note: --ca-bundle is preferred when you have a custom CA certificate."
+        ),
+    )
+    tls_group.add_argument(
+        "--ca-bundle",
+        default=None,
+        metavar="PATH",
+        type=Path,
+        help=(
+            "Path to a custom CA certificate bundle (PEM) to trust. "
+            "Useful for self-signed or corporate CAs. "
+            "For Playwright, sets NODE_EXTRA_CA_CERTS before launching Chromium "
+            "(Chromium-level trust only; does not update the OS certificate store)."
+        ),
+    )
 
     # Config file
     verify_parser.add_argument(

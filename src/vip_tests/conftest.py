@@ -42,7 +42,12 @@ def vip_verbose(request: pytest.FixtureRequest) -> bool:
 def connect_client(vip_config: VIPConfig) -> ConnectClient | None:
     if not vip_config.connect.is_configured:
         return None
-    client = ConnectClient(vip_config.connect.url, api_key=vip_config.connect.api_key)
+    client = ConnectClient(
+        vip_config.connect.url,
+        api_key=vip_config.connect.api_key,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+    )
     yield client
     client.close()
 
@@ -56,7 +61,12 @@ def connect_url(vip_config: VIPConfig) -> str:
 def workbench_client(vip_config: VIPConfig) -> WorkbenchClient | None:
     if not vip_config.workbench.is_configured:
         return None
-    client = WorkbenchClient(vip_config.workbench.url, api_key=vip_config.workbench.api_key)
+    client = WorkbenchClient(
+        vip_config.workbench.url,
+        api_key=vip_config.workbench.api_key,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+    )
     yield client
     client.close()
 
@@ -71,7 +81,10 @@ def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
     if not vip_config.package_manager.is_configured:
         return None
     client = PackageManagerClient(
-        vip_config.package_manager.url, token=vip_config.package_manager.token
+        vip_config.package_manager.url,
+        token=vip_config.package_manager.token,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
     )
     yield client
     client.close()
@@ -105,8 +118,10 @@ def auth_mode(request: pytest.FixtureRequest) -> str:
 
 
 @pytest.fixture(scope="session")
-def browser_context_args(browser_context_args, request: pytest.FixtureRequest):
-    """Inject interactive auth storage state into all browser contexts.
+def browser_context_args(
+    browser_context_args, request: pytest.FixtureRequest, vip_config: VIPConfig
+):
+    """Inject interactive auth storage state and TLS config into all browser contexts.
 
     Overrides the pytest-playwright fixture of the same name.  The parameter
     name *must* match to receive the base fixture value.
@@ -114,6 +129,21 @@ def browser_context_args(browser_context_args, request: pytest.FixtureRequest):
     session = request.config.stash.get(_auth_session_key, None)
     if session is not None:
         browser_context_args["storage_state"] = str(session.storage_state_path)
+    if vip_config.insecure:
+        browser_context_args["ignore_https_errors"] = True
+    if vip_config.ca_bundle is not None:
+        import os
+
+        _prev = os.environ.get("NODE_EXTRA_CA_CERTS")
+        os.environ["NODE_EXTRA_CA_CERTS"] = str(vip_config.ca_bundle)
+
+        def _restore_node_ca() -> None:
+            if _prev is None:
+                os.environ.pop("NODE_EXTRA_CA_CERTS", None)
+            else:
+                os.environ["NODE_EXTRA_CA_CERTS"] = _prev
+
+        request.addfinalizer(_restore_node_ca)
     return browser_context_args
 
 

@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.27.0 (2026-04-30)
+
+### Bug Fixes
+
+- **app**: Seed results.json on first run and stop pre-run unlink
+  ([#233](https://github.com/posit-dev/vip/pull/233),
+  [`59b29f0`](https://github.com/posit-dev/vip/commit/59b29f09deb88f89c9f882d22cac1e4354dd567f))
+
+### Features
+
+- **cli**: Add --insecure and --ca-bundle for self-signed CAs
+  ([#232](https://github.com/posit-dev/vip/pull/232),
+  [`9959204`](https://github.com/posit-dev/vip/commit/9959204c4a7b84d1278609f3e5f7d10fb53f1633))
+
+
 ## v0.26.8 (2026-04-30)
 
 ### Bug Fixes

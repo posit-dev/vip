@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from vip.clients.base import BaseClient
@@ -10,11 +11,21 @@ from vip.clients.base import BaseClient
 class PackageManagerClient(BaseClient):
     """Minimal Package Manager HTTP wrapper."""
 
-    def __init__(self, base_url: str, token: str = "", *, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        token: str = "",
+        *,
+        timeout: float = 30.0,
+        insecure: bool = False,
+        ca_bundle: Path | None = None,
+    ) -> None:
         super().__init__(
             base_url,
             auth_header_value=f"Bearer {token}" if token else "",
             timeout=timeout,
+            insecure=insecure,
+            ca_bundle=ca_bundle,
         )
 
     # -- Health / status ----------------------------------------------------

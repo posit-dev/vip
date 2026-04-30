@@ -135,6 +135,26 @@ class TestPerformanceConfig:
         assert pc.load_test_spawn_rate == 20
 
 
+class TestVIPConfigTLS:
+    def test_insecure_default(self):
+        cfg = VIPConfig()
+        assert cfg.insecure is False
+
+    def test_ca_bundle_default(self):
+        cfg = VIPConfig()
+        assert cfg.ca_bundle is None
+
+    def test_insecure_explicit(self):
+        cfg = VIPConfig(insecure=True)
+        assert cfg.insecure is True
+
+    def test_ca_bundle_explicit(self, tmp_path):
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        cfg = VIPConfig(ca_bundle=bundle)
+        assert cfg.ca_bundle == bundle
+
+
 class TestVIPConfig:
     def test_product_config_lookup(self):
         cfg = VIPConfig(
@@ -362,6 +382,40 @@ policy_checks_enabled = true
         assert cfg.email_enabled is True
         assert cfg.monitoring_enabled is True
         assert cfg.security_policy_checks_enabled is True
+
+
+class TestLoadConfigTLS:
+    def test_tls_defaults_when_section_missing(self, tmp_toml):
+        path = tmp_toml('[general]\ndeployment_name = "Test"\n')
+        cfg = load_config(path)
+        assert cfg.insecure is False
+        assert cfg.ca_bundle is None
+
+    def test_insecure_from_toml(self, tmp_toml):
+        path = tmp_toml("[tls]\ninsecure = true\n")
+        cfg = load_config(path)
+        assert cfg.insecure is True
+
+    def test_ca_bundle_from_toml(self, tmp_toml, tmp_path):
+        bundle = tmp_path / "corp-ca.pem"
+        bundle.write_text("fake-pem")
+        path = tmp_toml(f'[tls]\nca_bundle = "{bundle}"\n')
+        cfg = load_config(path)
+        from pathlib import Path
+
+        assert cfg.ca_bundle == Path(str(bundle))
+
+    def test_insecure_false_by_default_in_tls_section(self, tmp_toml):
+        path = tmp_toml("[tls]\n# empty section\n")
+        cfg = load_config(path)
+        assert cfg.insecure is False
+        assert cfg.ca_bundle is None
+
+    def test_ca_bundle_missing_file_raises_valueerror(self, tmp_toml):
+        """_resolve_ca_bundle must raise ValueError for a non-existent path."""
+        path = tmp_toml('[tls]\nca_bundle = "/nonexistent/path/ca.pem"\n')
+        with pytest.raises(ValueError, match="ca_bundle path does not exist"):
+            load_config(path)
 
 
 class TestMode:
