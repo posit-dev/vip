@@ -47,9 +47,9 @@ vip verify --config vip.toml
 To reverse what `vip install` (or `just setup`) did:
 
 ```bash
-uv run vip uninstall                  # dry run; prints what would happen
-uv run vip uninstall --yes            # remove Playwright cache + manifest
-uv run vip uninstall --yes --system   # also print sudo command for system packages
+uv run vip uninstall        # dry run; prints the full plan including any sudo command
+uv run vip uninstall --yes  # remove Playwright cache + manifest; prints the sudo command
+                            # for any system packages so you can remove them yourself
 ```
 
 `vip uninstall` only removes packages and files that `vip install` recorded

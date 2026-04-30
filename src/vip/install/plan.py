@@ -105,7 +105,6 @@ class UninstallPlan:
 def build_uninstall_plan(
     *,
     manifest: Manifest,
-    system: bool,
     connect_url: str | None,
 ) -> UninstallPlan:
     cache_dirs = tuple(
@@ -119,15 +118,14 @@ def build_uninstall_plan(
     by_manager_tuples = {m: tuple(sorted(set(names))) for m, names in by_manager.items()}
 
     commands: list[str] = []
-    if system:
-        for manager, names in sorted(by_manager_tuples.items()):
-            if not names:
-                continue
-            if manager == "dnf":
-                commands.append("sudo dnf remove " + " ".join(names))
-            elif manager == "apt":
-                commands.append("sudo apt remove --autoremove " + " ".join(names))
-            # Unknown manager: skip (we don't know how to remove)
+    for manager, names in sorted(by_manager_tuples.items()):
+        if not names:
+            continue
+        if manager == "dnf":
+            commands.append("sudo dnf remove " + " ".join(names))
+        elif manager == "apt":
+            commands.append("sudo apt remove --autoremove " + " ".join(names))
+        # Unknown manager: skip (we don't know how to remove)
 
     return UninstallPlan(
         delete_manifest=True,

@@ -150,7 +150,6 @@ def test_run_uninstall_silent_when_vip_toml_missing(tmp_path, monkeypatch, capsy
 
     args = argparse.Namespace(
         yes=True,
-        system=False,
         force_host=False,
         connect_url=None,
         api_key=None,
@@ -191,7 +190,6 @@ def test_run_uninstall_warns_on_malformed_vip_toml(tmp_path, monkeypatch, capsys
 
     args = argparse.Namespace(
         yes=True,
-        system=False,
         force_host=False,
         connect_url=None,
         api_key=None,
@@ -230,7 +228,6 @@ def test_install_then_uninstall_round_trip(tmp_path, monkeypatch):
     # Uninstall
     uninstall_args = argparse.Namespace(
         yes=True,
-        system=False,
         force_host=False,
         connect_url=None,
         api_key=None,
@@ -298,7 +295,6 @@ def test_run_uninstall_chained_cleanup_invokes_connect_client(tmp_path, monkeypa
 
     args = argparse.Namespace(
         yes=True,
-        system=False,
         force_host=False,
         connect_url="https://connect.example.com",
         api_key="fake-api-key",

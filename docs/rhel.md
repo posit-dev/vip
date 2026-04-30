@@ -35,9 +35,10 @@ The canonical package list lives in `src/vip/install/platform.py`
 (`RHEL_PACKAGES`). The same list works on RHEL 9 and RHEL 10; Rocky / Alma /
 Oracle / CentOS ship the same names.
 
-To uninstall everything VIP installed: `uv run vip uninstall --yes --system`.
-The `--system` flag prints the `sudo dnf remove` command for the packages it
-recorded; user-space cleanup happens automatically.
+To uninstall everything VIP installed: `uv run vip uninstall --yes`.
+This does the user-space teardown (Playwright cache and manifest) and prints
+the `sudo dnf remove` command for the packages it recorded so you can remove
+them yourself.
 
 ## What you'll see
 

@@ -873,7 +873,6 @@ def run_uninstall(args: argparse.Namespace) -> None:
 
     plan = build_uninstall_plan(
         manifest=manifest,
-        system=bool(getattr(args, "system", False)),
         connect_url=connect_url,
     )
 
@@ -1238,14 +1237,13 @@ def main() -> None:
         help="Reverse vip install (dry-run by default; --yes to execute)",
         description=(
             "Reverse vip install using the per-project .vip-install.json manifest. "
-            "Default scope removes the Playwright cache and the manifest. "
-            "Pass --system to print the sudo command for removing system packages. "
-            "Always prints a dry-run plan; pass --yes to execute."
+            "Removes the Playwright cache and manifest; prints the sudo command for "
+            "any system packages vip recorded so you can remove them yourself. "
+            "Always prints a dry-run plan; pass --yes to execute the user-space steps."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     uninstall_parser.add_argument("--yes", action="store_true", default=False)
-    uninstall_parser.add_argument("--system", action="store_true", default=False)
     uninstall_parser.add_argument("--force-host", action="store_true", default=False)
     uninstall_parser.add_argument(
         "--connect-url",
