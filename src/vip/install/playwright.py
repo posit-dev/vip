@@ -6,7 +6,9 @@ import os
 import re
 import subprocess
 import sys
+import threading
 from pathlib import Path
+from typing import IO
 
 
 class PlaywrightInstallError(Exception):
@@ -49,44 +51,55 @@ def _is_beware_line(line: str) -> bool:
     return any(p.match(stripped) for p in _BEWARE_PATTERNS)
 
 
-def _forward_filtered(text: str, stream) -> bool:
-    """Write text to stream, dropping BEWARE-preamble lines. Returns True if any
-    BEWARE line was filtered."""
-    filtered = False
-    for line in text.splitlines(keepends=True):
+def _drain(source: IO[str], sink: IO[str], filtered: list[bool]) -> None:
+    """Read lines from source and forward to sink, dropping BEWARE preamble.
+
+    Designed to run in a worker thread per Popen pipe so stdout and stderr stream
+    independently without deadlocking on a full pipe buffer. Appends to `filtered`
+    when a BEWARE line is dropped (used as a thread-safe boolean flag).
+    """
+    for line in source:
         if _is_beware_line(line):
-            filtered = True
+            filtered.append(True)
             continue
-        stream.write(line)
-    stream.flush()
-    return filtered
+        sink.write(line)
+        sink.flush()
 
 
 def install_chromium() -> None:
     """Run `playwright install chromium` (no --with-deps). Raises on nonzero exit.
 
-    Filters Playwright's BEWARE-preamble output (printed on RHEL/unsupported OSes)
-    and replaces it with a single vip-attributed summary line.
+    Streams Playwright's stdout and stderr through line-by-line in real time so
+    download progress is visible during the install. Filters the BEWARE preamble
+    (printed on RHEL/unsupported OSes) and replaces it with a single
+    vip-attributed summary line.
     """
     try:
-        cp = subprocess.run(
+        proc = subprocess.Popen(
             ["playwright", "install", "chromium"],
-            check=False,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
+            bufsize=1,
         )
     except OSError as exc:
         raise PlaywrightInstallError(
             f"could not invoke playwright (is it installed?): {exc}"
         ) from exc
 
-    filtered = _forward_filtered(cp.stdout, sys.stdout)
-    filtered = _forward_filtered(cp.stderr, sys.stderr) or filtered
+    filtered: list[bool] = []
+    threads = [
+        threading.Thread(target=_drain, args=(proc.stdout, sys.stdout, filtered), daemon=True),
+        threading.Thread(target=_drain, args=(proc.stderr, sys.stderr, filtered), daemon=True),
+    ]
+    for t in threads:
+        t.start()
+    rc = proc.wait()
+    for t in threads:
+        t.join()
 
-    if cp.returncode != 0:
-        raise PlaywrightInstallError(
-            f"playwright install chromium exited with exit {cp.returncode}"
-        )
+    if rc != 0:
+        raise PlaywrightInstallError(f"playwright install chromium exited with exit {rc}")
 
     if filtered:
         print(
