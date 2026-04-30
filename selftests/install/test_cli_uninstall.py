@@ -124,6 +124,89 @@ def test_vip_uninstall_host_mismatch_refuses(tmp_path: Path):
     assert "host" in (cp.stdout + cp.stderr).lower()
 
 
+def test_run_uninstall_silent_when_vip_toml_missing(tmp_path, monkeypatch, capsys):
+    """No vip.toml present: no warning, just continues without chained cleanup."""
+    import argparse
+    import socket
+
+    from vip import cli
+
+    manifest = {
+        "version": 1,
+        "vip_version": "0.0.0",
+        "created_at": "t",
+        "updated_at": "t",
+        "host": socket.gethostname(),
+        "platform": "rhel-family",
+        "platform_id": "rhel",
+        "platform_version": "10",
+        "items": [],
+        "pending_system_packages": [],
+    }
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+    # Note: NO vip.toml in tmp_path.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("VIP_CONFIG", raising=False)
+
+    args = argparse.Namespace(
+        yes=True,
+        venv=False,
+        system=False,
+        force_host=False,
+        connect_url=None,
+        api_key=None,
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        cli.run_uninstall(args)
+    assert exc.value.code == 0
+
+    captured = capsys.readouterr()
+    assert "warning: failed to load vip.toml" not in captured.err
+
+
+def test_run_uninstall_warns_on_malformed_vip_toml(tmp_path, monkeypatch, capsys):
+    """Malformed vip.toml during uninstall: emit a warning, continue."""
+    import argparse
+    import socket
+
+    from vip import cli
+
+    manifest = {
+        "version": 1,
+        "vip_version": "0.0.0",
+        "created_at": "t",
+        "updated_at": "t",
+        "host": socket.gethostname(),
+        "platform": "rhel-family",
+        "platform_id": "rhel",
+        "platform_version": "10",
+        "items": [],
+        "pending_system_packages": [],
+    }
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+    # Malformed TOML.
+    (tmp_path / "vip.toml").write_text("[connect\nurl = bogus")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("VIP_CONFIG", raising=False)
+
+    args = argparse.Namespace(
+        yes=True,
+        venv=False,
+        system=False,
+        force_host=False,
+        connect_url=None,
+        api_key=None,
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        cli.run_uninstall(args)
+    assert exc.value.code == 0
+
+    captured = capsys.readouterr()
+    assert "warning: failed to load vip.toml" in captured.err
+
+
 def test_run_uninstall_chained_cleanup_invokes_connect_client(tmp_path, monkeypatch):
     """When connect_url is set, run_uninstall constructs a callable that opens
     ConnectClient and calls cleanup_vip_content."""

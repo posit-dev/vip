@@ -847,15 +847,20 @@ def run_uninstall(args: argparse.Namespace) -> None:
     # Resolve Connect URL for chained cleanup.
     connect_url = getattr(args, "connect_url", None)
     if not connect_url:
+        if sys.version_info >= (3, 11):
+            import tomllib as _tomllib
+        else:
+            import tomli as _tomllib  # type: ignore[no-redef]
+
         cfg = None
         try:
             from vip.config import load_config
 
             cfg = load_config()
-        except Exception as exc:  # noqa: BLE001
+        except (_tomllib.TOMLDecodeError, ValueError) as exc:
             print(
-                f"warning: failed to load vip.toml for chained cleanup: {exc};"
-                " continuing without chained Connect cleanup",
+                f"warning: failed to load vip.toml for chained cleanup: {exc}; "
+                "continuing without chained Connect cleanup",
                 file=sys.stderr,
             )
         if cfg and cfg.connect and cfg.connect.url:
