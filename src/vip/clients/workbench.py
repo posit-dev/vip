@@ -6,6 +6,7 @@ APIs than Connect, so many checks are done via the web UI with Playwright.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from vip.clients.base import BaseClient
@@ -14,11 +15,21 @@ from vip.clients.base import BaseClient
 class WorkbenchClient(BaseClient):
     """Minimal Workbench HTTP wrapper."""
 
-    def __init__(self, base_url: str, api_key: str = "", *, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str = "",
+        *,
+        timeout: float = 30.0,
+        insecure: bool = False,
+        ca_bundle: Path | None = None,
+    ) -> None:
         super().__init__(
             base_url,
             auth_header_value=f"Key {api_key}" if api_key else "",
             timeout=timeout,
+            insecure=insecure,
+            ca_bundle=ca_bundle,
         )
 
     # -- Health / info ------------------------------------------------------

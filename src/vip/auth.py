@@ -90,6 +90,8 @@ class InteractiveAuthSession:
     _connect_url: str = field(default="", repr=False)
     _tmpdir: str = field(default="", repr=False)
     _cache_path: Path | None = field(default=None, repr=False)
+    _insecure: bool = field(default=False, repr=False)
+    _ca_bundle: Path | None = field(default=None, repr=False)
 
     def _cache_references_this_key(self) -> bool:
         """True when the on-disk cache still points at our ``api_key``.
@@ -129,7 +131,13 @@ class InteractiveAuthSession:
         """Delete the minted API key and remove the temp directory."""
         if self.api_key and self._connect_url and not self._cache_references_this_key():
             try:
-                _delete_api_key(self._connect_url, self.api_key, self.key_name)
+                _delete_api_key(
+                    self._connect_url,
+                    self.api_key,
+                    self.key_name,
+                    insecure=self._insecure,
+                    ca_bundle=self._ca_bundle,
+                )
             except Exception as exc:
                 print(f">>> Warning: Could not delete API key: {exc}")
 
@@ -212,6 +220,8 @@ def start_interactive_auth(
     connect_url: str | None = None,
     workbench_url: str | None = None,
     cache_path: Path | None = None,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
 ) -> InteractiveAuthSession:
     """Launch a headed browser, authenticate via OIDC, and optionally
     mint a Connect API key through the UI.
@@ -229,6 +239,11 @@ def start_interactive_auth(
 
     The browser is closed before this function returns.  pytest-playwright
     creates its own browser instance using the saved storage state.
+
+    When *insecure* is ``True``, Playwright ignores TLS certificate errors.
+    When *ca_bundle* is set, the path is exported as ``NODE_EXTRA_CA_CERTS``
+    before launching Chromium so it trusts a custom CA (Chromium-level trust
+    only; this does not update the OS certificate store).
     """
     if not connect_url and not workbench_url:
         raise ValueError(
@@ -254,10 +269,13 @@ def start_interactive_auth(
 
     pw = None
     browser = None
+    _prev_node_ca = os.environ.get("NODE_EXTRA_CA_CERTS")
+    if ca_bundle is not None:
+        os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
     try:
         pw = sync_playwright().start()
         browser = _launch_chromium(pw, headless=False)
-        context = browser.new_context()
+        context = browser.new_context(ignore_https_errors=insecure)
         page = context.new_page()
 
         page.goto(f"{primary_url}{login_path}")
@@ -319,6 +337,8 @@ def start_interactive_auth(
             _connect_url=connect_url or "",
             _tmpdir=tmpdir,
             _cache_path=cache_path,
+            _insecure=insecure,
+            _ca_bundle=ca_bundle,
         )
 
         # Cache the session for reuse across runs.
@@ -341,6 +361,13 @@ def start_interactive_auth(
                 pw.stop()
             except Exception:
                 pass
+        # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
+        # auth calls (or test runs) are not silently affected.
+        if ca_bundle is not None:
+            if _prev_node_ca is None:
+                os.environ.pop("NODE_EXTRA_CA_CERTS", None)
+            else:
+                os.environ["NODE_EXTRA_CA_CERTS"] = _prev_node_ca
 
 
 _IDP_PROVIDERS = frozenset({"oidc", "saml", "oauth2"})
@@ -355,6 +382,8 @@ def start_headless_auth(
     password: str = "",
     cache_path: Path | None = None,
     verbose: bool = False,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
 ) -> InteractiveAuthSession:
     """Launch a headless browser, automate OIDC login, and optionally
     mint a Connect API key through the UI.
@@ -367,6 +396,11 @@ def start_headless_auth(
     At least one of *connect_url* or *workbench_url* must be provided.
     The *idp* parameter selects which form automation strategy to use
     (e.g. ``"keycloak"``, ``"okta"``).
+
+    When *insecure* is ``True``, Playwright ignores TLS certificate errors.
+    When *ca_bundle* is set, the path is exported as ``NODE_EXTRA_CA_CERTS``
+    before launching Chromium so it trusts a custom CA (Chromium-level trust
+    only; this does not update the OS certificate store).
     """
     import vip.idp as _idp_mod
 
@@ -417,10 +451,13 @@ def start_headless_auth(
 
     pw = None
     browser = None
+    _prev_node_ca = os.environ.get("NODE_EXTRA_CA_CERTS")
+    if ca_bundle is not None:
+        os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
     try:
         pw = sync_playwright().start()
         browser = _launch_chromium(pw, headless=True)
-        context = browser.new_context()
+        context = browser.new_context(ignore_https_errors=insecure)
         page = context.new_page()
 
         from vip.idp import _log_verbose, _sanitize_url
@@ -473,6 +510,8 @@ def start_headless_auth(
             _connect_url=connect_url or "",
             _tmpdir=tmpdir,
             _cache_path=cache_path,
+            _insecure=insecure,
+            _ca_bundle=ca_bundle,
         )
 
         if cache_path:
@@ -494,6 +533,13 @@ def start_headless_auth(
                 pw.stop()
             except Exception:
                 pass
+        # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
+        # auth calls (or test runs) are not silently affected.
+        if ca_bundle is not None:
+            if _prev_node_ca is None:
+                os.environ.pop("NODE_EXTRA_CA_CERTS", None)
+            else:
+                os.environ["NODE_EXTRA_CA_CERTS"] = _prev_node_ca
 
 
 def _navigate_to_idp(page: Page, product_url: str) -> None:
@@ -673,15 +719,30 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> None:
     )
 
 
-def _delete_api_key(connect_url: str, api_key: str, key_name: str) -> None:
+def _delete_api_key(
+    connect_url: str,
+    api_key: str,
+    key_name: str,
+    *,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
+) -> None:
     """Delete the VIP API key using the key itself for authentication."""
     import httpx
+
+    if insecure:
+        verify: bool | str = False
+    elif ca_bundle is not None:
+        verify = str(ca_bundle)
+    else:
+        verify = True
 
     base = connect_url.rstrip("/")
     with httpx.Client(
         base_url=f"{base}/__api__",
         headers={"Authorization": f"Key {api_key}"},
         timeout=10.0,
+        verify=verify,
     ) as client:
         for keys_path in ("/v1/user/api_keys", "/keys"):
             resp = client.get(keys_path)

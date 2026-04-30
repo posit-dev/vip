@@ -17,6 +17,25 @@ scenarios("test_https.feature")
 
 
 # ---------------------------------------------------------------------------
+# TLS verify helper
+# ---------------------------------------------------------------------------
+
+
+def _verify_from_config(vip_config) -> bool | str:
+    """Return the httpx ``verify`` value derived from the VIP TLS config.
+
+    - ``insecure=True``   → ``False`` (disable TLS verification)
+    - ``ca_bundle`` set   → path string (use custom CA bundle)
+    - otherwise           → ``True`` (use system trust store)
+    """
+    if vip_config.insecure:
+        return False
+    if vip_config.ca_bundle is not None:
+        return str(vip_config.ca_bundle)
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Shared diagnostic text
 # ---------------------------------------------------------------------------
 
@@ -50,10 +69,11 @@ def product_configured_https(product, vip_config):
 
 
 @when(parsers.parse("I make an HTTP request to {product}"), target_fixture="http_result")
-def make_http_request(product_url):
+def make_http_request(product_url, vip_config):
+    verify = _verify_from_config(vip_config)
     http_url = product_url.replace("https://", "http://")
     try:
-        resp = httpx.get(http_url, follow_redirects=False, timeout=10)
+        resp = httpx.get(http_url, follow_redirects=False, timeout=10, verify=verify)
         return {
             "status": resp.status_code,
             "location": resp.headers.get("location", ""),
@@ -89,8 +109,10 @@ def inspect_headers(product, vip_config):
     pc = vip_config.product_config(product_key)
     if not pc.is_configured:
         pytest.skip(f"{product} is not configured")
+
+    verify = _verify_from_config(vip_config)
     try:
-        resp = httpx.get(pc.url, follow_redirects=True, timeout=15)
+        resp = httpx.get(pc.url, follow_redirects=True, timeout=15, verify=verify)
     except httpx.ConnectError as exc:
         # httpx wraps ssl.SSLCertVerificationError in httpx.ConnectError.
         # A cert-verification failure is a trust-bundle issue on the test

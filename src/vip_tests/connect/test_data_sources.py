@@ -20,8 +20,14 @@ def data_sources_configured(data_sources):
 
 
 @when("I test connectivity to each data source", target_fixture="ds_results")
-def test_connectivity(data_sources):
-    return check_data_source_connectivity(data_sources)
+def test_connectivity(data_sources, vip_config):
+    if vip_config.insecure:
+        verify: bool | str = False
+    elif vip_config.ca_bundle is not None:
+        verify = str(vip_config.ca_bundle)
+    else:
+        verify = True
+    return check_data_source_connectivity(data_sources, verify=verify)
 
 
 @then("all data sources respond successfully")

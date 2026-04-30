@@ -302,6 +302,9 @@ class VIPConfig:
     monitoring_enabled: bool = False
     security_policy_checks_enabled: bool = False
 
+    insecure: bool = False
+    ca_bundle: Path | None = None
+
     def validate_for_mode(self, mode: Mode) -> None:
         """Raise ValueError if required fields are missing for *mode*.
 
@@ -331,6 +334,21 @@ class VIPConfig:
         if product not in mapping:
             raise ValueError(f"Unknown product: {product!r}")
         return mapping[product]
+
+
+def _resolve_ca_bundle(raw: str | None) -> Path | None:
+    """Return a validated ``Path`` for the CA bundle, or ``None``.
+
+    Raises ``ValueError`` if the path is specified but does not point to an
+    existing file, so misconfigured deployments fail fast with a clear message
+    rather than producing an opaque SSL error on the first HTTP request.
+    """
+    if not raw:
+        return None
+    p = Path(raw)
+    if not p.is_file():
+        raise ValueError(f"[tls] ca_bundle path does not exist or is not a file: {p}")
+    return p
 
 
 def load_config(path: str | Path | None = None) -> VIPConfig:
@@ -364,6 +382,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     security_raw = raw.get("security", {})
     runtimes_raw = raw.get("runtimes", {})
     performance_raw = raw.get("performance", {})
+    tls_raw = raw.get("tls", {})
 
     data_sources: list[DataSourceEntry] = []
     for name, ds in data_sources_raw.items():
@@ -392,4 +411,6 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         email_enabled=email_raw.get("enabled", False),
         monitoring_enabled=monitoring_raw.get("enabled", False),
         security_policy_checks_enabled=security_raw.get("policy_checks_enabled", False),
+        insecure=tls_raw.get("insecure", False),
+        ca_bundle=_resolve_ca_bundle(tls_raw.get("ca_bundle")),
     )

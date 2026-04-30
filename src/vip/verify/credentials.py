@@ -14,6 +14,7 @@ import json
 import secrets
 import string
 import subprocess
+from pathlib import Path
 
 import httpx
 
@@ -29,6 +30,8 @@ def ensure_keycloak_test_user(
     username: str,
     admin_secret_name: str,
     namespace: str = "posit-team",
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
 ) -> None:
     """Create or reset a test user in Keycloak and store credentials in a K8s Secret.
 
@@ -83,13 +86,17 @@ def ensure_keycloak_test_user(
     admin_username, admin_password = _get_secret_credentials(admin_secret_name, namespace)
 
     # Get admin access token
-    token = _get_keycloak_admin_token(keycloak_url, admin_username, admin_password)
+    token = _get_keycloak_admin_token(
+        keycloak_url, admin_username, admin_password, insecure=insecure, ca_bundle=ca_bundle
+    )
 
     # Generate a cryptographic random password
     password = _generate_password(32)
 
     # Create or reset the test user
-    _create_keycloak_user(keycloak_url, realm, token, username, password)
+    _create_keycloak_user(
+        keycloak_url, realm, token, username, password, insecure=insecure, ca_bundle=ca_bundle
+    )
 
     # Create the vip-test-credentials secret
     _create_credentials_secret(username, password, namespace)
@@ -465,7 +472,13 @@ def _get_secret_credentials(secret_name: str, namespace: str) -> tuple[str, str]
     return username, password
 
 
-def _get_keycloak_admin_token(keycloak_url: str, username: str, password: str) -> str:
+def _get_keycloak_admin_token(
+    keycloak_url: str,
+    username: str,
+    password: str,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
+) -> str:
     """Get an admin access token from Keycloak's master realm.
 
     Admin tokens are always obtained from the master realm, regardless of the target realm.
@@ -474,6 +487,8 @@ def _get_keycloak_admin_token(keycloak_url: str, username: str, password: str) -
         keycloak_url: Base URL of the Keycloak server
         username: Admin username
         password: Admin password
+        insecure: Disable TLS certificate verification
+        ca_bundle: Path to a custom CA certificate bundle
 
     Returns:
         Admin access token
@@ -482,6 +497,13 @@ def _get_keycloak_admin_token(keycloak_url: str, username: str, password: str) -
         httpx.HTTPError: If the token request fails
         ValueError: If the response is missing the access_token
     """
+    if insecure:
+        verify: bool | str = False
+    elif ca_bundle is not None:
+        verify = str(ca_bundle)
+    else:
+        verify = True
+
     token_url = f"{keycloak_url}/realms/master/protocol/openid-connect/token"
 
     data = {
@@ -491,7 +513,7 @@ def _get_keycloak_admin_token(keycloak_url: str, username: str, password: str) -
         "password": password,
     }
 
-    with httpx.Client(timeout=30.0) as client:
+    with httpx.Client(timeout=30.0, verify=verify) as client:
         resp = client.post(token_url, data=data)
         resp.raise_for_status()
 
@@ -535,7 +557,13 @@ def _find_keycloak_user_id(
 
 
 def _create_keycloak_user(
-    keycloak_url: str, realm: str, token: str, username: str, password: str
+    keycloak_url: str,
+    realm: str,
+    token: str,
+    username: str,
+    password: str,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
 ) -> None:
     """Create a user in Keycloak, or reset their password if they already exist.
 
@@ -548,11 +576,20 @@ def _create_keycloak_user(
         token: Admin access token
         username: Username for the user
         password: Password for the user
+        insecure: Disable TLS certificate verification
+        ca_bundle: Path to a custom CA certificate bundle
 
     Raises:
         httpx.HTTPError: If Keycloak API requests fail
     """
-    with httpx.Client(timeout=30.0) as client:
+    if insecure:
+        verify: bool | str = False
+    elif ca_bundle is not None:
+        verify = str(ca_bundle)
+    else:
+        verify = True
+
+    with httpx.Client(timeout=30.0, verify=verify) as client:
         users_url = f"{keycloak_url}/admin/realms/{realm}/users"
         headers = {"Authorization": f"Bearer {token}"}
 

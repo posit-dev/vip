@@ -115,6 +115,20 @@ enabled = false
 # load_test_duration = 30         # seconds (locust only)
 # load_test_spawn_rate = 10       # users/sec (locust only)
 
+[tls]
+# TLS configuration for self-signed or corporate CAs.
+#
+# Disable TLS certificate verification (equivalent to curl -k).
+# Use only in trusted environments; this silently ignores certificate errors.
+# Overridable on the command line with: vip verify --insecure
+# insecure = false
+#
+# Path to a custom CA certificate bundle (PEM).  Useful for self-signed or
+# corporate CAs.  For Playwright tests, sets NODE_EXTRA_CA_CERTS before
+# launching Chromium (Chromium-level trust only).
+# Overridable on the command line with: vip verify --ca-bundle /path/to/ca.pem
+# ca_bundle = "/etc/ssl/corp-ca.pem"
+
 [security]
 # Set enabled = true to run security-policy compliance tests.
 policy_checks_enabled = false
