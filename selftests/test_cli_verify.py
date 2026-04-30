@@ -29,6 +29,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "test_timeout": DEFAULT_TEST_TIMEOUT_SECONDS,
         "headless_auth": False,
         "idp": None,
+        "performance_tests": False,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -557,6 +558,40 @@ class TestConfigHygieneOptIn:
         expr = _default_marker_expr()
         for category in _OPT_IN_CATEGORIES:
             assert f"not {category}" in expr
+
+
+class TestPerformanceOptIn:
+    """performance tests are excluded by default and run with --performance-tests."""
+
+    @staticmethod
+    def _marker_expr(cmd: list[str]) -> str:
+        """Return the pytest marker expression from the assembled command."""
+        first = cmd.index("-m")
+        second = cmd.index("-m", first + 1)
+        return cmd[second + 1]
+
+    def test_default_filter_excludes_performance(self, tmp_path):
+        """Without --performance-tests, the marker expression excludes performance."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg)))
+        assert "not performance" in self._marker_expr(cmd)
+
+    def test_performance_tests_flag_removes_exclusion(self, tmp_path):
+        """With --performance-tests, performance is no longer excluded from the expr."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), performance_tests=True))
+        assert "not performance" not in self._marker_expr(cmd)
+
+    def test_explicit_category_overrides_performance_flag(self, tmp_path):
+        """When --categories is set, --performance-tests has no effect on the expr."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(
+            _make_args(config=str(cfg), categories="connect", performance_tests=True)
+        )
+        assert self._marker_expr(cmd) == "connect"
 
 
 class TestVerifyLocalTestTimeout:

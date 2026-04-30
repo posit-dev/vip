@@ -47,7 +47,7 @@ VALID_CATEGORIES: dict[str, str] = {
 # Categories that are excluded from the default ``vip verify`` run and only
 # executed when the user opts in via ``--categories``.  These tests check
 # VIP's own configuration rather than the Posit deployment.
-_OPT_IN_CATEGORIES = frozenset({"config_hygiene"})
+_OPT_IN_CATEGORIES = frozenset({"config_hygiene", "performance"})
 
 # Marker expression keywords that are not category names.
 _MARKER_KEYWORDS = {"and", "or", "not"}
@@ -67,13 +67,16 @@ def _valid_categories_message() -> str:
     return ", ".join(sorted(seen.values()))
 
 
-def _default_marker_expr() -> str:
+def _default_marker_expr(extra_keep: frozenset[str] = frozenset()) -> str:
     """Marker expression applied when the user doesn't pass ``--categories``.
 
     Excludes every opt-in category so that ``vip verify`` runs only the
-    product-verification tests by default.
+    product-verification tests by default.  Pass ``extra_keep`` to re-include
+    specific opt-in categories (e.g. ``frozenset({"performance"})`` when
+    ``--performance-tests`` is set).
     """
-    return " and ".join(f"not {name}" for name in sorted(_OPT_IN_CATEGORIES))
+    excluded = _OPT_IN_CATEGORIES - extra_keep
+    return " and ".join(f"not {name}" for name in sorted(excluded))
 
 
 def _normalize_categories(expr: str) -> str:
@@ -512,7 +515,10 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     if args.categories:
         cmd.extend(["-m", _normalize_categories(args.categories)])
     else:
-        cmd.extend(["-m", _default_marker_expr()])
+        extra_keep: frozenset[str] = frozenset()
+        if getattr(args, "performance_tests", False):
+            extra_keep = frozenset({"performance"})
+        cmd.extend(["-m", _default_marker_expr(extra_keep)])
     if args.filter_expr:
         cmd.extend(["-k", args.filter_expr])
 
@@ -586,6 +592,9 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
                 stacklevel=2,
             )
             pytest_timeout = _JOB_MIN_PYTEST_TIMEOUT_SECONDS
+        _k8s_extra_keep: frozenset[str] = frozenset()
+        if getattr(args, "performance_tests", False):
+            _k8s_extra_keep = frozenset({"performance"})
         create_job(
             job_name,
             namespace,
@@ -594,7 +603,7 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             categories=(
                 _normalize_categories(args.categories)
                 if args.categories
-                else _default_marker_expr()
+                else _default_marker_expr(_k8s_extra_keep)
             ),
             filter_expr=getattr(args, "filter_expr", None),
             timeout_seconds=pytest_timeout,
@@ -859,6 +868,12 @@ def main() -> None:
         default=None,
         help="Test categories as a pytest marker expression "
         "(e.g. 'connect', 'package-manager', 'performance and workbench')",
+    )
+    verify_parser.add_argument(
+        "--performance-tests",
+        action="store_true",
+        default=False,
+        help="Run performance tests (opt-in; excluded by default).",
     )
     verify_parser.add_argument(
         "-f",

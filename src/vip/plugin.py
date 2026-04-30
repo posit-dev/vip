@@ -131,7 +131,10 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "package_manager: tests for Posit Package Manager")
     config.addinivalue_line("markers", "prerequisites: prerequisite checks")
     config.addinivalue_line("markers", "cross_product: cross-product / admin tests")
-    config.addinivalue_line("markers", "performance: performance validation tests")
+    config.addinivalue_line(
+        "markers",
+        "performance: performance validation tests (opt-in; excluded by default)",
+    )
     config.addinivalue_line("markers", "security: security validation tests")
     config.addinivalue_line(
         "markers",
