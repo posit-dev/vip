@@ -5,6 +5,7 @@ report/failures.json
 demo.md
 .vip-auth-cache.json
 .vip-auth-cache.meta.json
+.vip-install.json
 
 # Agent tooling
 .positai/settings.json
