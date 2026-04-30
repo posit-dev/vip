@@ -95,6 +95,13 @@ def test_detect_unknown_linux(monkeypatch, fake_os_release):
     assert info.family == "unsupported"
 
 
+def test_detect_handles_malformed_os_release_line(monkeypatch, fake_os_release):
+    monkeypatch.setattr(plat.sys, "platform", "linux")
+    fake_os_release('ID=rhel\nPRETTY_NAME="unterminated\n')
+    info = plat.detect()
+    assert info.family == "rhel-family"
+
+
 def test_detect_missing_os_release(monkeypatch, tmp_path):
     monkeypatch.setattr(plat.sys, "platform", "linux")
     monkeypatch.setattr(plat, "_OS_RELEASE_PATH", tmp_path / "does-not-exist")

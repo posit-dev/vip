@@ -52,7 +52,10 @@ def _read_os_release() -> dict[str, str]:
         if "=" not in line or line.startswith("#"):
             continue
         k, _, v = line.partition("=")
-        out[k.strip()] = " ".join(shlex.split(v))
+        try:
+            out[k.strip()] = " ".join(shlex.split(v))
+        except ValueError:
+            continue
     return out
 
 
