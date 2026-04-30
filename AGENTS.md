@@ -307,6 +307,8 @@ Two safe patterns:
 
 Similarly, avoid capturing absolute timestamps, PID numbers, or any other value that varies between runs. When `just` is not available in the environment, replace `just check` with the underlying `uv run ruff ...` commands directly.
 
+Beyond timing, watch for **flaky tests in the suite you exec**. If your demo runs `uv run pytest selftests/`, a single non-deterministic test elsewhere in the suite (e.g. timing-sensitive cases in `selftests/test_load_engine.py`) can fail verification on re-run even though your code is fine. Either narrow the demo to specific test paths (`selftests/install/`) or add `--ignore=<path>` for known-flaky files.
+
 ### What to demonstrate
 
 -   **New tests:** run the new tests and show them passing
@@ -348,3 +350,4 @@ Register warning filters in `src/vip/plugin.py::pytest_configure` (via `config.a
 -   Forgetting the `@connect`/`@workbench`/`@package_manager` tag in feature files (breaks auto-skip).
 -   Using non-conventional PR titles (must be `type: description`).
 -   Relying on multi-line formatting to shorten lines -- `ruff format` will collapse list comprehensions back to one line if they fit within 100 chars. Extract a helper function instead.
+-   Bypassing `vip install` with raw `uv run playwright install --with-deps chromium` (or `playwright install chromium`) in setup recipes, Dockerfiles, CI workflows, or docs. The whole `vip uninstall` reversibility relies on the `.vip-install.json` manifest that only `vip install` writes -- a raw `playwright install` leaves no record. The only acceptable alternative is `uv run vip install --skip-system` (used by CI workflows where the runner already has system libs), which still records the Playwright cache.
