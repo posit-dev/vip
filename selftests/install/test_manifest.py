@@ -1,0 +1,95 @@
+"""Tests for src/vip/install/manifest.py."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from vip.install.manifest import (
+    SCHEMA_VERSION,
+    Manifest,
+    ManifestError,
+    PlaywrightItem,
+    SystemPackageItem,
+    load,
+    save,
+)
+
+
+def _sample_manifest() -> Manifest:
+    return Manifest(
+        version=SCHEMA_VERSION,
+        vip_version="0.28.0",
+        created_at="2026-04-30T14:22:11Z",
+        updated_at="2026-04-30T14:22:11Z",
+        host="rhel10-dev.example.com",
+        platform="rhel-family",
+        platform_id="rhel",
+        platform_version="10",
+        items=[
+            SystemPackageItem(manager="dnf", name="nss", installed_at="2026-04-30T14:22:11Z"),
+            PlaywrightItem(
+                browser="chromium",
+                cache_dir="/home/u/.cache/ms-playwright",
+                installed_at="2026-04-30T14:22:11Z",
+            ),
+        ],
+        pending_system_packages=["libdrm"],
+    )
+
+
+def test_save_and_load_roundtrip(tmp_path: Path):
+    path = tmp_path / ".vip-install.json"
+    m = _sample_manifest()
+    save(m, path)
+    loaded = load(path)
+    assert loaded == m
+
+
+def test_save_uses_atomic_write(tmp_path: Path):
+    """The temp file must be replaced atomically; no .tmp left behind on success."""
+    path = tmp_path / ".vip-install.json"
+    save(_sample_manifest(), path)
+    assert path.exists()
+    assert not (tmp_path / ".vip-install.json.tmp").exists()
+
+
+def test_load_missing_file_returns_none(tmp_path: Path):
+    assert load(tmp_path / ".vip-install.json") is None
+
+
+def test_load_corrupt_json_raises(tmp_path: Path):
+    path = tmp_path / ".vip-install.json"
+    path.write_text("{not json")
+    with pytest.raises(ManifestError, match="corrupt"):
+        load(path)
+
+
+def test_load_unknown_schema_version_raises(tmp_path: Path):
+    path = tmp_path / ".vip-install.json"
+    path.write_text(json.dumps({"version": SCHEMA_VERSION + 1, "items": []}))
+    with pytest.raises(ManifestError, match="newer"):
+        load(path)
+
+
+def test_save_writes_well_formed_json(tmp_path: Path):
+    path = tmp_path / ".vip-install.json"
+    save(_sample_manifest(), path)
+    data = json.loads(path.read_text())
+    assert data["version"] == SCHEMA_VERSION
+    assert data["host"] == "rhel10-dev.example.com"
+    assert data["pending_system_packages"] == ["libdrm"]
+    assert {i["kind"] for i in data["items"]} == {"system_package", "playwright_browser"}
+
+
+def test_pending_package_helpers():
+    m = _sample_manifest()
+    assert m.pending_packages_set() == {"libdrm"}
+    m.add_pending_packages(["alsa-lib", "libdrm"])  # dedupe
+    assert m.pending_packages_set() == {"libdrm", "alsa-lib"}
+    m.claim_pending(["libdrm"], installed_at="2026-04-30T15:00:00Z", manager="dnf")
+    assert m.pending_packages_set() == {"alsa-lib"}
+    names = [it.name for it in m.items if isinstance(it, SystemPackageItem)]
+    assert "libdrm" in names
