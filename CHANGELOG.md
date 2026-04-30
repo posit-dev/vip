@@ -1,6 +1,43 @@
 # CHANGELOG
 
 
+## v0.28.0 (2026-04-30)
+
+### Features
+
+- **plugin**: Make performance tests opt-in via --performance-tests
+  ([#231](https://github.com/posit-dev/vip/pull/231),
+  [`4a8ba2e`](https://github.com/posit-dev/vip/commit/4a8ba2e50aad66c8b09eceb82afcb13ce637e941))
+
+
+## v0.27.0 (2026-04-30)
+
+### Bug Fixes
+
+- **app**: Seed results.json on first run and stop pre-run unlink
+  ([#233](https://github.com/posit-dev/vip/pull/233),
+  [`59b29f0`](https://github.com/posit-dev/vip/commit/59b29f09deb88f89c9f882d22cac1e4354dd567f))
+
+### Features
+
+- **cli**: Add --insecure and --ca-bundle for self-signed CAs
+  ([#232](https://github.com/posit-dev/vip/pull/232),
+  [`9959204`](https://github.com/posit-dev/vip/commit/9959204c4a7b84d1278609f3e5f7d10fb53f1633))
+
+
+## v0.26.8 (2026-04-30)
+
+### Bug Fixes
+
+- **deps**: Pin pip>=26.1 for CVE-2026-3219 ([#234](https://github.com/posit-dev/vip/pull/234),
+  [`275abd4`](https://github.com/posit-dev/vip/commit/275abd4954059c685d4522254a66e3ad5789a7ad))
+
+### Chores
+
+- Update gitignore ([#225](https://github.com/posit-dev/vip/pull/225),
+  [`302bdea`](https://github.com/posit-dev/vip/commit/302bdeacbfd4a124b61df4e287d540f0707cfc4f))
+
+
 ## v0.26.7 (2026-04-24)
 
 ### Bug Fixes

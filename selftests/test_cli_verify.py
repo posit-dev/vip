@@ -29,6 +29,9 @@ def _make_args(**overrides) -> argparse.Namespace:
         "test_timeout": DEFAULT_TEST_TIMEOUT_SECONDS,
         "headless_auth": False,
         "idp": None,
+        "performance_tests": False,
+        "insecure": False,
+        "ca_bundle": None,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -559,6 +562,123 @@ class TestConfigHygieneOptIn:
             assert f"not {category}" in expr
 
 
+class TestPerformanceOptIn:
+    """performance tests are excluded by default and run with --performance-tests."""
+
+    @staticmethod
+    def _marker_expr(cmd: list[str]) -> str:
+        """Return the pytest marker expression from the assembled command."""
+        first = cmd.index("-m")
+        second = cmd.index("-m", first + 1)
+        return cmd[second + 1]
+
+    def test_default_filter_excludes_performance(self, tmp_path):
+        """Without --performance-tests, the marker expression excludes performance."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg)))
+        assert "not performance" in self._marker_expr(cmd)
+
+    def test_performance_tests_flag_removes_exclusion(self, tmp_path):
+        """With --performance-tests, performance is no longer excluded from the expr."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), performance_tests=True))
+        assert "not performance" not in self._marker_expr(cmd)
+
+    def test_explicit_category_overrides_performance_flag(self, tmp_path):
+        """When --categories is set, --performance-tests has no effect on the expr."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(
+            _make_args(config=str(cfg), categories="connect", performance_tests=True)
+        )
+        assert self._marker_expr(cmd) == "connect"
+
+    @staticmethod
+    def _capture_k8s_categories(args: argparse.Namespace) -> str:
+        """Run _run_k8s_job with mocked K8s helpers and return the categories= value."""
+        from unittest.mock import MagicMock, patch
+
+        captured: dict[str, str] = {}
+
+        def fake_create_job(_job_name, _namespace, _cm_name, **kwargs):
+            captured["categories"] = kwargs.get("categories", "")
+
+        with (
+            patch("vip.cli.secrets.token_hex", return_value="abcd1234"),
+            patch("vip.verify.job.create_config_map"),
+            patch("vip.verify.job.create_job", side_effect=fake_create_job),
+            patch("vip.verify.job.stream_logs"),
+            patch(
+                "vip.verify.job.wait_for_job",
+                return_value=MagicMock(status=MagicMock(failed=None)),
+            ),
+            patch("vip.verify.job.cleanup"),
+        ):
+            from vip.cli import _run_k8s_job
+
+            _run_k8s_job("[general]\n", args)
+        return captured.get("categories", "")
+
+    def test_k8s_default_excludes_performance(self):
+        """K8s path: without --performance-tests, categories expr excludes performance."""
+        args = argparse.Namespace(
+            categories=None,
+            performance_tests=False,
+            namespace="posit-team",
+            image="vip:latest",
+            timeout=3600,
+            filter_expr=None,
+            verbose=False,
+        )
+        categories = self._capture_k8s_categories(args)
+        assert "not performance" in categories
+
+    def test_k8s_flag_removes_exclusion(self):
+        """K8s path: with --performance-tests, performance is not excluded."""
+        args = argparse.Namespace(
+            categories=None,
+            performance_tests=True,
+            namespace="posit-team",
+            image="vip:latest",
+            timeout=3600,
+            filter_expr=None,
+            verbose=False,
+        )
+        categories = self._capture_k8s_categories(args)
+        assert "not performance" not in categories
+
+
+class TestExtraKeepFromArgs:
+    """_extra_keep_from_args mirrors --performance-tests on both local and K8s paths."""
+
+    def test_no_flag_returns_empty(self):
+        """Without --performance-tests the extra-keep set is empty."""
+        from vip.cli import _default_marker_expr, _extra_keep_from_args
+
+        args = argparse.Namespace(performance_tests=False)
+        extra = _extra_keep_from_args(args)
+        assert extra == frozenset()
+        assert "not performance" in _default_marker_expr(extra)
+
+    def test_flag_includes_performance(self):
+        """With --performance-tests the extra-keep set contains 'performance'."""
+        from vip.cli import _default_marker_expr, _extra_keep_from_args
+
+        args = argparse.Namespace(performance_tests=True)
+        extra = _extra_keep_from_args(args)
+        assert "performance" in extra
+        assert "not performance" not in _default_marker_expr(extra)
+
+    def test_missing_attr_treated_as_false(self):
+        """If performance_tests attribute is absent (K8s path before flag), treat as False."""
+        from vip.cli import _extra_keep_from_args
+
+        args = argparse.Namespace()  # no performance_tests attr
+        assert _extra_keep_from_args(args) == frozenset()
+
+
 class TestVerifyLocalTestTimeout:
     """--test-timeout should limit how long the subprocess can run."""
 
@@ -792,3 +912,112 @@ class TestAuthCliFlags:
             assert cfg.auth.provider == "oidc"
         finally:
             Path(path).unlink(missing_ok=True)
+
+
+class TestVerifyLocalTLSFlags:
+    """--insecure and --ca-bundle are encoded in the temp config."""
+
+    def test_insecure_written_to_temp_config(self, tmp_path, monkeypatch):
+        """--insecure=True is written to the generated temp TOML."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(connect_url="https://c.example.com", insecure=True))
+        try:
+            cfg = load_config(path)
+            assert cfg.insecure is True
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_ca_bundle_written_to_temp_config(self, tmp_path, monkeypatch):
+        """--ca-bundle path is written to the generated temp TOML."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(connect_url="https://c.example.com", ca_bundle=bundle)
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.ca_bundle == bundle
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_no_tls_section_when_flags_absent(self, tmp_path, monkeypatch):
+        """When neither --insecure nor --ca-bundle is passed, no [tls] section."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+
+        path = _generate_temp_config(_make_args(connect_url="https://c.example.com"))
+        try:
+            content = Path(path).read_text()
+            assert "[tls]" not in content
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_both_insecure_and_ca_bundle_emits_warning(self, tmp_path, monkeypatch):
+        """Passing both --insecure and --ca-bundle must emit a UserWarning."""
+        import warnings
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        from vip.cli import _generate_temp_config
+
+        path = None
+        try:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                path = _generate_temp_config(
+                    _make_args(connect_url="https://c.example.com", insecure=True, ca_bundle=bundle)
+                )
+            assert any("--insecure" in str(warning.message) for warning in w), (
+                "Expected a UserWarning about --insecure and --ca-bundle"
+            )
+        finally:
+            if path:
+                Path(path).unlink(missing_ok=True)
+
+    def test_insecure_omits_ca_bundle_from_temp_config(self, tmp_path, monkeypatch):
+        """When --insecure is set, ca_bundle must NOT be written to the temp config.
+
+        load_config() validates ca_bundle existence; writing a nonexistent path
+        when the user passes --insecure --ca-bundle <missing> would fail
+        validation despite the user's intent to skip TLS verification entirely.
+        """
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        # Deliberately use a *missing* file to prove validation is not triggered.
+        missing_bundle = tmp_path / "does_not_exist.pem"
+        from vip.cli import _generate_temp_config
+
+        path = None
+        try:
+            import warnings
+
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                path = _generate_temp_config(
+                    _make_args(
+                        connect_url="https://c.example.com",
+                        insecure=True,
+                        ca_bundle=missing_bundle,
+                    )
+                )
+            content = Path(path).read_text()
+            assert "ca_bundle" not in content, (
+                "ca_bundle must not appear in the temp config when --insecure is set"
+            )
+            # insecure=true must still be present
+            assert "insecure = true" in content
+        finally:
+            if path:
+                Path(path).unlink(missing_ok=True)

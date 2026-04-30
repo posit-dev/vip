@@ -66,7 +66,7 @@ def _extract_host_port(connection_string: str, ds_type: str) -> tuple[str, int] 
     return host, port
 
 
-def check_data_source_connectivity(data_sources) -> list[dict]:
+def check_data_source_connectivity(data_sources, verify: bool | str = True) -> list[dict]:
     """Test connectivity to each configured data source.
 
     For HTTP/API sources, attempts a real HTTP GET and checks the response
@@ -94,7 +94,11 @@ def check_data_source_connectivity(data_sources) -> list[dict]:
         result = {"name": ds.name, "type": ds.type, "ok": False, "error": None}
         try:
             if ds.type in ("http", "api"):
-                resp = httpx.get(ds.connection_string, timeout=15)
+                # `verify` controls TLS certificate validation for HTTP sources.
+                # Non-HTTP types (DB, TCP) use socket.create_connection and do
+                # not perform TLS; the verify parameter is intentionally ignored
+                # for those types.
+                resp = httpx.get(ds.connection_string, timeout=15, verify=verify)
                 result["ok"] = resp.status_code < 400
             else:
                 if not ds.connection_string:

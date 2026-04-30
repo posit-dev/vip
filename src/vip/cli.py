@@ -45,9 +45,10 @@ VALID_CATEGORIES: dict[str, str] = {
 }
 
 # Categories that are excluded from the default ``vip verify`` run and only
-# executed when the user opts in via ``--categories``.  These tests check
-# VIP's own configuration rather than the Posit deployment.
-_OPT_IN_CATEGORIES = frozenset({"config_hygiene"})
+# executed when the user explicitly opts in, either via ``--categories`` or
+# a dedicated opt-in flag (for example ``--performance-tests``). These tests
+# check VIP's own configuration rather than the Posit deployment.
+_OPT_IN_CATEGORIES = frozenset({"config_hygiene", "performance"})
 
 # Marker expression keywords that are not category names.
 _MARKER_KEYWORDS = {"and", "or", "not"}
@@ -67,13 +68,28 @@ def _valid_categories_message() -> str:
     return ", ".join(sorted(seen.values()))
 
 
-def _default_marker_expr() -> str:
+def _default_marker_expr(extra_keep: frozenset[str] = frozenset()) -> str:
     """Marker expression applied when the user doesn't pass ``--categories``.
 
     Excludes every opt-in category so that ``vip verify`` runs only the
-    product-verification tests by default.
+    product-verification tests by default.  Pass ``extra_keep`` to re-include
+    specific opt-in categories (e.g. ``frozenset({"performance"})`` when
+    ``--performance-tests`` is set).
     """
-    return " and ".join(f"not {name}" for name in sorted(_OPT_IN_CATEGORIES))
+    excluded = _OPT_IN_CATEGORIES - extra_keep
+    return " and ".join(f"not {name}" for name in sorted(excluded))
+
+
+def _extra_keep_from_args(args: argparse.Namespace) -> frozenset[str]:
+    """Return the set of opt-in categories to re-include based on CLI flags.
+
+    For example, ``--performance-tests`` adds ``"performance"`` to the set so
+    that :func:`_default_marker_expr` keeps it in the expression.
+    """
+    extra: set[str] = set()
+    if getattr(args, "performance_tests", False):
+        extra.add("performance")
+    return frozenset(extra)
 
 
 def _normalize_categories(expr: str) -> str:
@@ -193,7 +209,11 @@ def _print_skip_notes(config_path: str | None) -> None:
     """Print a note for each product that is not configured."""
     from vip.config import load_config
 
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     products = [
         ("Connect", cfg.connect),
         ("Workbench", cfg.workbench),
@@ -221,7 +241,11 @@ def _check_credentials(
     """
     from vip.config import load_config
 
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     if interactive_auth:
         return
 
@@ -352,6 +376,27 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
             lines.append(f'provider = "{auth_provider}"')
         if idp:
             lines.append(f'idp = "{idp}"')
+        lines.append("")
+
+    insecure = getattr(args, "insecure", False)
+    ca_bundle = getattr(args, "ca_bundle", None)
+    if insecure and ca_bundle:
+        import warnings
+
+        warnings.warn(
+            "--insecure and --ca-bundle are both set; --insecure takes precedence "
+            "and the ca-bundle path will be ignored for TLS verification.",
+            stacklevel=2,
+        )
+    effective_ca_bundle = None if insecure else ca_bundle
+    if insecure or effective_ca_bundle:
+        lines.append("[tls]")
+        if insecure:
+            lines.append("insecure = true")
+        if effective_ca_bundle:
+            import json as _json
+
+            lines.append(f"ca_bundle = {_json.dumps(str(effective_ca_bundle))}")
         lines.append("")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
@@ -512,7 +557,7 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     if args.categories:
         cmd.extend(["-m", _normalize_categories(args.categories)])
     else:
-        cmd.extend(["-m", _default_marker_expr()])
+        cmd.extend(["-m", _default_marker_expr(_extra_keep_from_args(args))])
     if args.filter_expr:
         cmd.extend(["-k", args.filter_expr])
 
@@ -594,7 +639,7 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             categories=(
                 _normalize_categories(args.categories)
                 if args.categories
-                else _default_marker_expr()
+                else _default_marker_expr(_extra_keep_from_args(args))
             ),
             filter_expr=getattr(args, "filter_expr", None),
             timeout_seconds=pytest_timeout,
@@ -818,6 +863,32 @@ def main() -> None:
     url_group.add_argument("--workbench-url", default=None, help="Workbench server URL")
     url_group.add_argument("--package-manager-url", default=None, help="Package Manager server URL")
 
+    # TLS configuration
+    tls_group = verify_parser.add_argument_group("TLS configuration")
+    tls_group.add_argument(
+        "--insecure",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable TLS certificate verification (equivalent to curl -k). "
+            "Use only in trusted environments; this silently ignores certificate errors. "
+            "For Playwright browser contexts, this sets ignore_https_errors=True. "
+            "Note: --ca-bundle is preferred when you have a custom CA certificate."
+        ),
+    )
+    tls_group.add_argument(
+        "--ca-bundle",
+        default=None,
+        metavar="PATH",
+        type=Path,
+        help=(
+            "Path to a custom CA certificate bundle (PEM) to trust. "
+            "Useful for self-signed or corporate CAs. "
+            "For Playwright, sets NODE_EXTRA_CA_CERTS before launching Chromium "
+            "(Chromium-level trust only; does not update the OS certificate store)."
+        ),
+    )
+
     # Config file
     verify_parser.add_argument(
         "--config",
@@ -858,7 +929,15 @@ def main() -> None:
         "--categories",
         default=None,
         help="Test categories as a pytest marker expression "
-        "(e.g. 'connect', 'package-manager', 'performance and workbench')",
+        "(e.g. 'connect', 'package-manager', 'workbench'). "
+        "To include performance tests use --performance-tests instead.",
+    )
+    verify_parser.add_argument(
+        "--performance-tests",
+        action="store_true",
+        default=False,
+        help="Include performance tests in the default selection (excluded otherwise). "
+        "Has no effect when --categories is also specified.",
     )
     verify_parser.add_argument(
         "-f",

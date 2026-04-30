@@ -6,6 +6,7 @@ avoid tight coupling to a particular release of the Connect client library.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -29,14 +30,25 @@ def _normalized_port(scheme: str | None, port: int | None) -> int | None:
 class ConnectClient(BaseClient):
     """Minimal Connect API wrapper."""
 
-    def __init__(self, base_url: str, api_key: str, *, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        *,
+        timeout: float = 30.0,
+        insecure: bool = False,
+        ca_bundle: Path | None = None,
+    ) -> None:
         api_key = (api_key or "").strip()
         super().__init__(
             base_url,
             auth_header_value=f"Key {api_key}" if api_key else "",
             api_prefix="/__api__",
             timeout=timeout,
+            insecure=insecure,
+            ca_bundle=ca_bundle,
         )
+        # self._verify is set by BaseClient.__init__ and used by fetch_content.
 
     # -- Server info --------------------------------------------------------
 
@@ -294,6 +306,7 @@ class ConnectClient(BaseClient):
             headers={"Authorization": self._client.headers["Authorization"]},
             follow_redirects=False,
             timeout=timeout,
+            verify=self._verify,
         )
         for _ in range(max_redirects):
             if not resp.is_redirect:
@@ -319,6 +332,7 @@ class ConnectClient(BaseClient):
                 headers={"Authorization": self._client.headers["Authorization"]},
                 follow_redirects=False,
                 timeout=timeout,
+                verify=self._verify,
             )
         return resp
 

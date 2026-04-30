@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "0.26.7"
+version = "0.28.0"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -32,6 +32,7 @@ dependencies = [
     "requests>=2.33.0",  # transitive via pytest-playwright; pinned to track updates
     "pygments>=2.20.0",  # CVE-2026-4539 fix
     "python-multipart>=0.0.26",  # CVE-2026-40347 fix; transitive via shiny
+    "pip>=26.1",  # CVE-2026-3219 fix; transitive via pip-api
 ]
 
 [project.optional-dependencies]
@@ -93,7 +94,7 @@ markers = [
     "package_manager: tests for Posit Package Manager",
     "prerequisites: prerequisite checks that run first",
     "cross_product: tests that span multiple products",
-    "performance: performance validation tests",
+    "performance: performance validation tests (opt-in; excluded by default)",
     "security: security validation tests",
     "config_hygiene: checks of VIP's own configuration (opt-in; excluded by default)",
     "min_version(product, version): only run when product meets minimum version",

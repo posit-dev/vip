@@ -131,7 +131,10 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "package_manager: tests for Posit Package Manager")
     config.addinivalue_line("markers", "prerequisites: prerequisite checks")
     config.addinivalue_line("markers", "cross_product: cross-product / admin tests")
-    config.addinivalue_line("markers", "performance: performance validation tests")
+    config.addinivalue_line(
+        "markers",
+        "performance: performance validation tests (opt-in; excluded by default)",
+    )
     config.addinivalue_line("markers", "security: security validation tests")
     config.addinivalue_line(
         "markers",
@@ -189,7 +192,11 @@ def pytest_configure(config: pytest.Config) -> None:
 
             cache_path = Path(config.rootpath) / ".vip-auth-cache.json"
             session = start_interactive_auth(
-                connect_url=connect_url, workbench_url=wb_url, cache_path=cache_path
+                connect_url=connect_url,
+                workbench_url=wb_url,
+                cache_path=cache_path,
+                insecure=vip_cfg.insecure,
+                ca_bundle=vip_cfg.ca_bundle,
             )
             config.stash[_auth_session_key] = session
             if session.api_key:
@@ -228,6 +235,8 @@ def pytest_configure(config: pytest.Config) -> None:
                     password=vip_cfg.auth.password,
                     cache_path=cache_path,
                     verbose=config.getoption("--vip-verbose", default=False),
+                    insecure=vip_cfg.insecure,
+                    ca_bundle=vip_cfg.ca_bundle,
                 )
             except AuthConfigError as exc:
                 raise pytest.UsageError(str(exc)) from None
