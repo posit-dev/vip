@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from vip.install import platform as plat
-from vip.install.manifest import Manifest
+from vip.install.manifest import Manifest, PlaywrightItem, SystemPackageItem
 
 
 @dataclass(frozen=True)
@@ -91,4 +91,52 @@ def build_install_plan(
         playwright_step=playwright_step,
         claim_pending=claim_pending,
         unsupported_warning=unsupported_warning,
+    )
+
+
+@dataclass(frozen=True)
+class UninstallPlan:
+    delete_manifest: bool
+    playwright_cache_dirs: tuple[str, ...]
+    remove_venv: bool
+    system_remove_command: str | None
+    chained_cleanup: str | None  # connect URL to clean up against, or None
+    system_packages_by_manager: dict[str, tuple[str, ...]] = field(default_factory=dict)
+
+
+def build_uninstall_plan(
+    *,
+    manifest: Manifest,
+    venv: bool,
+    system: bool,
+    connect_url: str | None,
+) -> UninstallPlan:
+    cache_dirs = tuple(
+        sorted({i.cache_dir for i in manifest.items if isinstance(i, PlaywrightItem)})
+    )
+
+    by_manager: dict[str, list[str]] = {}
+    for it in manifest.items:
+        if isinstance(it, SystemPackageItem):
+            by_manager.setdefault(it.manager, []).append(it.name)
+    by_manager_tuples = {m: tuple(sorted(set(names))) for m, names in by_manager.items()}
+
+    system_command: str | None = None
+    if system and by_manager_tuples:
+        # Prefer the manager with the most packages; mixed-manager manifests are unusual
+        # (a host has only one of dnf or apt) but we handle the case for completeness.
+        primary = max(by_manager_tuples.items(), key=lambda kv: len(kv[1]))
+        manager, names = primary
+        if manager == "dnf":
+            system_command = "sudo dnf remove " + " ".join(names)
+        elif manager == "apt":
+            system_command = "sudo apt remove --autoremove " + " ".join(names)
+
+    return UninstallPlan(
+        delete_manifest=True,
+        playwright_cache_dirs=cache_dirs,
+        remove_venv=venv,
+        system_remove_command=system_command,
+        chained_cleanup=connect_url,
+        system_packages_by_manager=by_manager_tuples,
     )

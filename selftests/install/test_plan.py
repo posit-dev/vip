@@ -8,6 +8,7 @@ from vip.install import plan as pl
 from vip.install.manifest import (
     SCHEMA_VERSION,
     Manifest,
+    PlaywrightItem,
     SystemPackageItem,
 )
 from vip.install.platform import PlatformInfo
@@ -196,3 +197,72 @@ def test_install_plan_pending_packages_now_present_get_claimed(tmp_path: Path):
     # libdrm is still in the install step.
     assert plan.system_step is not None
     assert "libdrm" in plan.system_step.packages
+
+
+def _full_manifest() -> Manifest:
+    m = _empty_manifest()
+    m.items = [
+        SystemPackageItem(manager="dnf", name="nss", installed_at="t1"),
+        SystemPackageItem(manager="dnf", name="libdrm", installed_at="t1"),
+        PlaywrightItem(browser="chromium", cache_dir="/c", installed_at="t1"),
+    ]
+    return m
+
+
+def test_uninstall_plan_default_scope():
+    m = _full_manifest()
+    plan = pl.build_uninstall_plan(
+        manifest=m,
+        venv=False,
+        system=False,
+        connect_url=None,
+    )
+    assert plan.delete_manifest is True
+    assert plan.playwright_cache_dirs == ("/c",)
+    assert plan.remove_venv is False
+    assert plan.system_remove_command is None
+    assert plan.chained_cleanup is None
+
+
+def test_uninstall_plan_venv_flag_adds_venv():
+    plan = pl.build_uninstall_plan(
+        manifest=_full_manifest(), venv=True, system=False, connect_url=None
+    )
+    assert plan.remove_venv is True
+
+
+def test_uninstall_plan_system_flag_emits_dnf_command():
+    plan = pl.build_uninstall_plan(
+        manifest=_full_manifest(), venv=False, system=True, connect_url=None
+    )
+    assert plan.system_remove_command is not None
+    assert plan.system_remove_command.startswith("sudo dnf remove")
+    assert "nss" in plan.system_remove_command
+    assert "libdrm" in plan.system_remove_command
+
+
+def test_uninstall_plan_system_flag_apt_when_manifest_apt():
+    m = _full_manifest()
+    m.items[0] = SystemPackageItem(manager="apt", name="libnss3", installed_at="t1")
+    m.items[1] = SystemPackageItem(manager="apt", name="libdrm2", installed_at="t1")
+    plan = pl.build_uninstall_plan(manifest=m, venv=False, system=True, connect_url=None)
+    assert plan.system_remove_command is not None
+    assert plan.system_remove_command.startswith("sudo apt remove --autoremove")
+    assert "libnss3" in plan.system_remove_command
+
+
+def test_uninstall_plan_system_flag_no_packages_no_command():
+    m = _full_manifest()
+    m.items = [PlaywrightItem(browser="chromium", cache_dir="/c", installed_at="t1")]
+    plan = pl.build_uninstall_plan(manifest=m, venv=False, system=True, connect_url=None)
+    assert plan.system_remove_command is None
+
+
+def test_uninstall_plan_chains_cleanup_when_connect_url_present():
+    plan = pl.build_uninstall_plan(
+        manifest=_full_manifest(),
+        venv=False,
+        system=False,
+        connect_url="https://connect.example.com",
+    )
+    assert plan.chained_cleanup == "https://connect.example.com"
