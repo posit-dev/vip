@@ -810,6 +810,79 @@ def run_install(args: argparse.Namespace) -> None:
     sys.exit(rc)
 
 
+def run_uninstall(args: argparse.Namespace) -> None:
+    """Reverse `vip install` using the manifest."""
+    from vip.install.manifest import (
+        ManifestError,
+        current_host,
+        default_path,
+        load,
+    )
+    from vip.install.plan import build_uninstall_plan
+    from vip.install.runner import execute_uninstall_plan
+
+    manifest_path = default_path()
+    try:
+        manifest = load(manifest_path)
+    except ManifestError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if manifest is None:
+        print(
+            f"No {manifest_path.name} found. Nothing to uninstall, or vip was "
+            "installed by a different mechanism. See docs/rhel.md for manual cleanup.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if manifest.host != current_host() and not getattr(args, "force_host", False):
+        print(
+            f"Error: manifest host {manifest.host!r} does not match current host "
+            f"{current_host()!r}. Pass --force-host to override.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Resolve Connect URL for chained cleanup.
+    connect_url = getattr(args, "connect_url", None)
+    if not connect_url:
+        try:
+            from vip.config import load_config
+
+            cfg = load_config()
+            if cfg.connect and cfg.connect.url:
+                connect_url = cfg.connect.url
+        except Exception:  # noqa: BLE001
+            pass
+
+    plan = build_uninstall_plan(
+        manifest=manifest,
+        venv=bool(getattr(args, "venv", False)),
+        system=bool(getattr(args, "system", False)),
+        connect_url=connect_url,
+    )
+
+    cleanup_callable = None
+    if connect_url:
+        api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
+
+        def cleanup_callable(url: str) -> None:  # noqa: F811
+            from vip.clients.connect import ConnectClient
+
+            with ConnectClient(url, api_key) as client:
+                client.cleanup_vip_content()
+
+    rc = execute_uninstall_plan(
+        plan,
+        manifest_path=manifest_path,
+        venv_path=Path.cwd() / ".venv",
+        yes=bool(getattr(args, "yes", False)),
+        cleanup_callable=cleanup_callable,
+    )
+    sys.exit(rc)
+
+
 def run_cleanup(args: argparse.Namespace) -> None:
     """Delete VIP test credentials and resources.
 
@@ -1142,6 +1215,31 @@ def main() -> None:
     )
     install_parser.set_defaults(func=run_install)
 
+    # vip uninstall
+    uninstall_parser = subparsers.add_parser(
+        "uninstall",
+        help="Reverse vip install (dry-run by default; --yes to execute)",
+        description=(
+            "Reverse vip install using the per-project .vip-install.json manifest. "
+            "Default scope removes the Playwright cache and the manifest. "
+            "Pass --venv to also remove .venv/ and --system to print the "
+            "sudo command for removing system packages. Always prints a dry-run "
+            "plan; pass --yes to execute."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    uninstall_parser.add_argument("--yes", action="store_true", default=False)
+    uninstall_parser.add_argument("--venv", action="store_true", default=False)
+    uninstall_parser.add_argument("--system", action="store_true", default=False)
+    uninstall_parser.add_argument("--force-host", action="store_true", default=False)
+    uninstall_parser.add_argument(
+        "--connect-url",
+        default=None,
+        help="Connect URL for chained vip cleanup (default: config / autodetect).",
+    )
+    uninstall_parser.add_argument("--api-key", default=None)
+    uninstall_parser.set_defaults(func=run_uninstall)
+
     # vip cluster
     cluster_parser = subparsers.add_parser("cluster", help="Cluster connection tools")
     cluster_sub = cluster_parser.add_subparsers(dest="cluster_command")
@@ -1211,6 +1309,7 @@ def main() -> None:
         "verify": verify_parser,
         "cleanup": cleanup_parser,
         "install": install_parser,
+        "uninstall": uninstall_parser,
         "auth": auth_parser,
         "cluster": cluster_parser,
         "report": report_parser,
