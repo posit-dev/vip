@@ -42,6 +42,25 @@ cp vip.toml.example vip.toml     # edit with your deployment details
 vip verify --config vip.toml
 ```
 
+## Uninstalling
+
+To reverse what `vip install` (or `just setup`) did:
+
+```bash
+uv run vip uninstall                  # dry run; prints what would happen
+uv run vip uninstall --yes            # remove Playwright cache + manifest
+uv run vip uninstall --yes --venv     # also remove ./.venv
+uv run vip uninstall --yes --system   # also print sudo command for system packages
+```
+
+`vip uninstall` only removes packages and files that `vip install` recorded
+in `.vip-install.json`; anything that was already on your machine before
+running `vip install` is left alone.
+
+If a Connect URL is configured (in `vip.toml` or via `--connect-url`),
+`vip uninstall` chains `vip cleanup` first to remove `_vip_test`-tagged
+content from Connect.
+
 ## CLI commands
 
 | Command | Description |
