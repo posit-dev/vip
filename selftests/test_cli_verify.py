@@ -594,6 +594,35 @@ class TestPerformanceOptIn:
         assert self._marker_expr(cmd) == "connect"
 
 
+class TestExtraKeepFromArgs:
+    """_extra_keep_from_args mirrors --performance-tests on both local and K8s paths."""
+
+    def test_no_flag_returns_empty(self):
+        """Without --performance-tests the extra-keep set is empty."""
+        from vip.cli import _default_marker_expr, _extra_keep_from_args
+
+        args = argparse.Namespace(performance_tests=False)
+        extra = _extra_keep_from_args(args)
+        assert extra == frozenset()
+        assert "not performance" in _default_marker_expr(extra)
+
+    def test_flag_includes_performance(self):
+        """With --performance-tests the extra-keep set contains 'performance'."""
+        from vip.cli import _default_marker_expr, _extra_keep_from_args
+
+        args = argparse.Namespace(performance_tests=True)
+        extra = _extra_keep_from_args(args)
+        assert "performance" in extra
+        assert "not performance" not in _default_marker_expr(extra)
+
+    def test_missing_attr_treated_as_false(self):
+        """If performance_tests attribute is absent (K8s path before flag), treat as False."""
+        from vip.cli import _extra_keep_from_args
+
+        args = argparse.Namespace()  # no performance_tests attr
+        assert _extra_keep_from_args(args) == frozenset()
+
+
 class TestVerifyLocalTestTimeout:
     """--test-timeout should limit how long the subprocess can run."""
 

@@ -79,6 +79,18 @@ def _default_marker_expr(extra_keep: frozenset[str] = frozenset()) -> str:
     return " and ".join(f"not {name}" for name in sorted(excluded))
 
 
+def _extra_keep_from_args(args: argparse.Namespace) -> frozenset[str]:
+    """Return the set of opt-in categories to re-include based on CLI flags.
+
+    For example, ``--performance-tests`` adds ``"performance"`` to the set so
+    that :func:`_default_marker_expr` keeps it in the expression.
+    """
+    extra: set[str] = set()
+    if getattr(args, "performance_tests", False):
+        extra.add("performance")
+    return frozenset(extra)
+
+
 def _normalize_categories(expr: str) -> str:
     """Validate and normalize a ``--categories`` expression.
 
@@ -515,10 +527,7 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     if args.categories:
         cmd.extend(["-m", _normalize_categories(args.categories)])
     else:
-        extra_keep: frozenset[str] = frozenset()
-        if getattr(args, "performance_tests", False):
-            extra_keep = frozenset({"performance"})
-        cmd.extend(["-m", _default_marker_expr(extra_keep)])
+        cmd.extend(["-m", _default_marker_expr(_extra_keep_from_args(args))])
     if args.filter_expr:
         cmd.extend(["-k", args.filter_expr])
 
@@ -592,9 +601,6 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
                 stacklevel=2,
             )
             pytest_timeout = _JOB_MIN_PYTEST_TIMEOUT_SECONDS
-        _k8s_extra_keep: frozenset[str] = frozenset()
-        if getattr(args, "performance_tests", False):
-            _k8s_extra_keep = frozenset({"performance"})
         create_job(
             job_name,
             namespace,
@@ -603,7 +609,7 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             categories=(
                 _normalize_categories(args.categories)
                 if args.categories
-                else _default_marker_expr(_k8s_extra_keep)
+                else _default_marker_expr(_extra_keep_from_args(args))
             ),
             filter_expr=getattr(args, "filter_expr", None),
             timeout_seconds=pytest_timeout,
@@ -867,13 +873,14 @@ def main() -> None:
         "--categories",
         default=None,
         help="Test categories as a pytest marker expression "
-        "(e.g. 'connect', 'package-manager', 'performance and workbench')",
+        "(e.g. 'connect', 'package-manager', 'workbench'). "
+        "To include performance tests use --performance-tests instead.",
     )
     verify_parser.add_argument(
         "--performance-tests",
         action="store_true",
         default=False,
-        help="Run performance tests (opt-in; excluded by default).",
+        help="Include performance tests in the default selection (excluded otherwise).",
     )
     verify_parser.add_argument(
         "-f",
