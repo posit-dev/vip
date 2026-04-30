@@ -238,3 +238,55 @@ def test_execute_uninstall_plan_chained_cleanup_failure_warns(tmp_path: Path, ca
     captured = capsys.readouterr()
     out = captured.out + captured.err
     assert "warn" in out.lower() or "WARN" in out
+    # Status was failed, not skipped — final summary mentions content cleanup.
+    assert "content cleanup: failed" in captured.out
+
+
+def test_execute_uninstall_plan_skipped_status_omits_content_cleanup_note(tmp_path, capsys):
+    """No chained cleanup configured: don't tack on a confusing '(content cleanup: skipped)'."""
+    manifest_path = tmp_path / ".vip-install.json"
+    manifest_path.write_text("{}")
+
+    plan = UninstallPlan(
+        delete_manifest=True,
+        playwright_cache_dirs=(),
+        system_remove_commands=(),
+        chained_cleanup=None,
+    )
+    rn.execute_uninstall_plan(plan, manifest_path=manifest_path, yes=True, cleanup_callable=None)
+    captured = capsys.readouterr()
+    assert "vip uninstall: complete" in captured.out
+    assert "content cleanup" not in captured.out
+
+
+def test_execute_uninstall_plan_yes_prints_uv_uninstall_hint(tmp_path, capsys):
+    """After --yes, remind the user how to remove vip itself."""
+    manifest_path = tmp_path / ".vip-install.json"
+    manifest_path.write_text("{}")
+
+    plan = UninstallPlan(
+        delete_manifest=True,
+        playwright_cache_dirs=(),
+        system_remove_commands=(),
+        chained_cleanup=None,
+    )
+    rn.execute_uninstall_plan(plan, manifest_path=manifest_path, yes=True, cleanup_callable=None)
+    captured = capsys.readouterr()
+    assert "uv tool uninstall posit-vip" in captured.out
+    assert "uv pip uninstall posit-vip" in captured.out
+
+
+def test_execute_uninstall_plan_dry_run_does_not_print_uv_uninstall_hint(tmp_path, capsys):
+    """The reminder should only appear after actual --yes execution."""
+    manifest_path = tmp_path / ".vip-install.json"
+    manifest_path.write_text("{}")
+
+    plan = UninstallPlan(
+        delete_manifest=True,
+        playwright_cache_dirs=(),
+        system_remove_commands=(),
+        chained_cleanup=None,
+    )
+    rn.execute_uninstall_plan(plan, manifest_path=manifest_path, yes=False, cleanup_callable=None)
+    captured = capsys.readouterr()
+    assert "uv pip uninstall posit-vip" not in captured.out

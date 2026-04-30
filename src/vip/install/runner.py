@@ -175,5 +175,14 @@ def execute_uninstall_plan(
         for cmd in plan.system_remove_commands:
             print(f"  {cmd}")
 
-    print(f"\nvip uninstall: complete (content cleanup: {cleanup_status})")
+    if cleanup_status == "skipped":
+        print("\nvip uninstall: complete")
+    else:
+        print(f"\nvip uninstall: complete (content cleanup: {cleanup_status})")
+
+    print(
+        "\nTo also remove vip itself, run one of:\n"
+        "  uv tool uninstall posit-vip   # if installed via `uv tool install`\n"
+        "  uv pip uninstall posit-vip    # if installed via `uv pip install`"
+    )
     return 0
