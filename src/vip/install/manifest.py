@@ -36,13 +36,6 @@ Item = SystemPackageItem | PlaywrightItem
 
 
 @dataclass
-class PendingPackage:
-    """An entry in pending_system_packages — just a name for now."""
-
-    name: str
-
-
-@dataclass
 class Manifest:
     version: int
     vip_version: str
@@ -149,8 +142,12 @@ def save(manifest: Manifest, path: Path) -> None:
         "pending_system_packages": list(manifest.pending_system_packages),
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(serialized, indent=2, sort_keys=False) + "\n")
-    os.replace(tmp, path)
+    try:
+        tmp.write_text(json.dumps(serialized, indent=2, sort_keys=False) + "\n")
+        os.replace(tmp, path)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _serialize_item(item: Item) -> dict:

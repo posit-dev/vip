@@ -84,6 +84,22 @@ def test_save_writes_well_formed_json(tmp_path: Path):
     assert {i["kind"] for i in data["items"]} == {"system_package", "playwright_browser"}
 
 
+def test_save_cleans_up_tmp_on_write_failure(tmp_path: Path, monkeypatch):
+    """If write_text raises, the .tmp file must not be left behind."""
+    path = tmp_path / ".vip-install.json"
+    tmp_path_expected = path.with_suffix(path.suffix + ".tmp")
+
+    def boom(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_text", boom)
+
+    with pytest.raises(OSError, match="disk full"):
+        save(_sample_manifest(), path)
+
+    assert not tmp_path_expected.exists()
+
+
 def test_pending_package_helpers():
     m = _sample_manifest()
     assert m.pending_packages_set() == {"libdrm"}
