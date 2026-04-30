@@ -45,8 +45,9 @@ VALID_CATEGORIES: dict[str, str] = {
 }
 
 # Categories that are excluded from the default ``vip verify`` run and only
-# executed when the user opts in via ``--categories``.  These tests check
-# VIP's own configuration rather than the Posit deployment.
+# executed when the user explicitly opts in, either via ``--categories`` or
+# a dedicated opt-in flag (for example ``--performance-tests``). These tests
+# check VIP's own configuration rather than the Posit deployment.
 _OPT_IN_CATEGORIES = frozenset({"config_hygiene", "performance"})
 
 # Marker expression keywords that are not category names.

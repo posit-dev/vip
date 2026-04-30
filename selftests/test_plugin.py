@@ -206,37 +206,24 @@ class TestPluginIntegration:
         result.stdout.fnmatch_lines(["*1 deselected*"])
 
     def test_performance_deselected_by_default(self, selftest_pytester):
-        """Performance tests should be deselected when --performance-tests is not passed."""
-        selftest_pytester.makepyfile(
-            """
-            import pytest
+        """_default_marker_expr excludes performance when --performance-tests is not set."""
+        import argparse
 
-            @pytest.mark.performance
-            def test_load_time():
-                assert True
-            """
-        )
-        result = selftest_pytester.runpytest(
-            "--vip-config=vip.toml", "-v", "-m", "not config_hygiene and not performance"
-        )
-        result.assert_outcomes()
-        result.stdout.fnmatch_lines(["*1 deselected*"])
+        from vip.cli import _default_marker_expr, _extra_keep_from_args
+
+        args = argparse.Namespace(performance_tests=False)
+        expr = _default_marker_expr(_extra_keep_from_args(args))
+        assert "not performance" in expr
 
     def test_performance_runs_with_flag(self, selftest_pytester):
-        """Performance tests should run when --performance-tests equivalent marker is included."""
-        selftest_pytester.makepyfile(
-            """
-            import pytest
+        """_default_marker_expr omits the performance exclusion when --performance-tests is set."""
+        import argparse
 
-            @pytest.mark.performance
-            def test_load_time():
-                assert True
-            """
-        )
-        result = selftest_pytester.runpytest(
-            "--vip-config=vip.toml", "-v", "-m", "not config_hygiene"
-        )
-        result.assert_outcomes(passed=1)
+        from vip.cli import _default_marker_expr, _extra_keep_from_args
+
+        args = argparse.Namespace(performance_tests=True)
+        expr = _default_marker_expr(_extra_keep_from_args(args))
+        assert "not performance" not in expr
 
     def test_bdd_given_configured_step_deselected(self, selftest_pytester):
         """A BDD scenario with 'Given Connect is configured in vip.toml'
