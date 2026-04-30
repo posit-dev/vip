@@ -127,6 +127,23 @@ def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):
     assert "libdrm" in saved.pending_system_packages
 
 
+def test_format_install_plan_unsupported_warning_visible_when_otherwise_empty():
+    """Unsupported-platform warning must show even when no work is queued."""
+    plan = InstallPlan(
+        platform="unsupported",
+        platform_id="void",
+        platform_version="rolling",
+        system_step=None,
+        playwright_step=None,
+        unsupported_warning="Platform void is unsupported; skipping system step.",
+    )
+    text = rn.format_install_plan(plan)
+    assert "already up to date" not in text
+    assert "warning" in text.lower()
+    assert "void" in text  # platform id propagates
+    assert "unsupported" in text  # warning text shows
+
+
 def test_format_uninstall_plan_default():
     plan = UninstallPlan(
         delete_manifest=True,

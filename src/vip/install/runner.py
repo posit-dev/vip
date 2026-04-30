@@ -32,13 +32,15 @@ def _now() -> str:
 
 
 def format_install_plan(plan: InstallPlan) -> str:
-    if plan.is_empty():
+    if plan.is_empty() and not plan.unsupported_warning:
         return "vip install: already up to date.\n"
     lines = [
         f"vip install plan ({plan.platform_id or plan.platform} {plan.platform_version or ''}):"
     ]
     if plan.unsupported_warning:
         lines.append(f"  warning: {plan.unsupported_warning}")
+    if plan.is_empty():
+        lines.append("  (nothing else to do)")
     if plan.system_step and plan.system_step.packages:
         manager = plan.system_step.manager
         cmd = "sudo dnf install -y" if manager == "dnf" else "sudo apt install -y"
