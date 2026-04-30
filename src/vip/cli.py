@@ -354,6 +354,16 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
             lines.append(f'idp = "{idp}"')
         lines.append("")
 
+    insecure = getattr(args, "insecure", False)
+    ca_bundle = getattr(args, "ca_bundle", None)
+    if insecure or ca_bundle:
+        lines.append("[tls]")
+        if insecure:
+            lines.append("insecure = true")
+        if ca_bundle:
+            lines.append(f'ca_bundle = "{ca_bundle}"')
+        lines.append("")
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
         f.write("\n".join(lines) + "\n")
         return f.name
@@ -817,6 +827,32 @@ def main() -> None:
     url_group.add_argument("--connect-url", default=None, help="Connect server URL")
     url_group.add_argument("--workbench-url", default=None, help="Workbench server URL")
     url_group.add_argument("--package-manager-url", default=None, help="Package Manager server URL")
+
+    # TLS configuration
+    tls_group = verify_parser.add_argument_group("TLS configuration")
+    tls_group.add_argument(
+        "--insecure",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable TLS certificate verification (equivalent to curl -k). "
+            "Use only in trusted environments; this silently ignores certificate errors. "
+            "For Playwright browser contexts, this sets ignore_https_errors=True. "
+            "Note: --ca-bundle is preferred when you have a custom CA certificate."
+        ),
+    )
+    tls_group.add_argument(
+        "--ca-bundle",
+        default=None,
+        metavar="PATH",
+        type=Path,
+        help=(
+            "Path to a custom CA certificate bundle (PEM) to trust. "
+            "Useful for self-signed or corporate CAs. "
+            "For Playwright, sets NODE_EXTRA_CA_CERTS before launching Chromium "
+            "(Chromium-level trust only; does not update the OS certificate store)."
+        ),
+    )
 
     # Config file
     verify_parser.add_argument(

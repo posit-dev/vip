@@ -50,10 +50,18 @@ def product_configured_https(product, vip_config):
 
 
 @when(parsers.parse("I make an HTTP request to {product}"), target_fixture="http_result")
-def make_http_request(product_url):
+def make_http_request(product_url, vip_config):
+    verify: bool | str
+    if vip_config.insecure:
+        verify = False
+    elif vip_config.ca_bundle is not None:
+        verify = str(vip_config.ca_bundle)
+    else:
+        verify = True
+
     http_url = product_url.replace("https://", "http://")
     try:
-        resp = httpx.get(http_url, follow_redirects=False, timeout=10)
+        resp = httpx.get(http_url, follow_redirects=False, timeout=10, verify=verify)
         return {
             "status": resp.status_code,
             "location": resp.headers.get("location", ""),
@@ -89,8 +97,17 @@ def inspect_headers(product, vip_config):
     pc = vip_config.product_config(product_key)
     if not pc.is_configured:
         pytest.skip(f"{product} is not configured")
+
+    verify: bool | str
+    if vip_config.insecure:
+        verify = False
+    elif vip_config.ca_bundle is not None:
+        verify = str(vip_config.ca_bundle)
+    else:
+        verify = True
+
     try:
-        resp = httpx.get(pc.url, follow_redirects=True, timeout=15)
+        resp = httpx.get(pc.url, follow_redirects=True, timeout=15, verify=verify)
     except httpx.ConnectError as exc:
         # httpx wraps ssl.SSLCertVerificationError in httpx.ConnectError.
         # A cert-verification failure is a trust-bundle issue on the test

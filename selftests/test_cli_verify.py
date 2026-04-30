@@ -29,6 +29,8 @@ def _make_args(**overrides) -> argparse.Namespace:
         "test_timeout": DEFAULT_TEST_TIMEOUT_SECONDS,
         "headless_auth": False,
         "idp": None,
+        "insecure": False,
+        "ca_bundle": None,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -790,5 +792,54 @@ class TestAuthCliFlags:
             cfg = load_config(path)
             assert cfg.auth.idp == "keycloak"
             assert cfg.auth.provider == "oidc"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+
+class TestVerifyLocalTLSFlags:
+    """--insecure and --ca-bundle are encoded in the temp config."""
+
+    def test_insecure_written_to_temp_config(self, tmp_path, monkeypatch):
+        """--insecure=True is written to the generated temp TOML."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(connect_url="https://c.example.com", insecure=True))
+        try:
+            cfg = load_config(path)
+            assert cfg.insecure is True
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_ca_bundle_written_to_temp_config(self, tmp_path, monkeypatch):
+        """--ca-bundle path is written to the generated temp TOML."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(connect_url="https://c.example.com", ca_bundle=bundle)
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.ca_bundle == bundle
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_no_tls_section_when_flags_absent(self, tmp_path, monkeypatch):
+        """When neither --insecure nor --ca-bundle is passed, no [tls] section."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+
+        path = _generate_temp_config(_make_args(connect_url="https://c.example.com"))
+        try:
+            content = Path(path).read_text()
+            assert "[tls]" not in content
         finally:
             Path(path).unlink(missing_ok=True)

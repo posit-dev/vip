@@ -302,6 +302,9 @@ class VIPConfig:
     monitoring_enabled: bool = False
     security_policy_checks_enabled: bool = False
 
+    insecure: bool = False
+    ca_bundle: Path | None = None
+
     def validate_for_mode(self, mode: Mode) -> None:
         """Raise ValueError if required fields are missing for *mode*.
 
@@ -364,6 +367,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     security_raw = raw.get("security", {})
     runtimes_raw = raw.get("runtimes", {})
     performance_raw = raw.get("performance", {})
+    tls_raw = raw.get("tls", {})
 
     data_sources: list[DataSourceEntry] = []
     for name, ds in data_sources_raw.items():
@@ -392,4 +396,6 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         email_enabled=email_raw.get("enabled", False),
         monitoring_enabled=monitoring_raw.get("enabled", False),
         security_policy_checks_enabled=security_raw.get("policy_checks_enabled", False),
+        insecure=tls_raw.get("insecure", False),
+        ca_bundle=Path(tls_raw["ca_bundle"]) if tls_raw.get("ca_bundle") else None,
     )

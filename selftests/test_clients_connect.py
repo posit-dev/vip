@@ -208,3 +208,67 @@ def test_fetch_content_allows_explicit_default_port(monkeypatch):
 
     assert resp.status_code == 200
     assert resp.content == expected_body
+
+
+# ---------------------------------------------------------------------------
+# TLS configuration round-trip tests
+# ---------------------------------------------------------------------------
+
+
+def test_connect_client_verify_false_when_insecure(monkeypatch):
+    """ConnectClient with insecure=True passes verify=False to httpx.get."""
+    base_url = "https://connect.example.com"
+    initial_url = f"{base_url}/content/abc/"
+    captured: list[dict] = []
+
+    def fake_get(url, **kwargs):
+        captured.append(kwargs)
+        return _make_response(200, url=url, body=b"ok")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = ConnectClient(base_url=base_url, api_key="key", insecure=True)
+    client.fetch_content(initial_url)
+
+    assert captured, "httpx.get was not called"
+    assert captured[0].get("verify") is False
+
+
+def test_connect_client_verify_ca_bundle(monkeypatch, tmp_path):
+    """ConnectClient with ca_bundle set passes verify=<path> to httpx.get."""
+    base_url = "https://connect.example.com"
+    initial_url = f"{base_url}/content/abc/"
+    bundle = tmp_path / "ca.pem"
+    bundle.write_text("fake-pem")
+    captured: list[dict] = []
+
+    def fake_get(url, **kwargs):
+        captured.append(kwargs)
+        return _make_response(200, url=url, body=b"ok")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = ConnectClient(base_url=base_url, api_key="key", ca_bundle=bundle)
+    client.fetch_content(initial_url)
+
+    assert captured, "httpx.get was not called"
+    assert captured[0].get("verify") == str(bundle)
+
+
+def test_connect_client_verify_true_by_default(monkeypatch):
+    """ConnectClient without TLS flags passes verify=True to httpx.get."""
+    base_url = "https://connect.example.com"
+    initial_url = f"{base_url}/content/abc/"
+    captured: list[dict] = []
+
+    def fake_get(url, **kwargs):
+        captured.append(kwargs)
+        return _make_response(200, url=url, body=b"ok")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    client = ConnectClient(base_url=base_url, api_key="key")
+    client.fetch_content(initial_url)
+
+    assert captured, "httpx.get was not called"
+    assert captured[0].get("verify") is True

@@ -216,7 +216,9 @@ class TestInteractiveAuthSessionCleanup:
         with patch("vip.auth._delete_api_key") as deleter:
             session.cleanup()
 
-        deleter.assert_called_once_with("https://c.example.com", "LIVE", "_vip_interactive_1")
+        deleter.assert_called_once_with(
+            "https://c.example.com", "LIVE", "_vip_interactive_1", insecure=False, ca_bundle=None
+        )
 
     def test_deletes_when_cache_state_file_is_missing(self, tmp_path):
         """Meta without state is stale metadata — there is no cache the next
@@ -248,7 +250,9 @@ class TestInteractiveAuthSessionCleanup:
         with patch("vip.auth._delete_api_key") as deleter:
             session.cleanup()
 
-        deleter.assert_called_once_with("https://c.example.com", "LIVE", "_vip_interactive_1")
+        deleter.assert_called_once_with(
+            "https://c.example.com", "LIVE", "_vip_interactive_1", insecure=False, ca_bundle=None
+        )
 
     def test_deletes_when_cache_state_file_is_malformed(self, tmp_path):
         """A corrupted cache state file is unusable — Playwright will fail to
@@ -276,7 +280,9 @@ class TestInteractiveAuthSessionCleanup:
         with patch("vip.auth._delete_api_key") as deleter:
             session.cleanup()
 
-        deleter.assert_called_once_with("https://c.example.com", "LIVE", "_vip_interactive_1")
+        deleter.assert_called_once_with(
+            "https://c.example.com", "LIVE", "_vip_interactive_1", insecure=False, ca_bundle=None
+        )
 
     def test_deletes_when_cache_references_a_different_key(self, tmp_path):
         """Concurrent run overwrote the cache with its own key → our key is
@@ -286,7 +292,9 @@ class TestInteractiveAuthSessionCleanup:
         with patch("vip.auth._delete_api_key") as deleter:
             session.cleanup()
 
-        deleter.assert_called_once_with("https://c.example.com", "MINE", "_vip_interactive_1")
+        deleter.assert_called_once_with(
+            "https://c.example.com", "MINE", "_vip_interactive_1", insecure=False, ca_bundle=None
+        )
 
     def test_deletes_when_session_has_no_cache_path(self, tmp_path):
         """Sessions created outside the caching flow (``_cache_path`` unset)
@@ -305,7 +313,9 @@ class TestInteractiveAuthSessionCleanup:
         with patch("vip.auth._delete_api_key") as deleter:
             session.cleanup()
 
-        deleter.assert_called_once_with("https://c.example.com", "LIVE", "_vip_interactive_1")
+        deleter.assert_called_once_with(
+            "https://c.example.com", "LIVE", "_vip_interactive_1", insecure=False, ca_bundle=None
+        )
 
 
 class TestAuthenticateWorkbench:
@@ -813,3 +823,54 @@ class TestCreateApiKeyViaSession:
         assert result == "K" * 30
         assert req.get.called, "GET /v1/user must route through page.context.request"
         assert req.post.call_args.kwargs["headers"]["X-Rsc-Xsrf"] == "live-token"
+
+
+class TestHeadlessAuthTLSFlags:
+    """start_headless_auth passes TLS config to browser.new_context()."""
+
+    def _make_playwright_stub(self) -> MagicMock:
+        """Stub sync_playwright() that raises PlaywrightTimeoutError on goto
+        (so the test terminates quickly without completing auth)."""
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+        pw = MagicMock()
+        browser = pw.start.return_value.chromium.launch.return_value
+        page = browser.new_context.return_value.new_page.return_value
+        page.goto.side_effect = PlaywrightTimeoutError("stub timeout")
+        return pw
+
+    def test_insecure_passes_ignore_https_errors(self):
+        """insecure=True must call new_context(ignore_https_errors=True)."""
+        stub = self._make_playwright_stub()
+        browser = stub.start.return_value.chromium.launch.return_value
+
+        with patch("vip.auth.sync_playwright", return_value=stub):
+            with pytest.raises(Exception):  # timeout or AuthConfigError
+                start_headless_auth(
+                    connect_url="https://c.example.com",
+                    username="user",
+                    password="pass",
+                    insecure=True,
+                )
+
+        browser.new_context.assert_called_once()
+        kwargs = browser.new_context.call_args.kwargs
+        assert kwargs.get("ignore_https_errors") is True
+
+    def test_no_insecure_does_not_set_ignore_https_errors(self):
+        """Without insecure, new_context should not receive ignore_https_errors=True."""
+        stub = self._make_playwright_stub()
+        browser = stub.start.return_value.chromium.launch.return_value
+
+        with patch("vip.auth.sync_playwright", return_value=stub):
+            with pytest.raises(Exception):
+                start_headless_auth(
+                    connect_url="https://c.example.com",
+                    username="user",
+                    password="pass",
+                    insecure=False,
+                )
+
+        browser.new_context.assert_called_once()
+        kwargs = browser.new_context.call_args.kwargs
+        assert not kwargs.get("ignore_https_errors")

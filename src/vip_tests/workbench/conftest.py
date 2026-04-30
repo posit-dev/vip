@@ -203,11 +203,13 @@ def _cleanup_sessions(page, workbench_client):
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
         # Use a temporary client so the session-scoped workbench_client's
-        # cookie jar is never mutated.
+        # cookie jar is never mutated.  Inherit TLS config from the session
+        # client so --insecure / --ca-bundle are honoured here too.
         with httpx.Client(
             base_url=workbench_client.base_url,
             cookies=cookies,
             timeout=30.0,
+            verify=workbench_client._verify,
         ) as tmp:
             resp = tmp.get("/api/sessions")
             sessions = resp.json() if resp.status_code == 200 else []
