@@ -45,9 +45,10 @@ VALID_CATEGORIES: dict[str, str] = {
 }
 
 # Categories that are excluded from the default ``vip verify`` run and only
-# executed when the user opts in via ``--categories``.  These tests check
-# VIP's own configuration rather than the Posit deployment.
-_OPT_IN_CATEGORIES = frozenset({"config_hygiene"})
+# executed when the user explicitly opts in, either via ``--categories`` or
+# a dedicated opt-in flag (for example ``--performance-tests``). These tests
+# check VIP's own configuration rather than the Posit deployment.
+_OPT_IN_CATEGORIES = frozenset({"config_hygiene", "performance"})
 
 # Marker expression keywords that are not category names.
 _MARKER_KEYWORDS = {"and", "or", "not"}
@@ -67,13 +68,28 @@ def _valid_categories_message() -> str:
     return ", ".join(sorted(seen.values()))
 
 
-def _default_marker_expr() -> str:
+def _default_marker_expr(extra_keep: frozenset[str] = frozenset()) -> str:
     """Marker expression applied when the user doesn't pass ``--categories``.
 
     Excludes every opt-in category so that ``vip verify`` runs only the
-    product-verification tests by default.
+    product-verification tests by default.  Pass ``extra_keep`` to re-include
+    specific opt-in categories (e.g. ``frozenset({"performance"})`` when
+    ``--performance-tests`` is set).
     """
-    return " and ".join(f"not {name}" for name in sorted(_OPT_IN_CATEGORIES))
+    excluded = _OPT_IN_CATEGORIES - extra_keep
+    return " and ".join(f"not {name}" for name in sorted(excluded))
+
+
+def _extra_keep_from_args(args: argparse.Namespace) -> frozenset[str]:
+    """Return the set of opt-in categories to re-include based on CLI flags.
+
+    For example, ``--performance-tests`` adds ``"performance"`` to the set so
+    that :func:`_default_marker_expr` keeps it in the expression.
+    """
+    extra: set[str] = set()
+    if getattr(args, "performance_tests", False):
+        extra.add("performance")
+    return frozenset(extra)
 
 
 def _normalize_categories(expr: str) -> str:
@@ -541,7 +557,7 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     if args.categories:
         cmd.extend(["-m", _normalize_categories(args.categories)])
     else:
-        cmd.extend(["-m", _default_marker_expr()])
+        cmd.extend(["-m", _default_marker_expr(_extra_keep_from_args(args))])
     if args.filter_expr:
         cmd.extend(["-k", args.filter_expr])
 
@@ -623,7 +639,7 @@ def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
             categories=(
                 _normalize_categories(args.categories)
                 if args.categories
-                else _default_marker_expr()
+                else _default_marker_expr(_extra_keep_from_args(args))
             ),
             filter_expr=getattr(args, "filter_expr", None),
             timeout_seconds=pytest_timeout,
@@ -913,7 +929,15 @@ def main() -> None:
         "--categories",
         default=None,
         help="Test categories as a pytest marker expression "
-        "(e.g. 'connect', 'package-manager', 'performance and workbench')",
+        "(e.g. 'connect', 'package-manager', 'workbench'). "
+        "To include performance tests use --performance-tests instead.",
+    )
+    verify_parser.add_argument(
+        "--performance-tests",
+        action="store_true",
+        default=False,
+        help="Include performance tests in the default selection (excluded otherwise). "
+        "Has no effect when --categories is also specified.",
     )
     verify_parser.add_argument(
         "-f",

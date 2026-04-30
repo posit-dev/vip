@@ -94,7 +94,7 @@ markers = [
     "package_manager: tests for Posit Package Manager",
     "prerequisites: prerequisite checks that run first",
     "cross_product: tests that span multiple products",
-    "performance: performance validation tests",
+    "performance: performance validation tests (opt-in; excluded by default)",
     "security: security validation tests",
     "config_hygiene: checks of VIP's own configuration (opt-in; excluded by default)",
     "min_version(product, version): only run when product meets minimum version",

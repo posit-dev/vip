@@ -205,6 +205,26 @@ class TestPluginIntegration:
         result.assert_outcomes()
         result.stdout.fnmatch_lines(["*1 deselected*"])
 
+    def test_performance_deselected_by_default(self, selftest_pytester):
+        """_default_marker_expr excludes performance when --performance-tests is not set."""
+        import argparse
+
+        from vip.cli import _default_marker_expr, _extra_keep_from_args
+
+        args = argparse.Namespace(performance_tests=False)
+        expr = _default_marker_expr(_extra_keep_from_args(args))
+        assert "not performance" in expr
+
+    def test_performance_runs_with_flag(self, selftest_pytester):
+        """_default_marker_expr omits the performance exclusion when --performance-tests is set."""
+        import argparse
+
+        from vip.cli import _default_marker_expr, _extra_keep_from_args
+
+        args = argparse.Namespace(performance_tests=True)
+        expr = _default_marker_expr(_extra_keep_from_args(args))
+        assert "not performance" not in expr
+
     def test_bdd_given_configured_step_deselected(self, selftest_pytester):
         """A BDD scenario with 'Given Connect is configured in vip.toml'
         should be deselected (not skipped) when Connect is not configured."""

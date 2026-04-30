@@ -29,6 +29,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "test_timeout": DEFAULT_TEST_TIMEOUT_SECONDS,
         "headless_auth": False,
         "idp": None,
+        "performance_tests": False,
         "insecure": False,
         "ca_bundle": None,
     }
@@ -559,6 +560,123 @@ class TestConfigHygieneOptIn:
         expr = _default_marker_expr()
         for category in _OPT_IN_CATEGORIES:
             assert f"not {category}" in expr
+
+
+class TestPerformanceOptIn:
+    """performance tests are excluded by default and run with --performance-tests."""
+
+    @staticmethod
+    def _marker_expr(cmd: list[str]) -> str:
+        """Return the pytest marker expression from the assembled command."""
+        first = cmd.index("-m")
+        second = cmd.index("-m", first + 1)
+        return cmd[second + 1]
+
+    def test_default_filter_excludes_performance(self, tmp_path):
+        """Without --performance-tests, the marker expression excludes performance."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg)))
+        assert "not performance" in self._marker_expr(cmd)
+
+    def test_performance_tests_flag_removes_exclusion(self, tmp_path):
+        """With --performance-tests, performance is no longer excluded from the expr."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), performance_tests=True))
+        assert "not performance" not in self._marker_expr(cmd)
+
+    def test_explicit_category_overrides_performance_flag(self, tmp_path):
+        """When --categories is set, --performance-tests has no effect on the expr."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(
+            _make_args(config=str(cfg), categories="connect", performance_tests=True)
+        )
+        assert self._marker_expr(cmd) == "connect"
+
+    @staticmethod
+    def _capture_k8s_categories(args: argparse.Namespace) -> str:
+        """Run _run_k8s_job with mocked K8s helpers and return the categories= value."""
+        from unittest.mock import MagicMock, patch
+
+        captured: dict[str, str] = {}
+
+        def fake_create_job(_job_name, _namespace, _cm_name, **kwargs):
+            captured["categories"] = kwargs.get("categories", "")
+
+        with (
+            patch("vip.cli.secrets.token_hex", return_value="abcd1234"),
+            patch("vip.verify.job.create_config_map"),
+            patch("vip.verify.job.create_job", side_effect=fake_create_job),
+            patch("vip.verify.job.stream_logs"),
+            patch(
+                "vip.verify.job.wait_for_job",
+                return_value=MagicMock(status=MagicMock(failed=None)),
+            ),
+            patch("vip.verify.job.cleanup"),
+        ):
+            from vip.cli import _run_k8s_job
+
+            _run_k8s_job("[general]\n", args)
+        return captured.get("categories", "")
+
+    def test_k8s_default_excludes_performance(self):
+        """K8s path: without --performance-tests, categories expr excludes performance."""
+        args = argparse.Namespace(
+            categories=None,
+            performance_tests=False,
+            namespace="posit-team",
+            image="vip:latest",
+            timeout=3600,
+            filter_expr=None,
+            verbose=False,
+        )
+        categories = self._capture_k8s_categories(args)
+        assert "not performance" in categories
+
+    def test_k8s_flag_removes_exclusion(self):
+        """K8s path: with --performance-tests, performance is not excluded."""
+        args = argparse.Namespace(
+            categories=None,
+            performance_tests=True,
+            namespace="posit-team",
+            image="vip:latest",
+            timeout=3600,
+            filter_expr=None,
+            verbose=False,
+        )
+        categories = self._capture_k8s_categories(args)
+        assert "not performance" not in categories
+
+
+class TestExtraKeepFromArgs:
+    """_extra_keep_from_args mirrors --performance-tests on both local and K8s paths."""
+
+    def test_no_flag_returns_empty(self):
+        """Without --performance-tests the extra-keep set is empty."""
+        from vip.cli import _default_marker_expr, _extra_keep_from_args
+
+        args = argparse.Namespace(performance_tests=False)
+        extra = _extra_keep_from_args(args)
+        assert extra == frozenset()
+        assert "not performance" in _default_marker_expr(extra)
+
+    def test_flag_includes_performance(self):
+        """With --performance-tests the extra-keep set contains 'performance'."""
+        from vip.cli import _default_marker_expr, _extra_keep_from_args
+
+        args = argparse.Namespace(performance_tests=True)
+        extra = _extra_keep_from_args(args)
+        assert "performance" in extra
+        assert "not performance" not in _default_marker_expr(extra)
+
+    def test_missing_attr_treated_as_false(self):
+        """If performance_tests attribute is absent (K8s path before flag), treat as False."""
+        from vip.cli import _extra_keep_from_args
+
+        args = argparse.Namespace()  # no performance_tests attr
+        assert _extra_keep_from_args(args) == frozenset()
 
 
 class TestVerifyLocalTestTimeout:
