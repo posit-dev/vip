@@ -17,19 +17,19 @@ setup-rhel:
 
 # Run ruff linter
 lint:
-    uv run ruff check src/ tests/ selftests/ examples/
+    uv run ruff check src/ selftests/ examples/ docker/
 
 # Run ruff formatter check (fails if files would change)
 format-check:
-    uv run ruff format --check src/ tests/ selftests/ examples/
+    uv run ruff format --check src/ selftests/ examples/ docker/
 
 # Auto-fix lint issues
 lint-fix:
-    uv run ruff check --fix src/ tests/ selftests/ examples/
+    uv run ruff check --fix src/ selftests/ examples/ docker/
 
 # Format code in place
 format:
-    uv run ruff format src/ tests/ selftests/ examples/
+    uv run ruff format src/ selftests/ examples/ docker/
 
 # Run all checks (lint + format)
 check: lint format-check
