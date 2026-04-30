@@ -89,25 +89,22 @@ def deploy_state():
 # ---------------------------------------------------------------------------
 
 
-_PLUMBER_BUNDLE = {
-    "plumber.R": ('#* @get /\nfunction() {\n  list(message = "VIP test OK")\n}\n'),
-    "manifest.json": (pathlib.Path(__file__).parent / "plumber_manifest.json").read_text(),
-}
-
-# Bundles that need runtime versions are built dynamically in _get_bundle().
-_STATIC_BUNDLES: dict[str, dict[str, str]] = {
-    "vip-plumber-test": _PLUMBER_BUNDLE,
-}
-
-
 def _get_bundle(name: str, connect_client) -> dict[str, str]:
     """Return the bundle files for *name*, building manifests dynamically.
 
-    Quarto, Shiny, and Dash manifests need real runtime versions from the
+    All R/Quarto/Python manifests need real runtime versions from the
     server so they are constructed at test time rather than at import time.
     """
-    if name in _STATIC_BUNDLES:
-        return _STATIC_BUNDLES[name]
+    if name == "vip-plumber-test":
+        r_versions = connect_client.r_versions()
+        if not r_versions:
+            pytest.skip("No R versions available on Connect — cannot deploy Plumber")
+        manifest = json.loads((pathlib.Path(__file__).parent / "plumber_manifest.json").read_text())
+        manifest["platform"] = r_versions[0]
+        return {
+            "plumber.R": '#* @get /\nfunction() {\n  list(message = "VIP test OK")\n}\n',
+            "manifest.json": json.dumps(manifest),
+        }
 
     if name == "vip-quarto-test":
         quarto_versions = connect_client.quarto_versions()
@@ -138,7 +135,6 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         r_versions = connect_client.r_versions()
         if not r_versions:
             pytest.skip("No R versions available on Connect — cannot deploy Shiny")
-        # Use the pre-built manifest with full dependency tree (like plumber).
         manifest = json.loads((pathlib.Path(__file__).parent / "shiny_manifest.json").read_text())
         manifest["platform"] = r_versions[0]
         return {
