@@ -100,6 +100,25 @@ def test_save_cleans_up_tmp_on_write_failure(tmp_path: Path, monkeypatch):
     assert not tmp_path_expected.exists()
 
 
+def test_load_malformed_items_entry_missing_field_raises(tmp_path: Path):
+    """A system_package item missing 'name' should raise ManifestError, not KeyError."""
+    path = tmp_path / ".vip-install.json"
+    item = {"kind": "system_package", "manager": "dnf", "installed_at": "2026-01-01T00:00:00Z"}
+    data = {"version": SCHEMA_VERSION, "items": [item]}
+    path.write_text(json.dumps(data))
+    with pytest.raises(ManifestError, match="missing required field"):
+        load(path)
+
+
+def test_load_malformed_items_non_dict_entry_raises(tmp_path: Path):
+    """A non-dict entry in 'items' should raise ManifestError, not AttributeError."""
+    path = tmp_path / ".vip-install.json"
+    data = {"version": SCHEMA_VERSION, "items": ["not-a-dict"]}
+    path.write_text(json.dumps(data))
+    with pytest.raises(ManifestError, match="is not an object"):
+        load(path)
+
+
 def test_pending_package_helpers():
     m = _sample_manifest()
     assert m.pending_packages_set() == {"libdrm"}

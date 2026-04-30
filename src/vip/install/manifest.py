@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import socket
@@ -96,24 +97,33 @@ def load(path: Path) -> Manifest | None:
             f"({SCHEMA_VERSION}). Upgrade vip and try again."
         )
     items: list[Item] = []
-    for raw in data.get("items", []):
+    for idx, raw in enumerate(data.get("items", [])):
+        if not isinstance(raw, dict):
+            raise ManifestError(f"Manifest at {path} item {idx} is not an object: {raw!r}")
         kind = raw.get("kind")
-        if kind == "system_package":
-            items.append(
-                SystemPackageItem(
-                    manager=raw["manager"], name=raw["name"], installed_at=raw["installed_at"]
+        try:
+            if kind == "system_package":
+                items.append(
+                    SystemPackageItem(
+                        manager=raw["manager"],
+                        name=raw["name"],
+                        installed_at=raw["installed_at"],
+                    )
                 )
-            )
-        elif kind == "playwright_browser":
-            items.append(
-                PlaywrightItem(
-                    browser=raw["browser"],
-                    cache_dir=raw["cache_dir"],
-                    installed_at=raw["installed_at"],
+            elif kind == "playwright_browser":
+                items.append(
+                    PlaywrightItem(
+                        browser=raw["browser"],
+                        cache_dir=raw["cache_dir"],
+                        installed_at=raw["installed_at"],
+                    )
                 )
-            )
-        else:
-            raise ManifestError(f"Manifest at {path} has unknown item kind {kind!r}.")
+            else:
+                raise ManifestError(f"Manifest at {path} has unknown item kind {kind!r}.")
+        except (KeyError, TypeError) as exc:
+            raise ManifestError(
+                f"Manifest at {path} item {idx} ({kind}) is missing required field: {exc}"
+            ) from exc
     return Manifest(
         version=version,
         vip_version=data.get("vip_version", ""),
@@ -146,7 +156,8 @@ def save(manifest: Manifest, path: Path) -> None:
         tmp.write_text(json.dumps(serialized, indent=2, sort_keys=False) + "\n")
         os.replace(tmp, path)
     except Exception:
-        tmp.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
         raise
 
 
