@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.29.0 (2026-05-01)
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group across 1 directory with 3 updates
+  ([#230](https://github.com/posit-dev/vip/pull/230),
+  [`a4cec4f`](https://github.com/posit-dev/vip/commit/a4cec4ff0e3ac387922d30705ac14a44b91e3967))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump the python-dependencies group across 1 directory with 4 updates
+  ([#229](https://github.com/posit-dev/vip/pull/229),
+  [`84d1ce5`](https://github.com/posit-dev/vip/commit/84d1ce54f4fb596430ebd115ac88f5b10a46c1cb))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Features
+
+- Add install and uninstall commands, including RHEL support
+  ([#241](https://github.com/posit-dev/vip/pull/241),
+  [`073e22a`](https://github.com/posit-dev/vip/commit/073e22acfd02443006f2bb35ad2fb0c67a320176))
+
+
 ## v0.28.0 (2026-04-30)
 
 ### Features
