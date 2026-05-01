@@ -126,7 +126,12 @@ def test_debian_packages_is_tuple_of_strings():
 
 def test_list_reviewed_against_playwright_matches_pinned_version():
     """Reminds maintainer to review DEBIAN_PACKAGES when playwright is bumped."""
-    import tomllib
+    import sys
+
+    if sys.version_info >= (3, 11):
+        import tomllib
+    else:
+        import tomli as tomllib  # type: ignore[no-redef]
 
     pyproject = tomllib.loads(Path("pyproject.toml").read_text())
     deps = pyproject["project"]["dependencies"]
