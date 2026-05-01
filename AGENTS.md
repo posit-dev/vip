@@ -10,8 +10,14 @@ VIP is a BDD test suite that validates Posit Team deployments (Connect, Workbenc
 
 ``` bash
 uv sync                          # install dependencies
-uv run playwright install --with-deps chromium
+uv run vip install               # system packages (dnf/apt) + Playwright Chromium
 ```
+
+`vip install` detects the platform (RHEL family, Debian/Ubuntu, macOS), installs
+only the Chromium runtime libs that are missing, and records what it added to
+`.vip-install.json` so `vip uninstall` can reverse exactly those changes. On
+non-root Linux it prints the `sudo dnf install` / `sudo apt install` command for
+you to run, then claims those packages on the next `vip install` run.
 
 Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `python` or `pip` -- everything runs through uv.
 
@@ -139,7 +145,7 @@ Key principles:
 
 | File | Purpose |
 |------------------------------------|------------------------------------|
-| `src/vip/cli.py` | CLI entry point: verify, cleanup, cluster, auth commands |
+| `src/vip/cli.py` | CLI entry point: verify, cleanup, install, uninstall, cluster, auth commands |
 | `src/vip/config.py` | TOML config loader, dataclasses, `Mode` enum, per-mode validation |
 | `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers |
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
@@ -155,6 +161,12 @@ Key principles:
 | `src/vip/verify/site.py` | PTD Site CR parsing, vip.toml generation |
 | `src/vip/verify/credentials.py` | Keycloak + interactive credential provisioning |
 | `src/vip/verify/job.py` | K8s Job creation, log streaming, cleanup |
+| `src/vip/install/platform.py` | Distro detection (rhel/debian/macos) + canonical Chromium package lists |
+| `src/vip/install/manifest.py` | `.vip-install.json` read/write (atomic), schema gate, pending-package helpers |
+| `src/vip/install/packages.py` | `rpm -q` / `dpkg-query` wrappers for pre-existing detection |
+| `src/vip/install/playwright.py` | Playwright cache detection + `playwright install chromium` wrapper |
+| `src/vip/install/plan.py` | Pure `build_install_plan` / `build_uninstall_plan` builders |
+| `src/vip/install/runner.py` | Plan executor: dry-run formatting + execute (system packages, Playwright, manifest writes) |
 | `src/vip_tests/conftest.py` | Root fixtures: clients, auth, runtimes, data sources |
 | `report/index.qmd` | Quarto summary page |
 | `report/details.qmd` | Quarto detailed results page |
@@ -294,6 +306,8 @@ Two safe patterns:
 
 Similarly, avoid capturing absolute timestamps, PID numbers, or any other value that varies between runs. When `just` is not available in the environment, replace `just check` with the underlying `uv run ruff ...` commands directly.
 
+Beyond timing, watch for **flaky tests in the suite you exec**. If your demo runs `uv run pytest selftests/`, a single non-deterministic test elsewhere in the suite (e.g. timing-sensitive cases in `selftests/test_load_engine.py`) can fail verification on re-run even though your code is fine. Either narrow the demo to specific test paths (`selftests/install/`) or add `--ignore=<path>` for known-flaky files.
+
 ### What to demonstrate
 
 -   **New tests:** run the new tests and show them passing
@@ -335,3 +349,4 @@ Register warning filters in `src/vip/plugin.py::pytest_configure` (via `config.a
 -   Forgetting the `@connect`/`@workbench`/`@package_manager` tag in feature files (breaks auto-skip).
 -   Using non-conventional PR titles (must be `type: description`).
 -   Relying on multi-line formatting to shorten lines -- `ruff format` will collapse list comprehensions back to one line if they fit within 100 chars. Extract a helper function instead.
+-   Bypassing `vip install` with raw `uv run playwright install --with-deps chromium` (or `playwright install chromium`) in setup recipes, Dockerfiles, CI workflows, or docs. The whole `vip uninstall` reversibility relies on the `.vip-install.json` manifest that only `vip install` writes -- a raw `playwright install` leaves no record. The only acceptable alternative is `uv run vip install --skip-system` (used by CI workflows where the runner already has system libs), which still records the Playwright cache.

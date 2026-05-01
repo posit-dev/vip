@@ -19,7 +19,7 @@ that can be published to a Connect server.
 uv venv
 source .venv/bin/activate
 uv pip install posit-vip
-uv run playwright install --with-deps chromium
+uv run vip install
 vip verify --connect-url https://connect.example.com --interactive-auth
 ```
 
@@ -41,6 +41,24 @@ With a configuration file:
 cp vip.toml.example vip.toml     # edit with your deployment details
 vip verify --config vip.toml
 ```
+
+## Uninstalling
+
+To reverse what `vip install` (or `just setup`) did:
+
+```bash
+uv run vip uninstall        # dry run; prints the full plan including any sudo command
+uv run vip uninstall --yes  # remove Playwright cache + manifest; prints the sudo command
+                            # for any system packages so you can remove them yourself
+```
+
+`vip uninstall` only removes packages and files that `vip install` recorded
+in `.vip-install.json`; anything that was already on your machine before
+running `vip install` is left alone.
+
+If a Connect URL is configured (in `vip.toml` or via `--connect-url`),
+`vip uninstall` chains `vip cleanup` first to remove `_vip_test`-tagged
+content from Connect.
 
 ## CLI commands
 

@@ -755,6 +755,146 @@ def run_app(args: argparse.Namespace) -> None:
     )
 
 
+def run_install(args: argparse.Namespace) -> None:
+    """Provision system packages and Playwright Chromium for VIP local mode."""
+    from datetime import datetime, timezone
+
+    from vip.install import platform as plat
+    from vip.install.manifest import (
+        SCHEMA_VERSION,
+        Manifest,
+        current_host,
+        default_path,
+        load,
+    )
+    from vip.install.packages import PackageQueryError, installed_dpkg, installed_rpm
+    from vip.install.plan import build_install_plan
+    from vip.install.playwright import PlaywrightInstallError, chromium_installed, default_cache_dir
+    from vip.install.runner import execute_install_plan, format_install_plan
+
+    info = plat.detect()
+    manifest_path = default_path()
+    manifest = load(manifest_path)
+
+    cache_dir = default_cache_dir()
+
+    try:
+        plan = build_install_plan(
+            platform_info=info,
+            manifest=manifest,
+            rpm_installed=installed_rpm,
+            dpkg_installed=installed_dpkg,
+            chromium_present=chromium_installed(cache_dir),
+            playwright_cache_dir=cache_dir,
+            skip_system=bool(getattr(args, "skip_system", False)),
+        )
+
+        if getattr(args, "dry_run", False):
+            print(format_install_plan(plan), end="")
+            return
+
+        if manifest is None:
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            from vip import __version__ as vip_version
+
+            manifest = Manifest(
+                version=SCHEMA_VERSION,
+                vip_version=vip_version,
+                created_at=now,
+                updated_at=now,
+                host=current_host(),
+                platform=info.family,
+                platform_id=info.id,
+                platform_version=info.version,
+            )
+
+        rc = execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+    except (PlaywrightInstallError, PackageQueryError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    sys.exit(rc)
+
+
+def run_uninstall(args: argparse.Namespace) -> None:
+    """Reverse `vip install` using the manifest."""
+    from vip.install.manifest import (
+        ManifestError,
+        current_host,
+        default_path,
+        load,
+    )
+    from vip.install.plan import build_uninstall_plan
+    from vip.install.runner import execute_uninstall_plan
+
+    manifest_path = default_path()
+    try:
+        manifest = load(manifest_path)
+    except ManifestError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if manifest is None:
+        print(
+            f"No {manifest_path.name} found. Nothing to uninstall, or vip was "
+            "installed by a different mechanism.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if manifest.host != current_host() and not getattr(args, "force_host", False):
+        print(
+            f"Error: manifest host {manifest.host!r} does not match current host "
+            f"{current_host()!r}. Pass --force-host to override.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Resolve Connect URL for chained cleanup.
+    connect_url = getattr(args, "connect_url", None)
+    if not connect_url:
+        if sys.version_info >= (3, 11):
+            import tomllib as _tomllib
+        else:
+            import tomli as _tomllib  # type: ignore[no-redef]
+
+        cfg = None
+        try:
+            from vip.config import load_config
+
+            cfg = load_config()
+        except (_tomllib.TOMLDecodeError, ValueError) as exc:
+            print(
+                f"warning: failed to load vip.toml for chained cleanup: {exc}; "
+                "continuing without chained Connect cleanup",
+                file=sys.stderr,
+            )
+        if cfg and cfg.connect and cfg.connect.url:
+            connect_url = cfg.connect.url
+
+    plan = build_uninstall_plan(
+        manifest=manifest,
+        connect_url=connect_url,
+    )
+
+    cleanup_callable = None
+    if connect_url:
+        api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
+
+        def cleanup_callable(url: str) -> None:  # noqa: F811
+            from vip.clients.connect import ConnectClient
+
+            with ConnectClient(url, api_key) as client:
+                client.cleanup_vip_content()
+
+    rc = execute_uninstall_plan(
+        plan,
+        manifest_path=manifest_path,
+        yes=bool(getattr(args, "yes", False)),
+        cleanup_callable=cleanup_callable,
+    )
+    sys.exit(rc)
+
+
 def run_cleanup(args: argparse.Namespace) -> None:
     """Delete VIP test credentials and resources.
 
@@ -1061,6 +1201,58 @@ def main() -> None:
     )
     cleanup_parser.set_defaults(func=run_cleanup)
 
+    # vip install
+    install_parser = subparsers.add_parser(
+        "install",
+        help="Install system packages and Playwright Chromium",
+        description=(
+            "Install VIP's machine-side dependencies: Chromium runtime libraries "
+            "(via dnf or apt) and Playwright's Chromium browser. "
+            "Records what was installed in .vip-install.json so vip uninstall can "
+            "reverse only what this command added."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    install_parser.add_argument(
+        "--skip-system",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip the system-package step. VIP will not record those packages in "
+            ".vip-install.json, so vip uninstall will not propose removing them. "
+            "Use this when you manage system packages yourself or don't have sudo."
+        ),
+    )
+    install_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Print the plan without executing.",
+    )
+    install_parser.set_defaults(func=run_install)
+
+    # vip uninstall
+    uninstall_parser = subparsers.add_parser(
+        "uninstall",
+        help="Reverse vip install (dry-run by default; --yes to execute)",
+        description=(
+            "Reverse vip install using the per-project .vip-install.json manifest. "
+            "Removes the Playwright cache and manifest; prints the sudo command for "
+            "any system packages vip recorded so you can remove them yourself. "
+            "Always prints a dry-run plan; pass --yes to execute the user-space steps."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    uninstall_parser.add_argument("--yes", action="store_true", default=False)
+    uninstall_parser.add_argument("--force-host", action="store_true", default=False)
+    uninstall_parser.add_argument(
+        "--connect-url",
+        default=None,
+        help="Connect URL for chained vip cleanup (default: config / autodetect).",
+    )
+    uninstall_parser.add_argument("--api-key", default=None)
+    uninstall_parser.set_defaults(func=run_uninstall)
+
     # vip cluster
     cluster_parser = subparsers.add_parser("cluster", help="Cluster connection tools")
     cluster_sub = cluster_parser.add_subparsers(dest="cluster_command")
@@ -1129,6 +1321,8 @@ def main() -> None:
     subcommand_parsers = {
         "verify": verify_parser,
         "cleanup": cleanup_parser,
+        "install": install_parser,
+        "uninstall": uninstall_parser,
         "auth": auth_parser,
         "cluster": cluster_parser,
         "report": report_parser,

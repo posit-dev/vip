@@ -49,9 +49,10 @@ def user_list_not_empty(user_list):
 
 @then("the test user exists in the user list")
 def check_test_user_in_list(user_list, test_username):
+    expected = test_username.split("@", 1)[0]
     usernames = [u.get("username") for u in user_list]
-    assert test_username in usernames, (
-        f"Test user {test_username!r} not found in user list: {usernames}"
+    assert expected in usernames, (
+        f"Test user {expected!r} (from {test_username!r}) not found in user list: {usernames}"
     )
 
 

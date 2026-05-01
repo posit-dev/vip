@@ -205,7 +205,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Install Playwright browsers
-        run: uv run playwright install chromium
+        run: uv run vip install --skip-system
 
       - uses: quarto-dev/quarto-actions/setup@v2
         with:

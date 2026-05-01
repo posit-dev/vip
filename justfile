@@ -4,26 +4,29 @@
 default:
     @just --list
 
-# Install all dependencies with uv
+# Install all dependencies (system packages where possible, plus Playwright)
 setup:
     uv sync
-    uv run playwright install --with-deps chromium
+    uv run vip install
+
+# Same as `setup` — kept for muscle memory; vip install handles RHEL detection.
+setup-rhel: setup
 
 # Run ruff linter
 lint:
-    uv run ruff check src/ tests/ selftests/ examples/
+    uv run ruff check src/ selftests/ examples/ docker/
 
 # Run ruff formatter check (fails if files would change)
 format-check:
-    uv run ruff format --check src/ tests/ selftests/ examples/
+    uv run ruff format --check src/ selftests/ examples/ docker/
 
 # Auto-fix lint issues
 lint-fix:
-    uv run ruff check --fix src/ tests/ selftests/ examples/
+    uv run ruff check --fix src/ selftests/ examples/ docker/
 
 # Format code in place
 format:
-    uv run ruff format src/ tests/ selftests/ examples/
+    uv run ruff format src/ selftests/ examples/ docker/
 
 # Run all checks (lint + format)
 check: lint format-check
@@ -99,3 +102,11 @@ test-local-full *ARGS:
 report-selftest:
     uv run pytest selftests/
     cd report && uv run quarto render
+
+# Build and run the RHEL 9 headless Chromium smoke test
+rhel9-smoke:
+    ./scripts/rhel-smoke.sh 9
+
+# Build and run the RHEL 10 headless Chromium smoke test
+rhel10-smoke:
+    ./scripts/rhel-smoke.sh 10
