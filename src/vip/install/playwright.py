@@ -102,6 +102,4 @@ def install_chromium() -> None:
         raise PlaywrightInstallError(f"playwright install chromium exited with exit {rc}")
 
     if filtered:
-        print(
-            "Installed Playwright Chromium (Ubuntu 24.04 fallback build for unsupported-OS hosts)."
-        )
+        print("Installed Playwright Chromium (Playwright fallback build for unsupported-OS hosts).")

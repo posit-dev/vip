@@ -93,6 +93,9 @@ def execute_install_plan(
             manifest.items.append(
                 SystemPackageItem(manager=system_step.manager, name=name, installed_at=now)
             )
+        manifest.pending_system_packages = [
+            p for p in manifest.pending_system_packages if p not in set(system_step.packages)
+        ]
 
     # Run Playwright step.
     if plan.playwright_step:

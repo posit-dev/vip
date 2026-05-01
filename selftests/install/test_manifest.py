@@ -151,6 +151,24 @@ def test_save_preserves_original_error_when_cleanup_fails(tmp_path: Path, monkey
         save(_sample_manifest(), path)
 
 
+def test_load_pending_system_packages_not_a_list_raises(tmp_path):
+    path = tmp_path / ".vip-install.json"
+    path.write_text(
+        json.dumps({"version": SCHEMA_VERSION, "items": [], "pending_system_packages": "abc"})
+    )
+    with pytest.raises(ManifestError, match="must be an array"):
+        load(path)
+
+
+def test_load_pending_system_packages_non_string_element_raises(tmp_path):
+    path = tmp_path / ".vip-install.json"
+    path.write_text(
+        json.dumps({"version": SCHEMA_VERSION, "items": [], "pending_system_packages": ["nss", 42]})
+    )
+    with pytest.raises(ManifestError, match="must contain only strings"):
+        load(path)
+
+
 def test_pending_package_helpers():
     m = _sample_manifest()
     assert m.pending_packages_set() == {"libdrm"}

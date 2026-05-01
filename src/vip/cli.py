@@ -1218,8 +1218,8 @@ def main() -> None:
         action="store_true",
         default=False,
         help=(
-            "Skip the system-package step. VIP will not track those packages in "
-            ".vip-install.json, so vip uninstall --system will not propose to remove them. "
+            "Skip the system-package step. VIP will not record those packages in "
+            ".vip-install.json, so vip uninstall will not propose removing them. "
             "Use this when you manage system packages yourself or don't have sudo."
         ),
     )

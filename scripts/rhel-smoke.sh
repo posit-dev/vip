@@ -18,7 +18,7 @@ echo "==> verifying vip install --dry-run reports already up to date"
 docker run --rm --platform linux/amd64 "vip-rhel${version}-smoke" \
     /bin/sh -c 'uv run vip install --dry-run | grep -q "already up to date"'
 
-echo "==> verifying vip uninstall --yes --venv --system runs cleanly"
+echo "==> verifying vip uninstall --yes runs cleanly"
 docker run --rm --platform linux/amd64 "vip-rhel${version}-smoke" \
-    /bin/sh -c 'uv run vip uninstall --yes --venv --system | tee /tmp/uninst.log; \
+    /bin/sh -c 'uv run vip uninstall --yes | tee /tmp/uninst.log; \
                 grep -q "vip uninstall: complete" /tmp/uninst.log'

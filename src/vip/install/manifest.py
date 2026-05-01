@@ -127,6 +127,13 @@ def load(path: Path) -> Manifest | None:
             raise ManifestError(
                 f"Manifest at {path} item {idx} ({kind}) is missing required field: {exc}"
             ) from exc
+    raw_pending = data.get("pending_system_packages", [])
+    if not isinstance(raw_pending, list):
+        raise ManifestError(f"Manifest at {path} field 'pending_system_packages' must be an array.")
+    if not all(isinstance(p, str) for p in raw_pending):
+        raise ManifestError(
+            f"Manifest at {path} field 'pending_system_packages' must contain only strings."
+        )
     return Manifest(
         version=version,
         vip_version=data.get("vip_version", ""),
@@ -137,7 +144,7 @@ def load(path: Path) -> Manifest | None:
         platform_id=data.get("platform_id"),
         platform_version=data.get("platform_version"),
         items=items,
-        pending_system_packages=list(data.get("pending_system_packages", [])),
+        pending_system_packages=raw_pending,
     )
 
 

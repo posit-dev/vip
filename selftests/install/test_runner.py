@@ -276,6 +276,37 @@ def test_execute_uninstall_plan_yes_prints_uv_uninstall_hint(tmp_path, capsys):
     assert "uv pip uninstall posit-vip" in captured.out
 
 
+def test_execute_install_plan_root_install_clears_pending(monkeypatch, tmp_path):
+    """Root-install path must drop the just-installed names from pending_system_packages."""
+    plan = InstallPlan(
+        platform="rhel-family",
+        platform_id="rhel",
+        platform_version="10",
+        system_step=SystemPackagesStep(manager="dnf", packages=("nss", "libdrm")),
+        playwright_step=None,
+    )
+    monkeypatch.setattr(rn, "is_root", lambda: True)
+    # Stub out the actual dnf call.
+    monkeypatch.setattr(rn, "_install_system_packages", lambda manager, packages: None)
+    manifest = _empty_manifest()
+    manifest.pending_system_packages = ["nss", "libdrm", "alsa-lib"]
+    manifest_path = tmp_path / ".vip-install.json"
+
+    rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+    assert rc == 0
+
+    from vip.install.manifest import load
+
+    saved = load(manifest_path)
+    assert "nss" not in saved.pending_system_packages
+    assert "libdrm" not in saved.pending_system_packages
+    assert "alsa-lib" in saved.pending_system_packages  # not part of system_step
+    # Each installed name should appear exactly once in items.
+    names = [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
+    assert names.count("nss") == 1
+    assert names.count("libdrm") == 1
+
+
 def test_execute_uninstall_plan_dry_run_does_not_print_uv_uninstall_hint(tmp_path, capsys):
     """The reminder should only appear after actual --yes execution."""
     manifest_path = tmp_path / ".vip-install.json"
