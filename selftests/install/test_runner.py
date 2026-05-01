@@ -41,7 +41,7 @@ def test_format_install_plan_empty():
         playwright_step=None,
     )
     text = rn.format_install_plan(plan)
-    assert "already up to date" in text
+    assert "nothing to install" in text
 
 
 def test_format_install_plan_with_packages_and_browser(tmp_path: Path):
@@ -138,7 +138,7 @@ def test_format_install_plan_unsupported_warning_visible_when_otherwise_empty():
         unsupported_warning="Platform void is unsupported; skipping system step.",
     )
     text = rn.format_install_plan(plan)
-    assert "already up to date" not in text
+    assert "nothing to install" not in text
     assert "warning" in text.lower()
     assert "void" in text  # platform id propagates
     assert "unsupported" in text  # warning text shows

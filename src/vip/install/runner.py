@@ -33,7 +33,7 @@ def _now() -> str:
 
 def format_install_plan(plan: InstallPlan) -> str:
     if plan.is_empty() and not plan.unsupported_warning:
-        return "vip install: already up to date.\n"
+        return "vip install: nothing to install.\n"
     lines = [
         f"vip install plan ({plan.platform_id or plan.platform} {plan.platform_version or ''}):"
     ]
