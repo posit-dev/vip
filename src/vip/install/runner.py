@@ -67,7 +67,8 @@ def execute_install_plan(
     """Execute an install plan. Returns CLI exit code (0=ok, 2=needs sudo)."""
     print(format_install_plan(plan), end="")
 
-    needs_root = bool(plan.system_step and plan.system_step.packages)
+    system_step = plan.system_step
+    needs_root = bool(system_step and system_step.packages)
     now = _now()
 
     # Always claim pending packages that are now present.
@@ -76,22 +77,21 @@ def execute_install_plan(
             plan.claim_pending, installed_at=now, manager=_manager_for(plan.platform)
         )
 
-    if needs_root and not is_root():
-        manifest.add_pending_packages(plan.system_step.packages)
+    if needs_root and system_step is not None and not is_root():
+        manifest.add_pending_packages(system_step.packages)
         manifest.updated_at = now
         save(manifest, manifest_path)
-        manager = plan.system_step.manager
-        cmd = "sudo dnf install -y" if manager == "dnf" else "sudo apt install -y"
-        print(f"\nNot running as root. Please run:\n  {cmd} {' '.join(plan.system_step.packages)}")
+        cmd = "sudo dnf install -y" if system_step.manager == "dnf" else "sudo apt install -y"
+        print(f"\nNot running as root. Please run:\n  {cmd} {' '.join(system_step.packages)}")
         print("Then re-run `vip install`.")
         return 2
 
     # Run system step ourselves if root.
-    if needs_root and is_root():
-        _install_system_packages(plan.system_step.manager, plan.system_step.packages)
-        for name in plan.system_step.packages:
+    if needs_root and system_step is not None and is_root():
+        _install_system_packages(system_step.manager, system_step.packages)
+        for name in system_step.packages:
             manifest.items.append(
-                SystemPackageItem(manager=plan.system_step.manager, name=name, installed_at=now)
+                SystemPackageItem(manager=system_step.manager, name=name, installed_at=now)
             )
 
     # Run Playwright step.
