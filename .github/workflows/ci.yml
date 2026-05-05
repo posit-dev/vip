@@ -50,8 +50,19 @@ jobs:
 
       - name: Enforce SHA-pinned actions
         run: |
-          findings=$(uvx zizmor==1.24.1 --format=json .github/workflows/ \
+          set +e
+          zizmor_output=$(uvx zizmor==1.24.1 --format=json .github/workflows/)
+          zizmor_status=$?
+          set -e
+
+          findings=$(printf '%s\n' "$zizmor_output" \
             | jq '[.[] | select(.ident == "unpinned-uses")] | length')
+
+          if [ "$zizmor_status" -ne 0 ] && [ -z "$zizmor_output" ]; then
+            echo "::error::zizmor failed before producing JSON output."
+            exit "$zizmor_status"
+          fi
+
           if [ "$findings" -gt 0 ]; then
             echo "::error::Found $findings unpinned action reference(s). Pin to a 40-char commit SHA with a version comment, e.g. actions/checkout@<sha> # v6."
             uvx zizmor==1.24.1 .github/workflows/ 2>&1 | grep -B1 -A6 'unpinned-uses' || true
