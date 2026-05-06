@@ -1,0 +1,20 @@
+---
+# zizmor configuration -- https://docs.zizmor.sh/configuration/
+#
+# `rules.<audit>.ignore` suppresses known-acceptable findings so genuine new
+# violations stand out in CI. Each ignore entry is `<filename>:<line>:<col>`
+# (column optional). If the line moves, update the entry.
+
+rules:
+  artipacked:
+    # `persist-credentials: false` is intentionally NOT set on these checkouts
+    # because the job needs the GitHub token to push back to the repo:
+    #   - release.yml      -- python-semantic-release pushes tags to main
+    #   - preview.yml      -- rossjrw/pr-preview-action pushes to gh-pages
+    #   - website-preview  -- rossjrw/pr-preview-action pushes to gh-pages
+    ignore:
+      - release.yml:18:9
+      - preview.yml:25:9
+      - preview.yml:45:9
+      - website-preview.yml:25:9
+      - website-preview.yml:89:9

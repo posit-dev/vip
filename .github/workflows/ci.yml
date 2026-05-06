@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - uses: astral-sh/ruff-action@4919ec5cf1f49eff0871dbcea0da843445b837e6 # v3
         name: Ruff lint
@@ -29,6 +31,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
@@ -45,35 +49,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
-      - name: Enforce SHA-pinned actions
+      - name: Enforce SHA-pinned actions and credential hygiene
+        env:
+          ENFORCED_AUDITS: "unpinned-uses artipacked"
         run: |
           set +e
-          zizmor_output=$(uvx zizmor==1.24.1 --format=json .github/workflows/)
+          zizmor_output=$(uvx zizmor==1.24.1 --config .github/zizmor.yml --format=json .github/workflows/)
           zizmor_status=$?
           set -e
-
-          findings=$(printf '%s\n' "$zizmor_output" \
-            | jq '[.[] | select(.ident == "unpinned-uses")] | length')
 
           if [ "$zizmor_status" -ne 0 ] && [ -z "$zizmor_output" ]; then
             echo "::error::zizmor failed before producing JSON output."
             exit "$zizmor_status"
           fi
 
-          if [ "$findings" -gt 0 ]; then
-            echo "::error::Found $findings unpinned action reference(s). Pin to a 40-char commit SHA with a version comment, e.g. actions/checkout@<sha> # v6."
-            uvx zizmor==1.24.1 .github/workflows/ 2>&1 | grep -B1 -A6 'unpinned-uses' || true
-            exit 1
-          fi
+          fail=0
+          for audit in $ENFORCED_AUDITS; do
+            count=$(printf '%s\n' "$zizmor_output" \
+              | jq --arg a "$audit" '[.[] | select(.ident == $a)] | length')
+            if [ "$count" -gt 0 ]; then
+              echo "::error::Found $count '$audit' finding(s). See documentation: https://docs.zizmor.sh/audits/#$audit"
+              uvx zizmor==1.24.1 --config .github/zizmor.yml .github/workflows/ 2>&1 | grep -B1 -A6 "$audit" || true
+              fail=1
+            fi
+          done
+
+          [ "$fail" -eq 0 ] || exit 1
 
   audit:
     name: Dependency Audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
@@ -93,6 +107,8 @@ jobs:
         python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
