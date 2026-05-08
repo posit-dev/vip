@@ -1,5 +1,4 @@
 # openSUSE Leap headless Chromium smoke test image
-# See docs/superpowers/specs/2026-05-08-mac-opensuse-ci-design.md
 FROM opensuse/leap:15
 
 # python312 is required by vip's pyproject.toml. procps provides ps.
