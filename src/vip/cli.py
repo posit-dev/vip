@@ -520,10 +520,18 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
+    if args.no_auth and args.api_auth:
+        print(
+            "\033[1mError: --no-auth and --api-auth are mutually exclusive.\033[0m",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
+
     # Print notes for products that are not configured so the user knows
     # upfront which categories will be skipped.
     _print_skip_notes(config_path)
-    if not args.no_auth:
+    if not args.no_auth and not args.api_auth:
         _check_credentials(
             config_path,
             interactive_auth=args.interactive_auth or args.headless_auth,
@@ -552,6 +560,8 @@ def _run_verify_local(args: argparse.Namespace) -> None:
         cmd.append("--headless-auth")
     if args.no_auth:
         cmd.append("--no-auth")
+    if args.api_auth:
+        cmd.append("--api-auth")
     for ext in args.extensions or []:
         cmd.append(f"--vip-extensions={ext}")
     if args.categories:
@@ -1062,6 +1072,12 @@ def main() -> None:
         action="store_true",
         default=False,
         help="Skip all tests that require authentication (Connect and Workbench)",
+    )
+    verify_parser.add_argument(
+        "--api-auth",
+        action="store_true",
+        default=False,
+        help="Run only API-key-authenticated tests; skip tests requiring browser credentials",
     )
 
     # Test selection
