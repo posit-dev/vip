@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import http.server
+import sys
 import threading
 
 import pytest
@@ -17,6 +18,15 @@ from vip.load_engine import (
     classify_repos,
     run_load_test,
     run_user_simulation,
+)
+
+# macOS GitHub runners can't sustain hundreds of concurrent localhost
+# connections (tighter ephemeral port range and listen backlog than Linux),
+# so the async load tests at 100+ requests see real failures unrelated to
+# the load engine. Skip those there; the same code paths run on Linux.
+_skip_high_concurrency_on_macos = pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="high-concurrency localhost loads are flaky on macOS CI runners",
 )
 
 # ---------------------------------------------------------------------------
@@ -118,11 +128,13 @@ class TestAsync:
         result = run_load_test(mock_server, {}, 10, config)
         assert result.total == 10
 
+    @_skip_high_concurrency_on_macos
     def test_all_succeed(self, mock_server):
         config = PerformanceConfig(load_test_tool="async")
         result = run_load_test(mock_server, {}, 100, config)
         assert result.failure_rate == 0.0
 
+    @_skip_high_concurrency_on_macos
     def test_1k_users(self, mock_server):
         config = PerformanceConfig(load_test_tool="async", load_max_connections=200)
         result = run_load_test(mock_server, {}, 1_000, config)
@@ -142,6 +154,7 @@ class TestAutoRouting:
         assert result.total == 50
         assert result.failure_rate == 0.0
 
+    @_skip_high_concurrency_on_macos
     def test_large_uses_async(self, mock_server):
         config = PerformanceConfig(load_test_tool="auto")
         result = run_load_test(mock_server, {}, 200, config)
