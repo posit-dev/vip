@@ -11,9 +11,44 @@ return pre-baked ``httpx.Response`` objects.
 
 from __future__ import annotations
 
+import subprocess
+
 import httpx
 
 from vip.clients.connect import ConnectClient
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_real_cert(path) -> None:
+    """Write a real (but self-signed) PEM certificate to *path*.
+
+    BaseClient now passes ``verify=ca_bundle`` to ``HTTPTransport``, which
+    validates the file at construction time.  A fake text file is rejected
+    with NO_CERTIFICATE_OR_CRL_FOUND; we need a real cert in the bundle.
+    """
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            "/dev/null",
+            "-out",
+            str(path),
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            "/CN=test-ca",
+        ],
+        check=True,
+        capture_output=True,
+    )
 
 
 def _make_response(
@@ -239,7 +274,9 @@ def test_connect_client_verify_ca_bundle(monkeypatch, tmp_path):
     base_url = "https://connect.example.com"
     initial_url = f"{base_url}/content/abc/"
     bundle = tmp_path / "ca.pem"
-    bundle.write_text("fake-pem")
+    # Use a real self-signed cert: BaseClient now passes verify to HTTPTransport,
+    # which validates the file at construction time.
+    _make_real_cert(bundle)
     captured: list[dict] = []
 
     def fake_get(url, **kwargs):
