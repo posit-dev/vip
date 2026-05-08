@@ -16,7 +16,10 @@ _SUSE_LIKE = {"opensuse-leap", "opensuse-tumbleweed", "sles", "suse", "opensuse"
 
 @dataclass(frozen=True)
 class PlatformInfo:
-    """Result of detect(). family is one of: rhel-family, debian-family, suse-family, macos, unsupported."""  # noqa: E501
+    """Result of detect().
+
+    family is one of: rhel-family, debian-family, suse-family, macos, unsupported.
+    """
 
     family: str
     id: str | None = None
