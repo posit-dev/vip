@@ -343,26 +343,67 @@ class TestAuthenticateWorkbench:
         assert "https://wb.example.com/pwb" in out
 
 
+class TestHttpxVerify:
+    """_httpx_verify derives the httpx ``verify`` value from TLS config params.
+
+    This is the single source of truth for the verify plumbing used by
+    _create_api_key_via_session and _delete_api_key (the latter already had
+    an inline equivalent; both now delegate to this helper).
+    """
+
+    def test_insecure_true_returns_false(self):
+        from vip.auth import _httpx_verify
+
+        assert _httpx_verify(True, None) is False
+
+    def test_ca_bundle_returns_str_path(self, tmp_path):
+        from vip.auth import _httpx_verify
+
+        ca = tmp_path / "ca.pem"
+        assert _httpx_verify(False, ca) == str(ca)
+
+    def test_defaults_return_true(self):
+        from vip.auth import _httpx_verify
+
+        assert _httpx_verify(False, None) is True
+
+    def test_insecure_wins_over_ca_bundle(self, tmp_path):
+        """When both insecure=True and a ca_bundle path are provided,
+        insecure wins — mirrors cli.py:391 logic."""
+        from vip.auth import _httpx_verify
+
+        ca = tmp_path / "ca.pem"
+        assert _httpx_verify(True, ca) is False
+
+
 class TestCreateApiKeyViaSession:
-    """_create_api_key_via_session routes through Playwright's
-    APIRequestContext (``page.context.request``) so cookies and XSRF
-    tokens ride the live browser session, sidestepping the cookiejar
-    re-encoding that broke earlier httpx-based attempts."""
+    """_create_api_key_via_session uses httpx + cookies extracted from the
+    browser session so that ``insecure`` / ``ca_bundle`` TLS settings are
+    honoured (issue #239).  All HTTP calls go through an ``httpx.Client``
+    constructed with the verify value derived from those parameters, not
+    through Playwright's ``APIRequestContext`` which has no verify equivalent.
+
+    Note on end-to-end coverage: these selftests confirm the plumbing shape
+    (correct verify value, correct cookie/header forwarding, correct orphan-key
+    logic).  Verifying that ``--insecure`` actually suppresses
+    ``CERTIFICATE_VERIFY_FAILED`` against a real self-signed Connect deployment
+    requires a manual test; @samcofer should validate before merge per the plan.
+    """
 
     @staticmethod
-    def _api_response(
+    def _httpx_response(
         *,
-        ok: bool = True,
-        status: int = 200,
+        is_success: bool = True,
+        status_code: int = 200,
         json_data=None,
-        text_data: str = "",
+        text: str = "",
     ) -> MagicMock:
-        """Stub a Playwright APIResponse with the given shape."""
+        """Stub an httpx Response with the given shape."""
         resp = MagicMock()
-        resp.ok = ok
-        resp.status = status
+        resp.is_success = is_success
+        resp.status_code = status_code
         resp.json.return_value = json_data if json_data is not None else {}
-        resp.text.return_value = text_data
+        resp.text = text
         return resp
 
     @staticmethod
@@ -380,10 +421,35 @@ class TestCreateApiKeyViaSession:
         page.context.cookies.return_value = cookies
         return page
 
+    def _patch_httpx_client(self, get_side_effect=None, post_rv=None, delete_side_effect=None):
+        """Return a context manager that patches httpx.Client with a stub.
+
+        The stub's ``__enter__`` returns a mock client whose ``.get()``,
+        ``.post()``, and ``.delete()`` are pre-configured.
+
+        ``_create_api_key_via_session`` does ``import httpx`` locally inside
+        the function, so the import is bound to the ``httpx`` module in
+        ``sys.modules`` at call time.  Patching ``httpx.Client`` directly
+        intercepts it regardless of where the import happens.
+        """
+        client_mock = MagicMock()
+        if get_side_effect is not None:
+            client_mock.get.side_effect = get_side_effect
+        if post_rv is not None:
+            client_mock.post.return_value = post_rv
+        if delete_side_effect is not None:
+            client_mock.delete.side_effect = delete_side_effect
+        # httpx.Client is used as a context manager (``with httpx.Client(...) as c``).
+        cm = MagicMock()
+        cm.__enter__ = MagicMock(return_value=client_mock)
+        cm.__exit__ = MagicMock(return_value=False)
+        client_cls = MagicMock(return_value=cm)
+        return patch("httpx.Client", client_cls), client_cls, client_mock
+
     def test_happy_path_creates_key_and_sends_xsrf(self):
         """List is empty (no orphans), POST returns a key string.
-        Every request must go through ``page.context.request`` with the
-        XSRF header taken from ``document.cookie``."""
+        The httpx Client must be constructed with the XSRF header and
+        cookies extracted from the browser session."""
         from vip.auth import _create_api_key_via_session
 
         page = self._page(
@@ -392,36 +458,82 @@ class TestCreateApiKeyViaSession:
                 {"name": "connect-session", "value": "sess-123", "httpOnly": True},
             ]
         )
-        req = page.context.request
 
-        me = self._api_response(json_data={"guid": "user-guid-abc"})
-        keys_list = self._api_response(json_data=[])
-        created = self._api_response(
+        me = self._httpx_response(json_data={"guid": "user-guid-abc"})
+        keys_list = self._httpx_response(json_data=[])
+        created = self._httpx_response(
             json_data={"id": "7", "name": "_vip_interactive_1", "key": "SECRETKEY" * 3}
         )
 
-        def get_side_effect(url, **_kwargs):
-            return me if url.endswith("/v1/user") else keys_list
+        def get_side_effect(path, **_kwargs):
+            return me if path.endswith("/v1/user") else keys_list
 
-        req.get.side_effect = get_side_effect
-        req.post.return_value = created
-
-        result = _create_api_key_via_session(
-            page, "https://connect.example.com", "_vip_interactive_1"
+        patcher, client_cls, client_mock = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
         )
+        with patcher:
+            result = _create_api_key_via_session(
+                page, "https://connect.example.com", "_vip_interactive_1"
+            )
 
         assert result == "SECRETKEY" * 3
 
-        # GET /v1/user must carry the XSRF header derived from document.cookie.
-        me_call = req.get.call_args_list[0]
-        assert me_call.args[0] == "https://connect.example.com/__api__/v1/user"
-        assert me_call.kwargs["headers"]["X-Rsc-Xsrf"] == "xsrf-token"
+        # httpx.Client must be constructed with the XSRF header and cookies.
+        init_kwargs = client_cls.call_args.kwargs
+        assert init_kwargs["headers"] == {"X-Rsc-Xsrf": "xsrf-token"}
+        assert init_kwargs["cookies"]["RSC-XSRF"] == "xsrf-token"
+        assert init_kwargs["cookies"]["connect-session"] == "sess-123"
 
-        # POST must carry the XSRF header and a JSON body with the key name.
-        post_call = req.post.call_args
+        # POST must include the key name.
+        post_call = client_mock.post.call_args
         assert post_call.args[0].endswith("/v1/users/user-guid-abc/keys")
-        assert post_call.kwargs["headers"]["X-Rsc-Xsrf"] == "xsrf-token"
         assert post_call.kwargs["data"] == {"name": "_vip_interactive_1"}
+
+    def test_insecure_flag_sets_verify_false(self):
+        """When insecure=True, httpx.Client must be constructed with verify=False."""
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(json_data=[])
+        created = self._httpx_response(json_data={"id": "1", "key": "K" * 30})
+
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
+
+        patcher, client_cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            result = _create_api_key_via_session(page, "https://c.example.com", "k", insecure=True)
+
+        assert result == "K" * 30
+        assert client_cls.call_args.kwargs["verify"] is False
+
+    def test_ca_bundle_sets_verify_path(self, tmp_path):
+        """When ca_bundle is set, httpx.Client must receive verify=str(ca_bundle)."""
+        from vip.auth import _create_api_key_via_session
+
+        ca = tmp_path / "ca.pem"
+        page = self._page()
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(json_data=[])
+        created = self._httpx_response(json_data={"id": "1", "key": "K" * 30})
+
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
+
+        patcher, client_cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            result = _create_api_key_via_session(page, "https://c.example.com", "k", ca_bundle=ca)
+
+        assert result == "K" * 30
+        assert client_cls.call_args.kwargs["verify"] == str(ca)
 
     def test_deletes_orphan_vip_keys_before_creating(self):
         """Old _vip_interactive_<ts> keys must be deleted before the POST."""
@@ -433,10 +545,8 @@ class TestCreateApiKeyViaSession:
         call_order: list[tuple[str, str | None]] = []
 
         page = self._page()
-        req = page.context.request
-
-        me = self._api_response(json_data={"guid": "g"})
-        keys_list = self._api_response(
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(
             json_data=[
                 {"id": "1", "name": f"_vip_interactive_{old_ts}"},
                 {"id": "2", "name": "my-personal-key"},
@@ -444,69 +554,72 @@ class TestCreateApiKeyViaSession:
             ]
         )
 
-        def get_side_effect(url, **_kwargs):
-            return me if url.endswith("/v1/user") else keys_list
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
 
-        def delete_side_effect(url, **_kwargs):
-            call_order.append(("DELETE", url.rsplit("/", 1)[-1]))
-            return self._api_response(status=204)
+        def delete_side_effect(path, **_kw):
+            call_order.append(("DELETE", path.rsplit("/", 1)[-1]))
+            return self._httpx_response(status_code=204)
 
-        def post_side_effect(url, **_kwargs):
+        def post_side_effect(path, **_kw):
             call_order.append(("POST", None))
-            return self._api_response(json_data={"id": "9", "key": "NEWKEY" * 5})
+            return self._httpx_response(json_data={"id": "9", "key": "NEWKEY" * 5})
 
-        req.get.side_effect = get_side_effect
-        req.delete.side_effect = delete_side_effect
-        req.post.side_effect = post_side_effect
+        patcher, _cls, client_mock = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            delete_side_effect=delete_side_effect,
+        )
+        client_mock.post.side_effect = post_side_effect
 
-        result = _create_api_key_via_session(page, "https://c.example.com", "_vip_interactive_new")
+        with patcher:
+            result = _create_api_key_via_session(
+                page, "https://c.example.com", "_vip_interactive_new"
+            )
 
         assert result == "NEWKEY" * 5
 
         deleted_ids = [kid for (op, kid) in call_order if op == "DELETE"]
         assert sorted(deleted_ids) == ["1", "3"]
 
-        # All DELETEs must come strictly before the POST — otherwise a flaky
-        # Connect version could see the new key during listing and delete it.
+        # All DELETEs must come strictly before the POST.
         post_index = next(i for i, (op, _) in enumerate(call_order) if op == "POST")
         assert all(op == "DELETE" for op, _ in call_order[:post_index])
         assert post_index == len(call_order) - 1  # POST is last, ran once
 
     def test_skips_recent_orphan_keys(self):
-        """Keys younger than _ORPHAN_MIN_AGE_SECONDS must NOT be deleted —
-        they likely belong to a concurrent vip verify run."""
+        """Keys younger than _ORPHAN_MIN_AGE_SECONDS must NOT be deleted."""
         import time
 
         from vip.auth import _create_api_key_via_session
 
-        recent_ts = int(time.time()) - 60  # 60s old: belongs to a live run
+        recent_ts = int(time.time()) - 60
 
         page = self._page()
-        req = page.context.request
-
-        me = self._api_response(json_data={"guid": "g"})
-        keys_list = self._api_response(
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(
             json_data=[{"id": "42", "name": f"_vip_interactive_{recent_ts}"}]
         )
-        created = self._api_response(json_data={"id": "9", "key": "K" * 30})
+        created = self._httpx_response(json_data={"id": "9", "key": "K" * 30})
 
-        def get_side_effect(url, **_kwargs):
-            return me if url.endswith("/v1/user") else keys_list
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
 
-        req.get.side_effect = get_side_effect
-        req.post.return_value = created
-
-        result = _create_api_key_via_session(page, "https://c.example.com", "_vip_interactive_new")
+        patcher, _cls, client_mock = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            result = _create_api_key_via_session(
+                page, "https://c.example.com", "_vip_interactive_new"
+            )
 
         assert result == "K" * 30
-        req.delete.assert_not_called()  # recent key was left alone
+        client_mock.delete.assert_not_called()
 
     def test_xsrf_falls_back_to_legacy_cookie_name(self):
-        """Servers in legacy cookie mode (e.g. ``connect.posit.it``) set
-        ``RSC-XSRF-legacy`` instead of ``RSC-XSRF``.  The paired session
-        cookie is ``rsconnect-legacy``; the header name stays the same.
-        Without this fallback, Connect rejects every request with
-        ``HTTP 403 XSRF token mismatch``."""
+        """Servers in legacy cookie mode set ``RSC-XSRF-legacy`` instead of
+        ``RSC-XSRF``.  The implementation must fall back to the legacy name
+        so Connect does not reject with ``HTTP 403 XSRF token mismatch``."""
         from vip.auth import _create_api_key_via_session
 
         page = self._page(
@@ -515,22 +628,26 @@ class TestCreateApiKeyViaSession:
                 {"name": "rsconnect-legacy", "value": "sess", "httpOnly": True},
             ]
         )
-        req = page.context.request
 
-        req.get.side_effect = [
-            self._api_response(json_data={"guid": "g"}),
-            self._api_response(json_data=[]),
-        ]
-        req.post.return_value = self._api_response(json_data={"id": "1", "key": "K" * 30})
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(json_data=[])
+        created = self._httpx_response(json_data={"id": "1", "key": "K" * 30})
 
-        result = _create_api_key_via_session(page, "https://c.example.com", "k")
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
+
+        patcher, client_cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            result = _create_api_key_via_session(page, "https://c.example.com", "k")
 
         assert result == "K" * 30
-        assert req.get.call_args_list[0].kwargs["headers"]["X-Rsc-Xsrf"] == "legacy-tok"
+        assert client_cls.call_args.kwargs["headers"] == {"X-Rsc-Xsrf": "legacy-tok"}
 
     def test_xsrf_prefers_modern_name_when_both_present(self):
-        """If both ``RSC-XSRF`` and ``RSC-XSRF-legacy`` are set, use the
-        modern one — servers mid-migration tend to honor the new name."""
+        """When both RSC-XSRF and RSC-XSRF-legacy are set, use the modern name."""
         from vip.auth import _create_api_key_via_session
 
         page = self._page(
@@ -539,24 +656,26 @@ class TestCreateApiKeyViaSession:
                 {"name": "RSC-XSRF-legacy", "value": "old-tok"},
             ]
         )
-        req = page.context.request
 
-        req.get.side_effect = [
-            self._api_response(json_data={"guid": "g"}),
-            self._api_response(json_data=[]),
-        ]
-        req.post.return_value = self._api_response(json_data={"id": "1", "key": "K" * 30})
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(json_data=[])
+        created = self._httpx_response(json_data={"id": "1", "key": "K" * 30})
 
-        _create_api_key_via_session(page, "https://c.example.com", "k")
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
 
-        assert req.get.call_args_list[0].kwargs["headers"]["X-Rsc-Xsrf"] == "new-tok"
+        patcher, client_cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            _create_api_key_via_session(page, "https://c.example.com", "k")
+
+        assert client_cls.call_args.kwargs["headers"] == {"X-Rsc-Xsrf": "new-tok"}
 
     def test_xsrf_read_from_cookie_jar_including_httponly(self):
-        """Connect marks ``RSC-XSRF`` ``HttpOnly`` — the real reason earlier
-        attempts saw ``HTTP 403 XSRF token mismatch``.  ``document.cookie``
-        is blind to HttpOnly cookies, so the XSRF value must come from
-        ``page.context.cookies()`` (the browser's cookie jar), which
-        Playwright exposes regardless of the flag."""
+        """Connect marks RSC-XSRF HttpOnly — must come from page.context.cookies(),
+        not document.cookie (which is blind to HttpOnly cookies)."""
         from vip.auth import _create_api_key_via_session
 
         page = self._page(
@@ -566,99 +685,139 @@ class TestCreateApiKeyViaSession:
                 {"name": "another", "value": "v2"},
             ]
         )
-        req = page.context.request
 
-        req.get.side_effect = [
-            self._api_response(json_data={"guid": "g"}),
-            self._api_response(json_data=[]),
-        ]
-        req.post.return_value = self._api_response(json_data={"id": "1", "key": "K" * 30})
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(json_data=[])
+        created = self._httpx_response(json_data={"id": "1", "key": "K" * 30})
 
-        _create_api_key_via_session(page, "https://c.example.com", "k")
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
+
+        patcher, client_cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            _create_api_key_via_session(page, "https://c.example.com", "k")
 
         page.context.cookies.assert_called()
-        post_call = req.post.call_args
-        # Exact byte-for-byte match: no URL-decoding, no quoting, no stripping.
-        assert post_call.kwargs["headers"]["X-Rsc-Xsrf"] == "tok-n"
+        assert client_cls.call_args.kwargs["headers"]["X-Rsc-Xsrf"] == "tok-n"
 
     def test_create_failure_returns_none(self, capsys):
         """HTTP 500 on the create call must yield None, not an exception.
-        The warning must include a snippet of the response body so the user
-        can diagnose what Connect rejected."""
+        The warning must include a snippet of the response body."""
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
-        req = page.context.request
 
-        req.get.side_effect = [
-            self._api_response(json_data={"guid": "g"}),
-            self._api_response(json_data=[]),
-        ]
-        req.post.return_value = self._api_response(ok=False, status=500, text_data="boom")
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(json_data=[])
+        failed = self._httpx_response(is_success=False, status_code=500, text="boom")
 
-        assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
+
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=failed,
+        )
+        with patcher:
+            assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
+
         assert "boom" in capsys.readouterr().out
 
     def test_user_endpoint_403_warning_includes_body(self, capsys):
-        """When cookie auth is rejected at /v1/user, the response body often
-        tells us why (CSRF, Origin, MFA step-up).  Include it in the warning
-        so users can report the real failure instead of an opaque 403."""
+        """When cookie auth is rejected at /v1/user, the response body must
+        appear in the warning so users can diagnose the actual failure."""
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
-        req = page.context.request
-
-        req.get.return_value = self._api_response(
-            ok=False,
-            status=403,
-            text_data='{"code": 23, "error": "CSRF token is required"}',
+        me_403 = self._httpx_response(
+            is_success=False,
+            status_code=403,
+            text='{"code": 23, "error": "CSRF token is required"}',
         )
 
-        assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=lambda *_a, **_kw: me_403,
+        )
+        with patcher:
+            assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
+
         out = capsys.readouterr().out
         assert "HTTP 403" in out
         assert "CSRF token is required" in out
+
+    def test_httpx_transport_error_returns_none(self, capsys):
+        """httpx connection failures (DNS, TCP, TLS) must return None, not bubble up.
+
+        The function is documented to return None on failure rather than raise,
+        so vip verify can emit a warning and proceed to other checks.  Without
+        an httpx.HTTPError catch, a TLS rejection (verify=True against a
+        self-signed server) would crash auth setup instead.
+        """
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+
+        def raise_connect_error(*_a, **_kw):
+            raise httpx.ConnectError("simulated TLS rejection")
+
+        patcher, _cls, _client = self._patch_httpx_client(get_side_effect=raise_connect_error)
+        with patcher:
+            assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
+
+        assert "simulated TLS rejection" in capsys.readouterr().out
 
     def test_missing_xsrf_cookie_still_runs(self):
         """With no RSC-XSRF cookie the call still runs; no X-Rsc-Xsrf header sent."""
         from vip.auth import _create_api_key_via_session
 
         page = self._page([{"name": "connect-session", "value": "sess"}])  # no RSC-XSRF
-        req = page.context.request
 
-        req.get.side_effect = [
-            self._api_response(json_data={"guid": "g"}),
-            self._api_response(json_data=[]),
-        ]
-        req.post.return_value = self._api_response(json_data={"id": "1", "key": "K" * 30})
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(json_data=[])
+        created = self._httpx_response(json_data={"id": "1", "key": "K" * 30})
 
-        result = _create_api_key_via_session(page, "https://c.example.com", "k")
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
+
+        patcher, client_cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            result = _create_api_key_via_session(page, "https://c.example.com", "k")
 
         assert result == "K" * 30
-        # No header — and definitely not the literal empty string either.
-        assert "X-Rsc-Xsrf" not in req.post.call_args.kwargs["headers"]
-        assert "X-Rsc-Xsrf" not in req.get.call_args_list[0].kwargs["headers"]
+        # No X-Rsc-Xsrf header when the cookie is absent.
+        assert "X-Rsc-Xsrf" not in client_cls.call_args.kwargs["headers"]
 
     def test_unexpected_key_list_shape_does_not_crash(self):
-        """If Connect returns a non-list (or a list with non-dict items) for
-        the keys endpoint, creation must still succeed — cleanup is
-        best-effort and shape surprises must not raise."""
+        """If Connect returns a non-list for the keys endpoint, creation must
+        still succeed — cleanup is best-effort."""
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
-        req = page.context.request
 
-        req.get.side_effect = [
-            self._api_response(json_data={"guid": "g"}),
-            self._api_response(json_data={"error": "nope"}),  # dict, not list
-        ]
-        req.post.return_value = self._api_response(json_data={"id": "9", "key": "K" * 30})
+        me = self._httpx_response(json_data={"guid": "g"})
+        bad_keys = self._httpx_response(json_data={"error": "nope"})  # dict, not list
+        created = self._httpx_response(json_data={"id": "9", "key": "K" * 30})
 
-        assert _create_api_key_via_session(page, "https://c.example.com", "k") == "K" * 30
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else bad_keys
+
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            assert _create_api_key_via_session(page, "https://c.example.com", "k") == "K" * 30
 
     def test_non_dict_entries_in_key_list_are_skipped(self):
-        """List entries that aren't dicts (and dicts missing id) must be
-        silently skipped rather than crashing cleanup."""
+        """List entries that aren't dicts (and dicts missing id) must be silently skipped."""
         import time
 
         from vip.auth import _create_api_key_via_session
@@ -667,56 +826,56 @@ class TestCreateApiKeyViaSession:
         deletes: list[str] = []
 
         page = self._page()
-        req = page.context.request
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(
+            json_data=[
+                "not a dict",
+                {"name": f"_vip_interactive_{old_ts}"},  # no id
+                {"id": "5", "name": f"_vip_interactive_{old_ts}"},  # deletable
+            ]
+        )
+        created = self._httpx_response(json_data={"id": "9", "key": "K" * 30})
 
-        req.get.side_effect = [
-            self._api_response(json_data={"guid": "g"}),
-            self._api_response(
-                json_data=[
-                    "not a dict",
-                    {"name": f"_vip_interactive_{old_ts}"},  # no id
-                    {"id": "5", "name": f"_vip_interactive_{old_ts}"},  # deletable
-                ]
-            ),
-        ]
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
 
-        def delete_side_effect(url, **_kwargs):
-            deletes.append(url.rsplit("/", 1)[-1])
-            return self._api_response(status=204)
+        def delete_side_effect(path, **_kw):
+            deletes.append(path.rsplit("/", 1)[-1])
+            return self._httpx_response(status_code=204)
 
-        req.delete.side_effect = delete_side_effect
-        req.post.return_value = self._api_response(json_data={"id": "9", "key": "K" * 30})
+        patcher, _cls, client_mock = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            delete_side_effect=delete_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            assert _create_api_key_via_session(page, "https://c.example.com", "k") == "K" * 30
 
-        assert _create_api_key_via_session(page, "https://c.example.com", "k") == "K" * 30
-        assert deletes == ["5"]  # only the well-formed entry was deleted
+        assert deletes == ["5"]
 
     def test_missing_user_guid_returns_none(self):
         """If /v1/user returns no guid, function returns None and skips POST."""
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
-        req = page.context.request
+        me_no_guid = self._httpx_response(json_data={})
 
-        req.get.return_value = self._api_response(json_data={})  # no guid
+        patcher, _cls, client_mock = self._patch_httpx_client(
+            get_side_effect=lambda *_a, **_kw: me_no_guid,
+        )
+        with patcher:
+            assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
 
-        assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
-        req.post.assert_not_called()
+        client_mock.post.assert_not_called()
 
     def test_xsrf_cookie_with_trailing_slash_path_is_included(self):
-        """RFC 6265 path matching: a cookie with ``Path=/__api__/`` is sent
-        only with requests whose path is under ``/__api__/`` — ``/__api__``
-        alone (no trailing slash) does *not* match.  Scoping ``cookies()``
-        to the base (``/__api__``) excludes these cookies even though they
-        *will* ride every real API call.  Use an actual endpoint URL so
-        Playwright's filter sees a matching request-path.
-        """
+        """RFC 6265: cookies() must be called with an endpoint URL (not bare
+        /__api__) so that path-scoped RSC-XSRF cookies are included."""
         from vip.auth import _create_api_key_via_session
 
         page = MagicMock()
 
         def cookies_for(url=None):
-            # Stub RFC 6265-compliant filtering: return the cookie only if
-            # the URL's path is under ``/__api__/``.
             if not url:
                 return [{"name": "RSC-XSRF", "value": "tok", "path": "/__api__/"}]
             from urllib.parse import urlparse
@@ -727,41 +886,36 @@ class TestCreateApiKeyViaSession:
             return []
 
         page.context.cookies.side_effect = cookies_for
-        req = page.context.request
 
-        req.get.side_effect = [
-            self._api_response(json_data={"guid": "g"}),
-            self._api_response(json_data=[]),
-        ]
-        req.post.return_value = self._api_response(json_data={"id": "1", "key": "K" * 30})
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(json_data=[])
+        created = self._httpx_response(json_data={"id": "1", "key": "K" * 30})
 
-        result = _create_api_key_via_session(page, "https://connect.example.com", "k")
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
+
+        patcher, client_cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            result = _create_api_key_via_session(page, "https://connect.example.com", "k")
 
         assert result == "K" * 30, (
             "cookie with Path=/__api__/ must be read; request to /__api__ "
             "(no trailing slash) would miss it under RFC 6265 path matching."
         )
-        assert req.get.call_args_list[0].kwargs["headers"]["X-Rsc-Xsrf"] == "tok"
+        assert client_cls.call_args.kwargs["headers"].get("X-Rsc-Xsrf") == "tok"
 
     def test_xsrf_cookie_is_scoped_to_api_url(self):
-        """Cookie jars from ``page.context.cookies()`` span every domain the
-        browser has touched — IdP, related subdomains, etc.  Unfiltered
-        reads let a ``RSC-XSRF`` from another site shadow Connect's and
-        yield ``HTTP 403 XSRF token mismatch``.  Playwright's ``cookies(url)``
-        filter is host *and path* aware, so the URL we pass must match
-        the path the request will actually hit (``/__api__/...``), not
-        just the root — otherwise a cookie set with ``Path=/__api__``
-        will be silently excluded.
-        """
+        """cookies() must be called with a URL under /__api__ so that
+        cross-domain RSC-XSRF cookies from the IdP are excluded."""
         from vip.auth import _create_api_key_via_session
 
         page = MagicMock()
         api_base = "https://connect.example.com/__api__"
 
         def cookies_for(url=None):
-            # Playwright filters server-side; our stub mirrors that: the
-            # real cookie lives at ``/__api__/`` and must be included, the
-            # unrelated domain's cookie must not.
             if url and url.startswith(api_base):
                 return [{"name": "RSC-XSRF", "value": "real", "path": "/__api__"}]
             return [
@@ -770,20 +924,24 @@ class TestCreateApiKeyViaSession:
             ]
 
         page.context.cookies.side_effect = cookies_for
-        req = page.context.request
 
-        req.get.side_effect = [
-            self._api_response(json_data={"guid": "g"}),
-            self._api_response(json_data=[]),
-        ]
-        req.post.return_value = self._api_response(json_data={"id": "1", "key": "K" * 30})
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(json_data=[])
+        created = self._httpx_response(json_data={"id": "1", "key": "K" * 30})
 
-        result = _create_api_key_via_session(page, "https://connect.example.com", "k")
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
+
+        patcher, client_cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            result = _create_api_key_via_session(page, "https://connect.example.com", "k")
 
         assert result == "K" * 30
-        assert req.get.call_args_list[0].kwargs["headers"]["X-Rsc-Xsrf"] == "real"
-        # URL passed to cookies() must be under /__api__ so path-scoped
-        # cookies aren't excluded by Playwright's path filter.
+        assert client_cls.call_args.kwargs["headers"].get("X-Rsc-Xsrf") == "real"
+        # Confirm cookies() was called with a URL under /__api__.
         scoped_calls = [
             call for call in page.context.cookies.call_args_list if call.args and call.args[0]
         ]
@@ -793,35 +951,6 @@ class TestCreateApiKeyViaSession:
                 f"cookies() URL {call.args[0]!r} is not under {api_base!r}; "
                 "path-scoped RSC-XSRF cookies would be missed."
             )
-
-    def test_uses_page_context_request_so_xsrf_matches_cookie(self):
-        """Regression guard: requests must go through ``page.context.request``
-        (Playwright's APIRequestContext), which shares the browser's cookie
-        jar.  Sending cookies through httpx re-encodes them, breaking
-        Connect's double-submit XSRF check: the RSC-XSRF cookie value seen
-        by the server then no longer equals the X-Rsc-Xsrf header value.
-        """
-        from vip.auth import _create_api_key_via_session
-
-        page = self._page(
-            [
-                {"name": "RSC-XSRF", "value": "live-token", "httpOnly": True},
-                {"name": "connect-session", "value": "s", "httpOnly": True},
-            ]
-        )
-        req = page.context.request
-
-        req.get.side_effect = [
-            self._api_response(json_data={"guid": "g"}),
-            self._api_response(json_data=[]),
-        ]
-        req.post.return_value = self._api_response(json_data={"id": "1", "key": "K" * 30})
-
-        result = _create_api_key_via_session(page, "https://c.example.com", "k")
-
-        assert result == "K" * 30
-        assert req.get.called, "GET /v1/user must route through page.context.request"
-        assert req.post.call_args.kwargs["headers"]["X-Rsc-Xsrf"] == "live-token"
 
 
 class TestHeadlessAuthTLSFlags:
