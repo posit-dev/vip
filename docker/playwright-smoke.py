@@ -38,7 +38,7 @@ def _platform_label() -> str:
 def main() -> None:
     label = _platform_label()
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, channel="chromium-headless-shell")
         page = browser.new_page()
         page.goto(
             "data:text/html,<title>vip smoke</title><h1 id=h>ok</h1><input id=i><div id=r></div>"
