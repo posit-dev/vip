@@ -127,6 +127,37 @@ const productTotalSum = Object.values(productTotals).reduce((a, b) => a + b, 0);
         </table>
       </div>
 
+      {/* Host platforms section */}
+      <div class="host-platforms-section">
+        <h2>Host platforms</h2>
+        <p class="host-platforms-desc">
+          Platforms where <code>vip install</code> is supported and verified
+          on every change.
+        </p>
+        <div class="host-platforms-grid">
+          <div class="host-platform-card">
+            <span class="host-platform-icon">&#10003;</span>
+            <strong>Ubuntu</strong>
+          </div>
+          <div class="host-platform-card">
+            <span class="host-platform-icon">&#10003;</span>
+            <strong>RHEL 9</strong>
+          </div>
+          <div class="host-platform-card">
+            <span class="host-platform-icon">&#10003;</span>
+            <strong>RHEL 10</strong>
+          </div>
+          <div class="host-platform-card">
+            <span class="host-platform-icon">&#10003;</span>
+            <strong>openSUSE Leap 15</strong>
+          </div>
+          <div class="host-platform-card">
+            <span class="host-platform-icon">&#10003;</span>
+            <strong>macOS</strong>
+          </div>
+        </div>
+      </div>
+
       {/* Not yet covered section */}
       <div class="not-covered-section">
         <h2>Not Yet Covered</h2>
@@ -432,6 +463,54 @@ const productTotalSum = Object.values(productTotals).reduce((a, b) => a + b, 0);
     color: var(--posit-text-muted);
   }
 
+  /* Host platforms */
+  .host-platforms-section {
+    margin-top: 2.5rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .host-platforms-section h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--posit-navy);
+    margin-bottom: 0.5rem;
+  }
+
+  .host-platforms-desc {
+    color: var(--posit-text-muted);
+    font-size: 0.9375rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .host-platforms-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .host-platform-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: white;
+    border: 1px solid var(--posit-border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    border-left: 3px solid #22c55e;
+  }
+
+  .host-platform-icon {
+    color: #22c55e;
+    font-size: 1rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .host-platform-card strong {
+    font-size: 0.9375rem;
+    color: var(--posit-gray-900);
+  }
+
   @media (max-width: 768px) {
     .legend {
       flex-wrap: wrap;
@@ -442,6 +521,10 @@ const productTotalSum = Object.values(productTotals).reduce((a, b) => a + b, 0);
     }
 
     .not-covered-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .host-platforms-grid {
       grid-template-columns: 1fr;
     }
   }
