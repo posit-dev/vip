@@ -91,6 +91,10 @@ def _start_tls_server(cert_path: Path, key_path: Path) -> tuple[ThreadingHTTPSer
     The caller is responsible for calling ``server.shutdown()`` when done.
     """
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _OkHandler)
+    # ThreadingHTTPServer defaults to non-daemon handler threads, which can
+    # keep the test process alive past `serve_forever()` if a connection is
+    # left open.  Match the pattern in selftests/test_load_engine.py.
+    httpd.daemon_threads = True
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
     httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
@@ -148,9 +152,9 @@ def test_base_client_insecure_false_raises(tls_server):
 def test_package_manager_client_insecure_true_succeeds(tls_server):
     """PackageManagerClient with insecure=True must reach a self-signed server.
 
-    The /__api__/status path is not handled by _OkHandler, but a 200 on any
-    path proves TLS verification was disabled — we only care about the transport
-    layer here, not the application response.
+    _OkHandler returns 200 for every GET regardless of path, so reaching it
+    at all proves TLS verification was disabled. We only care about the
+    transport layer here, not the response shape.
     """
     from vip.clients.packagemanager import PackageManagerClient
 
