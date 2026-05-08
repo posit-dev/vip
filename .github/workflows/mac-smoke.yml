@@ -1,0 +1,38 @@
+name: Mac Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker/playwright-smoke.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'src/**'
+      - '.github/workflows/mac-smoke.yml'
+  pull_request:
+    paths:
+      - 'docker/playwright-smoke.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'src/**'
+      - '.github/workflows/mac-smoke.yml'
+
+jobs:
+  smoke:
+    name: macos-latest
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: vip install (Playwright Chromium)
+        run: uv run vip install
+
+      - name: Run smoke
+        run: uv run python docker/playwright-smoke.py
