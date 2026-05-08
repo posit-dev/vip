@@ -36,6 +36,7 @@ def measure_load_time(product, vip_config, performance_config):
             url,
             follow_redirects=True,
             timeout=performance_config.page_load_timeout * 3,
+            verify=vip_config.verify,
         )
         elapsed = time.monotonic() - start
     except (httpx.ConnectError, httpx.ProxyError, httpx.ConnectTimeout) as exc:
