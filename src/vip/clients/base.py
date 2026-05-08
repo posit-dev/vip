@@ -66,13 +66,17 @@ class BaseClient:
         # connections, broken pipes).  HTTP-level errors (502/503/504) are not
         # retried here — ConnectClient.wait_for_task already handles those at
         # the application level.
-        transport = httpx.HTTPTransport(retries=3)
+        #
+        # IMPORTANT: when a custom ``transport`` is passed to ``httpx.Client``,
+        # httpx ignores the client-level ``verify`` argument — SSL config must
+        # be set on the transport itself.  Pass ``verify`` to HTTPTransport so
+        # that insecure / ca_bundle settings are actually honored.
+        transport = httpx.HTTPTransport(retries=3, verify=verify)
         self._client = httpx.Client(
             base_url=f"{self._base_url}{api_prefix}",
             headers=headers,
             timeout=timeout,
             transport=transport,
-            verify=verify,
         )
 
     @property

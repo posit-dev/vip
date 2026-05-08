@@ -446,3 +446,28 @@ class TestVIPConfigValidateForMode:
         cfg = VIPConfig()
         with pytest.raises(ValueError, match="cluster configuration"):
             cfg.validate_for_mode(Mode.config_only)
+
+
+class TestVIPConfigVerify:
+    """Tests for the ``VIPConfig.verify`` property."""
+
+    def test_default_is_true(self):
+        cfg = VIPConfig()
+        assert cfg.verify is True
+
+    def test_insecure_true_returns_false(self):
+        cfg = VIPConfig(insecure=True)
+        assert cfg.verify is False
+
+    def test_ca_bundle_returns_str_path(self, tmp_path):
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        cfg = VIPConfig(ca_bundle=bundle)
+        assert cfg.verify == str(bundle)
+
+    def test_insecure_wins_over_ca_bundle(self, tmp_path):
+        """insecure=True takes precedence even when ca_bundle is set."""
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        cfg = VIPConfig(insecure=True, ca_bundle=bundle)
+        assert cfg.verify is False

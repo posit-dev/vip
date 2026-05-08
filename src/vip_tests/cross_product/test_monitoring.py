@@ -36,7 +36,7 @@ def check_health(vip_config):
             continue
         url = f"{cfg.url}{health_paths[name]}"
         try:
-            resp = httpx.get(url, timeout=15)
+            resp = httpx.get(url, timeout=15, verify=vip_config.verify)
             results.append(
                 {
                     "product": name,

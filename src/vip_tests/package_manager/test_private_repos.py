@@ -34,7 +34,9 @@ def query_private_repos(pm_client, private_repos):
     results = []
     for repo in private_repos:
         name = repo["name"]
-        resp = httpx.get(f"{pm_client.base_url}/{name}/latest/", timeout=15)
+        resp = httpx.get(
+            f"{pm_client.base_url}/{name}/latest/", timeout=15, verify=pm_client.verify
+        )
         results.append({"name": name, "status": resp.status_code})
     return results
 

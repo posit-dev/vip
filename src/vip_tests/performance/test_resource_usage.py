@@ -54,12 +54,14 @@ def generate_traffic_and_measure_response_times(vip_config, vip_verbose):
     results = []
     verbose = vip_verbose
 
+    verify = vip_config.verify
+
     def _fetch_loop(url: str):
         """Continuously fetch URL until stop_at, collecting timing and status."""
         while time.monotonic() < stop_at:
             start = time.monotonic()
             try:
-                resp = httpx.get(url, timeout=10)
+                resp = httpx.get(url, timeout=10, verify=verify)
                 elapsed = time.monotonic() - start
                 results.append({"elapsed": elapsed, "status": resp.status_code, "error": None})
                 if verbose:
@@ -141,7 +143,7 @@ def check_prometheus_endpoints(vip_config):
     failures = []
     for product_name, metrics_url in products_to_check:
         try:
-            resp = httpx.get(metrics_url, timeout=10)
+            resp = httpx.get(metrics_url, timeout=10, verify=vip_config.verify)
             if resp.status_code != 200:
                 failures.append(
                     f"{product_name}: /metrics returned {resp.status_code} (expected 200)"
