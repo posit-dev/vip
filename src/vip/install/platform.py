@@ -122,3 +122,34 @@ DEBIAN_PACKAGES: tuple[str, ...] = (
 # https://github.com/microsoft/playwright/blob/main/packages/playwright-core/src/server/registry/nativeDeps.ts
 # and update this value. The selftest enforces that they match.
 LIST_REVIEWED_AGAINST_PLAYWRIGHT = "1.40"
+
+
+# openSUSE/SLES equivalents. Names from `zypper search --provides` against
+# opensuse/leap:15. Bump LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE after each
+# playwright pin update; the selftest enforces parity.
+SUSE_PACKAGES: tuple[str, ...] = (
+    "mozilla-nss",
+    "mozilla-nspr",
+    "libatk-1_0-0",
+    "libatk-bridge-2_0-0",
+    "libcups2",
+    "libdrm2",
+    "libxkbcommon0",
+    "libxcomposite1",
+    "libxdamage1",
+    "libxfixes3",
+    "libxrandr2",
+    "libgbm1",
+    "libpango-1_0-0",
+    "libcairo2",
+    "libasound2",
+    "libxshmfence1",
+    "libX11-6",
+    "libxcb1",
+    "libxext6",
+    "libdbus-1-3",
+    "libglib-2_0-0",
+)
+
+# Mirror of LIST_REVIEWED_AGAINST_PLAYWRIGHT for the SUSE list.
+LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE = "1.40"
