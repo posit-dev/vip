@@ -307,6 +307,63 @@ def test_execute_install_plan_root_install_clears_pending(monkeypatch, tmp_path)
     assert names.count("libdrm") == 1
 
 
+def test_format_install_plan_with_zypper_packages(tmp_path: Path):
+    plan = InstallPlan(
+        platform="suse-family",
+        platform_id="opensuse-leap",
+        platform_version="15.6",
+        system_step=SystemPackagesStep(manager="zypper", packages=("mozilla-nss", "libdrm2")),
+        playwright_step=PlaywrightStep(browser="chromium", cache_dir=str(tmp_path)),
+    )
+    text = rn.format_install_plan(plan)
+    assert "mozilla-nss" in text and "libdrm2" in text
+    assert "sudo zypper install -y" in text
+
+
+def test_execute_install_plan_zypper_non_root_writes_pending(monkeypatch, tmp_path: Path):
+    plan = InstallPlan(
+        platform="suse-family",
+        platform_id="opensuse-leap",
+        platform_version="15.6",
+        system_step=SystemPackagesStep(manager="zypper", packages=("mozilla-nss", "libdrm2")),
+        playwright_step=None,
+    )
+    monkeypatch.setattr(rn, "is_root", lambda: False)
+    manifest_path = tmp_path / ".vip-install.json"
+    manifest = Manifest(
+        version=SCHEMA_VERSION,
+        vip_version="0.0.0",
+        created_at="t",
+        updated_at="t",
+        host="h",
+        platform="suse-family",
+        platform_id="opensuse-leap",
+        platform_version="15.6",
+    )
+    rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+    assert rc == 2
+    from vip.install.manifest import load
+
+    saved = load(manifest_path)
+    assert set(saved.pending_system_packages) == {"mozilla-nss", "libdrm2"}
+
+
+def test_install_system_packages_zypper_invokes_correct_command(monkeypatch):
+    captured = []
+
+    def fake_run(args, check):
+        captured.append(args)
+        return None
+
+    monkeypatch.setattr(rn.subprocess, "run", fake_run)
+    rn._install_system_packages("zypper", ("mozilla-nss", "libdrm2"))
+    assert captured == [["zypper", "install", "-y", "--no-confirm", "mozilla-nss", "libdrm2"]]
+
+
+def test_manager_for_suse_family():
+    assert rn._manager_for("suse-family") == "zypper"
+
+
 def test_execute_uninstall_plan_dry_run_does_not_print_uv_uninstall_hint(tmp_path, capsys):
     """The reminder should only appear after actual --yes execution."""
     manifest_path = tmp_path / ".vip-install.json"
