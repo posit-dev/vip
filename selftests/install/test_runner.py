@@ -317,7 +317,7 @@ def test_format_install_plan_with_zypper_packages(tmp_path: Path):
     )
     text = rn.format_install_plan(plan)
     assert "mozilla-nss" in text and "libdrm2" in text
-    assert "sudo zypper install -y" in text
+    assert "sudo zypper -n install" in text
 
 
 def test_execute_install_plan_zypper_non_root_writes_pending(monkeypatch, tmp_path: Path):
@@ -357,7 +357,7 @@ def test_install_system_packages_zypper_invokes_correct_command(monkeypatch):
 
     monkeypatch.setattr(rn.subprocess, "run", fake_run)
     rn._install_system_packages("zypper", ("mozilla-nss", "libdrm2"))
-    assert captured == [["zypper", "install", "-y", "mozilla-nss", "libdrm2"]]
+    assert captured == [["zypper", "-n", "install", "mozilla-nss", "libdrm2"]]
 
 
 def test_manager_for_suse_family():

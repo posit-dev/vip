@@ -46,7 +46,7 @@ def format_install_plan(plan: InstallPlan) -> str:
         if manager == "dnf":
             cmd = "sudo dnf install -y"
         elif manager == "zypper":
-            cmd = "sudo zypper install -y"
+            cmd = "sudo zypper -n install"
         else:
             cmd = "sudo apt install -y"
         lines.append("  system packages to install (run yourself if not root):")
@@ -89,7 +89,7 @@ def execute_install_plan(
         if system_step.manager == "dnf":
             cmd = "sudo dnf install -y"
         elif system_step.manager == "zypper":
-            cmd = "sudo zypper install -y"
+            cmd = "sudo zypper -n install"
         else:
             cmd = "sudo apt install -y"
         print(f"\nNot running as root. Please run:\n  {cmd} {' '.join(system_step.packages)}")
@@ -139,7 +139,7 @@ def _install_system_packages(manager: str, packages: tuple[str, ...]) -> None:
     elif manager == "apt":
         subprocess.run(["apt", "install", "-y", *packages], check=True)
     elif manager == "zypper":
-        subprocess.run(["zypper", "install", "-y", *packages], check=True)
+        subprocess.run(["zypper", "-n", "install", *packages], check=True)
     else:
         raise ValueError(f"Unknown manager {manager!r}")
 
