@@ -90,9 +90,7 @@ def test_detect_popos_via_id_like(monkeypatch, fake_os_release):
 
 def test_detect_opensuse_leap(monkeypatch, fake_os_release):
     monkeypatch.setattr(plat.sys, "platform", "linux")
-    fake_os_release(
-        'ID="opensuse-leap"\nVERSION_ID="15.6"\nID_LIKE="suse opensuse"\n'
-    )
+    fake_os_release('ID="opensuse-leap"\nVERSION_ID="15.6"\nID_LIKE="suse opensuse"\n')
     info = plat.detect()
     assert info.family == "suse-family"
     assert info.id == "opensuse-leap"
@@ -101,9 +99,7 @@ def test_detect_opensuse_leap(monkeypatch, fake_os_release):
 
 def test_detect_opensuse_tumbleweed(monkeypatch, fake_os_release):
     monkeypatch.setattr(plat.sys, "platform", "linux")
-    fake_os_release(
-        'ID="opensuse-tumbleweed"\nVERSION_ID="20260101"\nID_LIKE="opensuse suse"\n'
-    )
+    fake_os_release('ID="opensuse-tumbleweed"\nVERSION_ID="20260101"\nID_LIKE="opensuse suse"\n')
     info = plat.detect()
     assert info.family == "suse-family"
 
