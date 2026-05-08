@@ -11,6 +11,7 @@ _OS_RELEASE_PATH = Path("/etc/os-release")
 
 _RHEL_LIKE = {"rhel", "fedora", "centos", "rocky", "almalinux", "ol"}
 _DEBIAN_LIKE = {"debian", "ubuntu"}
+_SUSE_LIKE = {"opensuse-leap", "opensuse-tumbleweed", "sles", "suse", "opensuse"}
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,8 @@ def detect() -> PlatformInfo:
         family = "rhel-family"
     elif candidates & _DEBIAN_LIKE:
         family = "debian-family"
+    elif candidates & _SUSE_LIKE:
+        family = "suse-family"
     return PlatformInfo(family=family, id=distro_id or None, version=version, raw=raw)
 
 
