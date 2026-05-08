@@ -112,6 +112,21 @@ DEBIAN_PACKAGES: tuple[str, ...] = (
     "libglib2.0-0",
 )
 
+# Ubuntu 24.04+ renamed libasound2 → libasound2t64 as part of the 64-bit time_t
+# transition.  Unlike other t64 renames (libcups2 → libcups2t64) that apt resolves
+# automatically, libasound2 became a virtual package with multiple providers, so
+# apt refuses to install it directly.  We swap it for the concrete name on >= 24.04.
+_T64_LIBASOUND_MIN_VERSION = "24.04"
+
+
+def debian_packages(platform_info: PlatformInfo) -> tuple[str, ...]:
+    """Return DEBIAN_PACKAGES with version-appropriate substitutions."""
+    version = platform_info.version or ""
+    if platform_info.id == "ubuntu" and version >= _T64_LIBASOUND_MIN_VERSION:
+        return tuple("libasound2t64" if p == "libasound2" else p for p in DEBIAN_PACKAGES)
+    return DEBIAN_PACKAGES
+
+
 # When updating the playwright pin in pyproject.toml, review DEBIAN_PACKAGES against
 # https://github.com/microsoft/playwright/blob/main/packages/playwright-core/src/server/registry/nativeDeps.ts
 # and update this value. The selftest enforces that they match.

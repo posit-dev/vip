@@ -124,6 +124,27 @@ def test_debian_packages_is_tuple_of_strings():
     assert "libnss3" in plat.DEBIAN_PACKAGES
 
 
+def test_debian_packages_ubuntu_2404_uses_libasound2t64():
+    info = plat.PlatformInfo(family="debian-family", id="ubuntu", version="24.04")
+    pkgs = plat.debian_packages(info)
+    assert "libasound2t64" in pkgs
+    assert "libasound2" not in pkgs
+
+
+def test_debian_packages_ubuntu_2204_uses_libasound2():
+    info = plat.PlatformInfo(family="debian-family", id="ubuntu", version="22.04")
+    pkgs = plat.debian_packages(info)
+    assert "libasound2" in pkgs
+    assert "libasound2t64" not in pkgs
+
+
+def test_debian_packages_debian_uses_libasound2():
+    info = plat.PlatformInfo(family="debian-family", id="debian", version="12")
+    pkgs = plat.debian_packages(info)
+    assert "libasound2" in pkgs
+    assert "libasound2t64" not in pkgs
+
+
 def test_list_reviewed_against_playwright_matches_pinned_version():
     """Reminds maintainer to review DEBIAN_PACKAGES when playwright is bumped."""
     import sys

@@ -66,9 +66,10 @@ def build_install_plan(
             missing = tuple(p for p in plat.RHEL_PACKAGES if p not in present)
             system_step = SystemPackagesStep(manager="dnf", packages=missing)
         elif family == "debian-family":
-            present = dpkg_installed(plat.DEBIAN_PACKAGES)
+            packages = plat.debian_packages(platform_info)
+            present = dpkg_installed(packages)
             claim_pending = tuple(sorted(pending & present))
-            missing = tuple(p for p in plat.DEBIAN_PACKAGES if p not in present)
+            missing = tuple(p for p in packages if p not in present)
             system_step = SystemPackagesStep(manager="apt", packages=missing)
         elif family == "macos":
             system_step = None

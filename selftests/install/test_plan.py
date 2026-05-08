@@ -124,6 +124,9 @@ def test_install_plan_debian_uses_apt(tmp_path: Path):
     assert plan.system_step is not None
     assert plan.system_step.manager == "apt"
     assert "libnss3" in plan.system_step.packages
+    # Ubuntu 24.04 should use libasound2t64, not libasound2
+    assert "libasound2t64" in plan.system_step.packages
+    assert "libasound2" not in plan.system_step.packages
 
 
 def test_install_plan_skips_already_installed_packages(tmp_path: Path):
