@@ -130,6 +130,8 @@ def build_uninstall_plan(
             commands.append("sudo dnf remove " + " ".join(names))
         elif manager == "apt":
             commands.append("sudo apt remove --autoremove " + " ".join(names))
+        elif manager == "zypper":
+            commands.append("sudo zypper remove " + " ".join(names))
         # Unknown manager: skip (we don't know how to remove)
 
     return UninstallPlan(

@@ -292,3 +292,15 @@ def test_uninstall_plan_emits_command_per_manager_when_mixed():
     assert plan.system_remove_commands[1].startswith("sudo dnf remove")
     assert "libdrm" in plan.system_remove_commands[1]
     assert "nss" in plan.system_remove_commands[1]
+
+
+def test_uninstall_plan_emits_zypper_command():
+    m = _empty_manifest(family="suse-family")
+    m.platform_id = "opensuse-leap"
+    m.platform_version = "15.6"
+    m.items = [
+        SystemPackageItem(manager="zypper", name="mozilla-nss", installed_at="t"),
+        SystemPackageItem(manager="zypper", name="libdrm2", installed_at="t"),
+    ]
+    plan = pl.build_uninstall_plan(manifest=m, connect_url=None)
+    assert plan.system_remove_commands == ("sudo zypper remove libdrm2 mozilla-nss",)
