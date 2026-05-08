@@ -1052,6 +1052,12 @@ def _create_api_key_via_session(
 
             print(">>> Connect API key created.\n")
             return api_key
-    except (ValueError, KeyError) as exc:
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        # httpx.HTTPError catches both transport-level failures (DNS, TCP,
+        # TLS, timeouts -- httpx.RequestError) and HTTP status errors
+        # (httpx.HTTPStatusError).  Mirrors the prior PlaywrightError
+        # handling: the function is documented to return None on failure
+        # rather than raising, so vip verify can emit a warning instead of
+        # crashing during auth setup.
         print(f">>> Warning: Could not create API key: {exc}")
         return None

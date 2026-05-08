@@ -748,6 +748,29 @@ class TestCreateApiKeyViaSession:
         assert "HTTP 403" in out
         assert "CSRF token is required" in out
 
+    def test_httpx_transport_error_returns_none(self, capsys):
+        """httpx connection failures (DNS, TCP, TLS) must return None, not bubble up.
+
+        The function is documented to return None on failure rather than raise,
+        so vip verify can emit a warning and proceed to other checks.  Without
+        an httpx.HTTPError catch, a TLS rejection (verify=True against a
+        self-signed server) would crash auth setup instead.
+        """
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+
+        def raise_connect_error(*_a, **_kw):
+            raise httpx.ConnectError("simulated TLS rejection")
+
+        patcher, _cls, _client = self._patch_httpx_client(get_side_effect=raise_connect_error)
+        with patcher:
+            assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
+
+        assert "simulated TLS rejection" in capsys.readouterr().out
+
     def test_missing_xsrf_cookie_still_runs(self):
         """With no RSC-XSRF cookie the call still runs; no X-Rsc-Xsrf header sent."""
         from vip.auth import _create_api_key_via_session
