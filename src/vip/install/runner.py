@@ -139,7 +139,7 @@ def _install_system_packages(manager: str, packages: tuple[str, ...]) -> None:
     elif manager == "apt":
         subprocess.run(["apt", "install", "-y", *packages], check=True)
     elif manager == "zypper":
-        subprocess.run(["zypper", "install", "-y", "--no-confirm", *packages], check=True)
+        subprocess.run(["zypper", "install", "-y", *packages], check=True)
     else:
         raise ValueError(f"Unknown manager {manager!r}")
 

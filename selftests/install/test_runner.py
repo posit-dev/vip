@@ -357,7 +357,7 @@ def test_install_system_packages_zypper_invokes_correct_command(monkeypatch):
 
     monkeypatch.setattr(rn.subprocess, "run", fake_run)
     rn._install_system_packages("zypper", ("mozilla-nss", "libdrm2"))
-    assert captured == [["zypper", "install", "-y", "--no-confirm", "mozilla-nss", "libdrm2"]]
+    assert captured == [["zypper", "install", "-y", "mozilla-nss", "libdrm2"]]
 
 
 def test_manager_for_suse_family():
