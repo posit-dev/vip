@@ -1,6 +1,40 @@
 # CHANGELOG
 
 
+## v0.29.1 (2026-05-08)
+
+### Bug Fixes
+
+- **auth**: Honor --insecure during Connect API key minting
+  ([#248](https://github.com/posit-dev/vip/pull/248),
+  [`b48f961`](https://github.com/posit-dev/vip/commit/b48f96125e0b6d1271d1f26da937cd9d82749e76))
+
+- **insecure**: Honor TLS config across clients and step modules
+  ([#247](https://github.com/posit-dev/vip/pull/247),
+  [`d5bafb0`](https://github.com/posit-dev/vip/commit/d5bafb00aa1a263f005614d8e217a39dc9c1bd8b))
+
+### Chores
+
+- **deps**: Bump jupyter packages for CVE fixes ([#243](https://github.com/posit-dev/vip/pull/243),
+  [`2d72710`](https://github.com/posit-dev/vip/commit/2d7271010f817e7731a0132952700eabd4f6a784))
+
+- **deps**: Bump mako and mistune to fix CVEs ([#249](https://github.com/posit-dev/vip/pull/249),
+  [`7d47e6d`](https://github.com/posit-dev/vip/commit/7d47e6d7a699ebf03195d3c57b4cae931bd2805b))
+
+- **deps**: Bump the python-dependencies group with 5 updates
+  ([#245](https://github.com/posit-dev/vip/pull/245),
+  [`ecffd5f`](https://github.com/posit-dev/vip/commit/ecffd5f941300feabc6e1835be013e69ea75937d))
+
+### Continuous Integration
+
+- Harden checkouts with persist-credentials: false
+  ([#244](https://github.com/posit-dev/vip/pull/244),
+  [`2e03914`](https://github.com/posit-dev/vip/commit/2e0391483a1405b298ff329640c58160c1604cc7))
+
+- Pin actions to SHAs and enforce with zizmor ([#242](https://github.com/posit-dev/vip/pull/242),
+  [`1704c91`](https://github.com/posit-dev/vip/commit/1704c91a65b73b5f9623880f5070771ae3d164aa))
+
+
 ## v0.29.0 (2026-05-01)
 
 ### Chores
