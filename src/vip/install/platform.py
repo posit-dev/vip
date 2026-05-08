@@ -135,10 +135,10 @@ SUSE_PACKAGES: tuple[str, ...] = (
     "libcups2",
     "libdrm2",
     "libxkbcommon0",
-    "libxcomposite1",
-    "libxdamage1",
-    "libxfixes3",
-    "libxrandr2",
+    "libXcomposite1",
+    "libXdamage1",
+    "libXfixes3",
+    "libXrandr2",
     "libgbm1",
     "libpango-1_0-0",
     "libcairo2",
@@ -146,9 +146,11 @@ SUSE_PACKAGES: tuple[str, ...] = (
     "libxshmfence1",
     "libX11-6",
     "libxcb1",
-    "libxext6",
+    "libXext6",
     "libdbus-1-3",
     "libglib-2_0-0",
+    "fontconfig",
+    "liberation-fonts",
 )
 
 # Mirror of LIST_REVIEWED_AGAINST_PLAYWRIGHT for the SUSE list.
