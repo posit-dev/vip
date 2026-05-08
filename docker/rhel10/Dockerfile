@@ -20,4 +20,4 @@ RUN uv sync --frozen
 # Runs as root inside Docker, so vip install invokes dnf directly.
 RUN uv run vip install
 
-CMD ["uv", "run", "python", "/app/docker/rhel-smoke.py"]
+CMD ["uv", "run", "python", "/app/docker/playwright-smoke.py"]
