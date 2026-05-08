@@ -19,7 +19,7 @@ class ManifestError(Exception):
 
 @dataclass
 class SystemPackageItem:
-    manager: str  # "dnf" | "apt"
+    manager: str  # "dnf" | "apt" | "zypper"
     name: str
     installed_at: str
     kind: str = "system_package"
@@ -43,7 +43,7 @@ class Manifest:
     created_at: str
     updated_at: str
     host: str
-    platform: str  # "rhel-family" | "debian-family" | "macos" | "unsupported"
+    platform: str  # "rhel-family" | "debian-family" | "suse-family" | "macos" | "unsupported"
     platform_id: str | None
     platform_version: str | None
     items: list[Item] = field(default_factory=list)
