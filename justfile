@@ -110,3 +110,7 @@ rhel9-smoke:
 # Build and run the RHEL 10 headless Chromium smoke test
 rhel10-smoke:
     ./scripts/rhel-smoke.sh 10
+
+# Build and run the openSUSE Leap headless Chromium smoke test
+opensuse-leap-smoke:
+    ./scripts/opensuse-leap-smoke.sh

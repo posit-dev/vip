@@ -43,7 +43,12 @@ def format_install_plan(plan: InstallPlan) -> str:
         lines.append("  (nothing else to do)")
     if plan.system_step and plan.system_step.packages:
         manager = plan.system_step.manager
-        cmd = "sudo dnf install -y" if manager == "dnf" else "sudo apt install -y"
+        if manager == "dnf":
+            cmd = "sudo dnf install -y"
+        elif manager == "zypper":
+            cmd = "sudo zypper -n install"
+        else:
+            cmd = "sudo apt install -y"
         lines.append("  system packages to install (run yourself if not root):")
         lines.append(f"    {cmd} {' '.join(plan.system_step.packages)}")
     if plan.claim_pending:
@@ -81,7 +86,12 @@ def execute_install_plan(
         manifest.add_pending_packages(system_step.packages)
         manifest.updated_at = now
         save(manifest, manifest_path)
-        cmd = "sudo dnf install -y" if system_step.manager == "dnf" else "sudo apt install -y"
+        if system_step.manager == "dnf":
+            cmd = "sudo dnf install -y"
+        elif system_step.manager == "zypper":
+            cmd = "sudo zypper -n install"
+        else:
+            cmd = "sudo apt install -y"
         print(f"\nNot running as root. Please run:\n  {cmd} {' '.join(system_step.packages)}")
         print("Then re-run `vip install`.")
         return 2
@@ -114,7 +124,11 @@ def execute_install_plan(
 
 
 def _manager_for(platform_family: str) -> str:
-    return "dnf" if platform_family == "rhel-family" else "apt"
+    if platform_family == "rhel-family":
+        return "dnf"
+    if platform_family == "suse-family":
+        return "zypper"
+    return "apt"
 
 
 def _install_system_packages(manager: str, packages: tuple[str, ...]) -> None:
@@ -124,6 +138,8 @@ def _install_system_packages(manager: str, packages: tuple[str, ...]) -> None:
         subprocess.run(["dnf", "install", "-y", *packages], check=True)
     elif manager == "apt":
         subprocess.run(["apt", "install", "-y", *packages], check=True)
+    elif manager == "zypper":
+        subprocess.run(["zypper", "-n", "install", *packages], check=True)
     else:
         raise ValueError(f"Unknown manager {manager!r}")
 
