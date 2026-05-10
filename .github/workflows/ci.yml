@@ -135,3 +135,17 @@ jobs:
           name: selftest-results-${{ matrix.os }}-py${{ matrix.python-version }}
           path: selftest-results.xml
 
+  selftests-status:
+    name: Selftests Status
+    if: always()
+    needs: [selftest]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check selftest matrix result
+        run: |
+          if [ "${{ needs.selftest.result }}" = "failure" ] || [ "${{ needs.selftest.result }}" = "cancelled" ]; then
+            echo "Selftests failed or were cancelled"
+            exit 1
+          fi
+          echo "Selftests passed or were skipped"
+
