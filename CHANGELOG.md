@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.30.0 (2026-05-10)
+
+### Features
+
+- Better platform support along with CI and docs ([#250](https://github.com/posit-dev/vip/pull/250),
+  [`7b2de30`](https://github.com/posit-dev/vip/commit/7b2de3023455435818afd75aa6e95a313cd55436))
+
+
 ## v0.29.1 (2026-05-08)
 
 ### Bug Fixes
