@@ -64,6 +64,10 @@ uv run vip install</code></pre>
           <p>Check product health without running the full test suite:</p>
           <pre><code>vip status</code></pre>
 
+          <p>Already have an API key? Skip browser auth entirely with <code>--api-auth</code>:</p>
+          <pre><code>export VIP_CONNECT_API_KEY="your-api-key"
+vip verify --connect-url https://connect.example.com --api-auth</code></pre>
+
           <p>Test multiple products at once:</p>
           <pre><code>vip verify \
   --connect-url https://connect.example.com \
@@ -95,10 +99,24 @@ uv run vip install</code></pre>
           </p>
           <pre><code>vip verify --config vip.toml --headless-auth</code></pre>
 
+          <h3>API-key-only auth</h3>
+          <p>
+            If you only have an API key and no browser credentials, use
+            <code>--api-auth</code> to run only the tests that can authenticate
+            via API key. Tests that require a browser login (username/password
+            or SSO) are automatically skipped:
+          </p>
+          <pre><code>export VIP_CONNECT_API_KEY="your-api-key"
+vip verify --connect-url https://connect.example.com --api-auth</code></pre>
+          <p>
+            This is useful in CI pipelines or environments where interactive
+            login is not possible and no test user credentials are available.
+          </p>
+
           <h3>Credential-based auth</h3>
           <p>
-            If you have API keys or test user credentials, disable interactive
-            auth and set environment variables instead:
+            If you have API keys and test user credentials, disable interactive
+            auth and set environment variables:
           </p>
           <pre><code>export VIP_CONNECT_API_KEY="your-api-key"
 export VIP_TEST_USERNAME="test-user"
