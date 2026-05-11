@@ -124,6 +124,44 @@ def test_install_plan_debian_uses_apt(tmp_path: Path):
     assert plan.system_step is not None
     assert plan.system_step.manager == "apt"
     assert "libnss3" in plan.system_step.packages
+    # Ubuntu 24.04 should use libasound2t64, not libasound2
+    assert "libasound2t64" in plan.system_step.packages
+    assert "libasound2" not in plan.system_step.packages
+
+
+def test_install_plan_suse_uses_zypper(tmp_path: Path):
+    info = PlatformInfo(family="suse-family", id="opensuse-leap", version="15.6")
+    plan = pl.build_install_plan(
+        platform_info=info,
+        manifest=None,
+        rpm_installed=lambda names: set(),
+        dpkg_installed=lambda names: set(),
+        chromium_present=False,
+        playwright_cache_dir=tmp_path / "cache",
+        skip_system=False,
+    )
+    assert plan.system_step is not None
+    assert plan.system_step.manager == "zypper"
+    assert "mozilla-nss" in plan.system_step.packages
+    assert plan.playwright_step is not None
+
+
+def test_install_plan_suse_uses_rpm_for_present_check(tmp_path: Path):
+    """openSUSE uses rpm under the hood, so rpm_installed must be the lookup."""
+    info = PlatformInfo(family="suse-family", id="opensuse-leap", version="15.6")
+    plan = pl.build_install_plan(
+        platform_info=info,
+        manifest=None,
+        rpm_installed=lambda names: {"mozilla-nss", "libdrm2"},
+        dpkg_installed=lambda names: set(),
+        chromium_present=False,
+        playwright_cache_dir=tmp_path / "cache",
+        skip_system=False,
+    )
+    assert plan.system_step is not None
+    assert "mozilla-nss" not in plan.system_step.packages
+    assert "libdrm2" not in plan.system_step.packages
+    assert "libcups2" in plan.system_step.packages
 
 
 def test_install_plan_skips_already_installed_packages(tmp_path: Path):
@@ -199,6 +237,34 @@ def test_install_plan_pending_packages_now_present_get_claimed(tmp_path: Path):
     assert "libdrm" in plan.system_step.packages
 
 
+def test_install_plan_normalizes_legacy_pending_libasound2(tmp_path: Path):
+    """Old manifest with pending 'libasound2' gets claimed as 'libasound2t64' on 24.04."""
+    info = PlatformInfo(family="debian-family", id="ubuntu", version="24.04")
+    m = Manifest(
+        version=SCHEMA_VERSION,
+        vip_version="0.0.0",
+        created_at="",
+        updated_at="",
+        host="h",
+        platform="debian-family",
+        platform_id="ubuntu",
+        platform_version="24.04",
+        items=[],
+        pending_system_packages=["libasound2"],
+    )
+    plan = pl.build_install_plan(
+        platform_info=info,
+        manifest=m,
+        rpm_installed=lambda names: set(),
+        dpkg_installed=lambda names: {"libasound2t64"},
+        chromium_present=False,
+        playwright_cache_dir=tmp_path / "cache",
+        skip_system=False,
+    )
+    # The legacy name should be normalized and claimed.
+    assert "libasound2t64" in plan.claim_pending
+
+
 def _full_manifest() -> Manifest:
     m = _empty_manifest()
     m.items = [
@@ -257,3 +323,15 @@ def test_uninstall_plan_emits_command_per_manager_when_mixed():
     assert plan.system_remove_commands[1].startswith("sudo dnf remove")
     assert "libdrm" in plan.system_remove_commands[1]
     assert "nss" in plan.system_remove_commands[1]
+
+
+def test_uninstall_plan_emits_zypper_command():
+    m = _empty_manifest(family="suse-family")
+    m.platform_id = "opensuse-leap"
+    m.platform_version = "15.6"
+    m.items = [
+        SystemPackageItem(manager="zypper", name="mozilla-nss", installed_at="t"),
+        SystemPackageItem(manager="zypper", name="libdrm2", installed_at="t"),
+    ]
+    plan = pl.build_uninstall_plan(manifest=m, connect_url=None)
+    assert plan.system_remove_commands == ("sudo zypper remove libdrm2 mozilla-nss",)

@@ -1,29 +1,33 @@
-name: RHEL Smoke
+name: Linux Smoke
 
 on:
   push:
     branches: [main]
     paths:
       - 'docker/rhel*/**'
-      - 'docker/rhel-smoke.py'
+      - 'docker/opensuse-leap/**'
+      - 'docker/playwright-smoke.py'
       - 'scripts/rhel-smoke.sh'
+      - 'scripts/opensuse-leap-smoke.sh'
       - 'justfile'
       - 'pyproject.toml'
       - 'uv.lock'
       - 'src/**'
       - 'selftests/**'
-      - '.github/workflows/rhel-smoke.yml'
+      - '.github/workflows/linux-smoke.yml'
   pull_request:
     paths:
       - 'docker/rhel*/**'
-      - 'docker/rhel-smoke.py'
+      - 'docker/opensuse-leap/**'
+      - 'docker/playwright-smoke.py'
       - 'scripts/rhel-smoke.sh'
+      - 'scripts/opensuse-leap-smoke.sh'
       - 'justfile'
       - 'pyproject.toml'
       - 'uv.lock'
       - 'src/**'
       - 'selftests/**'
-      - '.github/workflows/rhel-smoke.yml'
+      - '.github/workflows/linux-smoke.yml'
 
 jobs:
   smoke:
@@ -32,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: [rhel9, rhel10]
+        version: [rhel9, rhel10, opensuse-leap]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:

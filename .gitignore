@@ -13,7 +13,6 @@ demo.md
 .claude/worktrees/
 .claude/settings.local.json
 .worktrees/
-docs/superpowers
 
 # Website
 website/node_modules/

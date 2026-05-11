@@ -88,6 +88,37 @@ def test_detect_popos_via_id_like(monkeypatch, fake_os_release):
     assert info.family == "debian-family"
 
 
+def test_detect_opensuse_leap(monkeypatch, fake_os_release):
+    monkeypatch.setattr(plat.sys, "platform", "linux")
+    fake_os_release('ID="opensuse-leap"\nVERSION_ID="15.6"\nID_LIKE="suse opensuse"\n')
+    info = plat.detect()
+    assert info.family == "suse-family"
+    assert info.id == "opensuse-leap"
+    assert info.version == "15.6"
+
+
+def test_detect_opensuse_tumbleweed(monkeypatch, fake_os_release):
+    monkeypatch.setattr(plat.sys, "platform", "linux")
+    fake_os_release('ID="opensuse-tumbleweed"\nVERSION_ID="20260101"\nID_LIKE="opensuse suse"\n')
+    info = plat.detect()
+    assert info.family == "suse-family"
+
+
+def test_detect_sles(monkeypatch, fake_os_release):
+    monkeypatch.setattr(plat.sys, "platform", "linux")
+    fake_os_release('ID="sles"\nVERSION_ID="15.5"\nID_LIKE="suse"\n')
+    info = plat.detect()
+    assert info.family == "suse-family"
+
+
+def test_detect_suse_via_id_like_only(monkeypatch, fake_os_release):
+    """A SUSE-derivative whose ID is something else should still route to suse-family."""
+    monkeypatch.setattr(plat.sys, "platform", "linux")
+    fake_os_release('ID="microos"\nID_LIKE="suse opensuse"\nVERSION_ID="6"\n')
+    info = plat.detect()
+    assert info.family == "suse-family"
+
+
 def test_detect_unknown_linux(monkeypatch, fake_os_release):
     monkeypatch.setattr(plat.sys, "platform", "linux")
     fake_os_release('ID=void\nVERSION_ID="rolling"\n')
@@ -122,6 +153,74 @@ def test_debian_packages_is_tuple_of_strings():
     assert all(isinstance(p, str) and p for p in plat.DEBIAN_PACKAGES)
     # Spot check from Playwright nativeDeps.ts
     assert "libnss3" in plat.DEBIAN_PACKAGES
+
+
+def test_debian_packages_ubuntu_2404_uses_libasound2t64():
+    info = plat.PlatformInfo(family="debian-family", id="ubuntu", version="24.04")
+    pkgs = plat.debian_packages(info)
+    assert "libasound2t64" in pkgs
+    assert "libasound2" not in pkgs
+
+
+def test_debian_packages_ubuntu_2204_uses_libasound2():
+    info = plat.PlatformInfo(family="debian-family", id="ubuntu", version="22.04")
+    pkgs = plat.debian_packages(info)
+    assert "libasound2" in pkgs
+    assert "libasound2t64" not in pkgs
+
+
+def test_debian_packages_debian_uses_libasound2():
+    info = plat.PlatformInfo(family="debian-family", id="debian", version="12")
+    pkgs = plat.debian_packages(info)
+    assert "libasound2" in pkgs
+    assert "libasound2t64" not in pkgs
+
+
+def test_debian_packages_ubuntu_derivative_uses_libasound2t64():
+    """Ubuntu derivatives (e.g. Pop!_OS) that report ID_LIKE=ubuntu also need t64."""
+    info = plat.PlatformInfo(
+        family="debian-family",
+        id="pop",
+        version="24.04",
+        raw={"ID": "pop", "ID_LIKE": "ubuntu debian", "VERSION_ID": "24.04"},
+    )
+    pkgs = plat.debian_packages(info)
+    assert "libasound2t64" in pkgs
+    assert "libasound2" not in pkgs
+
+
+def test_suse_packages_is_tuple_of_strings():
+    assert isinstance(plat.SUSE_PACKAGES, tuple)
+    assert all(isinstance(p, str) and p for p in plat.SUSE_PACKAGES)
+    # Spot check: zypper-named Chromium runtime libs.
+    assert "mozilla-nss" in plat.SUSE_PACKAGES
+    assert "libdrm2" in plat.SUSE_PACKAGES
+
+
+def test_list_reviewed_against_playwright_suse_matches_pinned_version():
+    """Reminds maintainer to review SUSE_PACKAGES when playwright is bumped."""
+    import sys
+
+    if sys.version_info >= (3, 11):
+        import tomllib
+    else:
+        import tomli as tomllib  # type: ignore[no-redef]
+
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+    deps = pyproject["project"]["dependencies"]
+    pw_dep = next(d for d in deps if d.startswith("playwright"))
+    pinned = pw_dep.split(">=", 1)[1].split(",", 1)[0].strip()
+    reviewed = plat.LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE
+    nativedeps_url = (
+        "https://github.com/microsoft/playwright/blob/main"
+        "/packages/playwright-core/src/server/registry/nativeDeps.ts"
+    )
+    assert reviewed == pinned, (
+        f"SUSE_PACKAGES was last reviewed for playwright {reviewed}, "
+        f"but pyproject.toml now pins playwright {pinned}. "
+        f"Review src/vip/install/platform.py:SUSE_PACKAGES against {nativedeps_url} "
+        "and bump LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE to match."
+    )
 
 
 def test_list_reviewed_against_playwright_matches_pinned_version():
