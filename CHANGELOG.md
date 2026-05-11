@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.30.1 (2026-05-11)
+
+### Bug Fixes
+
+- **install**: Use libasound2t64 on Ubuntu 24.04+
+  ([#252](https://github.com/posit-dev/vip/pull/252),
+  [`36b43d2`](https://github.com/posit-dev/vip/commit/36b43d206cb1302d0aed37c0356cef96f03fb500))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.30.0 (2026-05-10)
 
 ### Features
