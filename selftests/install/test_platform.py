@@ -155,6 +155,40 @@ def test_debian_packages_is_tuple_of_strings():
     assert "libnss3" in plat.DEBIAN_PACKAGES
 
 
+def test_debian_packages_ubuntu_2404_uses_libasound2t64():
+    info = plat.PlatformInfo(family="debian-family", id="ubuntu", version="24.04")
+    pkgs = plat.debian_packages(info)
+    assert "libasound2t64" in pkgs
+    assert "libasound2" not in pkgs
+
+
+def test_debian_packages_ubuntu_2204_uses_libasound2():
+    info = plat.PlatformInfo(family="debian-family", id="ubuntu", version="22.04")
+    pkgs = plat.debian_packages(info)
+    assert "libasound2" in pkgs
+    assert "libasound2t64" not in pkgs
+
+
+def test_debian_packages_debian_uses_libasound2():
+    info = plat.PlatformInfo(family="debian-family", id="debian", version="12")
+    pkgs = plat.debian_packages(info)
+    assert "libasound2" in pkgs
+    assert "libasound2t64" not in pkgs
+
+
+def test_debian_packages_ubuntu_derivative_uses_libasound2t64():
+    """Ubuntu derivatives (e.g. Pop!_OS) that report ID_LIKE=ubuntu also need t64."""
+    info = plat.PlatformInfo(
+        family="debian-family",
+        id="pop",
+        version="24.04",
+        raw={"ID": "pop", "ID_LIKE": "ubuntu debian", "VERSION_ID": "24.04"},
+    )
+    pkgs = plat.debian_packages(info)
+    assert "libasound2t64" in pkgs
+    assert "libasound2" not in pkgs
+
+
 def test_suse_packages_is_tuple_of_strings():
     assert isinstance(plat.SUSE_PACKAGES, tuple)
     assert all(isinstance(p, str) and p for p in plat.SUSE_PACKAGES)
