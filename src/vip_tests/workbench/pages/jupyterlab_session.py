@@ -3,6 +3,8 @@
 Mirrors: rstudio-pro/e2e/pages/jupyterlab_session.page.ts
 """
 
+import re
+
 
 class JupyterLabSession:
     """Selectors for the JupyterLab IDE."""
@@ -50,7 +52,5 @@ class JupyterLabSession:
         Uses Playwright's text= selector to avoid CSS quoting issues.
         """
         # Escape any regex-special characters so the name matches literally
-        import re
-
         escaped = re.escape(name)
         return f".jp-extensionmanager-installedlist .jp-extensionmanager-entry >> text=/{escaped}/i"

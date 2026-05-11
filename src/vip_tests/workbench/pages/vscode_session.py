@@ -3,9 +3,9 @@
 Mirrors: rstudio-pro/e2e/pages/vscode_session.page.ts
 """
 
-import re
+from vip_tests.workbench.pages._extensions import EXTENSION_ID_RE
 
-EXTENSION_ID_RE = re.compile(r"^[\w.-]+$")
+__all__ = ["EXTENSION_ID_RE", "VSCodeSession"]
 
 
 class VSCodeSession:

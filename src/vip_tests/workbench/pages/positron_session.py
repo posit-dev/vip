@@ -3,7 +3,7 @@
 Mirrors: rstudio-pro/e2e/pages/positron_session.page.ts
 """
 
-from vip_tests.workbench.pages.vscode_session import EXTENSION_ID_RE
+from vip_tests.workbench.pages._extensions import EXTENSION_ID_RE
 
 
 class PositronSession:
