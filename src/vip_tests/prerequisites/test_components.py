@@ -31,7 +31,7 @@ def request_health_endpoint(product, vip_config):
     pc = vip_config.product_config(product_key)
     if not pc.is_configured:
         pytest.skip(f"{product} is not configured")
-    resp = httpx.get(f"{pc.url}{endpoint}", timeout=15)
+    resp = httpx.get(f"{pc.url}{endpoint}", timeout=15, verify=vip_config.verify)
     return resp
 
 

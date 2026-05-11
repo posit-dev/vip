@@ -20,12 +20,14 @@ jobs:
       matrix:
         connect-version: ${{ github.event_name == 'schedule' && fromJSON('["2024.08.0", "release", "preview"]') || fromJSON('["2024.08.0", "release"]') }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       # Start Connect in Docker
       - name: Start Connect
         id: connect
-        uses: posit-dev/with-connect@main
+        uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
           version: ${{ matrix.connect-version }}
           license: ${{ secrets.CONNECT_LICENSE }}
@@ -77,7 +79,7 @@ jobs:
 
       # Rename the check run so the job title shows the resolved version
       - name: Update job title with resolved version
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const resolvedVersion = '${{ steps.version.outputs.resolved }}';
@@ -99,7 +101,7 @@ jobs:
             }
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
 
@@ -146,7 +148,7 @@ jobs:
       # Upload test results for debugging failures
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: connect-smoke-results-${{ matrix.connect-version }}
           path: smoke-results.xml
@@ -201,7 +203,7 @@ jobs:
       # Stop Connect
       - name: Stop Connect
         if: always()
-        uses: posit-dev/with-connect@main
+        uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
           stop: ${{ steps.connect.outputs.CONTAINER_ID }}
 

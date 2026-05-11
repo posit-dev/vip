@@ -10,15 +10,17 @@ jobs:
     name: Lint & Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
-      - uses: astral-sh/ruff-action@v3
+      - uses: astral-sh/ruff-action@4919ec5cf1f49eff0871dbcea0da843445b837e6 # v3
         name: Ruff lint
         with:
           version: "0.15.0"
           args: check src/ selftests/ examples/ docker/
 
-      - uses: astral-sh/ruff-action@v3
+      - uses: astral-sh/ruff-action@4919ec5cf1f49eff0871dbcea0da843445b837e6 # v3
         name: Ruff format
         with:
           version: "0.15.0"
@@ -28,9 +30,11 @@ jobs:
     name: Type Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
 
@@ -40,13 +44,52 @@ jobs:
       - name: Run mypy
         run: uv run mypy src/vip/
 
+  actions-lint:
+    name: Actions Lint (zizmor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Enforce SHA-pinned actions and credential hygiene
+        env:
+          ENFORCED_AUDITS: "unpinned-uses artipacked"
+        run: |
+          set +e
+          zizmor_output=$(uvx zizmor==1.24.1 --config .github/zizmor.yml --format=json .github/workflows/)
+          zizmor_status=$?
+          set -e
+
+          if [ "$zizmor_status" -ne 0 ] && [ -z "$zizmor_output" ]; then
+            echo "::error::zizmor failed before producing JSON output."
+            exit "$zizmor_status"
+          fi
+
+          fail=0
+          for audit in $ENFORCED_AUDITS; do
+            count=$(printf '%s\n' "$zizmor_output" \
+              | jq --arg a "$audit" '[.[] | select(.ident == $a)] | length')
+            if [ "$count" -gt 0 ]; then
+              echo "::error::Found $count '$audit' finding(s). See documentation: https://docs.zizmor.sh/audits/#$audit"
+              uvx zizmor==1.24.1 --config .github/zizmor.yml .github/workflows/ 2>&1 | grep -B1 -A6 "$audit" || true
+              fail=1
+            fi
+          done
+
+          [ "$fail" -eq 0 ] || exit 1
+
   audit:
     name: Dependency Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
 
@@ -63,9 +106,11 @@ jobs:
       matrix:
         python-version: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
 
@@ -83,7 +128,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: selftest-results-py${{ matrix.python-version }}
           path: selftest-results.xml

@@ -322,7 +322,9 @@ def start_interactive_auth(
         # Mint Connect API key only if Connect is configured.
         api_key = None
         if connect_url:
-            api_key = _create_api_key_via_session(page, connect_url, key_name)
+            api_key = _create_api_key_via_session(
+                page, connect_url, key_name, insecure=insecure, ca_bundle=ca_bundle
+            )
 
         # Visit Workbench so the storage state includes its session cookies.
         if workbench_url and connect_url:
@@ -495,7 +497,9 @@ def start_headless_auth(
         # Mint Connect API key only if Connect is configured.
         api_key = None
         if connect_url:
-            api_key = _create_api_key_via_session(page, connect_url, key_name)
+            api_key = _create_api_key_via_session(
+                page, connect_url, key_name, insecure=insecure, ca_bundle=ca_bundle
+            )
 
         # Visit Workbench so the storage state includes its session cookies.
         if workbench_url and connect_url:
@@ -719,6 +723,23 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> None:
     )
 
 
+def _httpx_verify(insecure: bool, ca_bundle: Path | None) -> bool | str:
+    """Derive the httpx ``verify`` value from TLS config parameters.
+
+    - ``insecure=True`` → ``False`` (skip verification; insecure wins over ca_bundle)
+    - ``ca_bundle`` set → ``str`` path to the bundle file
+    - default → ``True`` (system trust store)
+
+    Mirrors ``cli.py:391`` and ``VIPConfig.verify`` so TLS behaviour is
+    consistent across every httpx call site in auth.py.
+    """
+    if insecure:
+        return False
+    if ca_bundle is not None:
+        return str(ca_bundle)
+    return True
+
+
 def _delete_api_key(
     connect_url: str,
     api_key: str,
@@ -730,12 +751,7 @@ def _delete_api_key(
     """Delete the VIP API key using the key itself for authentication."""
     import httpx
 
-    if insecure:
-        verify: bool | str = False
-    elif ca_bundle is not None:
-        verify = str(ca_bundle)
-    else:
-        verify = True
+    verify = _httpx_verify(insecure, ca_bundle)
 
     base = connect_url.rstrip("/")
     with httpx.Client(
@@ -864,7 +880,7 @@ def _response_text(resp) -> str:
     return text_attr or ""
 
 
-def _delete_stale_vip_keys(req, base_url: str, guid: str, headers: dict[str, str]) -> None:
+def _delete_stale_vip_keys(client, guid: str) -> None:
     """Delete ``_vip_interactive_<ts>`` keys older than
     :data:`_ORPHAN_MIN_AGE_SECONDS`.
 
@@ -872,19 +888,23 @@ def _delete_stale_vip_keys(req, base_url: str, guid: str, headers: dict[str, str
     single stuck orphan does not block fresh key creation.  Keys younger than
     the threshold are left alone because they probably belong to another
     ``vip verify`` still running.
+
+    *client* is an ``httpx.Client`` already configured with the correct
+    ``base_url``, ``verify``, ``cookies``, and ``headers``.  The caller
+    constructs it and owns its lifecycle.
     """
     try:
-        list_resp = req.get(f"{base_url}/v1/users/{guid}/keys", headers=headers)
-    except PlaywrightError as exc:
+        list_resp = client.get(f"/v1/users/{guid}/keys")
+    except Exception as exc:
         print(f">>> Warning: listing stale keys failed: {exc}")
         return
-    if not list_resp.ok:
+    if not list_resp.is_success:
         return
 
     now = int(time.time())
     try:
         entries = list_resp.json()
-    except (ValueError, PlaywrightError):
+    except ValueError:
         return
     if not isinstance(entries, list):
         print(f">>> Warning: key list response was {type(entries).__name__}, not list.")
@@ -906,8 +926,8 @@ def _delete_stale_vip_keys(req, base_url: str, guid: str, headers: dict[str, str
         if now - created_ts < _ORPHAN_MIN_AGE_SECONDS:
             continue  # belongs to a concurrent run
         try:
-            req.delete(f"{base_url}/v1/users/{guid}/keys/{key_id}", headers=headers)
-        except PlaywrightError as exc:
+            client.delete(f"/v1/users/{guid}/keys/{key_id}")
+        except Exception as exc:
             print(f">>> Warning: could not delete stale key {key_id}: {exc}")
 
 
@@ -927,17 +947,28 @@ def _body_snippet(resp, limit: int = 200) -> str:
     return text[:limit] if text else "<empty body>"
 
 
-def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> str | None:
+def _create_api_key_via_session(
+    page: Page,
+    connect_url: str,
+    key_name: str,
+    *,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
+) -> str | None:
     """Create a Connect API key by reusing the browser's authenticated session.
 
-    Routes every request through ``page.context.request`` (Playwright's
-    ``APIRequestContext``) so cookies ride the same wire format the browser
-    uses, and reads the XSRF cookie via ``page.context.cookies()``.  The
-    cookie is named ``RSC-XSRF`` on fresh Connect installs but
-    ``RSC-XSRF-legacy`` on servers running in legacy cookie mode;
-    :func:`_xsrf_from_page` tries both.  Missing the correct name entirely
-    yields ``HTTP 403 XSRF token mismatch`` from Connect's double-submit
-    check.
+    Extracts session cookies from ``page.context.cookies()`` and uses an
+    ``httpx.Client`` for all API requests so that ``insecure`` / ``ca_bundle``
+    TLS settings are honoured.  Playwright's ``APIRequestContext``
+    (``page.context.request``) does not expose a ``verify`` equivalent and
+    cannot accept a custom CA bundle, which caused ``CERTIFICATE_VERIFY_FAILED``
+    errors when ``--insecure`` was set (issue #239).
+
+    The XSRF token is still read from the browser's cookie jar via
+    :func:`_xsrf_from_page` and sent as the ``X-Rsc-Xsrf`` request header —
+    Connect's double-submit CSRF check requires the header and the cookie to
+    match.  The cookie is named ``RSC-XSRF`` on fresh installs and
+    ``RSC-XSRF-legacy`` on servers running in legacy cookie mode.
 
     Hits ``/__api__/v1/users/{guid}/keys`` — the same endpoint the Connect
     dashboard's "+ New API Key" button uses.  See
@@ -949,7 +980,15 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
     delete a concurrent run's live key.
 
     Returns the API key string, or ``None`` on failure (no exception).
+
+    Note: full end-to-end verification (actual TLS rejection → acceptance with
+    ``--insecure``) requires a real self-signed Connect deployment and is not
+    covered by selftests.  The ``_httpx_verify`` unit tests confirm the verify
+    plumbing; manual testing against a staging cluster is needed to close #239.
     """
+    import httpx
+
+    verify = _httpx_verify(insecure, ca_bundle)
     base = connect_url.rstrip("/") + "/__api__"
     me_url = f"{base}/v1/user"
     # Scope cookie lookup to an actual endpoint path.  RFC 6265 cookie
@@ -959,45 +998,66 @@ def _create_api_key_via_session(page: Page, connect_url: str, key_name: str) -> 
     xsrf = _xsrf_from_page(page, me_url)
     headers = {"X-Rsc-Xsrf": xsrf} if xsrf else {}
 
-    req = page.context.request
+    # Build a cookie dict from the browser's session for the Connect API base.
+    # We extract cookies for ``me_url`` (under ``/__api__/``) so that
+    # path-scoped cookies (e.g. ``Path=/__api__/``) are included — Playwright's
+    # RFC 6265-compliant filter excludes them when queried against the bare
+    # ``/__api__`` base (no trailing slash).
+    try:
+        raw_cookies = page.context.cookies(me_url) or []
+    except PlaywrightError:
+        raw_cookies = []
+    cookies = {c["name"]: c["value"] for c in raw_cookies if c.get("name")}
 
     try:
-        me_resp = req.get(me_url, headers=headers)
-        if not me_resp.ok:
-            print(
-                f">>> Warning: GET /v1/user returned HTTP {me_resp.status}: "
-                f"{_body_snippet(me_resp)}"
-            )
-            xsrf_preview = f"{xsrf[:4]}…(len={len(xsrf)})" if xsrf else "<none>"
-            print(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
-            _log_mint_cookie_diagnostic(page, me_url)
-            return None
-        guid = me_resp.json().get("guid")
-        if not guid:
-            print(">>> Warning: Connect did not return a user guid.")
-            return None
-
-        _delete_stale_vip_keys(req, base, guid, headers)
-
-        create_resp = req.post(
-            f"{base}/v1/users/{guid}/keys",
+        with httpx.Client(
+            base_url=base,
             headers=headers,
-            data={"name": key_name},
-        )
-        if not create_resp.ok:
-            print(
-                f">>> Warning: POST /v1/users/{guid}/keys returned HTTP "
-                f"{create_resp.status}: {_body_snippet(create_resp)}"
+            cookies=cookies,
+            timeout=10.0,
+            verify=verify,
+        ) as client:
+            me_resp = client.get("/v1/user")
+            if not me_resp.is_success:
+                print(
+                    f">>> Warning: GET /v1/user returned HTTP {me_resp.status_code}: "
+                    f"{_body_snippet(me_resp)}"
+                )
+                xsrf_preview = f"{xsrf[:4]}…(len={len(xsrf)})" if xsrf else "<none>"
+                print(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
+                _log_mint_cookie_diagnostic(page, me_url)
+                return None
+            guid = me_resp.json().get("guid")
+            if not guid:
+                print(">>> Warning: Connect did not return a user guid.")
+                return None
+
+            _delete_stale_vip_keys(client, guid)
+
+            create_resp = client.post(
+                f"/v1/users/{guid}/keys",
+                data={"name": key_name},
             )
-            return None
+            if not create_resp.is_success:
+                print(
+                    f">>> Warning: POST /v1/users/{guid}/keys returned HTTP "
+                    f"{create_resp.status_code}: {_body_snippet(create_resp)}"
+                )
+                return None
 
-        api_key = create_resp.json().get("key")
-        if not api_key:
-            print(">>> Warning: Connect response did not include a key string.")
-            return None
+            api_key = create_resp.json().get("key")
+            if not api_key:
+                print(">>> Warning: Connect response did not include a key string.")
+                return None
 
-        print(">>> Connect API key created.\n")
-        return api_key
-    except (PlaywrightError, ValueError, KeyError) as exc:
+            print(">>> Connect API key created.\n")
+            return api_key
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        # httpx.HTTPError catches both transport-level failures (DNS, TCP,
+        # TLS, timeouts -- httpx.RequestError) and HTTP status errors
+        # (httpx.HTTPStatusError).  Mirrors the prior PlaywrightError
+        # handling: the function is documented to return None on failure
+        # rather than raising, so vip verify can emit a warning instead of
+        # crashing during auth setup.
         print(f">>> Warning: Could not create API key: {exc}")
         return None

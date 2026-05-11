@@ -337,6 +337,20 @@ class VIPConfig:
     insecure: bool = False
     ca_bundle: Path | None = None
 
+    @property
+    def verify(self) -> bool | str:
+        """The httpx ``verify`` value derived from TLS config.
+
+        - ``insecure=True``  → ``False`` (skip TLS verification)
+        - ``ca_bundle`` set  → ``str`` path to the CA bundle
+        - default            → ``True`` (use system trust store)
+        """
+        if self.insecure:
+            return False
+        if self.ca_bundle is not None:
+            return str(self.ca_bundle)
+        return True
+
     def validate_for_mode(self, mode: Mode) -> None:
         """Raise ValueError if required fields are missing for *mode*.
 

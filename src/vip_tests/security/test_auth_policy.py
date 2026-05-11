@@ -40,6 +40,7 @@ def unauth_request(vip_config):
     resp = httpx.get(
         f"{vip_config.connect.url}/__api__/v1/user",
         timeout=15,
+        verify=vip_config.verify,
     )
     return resp
 

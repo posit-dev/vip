@@ -20,7 +20,9 @@ jobs:
       matrix:
         pm-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2024.08.0", "ubuntu2204"]') || fromJSON('["ubuntu2204-2024.08.0"]') }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       # Skip the entire job if the license secret is not configured
       - name: Check for RSPM_LICENSE
@@ -117,7 +119,7 @@ jobs:
       # Rename the check run to show the resolved version
       - name: Update job title with resolved version
         if: steps.license.outputs.available == 'true'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const resolvedVersion = '${{ steps.version.outputs.resolved }}';
@@ -139,7 +141,7 @@ jobs:
             }
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         if: steps.license.outputs.available == 'true'
         with:
           enable-cache: true
@@ -182,7 +184,7 @@ jobs:
       # Upload test results for debugging failures
       - name: Upload test results
         if: always() && steps.license.outputs.available == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: pm-smoke-results-${{ matrix.pm-version }}
           path: smoke-results.xml

@@ -65,7 +65,7 @@ def check_product_health(vip_config):
         url = cfg.url.rstrip("/") + path
         entry = {"product": name, "url": url, "ok": False, "status": None, "error": None}
         try:
-            resp = httpx.get(url, follow_redirects=True, timeout=15)
+            resp = httpx.get(url, follow_redirects=True, timeout=15, verify=vip_config.verify)
             entry["status"] = resp.status_code
             entry["ok"] = resp.status_code == 200
         except Exception as exc:
