@@ -1,6 +1,26 @@
 # CHANGELOG
 
 
+## v0.31.0 (2026-05-11)
+
+### Chores
+
+- **deps**: Bump urllib3 to fix CVE-2026-44431 and CVE-2026-44432
+  ([#256](https://github.com/posit-dev/vip/pull/256),
+  [`d6449f9`](https://github.com/posit-dev/vip/commit/d6449f9875cc695519fdfa517de42406f471207d))
+
+### Features
+
+- Validate IDE extension installation ([#161](https://github.com/posit-dev/vip/pull/161),
+  [`2805a9c`](https://github.com/posit-dev/vip/commit/2805a9ccdcffec290174c2b804a6b46c40d2f207))
+
+Co-authored-by: Ian Flores Siaca <iflores.siaca@posit.co>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.30.1 (2026-05-11)
 
 ### Bug Fixes
