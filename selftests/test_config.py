@@ -127,6 +127,10 @@ class TestWorkbenchExtensionsConfig:
         with pytest.raises(ValueError, match="must be a list of strings"):
             WorkbenchExtensionsConfig.from_dict({"vscode": 42})
 
+    def test_list_with_non_string_element_raises(self):
+        with pytest.raises(ValueError, match="list containing int"):
+            WorkbenchExtensionsConfig.from_dict({"vscode": ["quarto.quarto", 42]})
+
 
 class TestPerformanceConfig:
     def test_defaults(self):

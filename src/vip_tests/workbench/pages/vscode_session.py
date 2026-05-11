@@ -5,7 +5,7 @@ Mirrors: rstudio-pro/e2e/pages/vscode_session.page.ts
 
 import re
 
-_EXTENSION_ID_RE = re.compile(r"^[\w.-]+$")
+EXTENSION_ID_RE = re.compile(r"^[\w.-]+$")
 
 
 class VSCodeSession:
@@ -35,6 +35,6 @@ class VSCodeSession:
     @staticmethod
     def extension_list_item(extension_id: str) -> str:
         """Selector for an installed extension by its ID (e.g. 'quarto.quarto')."""
-        if not _EXTENSION_ID_RE.match(extension_id):
+        if not EXTENSION_ID_RE.match(extension_id):
             raise ValueError(f"Invalid extension ID (contains unsafe characters): {extension_id!r}")
         return f".extension-list-item[data-extension-id='{extension_id}']"

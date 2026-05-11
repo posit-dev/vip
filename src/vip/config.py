@@ -60,9 +60,15 @@ def _normalize_url(url: str) -> str:
 
 
 def _as_str_list(value: object, field_name: str) -> list[str]:
-    """Coerce *value* to a list of strings, or raise on bad input."""
+    """Normalize *value* to a list of strings, or raise on bad input."""
     if isinstance(value, list):
-        return [str(v) for v in value]
+        invalid = next((v for v in value if not isinstance(v, str)), None)
+        if invalid is not None:
+            raise ValueError(
+                f"{field_name} must be a list of strings, "
+                f"got list containing {type(invalid).__name__}"
+            )
+        return value
     if isinstance(value, str):
         return [value]
     raise ValueError(f"{field_name} must be a list of strings, got {type(value).__name__}")
