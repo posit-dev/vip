@@ -23,7 +23,8 @@ class TestConnectConfigRepr:
         assert "secret-key-abc123" not in r
         assert "'***'" in r
 
-    def test_api_key_is_empty_string_when_unset(self):
+    def test_api_key_is_empty_string_when_unset(self, monkeypatch):
+        monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
         cfg = ConnectConfig(url="https://connect.example.com", api_key="")
         r = repr(cfg)
         assert "'***'" not in r
@@ -43,7 +44,8 @@ class TestWorkbenchConfigRepr:
         assert "wb-secret-456" not in r
         assert "'***'" in r
 
-    def test_api_key_is_empty_string_when_unset(self):
+    def test_api_key_is_empty_string_when_unset(self, monkeypatch):
+        monkeypatch.delenv("VIP_WORKBENCH_API_KEY", raising=False)
         cfg = WorkbenchConfig(url="https://workbench.example.com", api_key="")
         r = repr(cfg)
         assert "'***'" not in r
@@ -63,7 +65,9 @@ class TestPackageManagerConfigRepr:
         assert "pm-token-789" not in r
         assert "'***'" in r
 
-    def test_token_is_empty_string_when_unset(self):
+    def test_token_is_empty_string_when_unset(self, monkeypatch):
+        monkeypatch.delenv("VIP_PACKAGE_MANAGER_TOKEN", raising=False)
+        monkeypatch.delenv("VIP_PM_TOKEN", raising=False)
         cfg = PackageManagerConfig(url="https://pm.example.com", token="")
         r = repr(cfg)
         assert "'***'" not in r
@@ -83,7 +87,8 @@ class TestAuthConfigRepr:
         assert "hunter2" not in r
         assert "'***'" in r
 
-    def test_password_is_empty_string_when_unset(self):
+    def test_password_is_empty_string_when_unset(self, monkeypatch):
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
         cfg = AuthConfig(username="admin", password="")
         r = repr(cfg)
         assert "'***'" not in r
