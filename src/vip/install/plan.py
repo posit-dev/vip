@@ -42,6 +42,28 @@ class InstallPlan:
         return True
 
 
+# Maps old Debian package names to their t64 replacements.
+# Used to reconcile manifest entries recorded under the pre-24.04 name.
+_DEBIAN_RENAME_MAP: dict[str, str] = {"libasound2": "libasound2t64"}
+
+
+def _normalize_pending_debian(pending: set[str], current_packages: tuple[str, ...]) -> set[str]:
+    """Map legacy pending names to the current package list.
+
+    If the manifest recorded "libasound2" but we now install "libasound2t64",
+    rewrite the pending entry so ``claim_pending`` can match.
+    """
+    current = set(current_packages)
+    out: set[str] = set()
+    for name in pending:
+        new_name = _DEBIAN_RENAME_MAP.get(name)
+        if new_name and new_name in current and name not in current:
+            out.add(new_name)
+        else:
+            out.add(name)
+    return out
+
+
 def build_install_plan(
     *,
     platform_info: plat.PlatformInfo,
@@ -68,7 +90,11 @@ def build_install_plan(
         elif family == "debian-family":
             packages = plat.debian_packages(platform_info)
             present = dpkg_installed(packages)
-            claim_pending = tuple(sorted(pending & present))
+            # Normalize legacy pending names: if the manifest recorded
+            # "libasound2" but we now install "libasound2t64", treat the old
+            # name as claimable when the new name is present.
+            normalized_pending = _normalize_pending_debian(pending, packages)
+            claim_pending = tuple(sorted(normalized_pending & present))
             missing = tuple(p for p in packages if p not in present)
             system_step = SystemPackagesStep(manager="apt", packages=missing)
         elif family == "suse-family":

@@ -237,6 +237,34 @@ def test_install_plan_pending_packages_now_present_get_claimed(tmp_path: Path):
     assert "libdrm" in plan.system_step.packages
 
 
+def test_install_plan_normalizes_legacy_pending_libasound2(tmp_path: Path):
+    """Old manifest with pending 'libasound2' gets claimed as 'libasound2t64' on 24.04."""
+    info = PlatformInfo(family="debian-family", id="ubuntu", version="24.04")
+    m = Manifest(
+        version=SCHEMA_VERSION,
+        vip_version="0.0.0",
+        created_at="",
+        updated_at="",
+        host="h",
+        platform="debian-family",
+        platform_id="ubuntu",
+        platform_version="24.04",
+        items=[],
+        pending_system_packages=["libasound2"],
+    )
+    plan = pl.build_install_plan(
+        platform_info=info,
+        manifest=m,
+        rpm_installed=lambda names: set(),
+        dpkg_installed=lambda names: {"libasound2t64"},
+        chromium_present=False,
+        playwright_cache_dir=tmp_path / "cache",
+        skip_system=False,
+    )
+    # The legacy name should be normalized and claimed.
+    assert "libasound2t64" in plan.claim_pending
+
+
 def _full_manifest() -> Manifest:
     m = _empty_manifest()
     m.items = [

@@ -125,10 +125,18 @@ DEBIAN_PACKAGES: tuple[str, ...] = (
 _T64_LIBASOUND_MIN_VERSION = "24.04"
 
 
+def _is_ubuntu_like(platform_info: PlatformInfo) -> bool:
+    """True when the distro is Ubuntu or an Ubuntu derivative (e.g. Pop!_OS)."""
+    if platform_info.id == "ubuntu":
+        return True
+    raw = platform_info.raw or {}
+    return "ubuntu" in raw.get("ID_LIKE", "").lower().split()
+
+
 def debian_packages(platform_info: PlatformInfo) -> tuple[str, ...]:
     """Return DEBIAN_PACKAGES with version-appropriate substitutions."""
     version = platform_info.version or ""
-    if platform_info.id == "ubuntu" and version >= _T64_LIBASOUND_MIN_VERSION:
+    if _is_ubuntu_like(platform_info) and version >= _T64_LIBASOUND_MIN_VERSION:
         return tuple("libasound2t64" if p == "libasound2" else p for p in DEBIAN_PACKAGES)
     return DEBIAN_PACKAGES
 
