@@ -12,7 +12,7 @@ from vip.install.manifest import Manifest, PlaywrightItem, SystemPackageItem
 
 @dataclass(frozen=True)
 class SystemPackagesStep:
-    manager: str  # "dnf" | "apt"
+    manager: str  # "dnf" | "apt" | "zypper"
     packages: tuple[str, ...]
 
 
@@ -71,6 +71,11 @@ def build_install_plan(
             claim_pending = tuple(sorted(pending & present))
             missing = tuple(p for p in packages if p not in present)
             system_step = SystemPackagesStep(manager="apt", packages=missing)
+        elif family == "suse-family":
+            present = rpm_installed(plat.SUSE_PACKAGES)
+            claim_pending = tuple(sorted(pending & present))
+            missing = tuple(p for p in plat.SUSE_PACKAGES if p not in present)
+            system_step = SystemPackagesStep(manager="zypper", packages=missing)
         elif family == "macos":
             system_step = None
         elif family == "unsupported":
@@ -126,6 +131,8 @@ def build_uninstall_plan(
             commands.append("sudo dnf remove " + " ".join(names))
         elif manager == "apt":
             commands.append("sudo apt remove --autoremove " + " ".join(names))
+        elif manager == "zypper":
+            commands.append("sudo zypper remove " + " ".join(names))
         # Unknown manager: skip (we don't know how to remove)
 
     return UninstallPlan(

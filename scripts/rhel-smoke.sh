@@ -16,9 +16,10 @@ docker run --rm --platform linux/amd64 "vip-rhel${version}-smoke"
 
 echo "==> verifying vip install --dry-run reports nothing to install"
 docker run --rm --platform linux/amd64 "vip-rhel${version}-smoke" \
-    /bin/sh -c 'uv run vip install --dry-run | grep -q "nothing to install"'
+    bash -c 'set -eo pipefail; uv run vip install --dry-run | grep -q "nothing to install"'
 
 echo "==> verifying vip uninstall --yes runs cleanly"
 docker run --rm --platform linux/amd64 "vip-rhel${version}-smoke" \
-    /bin/sh -c 'uv run vip uninstall --yes | tee /tmp/uninst.log; \
-                grep -q "vip uninstall: complete" /tmp/uninst.log'
+    bash -c 'set -eo pipefail
+             uv run vip uninstall --yes | tee /tmp/uninst.log
+             grep -q "vip uninstall: complete" /tmp/uninst.log'

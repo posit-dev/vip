@@ -169,6 +169,40 @@ def test_load_pending_system_packages_non_string_element_raises(tmp_path):
         load(path)
 
 
+def test_manifest_round_trip_with_zypper_manager(tmp_path):
+    """Manifest serialization must accept manager='zypper' as a valid value."""
+    from vip.install.manifest import (
+        SCHEMA_VERSION,
+        Manifest,
+        SystemPackageItem,
+        load,
+        save,
+    )
+
+    path = tmp_path / ".vip-install.json"
+    m = Manifest(
+        version=SCHEMA_VERSION,
+        vip_version="0.0.0",
+        created_at="t",
+        updated_at="t",
+        host="h",
+        platform="suse-family",
+        platform_id="opensuse-leap",
+        platform_version="15.6",
+        items=[
+            SystemPackageItem(manager="zypper", name="mozilla-nss", installed_at="t1"),
+        ],
+        pending_system_packages=[],
+    )
+    save(m, path)
+    loaded = load(path)
+    assert loaded is not None
+    assert loaded.platform == "suse-family"
+    assert len(loaded.items) == 1
+    assert loaded.items[0].manager == "zypper"
+    assert loaded.items[0].name == "mozilla-nss"
+
+
 def test_pending_package_helpers():
     m = _sample_manifest()
     assert m.pending_packages_set() == {"libdrm"}

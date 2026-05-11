@@ -100,10 +100,12 @@ jobs:
         run: uv run pip-audit --skip-editable
 
   selftest:
-    name: Selftests (${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    name: Selftests (${{ matrix.os }} / ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
         python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -130,6 +132,20 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: selftest-results-py${{ matrix.python-version }}
+          name: selftest-results-${{ matrix.os }}-py${{ matrix.python-version }}
           path: selftest-results.xml
+
+  selftests-status:
+    name: Selftests Status
+    if: always()
+    needs: [selftest]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check selftest matrix result
+        run: |
+          if [ "${{ needs.selftest.result }}" = "failure" ] || [ "${{ needs.selftest.result }}" = "cancelled" ]; then
+            echo "Selftests failed or were cancelled"
+            exit 1
+          fi
+          echo "Selftests passed or were skipped"
 

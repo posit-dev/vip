@@ -11,11 +11,15 @@ _OS_RELEASE_PATH = Path("/etc/os-release")
 
 _RHEL_LIKE = {"rhel", "fedora", "centos", "rocky", "almalinux", "ol"}
 _DEBIAN_LIKE = {"debian", "ubuntu"}
+_SUSE_LIKE = {"opensuse-leap", "opensuse-tumbleweed", "sles", "suse", "opensuse"}
 
 
 @dataclass(frozen=True)
 class PlatformInfo:
-    """Result of detect(). family is one of: rhel-family, debian-family, macos, unsupported."""
+    """Result of detect().
+
+    family is one of: rhel-family, debian-family, suse-family, macos, unsupported.
+    """
 
     family: str
     id: str | None = None
@@ -41,6 +45,8 @@ def detect() -> PlatformInfo:
         family = "rhel-family"
     elif candidates & _DEBIAN_LIKE:
         family = "debian-family"
+    elif candidates & _SUSE_LIKE:
+        family = "suse-family"
     return PlatformInfo(family=family, id=distro_id or None, version=version, raw=raw)
 
 
@@ -131,3 +137,36 @@ def debian_packages(platform_info: PlatformInfo) -> tuple[str, ...]:
 # https://github.com/microsoft/playwright/blob/main/packages/playwright-core/src/server/registry/nativeDeps.ts
 # and update this value. The selftest enforces that they match.
 LIST_REVIEWED_AGAINST_PLAYWRIGHT = "1.40"
+
+
+# openSUSE/SLES equivalents. Names from `zypper search --provides` against
+# opensuse/leap:15. Bump LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE after each
+# playwright pin update; the selftest enforces parity.
+SUSE_PACKAGES: tuple[str, ...] = (
+    "mozilla-nss",
+    "mozilla-nspr",
+    "libatk-1_0-0",
+    "libatk-bridge-2_0-0",
+    "libcups2",
+    "libdrm2",
+    "libxkbcommon0",
+    "libXcomposite1",
+    "libXdamage1",
+    "libXfixes3",
+    "libXrandr2",
+    "libgbm1",
+    "libpango-1_0-0",
+    "libcairo2",
+    "libasound2",
+    "libxshmfence1",
+    "libX11-6",
+    "libxcb1",
+    "libXext6",
+    "libdbus-1-3",
+    "libglib-2_0-0",
+    "fontconfig",
+    "liberation-fonts",
+)
+
+# Mirror of LIST_REVIEWED_AGAINST_PLAYWRIGHT for the SUSE list.
+LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE = "1.40"

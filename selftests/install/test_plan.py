@@ -129,6 +129,41 @@ def test_install_plan_debian_uses_apt(tmp_path: Path):
     assert "libasound2" not in plan.system_step.packages
 
 
+def test_install_plan_suse_uses_zypper(tmp_path: Path):
+    info = PlatformInfo(family="suse-family", id="opensuse-leap", version="15.6")
+    plan = pl.build_install_plan(
+        platform_info=info,
+        manifest=None,
+        rpm_installed=lambda names: set(),
+        dpkg_installed=lambda names: set(),
+        chromium_present=False,
+        playwright_cache_dir=tmp_path / "cache",
+        skip_system=False,
+    )
+    assert plan.system_step is not None
+    assert plan.system_step.manager == "zypper"
+    assert "mozilla-nss" in plan.system_step.packages
+    assert plan.playwright_step is not None
+
+
+def test_install_plan_suse_uses_rpm_for_present_check(tmp_path: Path):
+    """openSUSE uses rpm under the hood, so rpm_installed must be the lookup."""
+    info = PlatformInfo(family="suse-family", id="opensuse-leap", version="15.6")
+    plan = pl.build_install_plan(
+        platform_info=info,
+        manifest=None,
+        rpm_installed=lambda names: {"mozilla-nss", "libdrm2"},
+        dpkg_installed=lambda names: set(),
+        chromium_present=False,
+        playwright_cache_dir=tmp_path / "cache",
+        skip_system=False,
+    )
+    assert plan.system_step is not None
+    assert "mozilla-nss" not in plan.system_step.packages
+    assert "libdrm2" not in plan.system_step.packages
+    assert "libcups2" in plan.system_step.packages
+
+
 def test_install_plan_skips_already_installed_packages(tmp_path: Path):
     info = PlatformInfo(family="rhel-family", id="rhel", version="10")
     plan = pl.build_install_plan(
@@ -260,3 +295,15 @@ def test_uninstall_plan_emits_command_per_manager_when_mixed():
     assert plan.system_remove_commands[1].startswith("sudo dnf remove")
     assert "libdrm" in plan.system_remove_commands[1]
     assert "nss" in plan.system_remove_commands[1]
+
+
+def test_uninstall_plan_emits_zypper_command():
+    m = _empty_manifest(family="suse-family")
+    m.platform_id = "opensuse-leap"
+    m.platform_version = "15.6"
+    m.items = [
+        SystemPackageItem(manager="zypper", name="mozilla-nss", installed_at="t"),
+        SystemPackageItem(manager="zypper", name="libdrm2", installed_at="t"),
+    ]
+    plan = pl.build_uninstall_plan(manifest=m, connect_url=None)
+    assert plan.system_remove_commands == ("sudo zypper remove libdrm2 mozilla-nss",)
