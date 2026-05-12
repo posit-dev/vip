@@ -150,9 +150,13 @@ def user_resumes_session(page: Page, session_context: dict):
     expect(name_text).to_be_visible(timeout=TIMEOUT_DIALOG)
     name_text.click()
 
-    modal = page.locator(Homepage.SESSION_DETAILS_DIALOG)
-    expect(modal).to_be_visible(timeout=TIMEOUT_DIALOG)
-    launch_btn = modal.locator("button:text-is('Launch')")
+    # Wait for the Launch button directly rather than the modal container.
+    # The modal's CSS class varies between Workbench UI versions (the page
+    # object's SESSION_DETAILS_DIALOG selector uses class*='modal-dialog'
+    # which does not match the newer data-slot based dialog markup), but
+    # the button text is stable. A visible Launch button proves the modal
+    # opened.
+    launch_btn = page.locator("button:text-is('Launch')")
     expect(launch_btn).to_be_visible(timeout=TIMEOUT_DIALOG)
     launch_btn.click()
 
