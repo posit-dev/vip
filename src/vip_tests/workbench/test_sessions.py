@@ -6,6 +6,7 @@ Patterns adapted from test_ide_launch.py.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -157,27 +158,70 @@ def user_resumes_session(page: Page, session_context: dict):
 
 
 @then("the session reaches Active state again")
-def session_becomes_active_again(page: Page, session_context: dict):
+def session_becomes_active_again(page: Page, workbench_url: str, session_context: dict):
     """Verify the session transitions back to Active state."""
     session_name = session_context["name"]
 
-    # Reload so the DOM reflects the current server state. Unlike the
-    # Active → Suspended check at line ~128, which observes the transition
-    # on the same homepage instance, the resume path requires a reload
-    # because go_back() returns a cached homepage where the "Suspended"
-    # badge has not been re-rendered. After the reload, Workbench's
-    # client-side state polling surfaces the Suspended → Active transition.
-    page.reload(timeout=TIMEOUT_PAGE_LOAD)
+    # Explicitly navigate back to /home. user_resumes_session attempts the
+    # same bounce, but Playwright's goto() races with the IDE iframe loading
+    # on /s/<id> and sometimes leaves the page on the session URL — where the
+    # sidebar shows a stale Suspended badge regardless of the actual server
+    # state. Doing the navigation here, in the observation step, guarantees
+    # we are looking at the real homepage.
+    home_url = workbench_url.rstrip("/") + "/home"
+    page.goto(home_url, timeout=TIMEOUT_PAGE_LOAD)
     expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
+    # The Workbench homepage does not auto-poll session state, so a single
+    # locator wait cannot observe the Suspended → Active transition. Reload
+    # periodically inside the overall budget until the Active badge appears.
     session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
+    inner_timeout_ms = 5000
+    deadline = time.time() + (TIMEOUT_SESSION_START / 1000)
+    exc: AssertionError | None = None
+    while True:
+        try:
+            expect(session_active).to_be_visible(timeout=inner_timeout_ms)
+            return  # Active observed
+        except AssertionError as e:
+            exc = e
+            if time.time() >= deadline:
+                break
+            page.reload(timeout=TIMEOUT_PAGE_LOAD)
+            expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+
+    # Diagnostics before skip: capture what the homepage actually shows so
+    # we can tell whether the session is stuck on Suspended/Starting,
+    # whether the row is missing, or whether the selector format changed.
+    # Temporary — remove once the root cause of #238 is fully understood.
+    diag: list[str] = []
     try:
-        expect(session_active).to_be_visible(timeout=TIMEOUT_SESSION_START)
-    except AssertionError as exc:
-        pytest.skip(
-            f"Session did not return to Active state after resume — "
-            f"suspend/resume may not be supported in this Workbench configuration ({exc})"
-        )
+        diag.append(f"page_url={page.url!r}")
+    except Exception as e:
+        diag.append(f"page_url_error={e!r}")
+    try:
+        row = page.locator(Homepage.session_row(session_name))
+        row_count = row.count()
+        diag.append(f"session_row_count={row_count}")
+        if row_count > 0:
+            badges = row.locator("[aria-label]").all()
+            labels = [b.get_attribute("aria-label") for b in badges[:20]]
+            diag.append(f"row_aria_labels={labels}")
+            diag.append(f"row_text={row.inner_text()[:500]!r}")
+    except Exception as e:
+        diag.append(f"row_inspect_error={e!r}")
+    try:
+        screenshot_dir = Path("report") / "diagnostics"
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
+        screenshot_path = screenshot_dir / f"session_resume_skip_{int(time.time())}.png"
+        page.screenshot(path=str(screenshot_path), full_page=True)
+        diag.append(f"screenshot={screenshot_path}")
+    except Exception as e:
+        diag.append(f"screenshot_error={e!r}")
+    pytest.skip(
+        "Session did not return to Active state after resume — "
+        f"diagnostics: {' | '.join(diag)} | original: {exc}"
+    )
 
 
 @then("the session is cleaned up")
