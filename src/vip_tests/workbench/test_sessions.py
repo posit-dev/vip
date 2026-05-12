@@ -140,15 +140,15 @@ def user_resumes_session(page: Page, session_context: dict):
 
     # Modern Workbench does not expose a one-click launch link on the row
     # for suspended sessions. Active sessions have `a[title='join <name>']`,
-    # but suspended ones only have the session-name link, which opens a
-    # session-details modal that contains a "Launch" button — that button
-    # is what triggers the backend resume. The previous implementation's
-    # `session_row.locator("a").first` was picking up a "Details" link
-    # instead, navigating to /s/<id>/workspaces/ (a management view) and
-    # never resuming the session.
-    name_link = page.locator(Homepage.session_link(session_name)).first
-    expect(name_link).to_be_visible(timeout=TIMEOUT_DIALOG)
-    name_link.click()
+    # but on suspended rows the name is rendered as plain text — clicking
+    # it opens a session-details modal that contains a "Launch" button.
+    # That Launch button is what triggers the backend resume. The previous
+    # implementation's `session_row.locator("a").first` was picking up a
+    # "Details" link instead, navigating to /s/<id>/workspaces/ (a
+    # management view) and never resuming the session.
+    name_text = session_row.locator(Homepage.session_text(session_name))
+    expect(name_text).to_be_visible(timeout=TIMEOUT_DIALOG)
+    name_text.click()
 
     modal = page.locator(Homepage.SESSION_DETAILS_DIALOG)
     expect(modal).to_be_visible(timeout=TIMEOUT_DIALOG)
