@@ -152,7 +152,16 @@ def user_resumes_session(page: Page, session_context: dict):
         # way to resume.  Click the session name text as a fallback.
         session_row.locator(f"text='{session_name}'").click()
 
-    # Navigate back to homepage to observe the Active state
+    # Wait for the navigation into the session URL to commit before going
+    # anywhere else. Clicking a suspended session navigates to /s/<id> which
+    # triggers the backend resume — but if we navigate away before that
+    # commits, Workbench aborts the start and the session stays Suspended.
+    page.wait_for_url("**/s/**", timeout=TIMEOUT_PAGE_LOAD)
+    page.wait_for_load_state("load", timeout=TIMEOUT_PAGE_LOAD)
+
+    # Navigate back to homepage to observe the Active state. NB: Workbench's
+    # /home may auto-redirect back to the recently-used session — that is OK
+    # for the next step, which observes the session badge in the sidebar.
     page.goto(page.url.split("/s/")[0] + "/home") if "/s/" in page.url else page.go_back()
     expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
