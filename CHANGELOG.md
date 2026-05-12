@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.32.0 (2026-05-12)
+
+### Features
+
+- **plugin**: Add --api-auth flag to run only API-key tests
+  ([#253](https://github.com/posit-dev/vip/pull/253),
+  [`4528b26`](https://github.com/posit-dev/vip/commit/4528b268bdf427f1f2a69f9e2cc9bafe711799c4))
+
+Co-authored-by: Claude Opus 4.6 <noreply@anthropic.com>
+
+
 ## v0.31.2 (2026-05-12)
 
 ### Bug Fixes
