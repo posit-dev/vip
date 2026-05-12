@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.31.2 (2026-05-12)
+
+### Bug Fixes
+
+- **workbench**: Run login form test under --headless-auth
+  ([#258](https://github.com/posit-dev/vip/pull/258),
+  [`d691353`](https://github.com/posit-dev/vip/commit/d691353497c5d9ca2d58b4bc8528a8eeee35751f))
+
+
 ## v0.31.1 (2026-05-12)
 
 ### Bug Fixes
