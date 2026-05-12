@@ -96,6 +96,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Skip all tests that require authentication credentials (Connect and Workbench).",
     )
     group.addoption(
+        "--api-auth",
+        action="store_true",
+        default=False,
+        help="Run only API-key-authenticated tests; skip tests that require browser credentials.",
+    )
+    group.addoption(
         "--vip-verbose",
         action="store_true",
         default=False,
@@ -147,6 +153,10 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
         "if_applicable: skip when the related feature is not configured",
+    )
+    config.addinivalue_line(
+        "markers",
+        "api_auth: test requires only an API key, not browser credentials",
     )
 
     # In concise mode, suppress the "short test summary info" section — the
@@ -310,6 +320,7 @@ def pytest_collection_modifyitems(
     version requirement is not met, and ensure prerequisites run first."""
     vip_cfg: VIPConfig = config.stash[_vip_config_key]
     no_auth = config.getoption("--no-auth", default=False)
+    api_auth = config.getoption("--api-auth", default=False)
 
     # Sort so prerequisites run before everything else, and assign xdist
     # groups so that each product's tests land on a dedicated worker.
@@ -323,6 +334,9 @@ def pytest_collection_modifyitems(
             deselected.append(item)
             continue
         if no_auth and _requires_auth(item):
+            deselected.append(item)
+            continue
+        if api_auth and _requires_auth(item) and not _is_api_auth_only(item):
             deselected.append(item)
             continue
         _maybe_skip_for_version(item, vip_cfg)
@@ -452,6 +466,11 @@ def _requires_auth(item: pytest.Item) -> bool:
                     return True
 
     return False
+
+
+def _is_api_auth_only(item: pytest.Item) -> bool:
+    """Return True if *item* is marked as requiring only API-key authentication."""
+    return item.get_closest_marker("api_auth") is not None
 
 
 def _maybe_skip_for_version(item: pytest.Item, cfg: VIPConfig) -> None:

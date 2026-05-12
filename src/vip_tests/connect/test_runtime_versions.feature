@@ -1,4 +1,4 @@
-@connect
+@connect @api_auth
 Feature: Connect R and Python versions
   As a Posit Team administrator
   I want to verify that the expected R and Python versions are available

@@ -1,4 +1,4 @@
-@connect
+@connect @api_auth
 Feature: Connect user management
   As a Posit Team administrator
   I want to verify that user and group management APIs are functional

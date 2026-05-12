@@ -1,4 +1,4 @@
-@connect
+@connect @api_auth
 Feature: Connect package installation source
   As a Posit Team administrator
   I want to verify that Connect installs packages from the correct source

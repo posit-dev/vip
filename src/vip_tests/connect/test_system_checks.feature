@@ -1,4 +1,4 @@
-@connect
+@connect @api_auth
 Feature: Connect system checks
   As a Posit Team administrator
   I want to run the Connect system diagnostics

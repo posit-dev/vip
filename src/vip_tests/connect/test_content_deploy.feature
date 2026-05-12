@@ -1,4 +1,4 @@
-@connect
+@connect @api_auth
 Feature: Connect content deployment
   As a Posit Team administrator
   I want to verify that content can be deployed and executed

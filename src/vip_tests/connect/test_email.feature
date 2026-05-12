@@ -1,4 +1,4 @@
-@connect @if_applicable
+@connect @if_applicable @api_auth
 Feature: Connect email delivery
   As a Posit Team administrator
   I want to verify that Connect can send emails

@@ -21,6 +21,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "report": "report/results.json",
         "interactive_auth": False,
         "no_auth": False,
+        "api_auth": False,
         "extensions": [],
         "categories": None,
         "filter_expr": None,

@@ -11,6 +11,7 @@ Feature: Connect authentication
     Then the user is successfully authenticated
     And the Connect dashboard is displayed
 
+  @api_auth
   Scenario: API key authentication works
     Given Connect is accessible at the configured URL
     And a valid API key is configured
