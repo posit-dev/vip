@@ -102,6 +102,14 @@ class ConnectConfig(ProductConfig):
         if not self.api_key:
             self.api_key = os.environ.get("VIP_CONNECT_API_KEY", "")
 
+    def __repr__(self) -> str:
+        api_key_repr = "'***'" if self.api_key else "''"
+        return (
+            f"ConnectConfig(enabled={self.enabled!r}, url={self.url!r}, "
+            f"version={self.version!r}, api_key={api_key_repr}, "
+            f"deploy_timeout={self.deploy_timeout!r})"
+        )
+
     @classmethod
     def from_dict(cls, raw: dict) -> ConnectConfig:
         return cls(
@@ -150,6 +158,15 @@ class WorkbenchConfig(ProductConfig):
         if not self.api_key:
             self.api_key = os.environ.get("VIP_WORKBENCH_API_KEY", "")
 
+    def __repr__(self) -> str:
+        api_key_repr = "'***'" if self.api_key else "''"
+        return (
+            f"WorkbenchConfig(enabled={self.enabled!r}, url={self.url!r}, "
+            f"version={self.version!r}, api_key={api_key_repr}, "
+            f"session_profiles={self.session_profiles!r}, "
+            f"session_count={self.session_count!r}, extensions={self.extensions!r})"
+        )
+
     @classmethod
     def from_dict(cls, raw: dict) -> WorkbenchConfig:
         return cls(
@@ -176,6 +193,13 @@ class PackageManagerConfig(ProductConfig):
                 "VIP_PACKAGE_MANAGER_TOKEN", os.environ.get("VIP_PM_TOKEN", "")
             )
 
+    def __repr__(self) -> str:
+        token_repr = "'***'" if self.token else "''"
+        return (
+            f"PackageManagerConfig(enabled={self.enabled!r}, url={self.url!r}, "
+            f"version={self.version!r}, token={token_repr})"
+        )
+
     @classmethod
     def from_dict(cls, raw: dict) -> PackageManagerConfig:
         return cls(
@@ -200,6 +224,13 @@ class AuthConfig:
             self.username = os.environ.get("VIP_TEST_USERNAME", "")
         if not self.password:
             self.password = os.environ.get("VIP_TEST_PASSWORD", "")
+
+    def __repr__(self) -> str:
+        password_repr = "'***'" if self.password else "''"
+        return (
+            f"AuthConfig(provider={self.provider!r}, username={self.username!r}, "
+            f"password={password_repr}, idp={self.idp!r})"
+        )
 
     @classmethod
     def from_dict(cls, raw: dict) -> AuthConfig:
@@ -270,6 +301,13 @@ class DataSourceEntry:
     name: str = ""
     type: str = ""
     connection_string: str = ""
+
+    def __repr__(self) -> str:
+        conn_repr = "'***'" if self.connection_string else "''"
+        return (
+            f"DataSourceEntry(name={self.name!r}, type={self.type!r}, "
+            f"connection_string={conn_repr})"
+        )
 
 
 @dataclass
