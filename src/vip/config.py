@@ -59,6 +59,21 @@ def _normalize_url(url: str) -> str:
     return urlunparse(parsed._replace(path=path))
 
 
+def _as_str_list(value: object, field_name: str) -> list[str]:
+    """Normalize *value* to a list of strings, or raise on bad input."""
+    if isinstance(value, list):
+        invalid = next((v for v in value if not isinstance(v, str)), None)
+        if invalid is not None:
+            raise ValueError(
+                f"{field_name} must be a list of strings, "
+                f"got list containing {type(invalid).__name__}"
+            )
+        return value
+    if isinstance(value, str):
+        return [value]
+    raise ValueError(f"{field_name} must be a list of strings, got {type(value).__name__}")
+
+
 @dataclass
 class ProductConfig:
     """Configuration for a single Posit product."""
@@ -87,6 +102,14 @@ class ConnectConfig(ProductConfig):
         if not self.api_key:
             self.api_key = os.environ.get("VIP_CONNECT_API_KEY", "")
 
+    def __repr__(self) -> str:
+        api_key_repr = "'***'" if self.api_key else "''"
+        return (
+            f"ConnectConfig(enabled={self.enabled!r}, url={self.url!r}, "
+            f"version={self.version!r}, api_key={api_key_repr}, "
+            f"deploy_timeout={self.deploy_timeout!r})"
+        )
+
     @classmethod
     def from_dict(cls, raw: dict) -> ConnectConfig:
         return cls(
@@ -99,6 +122,27 @@ class ConnectConfig(ProductConfig):
 
 
 @dataclass
+class WorkbenchExtensionsConfig:
+    """Additional IDE extensions the admin expects to be installed.
+
+    These are merged with the built-in Posit Workbench integration
+    extension that is always validated.
+    """
+
+    vscode: list[str] = field(default_factory=list)
+    positron: list[str] = field(default_factory=list)
+    jupyterlab: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> WorkbenchExtensionsConfig:
+        return cls(
+            vscode=_as_str_list(raw.get("vscode", []), "workbench.extensions.vscode"),
+            positron=_as_str_list(raw.get("positron", []), "workbench.extensions.positron"),
+            jupyterlab=_as_str_list(raw.get("jupyterlab", []), "workbench.extensions.jupyterlab"),
+        )
+
+
+@dataclass
 class WorkbenchConfig(ProductConfig):
     """Workbench-specific configuration."""
 
@@ -107,11 +151,21 @@ class WorkbenchConfig(ProductConfig):
     # from the UI dropdown; explicit list = test only these profiles.
     session_profiles: list[str] | None = None
     session_count: int = 3  # sessions per profile in capacity tests
+    extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
 
     def __post_init__(self) -> None:
         super().__post_init__()
         if not self.api_key:
             self.api_key = os.environ.get("VIP_WORKBENCH_API_KEY", "")
+
+    def __repr__(self) -> str:
+        api_key_repr = "'***'" if self.api_key else "''"
+        return (
+            f"WorkbenchConfig(enabled={self.enabled!r}, url={self.url!r}, "
+            f"version={self.version!r}, api_key={api_key_repr}, "
+            f"session_profiles={self.session_profiles!r}, "
+            f"session_count={self.session_count!r}, extensions={self.extensions!r})"
+        )
 
     @classmethod
     def from_dict(cls, raw: dict) -> WorkbenchConfig:
@@ -122,6 +176,7 @@ class WorkbenchConfig(ProductConfig):
             api_key=raw.get("api_key", ""),
             session_profiles=raw.get("session_profiles"),
             session_count=raw.get("session_count", 3),
+            extensions=WorkbenchExtensionsConfig.from_dict(raw.get("extensions", {})),
         )
 
 
@@ -137,6 +192,13 @@ class PackageManagerConfig(ProductConfig):
             self.token = os.environ.get(
                 "VIP_PACKAGE_MANAGER_TOKEN", os.environ.get("VIP_PM_TOKEN", "")
             )
+
+    def __repr__(self) -> str:
+        token_repr = "'***'" if self.token else "''"
+        return (
+            f"PackageManagerConfig(enabled={self.enabled!r}, url={self.url!r}, "
+            f"version={self.version!r}, token={token_repr})"
+        )
 
     @classmethod
     def from_dict(cls, raw: dict) -> PackageManagerConfig:
@@ -162,6 +224,13 @@ class AuthConfig:
             self.username = os.environ.get("VIP_TEST_USERNAME", "")
         if not self.password:
             self.password = os.environ.get("VIP_TEST_PASSWORD", "")
+
+    def __repr__(self) -> str:
+        password_repr = "'***'" if self.password else "''"
+        return (
+            f"AuthConfig(provider={self.provider!r}, username={self.username!r}, "
+            f"password={password_repr}, idp={self.idp!r})"
+        )
 
     @classmethod
     def from_dict(cls, raw: dict) -> AuthConfig:
@@ -232,6 +301,13 @@ class DataSourceEntry:
     name: str = ""
     type: str = ""
     connection_string: str = ""
+
+    def __repr__(self) -> str:
+        conn_repr = "'***'" if self.connection_string else "''"
+        return (
+            f"DataSourceEntry(name={self.name!r}, type={self.type!r}, "
+            f"connection_string={conn_repr})"
+        )
 
 
 @dataclass

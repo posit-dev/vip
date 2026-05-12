@@ -1,6 +1,65 @@
 # CHANGELOG
 
 
+## v0.31.2 (2026-05-12)
+
+### Bug Fixes
+
+- **workbench**: Run login form test under --headless-auth
+  ([#258](https://github.com/posit-dev/vip/pull/258),
+  [`d691353`](https://github.com/posit-dev/vip/commit/d691353497c5d9ca2d58b4bc8528a8eeee35751f))
+
+
+## v0.31.1 (2026-05-12)
+
+### Bug Fixes
+
+- **config**: Redact secrets in config dataclass repr
+  ([#257](https://github.com/posit-dev/vip/pull/257),
+  [`d5fa5a9`](https://github.com/posit-dev/vip/commit/d5fa5a9b5d62d4e72f8b061c2c01cf795c57e208))
+
+
+## v0.31.0 (2026-05-11)
+
+### Chores
+
+- **deps**: Bump urllib3 to fix CVE-2026-44431 and CVE-2026-44432
+  ([#256](https://github.com/posit-dev/vip/pull/256),
+  [`d6449f9`](https://github.com/posit-dev/vip/commit/d6449f9875cc695519fdfa517de42406f471207d))
+
+### Features
+
+- Validate IDE extension installation ([#161](https://github.com/posit-dev/vip/pull/161),
+  [`2805a9c`](https://github.com/posit-dev/vip/commit/2805a9ccdcffec290174c2b804a6b46c40d2f207))
+
+Co-authored-by: Ian Flores Siaca <iflores.siaca@posit.co>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+
+## v0.30.1 (2026-05-11)
+
+### Bug Fixes
+
+- **install**: Use libasound2t64 on Ubuntu 24.04+
+  ([#252](https://github.com/posit-dev/vip/pull/252),
+  [`36b43d2`](https://github.com/posit-dev/vip/commit/36b43d206cb1302d0aed37c0356cef96f03fb500))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+
+## v0.30.0 (2026-05-10)
+
+### Features
+
+- Better platform support along with CI and docs ([#250](https://github.com/posit-dev/vip/pull/250),
+  [`7b2de30`](https://github.com/posit-dev/vip/commit/7b2de3023455435818afd75aa6e95a313cd55436))
+
+
 ## v0.29.1 (2026-05-08)
 
 ### Bug Fixes

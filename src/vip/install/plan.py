@@ -12,7 +12,7 @@ from vip.install.manifest import Manifest, PlaywrightItem, SystemPackageItem
 
 @dataclass(frozen=True)
 class SystemPackagesStep:
-    manager: str  # "dnf" | "apt"
+    manager: str  # "dnf" | "apt" | "zypper"
     packages: tuple[str, ...]
 
 
@@ -42,6 +42,28 @@ class InstallPlan:
         return True
 
 
+# Maps old Debian package names to their t64 replacements.
+# Used to reconcile manifest entries recorded under the pre-24.04 name.
+_DEBIAN_RENAME_MAP: dict[str, str] = {"libasound2": "libasound2t64"}
+
+
+def _normalize_pending_debian(pending: set[str], current_packages: tuple[str, ...]) -> set[str]:
+    """Map legacy pending names to the current package list.
+
+    If the manifest recorded "libasound2" but we now install "libasound2t64",
+    rewrite the pending entry so ``claim_pending`` can match.
+    """
+    current = set(current_packages)
+    out: set[str] = set()
+    for name in pending:
+        new_name = _DEBIAN_RENAME_MAP.get(name)
+        if new_name and new_name in current and name not in current:
+            out.add(new_name)
+        else:
+            out.add(name)
+    return out
+
+
 def build_install_plan(
     *,
     platform_info: plat.PlatformInfo,
@@ -66,10 +88,20 @@ def build_install_plan(
             missing = tuple(p for p in plat.RHEL_PACKAGES if p not in present)
             system_step = SystemPackagesStep(manager="dnf", packages=missing)
         elif family == "debian-family":
-            present = dpkg_installed(plat.DEBIAN_PACKAGES)
-            claim_pending = tuple(sorted(pending & present))
-            missing = tuple(p for p in plat.DEBIAN_PACKAGES if p not in present)
+            packages = plat.debian_packages(platform_info)
+            present = dpkg_installed(packages)
+            # Normalize legacy pending names: if the manifest recorded
+            # "libasound2" but we now install "libasound2t64", treat the old
+            # name as claimable when the new name is present.
+            normalized_pending = _normalize_pending_debian(pending, packages)
+            claim_pending = tuple(sorted(normalized_pending & present))
+            missing = tuple(p for p in packages if p not in present)
             system_step = SystemPackagesStep(manager="apt", packages=missing)
+        elif family == "suse-family":
+            present = rpm_installed(plat.SUSE_PACKAGES)
+            claim_pending = tuple(sorted(pending & present))
+            missing = tuple(p for p in plat.SUSE_PACKAGES if p not in present)
+            system_step = SystemPackagesStep(manager="zypper", packages=missing)
         elif family == "macos":
             system_step = None
         elif family == "unsupported":
@@ -125,6 +157,8 @@ def build_uninstall_plan(
             commands.append("sudo dnf remove " + " ".join(names))
         elif manager == "apt":
             commands.append("sudo apt remove --autoremove " + " ".join(names))
+        elif manager == "zypper":
+            commands.append("sudo zypper remove " + " ".join(names))
         # Unknown manager: skip (we don't know how to remove)
 
     return UninstallPlan(
