@@ -28,7 +28,8 @@ See the <a href="../shiny-app/" data-astro-cid-mwd2jfe2>Shiny app</a> page for t
 The <code data-astro-cid-mwd2jfe2>--interactive-auth</code> flag opens a Chromium window so
             you can log in. After authentication completes, VIP runs the test
             suite headlessly and cleans up the session automatically.
-</p> <p data-astro-cid-mwd2jfe2>Check product health without running the full test suite:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip status</code></pre> <p data-astro-cid-mwd2jfe2>Test multiple products at once:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify \
+</p> <p data-astro-cid-mwd2jfe2>Check product health without running the full test suite:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip status</code></pre> <p data-astro-cid-mwd2jfe2>Already have an API key? Skip browser auth entirely with <code data-astro-cid-mwd2jfe2>--api-auth</code>:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>export VIP_CONNECT_API_KEY="your-api-key"
+vip verify --connect-url https://connect.example.com --api-auth</code></pre> <p data-astro-cid-mwd2jfe2>Test multiple products at once:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify \
   --connect-url https://connect.example.com \
   --workbench-url https://workbench.example.com \
   --package-manager-url https://packagemanager.example.com \
@@ -44,9 +45,18 @@ On a headless Linux server, use <code data-astro-cid-mwd2jfe2>--headless-auth</c
 <code data-astro-cid-mwd2jfe2>idp</code> in your <code data-astro-cid-mwd2jfe2>vip.toml</code> to tell VIP which
             identity provider to automate. If MFA is enabled, VIP prompts for
             the verification code in the terminal.
-</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --config vip.toml --headless-auth</code></pre> <h3 data-astro-cid-mwd2jfe2>Credential-based auth</h3> <p data-astro-cid-mwd2jfe2>
-If you have API keys or test user credentials, disable interactive
-            auth and set environment variables instead:
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --config vip.toml --headless-auth</code></pre> <h3 data-astro-cid-mwd2jfe2>API-key-only auth</h3> <p data-astro-cid-mwd2jfe2>
+If you only have an API key and no browser credentials, use
+<code data-astro-cid-mwd2jfe2>--api-auth</code> to run only the tests that can authenticate
+            via API key. Tests that require a browser login (username/password
+            or SSO) are automatically skipped:
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>export VIP_CONNECT_API_KEY="your-api-key"
+vip verify --connect-url https://connect.example.com --api-auth</code></pre> <p data-astro-cid-mwd2jfe2>
+This is useful in CI pipelines or environments where interactive
+            login is not possible and no test user credentials are available.
+</p> <h3 data-astro-cid-mwd2jfe2>Credential-based auth</h3> <p data-astro-cid-mwd2jfe2>
+If you have API keys and test user credentials, disable interactive
+            auth and set environment variables:
 </p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>export VIP_CONNECT_API_KEY="your-api-key"
 export VIP_TEST_USERNAME="test-user"
 export VIP_TEST_PASSWORD="test-password"
