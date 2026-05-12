@@ -162,7 +162,11 @@ def session_becomes_active_again(page: Page, session_context: dict):
     session_name = session_context["name"]
 
     # Reload so the DOM reflects the current server state — go_back() can leave
-    # a cached page where the "Suspended" badge has not been re-rendered yet.
+    # a cached page where the "Suspended" badge has not been re-rendered.
+    # After the reload, the Workbench homepage's client-side state polling
+    # surfaces the Suspended → Active transition (same pattern used at line
+    # ~128 above, where Playwright's locator polling observes the
+    # Active → Suspended transition without a reload).
     page.reload(timeout=TIMEOUT_PAGE_LOAD)
     expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
