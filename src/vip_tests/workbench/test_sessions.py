@@ -163,7 +163,7 @@ def session_becomes_active_again(page: Page, session_context: dict):
 
     # Reload so the DOM reflects the current server state — go_back() can leave
     # a cached page where the "Suspended" badge has not been re-rendered yet.
-    page.reload()
+    page.reload(timeout=TIMEOUT_PAGE_LOAD)
     expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
     session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
