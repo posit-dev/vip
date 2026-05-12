@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.31.1 (2026-05-12)
+
+### Bug Fixes
+
+- **config**: Redact secrets in config dataclass repr
+  ([#257](https://github.com/posit-dev/vip/pull/257),
+  [`d5fa5a9`](https://github.com/posit-dev/vip/commit/d5fa5a9b5d62d4e72f8b061c2c01cf795c57e208))
+
+
 ## v0.31.0 (2026-05-11)
 
 ### Chores
