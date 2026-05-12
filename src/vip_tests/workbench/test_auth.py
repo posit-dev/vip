@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Browser, Page, expect
 from pytest_bdd import given, scenario, then, when
 
 from vip_tests.workbench.conftest import (
@@ -19,13 +19,31 @@ def test_workbench_login():
     pass
 
 
+@pytest.fixture
+def page(browser: Browser, browser_context_args: dict):
+    """Override the default page fixture to strip storage_state.
+
+    Ensures the login form is genuinely exercised even when --headless-auth
+    pre-authenticated other tests by injecting storage_state into
+    browser_context_args.  All other context args (TLS, CA bundle, etc.)
+    are preserved so this test behaves consistently with the rest of the
+    suite.  The autouse _cleanup_sessions fixture in workbench/conftest.py
+    will use this same page, keeping cleanup and execution in the same context.
+    """
+    args = {k: v for k, v in browser_context_args.items() if k != "storage_state"}
+    context = browser.new_context(**args)
+    pg = context.new_page()
+    try:
+        yield pg
+    finally:
+        context.close()
+
+
 @given("Workbench is accessible at the configured URL")
-def workbench_accessible(workbench_client, auth_provider: str, auth_mode: str):
+def workbench_accessible(workbench_client, auth_provider: str):
     # This test only validates password-based login form flow
     if auth_provider != "password":
         pytest.skip(f"test_auth only supports password auth, not {auth_provider!r}")
-    if auth_mode != "none":
-        pytest.skip(f"test_auth is not compatible with --{auth_mode}-auth")
 
     assert workbench_client is not None, "Workbench client not configured"
     status = workbench_client.health()
