@@ -1,12 +1,12 @@
-# Fix: reload page before polling for Active on resume
+# Fix: resume Workbench session via Launch modal button
 
-*2026-05-12T18:02:59Z by Showboat 0.6.1*
-<!-- showboat-id: fef45b21-a767-4ac9-bc98-936b0adaf83c -->
+*2026-05-13T15:19:34Z by Showboat 0.6.1*
+<!-- showboat-id: 2f460187-9714-4a49-bfbd-86de3751e905 -->
 
-Issue #238: `test_session_suspend_resume` consistently timed out at 90 seconds waiting for the Active badge to reappear after resume. Root cause: `page.go_back()` in the resume step leaves a stale homepage DOM where the badge still reads "Suspended", so DOM polling never sees the transition to Active. The fix adds `page.reload(timeout=TIMEOUT_PAGE_LOAD)` plus a homepage-logo wait at the start of the `session_becomes_active_again` step in `src/vip_tests/workbench/test_sessions.py`. End-to-end verification requires a real Workbench deployment, so this demo proves the change is well-formed: the test still collects, lint passes, and the diff is small and reviewable.
+Issue #238: test_session_suspend_resume was failing because user_resumes_session clicked a 'Details' anchor link on the suspended session row instead of triggering the backend resume. Modern Workbench renders the session name as plain text on suspended rows; clicking it opens a session-details modal containing a 'Launch' button — that button is what initiates the resume. The fix clicks the session name text to open the modal, waits for and clicks the Launch button, then waits for the session URL before returning to /home. In the observation step, session_becomes_active_again now also does an explicit goto /home and retries with page.reload() inside the session-start budget because the Workbench homepage does not auto-poll session state. Validated end-to-end against dev.ganso.lab.staging.posit.team: test_session_suspend_resume[chromium] PASSED.
 
 ```bash
-uv run pytest src/vip_tests/ --collect-only --quiet 2>&1 | tail -1 | sed 's/ in [0-9.]*s//'
+NO_COLOR=1 uv run pytest src/vip_tests/ --collect-only --quiet 2>&1 | tail -1 | sed 's/ in [0-9.]*s//'
 ```
 
 ```output
@@ -34,35 +34,8 @@ git diff --stat origin/main -- src/vip_tests/workbench/test_sessions.py
 ```
 
 ```output
- src/vip_tests/workbench/test_sessions.py | 9 +++++++++
- 1 file changed, 9 insertions(+)
+ src/vip_tests/workbench/test_sessions.py | 89 +++++++++++++++++++++++---------
+ 1 file changed, 65 insertions(+), 24 deletions(-)
 ```
 
-```bash
-git diff origin/main -- src/vip_tests/workbench/test_sessions.py
-```
-
-```output
-diff --git a/src/vip_tests/workbench/test_sessions.py b/src/vip_tests/workbench/test_sessions.py
-index d8d067b..5f047d9 100644
---- a/src/vip_tests/workbench/test_sessions.py
-+++ b/src/vip_tests/workbench/test_sessions.py
-@@ -161,6 +161,15 @@ def session_becomes_active_again(page: Page, session_context: dict):
-     """Verify the session transitions back to Active state."""
-     session_name = session_context["name"]
- 
-+    # Reload so the DOM reflects the current server state — go_back() can leave
-+    # a cached page where the "Suspended" badge has not been re-rendered.
-+    # After the reload, the Workbench homepage's client-side state polling
-+    # surfaces the Suspended → Active transition (same pattern used at line
-+    # ~128 above, where Playwright's locator polling observes the
-+    # Active → Suspended transition without a reload).
-+    page.reload(timeout=TIMEOUT_PAGE_LOAD)
-+    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-+
-     session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
-     try:
-         expect(session_active).to_be_visible(timeout=TIMEOUT_SESSION_START)
-```
-
-End-to-end verification — confirming the session badge transitions correctly after resume — requires a real Workbench deployment and is tracked for validation against the staging cluster.
+End-to-end validation against dev.ganso.lab.staging.posit.team on 2026-05-13: test_session_suspend_resume[chromium] PASSED with the session-name text click + Launch modal + reload-retry flow.

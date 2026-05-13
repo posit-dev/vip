@@ -206,37 +206,9 @@ def session_becomes_active_again(page: Page, workbench_url: str, session_context
             page.reload(timeout=TIMEOUT_PAGE_LOAD)
             expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
-    # Diagnostics before skip: capture what the homepage actually shows so
-    # we can tell whether the session is stuck on Suspended/Starting,
-    # whether the row is missing, or whether the selector format changed.
-    # Temporary — remove once the root cause of #238 is fully understood.
-    diag: list[str] = []
-    try:
-        diag.append(f"page_url={page.url!r}")
-    except Exception as e:
-        diag.append(f"page_url_error={e!r}")
-    try:
-        row = page.locator(Homepage.session_row(session_name))
-        row_count = row.count()
-        diag.append(f"session_row_count={row_count}")
-        if row_count > 0:
-            badges = row.locator("[aria-label]").all()
-            labels = [b.get_attribute("aria-label") for b in badges[:20]]
-            diag.append(f"row_aria_labels={labels}")
-            diag.append(f"row_text={row.inner_text()[:500]!r}")
-    except Exception as e:
-        diag.append(f"row_inspect_error={e!r}")
-    try:
-        screenshot_dir = Path("report") / "diagnostics"
-        screenshot_dir.mkdir(parents=True, exist_ok=True)
-        screenshot_path = screenshot_dir / f"session_resume_skip_{int(time.time())}.png"
-        page.screenshot(path=str(screenshot_path), full_page=True)
-        diag.append(f"screenshot={screenshot_path}")
-    except Exception as e:
-        diag.append(f"screenshot_error={e!r}")
     pytest.skip(
-        "Session did not return to Active state after resume — "
-        f"diagnostics: {' | '.join(diag)} | original: {exc}"
+        f"Session did not return to Active state after resume — "
+        f"suspend/resume may not be supported in this Workbench configuration ({exc})"
     )
 
 
