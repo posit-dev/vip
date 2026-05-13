@@ -6,6 +6,7 @@ Patterns adapted from test_ide_launch.py.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -131,44 +132,84 @@ def session_becomes_suspended(page: Page, session_context: dict):
 
 @when("the user resumes the session")
 def user_resumes_session(page: Page, session_context: dict):
-    """Click the suspended session link to resume it."""
+    """Open the session details modal and click Launch to resume the session."""
     session_name = session_context["name"]
 
     session_row = page.locator(Homepage.session_row(session_name))
     expect(session_row).to_be_visible(timeout=TIMEOUT_DIALOG)
 
-    # Suspended sessions may not have a clickable link.  Select the session
-    # checkbox and click the session name text to trigger a resume, or fall
-    # back to navigating into the session via any available link.
-    session_link = session_row.locator("a").first
-    if session_link.count() > 0:
-        session_link.click()
-    else:
-        # No link available — select and use the session row action
-        checkbox = page.locator(Homepage.session_checkbox(session_name))
-        checkbox.click()
-        # After selecting a suspended session, the homepage should offer a
-        # way to resume.  Click the session name text as a fallback.
-        session_row.locator(f"text='{session_name}'").click()
+    # Modern Workbench does not expose a one-click launch link on the row
+    # for suspended sessions. Active sessions have `a[title='join <name>']`,
+    # but on suspended rows the name is rendered as plain text — clicking
+    # it opens a session-details modal that contains a "Launch" button.
+    # That Launch button is what triggers the backend resume. The previous
+    # implementation's `session_row.locator("a").first` was picking up a
+    # "Details" link instead, navigating to /s/<id>/workspaces/ (a
+    # management view) and never resuming the session.
+    name_text = session_row.locator(Homepage.session_text(session_name))
+    expect(name_text).to_be_visible(timeout=TIMEOUT_DIALOG)
+    name_text.click()
 
-    # Navigate back to homepage to observe the Active state
+    # Wait for the Launch button directly rather than the modal container.
+    # The modal's CSS class varies between Workbench UI versions (the page
+    # object's SESSION_DETAILS_DIALOG selector uses class*='modal-dialog'
+    # which does not match the newer data-slot based dialog markup), but
+    # the button text is stable. A visible Launch button proves the modal
+    # opened.
+    launch_btn = page.locator("button:text-is('Launch')")
+    expect(launch_btn).to_be_visible(timeout=TIMEOUT_DIALOG)
+    launch_btn.click()
+
+    # Wait for the navigation into the session URL to commit before going
+    # anywhere else. Navigating away from /s/<id> too quickly causes
+    # Workbench to abort the resume.
+    page.wait_for_url("**/s/**", timeout=TIMEOUT_PAGE_LOAD)
+    page.wait_for_load_state("load", timeout=TIMEOUT_PAGE_LOAD)
+
+    # Navigate back to homepage to observe the Active state. NB: Workbench's
+    # /home may auto-redirect back to the recently-used session — that is OK
+    # for the next step, which observes the session badge in the sidebar.
     page.goto(page.url.split("/s/")[0] + "/home") if "/s/" in page.url else page.go_back()
     expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
 
 @then("the session reaches Active state again")
-def session_becomes_active_again(page: Page, session_context: dict):
+def session_becomes_active_again(page: Page, workbench_url: str, session_context: dict):
     """Verify the session transitions back to Active state."""
     session_name = session_context["name"]
 
+    # Explicitly navigate back to /home. user_resumes_session attempts the
+    # same bounce, but Playwright's goto() races with the IDE iframe loading
+    # on /s/<id> and sometimes leaves the page on the session URL — where the
+    # sidebar shows a stale Suspended badge regardless of the actual server
+    # state. Doing the navigation here, in the observation step, guarantees
+    # we are looking at the real homepage.
+    home_url = workbench_url.rstrip("/") + "/home"
+    page.goto(home_url, timeout=TIMEOUT_PAGE_LOAD)
+    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+
+    # The Workbench homepage does not auto-poll session state, so a single
+    # locator wait cannot observe the Suspended → Active transition. Reload
+    # periodically inside the overall budget until the Active badge appears.
     session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
-    try:
-        expect(session_active).to_be_visible(timeout=TIMEOUT_SESSION_START)
-    except AssertionError as exc:
-        pytest.skip(
-            f"Session did not return to Active state after resume — "
-            f"suspend/resume may not be supported in this Workbench configuration ({exc})"
-        )
+    inner_timeout_ms = 5000
+    deadline = time.time() + (TIMEOUT_SESSION_START / 1000)
+    exc: AssertionError | None = None
+    while True:
+        try:
+            expect(session_active).to_be_visible(timeout=inner_timeout_ms)
+            return  # Active observed
+        except AssertionError as e:
+            exc = e
+            if time.time() >= deadline:
+                break
+            page.reload(timeout=TIMEOUT_PAGE_LOAD)
+            expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+
+    pytest.skip(
+        f"Session did not return to Active state after resume — "
+        f"suspend/resume may not be supported in this Workbench configuration ({exc})"
+    )
 
 
 @then("the session is cleaned up")
