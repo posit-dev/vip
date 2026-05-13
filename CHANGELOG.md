@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.32.1 (2026-05-13)
+
+### Bug Fixes
+
+- **workbench**: Resume sessions via Launch modal button
+  ([#259](https://github.com/posit-dev/vip/pull/259),
+  [`66067cc`](https://github.com/posit-dev/vip/commit/66067cc3938b0f7f93dc542545bc4a9c42b81a46))
+
+
 ## v0.32.0 (2026-05-12)
 
 ### Features
