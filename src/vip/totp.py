@@ -8,8 +8,6 @@ to bypassing 2FA for the account it belongs to.
 
 from __future__ import annotations
 
-import os  # noqa: F401  (used by get_code in Task 3)
-
 import pyotp
 
 ENV_VAR = "VIP_TEST_TOTP_SECRET"
