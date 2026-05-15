@@ -8,6 +8,8 @@ to bypassing 2FA for the account it belongs to.
 
 from __future__ import annotations
 
+import os
+
 import pyotp
 
 ENV_VAR = "VIP_TEST_TOTP_SECRET"
@@ -30,3 +32,15 @@ def validate_secret(secret: str) -> None:
         pyotp.TOTP(secret).now()
     except Exception as exc:
         raise AuthConfigError(f"{ENV_VAR} is not a valid base32 TOTP seed: {exc}") from exc
+
+
+def get_code(prompt: str = ">>> Enter your verification code: ") -> str:
+    """Return a TOTP code: from VIP_TEST_TOTP_SECRET if set, else stdin.
+
+    Generated codes never appear in logs or error messages; only the
+    env var *name* may be referenced for troubleshooting.
+    """
+    secret = os.environ.get(ENV_VAR, "").strip()
+    if secret:
+        return pyotp.TOTP(secret).now()
+    return input(prompt).strip()
