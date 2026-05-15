@@ -931,6 +931,56 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
             print(f">>> Warning: could not delete stale key {key_id}: {exc}")
 
 
+def _content_type(resp) -> str:
+    """Return the response Content-Type header (or ``"<none>"``) tolerantly.
+
+    Test stubs sometimes use a plain ``MagicMock`` for ``headers``; fall back
+    to ``"<none>"`` so the diagnostic line stays readable rather than printing
+    a mock repr.
+    """
+    try:
+        headers = getattr(resp, "headers", None) or {}
+        value = headers.get("content-type", "<none>")
+    except (AttributeError, TypeError):
+        return "<none>"
+    return value if isinstance(value, str) else "<none>"
+
+
+def _probe_server_settings(client, base: str, me_status: int, connect_url: str) -> None:
+    """Probe ``/__api__/server_settings`` after a mint failure on ``/v1/user``.
+
+    ``/server_settings`` is unauthenticated and lives on the same Connect
+    API mount as ``/v1/user``, so if it 404s too, we are simply not hitting
+    Connect — the configured ``connect_url`` has the wrong path prefix.
+    This turns a confusing "API key minting failed" into a concrete pointer
+    at the misconfigured URL (e.g. ``--connect-url .../connect`` when the
+    server really lives at the host root).
+
+    Best-effort: any transport error is logged and swallowed.
+    """
+    import httpx
+
+    try:
+        probe = client.get("/server_settings")
+    except httpx.HTTPError as exc:
+        print(f">>> Mint diagnostic: /server_settings probe failed: {exc}")
+        return
+    probe_ct = _content_type(probe)
+    probe_url = f"{base}/server_settings"
+    print(
+        f">>> Mint diagnostic: GET {probe_url} returned HTTP "
+        f"{probe.status_code} (content-type: {probe_ct})"
+    )
+    if me_status == 404 and probe.status_code == 404:
+        print(
+            f">>> Mint diagnostic: both /__api__ endpoints returned 404 — "
+            f"the configured connect_url ({connect_url}) likely has the "
+            f"wrong path prefix. Try removing any sub-path (e.g. '/connect') "
+            f"from --connect-url, or ask the administrator where Connect's "
+            f"/__api__/ is mounted."
+        )
+
+
 def _body_snippet(resp, limit: int = 200) -> str:
     """Return a short, single-line preview of an HTTP response body.
 
@@ -1019,13 +1069,16 @@ def _create_api_key_via_session(
         ) as client:
             me_resp = client.get("/v1/user")
             if not me_resp.is_success:
+                me_ct = _content_type(me_resp)
                 print(
-                    f">>> Warning: GET /v1/user returned HTTP {me_resp.status_code}: "
+                    f">>> Warning: GET {me_url} returned HTTP "
+                    f"{me_resp.status_code} (content-type: {me_ct}): "
                     f"{_body_snippet(me_resp)}"
                 )
                 xsrf_preview = f"{xsrf[:4]}…(len={len(xsrf)})" if xsrf else "<none>"
                 print(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
                 _log_mint_cookie_diagnostic(page, me_url)
+                _probe_server_settings(client, base, me_resp.status_code, connect_url)
                 return None
             guid = me_resp.json().get("guid")
             if not guid:

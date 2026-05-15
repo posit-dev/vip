@@ -397,6 +397,7 @@ class TestCreateApiKeyViaSession:
         status_code: int = 200,
         json_data=None,
         text: str = "",
+        headers: dict[str, str] | None = None,
     ) -> MagicMock:
         """Stub an httpx Response with the given shape."""
         resp = MagicMock()
@@ -404,6 +405,9 @@ class TestCreateApiKeyViaSession:
         resp.status_code = status_code
         resp.json.return_value = json_data if json_data is not None else {}
         resp.text = text
+        # Real dict so ``headers.get("content-type", ...)`` returns a string,
+        # not a MagicMock (which would make diagnostic output unreadable).
+        resp.headers = headers if headers is not None else {}
         return resp
 
     @staticmethod
@@ -747,6 +751,136 @@ class TestCreateApiKeyViaSession:
         out = capsys.readouterr().out
         assert "HTTP 403" in out
         assert "CSRF token is required" in out
+
+    def test_mint_failure_warning_includes_full_url_and_content_type(self, capsys):
+        """The warning must print the full mint URL and Content-Type so the
+        user can distinguish Connect's 404 page from an upstream proxy 404."""
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+        me_404 = self._httpx_response(
+            is_success=False,
+            status_code=404,
+            text="404 page not found\n",
+            headers={"content-type": "text/plain; charset=utf-8"},
+        )
+        probe_404 = self._httpx_response(
+            is_success=False,
+            status_code=404,
+            text="404 page not found\n",
+            headers={"content-type": "text/plain; charset=utf-8"},
+        )
+
+        def get_side_effect(path, **_kw):
+            return me_404 if path.endswith("/v1/user") else probe_404
+
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+        )
+        with patcher:
+            result = _create_api_key_via_session(page, "https://c.example.com/connect", "k")
+        assert result is None
+
+        out = capsys.readouterr().out
+        # Full URL is reported, not just the relative path.
+        assert "https://c.example.com/connect/__api__/v1/user" in out
+        # Content-Type appears so users can spot Go-default vs Connect 404s.
+        assert "text/plain" in out
+
+    def test_mint_failure_404_probes_server_settings_and_hints_at_wrong_url(self, capsys):
+        """When both /v1/user and /server_settings return 404, the diagnostic
+        must suggest the connect_url path prefix is wrong — that's the only
+        plausible cause (the server settings endpoint is unauthenticated)."""
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+        not_found = self._httpx_response(
+            is_success=False,
+            status_code=404,
+            text="404 page not found\n",
+            headers={"content-type": "text/plain; charset=utf-8"},
+        )
+
+        calls: list[str] = []
+
+        def get_side_effect(path, **_kw):
+            calls.append(path)
+            return not_found
+
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+        )
+        with patcher:
+            _create_api_key_via_session(page, "https://c.example.com/connect", "k")
+
+        assert "/v1/user" in calls
+        assert "/server_settings" in calls
+
+        out = capsys.readouterr().out
+        assert "/server_settings returned HTTP 404" in out
+        assert "wrong path prefix" in out
+        assert "https://c.example.com/connect" in out
+
+    def test_mint_failure_403_does_not_hint_at_wrong_url(self, capsys):
+        """A 403 on /v1/user is auth rejection, not a routing problem — the
+        'wrong path prefix' hint must only fire when both endpoints 404."""
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+        me_403 = self._httpx_response(
+            is_success=False,
+            status_code=403,
+            text="forbidden",
+            headers={"content-type": "application/json"},
+        )
+        probe_200 = self._httpx_response(
+            json_data={"version": "2024.09.0"},
+            headers={"content-type": "application/json"},
+        )
+
+        def get_side_effect(path, **_kw):
+            return me_403 if path.endswith("/v1/user") else probe_200
+
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+        )
+        with patcher:
+            _create_api_key_via_session(page, "https://c.example.com", "k")
+
+        out = capsys.readouterr().out
+        assert "/server_settings returned HTTP 200" in out
+        assert "wrong path prefix" not in out
+
+    def test_mint_failure_probe_transport_error_logged_not_raised(self, capsys):
+        """If the /server_settings probe itself raises, that must not mask the
+        original /v1/user warning — log the probe failure and move on."""
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+        me_404 = self._httpx_response(
+            is_success=False,
+            status_code=404,
+            text="404 page not found",
+            headers={"content-type": "text/plain"},
+        )
+
+        def get_side_effect(path, **_kw):
+            if path.endswith("/v1/user"):
+                return me_404
+            raise httpx.ReadTimeout("probe timed out")
+
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+        )
+        with patcher:
+            result = _create_api_key_via_session(page, "https://c.example.com", "k")
+        assert result is None
+
+        out = capsys.readouterr().out
+        assert "/server_settings probe failed" in out
+        assert "probe timed out" in out
 
     def test_httpx_transport_error_returns_none(self, capsys):
         """httpx connection failures (DNS, TCP, TLS) must return None, not bubble up.

@@ -1141,6 +1141,54 @@ class TestHeartbeat:
         assert re.search(r"\(\d+s\)", output[0])
 
 
+class TestRequireConnectApiKey:
+    """Unit tests for ``require_connect_api_key``.
+
+    The fixture's job is to convert "auth setup failed silently → cascading
+    401s deep in scenario steps" into a single root-cause failure visible at
+    the top of the failure section.
+    """
+
+    def _config(self, *, url: str = "", api_key: str = "", enabled: bool = True):
+        from vip.config import ConnectConfig, VIPConfig
+
+        cfg = VIPConfig()
+        cfg.connect = ConnectConfig(url=url, enabled=enabled, api_key=api_key)
+        return cfg
+
+    def test_no_op_when_connect_not_configured(self):
+        """No URL → fixture returns None upstream; helper must not fail."""
+        from vip.plugin import require_connect_api_key
+
+        require_connect_api_key(self._config())  # no raise
+
+    def test_no_op_when_connect_disabled(self):
+        from vip.plugin import require_connect_api_key
+
+        cfg = self._config(url="https://c.example.com", api_key="", enabled=False)
+        require_connect_api_key(cfg)  # no raise — disabled treats as unconfigured
+
+    def test_no_op_when_api_key_present(self):
+        from vip.plugin import require_connect_api_key
+
+        cfg = self._config(url="https://c.example.com", api_key="abc123")
+        require_connect_api_key(cfg)  # no raise
+
+    def test_fails_with_actionable_message_when_key_missing(self):
+        from vip.plugin import require_connect_api_key
+
+        cfg = self._config(url="https://c.example.com", api_key="")
+        with pytest.raises(pytest.fail.Exception) as exc_info:
+            require_connect_api_key(cfg)
+        msg = str(exc_info.value)
+        # Mentions each remediation path so the user knows what to try.
+        assert "VIP_CONNECT_API_KEY" in msg
+        assert "vip.toml" in msg
+        assert "--headless-auth" in msg
+        # Points back at the upstream mint diagnostic for the headless case.
+        assert "Mint diagnostic" in msg
+
+
 def test_markers_in_sync():
     """Markers in pyproject.toml match those registered in plugin.py."""
     repo_root = Path(__file__).parent.parent
