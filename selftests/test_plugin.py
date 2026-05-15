@@ -1105,6 +1105,86 @@ class TestAuthModeStash:
         )
 
 
+class TestRestoreWorkerAuth:
+    """``_restore_worker_auth`` recreates the controller's auth state on each
+    xdist worker.  When the controller rewrote ``connect.url`` (split sub-path
+    dashboard + root API), workers must pick up the corrected URL or their
+    ``ConnectClient`` will 404 against the original sub-path."""
+
+    @staticmethod
+    def _config(**worker_inputs):
+        """Stub a pytest.Config with the given xdist ``workerinput`` dict."""
+        from unittest.mock import MagicMock
+
+        cfg = MagicMock()
+        cfg.workerinput = worker_inputs
+        cfg.stash = {}
+        return cfg
+
+    def test_rewritten_connect_url_propagates_to_vip_cfg(self):
+        from vip.config import ConnectConfig, VIPConfig
+        from vip.plugin import _restore_worker_auth
+
+        vip_cfg = VIPConfig()
+        vip_cfg.connect = ConnectConfig(enabled=True, url="https://c.example.com/connect")
+        cfg = self._config(
+            vip_api_key="K",
+            vip_connect_url="https://c.example.com",
+            vip_storage_state="/tmp/state.json",
+            vip_key_name="_vip_interactive_1",
+        )
+
+        _restore_worker_auth(cfg, vip_cfg)
+
+        assert vip_cfg.connect.url == "https://c.example.com"
+        assert vip_cfg.connect.api_key == "K"
+
+    def test_matching_connect_url_is_noop(self):
+        """No rewrite case: controller passed the same URL; leave it alone."""
+        from vip.config import ConnectConfig, VIPConfig
+        from vip.plugin import _restore_worker_auth
+
+        vip_cfg = VIPConfig()
+        vip_cfg.connect = ConnectConfig(enabled=True, url="https://c.example.com")
+        cfg = self._config(
+            vip_api_key="K",
+            vip_connect_url="https://c.example.com",
+        )
+
+        _restore_worker_auth(cfg, vip_cfg)
+
+        assert vip_cfg.connect.url == "https://c.example.com"
+
+    def test_empty_connect_url_keeps_existing(self):
+        """Controller had no Connect URL to share — don't blank out the
+        worker's existing value."""
+        from vip.config import ConnectConfig, VIPConfig
+        from vip.plugin import _restore_worker_auth
+
+        vip_cfg = VIPConfig()
+        vip_cfg.connect = ConnectConfig(enabled=True, url="https://c.example.com")
+        cfg = self._config(vip_api_key="K", vip_connect_url="")
+
+        _restore_worker_auth(cfg, vip_cfg)
+
+        assert vip_cfg.connect.url == "https://c.example.com"
+
+    def test_connect_disabled_keeps_existing(self):
+        """Workbench-only run: Connect is disabled.  Even if a stray
+        ``vip_connect_url`` shows up in workerinput, don't enable Connect
+        by accident."""
+        from vip.config import ConnectConfig, VIPConfig
+        from vip.plugin import _restore_worker_auth
+
+        vip_cfg = VIPConfig()
+        vip_cfg.connect = ConnectConfig(enabled=False, url="")
+        cfg = self._config(vip_connect_url="https://c.example.com")
+
+        _restore_worker_auth(cfg, vip_cfg)
+
+        assert vip_cfg.connect.url == ""
+
+
 class TestHeartbeat:
     """Unit tests for the long-running test heartbeat."""
 
@@ -1139,6 +1219,54 @@ class TestHeartbeat:
         assert len(output) >= 1
         # Should contain a number of seconds in parentheses
         assert re.search(r"\(\d+s\)", output[0])
+
+
+class TestRequireConnectApiKey:
+    """Unit tests for ``require_connect_api_key``.
+
+    The fixture's job is to convert "auth setup failed silently → cascading
+    401s deep in scenario steps" into a single root-cause failure visible at
+    the top of the failure section.
+    """
+
+    def _config(self, *, url: str = "", api_key: str = "", enabled: bool = True):
+        from vip.config import ConnectConfig, VIPConfig
+
+        cfg = VIPConfig()
+        cfg.connect = ConnectConfig(url=url, enabled=enabled, api_key=api_key)
+        return cfg
+
+    def test_no_op_when_connect_not_configured(self):
+        """No URL → fixture returns None upstream; helper must not fail."""
+        from vip.plugin import require_connect_api_key
+
+        require_connect_api_key(self._config())  # no raise
+
+    def test_no_op_when_connect_disabled(self):
+        from vip.plugin import require_connect_api_key
+
+        cfg = self._config(url="https://c.example.com", api_key="", enabled=False)
+        require_connect_api_key(cfg)  # no raise — disabled treats as unconfigured
+
+    def test_no_op_when_api_key_present(self):
+        from vip.plugin import require_connect_api_key
+
+        cfg = self._config(url="https://c.example.com", api_key="abc123")
+        require_connect_api_key(cfg)  # no raise
+
+    def test_fails_with_actionable_message_when_key_missing(self):
+        from vip.plugin import require_connect_api_key
+
+        cfg = self._config(url="https://c.example.com", api_key="")
+        with pytest.raises(pytest.fail.Exception) as exc_info:
+            require_connect_api_key(cfg)
+        msg = str(exc_info.value)
+        # Mentions each remediation path so the user knows what to try.
+        assert "VIP_CONNECT_API_KEY" in msg
+        assert "vip.toml" in msg
+        assert "--headless-auth" in msg
+        # Points back at the upstream mint diagnostic for the headless case.
+        assert "Mint diagnostic" in msg
 
 
 def test_markers_in_sync():

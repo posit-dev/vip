@@ -9,7 +9,12 @@ from vip.clients.connect import ConnectClient
 from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
 from vip.config import PerformanceConfig, VIPConfig
-from vip.plugin import _auth_mode_key, _auth_session_key, _vip_config_key
+from vip.plugin import (
+    _auth_mode_key,
+    _auth_session_key,
+    _vip_config_key,
+    require_connect_api_key,
+)
 
 # pytest-bdd step definitions with target_fixture return values intentionally;
 # pytest 9.x warns about non-None returns from test functions. Scoped to
@@ -42,6 +47,7 @@ def vip_verbose(request: pytest.FixtureRequest) -> bool:
 def connect_client(vip_config: VIPConfig) -> ConnectClient | None:
     if not vip_config.connect.is_configured:
         return None
+    require_connect_api_key(vip_config)
     client = ConnectClient(
         vip_config.connect.url,
         api_key=vip_config.connect.api_key,

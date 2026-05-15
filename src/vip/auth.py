@@ -322,6 +322,9 @@ def start_interactive_auth(
         # Mint Connect API key only if Connect is configured.
         api_key = None
         if connect_url:
+            connect_url = _resolve_connect_api_base(
+                connect_url, insecure=insecure, ca_bundle=ca_bundle
+            )
             api_key = _create_api_key_via_session(
                 page, connect_url, key_name, insecure=insecure, ca_bundle=ca_bundle
             )
@@ -497,6 +500,9 @@ def start_headless_auth(
         # Mint Connect API key only if Connect is configured.
         api_key = None
         if connect_url:
+            connect_url = _resolve_connect_api_base(
+                connect_url, insecure=insecure, ca_bundle=ca_bundle
+            )
             api_key = _create_api_key_via_session(
                 page, connect_url, key_name, insecure=insecure, ca_bundle=ca_bundle
             )
@@ -931,6 +937,56 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
             print(f">>> Warning: could not delete stale key {key_id}: {exc}")
 
 
+def _content_type(resp) -> str:
+    """Return the response Content-Type header (or ``"<none>"``) tolerantly.
+
+    Test stubs sometimes use a plain ``MagicMock`` for ``headers``; fall back
+    to ``"<none>"`` so the diagnostic line stays readable rather than printing
+    a mock repr.
+    """
+    try:
+        headers = getattr(resp, "headers", None) or {}
+        value = headers.get("content-type", "<none>")
+    except (AttributeError, TypeError):
+        return "<none>"
+    return value if isinstance(value, str) else "<none>"
+
+
+def _probe_server_settings(client, base: str, me_status: int, connect_url: str) -> None:
+    """Probe ``/__api__/server_settings`` after a mint failure on ``/v1/user``.
+
+    ``/server_settings`` is unauthenticated and lives on the same Connect
+    API mount as ``/v1/user``, so if it 404s too, we are simply not hitting
+    Connect — the configured ``connect_url`` has the wrong path prefix.
+    This turns a confusing "API key minting failed" into a concrete pointer
+    at the misconfigured URL (e.g. ``--connect-url .../connect`` when the
+    server really lives at the host root).
+
+    Best-effort: any transport error is logged and swallowed.
+    """
+    import httpx
+
+    try:
+        probe = client.get("/server_settings")
+    except httpx.HTTPError as exc:
+        print(f">>> Mint diagnostic: /server_settings probe failed: {exc}")
+        return
+    probe_ct = _content_type(probe)
+    probe_url = f"{base}/server_settings"
+    print(
+        f">>> Mint diagnostic: GET {probe_url} returned HTTP "
+        f"{probe.status_code} (content-type: {probe_ct})"
+    )
+    if me_status == 404 and probe.status_code == 404:
+        print(
+            f">>> Mint diagnostic: both /__api__ endpoints returned 404 — "
+            f"the configured connect_url ({connect_url}) likely has the "
+            f"wrong path prefix. Try removing any sub-path (e.g. '/connect') "
+            f"from --connect-url, or ask the administrator where Connect's "
+            f"/__api__/ is mounted."
+        )
+
+
 def _body_snippet(resp, limit: int = 200) -> str:
     """Return a short, single-line preview of an HTTP response body.
 
@@ -945,6 +1001,85 @@ def _body_snippet(resp, limit: int = 200) -> str:
         return "<unreadable body>"
     text = " ".join(text.split())
     return text[:limit] if text else "<empty body>"
+
+
+def _resolve_connect_api_base(
+    connect_url: str,
+    *,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
+) -> str:
+    """Return a Connect URL whose ``/__api__/`` mount actually responds.
+
+    Some deployments serve the dashboard under a sub-path (``/connect/``)
+    but keep the API at the host root.  ``<connect_url>/__api__/`` then
+    404s while ``<host>/__api__/`` returns 200.  When that mismatch is
+    detected, switch to the host root for API traffic; otherwise return
+    the original URL unchanged.
+
+    ``/__api__/server_settings`` is unauthenticated, so probing does not
+    need browser cookies.  On any error or ambiguous result, returns the
+    original URL so the existing mint diagnostics still run.
+    """
+    from urllib.parse import urlparse, urlunparse
+
+    import httpx
+
+    if not connect_url:
+        return connect_url
+
+    parsed = urlparse(connect_url)
+    sub_path = (parsed.path or "").strip("/")
+    if not sub_path:
+        # Already at host root — nothing to fall back to.
+        return connect_url
+
+    verify = _httpx_verify(insecure, ca_bundle)
+    primary = connect_url.rstrip("/") + "/__api__/server_settings"
+    try:
+        primary_resp = httpx.get(primary, timeout=10.0, verify=verify, follow_redirects=True)
+    except httpx.HTTPError:
+        return connect_url
+    if primary_resp.status_code == 200:
+        return connect_url
+
+    root = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+    secondary = root + "/__api__/server_settings"
+    try:
+        secondary_resp = httpx.get(secondary, timeout=10.0, verify=verify, follow_redirects=True)
+    except httpx.HTTPError:
+        return connect_url
+    if secondary_resp.status_code != 200:
+        return connect_url
+
+    ct = secondary_resp.headers.get("content-type", "") or ""
+    if "json" not in ct.lower():
+        return connect_url
+    try:
+        body = secondary_resp.json()
+    except (ValueError, KeyError):
+        return connect_url
+    if not isinstance(body, dict):
+        # JSON 200 that isn't an object (list, scalar, null) cannot be
+        # Connect's server_settings payload — treat as ambiguous and
+        # keep the original URL.  Without this guard ``body.get(...)``
+        # raises ``AttributeError`` and crashes auth.
+        return connect_url
+
+    # Require a *positive* match between the root API's advertised
+    # ``dashboard_path`` and the sub-path on the configured URL before
+    # switching.  A missing or empty ``dashboard_path`` is treated as
+    # unverified — keep the original URL rather than blindly routing
+    # mint traffic at a JSON endpoint that merely happens to answer 200.
+    dashboard_path = (body.get("dashboard_path") or "").strip("/")
+    if dashboard_path != sub_path:
+        return connect_url
+
+    print(
+        f">>> Connect dashboard at {connect_url} but API at {root}/__api__/; "
+        f"using {root} for API calls."
+    )
+    return root
 
 
 def _create_api_key_via_session(
@@ -1019,13 +1154,16 @@ def _create_api_key_via_session(
         ) as client:
             me_resp = client.get("/v1/user")
             if not me_resp.is_success:
+                me_ct = _content_type(me_resp)
                 print(
-                    f">>> Warning: GET /v1/user returned HTTP {me_resp.status_code}: "
+                    f">>> Warning: GET {me_url} returned HTTP "
+                    f"{me_resp.status_code} (content-type: {me_ct}): "
                     f"{_body_snippet(me_resp)}"
                 )
                 xsrf_preview = f"{xsrf[:4]}…(len={len(xsrf)})" if xsrf else "<none>"
                 print(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
                 _log_mint_cookie_diagnostic(page, me_url)
+                _probe_server_settings(client, base, me_resp.status_code, connect_url)
                 return None
             guid = me_resp.json().get("guid")
             if not guid:
@@ -1036,7 +1174,7 @@ def _create_api_key_via_session(
 
             create_resp = client.post(
                 f"/v1/users/{guid}/keys",
-                data={"name": key_name},
+                json={"name": key_name},
             )
             if not create_resp.is_success:
                 print(
