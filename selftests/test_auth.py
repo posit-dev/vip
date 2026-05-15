@@ -455,6 +455,23 @@ class TestResolveConnectApiBase:
 
         assert result == "https://connect.example.com/connect"
 
+    @pytest.mark.parametrize("payload", [[], [1, 2, 3], "string", 42, None])
+    def test_non_dict_json_keeps_url(self, payload):
+        """Root /__api__/server_settings returns a valid JSON 200 that
+        isn't an object (list, scalar, null) — calling ``.get()`` on it
+        would raise ``AttributeError``.  The resolver must treat this as
+        ambiguous and keep the original URL."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [
+            self._resp(404),
+            self._resp(200, json_data=payload),
+        ]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
     def test_secondary_non_json_keeps_url(self):
         """Root /__api__/server_settings returns 200 but HTML — not Connect.
         Refuse to switch."""

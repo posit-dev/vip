@@ -1059,6 +1059,12 @@ def _resolve_connect_api_base(
         body = secondary_resp.json()
     except (ValueError, KeyError):
         return connect_url
+    if not isinstance(body, dict):
+        # JSON 200 that isn't an object (list, scalar, null) cannot be
+        # Connect's server_settings payload — treat as ambiguous and
+        # keep the original URL.  Without this guard ``body.get(...)``
+        # raises ``AttributeError`` and crashes auth.
+        return connect_url
 
     # Require a *positive* match between the root API's advertised
     # ``dashboard_path`` and the sub-path on the configured URL before
