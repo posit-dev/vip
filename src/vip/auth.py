@@ -1167,7 +1167,7 @@ def _create_api_key_via_session(
 
             create_resp = client.post(
                 f"/v1/users/{guid}/keys",
-                data={"name": key_name},
+                json={"name": key_name},
             )
             if not create_resp.is_success:
                 print(

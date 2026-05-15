@@ -589,10 +589,13 @@ class TestCreateApiKeyViaSession:
         assert init_kwargs["cookies"]["RSC-XSRF"] == "xsrf-token"
         assert init_kwargs["cookies"]["connect-session"] == "sess-123"
 
-        # POST must include the key name.
+        # POST must include the key name as a JSON body — Connect's API
+        # rejects form-encoded payloads with HTTP 400 "request JSON cannot
+        # be parsed".
         post_call = client_mock.post.call_args
         assert post_call.args[0].endswith("/v1/users/user-guid-abc/keys")
-        assert post_call.kwargs["data"] == {"name": "_vip_interactive_1"}
+        assert post_call.kwargs["json"] == {"name": "_vip_interactive_1"}
+        assert "data" not in post_call.kwargs
 
     def test_insecure_flag_sets_verify_false(self):
         """When insecure=True, httpx.Client must be constructed with verify=False."""
