@@ -31,6 +31,55 @@ class TestStartHeadlessAuthValidation:
         with pytest.raises(AuthConfigError, match="at least one product URL"):
             start_headless_auth()
 
+    def test_invalid_totp_seed_raises_before_playwright(self, monkeypatch):
+        """Bad VIP_TEST_TOTP_SECRET fails fast with a clear error."""
+        monkeypatch.setenv("VIP_TEST_TOTP_SECRET", "not-valid-base32-!!!")
+
+        # If validation runs late, sync_playwright would be called. Patch
+        # it to blow up loudly so this test catches that regression.
+        def boom(*a, **kw):
+            raise AssertionError("Playwright launched despite invalid seed")
+
+        monkeypatch.setattr("vip.auth.sync_playwright", boom)
+
+        with pytest.raises(AuthConfigError, match="VIP_TEST_TOTP_SECRET"):
+            start_headless_auth(
+                connect_url="https://connect.example.com",
+                idp="keycloak",
+                provider="oidc",
+                username="user",
+                password="pass",
+            )
+
+    def test_valid_totp_seed_passes_validation(self, monkeypatch, tmp_path):
+        """A valid seed must not block startup. Stub Playwright so the
+        test asserts only that validation does not raise."""
+        monkeypatch.setenv("VIP_TEST_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+
+        # Stub Playwright so we can exercise validation without a browser.
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+        pw = MagicMock()
+        browser = pw.start.return_value.chromium.launch.return_value
+        page = browser.new_context.return_value.new_page.return_value
+        # Make goto time out so the call returns quickly via the existing
+        # error path, without us needing to fake a full successful flow.
+        page.goto.side_effect = PlaywrightTimeoutError("timed out")
+
+        monkeypatch.setattr("vip.auth.sync_playwright", lambda: pw)
+
+        # Should NOT raise an AuthConfigError mentioning the seed; the
+        # timeout path is the expected failure here.
+        with pytest.raises(AuthConfigError) as exc_info:
+            start_headless_auth(
+                connect_url="https://connect.example.com",
+                idp="keycloak",
+                provider="oidc",
+                username="user",
+                password="pass",
+            )
+        assert "VIP_TEST_TOTP_SECRET" not in str(exc_info.value)
+
 
 class TestStartHeadlessAuthPlaywrightErrors:
     """Playwright failures during login should surface as AuthConfigError."""
