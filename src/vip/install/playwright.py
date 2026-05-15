@@ -50,9 +50,10 @@ def expected_chromium_revision() -> str | None:
     """
     try:
         import playwright
-    except ImportError:
+
+        browsers_json = Path(playwright.__file__).parent / "driver" / "package" / "browsers.json"
+    except Exception:
         return None
-    browsers_json = Path(playwright.__file__).parent / "driver" / "package" / "browsers.json"
     try:
         data = json.loads(browsers_json.read_text())
     except (OSError, ValueError):

@@ -77,6 +77,27 @@ def test_expected_chromium_revision_reads_browsers_json():
     assert rev.isdigit()
 
 
+def test_expected_chromium_revision_returns_none_on_broken_import(monkeypatch):
+    """A corrupted Playwright install can fail at import time with errors
+    other than ImportError (e.g. SyntaxError, RuntimeError raised by code at
+    module load). The function must still return None so `vip install` can
+    fall back to the loose chromium-* check instead of crashing.
+    """
+    import builtins
+    import sys
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "playwright":
+            raise RuntimeError("playwright package is corrupted")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.delitem(sys.modules, "playwright", raising=False)
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    assert pw.expected_chromium_revision() is None
+
+
 class _FakePopen:
     """Drop-in stand-in for subprocess.Popen for testing the streaming filter.
 
