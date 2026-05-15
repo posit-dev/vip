@@ -80,6 +80,11 @@ provider = "password"
 
 # Test user credentials.
 # Prefer setting VIP_TEST_USERNAME and VIP_TEST_PASSWORD environment variables.
+#
+# For unattended MFA-protected runs (--headless-auth only), set
+# VIP_TEST_TOTP_SECRET to the base32 TOTP seed of a DEDICATED TEST SERVICE
+# ACCOUNT. The seed is equivalent to bypassing 2FA — never use a personal
+# account's seed and never commit it to source control.
 # username = "..."
 # password = "..."
 
