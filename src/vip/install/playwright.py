@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -39,10 +40,46 @@ def default_cache_dir() -> Path:
     return home / ".cache" / "ms-playwright"
 
 
-def chromium_installed(cache_dir: Path) -> bool:
-    """Return True if any `chromium-*` directory exists under cache_dir."""
+def expected_chromium_revision() -> str | None:
+    """Return the Chromium build revision the current Playwright pin expects.
+
+    Reads ``playwright/driver/package/browsers.json`` shipped inside the
+    installed playwright package. Returns ``None`` if playwright cannot be
+    imported, the file is missing, or no chromium entry is found — callers
+    should treat that as "revision unknown" and fall back gracefully.
+    """
+    try:
+        import playwright
+    except ImportError:
+        return None
+    browsers_json = Path(playwright.__file__).parent / "driver" / "package" / "browsers.json"
+    try:
+        data = json.loads(browsers_json.read_text())
+    except (OSError, ValueError):
+        return None
+    for entry in data.get("browsers", []):
+        if entry.get("name") == "chromium":
+            revision = entry.get("revision")
+            return str(revision) if revision is not None else None
+    return None
+
+
+def chromium_installed(cache_dir: Path, *, revision: str | None = None) -> bool:
+    """Return True if the Chromium build Playwright currently expects is cached.
+
+    ``revision`` defaults to :func:`expected_chromium_revision`. When the
+    revision is known we check for the specific ``chromium-<revision>``
+    directory so a stale build from an older Playwright pin no longer hides
+    the need to reinstall. When the revision cannot be determined we fall
+    back to accepting any ``chromium-*`` directory so a broken Playwright
+    install does not stop ``vip install`` from making progress.
+    """
+    if revision is None:
+        revision = expected_chromium_revision()
     if not cache_dir.is_dir():
         return False
+    if revision is not None:
+        return (cache_dir / f"chromium-{revision}").is_dir()
     return any(p.name.startswith("chromium-") for p in cache_dir.iterdir() if p.is_dir())
 
 
