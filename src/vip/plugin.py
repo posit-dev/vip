@@ -211,7 +211,11 @@ def pytest_configure(config: pytest.Config) -> None:
             config.stash[_auth_session_key] = session
             if session.api_key:
                 vip_cfg.connect.api_key = session.api_key
-            elif connect_url:
+            # Auth may have rewritten the Connect URL (sub-path dashboard +
+            # root API).  Sync so the test clients hit the same base mint did.
+            if session._connect_url and connect_url and session._connect_url != connect_url:
+                vip_cfg.connect.url = session._connect_url
+            if not session.api_key and connect_url:
                 warnings.warn(
                     "VIP: --interactive-auth could not mint an API key. "
                     "API-based tests will likely fail. "
@@ -253,7 +257,11 @@ def pytest_configure(config: pytest.Config) -> None:
             config.stash[_auth_session_key] = session
             if session.api_key:
                 vip_cfg.connect.api_key = session.api_key
-            elif connect_url:
+            # Auth may have rewritten the Connect URL (sub-path dashboard +
+            # root API).  Sync so the test clients hit the same base mint did.
+            if session._connect_url and connect_url and session._connect_url != connect_url:
+                vip_cfg.connect.url = session._connect_url
+            if not session.api_key and connect_url:
                 warnings.warn(
                     "VIP: --headless-auth could not mint an API key. "
                     "API-based tests will likely fail. "

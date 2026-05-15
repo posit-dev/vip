@@ -376,6 +376,106 @@ class TestHttpxVerify:
         assert _httpx_verify(True, ca) is False
 
 
+class TestResolveConnectApiBase:
+    """_resolve_connect_api_base handles split layouts where the Connect
+    dashboard sits on a sub-path (``/connect/``) but the API stays at the
+    host root.  ``<connect_url>/__api__/server_settings`` then 404s while
+    ``<host>/__api__/server_settings`` returns 200 with a
+    ``dashboard_path`` matching the sub-path.
+    """
+
+    @staticmethod
+    def _resp(status_code: int, *, json_data=None, content_type: str = "application/json"):
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.headers = {"content-type": content_type}
+        resp.json.return_value = json_data if json_data is not None else {}
+        return resp
+
+    def test_root_url_returned_as_is(self):
+        """When connect_url has no sub-path there's nothing to fall back to —
+        skip the probe entirely."""
+        from vip.auth import _resolve_connect_api_base
+
+        with patch("httpx.get") as mock_get:
+            result = _resolve_connect_api_base("https://connect.example.com")
+
+        assert result == "https://connect.example.com"
+        mock_get.assert_not_called()
+
+    def test_primary_200_keeps_url(self):
+        """Standard layout: ``<connect_url>/__api__/`` answers 200 → keep it."""
+        from vip.auth import _resolve_connect_api_base
+
+        with patch("httpx.get", return_value=self._resp(200, json_data={})):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+    def test_split_layout_switches_to_root(self):
+        """Sub-path dashboard + root API → return the host root."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [
+            self._resp(404, content_type="text/plain"),
+            self._resp(200, json_data={"dashboard_path": "/connect"}),
+        ]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect/")
+
+        assert result == "https://connect.example.com"
+
+    def test_dashboard_path_mismatch_keeps_url(self):
+        """Root API returns 200 but its dashboard_path is for a different
+        product — refuse to switch."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [
+            self._resp(404),
+            self._resp(200, json_data={"dashboard_path": "/somethingelse"}),
+        ]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+    def test_secondary_non_json_keeps_url(self):
+        """Root /__api__/server_settings returns 200 but HTML — not Connect.
+        Refuse to switch."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [
+            self._resp(404),
+            self._resp(200, content_type="text/html"),
+        ]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+    def test_both_404_returns_original(self):
+        """Both probes 404 → leave URL alone; existing mint diagnostics will
+        guide the user."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [self._resp(404), self._resp(404)]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+    def test_transport_error_returns_original(self):
+        """httpx.HTTPError on the probe must not crash auth setup."""
+        import httpx
+
+        from vip.auth import _resolve_connect_api_base
+
+        with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+
 class TestCreateApiKeyViaSession:
     """_create_api_key_via_session uses httpx + cookies extracted from the
     browser session so that ``insecure`` / ``ca_bundle`` TLS settings are

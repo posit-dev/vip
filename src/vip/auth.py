@@ -322,6 +322,9 @@ def start_interactive_auth(
         # Mint Connect API key only if Connect is configured.
         api_key = None
         if connect_url:
+            connect_url = _resolve_connect_api_base(
+                connect_url, insecure=insecure, ca_bundle=ca_bundle
+            )
             api_key = _create_api_key_via_session(
                 page, connect_url, key_name, insecure=insecure, ca_bundle=ca_bundle
             )
@@ -497,6 +500,9 @@ def start_headless_auth(
         # Mint Connect API key only if Connect is configured.
         api_key = None
         if connect_url:
+            connect_url = _resolve_connect_api_base(
+                connect_url, insecure=insecure, ca_bundle=ca_bundle
+            )
             api_key = _create_api_key_via_session(
                 page, connect_url, key_name, insecure=insecure, ca_bundle=ca_bundle
             )
@@ -995,6 +1001,78 @@ def _body_snippet(resp, limit: int = 200) -> str:
         return "<unreadable body>"
     text = " ".join(text.split())
     return text[:limit] if text else "<empty body>"
+
+
+def _resolve_connect_api_base(
+    connect_url: str,
+    *,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
+) -> str:
+    """Return a Connect URL whose ``/__api__/`` mount actually responds.
+
+    Some deployments serve the dashboard under a sub-path (``/connect/``)
+    but keep the API at the host root.  ``<connect_url>/__api__/`` then
+    404s while ``<host>/__api__/`` returns 200.  When that mismatch is
+    detected, switch to the host root for API traffic; otherwise return
+    the original URL unchanged.
+
+    ``/__api__/server_settings`` is unauthenticated, so probing does not
+    need browser cookies.  On any error or ambiguous result, returns the
+    original URL so the existing mint diagnostics still run.
+    """
+    from urllib.parse import urlparse, urlunparse
+
+    import httpx
+
+    if not connect_url:
+        return connect_url
+
+    parsed = urlparse(connect_url)
+    sub_path = (parsed.path or "").strip("/")
+    if not sub_path:
+        # Already at host root — nothing to fall back to.
+        return connect_url
+
+    verify = _httpx_verify(insecure, ca_bundle)
+    primary = connect_url.rstrip("/") + "/__api__/server_settings"
+    try:
+        primary_resp = httpx.get(primary, timeout=10.0, verify=verify, follow_redirects=True)
+    except httpx.HTTPError:
+        return connect_url
+    if primary_resp.status_code == 200:
+        return connect_url
+
+    root = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+    secondary = root + "/__api__/server_settings"
+    try:
+        secondary_resp = httpx.get(secondary, timeout=10.0, verify=verify, follow_redirects=True)
+    except httpx.HTTPError:
+        return connect_url
+    if secondary_resp.status_code != 200:
+        return connect_url
+
+    ct = secondary_resp.headers.get("content-type", "") or ""
+    if "json" not in ct.lower():
+        return connect_url
+    try:
+        body = secondary_resp.json()
+    except (ValueError, KeyError):
+        return connect_url
+
+    # Cross-check that the root API's advertised dashboard_path matches
+    # the sub-path on the configured URL.  This guards against switching
+    # to a sibling /__api__/ that happens to answer 200 but belongs to a
+    # different product behind the same host.
+    dashboard_path = (body.get("dashboard_path") or "").strip("/")
+    if dashboard_path and dashboard_path != sub_path:
+        return connect_url
+
+    print(
+        f">>> Connect dashboard at {connect_url} but API at {root}/__api__/; "
+        f"using {root} for API calls."
+    )
+    return root
 
 
 def _create_api_key_via_session(
