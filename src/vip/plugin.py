@@ -277,15 +277,21 @@ def _restore_worker_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
     wi = config.workerinput  # type: ignore[attr-defined]  # xdist injects this
     api_key = wi.get("vip_api_key") or None
     storage_state = wi.get("vip_storage_state", "")
+    connect_url = wi.get("vip_connect_url", "") or ""
 
     if api_key:
         vip_cfg.connect.api_key = api_key
+    # Mirror the controller's URL rewrite (split sub-path dashboard + root
+    # API).  Without this, workers build ConnectClient from the original
+    # sub-path URL and 404 against /__api__/.
+    if connect_url and vip_cfg.connect.is_configured and connect_url != vip_cfg.connect.url:
+        vip_cfg.connect.url = connect_url
 
     session = InteractiveAuthSession(
         storage_state_path=Path(storage_state) if storage_state else Path("/dev/null"),
         api_key=api_key,
         key_name=wi.get("vip_key_name", ""),
-        _connect_url=wi.get("vip_connect_url", ""),
+        _connect_url=connect_url,
         _tmpdir="",  # Workers don't own the temp dir; controller cleans up.
     )
     config.stash[_auth_session_key] = session

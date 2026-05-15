@@ -1060,12 +1060,13 @@ def _resolve_connect_api_base(
     except (ValueError, KeyError):
         return connect_url
 
-    # Cross-check that the root API's advertised dashboard_path matches
-    # the sub-path on the configured URL.  This guards against switching
-    # to a sibling /__api__/ that happens to answer 200 but belongs to a
-    # different product behind the same host.
+    # Require a *positive* match between the root API's advertised
+    # ``dashboard_path`` and the sub-path on the configured URL before
+    # switching.  A missing or empty ``dashboard_path`` is treated as
+    # unverified — keep the original URL rather than blindly routing
+    # mint traffic at a JSON endpoint that merely happens to answer 200.
     dashboard_path = (body.get("dashboard_path") or "").strip("/")
-    if dashboard_path and dashboard_path != sub_path:
+    if dashboard_path != sub_path:
         return connect_url
 
     print(

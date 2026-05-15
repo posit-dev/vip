@@ -439,6 +439,22 @@ class TestResolveConnectApiBase:
 
         assert result == "https://connect.example.com/connect"
 
+    def test_missing_dashboard_path_keeps_url(self):
+        """Root /__api__/server_settings returns 200 JSON but has no
+        ``dashboard_path`` field — unverified.  Keep the original URL
+        rather than risking a false-positive rewrite to a sibling
+        endpoint that just happens to answer JSON 200."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [
+            self._resp(404),
+            self._resp(200, json_data={"hostname": "ambiguous"}),
+        ]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
     def test_secondary_non_json_keeps_url(self):
         """Root /__api__/server_settings returns 200 but HTML — not Connect.
         Refuse to switch."""

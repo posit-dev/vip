@@ -1105,6 +1105,86 @@ class TestAuthModeStash:
         )
 
 
+class TestRestoreWorkerAuth:
+    """``_restore_worker_auth`` recreates the controller's auth state on each
+    xdist worker.  When the controller rewrote ``connect.url`` (split sub-path
+    dashboard + root API), workers must pick up the corrected URL or their
+    ``ConnectClient`` will 404 against the original sub-path."""
+
+    @staticmethod
+    def _config(**worker_inputs):
+        """Stub a pytest.Config with the given xdist ``workerinput`` dict."""
+        from unittest.mock import MagicMock
+
+        cfg = MagicMock()
+        cfg.workerinput = worker_inputs
+        cfg.stash = {}
+        return cfg
+
+    def test_rewritten_connect_url_propagates_to_vip_cfg(self):
+        from vip.config import ConnectConfig, VIPConfig
+        from vip.plugin import _restore_worker_auth
+
+        vip_cfg = VIPConfig()
+        vip_cfg.connect = ConnectConfig(enabled=True, url="https://c.example.com/connect")
+        cfg = self._config(
+            vip_api_key="K",
+            vip_connect_url="https://c.example.com",
+            vip_storage_state="/tmp/state.json",
+            vip_key_name="_vip_interactive_1",
+        )
+
+        _restore_worker_auth(cfg, vip_cfg)
+
+        assert vip_cfg.connect.url == "https://c.example.com"
+        assert vip_cfg.connect.api_key == "K"
+
+    def test_matching_connect_url_is_noop(self):
+        """No rewrite case: controller passed the same URL; leave it alone."""
+        from vip.config import ConnectConfig, VIPConfig
+        from vip.plugin import _restore_worker_auth
+
+        vip_cfg = VIPConfig()
+        vip_cfg.connect = ConnectConfig(enabled=True, url="https://c.example.com")
+        cfg = self._config(
+            vip_api_key="K",
+            vip_connect_url="https://c.example.com",
+        )
+
+        _restore_worker_auth(cfg, vip_cfg)
+
+        assert vip_cfg.connect.url == "https://c.example.com"
+
+    def test_empty_connect_url_keeps_existing(self):
+        """Controller had no Connect URL to share — don't blank out the
+        worker's existing value."""
+        from vip.config import ConnectConfig, VIPConfig
+        from vip.plugin import _restore_worker_auth
+
+        vip_cfg = VIPConfig()
+        vip_cfg.connect = ConnectConfig(enabled=True, url="https://c.example.com")
+        cfg = self._config(vip_api_key="K", vip_connect_url="")
+
+        _restore_worker_auth(cfg, vip_cfg)
+
+        assert vip_cfg.connect.url == "https://c.example.com"
+
+    def test_connect_disabled_keeps_existing(self):
+        """Workbench-only run: Connect is disabled.  Even if a stray
+        ``vip_connect_url`` shows up in workerinput, don't enable Connect
+        by accident."""
+        from vip.config import ConnectConfig, VIPConfig
+        from vip.plugin import _restore_worker_auth
+
+        vip_cfg = VIPConfig()
+        vip_cfg.connect = ConnectConfig(enabled=False, url="")
+        cfg = self._config(vip_connect_url="https://c.example.com")
+
+        _restore_worker_auth(cfg, vip_cfg)
+
+        assert vip_cfg.connect.url == ""
+
+
 class TestHeartbeat:
     """Unit tests for the long-running test heartbeat."""
 
