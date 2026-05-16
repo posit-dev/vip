@@ -428,11 +428,11 @@ def start_headless_auth(
 
     # Validate VIP_TEST_TOTP_SECRET (if set) before launching Playwright
     # so a bad seed fails fast with a clear error.
-    _totp_secret = os.environ.get("VIP_TEST_TOTP_SECRET", "").strip()
-    if _totp_secret:
-        from vip.totp import validate_secret
+    from vip import totp
 
-        validate_secret(_totp_secret)
+    totp_secret = os.environ.get(totp.ENV_VAR, "").strip()
+    if totp_secret:
+        totp.validate_secret(totp_secret)
 
     # Choose login flow based on auth provider, not idp presence.
     # OIDC/SAML/OAuth2 → IdP form automation; password/LDAP → native form.
