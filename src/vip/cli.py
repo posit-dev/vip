@@ -1065,7 +1065,12 @@ def main() -> None:
         "--headless-auth",
         action=argparse.BooleanOptionalAction,
         default=False,
-        help="Automate login in a headless browser (OIDC/SAML/OAuth2 requires [auth] idp)",
+        help=(
+            "Automate login in a headless browser (OIDC/SAML/OAuth2 requires "
+            "[auth] idp). If VIP_TEST_TOTP_SECRET is set (a base32 TOTP seed "
+            "for a TEST SERVICE ACCOUNT), VIP auto-fills the MFA code instead "
+            "of prompting. Never use a personal account's seed."
+        ),
     )
     verify_parser.add_argument(
         "--no-auth",

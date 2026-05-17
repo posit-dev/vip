@@ -202,6 +202,7 @@ Configuration is in `vip.toml` (see `vip.toml.example` for the template). Secret
 -   `VIP_CONNECT_API_KEY`
 -   `VIP_TEST_USERNAME`
 -   `VIP_TEST_PASSWORD`
+-   `VIP_TEST_TOTP_SECRET` — optional base32 TOTP seed used by `--headless-auth` to auto-fill MFA codes for a dedicated test service account. **Equivalent to bypassing 2FA — never use a personal account's seed.**
 
 The plugin loads config via `--vip-config` or defaults to `./vip.toml`. If no config file exists, all product tests are skipped.
 
