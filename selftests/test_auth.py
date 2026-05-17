@@ -392,6 +392,113 @@ class TestAuthenticateWorkbench:
         assert "https://wb.example.com/pwb" in out
 
 
+class TestWaitForProductRedirect:
+    """_wait_for_product_redirect handles the Workbench OIDC confirmation page.
+
+    After the IdP round-trip, Workbench shows a form with a "Sign in with
+    OpenID" button that must be clicked to complete the session.  Headed
+    flows rely on the user; headless flows must click it automatically.
+    """
+
+    @staticmethod
+    def _page_with_urls(urls: list[str], *, oidc_button_visible: bool) -> MagicMock:
+        """Stub a Page whose ``url`` returns each value in *urls* in order,
+        repeating the last value once the list is exhausted."""
+        from unittest.mock import PropertyMock
+
+        page = MagicMock()
+        type(page).url = PropertyMock(
+            side_effect=lambda urls=list(urls): urls.pop(0) if len(urls) > 1 else urls[0]
+        )
+        btn = MagicMock()
+        btn.count.return_value = 1 if oidc_button_visible else 0
+        btn.first.is_visible.return_value = oidc_button_visible
+        page.locator.return_value = btn
+        return page
+
+    def test_clicks_oidc_confirm_button_once(self):
+        """When the Workbench OIDC confirmation page is up, click the
+        button and stop polling once the URL settles on the dashboard."""
+        from vip.auth import _wait_for_product_redirect
+
+        page = self._page_with_urls(
+            [
+                "https://wb.example.com/auth-sign-in?appUri=/",
+                "https://wb.example.com/auth-sign-in?appUri=/",
+                "https://wb.example.com/",
+            ],
+            oidc_button_visible=True,
+        )
+
+        _wait_for_product_redirect(page, "https://wb.example.com")
+
+        page.locator.assert_called_with("form[action='auth-openid-sign-in'] #signinbutton")
+        page.locator.return_value.first.click.assert_called_once()
+
+    def test_does_not_click_when_button_absent(self):
+        """If we land directly on the dashboard, the helper must not
+        try to click anything."""
+        from vip.auth import _wait_for_product_redirect
+
+        page = self._page_with_urls(
+            ["https://wb.example.com/"],
+            oidc_button_visible=False,
+        )
+
+        _wait_for_product_redirect(page, "https://wb.example.com")
+
+        page.locator.return_value.first.click.assert_not_called()
+
+
+class TestClickWorkbenchOidcConfirm:
+    """_click_workbench_oidc_confirm targets the specific Workbench form
+    (``action='auth-openid-sign-in'``) so unrelated submit buttons on
+    other login pages are not clicked by accident."""
+
+    def test_clicks_when_button_visible(self):
+        from vip.auth import _click_workbench_oidc_confirm
+
+        page = MagicMock()
+        btn = page.locator.return_value
+        btn.count.return_value = 1
+        btn.first.is_visible.return_value = True
+
+        assert _click_workbench_oidc_confirm(page) is True
+        btn.first.click.assert_called_once()
+
+    def test_returns_false_when_button_missing(self):
+        from vip.auth import _click_workbench_oidc_confirm
+
+        page = MagicMock()
+        page.locator.return_value.count.return_value = 0
+
+        assert _click_workbench_oidc_confirm(page) is False
+        page.locator.return_value.first.click.assert_not_called()
+
+    def test_returns_false_when_button_not_visible(self):
+        from vip.auth import _click_workbench_oidc_confirm
+
+        page = MagicMock()
+        btn = page.locator.return_value
+        btn.count.return_value = 1
+        btn.first.is_visible.return_value = False
+
+        assert _click_workbench_oidc_confirm(page) is False
+        btn.first.click.assert_not_called()
+
+    def test_swallows_playwright_error(self):
+        """Transient Playwright errors during the lookup must not crash
+        the surrounding wait loop."""
+        from playwright.sync_api import Error as PlaywrightError
+
+        from vip.auth import _click_workbench_oidc_confirm
+
+        page = MagicMock()
+        page.locator.side_effect = PlaywrightError("locator failed")
+
+        assert _click_workbench_oidc_confirm(page) is False
+
+
 class TestHttpxVerify:
     """_httpx_verify derives the httpx ``verify`` value from TLS config params.
 

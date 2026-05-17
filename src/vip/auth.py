@@ -621,6 +621,7 @@ def _wait_for_product_redirect(page: Page, product_url: str) -> None:
     """Wait until the browser has returned to the product after IdP auth."""
     base = product_url.rstrip("/").lower()
     deadline = time.monotonic() + 300  # 5-minute timeout
+    clicked_oidc_confirm = False
 
     while time.monotonic() < deadline:
         try:
@@ -629,6 +630,13 @@ def _wait_for_product_redirect(page: Page, product_url: str) -> None:
             break
         if url.startswith(base) and not _on_login_page(url):
             return
+        # Workbench lands on an OIDC confirmation page after the IdP
+        # round-trip (form action "auth-openid-sign-in"). A human user
+        # would click "Sign in with OpenID"; in headless mode we do it
+        # for them. Click at most once so a stuck page doesn't loop.
+        if not clicked_oidc_confirm and url.startswith(base):
+            if _click_workbench_oidc_confirm(page):
+                clicked_oidc_confirm = True
         try:
             page.wait_for_timeout(500)
         except Exception:
@@ -638,6 +646,32 @@ def _wait_for_product_redirect(page: Page, product_url: str) -> None:
         "OIDC login did not complete within 5 minutes. "
         "Check credentials, IdP configuration, and MFA setup."
     )
+
+
+def _click_workbench_oidc_confirm(page: Page) -> bool:
+    """Click Workbench's post-OIDC 'Sign in with OpenID' button if present.
+
+    After the IdP round-trip, Workbench shows a confirmation form
+    (``<form action="auth-openid-sign-in">``) with a "Sign in with
+    OpenID" submit button.  The button POSTs back to Workbench to
+    establish the session.  In a headed flow the human clicks it; for
+    ``--headless-auth`` we click it automatically.
+
+    Returns ``True`` when a click was issued, ``False`` otherwise (no
+    such page, button not visible, or Playwright error).
+    """
+    from vip.idp import _log_verbose
+
+    selector = "form[action='auth-openid-sign-in'] #signinbutton"
+    try:
+        btn = page.locator(selector)
+        if btn.count() == 0 or not btn.first.is_visible():
+            return False
+        _log_verbose(">>> Workbench: clicking 'Sign in with OpenID' to complete OIDC flow ...")
+        btn.first.click()
+        return True
+    except PlaywrightError:
+        return False
 
 
 _LOGIN_KEYWORDS = ("sign-in", "login", "auth-sign-in")
