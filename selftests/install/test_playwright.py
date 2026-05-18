@@ -29,18 +29,73 @@ def test_default_cache_dir_respects_env(monkeypatch, tmp_path: Path):
     assert pw.default_cache_dir() == tmp_path / "custom"
 
 
-def test_chromium_installed_true_when_dir_present(tmp_path: Path):
+def test_chromium_installed_true_when_expected_revision_present(tmp_path: Path):
     (tmp_path / "chromium-1234").mkdir()
-    assert pw.chromium_installed(tmp_path) is True
+    assert pw.chromium_installed(tmp_path, revision="1234") is True
 
 
 def test_chromium_installed_false_when_no_chromium(tmp_path: Path):
     (tmp_path / "firefox-9999").mkdir()
-    assert pw.chromium_installed(tmp_path) is False
+    assert pw.chromium_installed(tmp_path, revision="1234") is False
 
 
 def test_chromium_installed_false_when_dir_missing(tmp_path: Path):
-    assert pw.chromium_installed(tmp_path / "does-not-exist") is False
+    assert pw.chromium_installed(tmp_path / "does-not-exist", revision="1234") is False
+
+
+def test_chromium_installed_false_when_only_stale_revision_present(tmp_path: Path):
+    """Reproduces the bug where a previous Playwright pin left chromium-1208
+    in the cache, but the current pin expects chromium-1217: the cache must
+    not be considered satisfied.
+    """
+    (tmp_path / "chromium-1208").mkdir()
+    assert pw.chromium_installed(tmp_path, revision="1217") is False
+
+
+def test_chromium_installed_uses_expected_revision_by_default(tmp_path: Path, monkeypatch):
+    """When no revision is passed, look it up from Playwright's browsers.json."""
+    monkeypatch.setattr(pw, "expected_chromium_revision", lambda: "4242")
+    (tmp_path / "chromium-4242").mkdir()
+    assert pw.chromium_installed(tmp_path) is True
+
+
+def test_chromium_installed_falls_back_when_revision_unknown(tmp_path: Path, monkeypatch):
+    """If the revision cannot be determined (e.g. Playwright not importable),
+    fall back to the old behavior of accepting any chromium-* directory so
+    users on broken installs aren't blocked from running `vip install`.
+    """
+    monkeypatch.setattr(pw, "expected_chromium_revision", lambda: None)
+    (tmp_path / "chromium-1234").mkdir()
+    assert pw.chromium_installed(tmp_path) is True
+
+
+def test_expected_chromium_revision_reads_browsers_json():
+    """The real Playwright in this venv has a browsers.json. Make sure we
+    return a non-empty revision string from it."""
+    rev = pw.expected_chromium_revision()
+    assert rev is not None
+    assert rev.isdigit()
+
+
+def test_expected_chromium_revision_returns_none_on_broken_import(monkeypatch):
+    """A corrupted Playwright install can fail at import time with errors
+    other than ImportError (e.g. SyntaxError, RuntimeError raised by code at
+    module load). The function must still return None so `vip install` can
+    fall back to the loose chromium-* check instead of crashing.
+    """
+    import builtins
+    import sys
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "playwright":
+            raise RuntimeError("playwright package is corrupted")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.delitem(sys.modules, "playwright", raising=False)
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    assert pw.expected_chromium_revision() is None
 
 
 class _FakePopen:
