@@ -12,6 +12,8 @@ from collections.abc import Callable
 from playwright.sync_api import Error, Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
+from vip import totp
+
 # Keycloak selectors — validated by PPM's e2e test suite.
 _KC_USERNAME = "input[id='username']"
 _KC_PASSWORD = "input[id='password']"
@@ -72,7 +74,8 @@ def _fill_keycloak_login(page: Page, username: str, password: str) -> None:
         _log_verbose(">>> Keycloak: no MFA challenge detected, proceeding.")
         return
 
-    code = input(">>> Enter your verification code: ").strip()
+    _log_verbose(">>> Keycloak: obtaining TOTP code ...")
+    code = totp.get_code(">>> Enter your verification code: ")
     otp_field.fill(code)
     page.locator(_KC_SUBMIT).click()
     _log_verbose(">>> Keycloak: TOTP code submitted.")
@@ -298,7 +301,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     if totp_field:
         _log_verbose(">>> Okta: TOTP input detected.")
         totp_field.clear()
-        code = input(">>> Enter your verification code: ").strip()
+        code = totp.get_code(">>> Enter your verification code: ")
         _log_verbose(">>> Okta: filling TOTP code ...")
         totp_field.fill(code)
         _log_verbose(">>> Okta: clicking verify ...")

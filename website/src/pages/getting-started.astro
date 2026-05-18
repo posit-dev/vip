@@ -97,6 +97,15 @@ vip verify --connect-url https://connect.example.com --api-auth</code></pre>
             identity provider to automate. If MFA is enabled, VIP prompts for
             the verification code in the terminal.
           </p>
+          <p>
+            For fully unattended runs against an MFA-protected service account,
+            set <code>VIP_TEST_TOTP_SECRET</code> to the account's base32 TOTP
+            seed. VIP generates the current code automatically when the IdP
+            asks for it. <strong>The seed is equivalent to bypassing 2FA</strong> —
+            only use it with a dedicated test service account, never with a
+            personal IdP account, and store it in the same secret store as
+            <code>VIP_TEST_PASSWORD</code>.
+          </p>
           <pre><code>vip verify --config vip.toml --headless-auth</code></pre>
 
           <h3>API-key-only auth</h3>
@@ -151,6 +160,10 @@ vip verify --connect-url https://connect.example.com --no-interactive-auth</code
                 <tr>
                   <td><code>VIP_TEST_PASSWORD</code></td>
                   <td>Test user login password</td>
+                </tr>
+                <tr>
+                  <td><code>VIP_TEST_TOTP_SECRET</code></td>
+                  <td>Base32 TOTP seed for the test service account. Optional; only used by <code>--headless-auth</code> when the IdP issues an MFA challenge.</td>
                 </tr>
               </tbody>
             </table>
