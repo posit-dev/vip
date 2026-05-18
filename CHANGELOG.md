@@ -1,6 +1,39 @@
 # CHANGELOG
 
 
+## v0.33.0 (2026-05-18)
+
+### Bug Fixes
+
+- **install**: Detect stale chromium cache via pinned revision
+  ([#261](https://github.com/posit-dev/vip/pull/261),
+  [`1fd9086`](https://github.com/posit-dev/vip/commit/1fd90862263254080a613e78fe0802546fba243a))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group across 1 directory with 8 updates
+  ([#246](https://github.com/posit-dev/vip/pull/246),
+  [`29166dc`](https://github.com/posit-dev/vip/commit/29166dc6ec8b72ac502bfdf1790da76127f4ab21))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump the python-dependencies group with 5 updates
+  ([#260](https://github.com/posit-dev/vip/pull/260),
+  [`5bc9a6e`](https://github.com/posit-dev/vip/commit/5bc9a6e3f67b6e4497d89f11c084e54e27ff3d01))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Features
+
+- Add VIP_TEST_TOTP_SECRET for unattended --headless-auth MFA
+  ([#267](https://github.com/posit-dev/vip/pull/267),
+  [`bc7c746`](https://github.com/posit-dev/vip/commit/bc7c746bc0881092208911fa4550712b8cd26433))
+
+
 ## v0.32.1 (2026-05-13)
 
 ### Bug Fixes
