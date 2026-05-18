@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.33.1 (2026-05-18)
+
+### Bug Fixes
+
+- **auth**: Make headless-auth mint work on sub-path Connect URLs
+  ([#262](https://github.com/posit-dev/vip/pull/262),
+  [`89663ed`](https://github.com/posit-dev/vip/commit/89663edd01636f25ecce54970fea953f817c7150))
+
+
 ## v0.33.0 (2026-05-18)
 
 ### Bug Fixes

@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "0.33.0"
+version = "0.33.1"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -78,6 +78,7 @@ vip = "vip.cli:main"
 
 [project.entry-points.pytest11]
 vip = "vip.plugin"
+
 
 
 
