@@ -532,6 +532,139 @@ class TestHttpxVerify:
         assert _httpx_verify(True, ca) is False
 
 
+class TestResolveConnectApiBase:
+    """_resolve_connect_api_base handles split layouts where the Connect
+    dashboard sits on a sub-path (``/connect/``) but the API stays at the
+    host root.  ``<connect_url>/__api__/server_settings`` then 404s while
+    ``<host>/__api__/server_settings`` returns 200 with a
+    ``dashboard_path`` matching the sub-path.
+    """
+
+    @staticmethod
+    def _resp(status_code: int, *, json_data=None, content_type: str = "application/json"):
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.headers = {"content-type": content_type}
+        resp.json.return_value = json_data if json_data is not None else {}
+        return resp
+
+    def test_root_url_returned_as_is(self):
+        """When connect_url has no sub-path there's nothing to fall back to —
+        skip the probe entirely."""
+        from vip.auth import _resolve_connect_api_base
+
+        with patch("httpx.get") as mock_get:
+            result = _resolve_connect_api_base("https://connect.example.com")
+
+        assert result == "https://connect.example.com"
+        mock_get.assert_not_called()
+
+    def test_primary_200_keeps_url(self):
+        """Standard layout: ``<connect_url>/__api__/`` answers 200 → keep it."""
+        from vip.auth import _resolve_connect_api_base
+
+        with patch("httpx.get", return_value=self._resp(200, json_data={})):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+    def test_split_layout_switches_to_root(self):
+        """Sub-path dashboard + root API → return the host root."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [
+            self._resp(404, content_type="text/plain"),
+            self._resp(200, json_data={"dashboard_path": "/connect"}),
+        ]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect/")
+
+        assert result == "https://connect.example.com"
+
+    def test_dashboard_path_mismatch_keeps_url(self):
+        """Root API returns 200 but its dashboard_path is for a different
+        product — refuse to switch."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [
+            self._resp(404),
+            self._resp(200, json_data={"dashboard_path": "/somethingelse"}),
+        ]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+    def test_missing_dashboard_path_keeps_url(self):
+        """Root /__api__/server_settings returns 200 JSON but has no
+        ``dashboard_path`` field — unverified.  Keep the original URL
+        rather than risking a false-positive rewrite to a sibling
+        endpoint that just happens to answer JSON 200."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [
+            self._resp(404),
+            self._resp(200, json_data={"hostname": "ambiguous"}),
+        ]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+    @pytest.mark.parametrize("payload", [[], [1, 2, 3], "string", 42, None])
+    def test_non_dict_json_keeps_url(self, payload):
+        """Root /__api__/server_settings returns a valid JSON 200 that
+        isn't an object (list, scalar, null) — calling ``.get()`` on it
+        would raise ``AttributeError``.  The resolver must treat this as
+        ambiguous and keep the original URL."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [
+            self._resp(404),
+            self._resp(200, json_data=payload),
+        ]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+    def test_secondary_non_json_keeps_url(self):
+        """Root /__api__/server_settings returns 200 but HTML — not Connect.
+        Refuse to switch."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [
+            self._resp(404),
+            self._resp(200, content_type="text/html"),
+        ]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+    def test_both_404_returns_original(self):
+        """Both probes 404 → leave URL alone; existing mint diagnostics will
+        guide the user."""
+        from vip.auth import _resolve_connect_api_base
+
+        responses = [self._resp(404), self._resp(404)]
+        with patch("httpx.get", side_effect=responses):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+    def test_transport_error_returns_original(self):
+        """httpx.HTTPError on the probe must not crash auth setup."""
+        import httpx
+
+        from vip.auth import _resolve_connect_api_base
+
+        with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
+            result = _resolve_connect_api_base("https://connect.example.com/connect")
+
+        assert result == "https://connect.example.com/connect"
+
+
 class TestCreateApiKeyViaSession:
     """_create_api_key_via_session uses httpx + cookies extracted from the
     browser session so that ``insecure`` / ``ca_bundle`` TLS settings are
@@ -553,6 +686,7 @@ class TestCreateApiKeyViaSession:
         status_code: int = 200,
         json_data=None,
         text: str = "",
+        headers: dict[str, str] | None = None,
     ) -> MagicMock:
         """Stub an httpx Response with the given shape."""
         resp = MagicMock()
@@ -560,6 +694,9 @@ class TestCreateApiKeyViaSession:
         resp.status_code = status_code
         resp.json.return_value = json_data if json_data is not None else {}
         resp.text = text
+        # Real dict so ``headers.get("content-type", ...)`` returns a string,
+        # not a MagicMock (which would make diagnostic output unreadable).
+        resp.headers = headers if headers is not None else {}
         return resp
 
     @staticmethod
@@ -641,10 +778,13 @@ class TestCreateApiKeyViaSession:
         assert init_kwargs["cookies"]["RSC-XSRF"] == "xsrf-token"
         assert init_kwargs["cookies"]["connect-session"] == "sess-123"
 
-        # POST must include the key name.
+        # POST must include the key name as a JSON body — Connect's API
+        # rejects form-encoded payloads with HTTP 400 "request JSON cannot
+        # be parsed".
         post_call = client_mock.post.call_args
         assert post_call.args[0].endswith("/v1/users/user-guid-abc/keys")
-        assert post_call.kwargs["data"] == {"name": "_vip_interactive_1"}
+        assert post_call.kwargs["json"] == {"name": "_vip_interactive_1"}
+        assert "data" not in post_call.kwargs
 
     def test_insecure_flag_sets_verify_false(self):
         """When insecure=True, httpx.Client must be constructed with verify=False."""
@@ -903,6 +1043,136 @@ class TestCreateApiKeyViaSession:
         out = capsys.readouterr().out
         assert "HTTP 403" in out
         assert "CSRF token is required" in out
+
+    def test_mint_failure_warning_includes_full_url_and_content_type(self, capsys):
+        """The warning must print the full mint URL and Content-Type so the
+        user can distinguish Connect's 404 page from an upstream proxy 404."""
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+        me_404 = self._httpx_response(
+            is_success=False,
+            status_code=404,
+            text="404 page not found\n",
+            headers={"content-type": "text/plain; charset=utf-8"},
+        )
+        probe_404 = self._httpx_response(
+            is_success=False,
+            status_code=404,
+            text="404 page not found\n",
+            headers={"content-type": "text/plain; charset=utf-8"},
+        )
+
+        def get_side_effect(path, **_kw):
+            return me_404 if path.endswith("/v1/user") else probe_404
+
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+        )
+        with patcher:
+            result = _create_api_key_via_session(page, "https://c.example.com/connect", "k")
+        assert result is None
+
+        out = capsys.readouterr().out
+        # Full URL is reported, not just the relative path.
+        assert "https://c.example.com/connect/__api__/v1/user" in out
+        # Content-Type appears so users can spot Go-default vs Connect 404s.
+        assert "text/plain" in out
+
+    def test_mint_failure_404_probes_server_settings_and_hints_at_wrong_url(self, capsys):
+        """When both /v1/user and /server_settings return 404, the diagnostic
+        must suggest the connect_url path prefix is wrong — that's the only
+        plausible cause (the server settings endpoint is unauthenticated)."""
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+        not_found = self._httpx_response(
+            is_success=False,
+            status_code=404,
+            text="404 page not found\n",
+            headers={"content-type": "text/plain; charset=utf-8"},
+        )
+
+        calls: list[str] = []
+
+        def get_side_effect(path, **_kw):
+            calls.append(path)
+            return not_found
+
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+        )
+        with patcher:
+            _create_api_key_via_session(page, "https://c.example.com/connect", "k")
+
+        assert "/v1/user" in calls
+        assert "/server_settings" in calls
+
+        out = capsys.readouterr().out
+        assert "/server_settings returned HTTP 404" in out
+        assert "wrong path prefix" in out
+        assert "https://c.example.com/connect" in out
+
+    def test_mint_failure_403_does_not_hint_at_wrong_url(self, capsys):
+        """A 403 on /v1/user is auth rejection, not a routing problem — the
+        'wrong path prefix' hint must only fire when both endpoints 404."""
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+        me_403 = self._httpx_response(
+            is_success=False,
+            status_code=403,
+            text="forbidden",
+            headers={"content-type": "application/json"},
+        )
+        probe_200 = self._httpx_response(
+            json_data={"version": "2024.09.0"},
+            headers={"content-type": "application/json"},
+        )
+
+        def get_side_effect(path, **_kw):
+            return me_403 if path.endswith("/v1/user") else probe_200
+
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+        )
+        with patcher:
+            _create_api_key_via_session(page, "https://c.example.com", "k")
+
+        out = capsys.readouterr().out
+        assert "/server_settings returned HTTP 200" in out
+        assert "wrong path prefix" not in out
+
+    def test_mint_failure_probe_transport_error_logged_not_raised(self, capsys):
+        """If the /server_settings probe itself raises, that must not mask the
+        original /v1/user warning — log the probe failure and move on."""
+        import httpx
+
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+        me_404 = self._httpx_response(
+            is_success=False,
+            status_code=404,
+            text="404 page not found",
+            headers={"content-type": "text/plain"},
+        )
+
+        def get_side_effect(path, **_kw):
+            if path.endswith("/v1/user"):
+                return me_404
+            raise httpx.ReadTimeout("probe timed out")
+
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+        )
+        with patcher:
+            result = _create_api_key_via_session(page, "https://c.example.com", "k")
+        assert result is None
+
+        out = capsys.readouterr().out
+        assert "/server_settings probe failed" in out
+        assert "probe timed out" in out
 
     def test_httpx_transport_error_returns_none(self, capsys):
         """httpx connection failures (DNS, TCP, TLS) must return None, not bubble up.

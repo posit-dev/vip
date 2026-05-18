@@ -211,7 +211,11 @@ def pytest_configure(config: pytest.Config) -> None:
             config.stash[_auth_session_key] = session
             if session.api_key:
                 vip_cfg.connect.api_key = session.api_key
-            elif connect_url:
+            # Auth may have rewritten the Connect URL (sub-path dashboard +
+            # root API).  Sync so the test clients hit the same base mint did.
+            if session._connect_url and connect_url and session._connect_url != connect_url:
+                vip_cfg.connect.url = session._connect_url
+            if not session.api_key and connect_url:
                 warnings.warn(
                     "VIP: --interactive-auth could not mint an API key. "
                     "API-based tests will likely fail. "
@@ -253,7 +257,11 @@ def pytest_configure(config: pytest.Config) -> None:
             config.stash[_auth_session_key] = session
             if session.api_key:
                 vip_cfg.connect.api_key = session.api_key
-            elif connect_url:
+            # Auth may have rewritten the Connect URL (sub-path dashboard +
+            # root API).  Sync so the test clients hit the same base mint did.
+            if session._connect_url and connect_url and session._connect_url != connect_url:
+                vip_cfg.connect.url = session._connect_url
+            if not session.api_key and connect_url:
                 warnings.warn(
                     "VIP: --headless-auth could not mint an API key. "
                     "API-based tests will likely fail. "
@@ -269,15 +277,21 @@ def _restore_worker_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
     wi = config.workerinput  # type: ignore[attr-defined]  # xdist injects this
     api_key = wi.get("vip_api_key") or None
     storage_state = wi.get("vip_storage_state", "")
+    connect_url = wi.get("vip_connect_url", "") or ""
 
     if api_key:
         vip_cfg.connect.api_key = api_key
+    # Mirror the controller's URL rewrite (split sub-path dashboard + root
+    # API).  Without this, workers build ConnectClient from the original
+    # sub-path URL and 404 against /__api__/.
+    if connect_url and vip_cfg.connect.is_configured and connect_url != vip_cfg.connect.url:
+        vip_cfg.connect.url = connect_url
 
     session = InteractiveAuthSession(
         storage_state_path=Path(storage_state) if storage_state else Path("/dev/null"),
         api_key=api_key,
         key_name=wi.get("vip_key_name", ""),
-        _connect_url=wi.get("vip_connect_url", ""),
+        _connect_url=connect_url,
         _tmpdir="",  # Workers don't own the temp dir; controller cleans up.
     )
     config.stash[_auth_session_key] = session
@@ -471,6 +485,37 @@ def _requires_auth(item: pytest.Item) -> bool:
 def _is_api_auth_only(item: pytest.Item) -> bool:
     """Return True if *item* is marked as requiring only API-key authentication."""
     return item.get_closest_marker("api_auth") is not None
+
+
+def require_connect_api_key(vip_cfg: VIPConfig) -> None:
+    """Fail loudly if Connect is configured but no API key is available.
+
+    Without this guard the ``connect_client`` fixture returns a client with an
+    empty ``Authorization`` header, which silently succeeds for unauthenticated
+    endpoints (``/server_settings``) but produces opaque 401/403 failures deep
+    inside individual scenarios — each one rendered through pytest-bdd's
+    ``call_fixture_func`` frame, hiding the real cause (auth setup failed).
+
+    Calling this from the fixture turns every Connect API test's first error
+    into a single, actionable root-cause message pointing at the missing key
+    and the upstream mint diagnostics.
+
+    Does nothing when Connect is not configured at all (no URL set) — those
+    tests are deselected upstream.
+    """
+    if not vip_cfg.connect.is_configured:
+        return
+    if vip_cfg.connect.api_key:
+        return
+    pytest.fail(
+        "Connect API key is not configured — API-based tests cannot run.\n"
+        "  - Set VIP_CONNECT_API_KEY in the environment, or\n"
+        "  - Set connect.api_key in vip.toml, or\n"
+        "  - Use --headless-auth or --interactive-auth to mint one automatically.\n"
+        "If you already used --headless-auth, scroll up to the 'Mint diagnostic' "
+        "lines for why minting failed.",
+        pytrace=False,
+    )
 
 
 def _maybe_skip_for_version(item: pytest.Item, cfg: VIPConfig) -> None:
