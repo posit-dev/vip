@@ -43,6 +43,14 @@ class PackageManagerClient(BaseClient):
         resp.raise_for_status()
         return resp.json()
 
+    def list_authenticated_repos(self) -> list[dict[str, Any]]:
+        """List repositories with the ``auth`` flag set on the server.
+
+        Authenticated repos require a valid token to download package content;
+        see https://docs.posit.co/rspm/admin/repositories.html#authenticated-repos.
+        """
+        return [r for r in self.list_repos() if r.get("auth") is True]
+
     def status(self) -> dict[str, Any]:
         """Return the parsed JSON body from the status endpoint."""
         resp = self._client.get("/__api__/status")
