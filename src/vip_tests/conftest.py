@@ -124,6 +124,21 @@ def auth_mode(request: pytest.FixtureRequest) -> str:
 
 
 @pytest.fixture(scope="session")
+def workbench_auth_error(request: pytest.FixtureRequest) -> str | None:
+    """Reason Workbench auth did not complete during pre-test sign-in, if any.
+
+    Returns ``None`` when Workbench was authenticated successfully or
+    when no pre-test auth ran.  Tests that depend on Workbench storage
+    state can read this to produce an informative skip message instead
+    of a generic "session not shared" guess.
+    """
+    session = request.config.stash.get(_auth_session_key, None)
+    if session is None:
+        return None
+    return session.workbench_auth_error
+
+
+@pytest.fixture(scope="session")
 def browser_context_args(
     browser_context_args, request: pytest.FixtureRequest, vip_config: VIPConfig
 ):

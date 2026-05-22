@@ -138,11 +138,20 @@ def verify_connectivity(
     test_password: str,
     auth_provider: str,
     interactive_auth: bool,
+    auth_mode: str,
+    workbench_auth_error: str | None,
     data_sources,
 ):
     """Start an RStudio session and verify HTTP data source connectivity from within it."""
     workbench_login(
-        page, workbench_url, test_username, test_password, auth_provider, interactive_auth
+        page,
+        workbench_url,
+        test_username,
+        test_password,
+        auth_provider,
+        interactive_auth,
+        auth_mode=auth_mode,
+        workbench_auth_error=workbench_auth_error,
     )
     assert_homepage_loaded(page)
 
