@@ -211,6 +211,32 @@ class TestSaveAuthCache:
 
         assert cache.exists()
 
+    def test_writes_both_resolved_and_requested_connect_urls(self, tmp_path):
+        """Save the pre-resolve form too so a later cache load can
+        match against what the caller actually asked for, even when
+        ``_resolve_connect_api_base`` rewrote the dashboard URL to a
+        different API base."""
+        import json
+
+        from vip.auth import InteractiveAuthSession, _save_auth_cache
+
+        state = tmp_path / "state.json"
+        state.write_text('{"cookies": []}')
+        session = InteractiveAuthSession(
+            storage_state_path=state,
+            api_key="REAL",
+            key_name="_vip_interactive_1",
+            _connect_url="https://c.example.com",
+            _requested_connect_url="https://c.example.com/dashboard",
+        )
+        cache = tmp_path / ".vip-auth-cache.json"
+
+        _save_auth_cache(session, cache)
+
+        meta = json.loads(cache.with_suffix(".meta.json").read_text())
+        assert meta["connect_url"] == "https://c.example.com"
+        assert meta["requested_connect_url"] == "https://c.example.com/dashboard"
+
 
 class TestInteractiveAuthSessionCleanup:
     """Cleanup must not delete an API key that the on-disk cache still
@@ -437,6 +463,37 @@ class TestAuthenticateWorkbench:
         assert "did not complete" in result
         assert "auth-sign-in" in result
 
+    def test_timeout_reason_strips_oidc_query_parameters(self, monkeypatch):
+        """The returned URL is surfaced in CI logs via the workbench skip
+        message.  OIDC/SAML redirects can carry ``code=``, ``state=``,
+        and ``SAMLRequest=`` query parameters — sensitive auth artifacts
+        that must not leak.  Path is preserved so the failure is still
+        debuggable."""
+        from unittest.mock import PropertyMock
+
+        from vip import auth as auth_mod
+
+        page = MagicMock()
+        page.goto.return_value = None
+        page.wait_for_load_state.return_value = None
+        type(page).url = PropertyMock(
+            return_value=(
+                "https://idp.example.com/sso/callback?code=AUTH_CODE_SECRET&state=STATE_TOKEN"
+            )
+        )
+
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
+
+        assert result is not None
+        assert "AUTH_CODE_SECRET" not in result
+        assert "STATE_TOKEN" not in result
+        assert "code=" not in result
+        assert "state=" not in result
+        assert "/sso/callback" in result
+
 
 class TestLoadCachedAuth:
     """_load_cached_auth must refuse to reuse a cache that was minted
@@ -568,6 +625,44 @@ class TestLoadCachedAuth:
         )
 
         assert session is None
+
+    def test_match_uses_requested_url_when_resolved_differs(self, tmp_path):
+        """``_resolve_connect_api_base`` can rewrite the configured
+        sub-path dashboard URL to a different API base.  Cache match
+        must compare against what the caller asked for, not what
+        Connect resolved it to — otherwise every run cache-misses for
+        sub-path deployments."""
+        import json
+        from pathlib import Path as _Path
+
+        from vip.auth import _load_cached_auth
+
+        cache = _Path(tmp_path) / ".vip-auth-cache.json"
+        cache.write_text('{"cookies": []}')
+        cache.with_suffix(".meta.json").write_text(
+            json.dumps(
+                {
+                    "api_key": "CACHED",
+                    "key_name": "_vip_interactive_1",
+                    "connect_url": "https://connect.example.com",
+                    "requested_connect_url": "https://connect.example.com/dashboard",
+                    "workbench_url": "",
+                }
+            )
+        )
+
+        session = _load_cached_auth(
+            cache,
+            requested_connect_url="https://connect.example.com/dashboard",
+            requested_workbench_url=None,
+        )
+
+        assert session is not None
+        assert session.api_key == "CACHED"
+        # Resolved URL (used for API client + cleanup) is preserved.
+        assert session._connect_url == "https://connect.example.com"
+        # Requested URL (used for cache match) is also restored.
+        assert session._requested_connect_url == "https://connect.example.com/dashboard"
 
 
 class TestWaitForProductRedirect:

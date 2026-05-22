@@ -67,8 +67,17 @@ def _workbench_session_skip_message(
     next steps a user can take.  Prior versions said "Interactive auth
     storage state did not authenticate Workbench" regardless of which
     mode was active and without surfacing the underlying cause.
+
+    When *auth_mode* is unknown (a caller forgot to thread the fixture
+    through), the message names both ``--interactive-auth`` and
+    ``--headless-auth`` so the reader isn't pointed at the wrong flag.
     """
-    flag = "--headless-auth" if auth_mode == "headless" else "--interactive-auth"
+    if auth_mode == "headless":
+        flag = "--headless-auth"
+    elif auth_mode == "interactive":
+        flag = "--interactive-auth"
+    else:
+        flag = "--interactive-auth / --headless-auth"
     lines = [f"Workbench session not established by {flag} (landed on login page: {landed_url})."]
     if workbench_auth_error:
         lines.append(f"Pre-test auth reported: {workbench_auth_error}")

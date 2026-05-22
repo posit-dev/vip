@@ -89,6 +89,14 @@ class InteractiveAuthSession:
     workbench_auth_error: str | None = None
 
     _connect_url: str = field(default="", repr=False)
+    # The Connect URL as originally supplied by the caller, before
+    # ``_resolve_connect_api_base`` may have rewritten it to a separate
+    # dashboard/API base.  ``_connect_url`` continues to hold the
+    # resolved value so API key cleanup hits the right endpoint, while
+    # cache-key matching uses this requested form so a stable
+    # configuration cache-hits cleanly even when the dashboard sits at
+    # a sub-path that resolves to a different API base.
+    _requested_connect_url: str = field(default="", repr=False)
     _workbench_url: str = field(default="", repr=False)
     _tmpdir: str = field(default="", repr=False)
     _cache_path: Path | None = field(default=None, repr=False)
@@ -176,24 +184,39 @@ def _load_cached_auth(
     meta_path = cache_path.with_suffix(".meta.json")
     api_key = None
     key_name = ""
-    connect_url = ""
-    workbench_url = ""
+    resolved_connect_url = ""
+    cached_request_connect_url = ""
+    cached_request_workbench_url = ""
     if meta_path.exists():
         try:
             meta = json.loads(meta_path.read_text())
             api_key = meta.get("api_key")
             key_name = meta.get("key_name", "")
-            connect_url = meta.get("connect_url", "")
-            workbench_url = meta.get("workbench_url", "")
+            resolved_connect_url = meta.get("connect_url", "")
+            # Older caches (pre-fix) only stored the resolved URL.  Fall
+            # back to it so a stale cache still matches when the
+            # resolved and requested forms are identical (no sub-path
+            # rewrite happened).
+            cached_request_connect_url = (
+                meta.get("requested_connect_url", "") or resolved_connect_url
+            )
+            cached_request_workbench_url = meta.get("workbench_url", "")
         except Exception:
             pass
 
+    # Match against the *requested* Connect URL so that
+    # ``_resolve_connect_api_base`` rewriting the dashboard URL to a
+    # different API base doesn't force a cache miss on every run.
     if not _cached_urls_match(
-        connect_url, workbench_url, requested_connect_url, requested_workbench_url
+        cached_request_connect_url,
+        cached_request_workbench_url,
+        requested_connect_url,
+        requested_workbench_url,
     ):
         print(
             ">>> Ignoring cached auth session: requested URLs differ from cached "
-            f"(cached connect={connect_url or '∅'}, workbench={workbench_url or '∅'}; "
+            f"(cached connect={cached_request_connect_url or '∅'}, "
+            f"workbench={cached_request_workbench_url or '∅'}; "
             f"requested connect={requested_connect_url or '∅'}, "
             f"workbench={requested_workbench_url or '∅'})."
         )
@@ -204,8 +227,9 @@ def _load_cached_auth(
         storage_state_path=cache_path,
         api_key=api_key,
         key_name=key_name,
-        _connect_url=connect_url,
-        _workbench_url=workbench_url,
+        _connect_url=resolved_connect_url,
+        _requested_connect_url=cached_request_connect_url,
+        _workbench_url=cached_request_workbench_url,
         _tmpdir="",
         _cache_path=cache_path,
     )
@@ -281,12 +305,18 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
     _shutil.copy2(session.storage_state_path, cache_path)
     os.chmod(cache_path, 0o600)
 
-    # Write companion metadata.
+    # Write companion metadata.  ``connect_url`` keeps the resolved
+    # form (used for API key cleanup); ``requested_connect_url`` keeps
+    # the pre-resolve form for cache-key matching.  Older releases only
+    # wrote ``connect_url`` — :func:`_load_cached_auth` handles that
+    # case by falling back to it when ``requested_connect_url`` is
+    # missing.
     meta_path = cache_path.with_suffix(".meta.json")
     meta = {
         "api_key": session.api_key,
         "key_name": session.key_name,
         "connect_url": session._connect_url,
+        "requested_connect_url": session._requested_connect_url or session._connect_url,
         "workbench_url": session._workbench_url,
     }
     meta_path.write_text(json.dumps(meta))
@@ -396,8 +426,11 @@ def start_interactive_auth(
                 "Please rerun and complete authentication in the browser window."
             )
 
-        # Mint Connect API key only if Connect is configured.
+        # Mint Connect API key only if Connect is configured.  Keep the
+        # caller's original URL for cache-key matching; the rewritten
+        # form is what we actually mint and clean up against.
         api_key = None
+        requested_connect_url = connect_url or ""
         if connect_url:
             connect_url = _resolve_connect_api_base(
                 connect_url, insecure=insecure, ca_bundle=ca_bundle
@@ -419,6 +452,7 @@ def start_interactive_auth(
             key_name=key_name,
             workbench_auth_error=workbench_auth_error,
             _connect_url=connect_url or "",
+            _requested_connect_url=requested_connect_url,
             _workbench_url=workbench_url or "",
             _tmpdir=tmpdir,
             _cache_path=cache_path,
@@ -585,8 +619,11 @@ def start_headless_auth(
             ) from exc
         print(">>> Authentication complete.")
 
-        # Mint Connect API key only if Connect is configured.
+        # Mint Connect API key only if Connect is configured.  Keep the
+        # caller's original URL for cache-key matching; the rewritten
+        # form is what we actually mint and clean up against.
         api_key = None
+        requested_connect_url = connect_url or ""
         if connect_url:
             connect_url = _resolve_connect_api_base(
                 connect_url, insecure=insecure, ca_bundle=ca_bundle
@@ -608,6 +645,7 @@ def start_headless_auth(
             key_name=key_name,
             workbench_auth_error=workbench_auth_error,
             _connect_url=connect_url or "",
+            _requested_connect_url=requested_connect_url,
             _workbench_url=workbench_url or "",
             _tmpdir=tmpdir,
             _cache_path=cache_path,
@@ -861,10 +899,30 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
     )
     return (
         "Workbench authentication did not complete within 2 minutes "
-        f"(last URL: {last_url}). "
+        f"(last URL: {_strip_url_query(last_url)}). "
         "OIDC session may not be shared between Connect and Workbench, "
         "or the auth-sign-in page required interaction."
     )
+
+
+def _strip_url_query(url: str) -> str:
+    """Drop query string and fragment from *url* for safe logging.
+
+    The timeout reason from :func:`_authenticate_workbench` is surfaced
+    in the workbench skip message and therefore lands in CI logs and
+    test reports.  If the redirect chain stalled mid-OIDC/SAML, the URL
+    may carry sensitive parameters like ``code=``, ``state=``, or
+    ``SAMLRequest=`` — we keep scheme/host/path for debugging but drop
+    the rest.  Returns the input unchanged when it can't be parsed."""
+    if not url:
+        return url
+    try:
+        from urllib.parse import urlsplit, urlunsplit
+
+        parts = urlsplit(url)
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    except Exception:
+        return url
 
 
 def _httpx_verify(insecure: bool, ca_bundle: Path | None) -> bool | str:

@@ -58,10 +58,19 @@ def user_logged_in(
     test_password: str,
     auth_provider: str,
     interactive_auth: bool,
+    auth_mode: str,
+    workbench_auth_error: str | None,
 ):
     """Log in to Workbench and verify homepage loads."""
     workbench_login(
-        page, workbench_url, test_username, test_password, auth_provider, interactive_auth
+        page,
+        workbench_url,
+        test_username,
+        test_password,
+        auth_provider,
+        interactive_auth,
+        auth_mode=auth_mode,
+        workbench_auth_error=workbench_auth_error,
     )
 
     assert_homepage_loaded(page)

@@ -28,11 +28,15 @@ def test_names_interactive_flag_when_active():
     assert "--interactive-auth" in msg
 
 
-def test_falls_back_to_interactive_flag_when_mode_unknown():
+def test_names_both_flags_when_mode_unknown():
+    """When a caller forgets to thread the auth_mode fixture through,
+    the message must not pick one flag arbitrarily — that would point
+    users at the wrong flag.  Listing both is safe."""
     msg = _workbench_session_skip_message(
         auth_mode="none", workbench_auth_error=None, landed_url="https://wb/login"
     )
     assert "--interactive-auth" in msg
+    assert "--headless-auth" in msg
 
 
 def test_quotes_pre_test_auth_error_when_present():
