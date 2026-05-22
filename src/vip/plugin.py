@@ -291,7 +291,9 @@ def _restore_worker_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
         storage_state_path=Path(storage_state) if storage_state else Path("/dev/null"),
         api_key=api_key,
         key_name=wi.get("vip_key_name", ""),
+        workbench_auth_error=wi.get("vip_workbench_auth_error") or None,
         _connect_url=connect_url,
+        _workbench_url=wi.get("vip_workbench_url", "") or "",
         _tmpdir="",  # Workers don't own the temp dir; controller cleans up.
     )
     config.stash[_auth_session_key] = session
@@ -309,6 +311,8 @@ def pytest_configure_node(node) -> None:
         node.workerinput["vip_storage_state"] = str(auth.storage_state_path)
         node.workerinput["vip_key_name"] = auth.key_name
         node.workerinput["vip_connect_url"] = auth._connect_url
+        node.workerinput["vip_workbench_url"] = auth._workbench_url
+        node.workerinput["vip_workbench_auth_error"] = auth.workbench_auth_error or ""
         node.workerinput["vip_auth_mode"] = node.config.stash.get(_auth_mode_key, "")
 
 

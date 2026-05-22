@@ -369,13 +369,16 @@ class TestInteractiveAuthSessionCleanup:
 class TestAuthenticateWorkbench:
     """_authenticate_workbench establishes the Workbench SSO session after
     Connect auth has already succeeded.  Network failures here must NOT
-    crash the pytest session — Connect tests should still run."""
+    crash the pytest session — Connect tests should still run.  The
+    helper returns ``None`` on success or a short failure reason that
+    callers stash on :class:`InteractiveAuthSession` so test-time skip
+    messages can quote the underlying cause."""
 
     def test_playwright_error_on_goto_is_non_fatal(self, capsys):
         """A PlaywrightError from page.goto() (e.g. ERR_CONNECTION_REFUSED,
         redirect-to-http) must be caught, logged as a warning, and return
-        cleanly.  Otherwise the whole pytest session dies with INTERNALERROR.
-        See issue #171."""
+        a failure reason.  Otherwise the whole pytest session dies with
+        INTERNALERROR.  See issue #171."""
         from playwright.sync_api import Error as PlaywrightError
 
         from vip.auth import _authenticate_workbench
@@ -385,11 +388,143 @@ class TestAuthenticateWorkbench:
             "net::ERR_CONNECTION_REFUSED at https://wb.example.com/pwb"
         )
 
-        _authenticate_workbench(page, "https://wb.example.com/pwb")
+        result = _authenticate_workbench(page, "https://wb.example.com/pwb")
 
         out = capsys.readouterr().out
         assert "Could not reach Workbench" in out
         assert "https://wb.example.com/pwb" in out
+        assert result is not None
+        assert "could not reach Workbench" in result
+        assert "https://wb.example.com/pwb" in result
+
+    def test_returns_none_when_landed_on_dashboard(self):
+        """SSO completed and the page is on the Workbench dashboard → success.
+        The helper must return ``None`` so the caller doesn't stash a
+        bogus error on the session."""
+        from unittest.mock import PropertyMock
+
+        from vip.auth import _authenticate_workbench
+
+        page = MagicMock()
+        page.goto.return_value = None
+        page.wait_for_load_state.return_value = None
+        type(page).url = PropertyMock(return_value="https://wb.example.com/")
+
+        result = _authenticate_workbench(page, "https://wb.example.com")
+
+        assert result is None
+
+    def test_returns_reason_when_timeout_keeps_us_on_login(self, monkeypatch):
+        """If the 2-minute redirect poll expires while we're still on
+        /auth-sign-in, the helper must return a string explaining why so
+        the workbench fixture can surface it instead of guessing."""
+        from unittest.mock import PropertyMock
+
+        from vip import auth as auth_mod
+
+        page = MagicMock()
+        page.goto.return_value = None
+        page.wait_for_load_state.return_value = None
+        type(page).url = PropertyMock(return_value="https://wb.example.com/auth-sign-in")
+
+        # Force the deadline loop to exit immediately so the test finishes fast.
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
+
+        assert result is not None
+        assert "did not complete" in result
+        assert "auth-sign-in" in result
+
+
+class TestLoadCachedAuth:
+    """_load_cached_auth must refuse to reuse a cache that was minted
+    against different product URLs.  The cache file lives one-per-
+    checkout-directory, so reusing it across sites would silently send
+    the wrong session cookies (and API key) to the new target."""
+
+    @staticmethod
+    def _write_cache(tmp_path, *, connect_url: str, workbench_url: str = ""):
+        import json
+        from pathlib import Path as _Path
+
+        cache = _Path(tmp_path) / ".vip-auth-cache.json"
+        cache.write_text('{"cookies": []}')
+        cache.with_suffix(".meta.json").write_text(
+            json.dumps(
+                {
+                    "api_key": "CACHED",
+                    "key_name": "_vip_interactive_1",
+                    "connect_url": connect_url,
+                    "workbench_url": workbench_url,
+                }
+            )
+        )
+        return cache
+
+    def test_reuses_cache_when_urls_match(self, tmp_path):
+        from vip.auth import _load_cached_auth
+
+        cache = self._write_cache(
+            tmp_path, connect_url="https://c.example.com", workbench_url="https://w.example.com"
+        )
+
+        session = _load_cached_auth(
+            cache,
+            requested_connect_url="https://c.example.com",
+            requested_workbench_url="https://w.example.com",
+        )
+
+        assert session is not None
+        assert session.api_key == "CACHED"
+
+    def test_rejects_cache_when_connect_url_differs(self, tmp_path, capsys):
+        from vip.auth import _load_cached_auth
+
+        cache = self._write_cache(tmp_path, connect_url="https://site-a.example.com")
+
+        session = _load_cached_auth(
+            cache,
+            requested_connect_url="https://site-b.example.com",
+            requested_workbench_url=None,
+        )
+
+        assert session is None
+        assert "Ignoring cached auth session" in capsys.readouterr().out
+
+    def test_rejects_cache_when_workbench_was_not_recorded(self, tmp_path):
+        """A cache minted with only Connect lacks Workbench cookies; a
+        later run that now also wants Workbench would skip every
+        Workbench test on stale state.  Treat as a miss."""
+        from vip.auth import _load_cached_auth
+
+        cache = self._write_cache(tmp_path, connect_url="https://c.example.com")
+
+        session = _load_cached_auth(
+            cache,
+            requested_connect_url="https://c.example.com",
+            requested_workbench_url="https://w.example.com",
+        )
+
+        assert session is None
+
+    def test_url_match_ignores_trailing_slash_and_case(self, tmp_path):
+        from vip.auth import _load_cached_auth
+
+        cache = self._write_cache(
+            tmp_path,
+            connect_url="https://Connect.Example.COM/",
+            workbench_url="https://wb.example.com",
+        )
+
+        session = _load_cached_auth(
+            cache,
+            requested_connect_url="https://connect.example.com",
+            requested_workbench_url="https://wb.example.com/",
+        )
+
+        assert session is not None
 
 
 class TestWaitForProductRedirect:

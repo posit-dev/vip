@@ -54,6 +54,32 @@ def _on_login_page(url: str) -> bool:
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
 
 
+def _workbench_session_skip_message(
+    *,
+    auth_mode: str,
+    workbench_auth_error: str | None,
+    landed_url: str,
+) -> str:
+    """Build the skip text shown when storage state did not log Workbench in.
+
+    Names the active auth mode's CLI flag, quotes any error captured by
+    ``_authenticate_workbench`` during pre-test sign-in, and lists the
+    next steps a user can take.  Prior versions said "Interactive auth
+    storage state did not authenticate Workbench" regardless of which
+    mode was active and without surfacing the underlying cause.
+    """
+    flag = "--headless-auth" if auth_mode == "headless" else "--interactive-auth"
+    lines = [f"Workbench session not established by {flag} (landed on login page: {landed_url})."]
+    if workbench_auth_error:
+        lines.append(f"Pre-test auth reported: {workbench_auth_error}")
+    lines.append(
+        "Next steps: rerun with --vip-verbose to see the auth flow, "
+        "confirm the OIDC provider issues a session valid for Workbench's domain, "
+        "and check that the Workbench auth-sign-in page does not require interaction."
+    )
+    return " ".join(lines)
+
+
 def assert_homepage_loaded(page: Page) -> None:
     """Assert that the Workbench homepage has fully loaded.
 
@@ -77,6 +103,8 @@ def workbench_login(
     auth_provider: str = "password",
     interactive_auth: bool = False,
     *,
+    auth_mode: str = "none",
+    workbench_auth_error: str | None = None,
     max_retries: int = 3,
     retry_delay: float = 2.0,
 ) -> None:
@@ -96,6 +124,11 @@ def workbench_login(
         auth_provider: Auth type (e.g., "password", "oidc", "saml")
         interactive_auth: True when an auth session is pre-loaded (either
             --interactive-auth or --headless-auth)
+        auth_mode: Active auth mode ("interactive", "headless", or "none"),
+            used to name the responsible CLI flag in skip messages
+        workbench_auth_error: Reason the pre-test auth flow could not
+            establish a Workbench session, if known.  Quoted in the skip
+            message so users see the real cause instead of a guess.
         max_retries: Max login attempts on transient errors (default 3)
         retry_delay: Seconds to wait between retries (default 2.0)
 
@@ -123,10 +156,12 @@ def workbench_login(
     # Check if we landed on a login/IdP page
     if _on_login_page(page.url):
         if auth_provider != "password":
-            # Interactive auth storage state didn't authenticate Workbench
             pytest.skip(
-                "Interactive auth storage state did not authenticate Workbench. "
-                "The OIDC session may not be shared between Connect and Workbench."
+                _workbench_session_skip_message(
+                    auth_mode=auth_mode,
+                    workbench_auth_error=workbench_auth_error,
+                    landed_url=page.url,
+                )
             )
         # Password auth - proceed with form login below
     else:
@@ -240,6 +275,8 @@ def wb_login(
     test_password: str,
     auth_provider: str,
     interactive_auth: bool,
+    auth_mode: str,
+    workbench_auth_error: str | None,
 ):
     """Log in to Workbench and verify homepage loads.
 
@@ -250,7 +287,14 @@ def wb_login(
     Returns the page for further interactions.
     """
     workbench_login(
-        page, workbench_url, test_username, test_password, auth_provider, interactive_auth
+        page,
+        workbench_url,
+        test_username,
+        test_password,
+        auth_provider,
+        interactive_auth,
+        auth_mode=auth_mode,
+        workbench_auth_error=workbench_auth_error,
     )
 
     assert_homepage_loaded(page)

@@ -86,8 +86,10 @@ class InteractiveAuthSession:
     storage_state_path: Path
     api_key: str | None = None
     key_name: str = ""
+    workbench_auth_error: str | None = None
 
     _connect_url: str = field(default="", repr=False)
+    _workbench_url: str = field(default="", repr=False)
     _tmpdir: str = field(default="", repr=False)
     _cache_path: Path | None = field(default=None, repr=False)
     _insecure: bool = field(default=False, repr=False)
@@ -145,8 +147,21 @@ class InteractiveAuthSession:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
 
-def _load_cached_auth(cache_path: Path) -> InteractiveAuthSession | None:
-    """Load a cached auth session if the storage state file exists and is recent."""
+def _load_cached_auth(
+    cache_path: Path,
+    requested_connect_url: str | None = None,
+    requested_workbench_url: str | None = None,
+) -> InteractiveAuthSession | None:
+    """Load a cached auth session if the storage state file exists and is recent.
+
+    The cache lives at ``Path(config.rootpath) / .vip-auth-cache.json`` —
+    one slot per checkout directory, not per site.  If the caller is now
+    targeting a different Connect or Workbench URL than the one the cache
+    was minted against, reusing the saved storage state would silently
+    send the wrong session cookies (and the wrong API key) to the new
+    site.  We treat any URL mismatch as a cache miss so the next run
+    re-authenticates cleanly.
+    """
     if not cache_path.exists():
         return None
 
@@ -162,14 +177,27 @@ def _load_cached_auth(cache_path: Path) -> InteractiveAuthSession | None:
     api_key = None
     key_name = ""
     connect_url = ""
+    workbench_url = ""
     if meta_path.exists():
         try:
             meta = json.loads(meta_path.read_text())
             api_key = meta.get("api_key")
             key_name = meta.get("key_name", "")
             connect_url = meta.get("connect_url", "")
+            workbench_url = meta.get("workbench_url", "")
         except Exception:
             pass
+
+    if not _cached_urls_match(
+        connect_url, workbench_url, requested_connect_url, requested_workbench_url
+    ):
+        print(
+            ">>> Ignoring cached auth session: requested URLs differ from cached "
+            f"(cached connect={connect_url or '∅'}, workbench={workbench_url or '∅'}; "
+            f"requested connect={requested_connect_url or '∅'}, "
+            f"workbench={requested_workbench_url or '∅'})."
+        )
+        return None
 
     print(f">>> Reusing cached auth session from {cache_path}")
     return InteractiveAuthSession(
@@ -177,8 +205,33 @@ def _load_cached_auth(cache_path: Path) -> InteractiveAuthSession | None:
         api_key=api_key,
         key_name=key_name,
         _connect_url=connect_url,
+        _workbench_url=workbench_url,
         _tmpdir="",
         _cache_path=cache_path,
+    )
+
+
+def _normalize_url(url: str | None) -> str:
+    """Lowercase and strip trailing slashes so URL comparisons are stable."""
+    if not url:
+        return ""
+    return url.strip().rstrip("/").lower()
+
+
+def _cached_urls_match(
+    cached_connect: str,
+    cached_workbench: str,
+    requested_connect: str | None,
+    requested_workbench: str | None,
+) -> bool:
+    """True when the cache's recorded URLs match the requested ones.
+
+    A blank cached URL is only acceptable when the caller also did not
+    request that product — a cache minted with Connect-only cannot serve
+    a later run that now also wants Workbench (storage state would lack
+    Workbench cookies)."""
+    return _normalize_url(cached_connect) == _normalize_url(requested_connect) and (
+        _normalize_url(cached_workbench) == _normalize_url(requested_workbench)
     )
 
 
@@ -211,6 +264,7 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         "api_key": session.api_key,
         "key_name": session.key_name,
         "connect_url": session._connect_url,
+        "workbench_url": session._workbench_url,
     }
     meta_path.write_text(json.dumps(meta))
     os.chmod(meta_path, 0o600)
@@ -252,7 +306,7 @@ def start_interactive_auth(
 
     # Check for a valid cached session.
     if cache_path:
-        cached = _load_cached_auth(cache_path)
+        cached = _load_cached_auth(cache_path, connect_url, workbench_url)
         if cached is not None:
             return cached
 
@@ -330,8 +384,9 @@ def start_interactive_auth(
             )
 
         # Visit Workbench so the storage state includes its session cookies.
+        workbench_auth_error: str | None = None
         if workbench_url and connect_url:
-            _authenticate_workbench(page, workbench_url)
+            workbench_auth_error = _authenticate_workbench(page, workbench_url)
 
         context.storage_state(path=str(storage_state_path))
 
@@ -339,7 +394,9 @@ def start_interactive_auth(
             storage_state_path=storage_state_path,
             api_key=api_key,
             key_name=key_name,
+            workbench_auth_error=workbench_auth_error,
             _connect_url=connect_url or "",
+            _workbench_url=workbench_url or "",
             _tmpdir=tmpdir,
             _cache_path=cache_path,
             _insecure=insecure,
@@ -419,7 +476,7 @@ def start_headless_auth(
     # Check for a valid cached session before validating credentials/idp,
     # so a warm cache works even when env vars are not set.
     if cache_path:
-        cached = _load_cached_auth(cache_path)
+        cached = _load_cached_auth(cache_path, connect_url, workbench_url)
         if cached is not None:
             return cached
 
@@ -516,8 +573,9 @@ def start_headless_auth(
             )
 
         # Visit Workbench so the storage state includes its session cookies.
+        workbench_auth_error: str | None = None
         if workbench_url and connect_url:
-            _authenticate_workbench(page, workbench_url)
+            workbench_auth_error = _authenticate_workbench(page, workbench_url)
 
         context.storage_state(path=str(storage_state_path))
 
@@ -525,7 +583,9 @@ def start_headless_auth(
             storage_state_path=storage_state_path,
             api_key=api_key,
             key_name=key_name,
+            workbench_auth_error=workbench_auth_error,
             _connect_url=connect_url or "",
+            _workbench_url=workbench_url or "",
             _tmpdir=tmpdir,
             _cache_path=cache_path,
             _insecure=insecure,
@@ -689,7 +749,7 @@ def _on_login_page(url: str) -> bool:
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
 
 
-def _authenticate_workbench(page: Page, workbench_url: str) -> None:
+def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
     """Navigate to Workbench to establish an SSO session.
 
     After the user authenticated to Connect via OIDC, the identity provider
@@ -707,6 +767,11 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> None:
     If SSO does not resolve automatically (e.g. the auth-sign-in page
     requires a click), we attempt to click through.  The headed browser is
     still visible so the user can also intervene manually.
+
+    Returns ``None`` on success, or a short string describing why
+    Workbench authentication did not complete.  Callers stash this on
+    :class:`InteractiveAuthSession` so test-time skip messages can quote
+    the underlying cause instead of guessing.
     """
     wb_base = workbench_url.rstrip("/").lower()
     print(f"\n>>> Authenticating to Workbench at {workbench_url} ...")
@@ -715,18 +780,19 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> None:
         page.goto(workbench_url)
         page.wait_for_load_state("networkidle")
     except PlaywrightError as exc:
+        reason = f"could not reach Workbench at {workbench_url}: {exc}"
         print(
             f">>> Warning: Could not reach Workbench at {workbench_url}: {exc}\n"
             ">>> Verify the URL is correct and accessible. "
             "Workbench tests may be skipped.\n"
         )
-        return
+        return reason
 
     # Quick check — already on the Workbench dashboard?
     url = page.url
     if url.lower().startswith(wb_base) and not _on_login_page(url):
         print(">>> Workbench authenticated via SSO.\n")
-        return
+        return None
 
     # We're likely on /auth-sign-in.  Try clicking a sign-in button to
     # trigger the OIDC redirect (some Workbench configs don't auto-redirect).
@@ -748,18 +814,19 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> None:
     print(">>> If prompted, please complete authentication in the browser.\n")
 
     deadline = time.monotonic() + 120  # 2-minute timeout
+    last_url = url
     while time.monotonic() < deadline:
         try:
             page.wait_for_load_state("networkidle", timeout=5_000)
         except Exception:
             pass
         try:
-            url = page.url
+            last_url = page.url
         except Exception:
             break
-        if url.lower().startswith(wb_base) and not _on_login_page(url):
+        if last_url.lower().startswith(wb_base) and not _on_login_page(last_url):
             print(">>> Workbench authenticated.\n")
-            return
+            return None
         try:
             page.wait_for_timeout(500)
         except Exception:
@@ -768,6 +835,12 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> None:
     print(
         ">>> Warning: Workbench authentication did not complete within 2 minutes.\n"
         ">>> Workbench browser tests may skip.\n"
+    )
+    return (
+        "Workbench authentication did not complete within 2 minutes "
+        f"(last URL: {last_url}). "
+        "OIDC session may not be shared between Connect and Workbench, "
+        "or the auth-sign-in page required interaction."
     )
 
 
