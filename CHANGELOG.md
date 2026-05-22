@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.34.0 (2026-05-22)
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 2 updates
+  ([#272](https://github.com/posit-dev/vip/pull/272),
+  [`ec1c51a`](https://github.com/posit-dev/vip/commit/ec1c51a0c140d388c9c1cee382348e98ecebfeee))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump the python-dependencies group with 6 updates
+  ([#271](https://github.com/posit-dev/vip/pull/271),
+  [`c53bc98`](https://github.com/posit-dev/vip/commit/c53bc988a3488b01a0f8ef34ad1b07dbdb3299bf))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Features
+
+- **pm**: Add tests for authenticated repositories
+  ([#270](https://github.com/posit-dev/vip/pull/270),
+  [`fb8d28a`](https://github.com/posit-dev/vip/commit/fb8d28a2af65044e1c62cd78979d161c2a31168c))
+
+
 ## v0.33.1 (2026-05-18)
 
 ### Bug Fixes
