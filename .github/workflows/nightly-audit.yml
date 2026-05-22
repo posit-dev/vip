@@ -1,0 +1,84 @@
+name: Nightly Dependency Audit
+
+on:
+  schedule:
+    # Run every night at 03:00 UTC
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  audit-and-fix:
+    name: Audit & Fix Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run pip-audit and fix vulnerabilities
+        id: audit-fix
+        run: |
+          set +e
+          # Run audit in JSON mode to detect vulnerabilities with available fixes
+          audit_output=$(uv run pip-audit --skip-editable --format=json --output=audit-results.json 2>&1)
+          audit_status=$?
+          set -e
+
+          if [ "$audit_status" -eq 0 ]; then
+            echo "No vulnerabilities found."
+            echo "has_fixes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check if any vulnerabilities have fix versions available
+          fix_count=$(jq '[.dependencies[] | select(.vulns != null) | .vulns[] | select(.fix_versions != null and (.fix_versions | length) > 0)] | length' audit-results.json)
+
+          if [ "$fix_count" -eq 0 ]; then
+            echo "Vulnerabilities found but no fix versions available."
+            echo "has_fixes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Found $fix_count vulnerability/ies with available fixes. Applying..."
+          echo "has_fixes=true" >> "$GITHUB_OUTPUT"
+
+          # Run pip-audit with --fix to apply available patches
+          uv run pip-audit --skip-editable --fix 2>&1 | tee audit-fix-output.txt || true
+
+          # Regenerate the lockfile to reflect any changes
+          uv lock
+
+          # Generate a summary of what was fixed for the PR body
+          {
+            echo "## Nightly Dependency Audit — Security Fixes"
+            echo ""
+            echo "This PR was automatically created by the nightly dependency audit workflow."
+            echo ""
+            echo "### Vulnerabilities with available fixes"
+            echo ""
+            jq -r '.dependencies[] | select(.vulns != null) | .vulns[] | select(.fix_versions != null and (.fix_versions | length) > 0) | "- **\(.name)** \(.version): [\(.id)](https://osv.dev/vulnerability/\(.id)) — fix available in \(.fix_versions | join(", "))"' audit-results.json
+          } > pr-body.md
+
+      - name: Create Pull Request
+        if: steps.audit-fix.outputs.has_fixes == 'true'
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(deps): fix vulnerabilities found by nightly audit"
+          branch: chore/nightly-audit-fixes
+          title: "chore(deps): fix vulnerabilities found by nightly audit"
+          body-path: pr-body.md
+          labels: dependencies,security
+          assignees: statik
+          delete-branch: true
