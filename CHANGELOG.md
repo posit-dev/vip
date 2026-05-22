@@ -1,6 +1,20 @@
 # CHANGELOG
 
 
+## v0.34.1 (2026-05-22)
+
+### Bug Fixes
+
+- **auth**: Surface workbench auth failures and scope cache per URL
+  ([#279](https://github.com/posit-dev/vip/pull/279),
+  [`f0479b7`](https://github.com/posit-dev/vip/commit/f0479b780a7c610bb6e53802b7a690436a2f7b01))
+
+### Chores
+
+- **deps**: Bump idna and starlette to fix CVEs ([#278](https://github.com/posit-dev/vip/pull/278),
+  [`45a6ada`](https://github.com/posit-dev/vip/commit/45a6ada365ec6502fceb3424879bcc2cef72417c))
+
+
 ## v0.34.0 (2026-05-22)
 
 ### Chores
