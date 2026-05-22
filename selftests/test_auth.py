@@ -549,6 +549,26 @@ class TestLoadCachedAuth:
 
         assert session is None
 
+    def test_url_match_distinguishes_single_vs_double_trailing_slash(self, tmp_path):
+        """``/app/`` and ``/app//`` are not guaranteed to route to the same
+        handler.  Only a single trailing slash is treated as cosmetic;
+        extra slashes are preserved so a misconfigured URL doesn't
+        silently cache-hit against the canonical one."""
+        from vip.auth import _load_cached_auth
+
+        cache = self._write_cache(
+            tmp_path,
+            connect_url="https://connect.example.com/app/",
+        )
+
+        session = _load_cached_auth(
+            cache,
+            requested_connect_url="https://connect.example.com/app//",
+            requested_workbench_url=None,
+        )
+
+        assert session is None
+
 
 class TestWaitForProductRedirect:
     """_wait_for_product_redirect handles the Workbench OIDC confirmation page.

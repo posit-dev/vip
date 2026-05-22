@@ -232,7 +232,12 @@ def _normalize_url(url: str | None) -> str:
     parts = urlsplit(url.strip())
     scheme = parts.scheme.lower()
     netloc = parts.netloc.lower()
-    path = parts.path.rstrip("/")
+    # Strip at most one trailing slash so ``/app`` and ``/app/`` match,
+    # but ``/app/`` and ``/app//`` remain distinct (some deployments
+    # route them to different handlers).  ``removesuffix`` also turns a
+    # bare ``/`` into ``""`` so a configured-without-trailing-slash URL
+    # matches the same host with ``/`` appended.
+    path = parts.path.removesuffix("/")
     return urlunsplit((scheme, netloc, path, "", ""))
 
 
