@@ -7,8 +7,6 @@ These scenarios are all skipped when no PM token is configured.
 
 from __future__ import annotations
 
-from copy import deepcopy
-
 import httpx
 import pytest
 from pytest_bdd import given, scenario, then, when
@@ -65,8 +63,8 @@ def authenticated_repo(pm_client):
     if not testable:
         types = sorted({r.get("type", "?") for r in auth_repos})
         pytest.skip(
-            f"No authenticated repositories with a testable client index path "
-            f"(found types: {types})"
+            f"No authenticated repositories have a name to query via "
+            f"/__api__/repos/{{name}}/packages (found types: {types})"
         )
     return testable[0]
 
@@ -81,7 +79,11 @@ def list_authenticated_repos(pm_client):
     target_fixture="unauth_response",
 )
 def query_without_token(pm_client, auth_repo):
-    resp = httpx.get(f"{pm_client.base_url}/__api__/repos/{auth_repo}/packages")
+    resp = httpx.get(
+        f"{pm_client.base_url}/__api__/repos/{auth_repo}/packages",
+        timeout=15,
+        verify=pm_client.verify,
+    )
     return resp
 
 

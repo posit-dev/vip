@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import httpx
 import pytest
 from pytest_bdd import given, scenario, then, when
 
