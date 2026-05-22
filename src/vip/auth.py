@@ -212,10 +212,28 @@ def _load_cached_auth(
 
 
 def _normalize_url(url: str | None) -> str:
-    """Lowercase and strip trailing slashes so URL comparisons are stable."""
+    """Normalize a product URL for cache-key comparison.
+
+    Per RFC 3986 the scheme and host are case-insensitive but the path
+    is case-sensitive — Connect can be served at ``/Dashboard`` and
+    ``/dashboard`` as distinct routes when a sub-path mount is used.
+    Lowercasing the whole string (the prior behaviour) collapsed those
+    into the same cache slot and could reuse storage state minted
+    against a different deployment path.
+
+    We lowercase only the scheme and netloc, preserve path case, strip
+    a single trailing ``/`` from the path, and drop query/fragment
+    (auth cache keying off ``?foo=bar`` would be surprising)."""
     if not url:
         return ""
-    return url.strip().rstrip("/").lower()
+
+    from urllib.parse import urlsplit, urlunsplit
+
+    parts = urlsplit(url.strip())
+    scheme = parts.scheme.lower()
+    netloc = parts.netloc.lower()
+    path = parts.path.rstrip("/")
+    return urlunsplit((scheme, netloc, path, "", ""))
 
 
 def _cached_urls_match(

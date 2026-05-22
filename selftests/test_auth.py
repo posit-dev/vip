@@ -509,7 +509,10 @@ class TestLoadCachedAuth:
 
         assert session is None
 
-    def test_url_match_ignores_trailing_slash_and_case(self, tmp_path):
+    def test_url_match_normalizes_host_case_and_trailing_slash(self, tmp_path):
+        """Scheme and netloc are case-insensitive per RFC 3986 and a
+        single trailing slash on the path is not meaningful, so these
+        must still hit the cache."""
         from vip.auth import _load_cached_auth
 
         cache = self._write_cache(
@@ -525,6 +528,26 @@ class TestLoadCachedAuth:
         )
 
         assert session is not None
+
+    def test_url_match_preserves_path_case(self, tmp_path):
+        """URL paths are case-sensitive: ``/Dashboard`` and ``/dashboard``
+        can resolve to different Connect deployments when a sub-path
+        mount is used.  Lowercasing the path (the prior behaviour) would
+        send stale storage state and API key to the wrong target."""
+        from vip.auth import _load_cached_auth
+
+        cache = self._write_cache(
+            tmp_path,
+            connect_url="https://connect.example.com/Dashboard",
+        )
+
+        session = _load_cached_auth(
+            cache,
+            requested_connect_url="https://connect.example.com/dashboard",
+            requested_workbench_url=None,
+        )
+
+        assert session is None
 
 
 class TestWaitForProductRedirect:
