@@ -9,6 +9,8 @@ tools:
   github:
     toolsets: [default]
   playwright:
+    mode: cli
+    version: "0.1.13"
 safe-outputs:
   upload-asset:
     branch: assets/preview-screenshot-gallery
@@ -18,6 +20,7 @@ safe-outputs:
 network:
   allowed:
     - defaults
+    - playwright
     - posit-dev.github.io
 ---
 
@@ -31,13 +34,23 @@ When this workflow runs:
    - Website: `https://posit-dev.github.io/vip/pr-preview-site/pr-<PR_NUMBER>/`
    - Report: `https://posit-dev.github.io/vip/pr-preview/pr-<PR_NUMBER>/`
 
-Take screenshots with Playwright and attach them to the PR:
+Take screenshots with Playwright (CLI mode) and attach them to the PR. Use `playwright-cli` bash commands directly — not MCP browser tools. The relevant commands are:
 
-1. Create a temporary output folder under `/tmp`.
-2. Visit the website preview URL and take a full-page screenshot of the landing page.
-3. Crawl all same-origin links reachable from the website preview base path (`/vip/pr-preview-site/pr-<PR_NUMBER>/`), deduplicate URLs, skip anchors and external links, and take one full-page screenshot per page.
+- `playwright-cli browser_navigate --url <URL>` — load a page
+- `playwright-cli browser_take_screenshot --filename <PATH> --full-page true` — capture a full-page screenshot
+- `playwright-cli browser_snapshot` — dump the current DOM (use this when you need page contents to extract links)
+- `playwright-cli browser_evaluate --expression "<JS>"` — run JavaScript in the page (e.g., to extract all `<a href>` values)
+
+Workflow body:
+
+1. Create a temporary output folder under `/tmp` (e.g., `mkdir -p /tmp/preview-screenshots`).
+2. Visit the website preview URL with `playwright-cli browser_navigate` and take a full-page screenshot of the landing page.
+3. Crawl all same-origin links reachable from the website preview base path (`/vip/pr-preview-site/pr-<PR_NUMBER>/`):
+   - Use `playwright-cli browser_evaluate` with an expression like `Array.from(document.querySelectorAll('a[href]')).map(a => a.href)` to extract links.
+   - Filter to same-origin URLs under the preview base path. Deduplicate. Skip anchors (`#fragment`) and external links.
+   - For each unique URL, `browser_navigate` then `browser_take_screenshot`.
 4. Visit the report preview URL and take a full-page screenshot of the landing page.
-5. Crawl all same-origin links reachable from the report preview base path (`/vip/pr-preview/pr-<PR_NUMBER>/`), deduplicate URLs, skip anchors and external links, and take one full-page screenshot per page.
+5. Crawl all same-origin links reachable from the report preview base path (`/vip/pr-preview/pr-<PR_NUMBER>/`) using the same approach as step 3.
 6. Name files clearly so reviewers can identify each source page (for example, prefix with `website-` or `report-`).
 7. Upload every screenshot using `upload-asset`.
 8. Add one PR comment summarizing:
@@ -47,6 +60,6 @@ Take screenshots with Playwright and attach them to the PR:
 9. In that PR comment, render screenshots inline using Markdown image syntax (for example, `![website home](<asset-url>)`) so images are directly visible in the comment body, not just linked.
 
 Quality checks:
-- Use full-page screenshots.
-- Wait for the page to be stable before capturing.
+- Use full-page screenshots (`--full-page true`).
+- Wait for the page to be stable before capturing — if a page is JS-heavy, give it a moment after `browser_navigate` (a brief `sleep` or a re-check via `browser_snapshot` for content readiness).
 - Continue even if a subset of pages fail; report failures in the final PR comment.
