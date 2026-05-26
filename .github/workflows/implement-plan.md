@@ -30,6 +30,8 @@ safe-outputs:
     max: 2
   create-pull-request:
     branch-prefix: "bot-"
+    draft: false
+    github-token: ${{ secrets.TRIAGE_BOT_TOKEN }}
     max: 1
 network:
   allowed:

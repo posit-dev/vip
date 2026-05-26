@@ -17,12 +17,43 @@ issues on `posit-dev/vip`. The workflows themselves live in
 
 ## Required secrets
 
-The workflows use the same gh-aw secrets already configured for the
-screenshot-gallery agent. No new provisioning is needed:
+The workflows use the gh-aw secrets already configured for the
+screenshot-gallery agent, plus one new secret that lets the bot create
+pull requests when org policy blocks `GITHUB_TOKEN` from doing so:
 
-- `COPILOT_GITHUB_TOKEN`
-- `GH_AW_GITHUB_TOKEN`
-- `GH_AW_GITHUB_MCP_SERVER_TOKEN`
+- `COPILOT_GITHUB_TOKEN` (existing)
+- `GH_AW_GITHUB_TOKEN` (existing)
+- `GH_AW_GITHUB_MCP_SERVER_TOKEN` (existing)
+- `TRIAGE_BOT_TOKEN` (new) — see below
+
+### Setting up `TRIAGE_BOT_TOKEN`
+
+`posit-dev` blocks GitHub Actions from creating pull requests at the
+org level. Without an alternate token, the bot falls back to opening a
+review-issue with a "Create PR" link instead of opening the PR
+directly. To restore the direct-PR behavior, `TRIAGE_BOT_TOKEN` must
+be set to a token that bypasses the org policy.
+
+Two options:
+
+1. **GitHub App (recommended)**: Create a dedicated GitHub App scoped
+   to `posit-dev/vip` with `issues: write`, `pull-requests: write`,
+   and `contents: write` repository permissions. Install it on the
+   repo, then add a workflow step that uses
+   `actions/create-github-app-token@v1` to mint an installation token
+   each run. PRs are then authored by the App identity (e.g.,
+   `vip-triage-bot[bot]`).
+
+2. **Fine-grained PAT**: Create a fine-grained personal access token
+   on a maintainer's account with `Pull requests: Read and write`,
+   `Issues: Read and write`, and `Contents: Read and write` for
+   `posit-dev/vip`. Store as `TRIAGE_BOT_TOKEN` repository secret.
+   PRs are authored by the maintainer's identity. Simpler to set up
+   but tied to one person; rotate when the PAT expires.
+
+Until `TRIAGE_BOT_TOKEN` is configured, the bot continues to function
+via the fallback (review-issue with a manual "Create PR" link),
+matching gh-aw's default behavior.
 
 ## Required permissions
 
