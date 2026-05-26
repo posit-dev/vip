@@ -140,11 +140,47 @@ fall through to Step 5.
 ## Step 4 — enhancement path
 
 1. Write a plan file at
-   `thoughts/shared/plans/<YYYY-MM-DD>-issue-<num>-<slug>.md`.
-   Match the shape of existing plans in that directory (look at
-   `thoughts/shared/plans/2026-03-10-mode-separation-refactor.md`).
-   Sections: Context, Architecture, Components, Verification, Open
-   questions, Out of scope.
+   `thoughts/shared/plans/<YYYY-MM-DD>-issue-<num>-<slug>.md`. Use the
+   template below verbatim, filling in the bracketed sections. Keep
+   prose tight and concrete. The first line MUST be
+   `# Plan for issue #<num>` — the `implement-plan` workflow parses
+   the issue number from it.
+
+   ```markdown
+   # Plan for issue #<num>: <one-line summary>
+
+   ## Context
+
+   <Why this change is being made — the problem or need it addresses,
+   what prompted it, and the intended outcome. 1–3 short paragraphs.>
+
+   ## Architecture
+
+   <A brief description of where in the codebase this lands and how
+   the pieces fit together. Reference existing modules in src/vip/ or
+   selftests/ by path.>
+
+   ## Components
+
+   <Bulleted list of the files to add or modify, each with a one-line
+   purpose. Group by directory.>
+
+   ## Verification
+
+   <How a reviewer can confirm the change works end-to-end. Include
+   the exact commands to run (uv run pytest selftests/...,
+   uv run vip verify ..., etc.) and what success looks like.>
+
+   ## Open questions
+
+   <Anything intentionally left ambiguous, with the trade-offs.
+   Prefix uncertain items with UNCONFIRMED.>
+
+   ## Out of scope
+
+   <What this plan deliberately does NOT cover, with one-line reasons.>
+   ```
+
 2. Open a pull request via `create-pull-request`:
     - Title: `docs: plan for #<num> — <one-line summary>`
     - Body: link to the issue, the words "Merging this PR will trigger
@@ -209,8 +245,10 @@ with reason `denied path` or `new-file out of whitelist`.
 Run these checks before the `create-pull-request` step:
 
 ```bash
+# Modified-file denylist: descendants of denied directories OR exact denied files.
 forbidden_modified=$(git diff --name-only | \
-  grep -E '^(\.github/(workflows|agents|CODEOWNERS)|pyproject\.toml|uv\.lock|CHANGELOG\.md|src/vip/__init__\.py|commitlint\.config\.js|justfile|ruff\.toml)$' || true)
+  grep -E '^(\.github/(workflows|agents)/.+|\.github/CODEOWNERS|pyproject\.toml|uv\.lock|CHANGELOG\.md|src/vip/__init__\.py|commitlint\.config\.js|justfile|ruff\.toml)$' || true)
+# New-file whitelist: added files must live under an allowed top-level dir.
 forbidden_added=$(git diff --diff-filter=A --name-only | \
   grep -vE '^(selftests/|src/vip_tests/|thoughts/shared/plans/|validation_docs/)' || true)
 if [ -n "$forbidden_modified$forbidden_added" ]; then
@@ -233,8 +271,16 @@ naming rules.
 
 ## Behavior rules
 
-- Emit **exactly one** of: a comment, a PR, or nothing. Never both a
-  comment and a PR for the same run.
+- Emit exactly one of these output shapes per run:
+    1. A pull request on the bug path (no comment on the issue).
+    2. A pull request on the enhancement path **plus** the one summary
+       comment described in Step 4.3 (these two are a single
+       coordinated output — the comment exists only to link the PR back
+       to the issue).
+    3. A single comment on the can't-proceed path (no PR).
+    4. Nothing (gate exited at Step 1).
+  Do not mix shapes. Specifically: on the bug path do not also post a
+  summary comment; on the can't-proceed path do not also open a PR.
 - The `triaged-by-bot` label is applied on every successful path,
   including the can't-proceed path.
 - If anything in this prompt is ambiguous, fall through to Step 5
