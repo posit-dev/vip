@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.35.0 (2026-05-26)
+
+### Features
+
+- Add agentic issue triage workflows ([#281](https://github.com/posit-dev/vip/pull/281),
+  [`0175728`](https://github.com/posit-dev/vip/commit/01757280e55589b7ac084e76436dbe809ba6a12d))
+
+
 ## v0.34.1 (2026-05-22)
 
 ### Bug Fixes
