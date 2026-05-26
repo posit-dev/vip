@@ -82,8 +82,11 @@ def current_host() -> str:
 def load(path: Path) -> Manifest | None:
     if not path.exists():
         return None
+    content = path.read_text().strip()
+    if not content:
+        return None
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(content)
     except json.JSONDecodeError as exc:
         raise ManifestError(
             f"Manifest at {path} is corrupt JSON ({exc}). Delete it manually to retry."
