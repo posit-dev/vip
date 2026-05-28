@@ -60,6 +60,16 @@ def test_load_missing_file_returns_none(tmp_path: Path):
     assert load(tmp_path / ".vip-install.json") is None
 
 
+def test_load_empty_file_returns_none(tmp_path: Path):
+    """Empty or whitespace-only manifest files should be treated as missing."""
+    path = tmp_path / ".vip-install.json"
+    path.write_text("")
+    assert load(path) is None
+
+    path.write_text("   \n  \t  ")
+    assert load(path) is None
+
+
 def test_load_corrupt_json_raises(tmp_path: Path):
     path = tmp_path / ".vip-install.json"
     path.write_text("{not json")
