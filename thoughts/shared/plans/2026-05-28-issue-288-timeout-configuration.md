@@ -6,7 +6,7 @@ VIP tests against Posit Team deployments (Connect, Workbench, Package Manager) o
 
 ## Architecture
 
-Timeout configuration lives in `src/vip/config.py` as a new `TimeoutConfig` dataclass nested under the root `VIPConfig`. The config loader reads `[timeouts]` section from `vip.toml` and merges with defaults. Each timeout has a semantic name (`session_start`, `ide_load`, `deploy_complete`, etc.) rather than product-specific prefixes.
+Timeout configuration lives in `src/vip/config.py` as a new top-level `TimeoutConfig` dataclass alongside existing config dataclasses, referenced as a field on the root `VIPConfig`. The config loader reads `[timeouts]` section from `vip.toml` and merges with defaults. Each timeout has a semantic name (`session_start`, `ide_load`, `deploy_complete`, etc.) rather than product-specific prefixes.
 
 Four subsystems consume timeout values:
 - `src/vip/auth.py` — browser login flows, IdP page waits
