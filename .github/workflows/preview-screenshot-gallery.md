@@ -8,10 +8,16 @@ permissions: read-all
 tools:
   github:
     toolsets: [default]
+    github-app:
+      client-id: ${{ secrets.POSIT_VIP_TRIAGE_CLIENT_ID }}
+      private-key: ${{ secrets.POSIT_VIP_TRIAGE_PEM }}
   playwright:
     mode: cli
     version: "0.1.13"
 safe-outputs:
+  github-app:
+    client-id: ${{ secrets.POSIT_VIP_TRIAGE_CLIENT_ID }}
+    private-key: ${{ secrets.POSIT_VIP_TRIAGE_PEM }}
   upload-asset:
     branch: assets/preview-screenshot-gallery
     max: 100
