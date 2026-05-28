@@ -4,7 +4,10 @@ on:
     workflows: ["Website Preview"]
     types: [completed]
     branches: ["**"]
-permissions: read-all
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
 tools:
   github:
     toolsets: [default]
@@ -23,6 +26,7 @@ safe-outputs:
     max: 100
   add-comment:
     max: 1
+    discussions: false
 network:
   allowed:
     - defaults
