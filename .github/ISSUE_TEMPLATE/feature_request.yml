@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest an enhancement or new capability for VIP
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Describing the underlying problem first usually
+        leads to a better solution than starting from the proposed change.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - CLI (`vip` commands)
+        - Connect tests
+        - Workbench tests
+        - Package Manager tests
+        - Cross-product tests
+        - Auth (interactive / headless)
+        - Reporting / Quarto output
+        - Cluster / Kubernetes (`vip cluster`, `vip verify --k8s`)
+        - Install / uninstall
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation or limitation that prompted the request. Skip the solution for now.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How you'd like VIP to behave.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about and why they don't quite fit.
+    validations:
+      required: false
