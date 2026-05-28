@@ -8,6 +8,9 @@ permissions: read-all
 tools:
   github:
     toolsets: [default]
+    github-app:
+      client-id: ${{ secrets.POSIT_VIP_TRIAGE_CLIENT_ID }}
+      private-key: ${{ secrets.POSIT_VIP_TRIAGE_PEM }}
   bash:
     - "gh issue view *"
     - "gh issue edit *"
@@ -27,6 +30,9 @@ tools:
     - "just *"
     - "npx commitlint *"
 safe-outputs:
+  github-app:
+    client-id: ${{ secrets.POSIT_VIP_TRIAGE_CLIENT_ID }}
+    private-key: ${{ secrets.POSIT_VIP_TRIAGE_PEM }}
   add-comment:
     max: 1
   add-labels:
