@@ -33,6 +33,11 @@ jobs:
             echo "available=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # Install Quarto before service containers consume disk space.
+      - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2
+        with:
+          version: 1.9.37
+
       # Start Connect in Docker
       - name: Start Connect
         id: connect
@@ -206,10 +211,6 @@ jobs:
 
       - name: Install Playwright browsers
         run: uv run vip install --skip-system
-
-      - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2
-        with:
-          version: 1.9.37
 
       # Generate vip.toml from with-connect and PM outputs
       - name: Configure VIP for CI

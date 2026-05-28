@@ -58,18 +58,35 @@ number,title,body,labels,author,state`). Exit silently if any of:
   (`@ian-flores`, `@statik`, `@bdeitte`) OR the comment body does not
   match `@Copilot retry` (case-insensitive).
 
-If `re-triage` is in the labels, remove it (`gh issue edit <num>
---remove-label re-triage`) before continuing.
+## Step 1a — pre-run cleanup (MUST run before Step 2)
 
-Create the labels you may apply, idempotently, in case they do not yet
-exist:
+Before proceeding to Step 2, you MUST perform these two cleanup actions
+in order. Do not skip them. Do not defer them to the end of the run —
+partial-failure recovery depends on them happening at the start.
 
-```
-gh label create triaged-by-bot --color BFD4F2 --description "Bot has examined this issue" --force
-gh label create needs-human-triage --color D93F0B --description "Bot could not propose action; needs a maintainer" --force
-gh label create skip-triage --color CCCCCC --description "Do not run the triage agent on this issue" --force
-gh label create re-triage --color FBCA04 --description "Re-run the triage agent on this issue" --force
-```
+1. **Remove the `re-triage` label** if it is present on the issue.
+   Humans apply this label to request a re-run; the bot consumes it
+   here on every run. Check the labels from Step 1's `gh issue view`
+   output. If `re-triage` is among them, run:
+
+   ```
+   gh issue edit ${{ github.event.issue.number }} --remove-label re-triage
+   ```
+
+2. **Create the four triage labels idempotently** so subsequent
+   `--add-label` calls succeed. The `--force` flag makes these safe
+   to run on every invocation:
+
+   ```
+   gh label create triaged-by-bot --color BFD4F2 --description "Bot has examined this issue" --force
+   gh label create needs-human-triage --color D93F0B --description "Bot could not propose action; needs a maintainer" --force
+   gh label create skip-triage --color CCCCCC --description "Do not run the triage agent on this issue" --force
+   gh label create re-triage --color FBCA04 --description "Re-run the triage agent on this issue" --force
+   ```
+
+If either action fails, proceed to Step 2 anyway. Label cleanup is
+best-effort — record the failure in your reasoning but do not emit
+a Step 5 comment for it.
 
 ## Step 2 — classify
 

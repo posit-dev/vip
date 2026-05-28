@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.35.1 (2026-05-28)
+
+### Bug Fixes
+
+- **issue-triage**: Promote pre-run cleanup to dedicated Step 1a
+  ([#293](https://github.com/posit-dev/vip/pull/293),
+  [`61a82da`](https://github.com/posit-dev/vip/commit/61a82da347b55b7e961439b1b6aadd781591a0c2))
+
+### Chores
+
+- Add github issue templates for bugs and feature requests
+  ([#289](https://github.com/posit-dev/vip/pull/289),
+  [`818e47a`](https://github.com/posit-dev/vip/commit/818e47a15ec81bc5bce0b0a18da08744e7b89d2b))
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+- Bootstrap thoughts/shared/plans/ for triage agent
+  ([#290](https://github.com/posit-dev/vip/pull/290),
+  [`26d8c26`](https://github.com/posit-dev/vip/commit/26d8c26bb4f13e9fba88b9f6c26ef37300ee3e62))
+
+
 ## v0.35.0 (2026-05-26)
 
 ### Features
