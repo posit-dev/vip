@@ -5,7 +5,10 @@ on:
     branches: [main]
     paths:
       - "thoughts/shared/plans/**.md"
-permissions: read-all
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
 tools:
   github:
     toolsets: [default]
@@ -34,6 +37,7 @@ safe-outputs:
     private-key: ${{ secrets.POSIT_VIP_TRIAGE_PEM }}
   add-comment:
     max: 2
+    discussions: false
   create-pull-request:
     branch-prefix: "bot-"
     draft: false
