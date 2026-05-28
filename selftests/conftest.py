@@ -16,6 +16,27 @@ pytest_plugins = ["pytester"]
 
 
 @pytest.fixture()
+def pytester(pytester):
+    """pytester that disables pytest-playwright for nested in-process runs.
+
+    pytest-playwright (>=0.8.0) wraps every test in a soft-assertion scope via
+    its ``pytest_runtest_call`` hook.  Our plugin integration tests run an inner
+    pytest session in-process with ``pytester``; that inner session would enter a
+    second scope while the outer selftest is still inside one, failing with
+    "nested soft assertion scopes are not supported".  The inner sessions never
+    use Playwright, so disable the plugin for them.  Subprocess runs start a
+    fresh process and are unaffected, so only the in-process path is patched.
+    """
+    run_inprocess = pytester.runpytest_inprocess
+
+    def runpytest_inprocess(*args, **kwargs):
+        return run_inprocess("-p", "no:playwright", *args, **kwargs)
+
+    pytester.runpytest_inprocess = runpytest_inprocess
+    return pytester
+
+
+@pytest.fixture()
 def tmp_toml(tmp_path: Path):
     """Helper that writes a TOML string to a temp file and returns the path."""
 
