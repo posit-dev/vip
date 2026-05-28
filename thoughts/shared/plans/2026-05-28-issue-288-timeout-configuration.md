@@ -41,7 +41,7 @@ uv run pytest selftests/test_config.py::test_timeout_config_from_dict -v
 
 Confirm the example config parses without error:
 ```bash
-uv run python -c "from vip.config import VIPConfig; import tomli; VIPConfig.from_dict(tomli.load(open('vip.toml.example', 'rb')))"
+uv run python -c "from vip.config import VIPConfig; try: import tomllib as toml; except ImportError: import tomli as toml; VIPConfig.from_dict(toml.load(open('vip.toml.example', 'rb')))"
 ```
 
 Integration verification requires a running Workbench or Connect instance. Create a minimal `vip.toml` with doubled timeout values and run a subset of session tests to confirm no hardcoded timeout failures.
