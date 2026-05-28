@@ -15,20 +15,52 @@ issues on `posit-dev/vip`. The workflows themselves live in
 | Plan PR merged into `main` | Implementer agent reads the plan and opens an implementation PR. |
 | `@Copilot retry` comment from a CODEOWNER | Re-runs triage on the issue. |
 
-## Required secrets
+## Authentication
 
-The workflows use the same gh-aw secrets already configured for the
-screenshot-gallery agent. No new provisioning is needed:
+The workflows authenticate via a dedicated GitHub App scoped to
+`posit-dev/vip`, rather than the default `GITHUB_TOKEN`. The org
+blocks `GITHUB_TOKEN` from creating pull requests; rather than flip
+that setting globally (which would also unblock every third-party
+Action in the repo), the bot operates under a purpose-built App with
+narrow permissions and a distinct audit trail.
+
+### Required secrets
+
+App credentials (provisioned by CloudOps):
+
+- `POSIT_VIP_TRIAGE_CLIENT_ID` — App Client ID
+- `POSIT_VIP_TRIAGE_PEM` — App private key (PEM-encoded)
+
+Existing gh-aw infrastructure secrets remain configured:
 
 - `COPILOT_GITHUB_TOKEN`
 - `GH_AW_GITHUB_TOKEN`
 - `GH_AW_GITHUB_MCP_SERVER_TOKEN`
 
-## Required permissions
+At runtime, `actions/create-github-app-token` mints a short-lived
+installation token from the App credentials. The compiled `.lock.yml`
+files thread this token through both the agent's GitHub MCP calls
+(`tools.github`) and the workflow's safe outputs (`add-comment`,
+`add-labels`, `create-pull-request`).
 
-Declared per-workflow in the source `.md` frontmatter. Both workflows
-need `issues: write`, `pull-requests: write`, and `contents: write`
-at the job level so they can open PRs, comment, and apply labels.
+### Required App permissions
+
+The App needs these repository permissions on `posit-dev/vip`:
+
+| Permission | Level | Used by |
+|---|---|---|
+| Contents | Read and write | Bot commits and branch pushes |
+| Issues | Read and write | `gh issue view/edit/comment`, label management |
+| Pull requests | Read and write | `safe-outputs.create-pull-request` |
+| Metadata | Read | Default; always required |
+
+It does not need access to any other repository.
+
+### What happens if credentials are missing
+
+If `POSIT_VIP_TRIAGE_CLIENT_ID` or `POSIT_VIP_TRIAGE_PEM` is unset,
+the workflow will fail at the `actions/create-github-app-token` step
+on first run. Both secrets are required.
 
 ## Compiling
 

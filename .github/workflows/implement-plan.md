@@ -36,6 +36,7 @@ safe-outputs:
     max: 2
   create-pull-request:
     branch-prefix: "bot-"
+    draft: false
     max: 1
 network:
   allowed:

@@ -40,6 +40,7 @@ safe-outputs:
     allowed: ["triaged-by-bot", "needs-human-triage"]
   create-pull-request:
     branch-prefix: "bot-"
+    draft: false
     max: 1
 network:
   allowed:
