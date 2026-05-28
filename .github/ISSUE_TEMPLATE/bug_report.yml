@@ -1,0 +1,85 @@
+name: Bug report
+description: Something in VIP isn't working as expected
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. The fields below help us reproduce and fix it.
+        For questions about Posit Team products themselves (Connect, Workbench, Package Manager),
+        please contact [Posit Support](https://support.posit.co/) instead.
+
+  - type: input
+    id: vip-version
+    attributes:
+      label: VIP version
+      description: Output of `uv run vip --version`.
+      placeholder: e.g. 0.35.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - CLI (`vip` commands)
+        - Connect tests
+        - Workbench tests
+        - Package Manager tests
+        - Cross-product tests
+        - Auth (interactive / headless)
+        - Reporting / Quarto output
+        - Cluster / Kubernetes (`vip cluster`, `vip verify --k8s`)
+        - Install / uninstall
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including any error messages.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands, config snippets, etc. Please redact secrets.
+      placeholder: |
+        1. Run `uv run vip verify ...`
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or output
+      description: Pasted output is automatically formatted as a code block.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, and any other context that might matter.
+      placeholder: |
+        - OS: macOS 14.5
+        - Python: 3.12.3
+        - Posit Team products under test: Connect 2024.12.0, Workbench 2024.12.0
+    validations:
+      required: false
