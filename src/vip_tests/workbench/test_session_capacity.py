@@ -25,6 +25,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
     assert_homepage_loaded,
+    format_capacity_failure,
     wait_for_session_active,
     workbench_login,
 )
@@ -228,22 +229,23 @@ def launch_sessions(page: Page, vip_config):
 @then("all launched sessions reach Active state")
 def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Page):
     failures = []
+    reasons = []
     for session in launched_sessions:
         name = session["name"]
         profile = session["profile"] or "default"
         # Fails fast when a session reaches a terminal state (e.g. Failed),
         # so a fully-broken launcher records all profiles quickly instead of
-        # blocking the full session-start timeout per profile.
+        # blocking the full session-start timeout per profile.  Keep the
+        # diagnostic so the aggregated failure still names the terminal state
+        # and its likely cause rather than only listing profiles.
         try:
             wait_for_session_active(page, name)
-        except AssertionError:
+        except AssertionError as exc:
             failures.append(profile)
+            reasons.append(str(exc))
 
     if failures:
-        passed = len(launched_sessions) - len(failures)
-        total = len(launched_sessions)
-        msg = f"{passed}/{total} sessions reached Active. Failed profiles: {', '.join(failures)}"
-        pytest.fail(msg)
+        pytest.fail(format_capacity_failure(len(launched_sessions), failures, reasons))
 
 
 @then("I clean up all launched sessions")

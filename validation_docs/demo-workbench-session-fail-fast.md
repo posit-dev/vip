@@ -1,7 +1,7 @@
 # Fix: fail fast when a Workbench session cannot launch
 
-*2026-05-29T21:11:57Z by Showboat 0.6.1*
-<!-- showboat-id: 4858ab79-e705-473a-950b-40222af6c387 -->
+*2026-05-29T22:16:18Z by Showboat 0.6.1*
+<!-- showboat-id: 283ba6fd-2c62-4ff7-a5ce-f554414747dd -->
 
 ## Problem
 
@@ -17,26 +17,31 @@ Investigation (the Playwright accessibility snapshot in each traceback) showed e
 - `Homepage.session_row_status` now matches the status whether it is a legacy `div[aria-label]` or a 2026.06 `button` (text- or aria-label-named).
 - New `wait_for_session_active()` helper polls for `Active` and **fails fast** with an actionable message the moment a terminal state (`Failed`) appears, instead of waiting out the timeout.
 - All six session-active wait sites (ide_extensions, ide_launch, packages, data_sources, sessions, session_capacity) now use the helper.
+- The capacity scenario aggregates per-session diagnostics via `format_capacity_failure()` so the actionable terminal-state reason survives aggregation (addresses PR review).
 
 ```bash
 uv run pytest selftests/test_workbench_session_active.py -q 2>&1 | grep -E "passed|failed|error" | sed "s/ in [0-9.]*s//"
 ```
 
 ```output
-7 passed
+10 passed
 ```
 
 ```bash
 uv run python -c "
-from vip_tests.workbench.conftest import TERMINAL_SESSION_FAILURE_STATES, _session_failure_message
+from vip_tests.workbench.conftest import TERMINAL_SESSION_FAILURE_STATES, _session_failure_message, format_capacity_failure
 from vip_tests.workbench.pages import Homepage
 print(\"terminal states:\", TERMINAL_SESSION_FAILURE_STATES)
 print()
 print(\"status selector (matches legacy div AND 2026.06 button):\")
 print(\" \", Homepage.session_row_status(\"main-1\", \"Active\"))
 print()
+reason = _session_failure_message(\"VIP test - main-1\", \"Failed\")
 print(\"fail-fast message instead of \x27Locator expected to be visible\x27:\")
-print(\" \", _session_failure_message(\"VIP test - main-1\", \"Failed\"))
+print(\" \", reason)
+print()
+print(\"capacity aggregation keeps the per-session diagnostic:\")
+print(format_capacity_failure(3, [\"Small\", \"Large\"], [reason, reason.replace(\"main-1\", \"main-2\")]))
 "
 ```
 
@@ -48,6 +53,11 @@ status selector (matches legacy div AND 2026.06 button):
 
 fail-fast message instead of 'Locator expected to be visible':
   Session 'VIP test - main-1' reached terminal state 'Failed' instead of Active — Workbench could not launch the session (abnormal exit). Verify the deployment can launch sessions: check the launcher, the session image, and available CPU/memory/quota.
+
+capacity aggregation keeps the per-session diagnostic:
+1/3 sessions reached Active. Failed profiles: Small, Large
+Session 'VIP test - main-1' reached terminal state 'Failed' instead of Active — Workbench could not launch the session (abnormal exit). Verify the deployment can launch sessions: check the launcher, the session image, and available CPU/memory/quota.
+Session 'VIP test - main-2' reached terminal state 'Failed' instead of Active — Workbench could not launch the session (abnormal exit). Verify the deployment can launch sessions: check the launcher, the session image, and available CPU/memory/quota.
 ```
 
 ```bash

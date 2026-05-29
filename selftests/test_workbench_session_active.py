@@ -16,6 +16,7 @@ from __future__ import annotations
 from vip_tests.workbench.conftest import (
     TERMINAL_SESSION_FAILURE_STATES,
     _session_failure_message,
+    format_capacity_failure,
 )
 from vip_tests.workbench.pages import Homepage
 
@@ -59,3 +60,25 @@ def test_status_selector_matches_2026_06_button_markup():
     sel = Homepage.session_row_status("s", "Failed")
     assert "button[aria-label='Failed']" in sel
     assert "button:text-is('Failed')" in sel
+
+
+def test_capacity_failure_lists_counts_and_profiles():
+    msg = format_capacity_failure(3, ["Small", "Large"], ["r1", "r2"])
+    assert "1/3 sessions reached Active" in msg
+    assert "Failed profiles: Small, Large" in msg
+
+
+def test_capacity_failure_preserves_per_session_diagnostics():
+    """The actionable per-session reason (terminal-state message) must survive
+    aggregation, not be discarded in favor of a bare profile list."""
+    reason = _session_failure_message("_vip_cap_Small_0", "Failed")
+    msg = format_capacity_failure(1, ["Small"], [reason])
+    assert reason in msg
+
+
+def test_capacity_failure_without_reasons_still_lists_profiles():
+    """A timeout path may record a profile without a captured reason; the
+    profile list must still render."""
+    msg = format_capacity_failure(2, ["Medium"], [])
+    assert "1/2 sessions reached Active" in msg
+    assert "Failed profiles: Medium" in msg

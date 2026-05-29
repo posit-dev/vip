@@ -124,6 +124,21 @@ def _session_failure_message(name: str, state: str) -> str:
     )
 
 
+def format_capacity_failure(total: int, failures: list[str], reasons: list[str]) -> str:
+    """Build the aggregated failure for the session-capacity scenario.
+
+    Reports how many sessions reached Active and which profiles failed, then
+    appends each per-session diagnostic captured from
+    :func:`wait_for_session_active`.  Keeping the reasons means an aggregated
+    capacity failure still names the terminal state (e.g. ``Failed``) and its
+    likely cause, instead of collapsing to a bare profile list.
+    """
+    passed = total - len(failures)
+    lines = [f"{passed}/{total} sessions reached Active. Failed profiles: {', '.join(failures)}"]
+    lines.extend(reasons)
+    return "\n".join(lines)
+
+
 def wait_for_session_active(
     page: Page, session_name: str, *, timeout: int = TIMEOUT_SESSION_START
 ) -> Locator:
