@@ -6,6 +6,7 @@ APIs than Connect, so many checks are done via the web UI with Playwright.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -86,3 +87,44 @@ class WorkbenchClient(BaseClient):
             except Exception:
                 continue
         return False
+
+    def quit_vip_sessions(self, *, retries: int = 2, settle_seconds: float = 0.5) -> int:
+        """Force-quit every VIP-named session reachable by this client.
+
+        Lists sessions, quits only those matching :func:`is_vip_session`
+        (DELETE, falling back to suspend), then re-lists to confirm they are
+        gone and retries up to *retries* times.  Sessions are matched by label
+        so a real user's sessions are never touched.  Never raises; returns the
+        number of successful quit/suspend calls.
+
+        Authentication uses whatever this client already carries (cookies set
+        via :meth:`set_cookies`, or an API-key Authorization header).
+        """
+        quit_count = 0
+        for attempt in range(retries):
+            try:
+                resp = self._client.get("/api/sessions")
+            except Exception:
+                break
+            sessions = resp.json() if resp.status_code == 200 else []
+            targets = [s for s in sessions if is_vip_session(s.get("label", ""))]
+            if not targets:
+                break
+            for session in targets:
+                sid = session.get("id") or session.get("session_id", "")
+                if not sid:
+                    continue
+                for method, path in (
+                    ("DELETE", f"/api/sessions/{sid}"),
+                    ("POST", f"/api/sessions/{sid}/suspend"),
+                ):
+                    try:
+                        r = self._client.request(method, path)
+                        if r.status_code < 400:
+                            quit_count += 1
+                            break
+                    except Exception:
+                        continue
+            if attempt < retries - 1:
+                time.sleep(settle_seconds)
+        return quit_count
