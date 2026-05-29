@@ -86,6 +86,21 @@ def test_cleanup_content_returns_zero_and_does_not_raise_on_errors():
     assert cc.cleanup_content(["a"], retries=2, settle_seconds=0) == 0
 
 
+def test_cleanup_content_makes_one_attempt_when_retries_zero():
+    """retries below 1 must still attempt deletion once, not silently skip."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.method)
+        if request.method == "DELETE":
+            return httpx.Response(200)
+        return httpx.Response(404)  # verify: confirmed gone
+
+    cc = _client_with_handler(handler)
+    assert cc.cleanup_content(["a"], retries=0) == 1
+    assert "DELETE" in calls
+
+
 def test_cleanup_vip_content_lists_by_tag_then_deletes():
     calls: list[tuple[str, str]] = []
 

@@ -120,11 +120,12 @@ class ConnectClient(BaseClient):
 
         Treats a 404 (already gone) as success.  After deleting, GETs the item
         to confirm a 404, making up to *retries* delete-and-verify attempts
-        total while it is still present.  Returns True once it is confirmed gone.
+        total while it is still present (at least one attempt is always made,
+        even if *retries* is 0).  Returns True once it is confirmed gone.
         """
         import time
 
-        for attempt in range(retries):
+        for attempt in range(max(1, retries)):
             try:
                 resp = self._client.delete(f"/v1/content/{guid}")
                 if resp.status_code == 404:
