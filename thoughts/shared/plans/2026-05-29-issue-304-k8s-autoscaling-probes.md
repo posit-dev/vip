@@ -11,7 +11,7 @@ This lands in the `src/vip_tests/workbench/` test suite as a new feature file (o
 - A new `src/vip/clients/kubernetes.py` client for read-only cluster queries (node counts, pod scheduling, resource quotas). This wraps either `kubectl` CLI calls or the `kubernetes` Python SDK.
 - The existing `src/vip/clients/workbench.py` client for session launches and status checks.
 
-Configuration will extend the `[workbench]` section in `vip.toml` with a new `[workbench.kubernetes]` block for node-pool names, per-profile pool mappings, expected CPU/memory caps, and cluster credentials.
+Configuration will extend the `[workbench]` section in `vip.toml` with a new `[workbench.kubernetes]` block for node-pool names, per-profile pool mappings, and expected CPU/memory caps. Cluster access is **inherited from the ambient environment** (the default kubeconfig at `~/.kube/config`, the `KUBECONFIG` env var, or an in-cluster service account token) — exactly the same credentials that `kubectl` would use on that machine. No separate credential fields are stored in `vip.toml`; the user is responsible for ensuring their environment already has the appropriate access configured before running these tests.
 
 ## Components
 
