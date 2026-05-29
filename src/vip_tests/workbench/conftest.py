@@ -9,7 +9,7 @@ import os
 import time
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Locator, Page, expect
 
 from vip.clients.workbench import WorkbenchClient
 from vip_tests.workbench.pages import Homepage, LoginPage
@@ -27,6 +27,15 @@ TIMEOUT_CLEANUP = 30_000
 TIMEOUT_CODE_EXEC = 30_000
 TIMEOUT_IDE_LOAD = 60_000
 TIMEOUT_SESSION_START = 90_000
+
+# Poll interval (ms) used while waiting for a session to reach Active.
+_SESSION_POLL_INTERVAL = 500
+
+# Session statuses that are terminal failures: the session has stopped and
+# will never reach Active, so continuing to wait is pointless.  Detecting one
+# of these lets the session-start wait fail fast with an actionable message
+# instead of timing out on an opaque "Locator expected to be visible" error.
+TERMINAL_SESSION_FAILURE_STATES = ("Failed",)
 
 # ---------------------------------------------------------------------------
 
@@ -97,6 +106,90 @@ def assert_homepage_loaded(page: Page) -> None:
     """
     expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
     expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+
+
+def _session_failure_message(name: str, state: str) -> str:
+    """Build the error shown when a session reaches a terminal failure state.
+
+    Replaces the opaque "Locator expected to be visible" timeout with a
+    message that names the session, the terminal state observed, and the
+    likely cause — so the reader knows the deployment (not the test) could
+    not launch the session.
+    """
+    return (
+        f"Session {name!r} reached terminal state {state!r} instead of Active — "
+        "Workbench could not launch the session (abnormal exit). Verify the "
+        "deployment can launch sessions: check the launcher, the session image, "
+        "and available CPU/memory/quota."
+    )
+
+
+def format_capacity_failure(total: int, failures: list[str], reasons: list[str]) -> str:
+    """Build the aggregated failure for the session-capacity scenario.
+
+    Reports how many sessions reached Active and which profiles failed, then
+    appends each per-session diagnostic captured from
+    :func:`wait_for_session_active`.  Keeping the reasons means an aggregated
+    capacity failure still names the terminal state (e.g. ``Failed``) and its
+    likely cause, instead of collapsing to a bare profile list.
+    """
+    passed = total - len(failures)
+    lines = [f"{passed}/{total} sessions reached Active. Failed profiles: {', '.join(failures)}"]
+    lines.extend(reasons)
+    return "\n".join(lines)
+
+
+def wait_for_session_active(
+    page: Page, session_name: str, *, timeout: int = TIMEOUT_SESSION_START
+) -> Locator:
+    """Wait until *session_name* reaches Active, failing fast on terminal states.
+
+    Polls the session row for the Active status.  If the session instead
+    reaches a terminal failure state (see :data:`TERMINAL_SESSION_FAILURE_STATES`),
+    raises ``AssertionError`` immediately with an actionable message rather
+    than waiting out the full ``timeout`` and emitting an opaque
+    "Locator expected to be visible" error.
+
+    Returns the session row locator so callers can chain further actions
+    (e.g. clicking the session's join link).
+    """
+    row = page.locator(Homepage.session_row(session_name))
+    expect(row).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+
+    active = page.locator(Homepage.session_row_status(session_name, "Active"))
+    terminal = {
+        state: page.locator(Homepage.session_row_status(session_name, state))
+        for state in TERMINAL_SESSION_FAILURE_STATES
+    }
+
+    def _active_now() -> bool:
+        return active.count() > 0 and active.first.is_visible()
+
+    def _terminal_now() -> str | None:
+        for state, loc in terminal.items():
+            if loc.count() > 0 and loc.first.is_visible():
+                return state
+        return None
+
+    deadline = time.monotonic() + timeout / 1000
+    while time.monotonic() < deadline:
+        if _active_now():
+            return row
+        failed_state = _terminal_now()
+        if failed_state is not None:
+            raise AssertionError(_session_failure_message(session_name, failed_state))
+        page.wait_for_timeout(_SESSION_POLL_INTERVAL)
+
+    # Final check — the status may have flipped in the last poll interval.
+    if _active_now():
+        return row
+    failed_state = _terminal_now()
+    if failed_state is not None:
+        raise AssertionError(_session_failure_message(session_name, failed_state))
+    raise AssertionError(
+        f"Session {session_name!r} did not reach Active within {timeout // 1000}s "
+        "(no Active or terminal status detected)."
+    )
 
 
 # ---------------------------------------------------------------------------

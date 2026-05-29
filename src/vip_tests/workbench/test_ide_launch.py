@@ -22,9 +22,9 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_IDE_LOAD,
     TIMEOUT_PAGE_LOAD,
     TIMEOUT_QUICK,
-    TIMEOUT_SESSION_START,
     assert_homepage_loaded,
     unique_session_name,
+    wait_for_session_active,
     workbench_login,
 )
 from vip_tests.workbench.pages import (
@@ -226,13 +226,10 @@ def session_becomes_active(page: Page, session_context: dict):
     """Verify session transitions from Starting to Active."""
     session_name = session_context["name"]
 
-    # Verify our session row appears on the homepage
-    session_row = page.locator(Homepage.session_row(session_name))
-    expect(session_row).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-
-    # Wait for our session to reach Active state
-    session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
-    expect(session_active).to_be_visible(timeout=TIMEOUT_SESSION_START)
+    # Wait for our session to reach Active state.  Fails fast with an
+    # actionable message if it reaches a terminal state (e.g. Failed) instead
+    # of waiting out the full session-start timeout.
+    session_row = wait_for_session_active(page, session_name)
 
     # Navigate into the session (link only appears when Active)
     session_link = session_row.locator(f"a[title='join {session_name}']")
