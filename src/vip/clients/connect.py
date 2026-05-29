@@ -113,6 +113,48 @@ class ConnectClient(BaseClient):
         resp = self._client.delete(f"/v1/content/{guid}")
         resp.raise_for_status()
 
+    def _delete_content_verified(
+        self, guid: str, *, retries: int = 2, settle_seconds: float = 1.0
+    ) -> bool:
+        """Delete a content item and confirm it is gone.  Never raises.
+
+        Treats a 404 (already gone) as success.  After deleting, GETs the item
+        to confirm a 404, making up to *retries* delete-and-verify attempts
+        total while it is still present (at least one attempt is always made,
+        even if *retries* is 0).  Returns True once it is confirmed gone.
+        """
+        import time
+
+        for attempt in range(max(1, retries)):
+            try:
+                resp = self._client.delete(f"/v1/content/{guid}")
+                if resp.status_code == 404:
+                    return True
+            except Exception:
+                pass
+            try:
+                check = self._client.get(f"/v1/content/{guid}")
+                if check.status_code == 404:
+                    return True
+            except Exception:
+                pass
+            if attempt < retries - 1:
+                time.sleep(settle_seconds)
+        return False
+
+    def cleanup_content(self, guids, *, retries: int = 2, settle_seconds: float = 1.0) -> int:
+        """Delete the given content GUIDs, verifying each is gone.  Never raises.
+
+        Skips falsy GUIDs.  Returns the number of items confirmed deleted.
+        """
+        deleted = 0
+        for guid in guids:
+            if not guid:
+                continue
+            if self._delete_content_verified(guid, retries=retries, settle_seconds=settle_seconds):
+                deleted += 1
+        return deleted
+
     def get_content(self, guid: str) -> dict[str, Any]:
         resp = self._client.get(f"/v1/content/{guid}")
         resp.raise_for_status()
@@ -202,19 +244,10 @@ class ConnectClient(BaseClient):
     def cleanup_vip_content(self) -> int:
         """Delete all content tagged with the VIP test tag.
 
-        Returns the number of items deleted.
+        Returns the number of items deleted.  Never raises.
         """
-        items = self.list_vip_content()
-        deleted = 0
-        for item in items:
-            guid = item.get("guid")
-            if guid:
-                try:
-                    self.delete_content(guid)
-                    deleted += 1
-                except Exception:
-                    pass
-        return deleted
+        guids = [item.get("guid") for item in self.list_vip_content()]
+        return self.cleanup_content(guids)
 
     # -- Tags ---------------------------------------------------------------
 
