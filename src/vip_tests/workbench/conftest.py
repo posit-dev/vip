@@ -8,10 +8,10 @@ from __future__ import annotations
 import os
 import time
 
-import httpx
 import pytest
 from playwright.sync_api import Page, expect
 
+from vip.clients.workbench import WorkbenchClient
 from vip_tests.workbench.pages import Homepage, LoginPage
 
 pytestmark = [pytest.mark.workbench, pytest.mark.xdist_group("workbench")]
@@ -238,42 +238,83 @@ def workbench_login(
 # ---------------------------------------------------------------------------
 
 
+def _quit_vip_sessions_via_cookies(
+    base_url: str,
+    cookies: dict[str, str],
+    *,
+    insecure: bool,
+    ca_bundle,
+) -> int:
+    """Quit VIP-named sessions using a scratch cookie-authenticated client.
+
+    A scratch ``WorkbenchClient`` is used so the session-scoped
+    ``workbench_client`` fixture's cookie jar is never mutated.  TLS config
+    (``--insecure`` / ``--ca-bundle``) is honoured via *insecure*/*ca_bundle*.
+    """
+    try:
+        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
+        try:
+            scratch.set_cookies(cookies)
+            return scratch.quit_vip_sessions()
+        finally:
+            scratch.close()
+    except Exception:
+        return 0
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _wb_cleanup_state(vip_config, workbench_client):
+    """End-of-run safety net: sweep any VIP sessions left behind.
+
+    Holds the most recent authenticated cookies captured by the per-test
+    ``_cleanup_sessions`` fixture.  On teardown (after the whole Workbench
+    run) it does one final ``quit_vip_sessions`` sweep, catching sessions
+    orphaned when a per-test cleanup failed outright (e.g. the page crashed).
+    """
+    state: dict[str, object] = {"cookies": None, "base_url": None}
+    yield state
+    if workbench_client is None:
+        return
+    cookies = state["cookies"]
+    if cookies:
+        _quit_vip_sessions_via_cookies(
+            str(state["base_url"]),
+            cookies,  # type: ignore[arg-type]
+            insecure=vip_config.insecure,
+            ca_bundle=vip_config.ca_bundle,
+        )
+    # Belt-and-suspenders: when an API key is configured, also sweep with it.
+    # Run this even if cookies were captured, because cookies may have expired
+    # during a long run (a cookie sweep would then quietly clean up nothing).
+    # quit_vip_sessions is idempotent, so this is a no-op when nothing remains.
+    if vip_config.workbench.api_key:
+        try:
+            workbench_client.quit_vip_sessions()
+        except Exception:
+            pass
+
+
 @pytest.fixture(autouse=True)
-def _cleanup_sessions(page, workbench_client):
-    """Quit any Workbench sessions created during the test."""
+def _cleanup_sessions(page, workbench_client, vip_config, _wb_cleanup_state):
+    """Quit any VIP-named Workbench sessions created during the test."""
     yield
     if workbench_client is None:
         return
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-        # Use a temporary client so the session-scoped workbench_client's
-        # cookie jar is never mutated.  Inherit TLS config from the session
-        # client so --insecure / --ca-bundle are honoured here too.
-        with httpx.Client(
-            base_url=workbench_client.base_url,
-            cookies=cookies,
-            timeout=30.0,
-            verify=workbench_client.verify,
-        ) as tmp:
-            resp = tmp.get("/api/sessions")
-            sessions = resp.json() if resp.status_code == 200 else []
-            for session in sessions:
-                sid = session.get("id") or session.get("session_id", "")
-                if not sid:
-                    continue
-                for method, path in (
-                    ("DELETE", f"/api/sessions/{sid}"),
-                    ("POST", f"/api/sessions/{sid}/suspend"),
-                ):
-                    try:
-                        r = tmp.request(method, path)
-                        if r.status_code < 400:
-                            break
-                    except Exception:
-                        continue
     except Exception:
-        # Best-effort cleanup; don't mask test failures.
-        pass
+        cookies = {}
+    if not cookies:
+        return
+    # Remember the latest good cookies for the end-of-run sweep.
+    _wb_cleanup_state["cookies"] = cookies
+    _wb_cleanup_state["base_url"] = workbench_client.base_url
+    _quit_vip_sessions_via_cookies(
+        workbench_client.base_url,
+        cookies,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+    )
 
 
 @pytest.fixture
