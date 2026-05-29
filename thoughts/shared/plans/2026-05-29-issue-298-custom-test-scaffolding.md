@@ -16,6 +16,8 @@ The preferred implementation is a `vip scaffold` or `vip init-extension` subcomm
 This lands in two places:
 
 1. **`src/vip/cli.py`** — add a new `scaffold` subcommand that writes the example test files to a user-specified directory
+   - Initial implementation: defaults to copying `examples/cross_product_validation/`
+   - Future extensibility: can add `--template` option to select from multiple examples (e.g., `--template http_health_check` or `--template cross_product_validation`)
 2. **`examples/cross_product_validation/`** — a reference implementation directory containing:
    - `.feature` file describing runtime and package verification scenarios
    - `.py` step definition file that uses existing VIP fixtures (`workbench_client`, `connect_client`, `expected_r_versions`, `expected_python_versions`)
@@ -72,12 +74,21 @@ vip verify --config vip.toml --extensions ./my-custom-tests
 - **CONFIRMED:** Should the example test directory be named `examples/gxp_validation/` or something more generic like `examples/cross_product_validation/`?
   - **Decision:** `examples/cross_product_validation/` because the pattern applies beyond GxP (any customer who needs to lock runtime/package versions).
 
-- **UNCONFIRMED:** Should the scaffold command default to copying from `examples/cross_product_validation/` or should it be extensible (multiple scaffold templates)?
-  - **Leaning toward:** single template for now; extensibility can be added later if demand emerges.
+- **CONFIRMED:** Should the scaffold command default to copying from `examples/cross_product_validation/` or should it be extensible (multiple scaffold templates)?
+  - **Decision:** single template for now; extensibility can be added later if demand emerges.
+
+- **UNCONFIRMED:** Should we rename `examples/custom_tests/` to something more descriptive like `examples/http_health_check/` for consistency with `examples/cross_product_validation/`?
+  - **Concern raised:** having one folder named `custom_tests` while another is named `cross_product_validation` creates inconsistency
+  - **Potential future examples:** 
+    - `examples/http_health_check/` (current `custom_tests/`) — basic HTTP connectivity verification
+    - `examples/cross_product_validation/` — runtime/package version validation across products
+    - `examples/ssl_certificate_validation/` — verifying SSL certificates are valid and not expiring soon
+    - `examples/api_response_time/` — performance benchmarking for API endpoints
+    - `examples/user_provisioning/` — testing user/group sync from LDAP/SAML
+  - **Leaning toward:** Yes, rename `custom_tests` → `http_health_check` for clarity and to support future multi-template scaffold command (e.g., `vip scaffold --template http_health_check`)
 
 ## Out of scope
 
-- Modifying the existing `examples/custom_tests/` directory (it serves a different purpose: minimal HTTP check). The new example is complementary, not a replacement.
 - Generating the `vip.toml` configuration file itself (users can already run `cp vip.toml.example vip.toml`).
 - Automation of package installation verification on the server side (the tests will attempt install via API and report success/failure; they won't modify server package caches or R library paths directly).
 - Integration with the Shiny app UI to invoke the scaffold command (the Shiny app is for running tests, not generating them).
