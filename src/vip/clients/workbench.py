@@ -11,6 +11,17 @@ from typing import Any
 
 from vip.clients.base import BaseClient
 
+_VIP_SESSION_PREFIXES = ("VIP ", "_vip_")
+
+
+def is_vip_session(label: str) -> bool:
+    """Return True if *label* matches a VIP-created session naming pattern.
+
+    VIP names sessions either ``"VIP <file> - <worker>-<ns>"`` (most tests,
+    via ``unique_session_name``) or ``"_vip_cap_<ts>_..."`` (capacity tests).
+    """
+    return any(label.startswith(prefix) for prefix in _VIP_SESSION_PREFIXES)
+
 
 class WorkbenchClient(BaseClient):
     """Minimal Workbench HTTP wrapper."""
