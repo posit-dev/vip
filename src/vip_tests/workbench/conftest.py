@@ -283,9 +283,11 @@ def _wb_cleanup_state(vip_config, workbench_client):
             insecure=vip_config.insecure,
             ca_bundle=vip_config.ca_bundle,
         )
-    elif vip_config.workbench.api_key:
-        # No cookies were ever captured (e.g. every test skipped before login)
-        # but an API key is configured — use it as a fallback.
+    # Belt-and-suspenders: when an API key is configured, also sweep with it.
+    # Run this even if cookies were captured, because cookies may have expired
+    # during a long run (a cookie sweep would then quietly clean up nothing).
+    # quit_vip_sessions is idempotent, so this is a no-op when nothing remains.
+    if vip_config.workbench.api_key:
         try:
             workbench_client.quit_vip_sessions()
         except Exception:
