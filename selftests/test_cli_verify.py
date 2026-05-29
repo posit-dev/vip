@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1064,3 +1065,21 @@ class TestReorderHelpArgs:
 
         result = _reorder_help_args(["-h", "auth", "mint-connect-key"], self.COMMANDS)
         assert result == ["auth", "mint-connect-key", "--help"]
+
+    def test_help_inserted_before_passthrough_separator(self):
+        from vip.cli import _reorder_help_args
+
+        # The moved help flag must land before ``--`` -- after it argparse
+        # treats every token as a positional, so help would never fire.
+        result = _reorder_help_args(["-h", "verify", "--", "-x"], self.COMMANDS)
+        assert result == ["verify", "--help", "--", "-x"]
+
+    def test_help_with_separator_actually_shows_help(self):
+        from vip.cli import main
+
+        with patch.object(sys, "argv", ["vip", "-h", "verify", "--", "-x"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        # argparse exits 0 after printing help; a nonzero/None code would mean
+        # it fell through to running the command instead.
+        assert exc.value.code == 0

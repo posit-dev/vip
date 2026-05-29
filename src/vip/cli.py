@@ -971,8 +971,8 @@ def _reorder_help_args(argv: list[str], commands: set[str]) -> list[str]:
 
     argparse's top-level parser consumes ``-h``/``--help`` before it delegates to
     a subparser, so a help flag placed *before* the subcommand prints the generic
-    help. If a help flag appears ahead of a known subcommand, move it to the end
-    so the subparser handles it and prints its own help.
+    help. If a help flag appears ahead of a known subcommand, move it after the
+    subcommand so the subparser handles it and prints its own help.
     """
     help_flags = {"-h", "--help"}
     first_help = next((i for i, a in enumerate(argv) if a in help_flags), None)
@@ -983,7 +983,12 @@ def _reorder_help_args(argv: list[str], commands: set[str]) -> list[str]:
         # No subcommand (top-level help is correct) or help already after it.
         return argv
     reordered = [a for a in argv if a not in help_flags]
-    reordered.append("--help")
+    # Insert the help flag before any ``--`` passthrough separator. After ``--``
+    # argparse treats every token as a positional, so an appended ``--help``
+    # would be swallowed as a pytest arg and the command would run instead of
+    # printing help.
+    insert_at = reordered.index("--") if "--" in reordered else len(reordered)
+    reordered.insert(insert_at, "--help")
     return reordered
 
 
