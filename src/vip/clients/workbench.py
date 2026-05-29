@@ -91,12 +91,14 @@ class WorkbenchClient(BaseClient):
     def quit_vip_sessions(self, *, retries: int = 2, settle_seconds: float = 0.5) -> int:
         """Force-quit every VIP-named session reachable by this client.
 
-        Lists sessions, quits only those matching :func:`is_vip_session`
-        (DELETE, falling back to suspend), then re-lists to confirm they are
-        gone and retries up to *retries* times.  Sessions are matched by label
-        so a real user's sessions are never touched.  Never raises (malformed
-        or unexpected API payloads are ignored); returns the number of distinct
-        sessions for which a quit/suspend call succeeded.
+        Lists sessions and quits only those matching :func:`is_vip_session`
+        (via :meth:`quit_session`: DELETE, falling back to suspend), then
+        re-lists and repeats the quit-and-verify cycle up to *retries* times
+        while VIP sessions remain.  A failed *list* call (non-200 or a thrown
+        exception) ends the run without retrying.  Sessions are matched by
+        label so a real user's sessions are never touched.  Never raises
+        (malformed or unexpected API payloads are ignored); returns the number
+        of distinct sessions for which a quit/suspend call succeeded.
 
         Authentication uses whatever this client already carries (cookies set
         via :meth:`set_cookies`, or an API-key Authorization header).
@@ -121,19 +123,8 @@ class WorkbenchClient(BaseClient):
                 break
             for session in targets:
                 sid = session.get("id") or session.get("session_id") or ""
-                if not sid:
-                    continue
-                for method, path in (
-                    ("DELETE", f"/api/sessions/{sid}"),
-                    ("POST", f"/api/sessions/{sid}/suspend"),
-                ):
-                    try:
-                        r = self._client.request(method, path)
-                        if r.status_code < 400:
-                            quit_ids.add(str(sid))
-                            break
-                    except Exception:
-                        continue
+                if sid and self.quit_session(sid):
+                    quit_ids.add(str(sid))
             if attempt < retries - 1:
                 time.sleep(settle_seconds)
         return len(quit_ids)

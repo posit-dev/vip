@@ -127,13 +127,13 @@ def _launch_session(
 
 
 def _cleanup_sessions_via_api(
-    page: Page, workbench_base_url: str, launched: list[dict[str, str | None]]
+    page: Page, workbench_base_url: str, *, insecure: bool, ca_bundle
 ) -> None:
     """Quit the VIP capacity sessions created by this test run.
 
     Delegates to the shared cookie-based cleanup helper, which targets all
-    VIP-named sessions (``_vip_cap_`` prefix included).  The *launched* arg is
-    retained for signature compatibility with the calling step.
+    VIP-named sessions (``_vip_cap_`` prefix included).  TLS config is threaded
+    through so cleanup works against self-signed / custom-CA deployments.
     """
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
@@ -141,7 +141,9 @@ def _cleanup_sessions_via_api(
         return
     if not cookies:
         return
-    _quit_vip_sessions_via_cookies(workbench_base_url, cookies, insecure=False, ca_bundle=None)
+    _quit_vip_sessions_via_cookies(
+        workbench_base_url, cookies, insecure=insecure, ca_bundle=ca_bundle
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -235,9 +237,11 @@ def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Pa
 
 @then("I clean up all launched sessions")
 def cleanup_sessions(
-    launched_sessions: list[dict[str, str | None]], page: Page, workbench_url: str
+    launched_sessions: list[dict[str, str | None]], page: Page, workbench_url: str, vip_config
 ):
-    _cleanup_sessions_via_api(page, workbench_url, launched_sessions)
+    _cleanup_sessions_via_api(
+        page, workbench_url, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+    )
 
     for session in launched_sessions:
         row = page.locator(Homepage.session_row(session["name"]))
