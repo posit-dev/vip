@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.36.3 (2026-05-29)
+
+### Bug Fixes
+
+- **workbench**: Fail fast when a session reaches a terminal state
+  ([#320](https://github.com/posit-dev/vip/pull/320),
+  [`1f9e5ec`](https://github.com/posit-dev/vip/commit/1f9e5ecd1d44e11e5c6d0df871d44a4388e26379))
+
+
 ## v0.36.2 (2026-05-29)
 
 ### Bug Fixes
