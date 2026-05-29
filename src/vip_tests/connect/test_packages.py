@@ -79,10 +79,11 @@ _PLUMBER_MANIFEST = (pathlib.Path(__file__).parent / "plumber_manifest.json").re
     "I deploy a content item that installs R packages",
     target_fixture="pm_deploy_state",
 )
-def deploy_r_content(connect_client):
+def deploy_r_content(connect_client, _connect_created_guids):
     # Create content, upload the plumber bundle, and deploy.
     content = connect_client.create_content("vip-pm-repo-test")
     guid = content["guid"]
+    _connect_created_guids.append(guid)
     archive = _make_tar_gz({"plumber.R": _PLUMBER_R, "manifest.json": _PLUMBER_MANIFEST})
     bundle = connect_client.upload_bundle(guid, archive)
     result = connect_client.deploy_bundle(guid, bundle["id"])

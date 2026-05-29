@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.36.2 (2026-05-29)
+
+### Bug Fixes
+
+- **connect**: Reliably clean up VIP content on test failure
+  ([#318](https://github.com/posit-dev/vip/pull/318),
+  [`dfd8509`](https://github.com/posit-dev/vip/commit/dfd85095f5d8b5613c55097d2046289b58de01e6))
+
+
+## v0.36.1 (2026-05-29)
+
+### Bug Fixes
+
+- **workbench**: Reliably clean up VIP sessions on test failure
+  ([#312](https://github.com/posit-dev/vip/pull/312),
+  [`2988129`](https://github.com/posit-dev/vip/commit/29881294b423d5deb37b9655a2833e8458c8e80e))
+
+
+## v0.36.0 (2026-05-29)
+
+### Features
+
+- **cli**: Support help flag before the subcommand
+  ([#297](https://github.com/posit-dev/vip/pull/297),
+  [`9c0f1d5`](https://github.com/posit-dev/vip/commit/9c0f1d52f224c3df1d969c359382d57aea0cc8ac))
+
+
 ## v0.35.2 (2026-05-29)
 
 ### Bug Fixes
