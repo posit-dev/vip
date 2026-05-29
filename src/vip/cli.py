@@ -966,6 +966,27 @@ def run_cleanup(args: argparse.Namespace) -> None:
     print("Cleanup completed successfully")
 
 
+def _reorder_help_args(argv: list[str], commands: set[str]) -> list[str]:
+    """Let ``vip -h verify`` show verify's help instead of the top-level help.
+
+    argparse's top-level parser consumes ``-h``/``--help`` before it delegates to
+    a subparser, so a help flag placed *before* the subcommand prints the generic
+    help. If a help flag appears ahead of a known subcommand, move it to the end
+    so the subparser handles it and prints its own help.
+    """
+    help_flags = {"-h", "--help"}
+    first_help = next((i for i, a in enumerate(argv) if a in help_flags), None)
+    if first_help is None:
+        return argv
+    first_cmd = next((i for i, a in enumerate(argv) if a in commands), None)
+    if first_cmd is None or first_help > first_cmd:
+        # No subcommand (top-level help is correct) or help already after it.
+        return argv
+    reordered = [a for a in argv if a not in help_flags]
+    reordered.append("--help")
+    return reordered
+
+
 def main() -> None:
     """Main entry point for the VIP CLI."""
     parser = argparse.ArgumentParser(
@@ -1351,7 +1372,8 @@ def main() -> None:
         "app": app_parser,
     }
 
-    args = parser.parse_args()
+    argv = _reorder_help_args(sys.argv[1:], set(subcommand_parsers))
+    args = parser.parse_args(argv)
     if not hasattr(args, "func"):
         sub = subcommand_parsers.get(args.command)
         if sub:

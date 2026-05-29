@@ -1022,3 +1022,45 @@ class TestVerifyLocalTLSFlags:
         finally:
             if path:
                 Path(path).unlink(missing_ok=True)
+
+
+class TestReorderHelpArgs:
+    """`vip -h <subcommand>` should surface the subcommand's help, not top-level."""
+
+    COMMANDS = {"verify", "cleanup", "install", "auth", "cluster", "report"}
+
+    def test_help_before_subcommand_is_moved_after(self):
+        from vip.cli import _reorder_help_args
+
+        result = _reorder_help_args(["-h", "verify"], self.COMMANDS)
+        assert result == ["verify", "--help"]
+
+    def test_long_help_flag_before_subcommand(self):
+        from vip.cli import _reorder_help_args
+
+        result = _reorder_help_args(["--help", "cleanup"], self.COMMANDS)
+        assert result == ["cleanup", "--help"]
+
+    def test_help_after_subcommand_is_untouched(self):
+        from vip.cli import _reorder_help_args
+
+        argv = ["verify", "-h"]
+        assert _reorder_help_args(argv, self.COMMANDS) == argv
+
+    def test_top_level_help_without_subcommand_is_untouched(self):
+        from vip.cli import _reorder_help_args
+
+        argv = ["-h"]
+        assert _reorder_help_args(argv, self.COMMANDS) == argv
+
+    def test_no_help_flag_is_untouched(self):
+        from vip.cli import _reorder_help_args
+
+        argv = ["verify", "--connect-url", "https://example.com"]
+        assert _reorder_help_args(argv, self.COMMANDS) == argv
+
+    def test_help_before_nested_subcommand(self):
+        from vip.cli import _reorder_help_args
+
+        result = _reorder_help_args(["-h", "auth", "mint-connect-key"], self.COMMANDS)
+        assert result == ["auth", "mint-connect-key", "--help"]
