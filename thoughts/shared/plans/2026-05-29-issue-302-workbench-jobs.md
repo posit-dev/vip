@@ -36,7 +36,7 @@ Success looks like:
 
 **UNCONFIRMED**: Does the Background Jobs scenario require different Playwright selectors than Workbench Jobs, or can we reuse the same page object pattern? This depends on RStudio Pro's UI structure — will be resolved during implementation by inspecting the DOM.
 
-**UNCONFIRMED**: Should job submission timeout be configurable, or hardcoded (e.g. 60s)? Short jobs should complete quickly, but network latency or cluster load could vary. Propose starting with a 60s hardcoded timeout and making it configurable only if customers report flakiness.
+Job submission timeout should be **configurable** (not hardcoded). This allows adapting to varying network latency or cluster load without code changes.
 
 **UNCONFIRMED**: The issue mentions "depends on the in-session execution primitive (separate issue) only for writing the script file". Should this plan wait for that primitive, or implement script writing inline? Propose writing the script via RStudio Console (`writeLines(c(...), "test_job.R")`) for now — the primitive can refactor it later if needed.
 
