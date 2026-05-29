@@ -1,6 +1,40 @@
 # CHANGELOG
 
 
+## v0.35.2 (2026-05-29)
+
+### Bug Fixes
+
+- **install**: Treat empty .vip-install.json as missing (closes #283)
+  ([#296](https://github.com/posit-dev/vip/pull/296),
+  [`e635796`](https://github.com/posit-dev/vip/commit/e6357967d99169c4cbed507a7b5e3001c0a37b57))
+
+### Chores
+
+- Authenticate agentic workflows via GitHub App ([#294](https://github.com/posit-dev/vip/pull/294),
+  [`a8304ce`](https://github.com/posit-dev/vip/commit/a8304cedd10008491d6590405a79f736788915b2))
+
+- **deps**: Bump github/gh-aw from 0.73.0 to 0.74.4 in the actions-dependencies group
+  ([#285](https://github.com/posit-dev/vip/pull/285),
+  [`416c198`](https://github.com/posit-dev/vip/commit/416c198de0fb2a02075f8110da5d8c7be474000b))
+
+- **deps**: Bump the python-dependencies group with 8 updates
+  ([#284](https://github.com/posit-dev/vip/pull/284),
+  [`491b5d7`](https://github.com/posit-dev/vip/commit/491b5d73186de085ba3d36be7f5178aa5a68b7b5))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+Co-authored-by: Brian Deitte <brian.deitte@posit.co>
+
+### Continuous Integration
+
+- Narrow agentic workflow permissions to match the App's grants
+  ([#295](https://github.com/posit-dev/vip/pull/295),
+  [`88470d9`](https://github.com/posit-dev/vip/commit/88470d98de3a7b5583a3943d3be7c14554800302))
+
+
 ## v0.35.1 (2026-05-28)
 
 ### Bug Fixes
