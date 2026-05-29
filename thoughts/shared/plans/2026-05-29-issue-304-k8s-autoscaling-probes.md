@@ -43,11 +43,11 @@ uv run vip verify --config vip.toml --categories workbench -- -k session_capacit
 
 Expected: all six scenarios pass (or skip cleanly if no cluster config).
 
-## Open questions
+## Decisions
 
-- **UNCONFIRMED:** Should `src/vip/clients/kubernetes.py` use `kubectl` CLI (already a VIP install dependency) or the `kubernetes` Python SDK? SDK has cleaner error handling but adds a dependency. CLI path is simpler if `kubectl` is already available from `vip cluster` commands.
-- **UNCONFIRMED:** Should the "quick succession" scenarios use Python threading, asyncio, or Playwright's multi-context API for concurrent launches? Threading is simplest but may not exercise the race condition reliably.
-- Should the new scenarios live in a separate `test_session_capacity_k8s.feature` or extend the existing `test_session_capacity.feature` with an `@kubernetes` tag? Separate file keeps the distinction clear.
+- `src/vip/clients/kubernetes.py` will use the **`kubernetes` Python SDK**. The SDK calls `load_kube_config()` / `load_incluster_config()`, which reads the same ambient kubeconfig (`~/.kube/config`, `KUBECONFIG`, or in-cluster service account) that `kubectl` uses — no separate credential setup required.
+- The "quick succession" scenarios will use **asyncio** for concurrent session launches.
+- The new scenarios will live in a **separate `test_session_capacity_k8s.feature`** file, keeping the Kubernetes-specific tests clearly distinct from the generic capacity tests.
 
 ## Out of scope
 
