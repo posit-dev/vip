@@ -119,8 +119,8 @@ class ConnectClient(BaseClient):
         """Delete a content item and confirm it is gone.  Never raises.
 
         Treats a 404 (already gone) as success.  After deleting, GETs the item
-        to confirm a 404 and retries up to *retries* times if it is still
-        present.  Returns True once the content is confirmed gone.
+        to confirm a 404, making up to *retries* delete-and-verify attempts
+        total while it is still present.  Returns True once it is confirmed gone.
         """
         import time
 
