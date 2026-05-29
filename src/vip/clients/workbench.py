@@ -94,24 +94,33 @@ class WorkbenchClient(BaseClient):
         Lists sessions, quits only those matching :func:`is_vip_session`
         (DELETE, falling back to suspend), then re-lists to confirm they are
         gone and retries up to *retries* times.  Sessions are matched by label
-        so a real user's sessions are never touched.  Never raises; returns the
-        number of successful quit/suspend calls.
+        so a real user's sessions are never touched.  Never raises (malformed
+        or unexpected API payloads are ignored); returns the number of distinct
+        sessions for which a quit/suspend call succeeded.
 
         Authentication uses whatever this client already carries (cookies set
         via :meth:`set_cookies`, or an API-key Authorization header).
         """
-        quit_count = 0
+        quit_ids: set[str] = set()
         for attempt in range(retries):
             try:
                 resp = self._client.get("/api/sessions")
+                sessions = resp.json() if resp.status_code == 200 else []
             except Exception:
+                # Connection error, non-JSON body, etc. — give up this run.
                 break
-            sessions = resp.json() if resp.status_code == 200 else []
-            targets = [s for s in sessions if is_vip_session(s.get("label", ""))]
+            if not isinstance(sessions, list):
+                break
+            # Coerce label to str so a null/non-string label never raises.
+            targets = [
+                s
+                for s in sessions
+                if isinstance(s, dict) and is_vip_session(str(s.get("label") or ""))
+            ]
             if not targets:
                 break
             for session in targets:
-                sid = session.get("id") or session.get("session_id", "")
+                sid = session.get("id") or session.get("session_id") or ""
                 if not sid:
                     continue
                 for method, path in (
@@ -121,10 +130,10 @@ class WorkbenchClient(BaseClient):
                     try:
                         r = self._client.request(method, path)
                         if r.status_code < 400:
-                            quit_count += 1
+                            quit_ids.add(str(sid))
                             break
                     except Exception:
                         continue
             if attempt < retries - 1:
                 time.sleep(settle_seconds)
-        return quit_count
+        return len(quit_ids)
