@@ -16,7 +16,6 @@ Requires ``--interactive-auth`` or ``--headless-auth`` since session launching i
 
 from __future__ import annotations
 
-import httpx
 import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenarios, then, when
@@ -25,6 +24,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
+    _quit_vip_sessions_via_cookies,
     assert_homepage_loaded,
     workbench_login,
 )
@@ -129,30 +129,19 @@ def _launch_session(
 def _cleanup_sessions_via_api(
     page: Page, workbench_base_url: str, launched: list[dict[str, str | None]]
 ) -> None:
-    """Delete only sessions created by this test run."""
-    launched_names = {s["name"] for s in launched}
+    """Quit the VIP capacity sessions created by this test run.
+
+    Delegates to the shared cookie-based cleanup helper, which targets all
+    VIP-named sessions (``_vip_cap_`` prefix included).  The *launched* arg is
+    retained for signature compatibility with the calling step.
+    """
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-        with httpx.Client(base_url=workbench_base_url, cookies=cookies, timeout=30.0) as client:
-            resp = client.get("/api/sessions")
-            sessions = resp.json() if resp.status_code == 200 else []
-            for session in sessions:
-                sid = session.get("id") or session.get("session_id", "")
-                name = session.get("label", "")
-                if not sid or name not in launched_names:
-                    continue
-                for method, path in (
-                    ("DELETE", f"/api/sessions/{sid}"),
-                    ("POST", f"/api/sessions/{sid}/suspend"),
-                ):
-                    try:
-                        r = client.request(method, path)
-                        if r.status_code < 400:
-                            break
-                    except Exception:
-                        continue
     except Exception:
-        pass
+        return
+    if not cookies:
+        return
+    _quit_vip_sessions_via_cookies(workbench_base_url, cookies, insecure=False, ca_bundle=None)
 
 
 # ---------------------------------------------------------------------------
