@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.36.1 (2026-05-29)
+
+### Bug Fixes
+
+- **workbench**: Reliably clean up VIP sessions on test failure
+  ([#312](https://github.com/posit-dev/vip/pull/312),
+  [`2988129`](https://github.com/posit-dev/vip/commit/29881294b423d5deb37b9655a2833e8458c8e80e))
+
+
 ## v0.36.0 (2026-05-29)
 
 ### Features
