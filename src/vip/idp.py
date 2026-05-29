@@ -25,6 +25,22 @@ _OKTA_IDENTIFIER = "input[name='identifier']"
 _OKTA_PASSCODE = "input[name='credentials.passcode']"
 _OKTA_SUBMIT = "input[type='submit'], button[type='submit']"
 
+# Snowflake OAuth selectors. Snowflake's sign-in page renders two
+# "Sign in" buttons (a federated-SSO option and the username/password
+# option); the username/password submit is the second one.
+_SF_USERNAME = '[autocomplete="username"]'
+_SF_PASSWORD = '[autocomplete="current-password"]'
+_SF_SUBMIT = 'button:has-text("Sign in")'
+_SF_ALLOW = "Allow"
+# Posit Team products delegate OIDC to the controller, so reaching a product
+# bounces through Snowflake OAuth more than once (product-host ingress, then
+# controller-host). Fill up to this many sign-in forms per login.
+_SF_MAX_FORMS = 3
+# Time to let the OAuth redirect chain reach the next sign-in form (ms).
+_SF_NEXT_FORM_TIMEOUT = 20_000
+# Time to wait for an optional "Allow" consent screen (ms).
+_SF_CONSENT_TIMEOUT = 5_000
+
 # Timeout for waiting on form elements (ms).
 _FORM_TIMEOUT = 15_000
 # Timeout for detecting whether MFA is required after login submit (ms).
@@ -319,9 +335,65 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         )
 
 
+def _fill_snowflake_login(page: Page, username: str, password: str) -> None:
+    """Drive Snowflake OAuth for a Posit Team Native App deployment.
+
+    Each product (Connect, Workbench, Package Manager) sits behind a Snowpark
+    Container Services ingress and delegates OIDC to the deployment's
+    controller, which is itself behind the ingress. Reaching a product
+    therefore bounces through Snowflake's OAuth flow (on
+    ``*.snowflakecomputing.com``) more than once: first for the product
+    host's ingress, then again for the controller host. Each hop presents the
+    same Snowflake sign-in form, and the first authorization of an OAuth
+    client also shows an "Allow" consent.
+
+    This fills every sign-in form in the chain, waiting for each hop's
+    navigation to settle before looking for the next, until the flow leaves
+    Snowflake. It does *not* wait for the product page itself to finish
+    loading — ``_wait_for_product_redirect`` in ``vip.auth`` handles that.
+    """
+    for attempt in range(_SF_MAX_FORMS):
+        # Give the first form the normal timeout; later hops a longer one,
+        # since the OAuth chain takes several redirects to reach them.
+        timeout = _FORM_TIMEOUT if attempt == 0 else _SF_NEXT_FORM_TIMEOUT
+        try:
+            page.locator(_SF_USERNAME).wait_for(state="visible", timeout=timeout)
+        except PlaywrightTimeout:
+            # No (further) sign-in form — the chain has moved past Snowflake login.
+            _log_verbose(f">>> Snowflake: no sign-in form after {attempt} fill(s); done.")
+            break
+
+        before = page.url
+        page.locator(_SF_USERNAME).fill(username)
+        page.locator(_SF_PASSWORD).fill(password)
+        # The username/password "Sign in" button is the second one on the page.
+        page.locator(_SF_SUBMIT).nth(1).click()
+        _log_verbose(f">>> Snowflake: submitted sign-in form #{attempt + 1}.")
+
+        # The first authorization of an OAuth client shows an "Allow" consent.
+        try:
+            allow_button = page.get_by_role("button", name=_SF_ALLOW)
+            allow_button.wait_for(state="visible", timeout=_SF_CONSENT_TIMEOUT)
+            allow_button.click()
+            _log_verbose(">>> Snowflake: clicked 'Allow' consent.")
+        except (PlaywrightTimeout, Error):
+            pass
+
+        # Let the OAuth redirect chain advance to the next hop before looking
+        # for another form. Filling without waiting for navigation races the
+        # redirect and re-submits a stale form, which stalls the flow.
+        try:
+            page.wait_for_url(
+                lambda url, _before=before: url != _before, timeout=_SF_NEXT_FORM_TIMEOUT
+            )
+        except (PlaywrightTimeout, Error):
+            pass
+
+
 _IDP_STRATEGIES: dict[str, Callable[[Page, str, str], None]] = {
     "keycloak": _fill_keycloak_login,
     "okta": _fill_okta_login,
+    "snowflake": _fill_snowflake_login,
 }
 
 SUPPORTED_IDPS = frozenset(_IDP_STRATEGIES.keys())

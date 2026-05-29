@@ -1051,7 +1051,7 @@ def main() -> None:
     auth_group.add_argument(
         "--idp",
         default=None,
-        help='Identity provider for --headless-auth: "keycloak", "okta". '
+        help='Identity provider for --headless-auth: "keycloak", "okta", "snowflake". '
         'Presence implies provider = "oidc" unless overridden in vip.toml.',
     )
     verify_parser.add_argument(

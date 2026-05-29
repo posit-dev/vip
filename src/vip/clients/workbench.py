@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from vip.clients.base import BaseClient
 
 
@@ -23,6 +25,7 @@ class WorkbenchClient(BaseClient):
         timeout: float = 30.0,
         insecure: bool = False,
         ca_bundle: Path | None = None,
+        auth: httpx.Auth | None = None,
     ) -> None:
         super().__init__(
             base_url,
@@ -30,6 +33,7 @@ class WorkbenchClient(BaseClient):
             timeout=timeout,
             insecure=insecure,
             ca_bundle=ca_bundle,
+            auth=auth,
         )
 
     # -- Health / info ------------------------------------------------------

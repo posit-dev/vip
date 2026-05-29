@@ -38,6 +38,7 @@ class ConnectClient(BaseClient):
         timeout: float = 30.0,
         insecure: bool = False,
         ca_bundle: Path | None = None,
+        auth: httpx.Auth | None = None,
     ) -> None:
         api_key = (api_key or "").strip()
         super().__init__(
@@ -47,6 +48,7 @@ class ConnectClient(BaseClient):
             timeout=timeout,
             insecure=insecure,
             ca_bundle=ca_bundle,
+            auth=auth,
         )
         # self._verify is set by BaseClient.__init__ and used by fetch_content.
 

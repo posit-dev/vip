@@ -514,7 +514,7 @@ def start_headless_auth(
 
     At least one of *connect_url* or *workbench_url* must be provided.
     The *idp* parameter selects which form automation strategy to use
-    (e.g. ``"keycloak"``, ``"okta"``).
+    (e.g. ``"keycloak"``, ``"okta"``, ``"snowflake"``).
 
     When *insecure* is ``True``, Playwright ignores TLS certificate errors.
     When *ca_bundle* is set, the path is exported as ``NODE_EXTRA_CA_CERTS``
@@ -556,12 +556,14 @@ def start_headless_auth(
     uses_idp = provider.strip().lower() in _IDP_PROVIDERS
     fill_login = None
     if uses_idp:
+        from vip.idp import SUPPORTED_IDPS, get_idp_strategy
+
         if not idp:
+            supported = ", ".join(f'"{name}"' for name in sorted(SUPPORTED_IDPS))
             raise AuthConfigError(
                 f"--headless-auth with provider={provider!r} requires"
-                ' [auth] idp in vip.toml (supported: "keycloak", "okta")'
+                f" [auth] idp in vip.toml (supported: {supported})"
             )
-        from vip.idp import get_idp_strategy
 
         fill_login = get_idp_strategy(idp)
 

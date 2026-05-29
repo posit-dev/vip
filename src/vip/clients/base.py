@@ -21,6 +21,12 @@ class BaseClient:
     auth_header_value:
         Full value for the ``Authorization`` header (e.g. ``"Key abc123"``
         or ``"Bearer tok"``).  Pass an empty string to omit the header.
+    auth:
+        Optional ``httpx.Auth`` applied per request.  Use for schemes that
+        cannot be expressed as a single static header — e.g. a token that
+        must be refreshed or re-derived per target host (Snowflake Native
+        App SPCS ingress).  When set it takes precedence over
+        *auth_header_value*; typically only one of the two is provided.
     api_prefix:
         Path segment appended to *base_url* when constructing the internal
         httpx client (e.g. ``"/__api__"`` for Connect).  The ``base_url``
@@ -44,6 +50,7 @@ class BaseClient:
         timeout: float = 30.0,
         insecure: bool = False,
         ca_bundle: Path | None = None,
+        auth: httpx.Auth | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         headers: dict[str, str] = {}
@@ -77,6 +84,7 @@ class BaseClient:
             headers=headers,
             timeout=timeout,
             transport=transport,
+            auth=auth,
         )
 
     @property
