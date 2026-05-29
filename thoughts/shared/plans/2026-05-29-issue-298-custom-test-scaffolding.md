@@ -16,7 +16,7 @@ The preferred implementation is a `vip scaffold` or `vip init-extension` subcomm
 This lands in two places:
 
 1. **`src/vip/cli.py`** — add a new `scaffold` subcommand that writes the example test files to a user-specified directory
-2. **`examples/gxp_validation/`** (or similar) — a reference implementation directory containing:
+2. **`examples/cross_product_validation/`** — a reference implementation directory containing:
    - `.feature` file describing runtime and package verification scenarios
    - `.py` step definition file that uses existing VIP fixtures (`workbench_client`, `connect_client`, `expected_r_versions`, `expected_python_versions`)
    - `conftest.py` with fixtures for expected package lists (e.g., `@pytest.fixture def required_r_packages()`)
@@ -27,16 +27,16 @@ The `scaffold` command copies the reference directory to the user's target path 
 ## Components
 
 **New files:**
-- `examples/gxp_validation/test_runtime_validation.feature` — Gherkin scenarios for version and package checks
-- `examples/gxp_validation/test_runtime_validation.py` — step definitions using VIP's client fixtures
-- `examples/gxp_validation/conftest.py` — fixtures for required packages, customizable by users
-- `examples/gxp_validation/README.md` — explains the example and how to customize it
+- `examples/cross_product_validation/test_runtime_validation.feature` — Gherkin scenarios for version and package checks
+- `examples/cross_product_validation/test_runtime_validation.py` — step definitions using VIP's client fixtures
+- `examples/cross_product_validation/conftest.py` — fixtures for required packages, customizable by users
+- `examples/cross_product_validation/README.md` — explains the example and how to customize it
 
 **Modified files:**
 - `src/vip/cli.py` — add `scaffold` subcommand and handler function `run_scaffold(args)`
 
 **Out of tree (user-facing):**
-When a user runs `vip scaffold --output ./my-custom-tests`, the tool writes the example files from `examples/gxp_validation/` to `./my-custom-tests/`, ready to run with:
+When a user runs `vip scaffold --output ./my-custom-tests`, the tool writes the example files from `examples/cross_product_validation/` to `./my-custom-tests/`, ready to run with:
 ```bash
 vip verify --config vip.toml --extensions ./my-custom-tests
 ```
@@ -49,12 +49,12 @@ vip verify --config vip.toml --extensions ./my-custom-tests
 
 2. Manual verification (demo):
    ```bash
-   uv run vip scaffold --output /tmp/gxp-tests
-   ls /tmp/gxp-tests
+   uv run vip scaffold --output /tmp/cross-product-tests
+   ls /tmp/cross-product-tests
    # Should contain: test_runtime_validation.feature, test_runtime_validation.py, conftest.py, README.md
    
    uv run vip verify --connect-url https://demo.connect --workbench-url https://demo.workbench \
-     --extensions /tmp/gxp-tests --collect-only
+     --extensions /tmp/cross-product-tests --collect-only
    # Should discover the new custom test scenarios
    ```
 
@@ -69,8 +69,8 @@ vip verify --config vip.toml --extensions ./my-custom-tests
 - **UNCONFIRMED:** Should the `scaffold` command template in version/package requirements interactively (prompt the user), or simply copy the files and expect the user to edit `conftest.py` afterward?
   - **Leaning toward:** simple file copy + README instructions. Interactive templating adds complexity and most users will want to hand-edit their requirements anyway.
 
-- **UNCONFIRMED:** Should the example test directory be named `examples/gxp_validation/` or something more generic like `examples/cross_product_validation/`?
-  - **Leaning toward:** `examples/cross_product_validation/` because the pattern applies beyond GxP (any customer who needs to lock runtime/package versions).
+- **CONFIRMED:** Should the example test directory be named `examples/gxp_validation/` or something more generic like `examples/cross_product_validation/`?
+  - **Decision:** `examples/cross_product_validation/` because the pattern applies beyond GxP (any customer who needs to lock runtime/package versions).
 
 - **UNCONFIRMED:** Should the scaffold command default to copying from `examples/cross_product_validation/` or should it be extensible (multiple scaffold templates)?
   - **Leaning toward:** single template for now; extensibility can be added later if demand emerges.
