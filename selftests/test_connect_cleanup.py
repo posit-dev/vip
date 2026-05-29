@@ -84,3 +84,37 @@ def test_cleanup_content_returns_zero_and_does_not_raise_on_errors():
 
     cc = _client_with_handler(handler)
     assert cc.cleanup_content(["a"], retries=2, settle_seconds=0) == 0
+
+
+def test_cleanup_vip_content_lists_by_tag_then_deletes():
+    calls: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        path = request.url.path
+        if request.method == "GET" and path.endswith("/v1/tags"):
+            return httpx.Response(200, json=[{"id": "t1", "name": "_vip_test"}])
+        if request.method == "GET" and path.endswith("/v1/tags/t1/content"):
+            return httpx.Response(200, json={"results": [{"guid": "a"}, {"guid": "b"}]})
+        if request.method == "DELETE":
+            return httpx.Response(200)
+        if request.method == "GET":
+            return httpx.Response(404)  # verify on /v1/content/<guid>
+        return httpx.Response(200)
+
+    cc = _client_with_handler(handler)
+    assert cc.cleanup_vip_content() == 2
+    # The hardened path verifies each delete with a follow-up GET; the old
+    # single-shot delete_content loop never did, so this drives the change.
+    assert ("GET", "/__api__/v1/content/a") in calls
+    assert ("GET", "/__api__/v1/content/b") in calls
+
+
+def test_cleanup_vip_content_no_raise_when_tag_lookup_fails():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/v1/tags"):
+            return httpx.Response(500)
+        return httpx.Response(200)
+
+    cc = _client_with_handler(handler)
+    assert cc.cleanup_vip_content() == 0

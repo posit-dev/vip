@@ -243,19 +243,10 @@ class ConnectClient(BaseClient):
     def cleanup_vip_content(self) -> int:
         """Delete all content tagged with the VIP test tag.
 
-        Returns the number of items deleted.
+        Returns the number of items deleted.  Never raises.
         """
-        items = self.list_vip_content()
-        deleted = 0
-        for item in items:
-            guid = item.get("guid")
-            if guid:
-                try:
-                    self.delete_content(guid)
-                    deleted += 1
-                except Exception:
-                    pass
-        return deleted
+        guids = [item.get("guid") for item in self.list_vip_content()]
+        return self.cleanup_content(guids)
 
     # -- Tags ---------------------------------------------------------------
 
