@@ -24,8 +24,8 @@ from pytest_bdd import given, scenarios, then, when
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
-    TIMEOUT_SESSION_START,
     assert_homepage_loaded,
+    wait_for_session_active,
     workbench_login,
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
@@ -231,9 +231,11 @@ def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Pa
     for session in launched_sessions:
         name = session["name"]
         profile = session["profile"] or "default"
-        active = page.locator(Homepage.session_row_status(name, "Active")).first
+        # Fails fast when a session reaches a terminal state (e.g. Failed),
+        # so a fully-broken launcher records all profiles quickly instead of
+        # blocking the full session-start timeout per profile.
         try:
-            expect(active).to_be_visible(timeout=TIMEOUT_SESSION_START)
+            wait_for_session_active(page, name)
         except AssertionError:
             failures.append(profile)
 
