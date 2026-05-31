@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.36.4 (2026-05-31)
+
+### Bug Fixes
+
+- **connect**: Stop data-source step being collected as a stray test
+  ([#322](https://github.com/posit-dev/vip/pull/322),
+  [`173ca90`](https://github.com/posit-dev/vip/commit/173ca90142ed236a057191abf1610f23466d491a))
+
+
 ## v0.36.3 (2026-05-29)
 
 ### Bug Fixes
