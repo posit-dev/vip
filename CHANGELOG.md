@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.36.5 (2026-06-01)
+
+### Bug Fixes
+
+- **workflows**: Force re-triage cleanup + pin agent models
+  ([#323](https://github.com/posit-dev/vip/pull/323),
+  [`790fb86`](https://github.com/posit-dev/vip/commit/790fb86509bf45872fe82922762b76740ce18e68))
+
+### Continuous Integration
+
+- **example-report**: Free disk space before image pulls
+  ([#324](https://github.com/posit-dev/vip/pull/324),
+  [`4f287d7`](https://github.com/posit-dev/vip/commit/4f287d76600f603ed2b9c2c2eb9d061449764a16))
+
+
 ## v0.36.4 (2026-05-31)
 
 ### Bug Fixes
