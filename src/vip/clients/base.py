@@ -40,6 +40,11 @@ class BaseClient:
     ca_bundle:
         Path to a custom CA certificate bundle (PEM) to trust in addition
         to the system roots.  Useful for self-signed or corporate CAs.
+    extra_headers:
+        Additional static default headers for the httpx client.  Use for
+        app-level auth that must NOT occupy the ``Authorization`` header
+        because *auth* already owns it — e.g. Connect's ``X-RSC-Authorization``
+        when reached through an SPCS ingress that consumes ``Authorization``.
     """
 
     def __init__(
@@ -51,11 +56,14 @@ class BaseClient:
         insecure: bool = False,
         ca_bundle: Path | None = None,
         auth: httpx.Auth | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         headers: dict[str, str] = {}
         if auth_header_value:
             headers["Authorization"] = auth_header_value
+        if extra_headers:
+            headers.update(extra_headers)
         # Compute the httpx ``verify`` argument from TLS config:
         #   insecure=True  → False  (skip all certificate verification)
         #   ca_bundle set  → str path  (use custom CA bundle)
@@ -66,9 +74,10 @@ class BaseClient:
             verify = str(ca_bundle)
         else:
             verify = True
-        # Store for subclasses that need to create ad-hoc httpx clients with
-        # the same TLS configuration (e.g. temporary cookie-based clients).
+        # Store for subclasses that need to create ad-hoc httpx requests with
+        # the same TLS configuration and per-request auth (e.g. fetch_content).
         self._verify = verify
+        self._auth = auth
         # HTTPTransport retries cover connection-level failures (e.g. refused
         # connections, broken pipes).  HTTP-level errors (502/503/504) are not
         # retried here — ConnectClient.wait_for_task already handles those at
