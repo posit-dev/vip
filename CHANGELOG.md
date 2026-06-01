@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.36.7 (2026-06-01)
+
+### Bug Fixes
+
+- **implement-plan**: Stop the agent inventing a placeholder PR number
+  ([#329](https://github.com/posit-dev/vip/pull/329),
+  [`e23bd75`](https://github.com/posit-dev/vip/commit/e23bd75b8db765bb8eebd20ded0d2e3731f8f11c))
+
+
 ## v0.36.6 (2026-06-01)
 
 ### Bug Fixes
