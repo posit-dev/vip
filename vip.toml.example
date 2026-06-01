@@ -61,6 +61,32 @@ url = "https://workbench.example.com"
 # positron = ["quarto.quarto"]
 # jupyterlab = []
 
+# Kubernetes-specific capacity and autoscaling tests.
+# Cluster credentials are read from the ambient environment (kubeconfig /
+# KUBECONFIG env var / in-cluster service account) — no separate credential
+# fields required.  Requires the 'kubernetes' Python package: uv add kubernetes
+# [workbench.kubernetes]
+# enabled = false
+# namespace = "posit-team"
+#
+# Map node-pool names to resource profile labels for routing verification.
+# [workbench.kubernetes.node_pool_profiles]
+# "cpu-pool" = "Small"
+# "gpu-pool" = "GPU Large"
+#
+# Hard session ceiling (for capacity limit test).
+# max_sessions = 10
+#
+# Expected CPU limits (cores) per resource profile.
+# [workbench.kubernetes.profile_cpu_limit]
+# "Small" = 1.0
+# "Large" = 4.0
+#
+# Expected memory limits (GiB) per resource profile.
+# [workbench.kubernetes.profile_memory_limit_gib]
+# "Small" = 2.0
+# "Large" = 8.0
+
 [package_manager]
 enabled = true
 url = "https://packagemanager.example.com"

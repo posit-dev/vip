@@ -10,6 +10,7 @@ import time
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
+from pytest_bdd import given
 
 from vip.clients.workbench import WorkbenchClient
 from vip_tests.workbench.pages import Homepage, LoginPage
@@ -443,3 +444,32 @@ def wb_login(
     assert_homepage_loaded(page)
 
     return page
+
+
+# ---------------------------------------------------------------------------
+# Shared BDD steps
+# ---------------------------------------------------------------------------
+
+
+@given("Workbench is accessible and I am logged in")
+def workbench_accessible_and_logged_in(
+    page: Page,
+    workbench_url: str,
+    test_username: str,
+    test_password: str,
+    auth_provider: str,
+    interactive_auth: bool,
+    auth_mode: str,
+    workbench_auth_error: str | None,
+):
+    workbench_login(
+        page,
+        workbench_url,
+        test_username,
+        test_password,
+        auth_provider,
+        interactive_auth,
+        auth_mode=auth_mode,
+        workbench_auth_error=workbench_auth_error,
+    )
+    assert_homepage_loaded(page)
