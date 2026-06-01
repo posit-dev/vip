@@ -382,10 +382,14 @@ def _fill_snowflake_login(page: Page, username: str, password: str) -> None:
         # Let the OAuth redirect chain advance to the next hop before looking
         # for another form. Filling without waiting for navigation races the
         # redirect and re-submits a stale form, which stalls the flow.
+        # (Named, typed predicate rather than a lambda so mypy can type it; the
+        # ``_before`` default snapshots this hop's URL — also avoids closing over
+        # the loop variable.)
+        def url_advanced(url: str, _before: str = before) -> bool:
+            return url != _before
+
         try:
-            page.wait_for_url(
-                lambda url, _before=before: url != _before, timeout=_SF_NEXT_FORM_TIMEOUT
-            )
+            page.wait_for_url(url_advanced, timeout=_SF_NEXT_FORM_TIMEOUT)
         except (PlaywrightTimeout, Error):
             pass
 
