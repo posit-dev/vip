@@ -12,6 +12,22 @@ jobs:
         with:
           persist-credentials: false
 
+      # Free disk space before pulling the Connect, Workbench, and Package
+      # Manager images plus the Playwright Chromium download. The default
+      # ubuntu-latest root volume (~14 GB free) otherwise fills up and the
+      # "Install Playwright browsers" step dies with "No space left on device".
+      # tool-cache is preserved so setup-uv and quarto-actions keep their caches.
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: true
+
       # Skip Package Manager steps if the license secret is not configured
       - name: Check for RSPM_LICENSE
         id: pm-license
