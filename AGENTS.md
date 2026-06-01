@@ -222,6 +222,8 @@ The report lives in `report/` and reads `report/results.json` (written by pytest
 
 PR titles must use conventional commit format. CI enforces this via `.github/workflows/pr-title.yml`. Squash merges use the PR title as the commit message, so the title directly becomes the git history.
 
+For Copilot-authored PRs, set the PR title to conventional format before requesting review. If the generated title is not conventional, rename it immediately instead of waiting for CI feedback.
+
 ### Format
 
 ```
