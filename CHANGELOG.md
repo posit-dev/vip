@@ -1,6 +1,29 @@
 # CHANGELOG
 
 
+## v0.36.6 (2026-06-01)
+
+### Bug Fixes
+
+- **issue-triage**: Allow cd and unmask re-triage label removal
+  ([#328](https://github.com/posit-dev/vip/pull/328),
+  [`9b8a53d`](https://github.com/posit-dev/vip/commit/9b8a53d8aa3fad4f3d638cce9438f0dd872da6da))
+
+### Documentation
+
+- Plan for #303 — verify expected R/Python versions on Workbench
+  ([#314](https://github.com/posit-dev/vip/pull/314),
+  [`c900ef3`](https://github.com/posit-dev/vip/commit/c900ef3d9168f903c027b54f143c7aa31a3abff4))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.36.5 (2026-06-01)
 
 ### Bug Fixes
