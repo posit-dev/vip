@@ -174,7 +174,18 @@ class Homepage:
     def session_row_status(name: str, status: str) -> str:
         """Selector for session row with specific status.
 
-        Finds the row containing the session name, then matches if
-        that row's status cell contains the given status.
+        Finds the row containing the session name, then matches that row's
+        status indicator for the given status.
+
+        Workbench rendered the status differently across versions: before
+        2026.06 it was a ``div[aria-label='<status>']``; on 2026.06 it is a
+        button whose accessible name is the status word (sourced from either
+        its text or an ``aria-label``).  Match any of these forms with a
+        comma-separated selector so status checks survive the UI change.
         """
-        return f"tr[aria-label$='{name}'] div[aria-label='{status}']"
+        row = f"tr[aria-label$='{name}']"
+        return (
+            f"{row} div[aria-label='{status}'], "
+            f"{row} button[aria-label='{status}'], "
+            f"{row} button:text-is('{status}')"
+        )

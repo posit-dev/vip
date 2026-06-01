@@ -13,11 +13,10 @@ from pytest_bdd import given, scenario, then, when
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_IDE_LOAD,
-    TIMEOUT_PAGE_LOAD,
     TIMEOUT_QUICK,
-    TIMEOUT_SESSION_START,
     assert_homepage_loaded,
     unique_session_name,
+    wait_for_session_active,
     workbench_login,
 )
 from vip_tests.workbench.pages import (
@@ -88,12 +87,12 @@ def _start_session(page: Page, session_name: str) -> None:
 
 
 def _wait_for_active_and_join(page: Page, session_name: str) -> None:
-    """Wait for the session to reach Active state, then navigate into it."""
-    session_row = page.locator(Homepage.session_row(session_name))
-    expect(session_row).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+    """Wait for the session to reach Active state, then navigate into it.
 
-    session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
-    expect(session_active).to_be_visible(timeout=TIMEOUT_SESSION_START)
+    Fails fast with an actionable message if the session reaches a terminal
+    state (e.g. Failed) rather than waiting out the full session-start timeout.
+    """
+    session_row = wait_for_session_active(page, session_name)
 
     session_link = session_row.locator(f"a[title='join {session_name}']")
     expect(session_link).to_be_visible(timeout=TIMEOUT_DIALOG)
