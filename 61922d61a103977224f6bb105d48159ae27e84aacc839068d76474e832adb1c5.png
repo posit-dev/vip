@@ -1,0 +1,12 @@
+### Result
+- [Screenshot of full page](.playwright-cli/page-2026-06-01T22-33-58-076Z.png)
+### Ran Playwright code
+```js
+// Screenshot full page and save it as .playwright-cli/page-2026-06-01T22-33-58-076Z.png
+await page.screenshot({
+  fullPage: true,
+  path: '.playwright-cli/page-2026-06-01T22-33-58-076Z.png',
+  scale: 'css',
+  type: 'png'
+});
+```

@@ -1,0 +1,7 @@
+### Error
+TimeoutError: Timeout 5000ms exceeded.
+Call log:
+[2m  - taking page screenshot[22m
+[2m  - waiting for fonts to load...[22m
+[2m  - fonts loaded[22m
+
