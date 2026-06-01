@@ -4,7 +4,7 @@
 
 VIP currently verifies that expected R, Python, and Quarto versions are registered with Connect (via `src/vip_tests/connect/test_runtime_versions.feature`), but does not perform the same verification for Workbench. A customer running UAT identified this gap — they need to confirm that the runtime versions available in Workbench session dialogs match their approved list, with EOL versions excluded.
 
-This is a parallel check to the existing Connect verification, reusing the same `expected_r_versions` and `expected_python_versions` configuration fields from `vip.toml` but exercising Workbench's New Session dialog rather than Connect's API.
+This is a parallel check to the existing Connect verification, reusing the same `expected_r_versions` and `expected_python_versions` configuration fields from `vip.toml` for allow-list matching, adding deny-list pattern checks for excluded versions, and exercising Workbench's New Session dialog rather than Connect's API.
 
 ## Architecture
 
@@ -27,7 +27,7 @@ This mirrors the Connect runtime tests but uses UI automation instead of API cal
 
 **Modified files:**
 - `src/vip_tests/workbench/pages/__init__.py` — Export new page object class (if created)
-- UNCONFIRMED: `src/vip/config.py` — may need to add an optional `unexpected_r_versions: bool` flag under `[runtimes]` to control strict vs. additive version assertions (default `true` for backward compatibility)
+- `src/vip/config.py` — add explicit runtime allow-list + deny-list pattern config support for Workbench runtime verification (no optional strict-mode toggle)
 
 ## Verification
 
@@ -44,15 +44,15 @@ End-to-end verification requires a live Workbench deployment with multiple R and
 uv run vip verify --config vip.toml --categories workbench -- -k runtime_versions -v
 ```
 
-Expected output: three passing scenarios (or fewer if `expected_r_versions` / `expected_python_versions` are not configured in `vip.toml`).
+Expected output: three passing scenarios (or fewer if `expected_r_versions` / `expected_python_versions` are not configured in `vip.toml`), including the in-session scenario that verifies the launched RStudio session reports the expected runtime version.
 
-## Open questions
+## Scoped decisions
 
-1. **UNCONFIRMED: Unexpected versions flag** — The issue proposes an optional `unexpected_r_versions: bool` config flag (default `true`) to control whether "no unexpected versions are offered" is enforced. This would allow some customers to use an allow-list approach (strict) while others use additive (only verify expected versions are present, but don't fail if extras exist). The plan assumes this is added to `RuntimesConfig` in `src/vip/config.py`, but the implementation PR may defer this until a customer explicitly requests it.
+1. **Allow-list and deny-list patterns are in scope** — The implementation will support both expected-version allow-list patterns and excluded-version deny-list patterns for R and Python runtime selectors in the Workbench New Session dialog.
 
-2. **UNCONFIRMED: Third scenario dependency** — The issue's third scenario ("An RStudio project opens with the expected R version") requires in-session code execution to read `R.version.string`. The issue notes this "depends on the in-session execution primitive (separate issue)". The plan assumes this scenario will be marked `@skip` or deferred to a follow-up PR until that primitive is available.
+2. **Third scenario is in scope** — The implementation will include and run the in-session runtime verification scenario (RStudio session launches and reports the expected runtime version) in this issue.
 
-3. **UNCONFIRMED: Workbench API alternative** — Workbench may expose runtime version information via `/api/server/settings` or a similar endpoint, which would allow simpler API-based verification instead of UI scraping. If such an API exists, the implementation should prefer it for the first two scenarios and only use Playwright for the third (in-session verification). The plan assumes no such API exists based on the Connect/Workbench client code review, but the implementer should confirm.
+3. **UI-based verification is the approach** — Workbench runtime-version checks will use Playwright UI automation. This plan does not assume a Workbench API endpoint for runtime version inventory.
 
 ## Out of scope
 
