@@ -132,8 +132,13 @@ PR body must include:
   just demo-save bot-implement-issue-<num>
   ```
 
-Comment on the plan PR ("Implementation PR opened: #<new-pr-num>") and
-on the originating issue ("Implementation in progress: #<new-pr-num>").
+Then comment on the originating issue (`#<issue-num>`, which you know)
+that implementation is in progress. Do **not** reference the new
+implementation PR's number — you cannot know it while the run is in
+progress, and you must not invent a placeholder such as `#aw_impl<n>`.
+gh-aw automatically posts a "Related Items" link to the new PR on this
+plan PR, so the cross-link is handled for you; describe the work in
+prose only.
 
 ## Step 5 — bail to comment
 
