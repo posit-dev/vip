@@ -46,6 +46,9 @@ safe-outputs:
   add-labels:
     max: 3
     allowed: ["triaged-by-bot", "needs-human-triage"]
+  remove-labels:
+    max: 1
+    allowed: ["re-triage"]
   create-pull-request:
     branch-prefix: "bot-"
     draft: false
@@ -80,20 +83,16 @@ in order. Do not skip them. Do not defer them to the end of the run —
 partial-failure recovery depends on them happening at the start.
 
 1. **Remove the `re-triage` label if it is present.** Look at the labels
-   you read in Step 1. If `re-triage` is among them, remove it with
-   exactly this command — run it as-is, do not prepend `cd` or wrap it in
-   any other command:
+   you read in Step 1. If `re-triage` is among them, remove it by calling
+   the `remove_labels` safe-output tool with `{"labels": ["re-triage"]}`
+   (it targets the triggering issue). Do **not** use a
+   `gh issue edit --remove-label` shell command — the bash policy denies
+   it and any failure is silently swallowed, which is why this label
+   persisted across every earlier run. The `remove_labels` safe-output
+   uses the bot's write-capable token and is the only reliable path, the
+   same way `add_labels` is for adding.
 
-   ```
-   gh issue edit ${{ github.event.issue.number }} --remove-label re-triage
-   ```
-
-   Do NOT append `|| true` or otherwise suppress the exit status. If the
-   removal fails, that failure must be visible in the run log, not
-   silently swallowed — a swallowed failure is why this label kept
-   persisting across earlier runs. If `re-triage` is not in the labels,
-   skip this command (running it on an issue that lacks the label is an
-   error).
+   If `re-triage` is not among the labels, do not call the tool.
 
    Humans apply `re-triage` to request a re-run; the bot consumes it
    here at the start of every run. If the label is not removed, the next
