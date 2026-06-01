@@ -18,6 +18,7 @@ tools:
       client-id: ${{ secrets.POSIT_VIP_TRIAGE_CLIENT_ID }}
       private-key: ${{ secrets.POSIT_VIP_TRIAGE_PEM }}
   bash:
+    - "cd *"
     - "gh issue view *"
     - "gh issue edit *"
     - "gh issue comment *"
@@ -78,20 +79,27 @@ Before proceeding to Step 2, you MUST perform these two cleanup actions
 in order. Do not skip them. Do not defer them to the end of the run —
 partial-failure recovery depends on them happening at the start.
 
-1. **Remove the `re-triage` label.** Run this command unconditionally
-   — do not check first whether the label is present, do not skip if
-   you think it might not be there. Run it on every invocation. The
-   `|| true` makes it a no-op when the label is absent:
+1. **Remove the `re-triage` label if it is present.** Look at the labels
+   you read in Step 1. If `re-triage` is among them, remove it with
+   exactly this command — run it as-is, do not prepend `cd` or wrap it in
+   any other command:
 
    ```
-   gh issue edit ${{ github.event.issue.number }} --remove-label re-triage || true
+   gh issue edit ${{ github.event.issue.number }} --remove-label re-triage
    ```
+
+   Do NOT append `|| true` or otherwise suppress the exit status. If the
+   removal fails, that failure must be visible in the run log, not
+   silently swallowed — a swallowed failure is why this label kept
+   persisting across earlier runs. If `re-triage` is not in the labels,
+   skip this command (running it on an issue that lacks the label is an
+   error).
 
    Humans apply `re-triage` to request a re-run; the bot consumes it
-   here at the start of every run. If you skip this command, the label
-   persists, the next `issues.labeled` event will not be distinguishable
-   from a fresh re-triage request, and you will appear to ignore
-   maintainer instructions. Run the command.
+   here at the start of every run. If the label is not removed, the next
+   `issues.labeled` event will not be distinguishable from a fresh
+   re-triage request, and you will appear to ignore maintainer
+   instructions.
 
 2. **Create the four triage labels idempotently** so subsequent
    `--add-label` calls succeed. The `--force` flag makes these safe
