@@ -25,6 +25,10 @@ class NewSessionDialog:
     IMAGE_DROPDOWN = "#rstudio_label_image"
     IMAGE_EDIT_BUTTON = "#rstudio_group_image button"
 
+    # Runtime version selectors
+    R_VERSION_DROPDOWN = "#rstudio_label_r_version"
+    PYTHON_VERSION_DROPDOWN = "#rstudio_label_python_version"
+
     # IDE icons (legacy modal)
     RSTUDIO_PRO_ICON = "[id*=trigger-RStudio]"
     VSCODE_ICON = ".rstudio-modal [title='New VS Code session']"

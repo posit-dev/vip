@@ -316,6 +316,8 @@ class RuntimesConfig:
 
     r_versions: list[str] = field(default_factory=list)
     python_versions: list[str] = field(default_factory=list)
+    r_excluded_versions: list[str] = field(default_factory=list)
+    python_excluded_versions: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -495,6 +497,8 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         runtimes=RuntimesConfig(
             r_versions=runtimes_raw.get("r_versions", []),
             python_versions=runtimes_raw.get("python_versions", []),
+            r_excluded_versions=runtimes_raw.get("r_excluded_versions", []),
+            python_excluded_versions=runtimes_raw.get("python_excluded_versions", []),
         ),
         performance=PerformanceConfig.from_dict(performance_raw),
         data_sources=data_sources,
