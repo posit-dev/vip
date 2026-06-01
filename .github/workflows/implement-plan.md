@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "thoughts/shared/plans/**.md"
+engine:
+  id: copilot
+  model: claude-sonnet-4.6
 permissions:
   contents: read
   issues: read

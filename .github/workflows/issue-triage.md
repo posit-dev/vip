@@ -4,6 +4,9 @@ on:
     types: [opened, reopened, labeled]
   issue_comment:
     types: [created]
+engine:
+  id: copilot
+  model: claude-opus-4.7
 permissions:
   contents: read
   issues: read
@@ -75,14 +78,20 @@ Before proceeding to Step 2, you MUST perform these two cleanup actions
 in order. Do not skip them. Do not defer them to the end of the run —
 partial-failure recovery depends on them happening at the start.
 
-1. **Remove the `re-triage` label** if it is present on the issue.
-   Humans apply this label to request a re-run; the bot consumes it
-   here on every run. Check the labels from Step 1's `gh issue view`
-   output. If `re-triage` is among them, run:
+1. **Remove the `re-triage` label.** Run this command unconditionally
+   — do not check first whether the label is present, do not skip if
+   you think it might not be there. Run it on every invocation. The
+   `|| true` makes it a no-op when the label is absent:
 
    ```
-   gh issue edit ${{ github.event.issue.number }} --remove-label re-triage
+   gh issue edit ${{ github.event.issue.number }} --remove-label re-triage || true
    ```
+
+   Humans apply `re-triage` to request a re-run; the bot consumes it
+   here at the start of every run. If you skip this command, the label
+   persists, the next `issues.labeled` event will not be distinguishable
+   from a fresh re-triage request, and you will appear to ignore
+   maintainer instructions. Run the command.
 
 2. **Create the four triage labels idempotently** so subsequent
    `--add-label` calls succeed. The `--force` flag makes these safe
