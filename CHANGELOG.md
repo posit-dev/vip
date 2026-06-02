@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.38.0 (2026-06-02)
+
+### Features
+
+- **workbench**: Add Kubernetes autoscaling and capacity probes (closes #304)
+  ([#334](https://github.com/posit-dev/vip/pull/334),
+  [`b0c846d`](https://github.com/posit-dev/vip/commit/b0c846d8aa851bbd521b6b8b1c5b5c43ed9b530c))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.37.0 (2026-06-02)
 
 ### Continuous Integration
