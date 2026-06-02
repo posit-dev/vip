@@ -55,7 +55,7 @@ cluster = [
     "azure-identity>=1.12",
     "azure-mgmt-containerservice>=20.0",
     "pyyaml>=6.0",
-    "pyjwt>=2.12.0",  # CVE-2026-32597 fix; transitive via msal
+    "pyjwt>=2.13.0",  # CVE-2026-32597, PYSEC-2026-175/177/178/179 fix; transitive via msal
     "cryptography>=46.0.7",  # CVE-2026-39892 fix; transitive via boto3/urllib3
 ]
 load = [

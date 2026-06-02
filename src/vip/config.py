@@ -152,6 +152,9 @@ class WorkbenchConfig(ProductConfig):
     session_profiles: list[str] | None = None
     session_count: int = 3  # sessions per profile in capacity tests
     extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
+    # Maximum seconds to wait for a job (Background Job or Workbench Job) to
+    # complete.  Increase for slow clusters or high-latency networks.
+    job_timeout: int = 120
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -164,7 +167,8 @@ class WorkbenchConfig(ProductConfig):
             f"WorkbenchConfig(enabled={self.enabled!r}, url={self.url!r}, "
             f"version={self.version!r}, api_key={api_key_repr}, "
             f"session_profiles={self.session_profiles!r}, "
-            f"session_count={self.session_count!r}, extensions={self.extensions!r})"
+            f"session_count={self.session_count!r}, "
+            f"job_timeout={self.job_timeout!r}, extensions={self.extensions!r})"
         )
 
     @classmethod
@@ -176,6 +180,7 @@ class WorkbenchConfig(ProductConfig):
             api_key=raw.get("api_key", ""),
             session_profiles=raw.get("session_profiles"),
             session_count=raw.get("session_count", 3),
+            job_timeout=raw.get("job_timeout", 120),
             extensions=WorkbenchExtensionsConfig.from_dict(raw.get("extensions", {})),
         )
 
