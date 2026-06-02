@@ -6,6 +6,7 @@ on:
     paths:
       - 'report/**'
       - 'src/**'
+      - 'website/**'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/preview.yml'
