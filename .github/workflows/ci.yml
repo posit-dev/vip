@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
+    paths:
+      - 'src/**'
+      - 'selftests/**'
+      - 'examples/**'
+      - 'docker/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/ci.yml'
+      - '.github/zizmor.yml'
 
 jobs:
   lint:
