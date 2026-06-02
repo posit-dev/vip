@@ -103,11 +103,7 @@ class KubernetesClient:
         node_name = pod.spec.node_name
         node = self._core.read_node(name=node_name)
         labels: dict[str, str] = node.metadata.labels or {}
-        return (
-            labels.get("agentpool")
-            or labels.get("cloud.google.com/gke-nodepool")
-            or ""
-        )
+        return labels.get("agentpool") or labels.get("cloud.google.com/gke-nodepool") or ""
 
     # -- Resource quota queries --------------------------------------------
 
@@ -116,9 +112,7 @@ class KubernetesClient:
 
         Returns an empty dict when no quota is configured.
         """
-        quotas = self._core.list_namespaced_resource_quota(
-            namespace=self._namespace
-        ).items
+        quotas = self._core.list_namespaced_resource_quota(namespace=self._namespace).items
         if not quotas:
             return {}
         return dict(quotas[0].status.hard or {})

@@ -333,9 +333,7 @@ def pod_has_expected_limits(
 
 
 @then("I clean up all launched sessions")
-def cleanup_k8s_sessions(
-    launched_sessions: list[dict], page: Page, workbench_url: str, vip_config
-):
+def cleanup_k8s_sessions(launched_sessions: list[dict], page: Page, workbench_url: str, vip_config):
     _cleanup_sessions(
         page, workbench_url, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
     )
