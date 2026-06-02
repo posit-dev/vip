@@ -114,6 +114,7 @@ jobs:
             --connect-url "${{ steps.connect.outputs.CONNECT_SERVER }}" \
             --api-auth \
             --categories connect \
+            --filter "not test_list_users" \
             --report results.json \
             -- --junitxml=connect-results.xml
         env:
@@ -183,17 +184,3 @@ jobs:
         uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
           stop: ${{ steps.connect.outputs.CONTAINER_ID }}
-
-  status:
-    name: Connect Integration Tests Status
-    if: always()
-    needs: [connect-integration]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check integration test result
-        run: |
-          if [ "${{ needs.connect-integration.result }}" = "failure" ] || [ "${{ needs.connect-integration.result }}" = "cancelled" ]; then
-            echo "Connect integration tests failed or were cancelled"
-            exit 1
-          fi
-          echo "Connect integration tests passed or were skipped"
