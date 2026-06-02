@@ -157,6 +157,28 @@ const productTotalSum = Object.values(productTotals).reduce((a, b) => a + b, 0);
         </div>
       </div>
 
+      {/* Deployment environments section */}
+      <div class="host-platforms-section">
+        <h2>Deployment Environments</h2>
+        <p class="host-platforms-desc">
+          Posit Team deployment targets that VIP can verify.
+        </p>
+        <div class="host-platforms-grid">
+          <div class="host-platform-card">
+            <span class="host-platform-icon">&#10003;</span>
+            <strong>Standalone (Linux)</strong>
+          </div>
+          <div class="host-platform-card">
+            <span class="host-platform-icon">&#10003;</span>
+            <strong>Kubernetes</strong>
+          </div>
+          <div class="host-platform-card">
+            <span class="host-platform-icon">&#10003;</span>
+            <strong>Snowflake Native App</strong>
+          </div>
+        </div>
+      </div>
+
       {/* Not yet covered section */}
       <div class="not-covered-section">
         <h2>Not Yet Covered</h2>
