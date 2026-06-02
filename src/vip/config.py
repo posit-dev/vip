@@ -122,6 +122,46 @@ class ConnectConfig(ProductConfig):
 
 
 @dataclass
+class WorkbenchKubernetesConfig:
+    """Kubernetes-specific configuration for Workbench session capacity tests.
+
+    Cluster access is **inherited from the ambient environment** — the default
+    kubeconfig at ``~/.kube/config``, the ``KUBECONFIG`` env var, or an
+    in-cluster service account token — exactly the same credentials that
+    ``kubectl`` would use.  No separate credential fields are stored here.
+    """
+
+    enabled: bool = False
+    namespace: str = "posit-team"
+    # Node-pool name → resource profile label mapping.  Used to verify that
+    # sessions with a given profile land on the expected node pool.
+    # Example: {"cpu-pool": "Small", "gpu-pool": "GPU Large"}
+    node_pool_profiles: dict[str, str] = field(default_factory=dict)
+    # Hard session ceiling imposed by an LimitRange or a custom cap.
+    max_sessions: int | None = None
+    # Expected CPU limit (cores) for each named resource profile.
+    # Example: {"Small": 1.0, "Large": 4.0}
+    profile_cpu_limit: dict[str, float] = field(default_factory=dict)
+    # Expected memory limit (GiB) for each named resource profile.
+    profile_memory_limit_gib: dict[str, float] = field(default_factory=dict)
+
+    @property
+    def is_configured(self) -> bool:
+        return self.enabled
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> WorkbenchKubernetesConfig:
+        return cls(
+            enabled=raw.get("enabled", False),
+            namespace=raw.get("namespace", "posit-team"),
+            node_pool_profiles=raw.get("node_pool_profiles", {}),
+            max_sessions=raw.get("max_sessions"),
+            profile_cpu_limit=raw.get("profile_cpu_limit", {}),
+            profile_memory_limit_gib=raw.get("profile_memory_limit_gib", {}),
+        )
+
+
+@dataclass
 class WorkbenchExtensionsConfig:
     """Additional IDE extensions the admin expects to be installed.
 
@@ -151,10 +191,11 @@ class WorkbenchConfig(ProductConfig):
     # from the UI dropdown; explicit list = test only these profiles.
     session_profiles: list[str] | None = None
     session_count: int = 3  # sessions per profile in capacity tests
-    extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
     # Maximum seconds to wait for a job (Background Job or Workbench Job) to
     # complete.  Increase for slow clusters or high-latency networks.
     job_timeout: int = 120
+    extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
+    kubernetes: WorkbenchKubernetesConfig = field(default_factory=WorkbenchKubernetesConfig)
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -167,8 +208,8 @@ class WorkbenchConfig(ProductConfig):
             f"WorkbenchConfig(enabled={self.enabled!r}, url={self.url!r}, "
             f"version={self.version!r}, api_key={api_key_repr}, "
             f"session_profiles={self.session_profiles!r}, "
-            f"session_count={self.session_count!r}, "
-            f"job_timeout={self.job_timeout!r}, extensions={self.extensions!r})"
+            f"session_count={self.session_count!r}, job_timeout={self.job_timeout!r}, "
+            f"extensions={self.extensions!r}, kubernetes={self.kubernetes!r})"
         )
 
     @classmethod
@@ -182,6 +223,7 @@ class WorkbenchConfig(ProductConfig):
             session_count=raw.get("session_count", 3),
             job_timeout=raw.get("job_timeout", 120),
             extensions=WorkbenchExtensionsConfig.from_dict(raw.get("extensions", {})),
+            kubernetes=WorkbenchKubernetesConfig.from_dict(raw.get("kubernetes", {})),
         )
 
 

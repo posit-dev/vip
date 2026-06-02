@@ -18,16 +18,14 @@ from __future__ import annotations
 
 import pytest
 from playwright.sync_api import Page, expect
-from pytest_bdd import given, scenarios, then, when
+from pytest_bdd import scenarios, then, when
 
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
     _quit_vip_sessions_via_cookies,
-    assert_homepage_loaded,
     format_capacity_failure,
     wait_for_session_active,
-    workbench_login,
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
 
@@ -145,35 +143,6 @@ def _cleanup_sessions_via_api(
     _quit_vip_sessions_via_cookies(
         workbench_base_url, cookies, insecure=insecure, ca_bundle=ca_bundle
     )
-
-
-# ---------------------------------------------------------------------------
-# Given
-# ---------------------------------------------------------------------------
-
-
-@given("Workbench is accessible and I am logged in")
-def workbench_logged_in(
-    page: Page,
-    workbench_url: str,
-    test_username: str,
-    test_password: str,
-    auth_provider: str,
-    interactive_auth: bool,
-    auth_mode: str,
-    workbench_auth_error: str | None,
-):
-    workbench_login(
-        page,
-        workbench_url,
-        test_username,
-        test_password,
-        auth_provider,
-        interactive_auth,
-        auth_mode=auth_mode,
-        workbench_auth_error=workbench_auth_error,
-    )
-    assert_homepage_loaded(page)
 
 
 # ---------------------------------------------------------------------------
