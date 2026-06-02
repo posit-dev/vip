@@ -80,9 +80,11 @@ jobs:
       # Resolve the actual Connect version for unambiguous job records
       - name: Resolve Connect version
         id: version
+        env:
+          VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
         run: |
           RESPONSE=$(curl -sf \
-            -H "Authorization: Key ${{ steps.connect.outputs.CONNECT_API_KEY }}" \
+            -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
             "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings")
           VERSION=$(echo "${RESPONSE}" | jq -r '.version')
           if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
