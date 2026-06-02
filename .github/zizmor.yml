@@ -15,7 +15,7 @@ rules:
     #   - website-preview.yml  -- rossjrw/pr-preview-action pushes to gh-pages
     ignore:
       - release.yml:18:9
-      - preview.yml:25:9
-      - preview.yml:45:9
-      - website-preview.yml:25:9
-      - website-preview.yml:89:9
+      - preview.yml:32:9
+      - preview.yml:52:9
+      - website-preview.yml:36:9
+      - website-preview.yml:100:9
