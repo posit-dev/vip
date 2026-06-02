@@ -25,7 +25,6 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_IDE_LOAD,
     TIMEOUT_PAGE_LOAD,
     TIMEOUT_QUICK,
-    TIMEOUT_SESSION_START,
     assert_homepage_loaded,
     unique_session_name,
     wait_for_session_active,
