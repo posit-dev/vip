@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
 from vip.config import (
-    VIPConfig,
     WorkbenchConfig,
     WorkbenchKubernetesConfig,
     load_config,
