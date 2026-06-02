@@ -41,8 +41,7 @@ class RStudioSession:
     WORKBENCH_JOBS_PANEL = "#rstudio_workbench_panel_workbenchjobs"
     WORKBENCH_JOBS_TAB = "[id*='workbenchjobs'], button:text-is('Workbench Jobs')"
     WORKBENCH_JOB_NEW_BUTTON = (
-        "button[title='Run Script as Workbench Job'], "
-        "button:text-is('Run Script as Workbench Job')"
+        "button[title='Run Script as Workbench Job'], button:text-is('Run Script as Workbench Job')"
     )
     WORKBENCH_JOB_SUBMIT_BUTTON = "button:text-is('Submit')"
 
@@ -51,6 +50,4 @@ class RStudioSession:
         "span:text-is('Succeeded'), span:text-is('Completed'), "
         "[class*='job-status']:text-is('Succeeded')"
     )
-    JOB_OUTPUT_AREA = (
-        "[class*='job-output'], [id*='job_output'], [class*='Jobs'] [class*='output']"
-    )
+    JOB_OUTPUT_AREA = "[class*='job-output'], [id*='job_output'], [class*='Jobs'] [class*='output']"
