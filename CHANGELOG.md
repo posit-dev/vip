@@ -1,6 +1,58 @@
 # CHANGELOG
 
 
+## v0.37.0 (2026-06-02)
+
+### Continuous Integration
+
+- Add network allowlist for preview screenshot gallery
+  ([#326](https://github.com/posit-dev/vip/pull/326),
+  [`903a472`](https://github.com/posit-dev/vip/commit/903a472f826cf215b43f5a458ff98243e7df4121))
+
+- **issue-triage**: Remove re-triage via remove_labels safe-output
+  ([#331](https://github.com/posit-dev/vip/pull/331),
+  [`e097859`](https://github.com/posit-dev/vip/commit/e0978595f603790555d90291c55cf62cb122866b))
+
+### Documentation
+
+- Plan for #302 — workbench jobs coverage ([#316](https://github.com/posit-dev/vip/pull/316),
+  [`7081d5b`](https://github.com/posit-dev/vip/commit/7081d5beed591e8a5b61a23ec36ca9c25d80bd6e))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+- Plan for #304 — add Kubernetes autoscaling and capacity probes
+  ([#311](https://github.com/posit-dev/vip/pull/311),
+  [`40f01cd`](https://github.com/posit-dev/vip/commit/40f01cd4ecaa689c6133394286d4b83eb1a17b02))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+### Features
+
+- **workbench**: Add Background Job and Workbench Job test coverage (closes #302)
+  ([#336](https://github.com/posit-dev/vip/pull/336),
+  [`9a9de55`](https://github.com/posit-dev/vip/commit/9a9de55856573c17731ae0c01d7d4c652d215485))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.36.7 (2026-06-01)
 
 ### Bug Fixes

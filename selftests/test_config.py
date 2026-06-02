@@ -12,6 +12,7 @@ from vip.config import (
     PerformanceConfig,
     ProductConfig,
     VIPConfig,
+    WorkbenchConfig,
     WorkbenchExtensionsConfig,
     load_config,
 )
@@ -87,6 +88,20 @@ class TestConnectConfig:
     def test_explicit_deploy_timeout(self):
         cc = ConnectConfig(url="https://connect.example.com", deploy_timeout=1200)
         assert cc.deploy_timeout == 1200
+
+
+class TestWorkbenchConfig:
+    def test_job_timeout_default(self):
+        wc = WorkbenchConfig(url="https://workbench.example.com")
+        assert wc.job_timeout == 120
+
+    def test_job_timeout_from_dict(self):
+        wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com", "job_timeout": 300})
+        assert wc.job_timeout == 300
+
+    def test_job_timeout_default_from_dict(self):
+        wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com"})
+        assert wc.job_timeout == 120
 
 
 class TestWorkbenchExtensionsConfig:
