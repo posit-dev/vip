@@ -8,6 +8,8 @@ import httpx
 import pytest
 from pytest_bdd import parsers, scenarios, then, when
 
+from vip.client_auth import build_client_auth
+
 scenarios("test_login_load_times.feature")
 
 
@@ -30,6 +32,7 @@ def measure_load_time(product, vip_config, performance_config):
         pytest.skip(f"{product} is not configured")
     path = _LOGIN_PATHS[product]
     url = f"{pc.url}{path}"
+    auth = build_client_auth(vip_config, product_key, pc.url)
     try:
         start = time.monotonic()
         resp = httpx.get(
@@ -37,6 +40,7 @@ def measure_load_time(product, vip_config, performance_config):
             follow_redirects=True,
             timeout=performance_config.page_load_timeout * 3,
             verify=vip_config.verify,
+            auth=auth,
         )
         elapsed = time.monotonic() - start
     except (httpx.ConnectError, httpx.ProxyError, httpx.ConnectTimeout) as exc:

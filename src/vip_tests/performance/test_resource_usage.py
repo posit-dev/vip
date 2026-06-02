@@ -11,6 +11,8 @@ import httpx
 import pytest
 from pytest_bdd import given, scenario, then, when
 
+from vip.client_auth import build_client_auth
+
 
 @scenario(
     "test_resource_usage.feature", "Products respond within acceptable time under moderate load"
@@ -38,16 +40,20 @@ def product_configured(vip_config):
 @when("I generate moderate API traffic for 10 seconds", target_fixture="load_test_results")
 def generate_traffic_and_measure_response_times(vip_config, vip_verbose):
     """Generate concurrent API traffic and collect response times."""
-    # Collect health check URLs from configured products
-    urls = []
+    # Collect (health-check URL, ingress auth) pairs from configured products.
+    # The auth is per-product so each request carries the SPCS ingress token.
+    targets: list[tuple[str, httpx.Auth | None]] = []
     if vip_config.connect.is_configured:
-        urls.append(f"{vip_config.connect.url}/__api__/server_settings")
+        auth = build_client_auth(vip_config, "connect", vip_config.connect.url)
+        targets.append((f"{vip_config.connect.url}/__api__/server_settings", auth))
     if vip_config.workbench.is_configured:
-        urls.append(f"{vip_config.workbench.url}/health-check")
+        auth = build_client_auth(vip_config, "workbench", vip_config.workbench.url)
+        targets.append((f"{vip_config.workbench.url}/health-check", auth))
     if vip_config.package_manager.is_configured:
-        urls.append(f"{vip_config.package_manager.url}/__api__/status")
+        auth = build_client_auth(vip_config, "package_manager", vip_config.package_manager.url)
+        targets.append((f"{vip_config.package_manager.url}/__api__/status", auth))
 
-    if not urls:
+    if not targets:
         pytest.skip("No product URLs available for load testing")
 
     stop_at = time.monotonic() + 10
@@ -56,12 +62,12 @@ def generate_traffic_and_measure_response_times(vip_config, vip_verbose):
 
     verify = vip_config.verify
 
-    def _fetch_loop(url: str):
+    def _fetch_loop(url: str, auth: httpx.Auth | None):
         """Continuously fetch URL until stop_at, collecting timing and status."""
         while time.monotonic() < stop_at:
             start = time.monotonic()
             try:
-                resp = httpx.get(url, timeout=10, verify=verify)
+                resp = httpx.get(url, timeout=10, verify=verify, auth=auth)
                 elapsed = time.monotonic() - start
                 results.append({"elapsed": elapsed, "status": resp.status_code, "error": None})
                 if verbose:
@@ -82,8 +88,8 @@ def generate_traffic_and_measure_response_times(vip_config, vip_verbose):
             time.sleep(0.1)
 
     with ThreadPoolExecutor(max_workers=4) as pool:
-        for url in urls:
-            pool.submit(_fetch_loop, url)
+        for url, auth in targets:
+            pool.submit(_fetch_loop, url, auth)
 
     return results
 
@@ -131,19 +137,23 @@ def check_prometheus_endpoints(vip_config):
     products_to_check = []
 
     if vip_config.connect.is_configured:
-        products_to_check.append(("Connect", f"{vip_config.connect.url}/metrics"))
+        products_to_check.append(("Connect", "connect", vip_config.connect.url))
     if vip_config.workbench.is_configured:
-        products_to_check.append(("Workbench", f"{vip_config.workbench.url}/metrics"))
+        products_to_check.append(("Workbench", "workbench", vip_config.workbench.url))
     if vip_config.package_manager.is_configured:
-        products_to_check.append(("Package Manager", f"{vip_config.package_manager.url}/metrics"))
+        products_to_check.append(
+            ("Package Manager", "package_manager", vip_config.package_manager.url)
+        )
 
     if not products_to_check:
         pytest.skip("No products configured for Prometheus check")
 
     failures = []
-    for product_name, metrics_url in products_to_check:
+    for product_name, product_key, base_url in products_to_check:
+        metrics_url = f"{base_url}/metrics"
+        auth = build_client_auth(vip_config, product_key, base_url)
         try:
-            resp = httpx.get(metrics_url, timeout=10, verify=vip_config.verify)
+            resp = httpx.get(metrics_url, timeout=10, verify=vip_config.verify, auth=auth)
             if resp.status_code != 200:
                 failures.append(
                     f"{product_name}: /metrics returned {resp.status_code} (expected 200)"

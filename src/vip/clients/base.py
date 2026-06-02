@@ -111,6 +111,17 @@ class BaseClient:
         """
         return self._verify
 
+    @property
+    def auth(self) -> httpx.Auth | None:
+        """The per-request httpx auth for this client, if any.
+
+        Subclasses and tests that issue ad-hoc httpx requests (bypassing the
+        internal ``_client``) must pass this so the request carries the same
+        per-host auth — e.g. the Snowflake SPCS ingress token. Without it the
+        ingress redirects unauthenticated requests to its OAuth login (302).
+        """
+        return self._auth
+
     def close(self) -> None:
         """Close the underlying httpx client."""
         self._client.close()

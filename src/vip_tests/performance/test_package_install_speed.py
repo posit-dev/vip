@@ -44,7 +44,12 @@ def download_cran(pm_client, cran_repo, performance_config):
     # Download the PACKAGES index as a proxy for package download speed.
     url = f"{pm_client.base_url}/{cran_repo['name']}/latest/src/contrib/PACKAGES"
     start = time.monotonic()
-    resp = httpx.get(url, timeout=performance_config.download_timeout, verify=pm_client.verify)
+    resp = httpx.get(
+        url,
+        timeout=performance_config.download_timeout,
+        verify=pm_client.verify,
+        auth=pm_client.auth,
+    )
     elapsed = time.monotonic() - start
     resp.raise_for_status()
     return elapsed
@@ -54,7 +59,12 @@ def download_cran(pm_client, cran_repo, performance_config):
 def download_pypi(pm_client, pypi_repo, performance_config):
     url = f"{pm_client.base_url}/{pypi_repo['name']}/latest/simple/pip/"
     start = time.monotonic()
-    resp = httpx.get(url, timeout=performance_config.download_timeout, verify=pm_client.verify)
+    resp = httpx.get(
+        url,
+        timeout=performance_config.download_timeout,
+        verify=pm_client.verify,
+        auth=pm_client.auth,
+    )
     elapsed = time.monotonic() - start
     resp.raise_for_status()
     return elapsed
