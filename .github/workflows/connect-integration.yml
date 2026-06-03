@@ -116,7 +116,7 @@ jobs:
             --connect-url "${{ steps.connect.outputs.CONNECT_SERVER }}" \
             --api-auth \
             --categories connect \
-            --filter "not test_list_users" \
+            # --filter "not test_list_users" \
             --report results.json \
             -- --junitxml=connect-results.xml
         env:
@@ -186,3 +186,19 @@ jobs:
         uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
           stop: ${{ steps.connect.outputs.CONTAINER_ID }}
+
+  notify-on-failure:
+    name: Notify Slack on failure
+    runs-on: ubuntu-latest
+    needs: connect-integration
+    if: ${{ failure() && github.event_name != 'pull_request' }}
+    steps:
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_CONNECT_CI }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ connect-integration on ${{ github.ref_name }} failed — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+            }
