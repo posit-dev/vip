@@ -116,7 +116,7 @@ jobs:
             --connect-url "${{ steps.connect.outputs.CONNECT_SERVER }}" \
             --api-auth \
             --categories connect \
-            # --filter "not test_list_users" \
+            --filter "not test_list_users" \
             --report results.json \
             -- --junitxml=connect-results.xml
         env:
@@ -200,5 +200,5 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "❌ connect-integration on ${{ github.ref_name }} failed — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+              "text": "❌ Connect VIP tests failed — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
             }
