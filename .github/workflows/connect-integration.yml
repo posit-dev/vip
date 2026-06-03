@@ -191,7 +191,7 @@ jobs:
     name: Notify Slack on failure
     runs-on: ubuntu-latest
     needs: connect-integration
-    if: ${{ failure() && github.event_name != 'pull_request' }}
+    if: ${{ failure() }}
     steps:
       - name: Notify Slack
         uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
