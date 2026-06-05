@@ -3,9 +3,11 @@ name: Connect Smoke Tests
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
   pull_request:
-  schedule:
-    - cron: "0 6 * * *" # daily at 6am UTC
+    paths:
+      - 'src/**'
 
 permissions:
   contents: read
