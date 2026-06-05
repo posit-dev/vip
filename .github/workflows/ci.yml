@@ -11,7 +11,7 @@ on:
       - 'docker/**'
       - 'pyproject.toml'
       - 'uv.lock'
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/**'
       - '.github/zizmor.yml'
 
 jobs:
