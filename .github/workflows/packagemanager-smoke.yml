@@ -18,7 +18,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pm-version: ${{ github.event_name == 'schedule' && fromJSON('["ubuntu2204-2024.08.0", "ubuntu2204"]') || fromJSON('["ubuntu2204-2024.08.0"]') }}
+        # `ubuntu2204` (no version suffix) always resolves to the latest PM build.
+        pm-version: ["ubuntu2204"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
