@@ -77,7 +77,7 @@ provider = "password"
 # Identity provider for --headless-auth: "keycloak", "okta", "snowflake"
 # Only required when provider is "oidc", "saml", or "oauth2".
 # For Snowflake Native App deployments, use provider = "oauth2" and
-# idp = "snowflake".
+# idp = "snowflake"
 # idp = "keycloak"
 
 # Test user credentials.
