@@ -86,7 +86,14 @@ class Homepage:
     # Session actions
     NEW_SESSION_BUTTON = "button:text-is('New Session')"
     NEW_SESSION_BUTTON_EMPTY = "button:text-is('New Session')"  # Second instance on empty state
-    QUIT_BUTTON = "button:text-is('Quit')"
+    # Workbench 2026.05.0 appends the selected-session count to the Quit button
+    # label (e.g. "Quit (1)") instead of plain "Quit". Match both the old exact
+    # "Quit" and the new "Quit (N)" forms with a comma-separated selector,
+    # mirroring the cross-version pattern in session_row_status. The has-text
+    # "Quit (" clause matches any count while excluding the separate "Quit All"
+    # button. (Avoids a :text-matches regex, whose backslashes must be doubled
+    # to survive Playwright's selector parser -- an easy footgun.)
+    QUIT_BUTTON = "button:text-is('Quit'), button:has-text('Quit (')"
     QUIT_ALL_BUTTON = "button:text-is('Quit All')"
     SUSPEND_BUTTON = "button:text-is('Suspend')"
     SUSPEND_ALL_BUTTON = "#suspendAllBtn"
