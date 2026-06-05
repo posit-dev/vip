@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["2026.01.1", "release"]') || fromJSON('["2026.01.1"]') }}
+        workbench-version: ${{ github.event_name == 'schedule' && fromJSON('["release", "preview"]') || fromJSON('["release"]') }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
