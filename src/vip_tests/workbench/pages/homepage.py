@@ -86,7 +86,11 @@ class Homepage:
     # Session actions
     NEW_SESSION_BUTTON = "button:text-is('New Session')"
     NEW_SESSION_BUTTON_EMPTY = "button:text-is('New Session')"  # Second instance on empty state
-    QUIT_BUTTON = "button:text-is('Quit')"
+    # Workbench 2026.05.0 appends the selected-session count to the Quit button
+    # label (e.g. "Quit (1)"), so an exact-text match no longer works. Match
+    # "Quit" with an optional " (N)" suffix, anchored so it never matches the
+    # separate "Quit All" button below.
+    QUIT_BUTTON = r"button:text-matches('^Quit( \(\d+\))?$')"
     QUIT_ALL_BUTTON = "button:text-is('Quit All')"
     SUSPEND_BUTTON = "button:text-is('Suspend')"
     SUSPEND_ALL_BUTTON = "#suspendAllBtn"
