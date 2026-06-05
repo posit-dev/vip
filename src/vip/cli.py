@@ -286,6 +286,25 @@ def _check_credentials(
         sys.exit(1)
 
 
+def _config_idp(config_path: str | None) -> str:
+    """Return the normalized ``[auth] idp`` from the resolved config.
+
+    This is the IdP the run will actually use: the ``--idp`` flag is folded
+    into the generated config on URL-driven runs and is not otherwise forwarded
+    to pytest, so the config file is the source of truth. Returns "" when there
+    is no config or it can't be read (pytest surfaces config errors later).
+    Normalized (stripped, lowercased) to match ``idp.get_idp_strategy``.
+    """
+    if not config_path:
+        return ""
+    from vip.config import load_config
+
+    try:
+        return (load_config(config_path).auth.idp or "").strip().lower()
+    except ValueError:
+        return ""
+
+
 # Pytest options that consume the next argument as a directory path.
 # We skip these values so they aren't mistaken for positional test targets.
 _CONSUMES_DIR_VALUE = frozenset({"--rootdir", "--confcutdir", "--basetemp"})
@@ -523,6 +542,20 @@ def _run_verify_local(args: argparse.Namespace) -> None:
     if args.no_auth and args.api_auth:
         print(
             "\033[1mError: --no-auth and --api-auth are mutually exclusive.\033[0m",
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
+
+    if args.api_auth and _config_idp(config_path) == "snowflake":
+        print(
+            "\033[1mError: --api-auth is not supported with the Snowflake identity "
+            "provider.\033[0m\n"
+            "A Posit Team Native App authenticates through the Snowpark Container "
+            "Services ingress and has no standalone product API key for --api-auth to "
+            "use.\n"
+            "Use --headless-auth to run the full suite, or --no-auth for the stateless "
+            "checks that do not require a login.",
             file=sys.stderr,
             flush=True,
         )
