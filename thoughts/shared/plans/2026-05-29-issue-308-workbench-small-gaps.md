@@ -16,7 +16,7 @@ All changes land under `src/vip_tests/workbench/`, with config updates in `src/v
 
 - **Gap 1 (sign-out)** is independent and can land immediately (Playwright UI automation only).
 - **Gap 2 (AI defaults)** is investigated via `WorkbenchClient.server_settings()` first. If AI/Copilot flags are exposed by `/api/server/settings`, this gap is unblocked and implemented as an API assertion test with no session-exec dependency.
-- **Gap 2 fallback** (only if the server settings API lacks the required flag) is deferred pending #301 session-exec support for in-session server config inspection.
+- **Gap 2 fallback** (only if `/api/server/settings` succeeds but omits the required AI/Copilot keys) is deferred pending #301 session-exec support for in-session server config inspection.
 - **Gap 3 (runtime extension install)** depends on #301 session-exec (`ide_terminal_run` / `code-server --install-extension`) and is deferred until that lands. See #301.
 
 ## Components
@@ -27,14 +27,14 @@ All changes land under `src/vip_tests/workbench/`, with config updates in `src/v
 
 **Gap 2 — AI defaults (API-first; fallback depends on #301 only if needed):**
 - `src/vip_tests/workbench/test_ai_defaults.feature` — new file with "AI features are disabled by default" scenario outline
-- `src/vip_tests/workbench/test_ai_defaults.py` — first assert deployment defaults from `WorkbenchClient.server_settings()` (`/api/server/settings`), and only fall back to in-session config inspection if the API does not expose the flag
+- `src/vip_tests/workbench/test_ai_defaults.py` — first assert deployment defaults from `WorkbenchClient.server_settings()` (`/api/server/settings`), and only fall back to in-session config inspection when the API call succeeds but the expected AI/Copilot keys are absent from the returned JSON payload
 - `src/vip/config.py` — add `[workbench.ai_features]` config block for deployment-level expected defaults
 - `selftests/test_config.py` — add coverage for parsing `[workbench.ai_features]`
 
 **Gap 3 — Runtime extension install (blocked on session-exec):**
 - `src/vip_tests/workbench/test_runtime_extensions.feature` — new file with "User can install an IDE extension at runtime" scenario outline
 - `src/vip_tests/workbench/test_runtime_extensions.py` — step definitions for terminal-based extension install (`code-server --install-extension <id>`) and installed-list verification
-- `src/vip/config.py` — add `workbench.test_extension` (or `workbench.test_extensions`) so deployments provide an OpenVSX-available extension ID to test
+- `src/vip/config.py` — add `workbench.test_extension` (single extension ID) so deployments provide an OpenVSX-available extension to test
 - Default extension should be OpenVSX-verified (e.g. `redhat.vscode-yaml` or `vscodevim.vim`), explicitly not `ms-python.python`
 
 ## Verification
