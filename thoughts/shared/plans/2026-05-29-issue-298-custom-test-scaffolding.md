@@ -2,12 +2,17 @@
 
 ## Context
 
-Customers extending VIP for GxP deployments or other regulated environments need to verify specific R and Python versions are available and that critical bioinformatics packages (e.g., DESeq2, PyDeSEQ2) can install on both Workbench and Connect. While VIP already supports loading external test directories via `--extensions` or `extension_dirs` in `vip.toml`, the current `examples/custom_tests/` example is minimal — it demonstrates only a simple HTTP health check, not the cross-product runtime/package verification pattern that GxP users need.
+Customers extending VIP for GxP deployments or other regulated environments need to verify specific R and Python versions are available across Workbench and Connect. While VIP already supports loading external test directories via `--extensions` or `extension_dirs` in `vip.toml`, the current `examples/custom_tests/` example is minimal — it demonstrates only a simple HTTP health check, not the cross-product runtime verification pattern that GxP users need.
 
 The issue author requests a complete working example that verifies:
 - Specific R and Python versions are available in both Workbench and Connect
-- R and Python packages can be installed successfully on both products
-- The example should use DESeq2 (R) and PyDeSEQ2 (Python) as representative bioinformatics packages
+
+**Scope clarification on package verification:**
+The current VIP client APIs support **version listing only**:
+- `ConnectClient.r_versions()` / `.python_versions()` — returns list of available runtime versions
+- `WorkbenchClient` — has no package/runtime surface (blocked on session-exec primitive in #301)
+
+Real package-install verification requires the deploy-a-bundle-and-scrape-logs flow demonstrated in `src/vip_tests/connect/test_packages.py`. The scaffolded example will focus on **runtime version checks** with inline comments pointing users to `connect/test_packages.py` for the deeper install-verification pattern. Full cross-product package validation depends on the Workbench session-exec feature tracked in #301 (plan PR #317).
 
 The preferred implementation is a `vip scaffold` or `vip init-extension` subcommand that generates a ready-to-run custom test directory with this pattern baked in. The alternative is documentation-only, but that requires users to copy-paste significant boilerplate.
 
@@ -19,20 +24,32 @@ This lands in two places:
    - Initial implementation: defaults to copying `examples/cross_product_validation/`
    - Future extensibility: can add `--template` option to select from multiple examples (e.g., `--template http_health_check` or `--template cross_product_validation`)
 2. **`examples/cross_product_validation/`** — a reference implementation directory containing:
-   - `.feature` file describing runtime and package verification scenarios
+   - `.feature` file describing runtime version verification scenarios
+     - **Must include `@connect @workbench` tags** for auto-skip behavior when only one product is configured
    - `.py` step definition file that uses existing VIP fixtures (`workbench_client`, `connect_client`, `expected_r_versions`, `expected_python_versions`)
-   - `conftest.py` with fixtures for expected package lists (e.g., `@pytest.fixture def required_r_packages()`)
-   - Optional: a sample `vip.toml` snippet showing how to configure `extension_dirs`
+   - `conftest.py` with fixtures for expected runtime versions, wired to sensible defaults or `vip.toml`
+     - Example defaults: `required_r_versions = ["4.4.0", "4.3.3"]`, `required_python_versions = ["3.12.0", "3.11.0"]`
+   - `README.md` — explains the example, how to customize it, and points to `src/vip_tests/connect/test_packages.py` for package-install verification patterns
 
 The `scaffold` command copies the reference directory to the user's target path and optionally templates in their specific version and package requirements.
 
 ## Components
 
 **New files:**
-- `examples/cross_product_validation/test_runtime_validation.feature` — Gherkin scenarios for version and package checks
+- `examples/cross_product_validation/test_runtime_validation.feature` — Gherkin scenarios for runtime version checks
+  - **Must include `@connect @workbench` auto-skip tags** at the feature level
 - `examples/cross_product_validation/test_runtime_validation.py` — step definitions using VIP's client fixtures
-- `examples/cross_product_validation/conftest.py` — fixtures for required packages, customizable by users
-- `examples/cross_product_validation/README.md` — explains the example and how to customize it
+  - Uses `connect_client.r_versions()` / `.python_versions()` for Connect version queries
+  - Includes inline comments pointing to `src/vip_tests/connect/test_packages.py` for package-install verification patterns
+  - Acknowledges Workbench package verification is blocked on #301 (plan PR #317)
+- `examples/cross_product_validation/conftest.py` — fixtures for expected runtime versions with sensible defaults
+  - Example: `@pytest.fixture def required_r_versions(): return ["4.4.0", "4.3.3"]`
+  - Example: `@pytest.fixture def required_python_versions(): return ["3.12.0", "3.11.0"]`
+  - Or wired to `vip.toml` via `vip_config` fixture: `vip_config.runtimes.r_versions`
+- `examples/cross_product_validation/README.md` — explains the example, how to customize fixtures, and references deeper patterns
+
+**Optionally renamed files:**
+- Defer to follow-up: `examples/custom_tests/` → `examples/http_health_check/` (see Open Questions below)
 
 **Modified files:**
 - `src/vip/cli.py` — add `scaffold` subcommand and handler function `run_scaffold(args)`
@@ -46,7 +63,11 @@ vip verify --config vip.toml --extensions ./my-custom-tests
 ## Verification
 
 1. Selftest coverage:
-   - `selftests/test_cli.py` — add a test that invokes `run_scaffold()` or the CLI entry with a temp output directory and verifies the expected files are created
+   - `selftests/test_cli.py` — add a test that invokes `run_scaffold()` or the CLI entry with a temp output directory
+   - **Assert on scaffolded content**, not just file existence:
+     - `.feature` file carries `@connect @workbench` tags for auto-skip
+     - `.py` step file imports from `pytest_bdd` (`from pytest_bdd import scenario, given, when, then`)
+     - `conftest.py` defines the required fixtures (`required_r_versions`, `required_python_versions`)
    - Use `pytester` or `tmp_path` fixture to isolate the test
 
 2. Manual verification (demo):
@@ -57,14 +78,18 @@ vip verify --config vip.toml --extensions ./my-custom-tests
    
    uv run vip verify --connect-url https://demo.connect --workbench-url https://demo.workbench \
      --extensions /tmp/cross-product-tests --collect-only
-   # Should discover the new custom test scenarios
+   # Should discover the new custom test scenarios and respect auto-skip tags
    ```
 
-3. Linting:
+3. Linting and checks:
    ```bash
-   uv run ruff check src/ examples/ selftests/
-   uv run ruff format --check src/ examples/ selftests/
+   just check
+   # Equivalent to:
+   # uv run ruff check src/ selftests/ examples/
+   # uv run ruff format --check src/ selftests/ examples/
    ```
+   
+   Ensure `examples/` remains in the ruff paths per `CLAUDE.md` and the `justfile` recipe.
 
 ## Open questions
 
@@ -77,7 +102,7 @@ vip verify --config vip.toml --extensions ./my-custom-tests
 - **CONFIRMED:** Should the scaffold command default to copying from `examples/cross_product_validation/` or should it be extensible (multiple scaffold templates)?
   - **Decision:** single template for now; extensibility can be added later if demand emerges.
 
-- **UNCONFIRMED:** Should we rename `examples/custom_tests/` to something more descriptive like `examples/http_health_check/` for consistency with `examples/cross_product_validation/`?
+- **DEFERRED:** Should we rename `examples/custom_tests/` to something more descriptive like `examples/http_health_check/` for consistency with `examples/cross_product_validation/`?
   - **Concern raised:** having one folder named `custom_tests` while another is named `cross_product_validation` creates inconsistency
   - **Potential future examples:** 
     - `examples/http_health_check/` (current `custom_tests/`) — basic HTTP connectivity verification
@@ -85,11 +110,12 @@ vip verify --config vip.toml --extensions ./my-custom-tests
     - `examples/ssl_certificate_validation/` — verifying SSL certificates are valid and not expiring soon
     - `examples/api_response_time/` — performance benchmarking for API endpoints
     - `examples/user_provisioning/` — testing user/group sync from LDAP/SAML
-  - **Leaning toward:** Yes, rename `custom_tests` → `http_health_check` for clarity and to support future multi-template scaffold command (e.g., `vip scaffold --template http_health_check`)
+  - **Decision:** Defer rename to a follow-up issue/PR. Renaming requires updating inline path references in docstrings/comments (`extension_dirs = ["/path/to/custom_tests"]`) inside the moved files. This plan focuses on the scaffolding feature; the rename can be addressed separately once the multi-template pattern is proven.
 
 ## Out of scope
 
 - Generating the `vip.toml` configuration file itself (users can already run `cp vip.toml.example vip.toml`).
-- Automation of package installation verification on the server side (the tests will attempt install via API and report success/failure; they won't modify server package caches or R library paths directly).
+- Full package-install verification across both products (requires Workbench session-exec primitive tracked in #301 / plan PR #317; Connect pattern exists in `src/vip_tests/connect/test_packages.py` but is too complex for a minimal scaffold).
 - Integration with the Shiny app UI to invoke the scaffold command (the Shiny app is for running tests, not generating them).
 - CI workflow changes (this is a documentation and CLI usability enhancement, not a test suite change).
+- Renaming `examples/custom_tests/` → `examples/http_health_check/` (deferred to follow-up to keep this PR focused on scaffolding; see Open Questions).
