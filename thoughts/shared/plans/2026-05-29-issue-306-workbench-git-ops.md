@@ -6,21 +6,28 @@ VIP currently tests Git only in narrow scenarios (Connect git-backed deployment)
 
 ## Architecture
 
-This lands in `src/vip_tests/workbench/` as two new BDD test files: `test_git_terminal.feature` (for CLI-based Git operations across all IDEs) and `test_git_gui.feature` (for RStudio Git pane). The config module (`src/vip/config.py`) gains a new `[workbench.git_test]` block with `clone_url`, `auth_method`, and token reference. The workbench client (`src/vip/clients/workbench.py`) may need session execution helpers if they don't exist. Tests use the existing `@workbench` marker and skip cleanly when Git test config is absent.
+This lands in `src/vip_tests/workbench/` as two new BDD test files: `test_git_terminal.feature` (for CLI-based Git operations across all IDEs) and `test_git_gui.feature` (for RStudio Git pane). The config module (`src/vip/config.py`) gains a new `[workbench.git_test]` block with `clone_url` and `auth_method`. Token lookup is fixed to `VIP_GIT_TOKEN` (same pattern as other product API-key env vars), not user-configurable in TOML. Tests use both `@workbench` and `@if_applicable` so they skip cleanly when Git test config is absent.
+
+### Prerequisite dependency
+
+- **Required before terminal scenario implementation:** session command execution support in `WorkbenchClient` (tracked by #301). The terminal flow (clone/branch/commit/push in-session) depends on this primitive and cannot be implemented reliably without it.
 
 ## Components
 
 **Config layer:**
-- `src/vip/config.py` — add `GitTestConfig` dataclass with `clone_url: str`, `auth_method: Literal["ssh", "https-token"]`, and `token_env_var: str` (default `VIP_GIT_TOKEN`); nest under `WorkbenchConfig.git_test: Optional[GitTestConfig]`
+- `src/vip/config.py` — add `GitTestConfig` dataclass with `clone_url: str` and `auth_method: Literal["ssh", "https-token"]`; nest under `WorkbenchConfig.git_test: Optional[GitTestConfig]`
+- `src/vip/config.py` — in `GitTestConfig.__post_init__`, hardcode token env lookup to `VIP_GIT_TOKEN`
 
 **Test layer:**
-- `src/vip_tests/workbench/test_git_terminal.feature` — scenario outline for clone, branch, commit, push via terminal across RStudio / VS Code / Positron
+- `src/vip_tests/workbench/test_git_terminal.feature` — three separate named scenarios (RStudio, VS Code, Positron), not a Scenario Outline; feature tagged with both `@workbench` and `@if_applicable`
 - `src/vip_tests/workbench/test_git_terminal.py` — step definitions using terminal execution in session, git commands, and remote verification
-- `src/vip_tests/workbench/test_git_gui.feature` — RStudio Git pane scenario (Playwright-driven)
+- `src/vip_tests/workbench/test_git_gui.feature` — RStudio Git pane scenario (Playwright-driven), tagged `@workbench @if_applicable`
 - `src/vip_tests/workbench/test_git_gui.py` — step definitions using Playwright to interact with RStudio Git pane
 
 **Shared fixtures:**
-- `src/vip_tests/conftest.py` — add `git_test_config` fixture (returns `vip_config.workbench.git_test` or skip), `git_test_token` fixture (loads from env var), and cleanup helpers for pushed branches
+- `src/vip_tests/conftest.py` — add `git_test_config` fixture (returns `vip_config.workbench.git_test` or skip), `git_test_token` fixture (loads `VIP_GIT_TOKEN`), and two-layer cleanup for pushed branches:
+  - explicit `Then` cleanup step in scenario flow
+  - session-scoped autouse finalizer safety net (mirroring `_cleanup_sessions` / `_wb_cleanup_state`)
 
 **Client enhancements (if needed):**
 - `src/vip/clients/workbench.py` — verify session execution primitives exist; add if missing
@@ -30,8 +37,14 @@ This lands in `src/vip_tests/workbench/` as two new BDD test files: `test_git_te
 **Config parsing:**
 ```bash
 # Add [workbench.git_test] block to vip.toml, run config validation
-uv run pytest selftests/config/ -k git_test -v
+uv run pytest selftests/test_config.py -k git_test -v
 ```
+
+Add `GitTestConfig` selftests covering:
+- TOML round-trip
+- `VIP_GIT_TOKEN` env fallback
+- `is_configured` property
+- `from_dict` default handling
 
 **Terminal scenarios:**
 ```bash
@@ -46,13 +59,11 @@ uv run vip verify --config vip.toml --categories workbench -- -k test_git_termin
 uv run vip verify --config vip.toml --categories workbench -- -k test_git_gui -v
 ```
 
-Success: all scenarios pass, cleanup deletes pushed branches (verified with `git ls-remote`), tests skip cleanly when `[workbench.git_test]` is absent.
+Success: all scenarios pass, cleanup deletes pushed branches (verified with `git ls-remote`), tests skip cleanly when `[workbench.git_test]` is absent, and branch names follow `vip<timestamp>` (aligned with `unique_session_name` style for low-collision cleanup-friendly runs).
 
 ## Open questions
 
-- UNCONFIRMED: Does the workbench client already have a session execution primitive (run command in terminal, get output)? If not, this plan needs that built first.
-- UNCONFIRMED: Should branch naming use `vip-test-` prefix or `vip-` with timestamp? Timestamp ensures uniqueness but makes cleanup harder.
-- UNCONFIRMED: Should cleanup happen in a final step (as shown in proposed scenarios) or in a pytest finalizer? Finalizers are more robust but the issue's proposed Gherkin includes explicit cleanup steps.
+- Confirm exact API shape for `WorkbenchClient` session command execution from #301 so terminal steps can use it directly.
 
 ## Out of scope
 
