@@ -12,9 +12,12 @@ These are bundled together because they share a common theme (Workbench IDE test
 
 ## Architecture
 
-All changes land under `src/vip_tests/workbench/`. The existing `test_auth.feature` gains one scenario (sign-out). Two new feature files are added for AI defaults and runtime extension install. Each new scenario depends on the in-session execution primitive mentioned in the issue, which is tracked separately and not part of this plan.
+All changes land under `src/vip_tests/workbench/`, with config updates in `src/vip/config.py` and config selftests in `selftests/test_config.py`.
 
-The plan defers implementation of Gaps 2 and 3 until the session-exec primitive exists. Gap 1 (sign-out) can land immediately because it uses Playwright browser automation on the UI, not terminal access inside a running session.
+- **Gap 1 (sign-out)** is independent and can land immediately (Playwright UI automation only).
+- **Gap 2 (AI defaults)** is investigated via `WorkbenchClient.server_settings()` first. If AI/Copilot flags are exposed by `/api/server/settings`, this gap is unblocked and implemented as an API assertion test with no session-exec dependency.
+- **Gap 2 fallback** (only if the server settings API lacks the required flag) is deferred pending #301 session-exec support for in-session server config inspection.
+- **Gap 3 (runtime extension install)** depends on #301 session-exec (`ide_terminal_run` / `code-server --install-extension`) and is deferred until that lands. See #301.
 
 ## Components
 
@@ -22,43 +25,49 @@ The plan defers implementation of Gaps 2 and 3 until the session-exec primitive 
 - `src/vip_tests/workbench/test_auth.feature` — add "User can sign out of Workbench" scenario
 - `src/vip_tests/workbench/test_auth.py` — add step definitions for sign-out flow (user menu, sign out button, login page redirect, session cookie invalidation)
 
-**Gap 2 — AI defaults (blocked on session-exec):**
+**Gap 2 — AI defaults (API-first; fallback depends on #301 only if needed):**
 - `src/vip_tests/workbench/test_ai_defaults.feature` — new file with "AI features are disabled by default" scenario outline
-- `src/vip_tests/workbench/test_ai_defaults.py` — step definitions for AI provider checks (extension ID absence, settings inspection)
-- `src/vip/config.py` — add `[workbench.ai_features]` section with `enabled` boolean field
+- `src/vip_tests/workbench/test_ai_defaults.py` — first assert deployment defaults from `WorkbenchClient.server_settings()` (`/api/server/settings`), and only fall back to in-session config inspection if the API does not expose the flag
+- `src/vip/config.py` — add `[workbench.ai_features]` config block for deployment-level expected defaults
+- `selftests/test_config.py` — add coverage for parsing `[workbench.ai_features]`
 
 **Gap 3 — Runtime extension install (blocked on session-exec):**
 - `src/vip_tests/workbench/test_runtime_extensions.feature` — new file with "User can install an IDE extension at runtime" scenario outline
 - `src/vip_tests/workbench/test_runtime_extensions.py` — step definitions for terminal-based extension install (`code-server --install-extension <id>`) and installed-list verification
+- `src/vip/config.py` — add `workbench.test_extension` (or `workbench.test_extensions`) so deployments provide an OpenVSX-available extension ID to test
+- Default extension should be OpenVSX-verified (e.g. `redhat.vscode-yaml` or `vscodevim.vim`), explicitly not `ms-python.python`
 
 ## Verification
 
-**Gap 1 (sign-out):**
-```bash
-uv run vip verify --config vip.toml --categories workbench -- -k "sign out" -v
-```
-Success: scenario passes, user lands on login page, old cookie fails authentication.
+1. Run sign-out coverage:
+   ```bash
+   uv run vip verify --config vip.toml --categories workbench -- -k "sign out" -v
+   ```
+   Success: scenario passes, user lands on login page, old cookie fails authentication.
+2. Run AI defaults coverage (API-first assertion):
+   ```bash
+   uv run vip verify --config vip.toml --categories workbench -- -k "AI features" -v
+   ```
+   Success: scenario passes via `/api/server/settings`; fallback path is only used when the API does not expose the required flag.
+3. Run runtime extension coverage (after #301 lands):
+   ```bash
+   uv run vip verify --config vip.toml --categories workbench -- -k "runtime extension" -v
+   ```
+   Success: scenario passes with a configured OpenVSX-backed extension ID after terminal install.
+4. Run repository checks:
+   ```bash
+   just check
+   ```
 
-**Gap 2 (AI defaults) and Gap 3 (runtime extensions):**
-```bash
-uv run vip verify --config vip.toml --categories workbench -- -k "AI features" -v
-uv run vip verify --config vip.toml --categories workbench -- -k "runtime extension" -v
-```
-Success: both scenarios pass, AI providers are absent, runtime extension appears in installed list after terminal install.
-
-All three scenarios must be tagged `@workbench` and auto-skip when Workbench is not configured. Run `just check` to validate lint/format before opening PRs.
+All three scenarios must be tagged `@workbench` and auto-skip when Workbench is not configured.
 
 ## Open questions
 
-- **UNCONFIRMED**: The issue says Gaps 2 and 3 "depend on the in-session execution primitive (separate issue)". That primitive is not yet implemented. Should this plan defer those two gaps until that work lands, or should it include placeholder steps that will be filled in later? **Trade-off**: deferring avoids incomplete scenarios in the suite; placeholders avoid a second round of PRs later.
-
-- **UNCONFIRMED**: Gap 2 proposes checking `github.copilot` extension ID absence and settings inspection. Which settings file (user, workspace, or IDE server config JSON) should be the source of truth? **Trade-off**: user settings are easiest to inspect but can be overridden; server config is authoritative but harder to reach from a test.
-
-- **UNCONFIRMED**: Gap 3 says "user installs a known extension via the IDE terminal". Which extension should be the test subject? It needs to be lightweight, stable, and unlikely to change. **Trade-off**: a first-party Posit extension is stable but may not be in OpenVSX; a generic third-party extension (e.g., `ms-python.python`) is widely available but could be removed.
+- None for this planning pass. Gap 2 and Gap 3 dependencies are now explicit and scoped per-gap.
 
 ## Out of scope
 
-- **Session-exec primitive implementation** — tracked in a separate issue (referenced but not detailed in #308). This plan assumes that work lands first for Gaps 2 and 3.
+- **Session-exec primitive implementation** — tracked in a separate issue (#301). This plan only depends on it for Gap 3 and for Gap 2's fallback path if `/api/server/settings` does not expose the required AI flags.
 - **Automated cleanup of installed extensions** — Gap 3 installs an extension at runtime. The scenario says "the session is cleaned up" but doesn't specify whether the extension persists after session termination. Out of scope unless the customer's UAT plan explicitly requires cleanup.
 - **Multi-IDE coverage beyond VS Code and Positron** — the scenario outlines specify only those two. JupyterLab and RStudio Server are out of scope.
 - **Deep AI feature validation** — Gap 2 checks that AI features are disabled by default but doesn't validate the configuration mechanism (e.g., whether `ai.enabled = false` in server config actually disables features). That's a deeper integration test.
