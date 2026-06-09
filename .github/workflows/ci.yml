@@ -158,3 +158,34 @@ jobs:
           fi
           echo "Selftests passed or were skipped"
 
+  lockfile-guard:
+    name: Lockfile Guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Bot-generated plan/docs PRs have repeatedly carried a stale uv.lock from
+      # an old base, which is invisible until it breaks the Dependency Audit
+      # (vulnerable transitive pins) or conflicts with main on merge. A real
+      # dependency change always touches pyproject.toml too, so a uv.lock change
+      # on its own is the signal that the lockfile drifted in by accident.
+      - name: Reject uv.lock changes without a pyproject.toml change
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          if printf '%s\n' "$changed" | grep -qx 'uv.lock' \
+            && ! printf '%s\n' "$changed" | grep -qx 'pyproject.toml'; then
+            echo "::error::uv.lock changed without a corresponding pyproject.toml change."
+            echo "Plan/docs PRs must not carry a uv.lock update. Restore it with:"
+            echo "    git checkout $BASE_SHA -- uv.lock && git commit -m 'restore uv.lock' uv.lock"
+            echo "If this is an intentional dependency change, update pyproject.toml in the same PR."
+            exit 1
+          fi
+          echo "uv.lock guard passed: no stray lockfile change detected."
+
