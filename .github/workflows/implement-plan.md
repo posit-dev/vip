@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - "thoughts/shared/plans/**.md"
+timeout-minutes: 30
+engine:
+  id: copilot
+  model: claude-sonnet-4.6
 permissions:
   contents: read
   issues: read
@@ -18,6 +22,7 @@ tools:
   bash:
     - "gh issue view *"
     - "gh issue comment *"
+    - "gh label create *"
     - "gh pr view *"
     - "gh pr comment *"
     - "rg *"
@@ -37,7 +42,16 @@ safe-outputs:
     private-key: ${{ secrets.POSIT_VIP_TRIAGE_PEM }}
   add-comment:
     max: 2
+    target: "*"
     discussions: false
+  add-labels:
+    max: 1
+    target: "*"
+    allowed: ["implementing"]
+  remove-labels:
+    max: 1
+    target: "*"
+    allowed: ["plan-pending-review"]
   create-pull-request:
     branch-prefix: "bot-"
     draft: false
@@ -84,11 +98,31 @@ Exit silently if **any** of:
 
 ## Step 3 — implement
 
+This workflow runs under a hard time budget (`timeout-minutes: 30`). A
+previous run burned the entire budget and produced **nothing** — never
+let that happen again. Work in the smallest shippable increments and
+commit as you go, so progress is always preserved.
+
 Read the plan in full. Then:
 
 1. Make the code, test, and documentation changes that the plan
    specifies. The plan should be detailed enough that scope is
    unambiguous; if it is not, fall through to Step 5.
+   - **Scope to one coherent surface per run.** If the plan spans
+     several independent deliverables (e.g. multiple IDEs, multiple
+     test categories, a foundation plus consumers), implement the
+     single most foundational one fully and list the rest as a
+     checklist of follow-ups in the PR body — do not attempt all of
+     them in one run.
+   - **Commit incrementally** after each working slice so partial
+     progress is never lost to a timeout.
+   - **If the plan declares a dependency** on another issue or PR that
+     has not yet merged, do not implement against missing
+     infrastructure — open a draft PR noting the blocker and stop.
+   - **If you are running low on time**, stop writing new code, open a
+     **draft** PR with what is done plus a `## Remaining work`
+     checklist, and use `report_incomplete`. A draft PR with partial
+     progress is always better than no output.
 2. For every production code change, write a corresponding selftest
    under `selftests/` (matching this repo's convention of every fix or
    feature shipping with a test).
@@ -129,8 +163,29 @@ PR body must include:
   just demo-save bot-implement-issue-<num>
   ```
 
-Comment on the plan PR ("Implementation PR opened: #<new-pr-num>") and
-on the originating issue ("Implementation in progress: #<new-pr-num>").
+Then update the originating issue (`#<issue-num>`, which you know) so its
+labels reflect that implementation has started:
+
+1. Ensure the `implementing` label exists (idempotent):
+
+   ```
+   gh label create implementing --color 1D76DB --description "Plan merged; implementation PR in flight" --force
+   ```
+
+2. Move the issue from "plan pending" to "implementing" by calling the
+   safe-output tools with the issue number as the target (these outputs
+   are configured with `target: "*"`, so you must pass
+   `issue_number: <issue-num>`):
+   - `remove_labels` with `{"labels": ["plan-pending-review"], "issue_number": <issue-num>}`
+   - `add_labels` with `{"labels": ["implementing"], "issue_number": <issue-num>}`
+
+3. Add one comment on the issue (`add_comment` with
+   `issue_number: <issue-num>`) saying implementation is in progress. Do
+   **not** reference the new implementation PR's number — you cannot know
+   it while the run is in progress, and you must not invent a placeholder
+   such as `#aw_impl<n>`. gh-aw automatically posts a "Related Items" link
+   to the new PR on this plan PR, so the cross-link is handled for you;
+   describe the work in prose only.
 
 ## Step 5 — bail to comment
 

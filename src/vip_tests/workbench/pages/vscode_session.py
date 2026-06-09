@@ -25,6 +25,11 @@ class VSCodeSession:
     TERMINAL_PANEL = ".terminal"
     TERMINAL_INPUT = ".xterm-helper-textarea"
 
+    # Python / R Interactive Window (REPL output panel, DOM-rendered)
+    # Used by vscode_eval for reliable output capture without xterm scraping.
+    REPL_INPUT = ".interactive-input-widget textarea"
+    REPL_OUTPUT = ".interactive-output-widget"
+
     # Extensions panel
     EXTENSIONS_SEARCH_INPUT = ".extensions-search-container input[type='text']"
 

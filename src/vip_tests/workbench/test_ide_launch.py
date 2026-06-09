@@ -22,13 +22,13 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_IDE_LOAD,
     TIMEOUT_PAGE_LOAD,
     TIMEOUT_QUICK,
-    TIMEOUT_SESSION_START,
     assert_homepage_loaded,
     unique_session_name,
+    wait_for_session_active,
     workbench_login,
 )
+from vip_tests.workbench.exec import rstudio_eval
 from vip_tests.workbench.pages import (
-    ConsolePaneSelectors,
     Homepage,
     JupyterLabSession,
     NewSessionDialog,
@@ -226,13 +226,10 @@ def session_becomes_active(page: Page, session_context: dict):
     """Verify session transitions from Starting to Active."""
     session_name = session_context["name"]
 
-    # Verify our session row appears on the homepage
-    session_row = page.locator(Homepage.session_row(session_name))
-    expect(session_row).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-
-    # Wait for our session to reach Active state
-    session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
-    expect(session_active).to_be_visible(timeout=TIMEOUT_SESSION_START)
+    # Wait for our session to reach Active state.  Fails fast with an
+    # actionable message if it reaches a terminal state (e.g. Failed) instead
+    # of waiting out the full session-start timeout.
+    session_row = wait_for_session_active(page, session_name)
 
     # Navigate into the session (link only appears when Active)
     session_link = session_row.locator(f"a[title='join {session_name}']")
@@ -313,21 +310,13 @@ def positron_displayed(page: Page):
 def rstudio_executes_r_code(page: Page):
     """Type a simple R expression into the console and verify the output.
 
-    Waits for the R console input to be ready, then types ``1 + 1``, presses
-    Enter, and asserts that ``[1] 2`` appears in the console output.  Generous
-    timeouts are used because R startup and first-expression evaluation can be
-    slow on a freshly started session.
+    Delegates to ``rstudio_eval`` from ``exec.py``, which uses marker-bracketed
+    capture to reliably extract the console output for this specific expression.
+    Generous timeouts are used because R startup and first-expression evaluation
+    can be slow on a freshly started session.
     """
-    console_input = page.locator(ConsolePaneSelectors.INPUT)
-    expect(console_input).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-
-    console_input.click()
-    console_input.type("1 + 1")
-    console_input.press("Enter")
-
-    # The output area accumulates text; wait for the result to contain "[1] 2"
-    console_output = page.locator(ConsolePaneSelectors.OUTPUT)
-    expect(console_output).to_contain_text("[1] 2", timeout=TIMEOUT_CODE_EXEC)
+    result = rstudio_eval(page, "1 + 1", timeout=TIMEOUT_CODE_EXEC)
+    assert "2" in result, f"Expected '2' in RStudio eval output, got: {result!r}"
 
 
 @then("the VS Code terminal is accessible")

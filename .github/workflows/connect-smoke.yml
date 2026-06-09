@@ -3,9 +3,17 @@ name: Connect Smoke Tests
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/connect-smoke.yml'
   pull_request:
-  schedule:
-    - cron: "0 6 * * *" # daily at 6am UTC
+    paths:
+      - 'src/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/connect-smoke.yml'
 
 permissions:
   contents: read
@@ -18,7 +26,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        connect-version: ${{ github.event_name == 'schedule' && fromJSON('["2024.08.0", "release", "preview"]') || fromJSON('["2024.08.0", "release"]') }}
+        # `release` (no version suffix) always resolves to the latest Connect build.
+        connect-version: ["release"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
