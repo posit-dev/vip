@@ -339,7 +339,7 @@ _CONTENT_NAMES = [
 @when('I create a VIP test content item named "vip-jupyter-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-fastapi-test"', target_fixture="deploy_state")
 @when('I create a VIP test content item named "vip-gitbacked-test"', target_fixture="deploy_state")
-def create_content(connect_client, request):
+def create_content(connect_client, request, _connect_created_guids):
     # Extract content name by matching the content type keyword (e.g., "plumber")
     # from the bundle name against the test function name (e.g., "test_deploy_plumber").
     test_name = request.node.name
@@ -348,6 +348,7 @@ def create_content(connect_client, request):
         content_type = name.split("-")[1]
         if content_type in test_name:
             content = connect_client.create_content(name)
+            _connect_created_guids.append(content["guid"])
             return {
                 "guid": content["guid"],
                 "name": name,

@@ -20,6 +20,8 @@ class PositronSession:
 
     # Positron-specific elements
     CONSOLE_PANEL = ".positron-console"
+    # Monaco editor textarea within the Positron console input area
+    CONSOLE_INPUT = ".positron-console .repl-input-wrapper textarea"
     VARIABLES_PANE = ".positron-variables"
     PLOTS_PANE = ".positron-plots"
     HELP_PANE = ".positron-help"
