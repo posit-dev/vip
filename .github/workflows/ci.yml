@@ -183,7 +183,7 @@ jobs:
             && ! printf '%s\n' "$changed" | grep -qx 'pyproject.toml'; then
             echo "::error::uv.lock changed without a corresponding pyproject.toml change."
             echo "Plan/docs PRs must not carry a uv.lock update. Restore it with:"
-            echo "    git checkout origin/${GITHUB_BASE_REF} -- uv.lock && git commit uv.lock"
+            echo "    git checkout $BASE_SHA -- uv.lock && git commit -m 'restore uv.lock' uv.lock"
             echo "If this is an intentional dependency change, update pyproject.toml in the same PR."
             exit 1
           fi
