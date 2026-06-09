@@ -35,6 +35,14 @@ uv-tool venv whose `bin/` directory is not on the user's `PATH`.
   - `website/src/pages/index.astro`
   - `website/src/pages/getting-started.astro`
   - `website/src/pages/shiny-app.astro`
+
+> **Note on line numbers:** The specific line numbers cited in the
+> Components section below (e.g. `index.astro` line 92,
+> `getting-started.astro` lines 33–42) are approximate — they were
+> generated from a snapshot of the files and may have shifted. The
+> implementer **must** verify the actual line ranges against the current
+> file content before making edits.
+
 - Code-change scope:
   - `src/vip/install/playwright.py` — change the playwright subprocess
     invocation from `["playwright", "install", "chromium"]` to
@@ -55,6 +63,19 @@ tooling, not BDD test code.
 
 **Documentation (no behavior change):**
 
+- `CLAUDE.md` — the "Environment setup" block currently reads:
+
+  ```bash
+  uv sync                          # install dependencies
+  uv run vip install               # system packages (dnf/apt) + Playwright Chromium
+  ```
+
+  Update `uv run vip install` to bare `vip install` (with a note that
+  this assumes `uv tool install posit-vip` has already been run). The
+  `uv sync` line targets the clone-the-repo contributor workflow and
+  stays unchanged — contributors still run `uv sync` to get dev
+  dependencies, then call the installed `vip` binary directly.
+
 - `README.md` — replace the "Quick start" block (currently
   `uv venv` / `source .venv/bin/activate` / `uv pip install posit-vip`
   / `uv run vip install` / `vip verify ...`) with:
@@ -67,8 +88,14 @@ tooling, not BDD test code.
 
   Add a short note immediately below: "To install straight from `main`,
   use `uv tool install git+https://github.com/posit-dev/vip` instead."
-  Keep the rest of the README (uninstall, CLI commands, Shiny app,
-  development) unchanged.
+
+  Also update the README "Uninstall" section: it currently shows
+  `uv run vip uninstall`; change it to bare `vip uninstall` so it stays
+  consistent with the new `uv tool install` path where `vip` is on
+  the user's PATH directly.
+
+  Keep the rest of the README (CLI commands, Shiny app, development)
+  unchanged.
 
 - `website/src/pages/index.astro` — line 92 in the "How it works"
   step 1: change `uv pip install posit-vip` to
@@ -82,10 +109,11 @@ tooling, not BDD test code.
   unchanged because that flow intentionally wants a local checkout
   for editing tests, which `uv tool install` does not provide.
 
-- `website/src/pages/shiny-app.astro` — the "Installing with pip"
-  subsection (lines 240–244): keep `pip install posit-vip` as the
-  explicit-pip option, and add a `pipx install posit-vip` alternative
-  so the no-uv path also gets the cleaner isolated-tool flavor.
+- `website/src/pages/shiny-app.astro` — **out of scope for this
+  issue.** Adding a `pipx install posit-vip` alternative to the
+  "Installing with pip" subsection is a separate ergonomics improvement
+  unrelated to the `uv tool install` path. Do not touch this file as
+  part of this plan; if desired, open a follow-up issue.
 
 **Code (so `vip install` works from a uv-tool venv):**
 
@@ -155,9 +183,8 @@ tooling, not BDD test code.
    cd website && npm install && npm run build
    ```
 
-   Success: build completes; the `index.astro`,
-   `getting-started.astro`, and `shiny-app.astro` pages render with
-   the new install commands.
+   Success: build completes; the `index.astro` and
+   `getting-started.astro` pages render with the new install commands.
 
 ## Open questions
 
@@ -174,8 +201,8 @@ tooling, not BDD test code.
   they can edit, which `uv tool install` does not give them.
 - Whether to also document `pipx install posit-vip` in the README
   quick start. Proposal: do not — the README leads with uv to match
-  the rest of the project; the Shiny app page already has a
-  "without uv" carve-out and is the right place for the pipx mention.
+  the rest of the project. Any pipx mention belongs in a follow-up
+  issue, not this plan.
 
 ## Out of scope
 
