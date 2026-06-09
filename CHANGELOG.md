@@ -1,6 +1,42 @@
 # CHANGELOG
 
 
+## v0.39.1 (2026-06-09)
+
+### Bug Fixes
+
+- **plugin**: Preserve line breaks in error_summary (closes #344)
+  ([#353](https://github.com/posit-dev/vip/pull/353),
+  [`35e86b0`](https://github.com/posit-dev/vip/commit/35e86b08d7c41cc632d2bedab8ebbf4722e946cd))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+### Continuous Integration
+
+- Guard against stray uv.lock changes in PRs ([#351](https://github.com/posit-dev/vip/pull/351),
+  [`028a2d5`](https://github.com/posit-dev/vip/commit/028a2d5b0bfcc6cf5783e36279c8e63cb6590f79))
+
+- Make issue triage opt-in and add issue lifecycle labels
+  ([#352](https://github.com/posit-dev/vip/pull/352),
+  [`e87fd5b`](https://github.com/posit-dev/vip/commit/e87fd5b9e15057e6c400b5d5491ba29d9ff1967a))
+
+### Documentation
+
+- Plan for #344 — preserve line breaks in error_summary
+  ([#345](https://github.com/posit-dev/vip/pull/345),
+  [`1c40865`](https://github.com/posit-dev/vip/commit/1c40865056095dcf1d26907070f26effe051adf1))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.39.0 (2026-06-09)
 
 ### Chores
