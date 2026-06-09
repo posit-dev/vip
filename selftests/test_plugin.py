@@ -142,7 +142,7 @@ class TestExtractExceptionInfo:
         longrepr = "tests/test_foo.py:5: in test_it\nE   ValueError: line one\nE       line two"
         exc_type, exc_message = _extract_exception_info(longrepr)
         assert exc_type == "ValueError"
-        assert exc_message == "line one line two"
+        assert exc_message == "line one\nline two"
 
     def test_multiline_assertion_with_details(self):
         """Multi-line assertion messages should include continuation lines."""
