@@ -103,6 +103,32 @@ class TestWorkbenchConfig:
         wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com"})
         assert wc.job_timeout == 120
 
+    def test_test_packages_default_empty(self):
+        wc = WorkbenchConfig(url="https://workbench.example.com")
+        assert wc.test_packages == []
+
+    def test_test_packages_from_dict(self):
+        wc = WorkbenchConfig.from_dict(
+            {"url": "https://workbench.example.com", "test_packages": ["sf", "DBI", "Matrix"]}
+        )
+        assert wc.test_packages == ["sf", "DBI", "Matrix"]
+
+    def test_test_packages_default_from_dict(self):
+        wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com"})
+        assert wc.test_packages == []
+
+    def test_test_packages_string_normalized_to_list(self):
+        wc = WorkbenchConfig.from_dict(
+            {"url": "https://workbench.example.com", "test_packages": "sf"}
+        )
+        assert wc.test_packages == ["sf"]
+
+    def test_test_packages_invalid_type_raises(self):
+        with pytest.raises(ValueError, match="must be a list of strings"):
+            WorkbenchConfig.from_dict(
+                {"url": "https://workbench.example.com", "test_packages": 42}
+            )
+
 
 class TestWorkbenchExtensionsConfig:
     def test_defaults_empty(self):

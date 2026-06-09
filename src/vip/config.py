@@ -194,6 +194,9 @@ class WorkbenchConfig(ProductConfig):
     # Maximum seconds to wait for a job (Background Job or Workbench Job) to
     # complete.  Increase for slow clusters or high-latency networks.
     job_timeout: int = 120
+    # R or Python packages to install and verify in package-install scenarios.
+    # Example: ["sf", "DBI", "Matrix"]
+    test_packages: list[str] = field(default_factory=list)
     extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
     kubernetes: WorkbenchKubernetesConfig = field(default_factory=WorkbenchKubernetesConfig)
 
@@ -209,6 +212,7 @@ class WorkbenchConfig(ProductConfig):
             f"version={self.version!r}, api_key={api_key_repr}, "
             f"session_profiles={self.session_profiles!r}, "
             f"session_count={self.session_count!r}, job_timeout={self.job_timeout!r}, "
+            f"test_packages={self.test_packages!r}, "
             f"extensions={self.extensions!r}, kubernetes={self.kubernetes!r})"
         )
 
@@ -222,6 +226,7 @@ class WorkbenchConfig(ProductConfig):
             session_profiles=raw.get("session_profiles"),
             session_count=raw.get("session_count", 3),
             job_timeout=raw.get("job_timeout", 120),
+            test_packages=_as_str_list(raw.get("test_packages", []), "workbench.test_packages"),
             extensions=WorkbenchExtensionsConfig.from_dict(raw.get("extensions", {})),
             kubernetes=WorkbenchKubernetesConfig.from_dict(raw.get("kubernetes", {})),
         )
