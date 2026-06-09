@@ -21,6 +21,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_SESSION_START,
     assert_homepage_loaded,
     unique_session_name,
+    wait_for_session_active,
     workbench_login,
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
@@ -106,14 +107,13 @@ def start_rstudio_pro_session(page: Page, session_context: dict):
 
 @when("the session reaches Active state")
 def session_becomes_active(page: Page, session_context: dict):
-    """Wait for the session to reach Active state on the homepage."""
+    """Wait for the session to reach Active state on the homepage.
+
+    Fails fast with an actionable message if the session reaches a terminal
+    state (e.g. Failed) rather than waiting out the full session-start timeout.
+    """
     session_name = session_context["name"]
-
-    session_row = page.locator(Homepage.session_row(session_name))
-    expect(session_row).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-
-    session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
-    expect(session_active).to_be_visible(timeout=TIMEOUT_SESSION_START)
+    wait_for_session_active(page, session_name)
 
 
 @when("the user suspends the session")

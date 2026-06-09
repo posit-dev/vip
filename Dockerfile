@@ -1,6 +1,6 @@
 # VIP - Verified Installation of Posit
 # Container image for running VIP tests as Kubernetes Jobs
-FROM mcr.microsoft.com/playwright/python:v1.52.0-noble
+FROM mcr.microsoft.com/playwright/python:v1.60.0-noble
 
 # Install uv for fast Python package management
 COPY --from=ghcr.io/astral-sh/uv:0.6.3 /uv /uvx /usr/local/bin/
