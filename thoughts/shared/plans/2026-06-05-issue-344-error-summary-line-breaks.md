@@ -32,12 +32,46 @@ The `failures.json` consumer is fine with multi-line strings — JSON encodes `\
 ## Components
 
 **src/vip/**
-- `plugin.py` — change `_extract_exception_info` so the join in the E-line continuation block uses `"\n"` instead of `" "`, and trims trailing blank lines. Adjust the terminal-rendering call site (around line 814) to collapse newlines back to spaces so pytest's one-line `FAILED ...` summary stays compact. Leave `concise_error` (which feeds `results.json` and `failures.json`) multi-line.
+- `plugin.py` — in `_extract_exception_info`, change the return statement so the E-line continuation block joins with `"\n"` instead of `" "`. The exact one-line change is:
+
+  ```python
+  # Before:
+  return m.group(1), " ".join(line for line in msg_lines if line)
+  # After:
+  return m.group(1), "\n".join(line for line in msg_lines if line)
+  ```
+
+  At the terminal call site (around line 814 in `src/vip/plugin.py`, inside `pytest_runtest_logreport`), where the result of `_format_concise_error` is assigned to `report.longrepr` for the terminal `FAILED` summary line, wrap `exc_message` with `.replace("\n", " ")` before passing it in — for example:
+
+  ```python
+  report.longrepr = _format_concise_error(exc_type, exc_message.replace("\n", " "))
+  ```
+
+  Do NOT change `_format_concise_error` itself; the flatten must happen only at this one terminal call site. All other call sites (the JSON writer, `pytest_sessionfinish`) continue passing the multi-line `exc_message` unchanged so `concise_error` in `results.json` / `failures.json` retains line breaks.
+
 - No changes to any other file under `src/vip/` — the `_format_concise_error` signature and behavior stay the same, and downstream callers (`pytest_sessionfinish`, the report writer) are already string-passthroughs.
 
 **selftests/**
-- `test_plugin.py` — extend the existing `test_failures_json_uses_concise_error` block (or add a sibling test) with a fixture that raises an exception whose message contains literal newlines, and assert that the resulting `error_summary` in `failures.json` contains `\n` between the original lines. Add a second assertion verifying the terminal `FAILED` line for that test still renders on a single line (no embedded newlines), guarding the regression call-out above.
-- Update `test_failures_json_uses_concise_error`'s upper-bound length check (currently `< 200`) only if the new newline characters push it over — likely fine, but the implementer must verify and adjust the bound in the same PR if needed.
+- `test_plugin.py` — extend the existing `test_failures_json_uses_concise_error` block (or add a sibling test) with a fixture that raises an exception whose message contains literal newlines, and assert that the resulting `error_summary` in `failures.json` contains `\n` between the original lines.
+
+  To assert the terminal `FAILED` line stays single-line, use `pytester.runpytest(...)` to capture terminal output, then assert no newline character appears inside the `FAILED` line, for example:
+
+  ```python
+  result = pytester.runpytest(...)
+  failed_lines = [l for l in result.stdout.lines if "FAILED" in l]
+  assert failed_lines, "expected at least one FAILED line"
+  assert "\n" not in failed_lines[0], "FAILED summary line must not contain embedded newlines"
+  ```
+
+  This guards the regression that the terminal call-site flatten must not break.
+
+- Remove (or replace with an explanatory comment) the existing `< 200` character-count assertion in `test_failures_json_uses_concise_error`. A real multi-line `error_summary` will legitimately exceed 200 characters, so the numeric bound is wrong after this change. If a length guard is still desired, replace it with a comment such as:
+
+  ```python
+  # Validate the concise format is used (not the raw longrepr fallback),
+  # not a hard character-count limit — multi-line summaries may be longer.
+  assert error_summary != longrepr_text
+  ```
 
 **report/**
 - No changes needed. `report/details.qmd` already renders text fields verbatim; multi-line strings will display with line breaks because Quarto markdown respects them in preformatted blocks.
