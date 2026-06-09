@@ -1,6 +1,84 @@
 # CHANGELOG
 
 
+## v0.39.0 (2026-06-09)
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 6 updates
+  ([#340](https://github.com/posit-dev/vip/pull/340),
+  [`09a59f5`](https://github.com/posit-dev/vip/commit/09a59f5b13341718b2929b43d18e5425942ccfdf))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump the python-dependencies group with 6 updates
+  ([#339](https://github.com/posit-dev/vip/pull/339),
+  [`33a1b71`](https://github.com/posit-dev/vip/commit/33a1b71d404d0c451e39063d54b112a62e65877f))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+Co-authored-by: Brian Deitte <brian.deitte@posit.co>
+
+### Continuous Integration
+
+- Add path filters to ci, preview, and website-preview workflows
+  ([#337](https://github.com/posit-dev/vip/pull/337),
+  [`a0c437f`](https://github.com/posit-dev/vip/commit/a0c437fb3db1fea16d8320232983ba8c31194d61))
+
+- Run Connect tests using with-connect ([#338](https://github.com/posit-dev/vip/pull/338),
+  [`b8730a1`](https://github.com/posit-dev/vip/commit/b8730a1c344fca2505a4ab888359140c427e7f54))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+Co-authored-by: Brian Deitte <brian.deitte@posit.co>
+
+- Smoke test updates, including running against the latest version
+  ([#341](https://github.com/posit-dev/vip/pull/341),
+  [`c91db13`](https://github.com/posit-dev/vip/commit/c91db13ee7eef23379ff79bdf763b969d029b34c))
+
+### Documentation
+
+- Plan for #301 — add in-session execution primitives for Workbench
+  ([#317](https://github.com/posit-dev/vip/pull/317),
+  [`4c33e7f`](https://github.com/posit-dev/vip/commit/4c33e7fe7025fb558ae3c2bb86acba99a2061df9))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+- Plan for #306 — cover Git operations from Workbench sessions
+  ([#309](https://github.com/posit-dev/vip/pull/309),
+  [`77922c3`](https://github.com/posit-dev/vip/commit/77922c31c3231846cad6a24898abe68fdd560055))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+### Features
+
+- **workbench**: Add in-session execution primitives (closes #301)
+  ([#349](https://github.com/posit-dev/vip/pull/349),
+  [`3b336eb`](https://github.com/posit-dev/vip/commit/3b336eb88130592a7d509963b6ed8539bc9ce4b7))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.38.0 (2026-06-02)
 
 ### Features
