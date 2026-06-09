@@ -27,8 +27,8 @@ from vip_tests.workbench.conftest import (
     wait_for_session_active,
     workbench_login,
 )
+from vip_tests.workbench.exec import rstudio_eval
 from vip_tests.workbench.pages import (
-    ConsolePaneSelectors,
     Homepage,
     JupyterLabSession,
     NewSessionDialog,
@@ -310,21 +310,13 @@ def positron_displayed(page: Page):
 def rstudio_executes_r_code(page: Page):
     """Type a simple R expression into the console and verify the output.
 
-    Waits for the R console input to be ready, then types ``1 + 1``, presses
-    Enter, and asserts that ``[1] 2`` appears in the console output.  Generous
-    timeouts are used because R startup and first-expression evaluation can be
-    slow on a freshly started session.
+    Delegates to ``rstudio_eval`` from ``exec.py``, which uses marker-bracketed
+    capture to reliably extract the console output for this specific expression.
+    Generous timeouts are used because R startup and first-expression evaluation
+    can be slow on a freshly started session.
     """
-    console_input = page.locator(ConsolePaneSelectors.INPUT)
-    expect(console_input).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-
-    console_input.click()
-    console_input.type("1 + 1")
-    console_input.press("Enter")
-
-    # The output area accumulates text; wait for the result to contain "[1] 2"
-    console_output = page.locator(ConsolePaneSelectors.OUTPUT)
-    expect(console_output).to_contain_text("[1] 2", timeout=TIMEOUT_CODE_EXEC)
+    result = rstudio_eval(page, "1 + 1", timeout=TIMEOUT_CODE_EXEC)
+    assert "2" in result, f"Expected '2' in RStudio eval output, got: {result!r}"
 
 
 @then("the VS Code terminal is accessible")
