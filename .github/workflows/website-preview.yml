@@ -3,6 +3,17 @@ name: Website Preview
 on:
   pull_request:
     types: [opened, reopened, synchronize, closed]
+    paths:
+      - 'website/**'
+      - 'src/vip/**'
+      - 'src/vip_tests/**'
+      - 'report/**'
+      - 'scripts/generate-test-catalog.py'
+      - 'scripts/generate-feature-matrix.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/website-preview.yml'
+      - '.github/workflows/example-report.yml'
 
 concurrency: website-preview-${{ github.ref }}
 

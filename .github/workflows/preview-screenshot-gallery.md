@@ -31,6 +31,13 @@ network:
   allowed:
     - defaults
     - playwright
+    - "accounts.google.com"
+    - "android.clients.google.com"
+    - "cdn.jsdelivr.net"
+    - "clients2.google.com"
+    - "fonts.googleapis.com"
+    - "safebrowsingohttpgateway.googleapis.com"
+    - "www.google.com"
     - posit-dev.github.io
 ---
 

@@ -1,33 +1,37 @@
-name: Connect Smoke Tests
+name: Connect Integration Tests
+
+# Runs the full VIP Connect test category against ephemeral Connect servers
+# stood up by `with-connect`, so we detect drift between VIP and Connect.
+#
+# Unlike connect-smoke.yml (a curated, fast subset gated on PRs), this workflow
+# runs as many Connect tests as the default `with-connect` setup supports:
+# `vip verify --api-auth --categories connect` selects every API-key scenario
+# and auto-skips features the bare server doesn't have (email, data sources,
+# additional runtimes). See posit-dev/connect#40047.
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/connect-smoke.yml'
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/connect-smoke.yml'
+  schedule:
+    - cron: "0 5 * * *" # daily at 5am UTC
+  workflow_dispatch:
 
 permissions:
   contents: read
-  checks: write
+
+concurrency:
+  group: connect-integration-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  connect-smoke:
-    name: Smoke test against Connect ${{ matrix.connect-version }}
+  connect-integration:
+    name: Integration tests against Connect ${{ matrix.connect-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # `release` (no version suffix) always resolves to the latest Connect build.
-        connect-version: ["release"]
+        # "release" = currently released stable, "preview" = nightly build.
+        connect-version: ["release", "preview"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -73,9 +77,11 @@ jobs:
       # Resolve the actual Connect version for unambiguous job records
       - name: Resolve Connect version
         id: version
+        env:
+          VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
         run: |
           RESPONSE=$(curl -sf \
-            -H "Authorization: Key ${{ steps.connect.outputs.CONNECT_API_KEY }}" \
+            -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
             "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings")
           VERSION=$(echo "${RESPONSE}" | jq -r '.version')
           if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
@@ -85,29 +91,6 @@ jobs:
           fi
           echo "Resolved Connect version: ${VERSION}"
           echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
-
-      # Rename the check run so the job title shows the resolved version
-      - name: Update job title with resolved version
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
-        with:
-          script: |
-            const resolvedVersion = '${{ steps.version.outputs.resolved }}';
-            const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.runId,
-            });
-            const currentJob = jobs.find(
-              j => j.status === 'in_progress' && j.name.includes('${{ matrix.connect-version }}')
-            );
-            if (currentJob) {
-              await github.rest.checks.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                check_run_id: currentJob.id,
-                name: `Smoke test against Connect ${resolvedVersion}`,
-              });
-            }
 
       # Set up Python and install VIP
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -120,37 +103,19 @@ jobs:
       - name: Install Playwright browsers
         run: uv run vip install --skip-system
 
-      # Generate vip.toml from with-connect outputs
-      - name: Configure VIP for CI Connect
+      # Run the full Connect category. --api-auth selects every API-key
+      # scenario (the bootstrap admin key from with-connect) and skips the
+      # browser-login scenario; features the bare server lacks (email, data
+      # sources, extra runtimes) auto-skip via @if_applicable.
+      - name: Run Connect integration tests
         run: |
-          cat > vip.toml << EOF
-          [general]
-          deployment_name = "CI Connect"
-
-          [connect]
-          enabled = true
-          url = "${{ steps.connect.outputs.CONNECT_SERVER }}"
-          api_key = "${{ steps.connect.outputs.CONNECT_API_KEY }}"
-          version = "${{ steps.version.outputs.resolved }}"
-
-          [auth]
-          provider = "password"
-          username = "__bootstrap_admin__"
-          EOF
-
-      # Run the subset of tests that work against Docker Connect
-      - name: Run Connect smoke tests
-        run: |
-          uv run pytest \
-            src/vip_tests/prerequisites/test_components.py \
-            src/vip_tests/connect/test_auth.py \
-            src/vip_tests/connect/test_users.py \
-            src/vip_tests/connect/test_runtime_versions.py \
-            src/vip_tests/security/test_error_handling.py \
-            -v \
-            -k "not connect_login_ui" \
-            --vip-config=vip.toml \
-            --junitxml=smoke-results.xml
+          uv run vip verify \
+            --connect-url "${{ steps.connect.outputs.CONNECT_SERVER }}" \
+            --api-auth \
+            --categories connect \
+            --filter "not test_list_users" \
+            --report results.json \
+            -- --junitxml=connect-results.xml
         env:
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
 
@@ -159,8 +124,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: connect-smoke-results-${{ matrix.connect-version }}
-          path: smoke-results.xml
+          name: connect-integration-results-${{ matrix.connect-version }}
+          path: |
+            connect-results.xml
+            results.json
+          if-no-files-found: ignore
 
       # Write a rich job summary with test details and emoji
       - name: Write workflow summary
@@ -171,7 +139,7 @@ jobs:
           REQUESTED="${{ matrix.connect-version }}"
           RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
           {
-            echo "## 🧪 Connect Smoke Tests — v${RESOLVED}"
+            echo "## 🔗 Connect Integration Tests — v${RESOLVED}"
             echo ""
             echo "| | |"
             echo "|---|---|"
@@ -181,11 +149,11 @@ jobs:
             echo "| 📅 **Run date** | ${RUN_DATE} |"
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ -f smoke-results.xml ]; then
-            TESTS=$(grep -oP '(?<=tests=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            FAILURES=$(grep -oP '(?<=failures=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            ERRORS=$(grep -oP '(?<=errors=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            SKIPPED=$(grep -oP '(?<=skipped=")[^"]+' smoke-results.xml | head -1 || echo 0)
+          if [ -f connect-results.xml ]; then
+            TESTS=$(grep -oP '(?<=tests=")[^"]+' connect-results.xml | head -1 || echo 0)
+            FAILURES=$(grep -oP '(?<=failures=")[^"]+' connect-results.xml | head -1 || echo 0)
+            ERRORS=$(grep -oP '(?<=errors=")[^"]+' connect-results.xml | head -1 || echo 0)
+            SKIPPED=$(grep -oP '(?<=skipped=")[^"]+' connect-results.xml | head -1 || echo 0)
             TESTS=${TESTS:-0}; FAILURES=${FAILURES:-0}; ERRORS=${ERRORS:-0}; SKIPPED=${SKIPPED:-0}
             PASSED=$(( TESTS - FAILURES - ERRORS - SKIPPED ))
             {
@@ -216,16 +184,18 @@ jobs:
         with:
           stop: ${{ steps.connect.outputs.CONTAINER_ID }}
 
-  status:
-    name: Connect Smoke Tests Status
-    if: always()
-    needs: [connect-smoke]
+  notify-on-failure:
+    name: Notify Slack on failure
     runs-on: ubuntu-latest
+    needs: connect-integration
+    if: ${{ failure() }}
     steps:
-      - name: Check smoke test result
-        run: |
-          if [ "${{ needs.connect-smoke.result }}" = "failure" ] || [ "${{ needs.connect-smoke.result }}" = "cancelled" ]; then
-            echo "Connect smoke tests failed or were cancelled"
-            exit 1
-          fi
-          echo "Connect smoke tests passed or were skipped"
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_CONNECT_CI }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Connect VIP tests failed — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+            }
