@@ -546,9 +546,49 @@ class TestPluginIntegration:
 
         data = json.loads(failures_path.read_text())
         assert len(data["failures"]) == 1
-        assert "Config is missing" in data["failures"][0]["error_summary"]
-        # Should be the concise format, not a 500-char truncation
-        assert len(data["failures"][0]["error_summary"]) < 200
+        error_summary = data["failures"][0]["error_summary"]
+        assert "Config is missing" in error_summary
+        # Validate the concise format is used (not the raw longrepr fallback).
+        # No hard character-count limit — multi-line summaries may legitimately exceed 200 chars.
+        assert "FAILED" not in error_summary, "error_summary should be concise, not raw longrepr"
+
+    def test_error_summary_preserves_line_breaks(self, selftest_pytester):
+        """Multi-line exception messages retain newlines in failures.json error_summary."""
+        selftest_pytester.makepyfile(
+            """
+            def test_multiline_error():
+                raise RuntimeError("line one\\nline two\\nline three")
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        failures_path = selftest_pytester.path / "failures.json"
+        assert failures_path.exists()
+
+        data = json.loads(failures_path.read_text())
+        assert len(data["failures"]) == 1
+        error_summary = data["failures"][0]["error_summary"]
+        assert "line one" in error_summary
+        assert "line two" in error_summary
+        assert "line three" in error_summary
+        assert "\n" in error_summary, "error_summary must contain newlines for multi-line errors"
+
+    def test_terminal_failed_line_stays_single_line(self, selftest_pytester):
+        """Terminal FAILED summary line must not contain embedded newlines."""
+        selftest_pytester.makepyfile(
+            """
+            def test_multiline_error():
+                raise RuntimeError("line one\\nline two\\nline three")
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(failed=1)
+        failed_lines = [line for line in result.stdout.lines if "FAILED" in line]
+        assert failed_lines, "expected at least one FAILED line in terminal output"
+        assert "\n" not in failed_lines[0], "FAILED summary line must not contain embedded newlines"
 
     def test_concise_failure_output(self, selftest_pytester):
         """Failed test shows one-liner, not full traceback."""

@@ -607,7 +607,7 @@ def _extract_exception_info(longrepr: str) -> tuple[str, str]:
             if not cont:
                 break
             msg_lines.append(cont.group(1).strip())
-        return m.group(1), " ".join(line for line in msg_lines if line)
+        return m.group(1), "\n".join(line for line in msg_lines if line)
 
     # Bare assertion from pytest's assertion rewriting: "E   assert 403 == 200"
     m = re.search(r"^E\s+(assert\s+.+)", longrepr, re.MULTILINE)
@@ -811,7 +811,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
     longrepr_str = str(report.longrepr)
     exc_type, exc_message = _extract_exception_info(longrepr_str)
-    report.longrepr = _format_concise_error(report.nodeid, exc_type, exc_message)
+    report.longrepr = _format_concise_error(report.nodeid, exc_type, exc_message.replace("\n", " "))
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
