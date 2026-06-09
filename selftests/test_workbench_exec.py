@@ -22,11 +22,11 @@ from vip_tests.workbench.exec import (
     ExecError,
     _extract_between_markers,
     _make_sentinels,
+    _split_marker,
     _strip_r_index,
     _wrap_python_expr,
     _wrap_r_expr,
 )
-
 
 # ---------------------------------------------------------------------------
 # _make_sentinels
@@ -73,15 +73,24 @@ class TestMakeSentinels:
 
 
 class TestWrapRExpr:
-    def test_contains_start_marker(self):
-        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
-        result = _wrap_r_expr("1 + 1", start, end)
-        assert start in result
+    def test_full_marker_not_contiguous_in_source(self):
+        """The full marker must NOT appear contiguously in the typed source.
 
-    def test_contains_end_marker(self):
+        Consoles echo typed input back into the same pane we read output from.
+        If the literal marker appeared in the echo, the readiness wait and
+        ``_extract_between_markers`` would match the echoed command instead of
+        its output (the regression that captured ``'\\n"); 1 + 1; cat("\\n'``).
+        """
         start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
         result = _wrap_r_expr("1 + 1", start, end)
-        assert end in result
+        assert start not in result
+        assert end not in result
+
+    def test_marker_halves_present(self):
+        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
+        result = _wrap_r_expr("1 + 1", start, end)
+        for half in (*_split_marker(start), *_split_marker(end)):
+            assert half in result
 
     def test_contains_expression(self):
         start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
@@ -105,9 +114,11 @@ class TestWrapRExpr:
     def test_markers_wrap_expression(self):
         start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
         result = _wrap_r_expr("1 + 1", start, end)
-        # Start marker should appear before the expression in the output string
-        assert result.index(start) < result.index("1 + 1")
-        assert result.index("1 + 1") < result.index(end)
+        # Start marker (first half) should appear before the expression, which
+        # in turn appears before the end marker.
+        s1, _ = _split_marker(start)
+        e1, _ = _split_marker(end)
+        assert result.index(s1) < result.index("1 + 1") < result.index(e1)
 
     def test_double_quotes_in_expr_inline(self):
         start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
@@ -123,15 +134,22 @@ class TestWrapRExpr:
 
 
 class TestWrapPythonExpr:
-    def test_contains_start_marker(self):
-        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
-        result = _wrap_python_expr("1 + 1", start, end)
-        assert start in result
+    def test_full_marker_not_contiguous_in_source(self):
+        """The full marker must NOT appear contiguously in the typed source.
 
-    def test_contains_end_marker(self):
+        The Positron Python console echoes typed input; splitting the marker
+        keeps the readiness wait and extraction keyed to the printed output.
+        """
         start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
         result = _wrap_python_expr("1 + 1", start, end)
-        assert end in result
+        assert start not in result
+        assert end not in result
+
+    def test_marker_halves_present(self):
+        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
+        result = _wrap_python_expr("1 + 1", start, end)
+        for half in (*_split_marker(start), *_split_marker(end)):
+            assert half in result
 
     def test_contains_expression(self):
         start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
@@ -150,13 +168,13 @@ class TestWrapPythonExpr:
         start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
         result = _wrap_python_expr("x = 1", start, end)
         first_line = result.splitlines()[0]
-        assert start in first_line
+        assert _split_marker(start)[0] in first_line
 
     def test_end_print_is_last_line(self):
         start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
         result = _wrap_python_expr("x = 1", start, end)
         last_line = result.splitlines()[-1]
-        assert end in last_line
+        assert _split_marker(end)[0] in last_line
 
 
 # ---------------------------------------------------------------------------
@@ -203,11 +221,16 @@ class TestExtractBetweenMarkers:
         assert result == "first"
 
     def test_full_round_trip_r(self):
-        """Simulates what the console would echo back for an R eval."""
+        """Simulates the pane: the echoed command followed by the real output.
+
+        Regression guard: because the wrapped command's markers are split, the
+        echoed input must NOT contain a full contiguous marker, so extraction
+        keys off the executed output (``[1] 2``) rather than the echo.
+        """
         start, end = _make_sentinels()
         wrapped = _wrap_r_expr("1 + 1", start, end)
-        # Simulate console output: echo of command + output between markers
-        simulated_output = f"some prior output\n{start}\n[1] 2\n{end}\n> "
+        # Echo of the typed command, then the executed output between markers.
+        simulated_output = f"> {wrapped}\n{start}\n[1] 2\n{end}\n> "
         result = _extract_between_markers(simulated_output, start, end)
         assert result == "[1] 2"
 

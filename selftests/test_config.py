@@ -125,9 +125,7 @@ class TestWorkbenchConfig:
 
     def test_test_packages_invalid_type_raises(self):
         with pytest.raises(ValueError, match="must be a list of strings"):
-            WorkbenchConfig.from_dict(
-                {"url": "https://workbench.example.com", "test_packages": 42}
-            )
+            WorkbenchConfig.from_dict({"url": "https://workbench.example.com", "test_packages": 42})
 
 
 class TestWorkbenchExtensionsConfig:
