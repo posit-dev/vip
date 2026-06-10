@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pytest_bdd import given
 
+from vip.client_auth import build_client_auth
 from vip.clients.connect import ConnectClient
 from vip.clients.kubernetes import KubernetesClient
 from vip.clients.packagemanager import PackageManagerClient
@@ -48,12 +49,17 @@ def vip_verbose(request: pytest.FixtureRequest) -> bool:
 def connect_client(vip_config: VIPConfig) -> ConnectClient | None:
     if not vip_config.connect.is_configured:
         return None
-    require_connect_api_key(vip_config)
+    # A registered client-auth provider (e.g. Snowflake JWT) authenticates the
+    # request itself, so a Connect API key is not required in that case.
+    auth = build_client_auth(vip_config, "connect", vip_config.connect.url)
+    if auth is None:
+        require_connect_api_key(vip_config)
     client = ConnectClient(
         vip_config.connect.url,
         api_key=vip_config.connect.api_key,
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
+        auth=auth,
     )
     yield client
     client.close()
@@ -68,11 +74,13 @@ def connect_url(vip_config: VIPConfig) -> str:
 def workbench_client(vip_config: VIPConfig) -> WorkbenchClient | None:
     if not vip_config.workbench.is_configured:
         return None
+    auth = build_client_auth(vip_config, "workbench", vip_config.workbench.url)
     client = WorkbenchClient(
         vip_config.workbench.url,
         api_key=vip_config.workbench.api_key,
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
+        auth=auth,
     )
     yield client
     client.close()
@@ -99,11 +107,13 @@ def kubernetes_client(vip_config: VIPConfig) -> KubernetesClient | None:
 def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
     if not vip_config.package_manager.is_configured:
         return None
+    auth = build_client_auth(vip_config, "package_manager", vip_config.package_manager.url)
     client = PackageManagerClient(
         vip_config.package_manager.url,
         token=vip_config.package_manager.token,
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
+        auth=auth,
     )
     yield client
     client.close()

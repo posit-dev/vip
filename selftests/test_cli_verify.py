@@ -1025,6 +1025,64 @@ class TestVerifyLocalTLSFlags:
                 Path(path).unlink(missing_ok=True)
 
 
+class TestVerifyLocalSnowflakeApiAuthGuard:
+    """--api-auth is rejected with a friendly error when the IdP is Snowflake."""
+
+    def test_api_auth_with_snowflake_idp_flag_exits(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _run_verify_local
+
+        args = _make_args(
+            package_manager_url="https://pm.example.com",
+            api_auth=True,
+            idp="snowflake",
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            _run_verify_local(args)
+        assert exc_info.value.code == 1
+        err = capsys.readouterr().err
+        assert "--api-auth is not supported with the Snowflake" in err
+        assert "--headless-auth" in err
+
+    def test_api_auth_with_snowflake_idp_from_config_exits(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text(
+            '[package_manager]\nurl = "https://pm.example.com"\n'
+            '[auth]\nprovider = "oauth2"\nidp = "snowflake"\n'
+        )
+        from vip.cli import _run_verify_local
+
+        args = _make_args(config=str(cfg), api_auth=True)
+        with pytest.raises(SystemExit) as exc_info:
+            _run_verify_local(args)
+        assert exc_info.value.code == 1
+        assert "--api-auth is not supported with the Snowflake" in capsys.readouterr().err
+
+    def test_api_auth_without_snowflake_idp_no_exit(self, tmp_path, monkeypatch):
+        """--api-auth is fine for non-Snowflake deployments."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        cmd = _capture_cmd(_make_args(package_manager_url="https://pm.example.com", api_auth=True))
+        assert "--api-auth" in cmd
+
+    def test_headless_auth_with_snowflake_idp_no_exit(self, tmp_path, monkeypatch):
+        """The guard only targets --api-auth; --headless-auth + snowflake is allowed."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        cmd = _capture_cmd(
+            _make_args(
+                package_manager_url="https://pm.example.com",
+                headless_auth=True,
+                idp="snowflake",
+            )
+        )
+        assert "--headless-auth" in cmd
+        assert "--api-auth" not in cmd
+
+
 class TestReorderHelpArgs:
     """`vip -h <subcommand>` should surface the subcommand's help, not top-level."""
 

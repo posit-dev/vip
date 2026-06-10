@@ -8,6 +8,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import httpx
 from pytest_bdd import scenario, then, when
 
+from vip.client_auth import build_client_auth
+
 
 @scenario("test_concurrency.feature", "Multiple concurrent API requests to Connect succeed")
 def test_connect_concurrency():
@@ -24,14 +26,16 @@ def test_workbench_concurrency():
     pass
 
 
-def _concurrent_requests(url: str, n: int, verify: bool | str = True) -> list[dict]:
+def _concurrent_requests(
+    url: str, n: int, verify: bool | str = True, auth: httpx.Auth | None = None
+) -> list[dict]:
     """Fire *n* GET requests concurrently and collect results."""
     results = []
 
     def _fetch():
         start = time.monotonic()
         try:
-            resp = httpx.get(url, timeout=30, verify=verify)
+            resp = httpx.get(url, timeout=30, verify=verify, auth=auth)
             return {"status": resp.status_code, "elapsed": time.monotonic() - start, "error": None}
         except Exception as exc:
             return {"status": None, "elapsed": time.monotonic() - start, "error": str(exc)}
@@ -49,7 +53,10 @@ def _concurrent_requests(url: str, n: int, verify: bool | str = True) -> list[di
 )
 def concurrent_connect(vip_config, performance_config):
     url = f"{vip_config.connect.url}/__api__/server_settings"
-    return _concurrent_requests(url, performance_config.concurrent_requests, vip_config.verify)
+    auth = build_client_auth(vip_config, "connect", vip_config.connect.url)
+    return _concurrent_requests(
+        url, performance_config.concurrent_requests, vip_config.verify, auth
+    )
 
 
 @when(
@@ -58,7 +65,10 @@ def concurrent_connect(vip_config, performance_config):
 )
 def concurrent_pm(vip_config, performance_config):
     url = f"{vip_config.package_manager.url}/__api__/status"
-    return _concurrent_requests(url, performance_config.concurrent_requests, vip_config.verify)
+    auth = build_client_auth(vip_config, "package_manager", vip_config.package_manager.url)
+    return _concurrent_requests(
+        url, performance_config.concurrent_requests, vip_config.verify, auth
+    )
 
 
 @when(
@@ -67,7 +77,10 @@ def concurrent_pm(vip_config, performance_config):
 )
 def concurrent_workbench(vip_config, performance_config):
     url = f"{vip_config.workbench.url}/health-check"
-    return _concurrent_requests(url, performance_config.concurrent_requests, vip_config.verify)
+    auth = build_client_auth(vip_config, "workbench", vip_config.workbench.url)
+    return _concurrent_requests(
+        url, performance_config.concurrent_requests, vip_config.verify, auth
+    )
 
 
 @then("all requests succeed")

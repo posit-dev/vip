@@ -38,15 +38,24 @@ class ConnectClient(BaseClient):
         timeout: float = 30.0,
         insecure: bool = False,
         ca_bundle: Path | None = None,
+        auth: httpx.Auth | None = None,
     ) -> None:
         api_key = (api_key or "").strip()
+        # Send the Connect API key via ``X-RSC-Authorization`` rather than the
+        # standard ``Authorization`` header. Connect honors both, but an SPCS
+        # ingress (Snowflake Native App) consumes ``Authorization`` for its own
+        # ``Snowflake Token="..."`` — supplied per request by *auth* — so the two
+        # auth layers would otherwise collide on a single header. Using the
+        # alternate header lets ingress auth and the Connect key coexist; it is
+        # also harmless for non-Snowflake deployments.
         super().__init__(
             base_url,
-            auth_header_value=f"Key {api_key}" if api_key else "",
             api_prefix="/__api__",
             timeout=timeout,
             insecure=insecure,
             ca_bundle=ca_bundle,
+            auth=auth,
+            extra_headers={"X-RSC-Authorization": f"Key {api_key}"} if api_key else None,
         )
         # self._verify is set by BaseClient.__init__ and used by fetch_content.
 
@@ -334,9 +343,16 @@ class ConnectClient(BaseClient):
         origin = urlparse(self.base_url)
         origin_key = (origin.scheme, origin.hostname, _normalized_port(origin.scheme, origin.port))
         max_redirects = 10
+        # Carry the Connect API key via its alternate header (so an SPCS ingress
+        # can still own ``Authorization``) plus any per-request ingress auth
+        # (Authorization: Snowflake Token), applied by *self._auth*. The
+        # same-origin redirect guard below ensures these are never sent off-origin.
+        rsc = self._client.headers.get("X-RSC-Authorization")
+        auth_headers = {"X-RSC-Authorization": rsc} if rsc else {}
         resp = httpx.get(
             url,
-            headers={"Authorization": self._client.headers["Authorization"]},
+            headers=auth_headers,
+            auth=self._auth,
             follow_redirects=False,
             timeout=timeout,
             verify=self._verify,
@@ -362,7 +378,8 @@ class ConnectClient(BaseClient):
                 break
             resp = httpx.get(
                 absolute_location,
-                headers={"Authorization": self._client.headers["Authorization"]},
+                headers=auth_headers,
+                auth=self._auth,
                 follow_redirects=False,
                 timeout=timeout,
                 verify=self._verify,
