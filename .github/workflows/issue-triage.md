@@ -1,9 +1,12 @@
 ---
 on:
   issues:
-    types: [opened, reopened, labeled]
+    types: [labeled]
   issue_comment:
     types: [created]
+engine:
+  id: copilot
+  model: claude-opus-4.7
 permissions:
   contents: read
   issues: read
@@ -15,23 +18,24 @@ tools:
       client-id: ${{ secrets.POSIT_VIP_TRIAGE_CLIENT_ID }}
       private-key: ${{ secrets.POSIT_VIP_TRIAGE_PEM }}
   bash:
-    - "gh issue view *"
-    - "gh issue edit *"
-    - "gh issue comment *"
-    - "gh label create *"
+    - "cd:*"
+    - "gh issue view:*"
+    - "gh issue edit:*"
+    - "gh issue comment:*"
+    - "gh label create:*"
     - "gh label list"
-    - "gh search code *"
-    - "rg *"
-    - "grep *"
-    - "ls *"
-    - "cat *"
-    - "git diff *"
+    - "gh search code:*"
+    - "rg:*"
+    - "grep:*"
+    - "ls:*"
+    - "cat:*"
+    - "git diff:*"
     - "git status"
-    - "git log *"
-    - "uv run *"
-    - "uvx showboat *"
-    - "just *"
-    - "npx commitlint *"
+    - "git log:*"
+    - "uv run:*"
+    - "uvx showboat:*"
+    - "just:*"
+    - "npx commitlint:*"
 safe-outputs:
   github-app:
     client-id: ${{ secrets.POSIT_VIP_TRIAGE_CLIENT_ID }}
@@ -41,7 +45,10 @@ safe-outputs:
     discussions: false
   add-labels:
     max: 3
-    allowed: ["triaged-by-bot", "needs-human-triage"]
+    allowed: ["triaged-by-bot", "needs-human-triage", "plan-pending-review"]
+  remove-labels:
+    max: 1
+    allowed: ["needs-bot-triage"]
   create-pull-request:
     branch-prefix: "bot-"
     draft: false
@@ -60,14 +67,22 @@ of: a pull request, a comment, or a no-op.
 ## Step 1 — gate
 
 Read the issue (`gh issue view ${{ github.event.issue.number }} --json
-number,title,body,labels,author,state`). Exit silently if any of:
+number,title,body,labels,author,state`).
+
+Triage is **opt-in**: the bot does nothing until a maintainer explicitly
+hands it an issue by applying the `needs-bot-triage` label. Exit silently
+if any of:
 
 - `state != "open"`.
 - `skip-triage` is in the labels.
-- `triaged-by-bot` is in the labels AND `re-triage` is NOT.
+- The event is an `issues` event (label added) and `needs-bot-triage` is
+  NOT in the labels. (Adding any other label must not start a triage run.)
 - The event is `issue_comment` and the comment author is not a CODEOWNER
   (`@ian-flores`, `@statik`, `@bdeitte`) OR the comment body does not
   match `@Copilot retry` (case-insensitive).
+
+To request another pass on an already-triaged issue, a maintainer simply
+re-applies `needs-bot-triage` — there is no separate re-triage label.
 
 ## Step 1a — pre-run cleanup (MUST run before Step 2)
 
@@ -75,24 +90,32 @@ Before proceeding to Step 2, you MUST perform these two cleanup actions
 in order. Do not skip them. Do not defer them to the end of the run —
 partial-failure recovery depends on them happening at the start.
 
-1. **Remove the `re-triage` label** if it is present on the issue.
-   Humans apply this label to request a re-run; the bot consumes it
-   here on every run. Check the labels from Step 1's `gh issue view`
-   output. If `re-triage` is among them, run:
+1. **Consume the opt-in label.** If `needs-bot-triage` is among the labels
+   you read in Step 1, remove it by calling the `remove_labels` safe-output
+   tool with `{"labels": ["needs-bot-triage"]}` (it targets the triggering
+   issue). Do **not** use a `gh issue edit --remove-label` shell command —
+   the bash policy denies it and any failure is silently swallowed. The
+   `remove_labels` safe-output uses the bot's write-capable token and is the
+   only reliable path, the same way `add_labels` is for adding.
+
+   If `needs-bot-triage` is not among the labels (e.g. an `issue_comment`
+   retry), do not call the tool.
+
+   Maintainers apply `needs-bot-triage` to request a run; the bot consumes
+   it here at the start. Removing it means a later re-application is an
+   unambiguous request for another pass, rather than a stale label that
+   would re-fire on the next unrelated label change.
+
+2. **Create the lifecycle labels idempotently** so subsequent `--add-label`
+   calls succeed. The `--force` flag makes these safe to run on every
+   invocation:
 
    ```
-   gh issue edit ${{ github.event.issue.number }} --remove-label re-triage
-   ```
-
-2. **Create the four triage labels idempotently** so subsequent
-   `--add-label` calls succeed. The `--force` flag makes these safe
-   to run on every invocation:
-
-   ```
+   gh label create needs-bot-triage --color FBCA04 --description "Apply to have the triage bot pick up this issue" --force
    gh label create triaged-by-bot --color BFD4F2 --description "Bot has examined this issue" --force
+   gh label create plan-pending-review --color 0E8A16 --description "Bot opened a plan PR; awaiting human review" --force
    gh label create needs-human-triage --color D93F0B --description "Bot could not propose action; needs a maintainer" --force
    gh label create skip-triage --color CCCCCC --description "Do not run the triage agent on this issue" --force
-   gh label create re-triage --color FBCA04 --description "Re-run the triage agent on this issue" --force
    ```
 
 If either action fails, proceed to Step 2 anyway. Label cleanup is
@@ -215,7 +238,10 @@ fall through to Step 5.
       an implementation PR — comment to iterate on the plan first."
 3. Add one comment on the original issue summarizing the plan in 2–3
    sentences and linking to the plan PR.
-4. Apply the `triaged-by-bot` label to the issue.
+4. Apply both the `triaged-by-bot` and `plan-pending-review` labels to the
+   issue. `plan-pending-review` signals that a plan PR is open and awaiting
+   human review; the `implement-plan` workflow removes it when the plan
+   merges and implementation begins.
 
 ## Step 5 — can't-proceed path
 
@@ -234,8 +260,8 @@ denied path, ambiguous request, conflicting labels>
 - [ ] <missing field 1>
 - [ ] <missing field 2>
 
-Once that's added, remove the `needs-human-triage` label and apply
-`re-triage` to give me another pass.
+Once that's added, remove the `needs-human-triage` label and re-apply
+`needs-bot-triage` to give me another pass.
 
 <!-- vip-triage-bot:v1 status=needs-info issue=<num> -->
 ```

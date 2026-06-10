@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "0.35.1"
+version = "0.39.1"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -33,7 +33,7 @@ dependencies = [
     "requests>=2.33.0",  # transitive via pytest-playwright; pinned to track updates
     "pygments>=2.20.0",  # CVE-2026-4539 fix
     "python-multipart>=0.0.26",  # CVE-2026-40347 fix; transitive via shiny
-    "pip>=26.1",  # CVE-2026-3219 fix; transitive via pip-api
+    "pip>=26.1.2",  # CVE-2026-3219, PYSEC-2026-196 fix; transitive via pip-api
     "mako>=1.3.12",  # CVE-2026-44307 fix; transitive via pytest-bdd
     "idna>=3.15",  # CVE-2026-45409 fix; transitive via httpx/requests/anyio
     "starlette>=1.0.1",  # PYSEC-2026-161 fix; transitive via shiny
@@ -55,7 +55,7 @@ cluster = [
     "azure-identity>=1.12",
     "azure-mgmt-containerservice>=20.0",
     "pyyaml>=6.0",
-    "pyjwt>=2.12.0",  # CVE-2026-32597 fix; transitive via msal
+    "pyjwt>=2.13.0",  # CVE-2026-32597, PYSEC-2026-175/177/178/179 fix; transitive via msal
     "cryptography>=46.0.7",  # CVE-2026-39892 fix; transitive via boto3/urllib3
 ]
 load = [
@@ -80,6 +80,19 @@ vip = "vip.cli:main"
 
 [project.entry-points.pytest11]
 vip = "vip.plugin"
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

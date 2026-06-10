@@ -215,12 +215,14 @@ The report lives in `report/` and reads `report/results.json` (written by pytest
 -   **`ci.yml`** -- ruff lint/format (pinned to 0.15.0) + selftests on Python 3.10 and 3.12. Uses uv cache.
 -   **`preview.yml`** -- runs selftests, renders Quarto report, publishes PR preview to gh-pages via `rossjrw/pr-preview-action@v1`. Uses uv and Quarto caches.
 -   **`pr-title.yml`** -- validates PR titles follow conventional commit format. Squash merges use the PR title as the commit message.
--   **`issue-triage.md`** + `issue-triage.lock.yml` -- gh-aw agent that classifies new issues and opens either a fix PR (bugs) or a plan PR (enhancements). See `docs/agentic-workflows.md`.
+-   **`issue-triage.md`** + `issue-triage.lock.yml` -- gh-aw agent that triages issues a maintainer opts in via the `needs-bot-triage` label, opening either a fix PR (bugs) or a plan PR (enhancements). See `docs/agentic-workflows.md`.
 -   **`implement-plan.md`** + `implement-plan.lock.yml` -- gh-aw agent that fires when a plan PR merges and opens the implementation PR.
 
 ## PR titles
 
 PR titles must use conventional commit format. CI enforces this via `.github/workflows/pr-title.yml`. Squash merges use the PR title as the commit message, so the title directly becomes the git history.
+
+For Copilot-authored PRs, set the PR title to conventional format before requesting review. If the generated title is not conventional, rename it immediately instead of waiting for CI feedback.
 
 ### Format
 

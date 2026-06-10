@@ -1,6 +1,315 @@
 # CHANGELOG
 
 
+## v0.39.1 (2026-06-09)
+
+### Bug Fixes
+
+- **plugin**: Preserve line breaks in error_summary (closes #344)
+  ([#353](https://github.com/posit-dev/vip/pull/353),
+  [`35e86b0`](https://github.com/posit-dev/vip/commit/35e86b08d7c41cc632d2bedab8ebbf4722e946cd))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+### Continuous Integration
+
+- Guard against stray uv.lock changes in PRs ([#351](https://github.com/posit-dev/vip/pull/351),
+  [`028a2d5`](https://github.com/posit-dev/vip/commit/028a2d5b0bfcc6cf5783e36279c8e63cb6590f79))
+
+- Make issue triage opt-in and add issue lifecycle labels
+  ([#352](https://github.com/posit-dev/vip/pull/352),
+  [`e87fd5b`](https://github.com/posit-dev/vip/commit/e87fd5b9e15057e6c400b5d5491ba29d9ff1967a))
+
+### Documentation
+
+- Plan for #344 — preserve line breaks in error_summary
+  ([#345](https://github.com/posit-dev/vip/pull/345),
+  [`1c40865`](https://github.com/posit-dev/vip/commit/1c40865056095dcf1d26907070f26effe051adf1))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
+## v0.39.0 (2026-06-09)
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 6 updates
+  ([#340](https://github.com/posit-dev/vip/pull/340),
+  [`09a59f5`](https://github.com/posit-dev/vip/commit/09a59f5b13341718b2929b43d18e5425942ccfdf))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump the python-dependencies group with 6 updates
+  ([#339](https://github.com/posit-dev/vip/pull/339),
+  [`33a1b71`](https://github.com/posit-dev/vip/commit/33a1b71d404d0c451e39063d54b112a62e65877f))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+Co-authored-by: Brian Deitte <brian.deitte@posit.co>
+
+### Continuous Integration
+
+- Add path filters to ci, preview, and website-preview workflows
+  ([#337](https://github.com/posit-dev/vip/pull/337),
+  [`a0c437f`](https://github.com/posit-dev/vip/commit/a0c437fb3db1fea16d8320232983ba8c31194d61))
+
+- Run Connect tests using with-connect ([#338](https://github.com/posit-dev/vip/pull/338),
+  [`b8730a1`](https://github.com/posit-dev/vip/commit/b8730a1c344fca2505a4ab888359140c427e7f54))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+Co-authored-by: Brian Deitte <brian.deitte@posit.co>
+
+- Smoke test updates, including running against the latest version
+  ([#341](https://github.com/posit-dev/vip/pull/341),
+  [`c91db13`](https://github.com/posit-dev/vip/commit/c91db13ee7eef23379ff79bdf763b969d029b34c))
+
+### Documentation
+
+- Plan for #301 — add in-session execution primitives for Workbench
+  ([#317](https://github.com/posit-dev/vip/pull/317),
+  [`4c33e7f`](https://github.com/posit-dev/vip/commit/4c33e7fe7025fb558ae3c2bb86acba99a2061df9))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+- Plan for #306 — cover Git operations from Workbench sessions
+  ([#309](https://github.com/posit-dev/vip/pull/309),
+  [`77922c3`](https://github.com/posit-dev/vip/commit/77922c31c3231846cad6a24898abe68fdd560055))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+### Features
+
+- **workbench**: Add in-session execution primitives (closes #301)
+  ([#349](https://github.com/posit-dev/vip/pull/349),
+  [`3b336eb`](https://github.com/posit-dev/vip/commit/3b336eb88130592a7d509963b6ed8539bc9ce4b7))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
+## v0.38.0 (2026-06-02)
+
+### Features
+
+- **workbench**: Add Kubernetes autoscaling and capacity probes (closes #304)
+  ([#334](https://github.com/posit-dev/vip/pull/334),
+  [`b0c846d`](https://github.com/posit-dev/vip/commit/b0c846d8aa851bbd521b6b8b1c5b5c43ed9b530c))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+
+## v0.37.0 (2026-06-02)
+
+### Continuous Integration
+
+- Add network allowlist for preview screenshot gallery
+  ([#326](https://github.com/posit-dev/vip/pull/326),
+  [`903a472`](https://github.com/posit-dev/vip/commit/903a472f826cf215b43f5a458ff98243e7df4121))
+
+- **issue-triage**: Remove re-triage via remove_labels safe-output
+  ([#331](https://github.com/posit-dev/vip/pull/331),
+  [`e097859`](https://github.com/posit-dev/vip/commit/e0978595f603790555d90291c55cf62cb122866b))
+
+### Documentation
+
+- Plan for #302 — workbench jobs coverage ([#316](https://github.com/posit-dev/vip/pull/316),
+  [`7081d5b`](https://github.com/posit-dev/vip/commit/7081d5beed591e8a5b61a23ec36ca9c25d80bd6e))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+- Plan for #304 — add Kubernetes autoscaling and capacity probes
+  ([#311](https://github.com/posit-dev/vip/pull/311),
+  [`40f01cd`](https://github.com/posit-dev/vip/commit/40f01cd4ecaa689c6133394286d4b83eb1a17b02))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+### Features
+
+- **workbench**: Add Background Job and Workbench Job test coverage (closes #302)
+  ([#336](https://github.com/posit-dev/vip/pull/336),
+  [`9a9de55`](https://github.com/posit-dev/vip/commit/9a9de55856573c17731ae0c01d7d4c652d215485))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+
+## v0.36.7 (2026-06-01)
+
+### Bug Fixes
+
+- **implement-plan**: Stop the agent inventing a placeholder PR number
+  ([#329](https://github.com/posit-dev/vip/pull/329),
+  [`e23bd75`](https://github.com/posit-dev/vip/commit/e23bd75b8db765bb8eebd20ded0d2e3731f8f11c))
+
+
+## v0.36.6 (2026-06-01)
+
+### Bug Fixes
+
+- **issue-triage**: Allow cd and unmask re-triage label removal
+  ([#328](https://github.com/posit-dev/vip/pull/328),
+  [`9b8a53d`](https://github.com/posit-dev/vip/commit/9b8a53d8aa3fad4f3d638cce9438f0dd872da6da))
+
+### Documentation
+
+- Plan for #303 — verify expected R/Python versions on Workbench
+  ([#314](https://github.com/posit-dev/vip/pull/314),
+  [`c900ef3`](https://github.com/posit-dev/vip/commit/c900ef3d9168f903c027b54f143c7aa31a3abff4))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+
+## v0.36.5 (2026-06-01)
+
+### Bug Fixes
+
+- **workflows**: Force re-triage cleanup + pin agent models
+  ([#323](https://github.com/posit-dev/vip/pull/323),
+  [`790fb86`](https://github.com/posit-dev/vip/commit/790fb86509bf45872fe82922762b76740ce18e68))
+
+### Continuous Integration
+
+- **example-report**: Free disk space before image pulls
+  ([#324](https://github.com/posit-dev/vip/pull/324),
+  [`4f287d7`](https://github.com/posit-dev/vip/commit/4f287d76600f603ed2b9c2c2eb9d061449764a16))
+
+
+## v0.36.4 (2026-05-31)
+
+### Bug Fixes
+
+- **connect**: Stop data-source step being collected as a stray test
+  ([#322](https://github.com/posit-dev/vip/pull/322),
+  [`173ca90`](https://github.com/posit-dev/vip/commit/173ca90142ed236a057191abf1610f23466d491a))
+
+
+## v0.36.3 (2026-05-29)
+
+### Bug Fixes
+
+- **workbench**: Fail fast when a session reaches a terminal state
+  ([#320](https://github.com/posit-dev/vip/pull/320),
+  [`1f9e5ec`](https://github.com/posit-dev/vip/commit/1f9e5ecd1d44e11e5c6d0df871d44a4388e26379))
+
+
+## v0.36.2 (2026-05-29)
+
+### Bug Fixes
+
+- **connect**: Reliably clean up VIP content on test failure
+  ([#318](https://github.com/posit-dev/vip/pull/318),
+  [`dfd8509`](https://github.com/posit-dev/vip/commit/dfd85095f5d8b5613c55097d2046289b58de01e6))
+
+
+## v0.36.1 (2026-05-29)
+
+### Bug Fixes
+
+- **workbench**: Reliably clean up VIP sessions on test failure
+  ([#312](https://github.com/posit-dev/vip/pull/312),
+  [`2988129`](https://github.com/posit-dev/vip/commit/29881294b423d5deb37b9655a2833e8458c8e80e))
+
+
+## v0.36.0 (2026-05-29)
+
+### Features
+
+- **cli**: Support help flag before the subcommand
+  ([#297](https://github.com/posit-dev/vip/pull/297),
+  [`9c0f1d5`](https://github.com/posit-dev/vip/commit/9c0f1d52f224c3df1d969c359382d57aea0cc8ac))
+
+
+## v0.35.2 (2026-05-29)
+
+### Bug Fixes
+
+- **install**: Treat empty .vip-install.json as missing (closes #283)
+  ([#296](https://github.com/posit-dev/vip/pull/296),
+  [`e635796`](https://github.com/posit-dev/vip/commit/e6357967d99169c4cbed507a7b5e3001c0a37b57))
+
+### Chores
+
+- Authenticate agentic workflows via GitHub App ([#294](https://github.com/posit-dev/vip/pull/294),
+  [`a8304ce`](https://github.com/posit-dev/vip/commit/a8304cedd10008491d6590405a79f736788915b2))
+
+- **deps**: Bump github/gh-aw from 0.73.0 to 0.74.4 in the actions-dependencies group
+  ([#285](https://github.com/posit-dev/vip/pull/285),
+  [`416c198`](https://github.com/posit-dev/vip/commit/416c198de0fb2a02075f8110da5d8c7be474000b))
+
+- **deps**: Bump the python-dependencies group with 8 updates
+  ([#284](https://github.com/posit-dev/vip/pull/284),
+  [`491b5d7`](https://github.com/posit-dev/vip/commit/491b5d73186de085ba3d36be7f5178aa5a68b7b5))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+Co-authored-by: Brian Deitte <brian.deitte@posit.co>
+
+### Continuous Integration
+
+- Narrow agentic workflow permissions to match the App's grants
+  ([#295](https://github.com/posit-dev/vip/pull/295),
+  [`88470d9`](https://github.com/posit-dev/vip/commit/88470d98de3a7b5583a3943d3be7c14554800302))
+
+
 ## v0.35.1 (2026-05-28)
 
 ### Bug Fixes

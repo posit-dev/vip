@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1080,3 +1081,63 @@ class TestVerifyLocalSnowflakeApiAuthGuard:
         )
         assert "--headless-auth" in cmd
         assert "--api-auth" not in cmd
+
+
+class TestReorderHelpArgs:
+    """`vip -h <subcommand>` should surface the subcommand's help, not top-level."""
+
+    COMMANDS = {"verify", "cleanup", "install", "auth", "cluster", "report"}
+
+    def test_help_before_subcommand_is_moved_after(self):
+        from vip.cli import _reorder_help_args
+
+        result = _reorder_help_args(["-h", "verify"], self.COMMANDS)
+        assert result == ["verify", "--help"]
+
+    def test_long_help_flag_before_subcommand(self):
+        from vip.cli import _reorder_help_args
+
+        result = _reorder_help_args(["--help", "cleanup"], self.COMMANDS)
+        assert result == ["cleanup", "--help"]
+
+    def test_help_after_subcommand_is_untouched(self):
+        from vip.cli import _reorder_help_args
+
+        argv = ["verify", "-h"]
+        assert _reorder_help_args(argv, self.COMMANDS) == argv
+
+    def test_top_level_help_without_subcommand_is_untouched(self):
+        from vip.cli import _reorder_help_args
+
+        argv = ["-h"]
+        assert _reorder_help_args(argv, self.COMMANDS) == argv
+
+    def test_no_help_flag_is_untouched(self):
+        from vip.cli import _reorder_help_args
+
+        argv = ["verify", "--connect-url", "https://example.com"]
+        assert _reorder_help_args(argv, self.COMMANDS) == argv
+
+    def test_help_before_nested_subcommand(self):
+        from vip.cli import _reorder_help_args
+
+        result = _reorder_help_args(["-h", "auth", "mint-connect-key"], self.COMMANDS)
+        assert result == ["auth", "mint-connect-key", "--help"]
+
+    def test_help_inserted_before_passthrough_separator(self):
+        from vip.cli import _reorder_help_args
+
+        # The moved help flag must land before ``--`` -- after it argparse
+        # treats every token as a positional, so help would never fire.
+        result = _reorder_help_args(["-h", "verify", "--", "-x"], self.COMMANDS)
+        assert result == ["verify", "--help", "--", "-x"]
+
+    def test_help_with_separator_actually_shows_help(self):
+        from vip.cli import main
+
+        with patch.object(sys, "argv", ["vip", "-h", "verify", "--", "-x"]):
+            with pytest.raises(SystemExit) as exc:
+                main()
+        # argparse exits 0 after printing help; a nonzero/None code would mean
+        # it fell through to running the command instead.
+        assert exc.value.code == 0

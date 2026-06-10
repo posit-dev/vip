@@ -7,6 +7,7 @@ from pytest_bdd import given
 
 from vip.client_auth import build_client_auth
 from vip.clients.connect import ConnectClient
+from vip.clients.kubernetes import KubernetesClient
 from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
 from vip.config import PerformanceConfig, VIPConfig
@@ -88,6 +89,18 @@ def workbench_client(vip_config: VIPConfig) -> WorkbenchClient | None:
 @pytest.fixture(scope="session")
 def workbench_url(vip_config: VIPConfig) -> str:
     return vip_config.workbench.url
+
+
+@pytest.fixture(scope="session")
+def kubernetes_client(vip_config: VIPConfig) -> KubernetesClient | None:
+    """Kubernetes client for capacity tests; ``None`` when K8s is not configured."""
+    k8s_cfg = vip_config.workbench.kubernetes
+    if not k8s_cfg.is_configured:
+        return None
+    try:
+        return KubernetesClient(namespace=k8s_cfg.namespace)
+    except Exception:
+        return None
 
 
 @pytest.fixture(scope="session")

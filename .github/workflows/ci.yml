@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
+    paths:
+      - 'src/**'
+      - 'selftests/**'
+      - 'examples/**'
+      - 'docker/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/**'
+      - '.github/zizmor.yml'
 
 jobs:
   lint:
@@ -148,4 +157,66 @@ jobs:
             exit 1
           fi
           echo "Selftests passed or were skipped"
+
+  lockfile-guard:
+    name: Lockfile Guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Bot-generated plan/docs PRs have repeatedly carried a stale uv.lock from
+      # an old base, which is invisible until it breaks the Dependency Audit
+      # (vulnerable transitive pins) or conflicts with main on merge. A real
+      # dependency change always touches pyproject.toml too, so a uv.lock change
+      # on its own is the signal that the lockfile drifted in by accident.
+      - name: Reject uv.lock changes without a pyproject.toml change
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          if printf '%s\n' "$changed" | grep -qx 'uv.lock' \
+            && ! printf '%s\n' "$changed" | grep -qx 'pyproject.toml'; then
+            echo "::error::uv.lock changed without a corresponding pyproject.toml change."
+            echo "Plan/docs PRs must not carry a uv.lock update. Restore it with:"
+            echo "    git checkout $BASE_SHA -- uv.lock && git commit -m 'restore uv.lock' uv.lock"
+            echo "If this is an intentional dependency change, update pyproject.toml in the same PR."
+            exit 1
+          fi
+          echo "uv.lock guard passed: no stray lockfile change detected."
+
+  agentic-lockfile-guard:
+    name: Agentic Workflow Lockfile Guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      # The gh-aw .lock.yml files are compiled artifacts of the .md sources.
+      # Dependabot bumps of the shared actions (checkout, github-script, etc.)
+      # edit the .lock.yml copies without recompiling, leaving them stale. At
+      # run time the workflow's stale-lock check then skips the agent and files
+      # a failure issue (this is what broke the preview-screenshot gallery; see
+      # #347). Recompile here and fail on any drift so it is caught in PR CI.
+      # Pinned to the gh-aw version the lockfiles target
+      # (github/gh-aw-actions/setup); bump this pin and recompile together.
+      - name: Verify gh-aw lockfiles are freshly compiled
+        run: |
+          gh extension install github/gh-aw --pin v0.74.8 --force
+          gh aw compile --no-check-update
+          if ! git diff --exit-code .github/workflows/*.lock.yml; then
+            echo "::error::gh-aw lockfiles are stale. Run 'gh aw compile' and commit the regenerated .lock.yml files."
+            exit 1
+          fi
+          echo "gh-aw lockfile guard passed: all lockfiles match their sources."
 

@@ -12,6 +12,7 @@ from vip.config import (
     PerformanceConfig,
     ProductConfig,
     VIPConfig,
+    WorkbenchConfig,
     WorkbenchExtensionsConfig,
     load_config,
 )
@@ -87,6 +88,44 @@ class TestConnectConfig:
     def test_explicit_deploy_timeout(self):
         cc = ConnectConfig(url="https://connect.example.com", deploy_timeout=1200)
         assert cc.deploy_timeout == 1200
+
+
+class TestWorkbenchConfig:
+    def test_job_timeout_default(self):
+        wc = WorkbenchConfig(url="https://workbench.example.com")
+        assert wc.job_timeout == 120
+
+    def test_job_timeout_from_dict(self):
+        wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com", "job_timeout": 300})
+        assert wc.job_timeout == 300
+
+    def test_job_timeout_default_from_dict(self):
+        wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com"})
+        assert wc.job_timeout == 120
+
+    def test_test_packages_default_empty(self):
+        wc = WorkbenchConfig(url="https://workbench.example.com")
+        assert wc.test_packages == []
+
+    def test_test_packages_from_dict(self):
+        wc = WorkbenchConfig.from_dict(
+            {"url": "https://workbench.example.com", "test_packages": ["sf", "DBI", "Matrix"]}
+        )
+        assert wc.test_packages == ["sf", "DBI", "Matrix"]
+
+    def test_test_packages_default_from_dict(self):
+        wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com"})
+        assert wc.test_packages == []
+
+    def test_test_packages_string_normalized_to_list(self):
+        wc = WorkbenchConfig.from_dict(
+            {"url": "https://workbench.example.com", "test_packages": "sf"}
+        )
+        assert wc.test_packages == ["sf"]
+
+    def test_test_packages_invalid_type_raises(self):
+        with pytest.raises(ValueError, match="must be a list of strings"):
+            WorkbenchConfig.from_dict({"url": "https://workbench.example.com", "test_packages": 42})
 
 
 class TestWorkbenchExtensionsConfig:

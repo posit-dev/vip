@@ -16,17 +16,16 @@ Requires ``--interactive-auth`` or ``--headless-auth`` since session launching i
 
 from __future__ import annotations
 
-import httpx
 import pytest
 from playwright.sync_api import Page, expect
-from pytest_bdd import given, scenarios, then, when
+from pytest_bdd import scenarios, then, when
 
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
-    TIMEOUT_SESSION_START,
-    assert_homepage_loaded,
-    workbench_login,
+    _quit_vip_sessions_via_cookies,
+    format_capacity_failure,
+    wait_for_session_active,
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
 
@@ -127,61 +126,23 @@ def _launch_session(
 
 
 def _cleanup_sessions_via_api(
-    page: Page, workbench_base_url: str, launched: list[dict[str, str | None]]
+    page: Page, workbench_base_url: str, *, insecure: bool, ca_bundle
 ) -> None:
-    """Delete only sessions created by this test run."""
-    launched_names = {s["name"] for s in launched}
+    """Quit the VIP capacity sessions created by this test run.
+
+    Delegates to the shared cookie-based cleanup helper, which targets all
+    VIP-named sessions (``_vip_cap_`` prefix included).  TLS config is threaded
+    through so cleanup works against self-signed / custom-CA deployments.
+    """
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-        with httpx.Client(base_url=workbench_base_url, cookies=cookies, timeout=30.0) as client:
-            resp = client.get("/api/sessions")
-            sessions = resp.json() if resp.status_code == 200 else []
-            for session in sessions:
-                sid = session.get("id") or session.get("session_id", "")
-                name = session.get("label", "")
-                if not sid or name not in launched_names:
-                    continue
-                for method, path in (
-                    ("DELETE", f"/api/sessions/{sid}"),
-                    ("POST", f"/api/sessions/{sid}/suspend"),
-                ):
-                    try:
-                        r = client.request(method, path)
-                        if r.status_code < 400:
-                            break
-                    except Exception:
-                        continue
     except Exception:
-        pass
-
-
-# ---------------------------------------------------------------------------
-# Given
-# ---------------------------------------------------------------------------
-
-
-@given("Workbench is accessible and I am logged in")
-def workbench_logged_in(
-    page: Page,
-    workbench_url: str,
-    test_username: str,
-    test_password: str,
-    auth_provider: str,
-    interactive_auth: bool,
-    auth_mode: str,
-    workbench_auth_error: str | None,
-):
-    workbench_login(
-        page,
-        workbench_url,
-        test_username,
-        test_password,
-        auth_provider,
-        interactive_auth,
-        auth_mode=auth_mode,
-        workbench_auth_error=workbench_auth_error,
+        return
+    if not cookies:
+        return
+    _quit_vip_sessions_via_cookies(
+        workbench_base_url, cookies, insecure=insecure, ca_bundle=ca_bundle
     )
-    assert_homepage_loaded(page)
 
 
 # ---------------------------------------------------------------------------
@@ -228,27 +189,32 @@ def launch_sessions(page: Page, vip_config):
 @then("all launched sessions reach Active state")
 def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Page):
     failures = []
+    reasons = []
     for session in launched_sessions:
         name = session["name"]
         profile = session["profile"] or "default"
-        active = page.locator(Homepage.session_row_status(name, "Active")).first
+        # Fails fast when a session reaches a terminal state (e.g. Failed),
+        # so a fully-broken launcher records all profiles quickly instead of
+        # blocking the full session-start timeout per profile.  Keep the
+        # diagnostic so the aggregated failure still names the terminal state
+        # and its likely cause rather than only listing profiles.
         try:
-            expect(active).to_be_visible(timeout=TIMEOUT_SESSION_START)
-        except AssertionError:
+            wait_for_session_active(page, name)
+        except AssertionError as exc:
             failures.append(profile)
+            reasons.append(str(exc))
 
     if failures:
-        passed = len(launched_sessions) - len(failures)
-        total = len(launched_sessions)
-        msg = f"{passed}/{total} sessions reached Active. Failed profiles: {', '.join(failures)}"
-        pytest.fail(msg)
+        pytest.fail(format_capacity_failure(len(launched_sessions), failures, reasons))
 
 
 @then("I clean up all launched sessions")
 def cleanup_sessions(
-    launched_sessions: list[dict[str, str | None]], page: Page, workbench_url: str
+    launched_sessions: list[dict[str, str | None]], page: Page, workbench_url: str, vip_config
 ):
-    _cleanup_sessions_via_api(page, workbench_url, launched_sessions)
+    _cleanup_sessions_via_api(
+        page, workbench_url, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+    )
 
     for session in launched_sessions:
         row = page.locator(Homepage.session_row(session["name"]))

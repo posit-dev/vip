@@ -3,6 +3,14 @@ name: Report Preview
 on:
   pull_request:
     types: [opened, reopened, synchronize, closed]
+    paths:
+      - 'report/**'
+      - 'src/**'
+      - 'website/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/preview.yml'
+      - '.github/workflows/example-report.yml'
 
 concurrency: preview-${{ github.ref }}
 
