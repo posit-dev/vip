@@ -20,22 +20,22 @@ tools:
       client-id: ${{ secrets.POSIT_VIP_TRIAGE_CLIENT_ID }}
       private-key: ${{ secrets.POSIT_VIP_TRIAGE_PEM }}
   bash:
-    - "gh issue view *"
-    - "gh issue comment *"
-    - "gh label create *"
-    - "gh pr view *"
-    - "gh pr comment *"
-    - "rg *"
-    - "grep *"
-    - "ls *"
-    - "cat *"
-    - "git diff *"
+    - "gh issue view:*"
+    - "gh issue comment:*"
+    - "gh label create:*"
+    - "gh pr view:*"
+    - "gh pr comment:*"
+    - "rg:*"
+    - "grep:*"
+    - "ls:*"
+    - "cat:*"
+    - "git diff:*"
     - "git status"
-    - "git log *"
-    - "uv run *"
-    - "uvx showboat *"
-    - "just *"
-    - "npx commitlint *"
+    - "git log:*"
+    - "uv run:*"
+    - "uvx showboat:*"
+    - "just:*"
+    - "npx commitlint:*"
 safe-outputs:
   github-app:
     client-id: ${{ secrets.POSIT_VIP_TRIAGE_CLIENT_ID }}
