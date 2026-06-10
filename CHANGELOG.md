@@ -1,6 +1,30 @@
 # CHANGELOG
 
 
+## v0.40.0 (2026-06-10)
+
+### Continuous Integration
+
+- Fix gh-aw bash allowlists to permit command arguments
+  ([#355](https://github.com/posit-dev/vip/pull/355),
+  [`dab98d4`](https://github.com/posit-dev/vip/commit/dab98d404f05d35741fa3e78f88c8ec0c542cf03))
+
+- Fix stale preview-screenshot lockfile and guard against drift
+  ([#356](https://github.com/posit-dev/vip/pull/356),
+  [`5d5f4e8`](https://github.com/posit-dev/vip/commit/5d5f4e8b283cda4c9c4eb968f19fd4195ade9fd9))
+
+### Features
+
+- Support Snowflake OAuth for Posit Team Native Apps
+  ([#321](https://github.com/posit-dev/vip/pull/321),
+  [`491aeb2`](https://github.com/posit-dev/vip/commit/491aeb278629c3b85580cfea8bbe1296adb067ad))
+
+Adds Snowflake SPCS ingress auth support to VIP: a "snowflake" IdP strategy (multi-hop OAuth browser
+  login), an injectable httpx client-auth registry, X-RSC-Authorization for Connect API keys behind
+  the ingress, performance-path auth fixes, and a friendly --api-auth guard for the Snowflake IdP.
+  Also documents Snowflake Native App as a supported deployment target.
+
+
 ## v0.39.1 (2026-06-09)
 
 ### Bug Fixes
