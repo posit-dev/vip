@@ -26,6 +26,7 @@ updates:
       - "*"
   ignore:
   - dependency-name: "github/gh-aw-actions/**" # Managed by gh aw compile. Version-locked to the gh-aw compiler; do not bump.
+  - dependency-name: "actions/create-github-app-token" # Only used inside gh-aw .lock.yml (compiler-managed); bumping it there leaves the lockfile stale.
   package-ecosystem: github-actions
   schedule:
     interval: weekly
