@@ -99,7 +99,13 @@ def sign_out(page: Page):
         page.locator(Homepage.CURRENT_USER).click()
         sign_out_form = page.locator(Homepage.SIGN_OUT_FORM)
         expect(sign_out_form).to_be_visible(timeout=TIMEOUT_DIALOG)
-        sign_out_form.locator("button, input[type='submit']").first.click()
+        submit = sign_out_form.locator("button, input[type='submit'], a")
+        if submit.count() > 0:
+            submit.first.click()
+        else:
+            # The form renders as the menu entry itself with no submit
+            # control inside it; submit it directly to fire the sign-out POST.
+            sign_out_form.evaluate("form => form.submit()")
 
 
 @then("I am redirected to the Workbench login page")
