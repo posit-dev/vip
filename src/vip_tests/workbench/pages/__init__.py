@@ -11,6 +11,7 @@ from .ide_base import IDEBase
 from .jupyterlab_session import JupyterLabSession
 from .login import LoginPage
 from .positron_session import PositronSession
+from .rstudio_git_pane import RStudioGitPane
 from .rstudio_session import RStudioSession
 from .vscode_session import VSCodeSession
 
@@ -22,6 +23,7 @@ __all__ = [
     "LoginPage",
     "NewSessionDialog",
     "PositronSession",
+    "RStudioGitPane",
     "RStudioSession",
     "VSCodeSession",
 ]
