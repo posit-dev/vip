@@ -480,8 +480,37 @@ def workbench_accessible_and_logged_in(
 # Bundle path fixtures
 # ---------------------------------------------------------------------------
 
+_PYTHON_SHINY_APP = '''\
+"""Minimal Python Shiny VIP test application."""
+
+from shiny import App, ui
+
+app_ui = ui.page_fixed(
+    ui.h1("VIP Python Shiny Test"),
+    ui.p("Deployed by VIP from a Workbench session."),
+)
+
+
+def server(input, output, session):
+    pass
+
+
+app = App(app_ui, server)
+'''
+
 
 @pytest.fixture(scope="session")
-def python_shiny_bundle_path() -> Path:
-    """Path to the Python Shiny test bundle under src/vip_tests/_bundles/."""
-    return Path(__file__).parent.parent / "_bundles" / "python_shiny"
+def python_shiny_bundle_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create a session-scoped Python Shiny test bundle in a temp directory.
+
+    Writes a minimal ``app.py`` and ``requirements.txt`` to a fresh temp
+    directory and returns the path.  The bundle is suitable for
+    ``rsconnect deploy shiny <path>``.  Using ``tmp_path_factory`` means the
+    files are created at test-run time on the machine running VIP (which must
+    be the Workbench server, or a host whose /tmp is reachable from the
+    Workbench session terminal).
+    """
+    bundle_dir = tmp_path_factory.mktemp("python_shiny_bundle")
+    (bundle_dir / "app.py").write_text(_PYTHON_SHINY_APP)
+    (bundle_dir / "requirements.txt").write_text("shiny\n")
+    return bundle_dir
