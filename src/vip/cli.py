@@ -13,10 +13,10 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from vip.timeouts import scaled
+
 if TYPE_CHECKING:
     from vip.config import Mode
-
-from vip.timeouts import scaled
 
 # Buffer subtracted from the user-supplied timeout when setting the pytest
 # timeout inside the K8s Job.  The Job's own deadline is set to args.timeout,

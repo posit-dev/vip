@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import httpx
 from playwright.sync_api import (
     Error as PlaywrightError,
 )
@@ -27,9 +28,6 @@ from playwright.sync_api import (
 from playwright.sync_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
-
-
-import httpx
 
 from vip.timeouts import scaled
 
