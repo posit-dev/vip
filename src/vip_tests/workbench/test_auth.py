@@ -88,13 +88,15 @@ def current_user_displayed(page: Page, test_username: str):
 def sign_out(page: Page):
     """Click the sign-out button on the Workbench homepage.
 
-    Tries the legacy ``#signOutBtn`` first; falls back to submitting the
-    ``form[action*='sign-out']`` form present in newer Workbench versions.
+    Tries the legacy ``#signOutBtn`` first; on newer Workbench versions the
+    sign-out form is not rendered until the user menu is opened, so click the
+    current-user button to reveal it before submitting.
     """
     old_btn = page.locator(Homepage.SIGN_OUT_BTN_OLD)
     if old_btn.is_visible():
         old_btn.click()
     else:
+        page.locator(Homepage.CURRENT_USER).click()
         sign_out_form = page.locator(Homepage.SIGN_OUT_FORM)
         expect(sign_out_form).to_be_visible(timeout=TIMEOUT_DIALOG)
         sign_out_form.locator("button, input[type='submit']").first.click()
