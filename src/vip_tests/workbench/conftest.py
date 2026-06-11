@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
@@ -473,3 +474,14 @@ def workbench_accessible_and_logged_in(
         workbench_auth_error=workbench_auth_error,
     )
     assert_homepage_loaded(page)
+
+
+# ---------------------------------------------------------------------------
+# Bundle path fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def python_shiny_bundle_path() -> Path:
+    """Path to the Python Shiny test bundle under src/vip_tests/_bundles/."""
+    return Path(__file__).parent.parent / "_bundles" / "python_shiny"

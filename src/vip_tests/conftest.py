@@ -252,6 +252,44 @@ def email_enabled(vip_config: VIPConfig) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Connect content cleanup — promoted from connect/conftest.py so that any
+# package (workbench, cross_product, …) that creates Connect content can
+# register GUIDs into the shared tracking list.  The fixtures guard against
+# ``connect_client is None`` so they are safe to activate in workbench-only
+# runs where Connect is not configured.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def _connect_created_guids():
+    """Append-only record of content GUIDs created this run (tag-independent)."""
+    return []
+
+
+@pytest.fixture(autouse=True)
+def _connect_content_cleanup(connect_client, _connect_created_guids):
+    """Delete content created during this test, on pass or fail."""
+    start = len(_connect_created_guids)
+    yield
+    if connect_client is None:
+        return
+    created = _connect_created_guids[start:]
+    if created:
+        connect_client.cleanup_content(created)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _connect_end_of_run_sweep(connect_client, _connect_created_guids):
+    """End-of-run safety net: delete tracked GUIDs, then tag-based cross-run sweep."""
+    yield
+    if connect_client is None:
+        return
+    if _connect_created_guids:
+        connect_client.cleanup_content(_connect_created_guids)
+    connect_client.cleanup_vip_content()
+
+
+# ---------------------------------------------------------------------------
 # Shared BDD steps — product configuration guards
 # ---------------------------------------------------------------------------
 
