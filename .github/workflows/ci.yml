@@ -160,7 +160,12 @@ jobs:
 
   lockfile-guard:
     name: Lockfile Guard
-    if: github.event_name == 'pull_request'
+    # Dependabot legitimately ships lockfile-only updates (in-range bumps never
+    # touch pyproject.toml), so it is exempt; the guard targets bot-generated
+    # plan/docs PRs that carry a stale uv.lock by accident.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
