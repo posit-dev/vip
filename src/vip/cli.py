@@ -938,6 +938,52 @@ def run_uninstall(args: argparse.Namespace) -> None:
     sys.exit(rc)
 
 
+def run_scaffold(args: argparse.Namespace) -> None:
+    """Copy the cross_product_validation example to a user-specified directory."""
+    import shutil
+
+    src = Path(__file__).parent.parent.parent / "examples" / "cross_product_validation"
+    if not src.is_dir():
+        # Installed package: examples live alongside the package source.
+        # Fall back to a path relative to the installed package location.
+        import vip as _vip_pkg
+
+        src = Path(_vip_pkg.__file__).parent.parent / "examples" / "cross_product_validation"
+
+    if not src.is_dir():
+        print(
+            "Error: could not locate examples/cross_product_validation/. "
+            "Ensure VIP is installed from source or with the examples included.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    dest = Path(args.output)
+    if dest.exists() and not args.force:
+        print(
+            f"Error: destination already exists: {dest}\nPass --force to overwrite.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if dest.exists():
+        shutil.rmtree(dest)
+
+    shutil.copytree(src, dest)
+    print(f"Scaffolded extension to: {dest}")
+    print(
+        f"\nNext steps:\n"
+        f"  1. Edit {dest}/conftest.py to set your package names and versions.\n"
+        f"  2. Add a [runtimes] block to vip.toml:\n"
+        f"       [runtimes]\n"
+        f'       r_versions = ["4.4.0"]\n'
+        f'       python_versions = ["3.11.0"]\n'
+        f"  3. Run the extension:\n"
+        f"       vip verify --config vip.toml --extensions {dest}\n"
+        f"\nSee {dest}/README.md for full customization instructions."
+    )
+
+
 def run_cleanup(args: argparse.Namespace) -> None:
     """Delete VIP test credentials and resources.
 
@@ -1377,6 +1423,35 @@ def main() -> None:
     )
     status_parser.set_defaults(func=run_status)
 
+    # vip scaffold
+    scaffold_parser = subparsers.add_parser(
+        "scaffold",
+        help="Generate a ready-to-run custom test extension directory",
+        description=(
+            "Copy the cross_product_validation example to a new directory, ready to\n"
+            "customise and run with:\n\n"
+            "  vip verify --config vip.toml --extensions <output-dir>\n\n"
+            "The example verifies specific R/Python runtime versions and package\n"
+            "installability across Workbench and Connect. Edit the generated\n"
+            "conftest.py to set your own package names and version requirements.\n\n"
+            "See vip.toml.example for the [runtimes] block you need to populate."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    scaffold_parser.add_argument(
+        "--output",
+        default="./custom_tests",
+        metavar="DIR",
+        help="Destination directory for the scaffolded extension (default: ./custom_tests)",
+    )
+    scaffold_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Overwrite destination if it already exists",
+    )
+    scaffold_parser.set_defaults(func=run_scaffold)
+
     # vip app
     app_parser = subparsers.add_parser(
         "app",
@@ -1408,6 +1483,7 @@ def main() -> None:
         "report": report_parser,
         "status": status_parser,
         "app": app_parser,
+        "scaffold": scaffold_parser,
     }
 
     argv = _reorder_help_args(sys.argv[1:], set(subcommand_parsers))

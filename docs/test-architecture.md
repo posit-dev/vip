@@ -231,3 +231,41 @@ The `.feature` files only need to change when the requirements change.
 - **Fat step definitions**: If a step definition is more than ~10 lines, it's doing too much. Push logic down to the client layer.
 - **Shared mutable state**: Use `target_fixture` to pass state between steps, not module-level globals.
 - **Testing implementation, not behavior**: Scenarios should describe what the user experiences, not how the system works internally.
+
+## Writing a Test Extension
+
+VIP's extension mechanism lets you load custom test directories alongside the built-in suite:
+
+```bash
+vip verify --config vip.toml --extensions ./my-custom-tests
+```
+
+Or in `vip.toml`:
+
+```toml
+[general]
+extension_dirs = ["./my-custom-tests"]
+```
+
+Use `vip scaffold` to generate a ready-to-run reference implementation:
+
+```bash
+vip scaffold --output ./my-custom-tests
+```
+
+This creates `examples/cross_product_validation/` — a full GxP validation example that verifies
+R/Python runtime versions and package installability across Connect and Workbench. It follows the
+same four-layer architecture as the built-in suite.
+
+Two canonical examples ship with VIP:
+
+- `examples/custom_tests/` — minimal HTTP health-check (simplest possible extension)
+- `examples/cross_product_validation/` — cross-product runtime + package validation (GxP pattern)
+
+**Key requirement for auto-skip to work in extensions:** apply `@pytest.mark.connect` and/or
+`@pytest.mark.workbench` decorators directly on every `@scenario` function. Feature-level Gherkin
+tags (`@connect`, `@workbench`) alone are not sufficient for extensions — the pytest plugin's
+`_should_deselect_for_product` function keys off pytest markers set on the test item via
+`item.get_closest_marker()`, and Gherkin tags only flow into markers for the built-in step
+definitions that include a `Given <product> is accessible` step. Direct marker decoration is the
+reliable, portable mechanism.
