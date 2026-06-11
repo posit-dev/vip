@@ -116,9 +116,9 @@ busy-loop-pacing values are deliberately excluded (see Out of scope).
   files import these names directly (`test_sessions.py`, `test_ide_launch.py`,
   `test_packages.py`, `test_jobs.py`, `test_ide_extensions.py`,
   `test_data_sources.py`, `test_session_capacity.py`,
-  `test_session_capacity_k8s.py` — 8 files), scaling the constants at definition
-  time reaches all of them with **no call-site changes** — this is what fixes
-  the "Workbench session launch" path the issue names.
+  `test_session_capacity_k8s.py`, `test_auth.py` — 9 files), scaling the
+  constants at definition time reaches all of them with **no call-site changes**
+  — this is what fixes the "Workbench session launch" path the issue names.
 
 - `src/vip/idp.py` — the IdP login-form waits become scale-aware at import:
   `_FORM_TIMEOUT = int(15_000 * timeout_scale())` (line 29) and
@@ -156,13 +156,15 @@ busy-loop-pacing values are deliberately excluded (see Out of scope).
 - `src/vip/cli.py` — the two process-level timeouts that govern long
   operations on slow VMs: `DEFAULT_TEST_TIMEOUT_SECONDS = 3600` (line 29, the
   local-mode pytest subprocess budget) and the `--timeout` k8s job flag
-  (default 900, line 1198). Apply `scaled(...)` to the *default* only, so an
-  operator who passes `--timeout` explicitly is not double-scaled. Note the
-  derived chain: `create_job(timeout_seconds = args.timeout - 60)` (cli.py:633,
-  feeding job.py:56 → `activeDeadlineSeconds` job.py:109) and `stream_logs` /
-  `wait_for_job` (job.py:249, 274, default 900) all flow from `args.timeout`, so
-  scaling that single default propagates correctly to the Kubernetes deadline
-  and the polling budget without touching `job.py` itself.
+  (flag at line 1228, `default=900` at line 1230). Apply `scaled(...)` to the
+  *default* only, so an operator who passes `--timeout` explicitly is not
+  double-scaled. Note the derived chain:
+  `create_job(timeout_seconds = args.timeout - 60)` (cli.py:666, feeding
+  job.py:56 → `activeDeadlineSeconds` job.py:109) and `stream_logs` /
+  `wait_for_job` (job.py:249, 274, default `840` — which is `900 - 60`) all
+  flow from `args.timeout`, so scaling that single default propagates correctly
+  to the Kubernetes deadline and the polling budget without touching `job.py`
+  itself.
 
 - `src/vip/verify/credentials.py` — the two `httpx.Client(timeout=30.0)`
   instances (lines 516, 592) bypass `BaseClient`; wrap each with
@@ -171,7 +173,7 @@ busy-loop-pacing values are deliberately excluded (see Out of scope).
 **Modified files — hardcoded test literals that bypass config (corrected to scale):**
 
 - `src/vip_tests/connect/test_packages.py` (line 93) and
-  `src/vip_tests/connect/test_integration.py` (line 48) call
+  `src/vip_tests/cross_product/test_integration.py` (line 48) call
   `wait_for_task(timeout=300)` with a hardcoded value that ignores both
   `deploy_timeout` and the scale. Change them to call `wait_for_task()` without
   an explicit timeout so they inherit the (now scale-aware) default, or pass
