@@ -27,9 +27,13 @@ def configured_idle_timeout_known(vip_config):
             "with a shorter timeout to run these scenarios"
         )
     return timeout
+
+@given("the configured idle grace window is known", target_fixture="idle_grace_seconds")
+def configured_idle_grace_seconds(vip_config):
+    return vip_config.workbench.idle_grace_seconds
 ```
 
-The `vip.toml.example` comment must make this explicit: `idle_timeout_minutes = 5  # must be ≤ 15 for the idle scenarios to run`. Remove any example value of 120 from all documentation.
+The `vip.toml.example` comment must make this explicit: `idle_timeout_minutes = 5  # must be ≤ 15 for the idle scenarios to run`. It should also document `idle_grace_seconds = 60  # seconds added on top of idle_timeout_minutes before asserting suspend`. Remove any example value of 120 from all documentation.
 
 ## Architecture
 
@@ -38,7 +42,10 @@ This change adds a new test feature file `test_session_idle.feature` and corresp
 ## Components
 
 **Config and data model:**
-- `src/vip/config.py` — add `idle_timeout_minutes: int | None = None` field to `WorkbenchConfig` alongside `job_timeout` and `test_packages` (lines ~197–229 on main); update `from_dict` to include `idle_timeout_minutes=raw.get("idle_timeout_minutes")` and update `__repr__` to include the new field after `test_packages`
+- `src/vip/config.py` — add two new fields to `WorkbenchConfig` alongside `job_timeout` and `test_packages` (lines ~197–229 on main):
+  - `idle_timeout_minutes: int | None = None` — the deployment's configured session idle timeout
+  - `idle_grace_seconds: int = 60` — the configurable grace window added on top of the idle timeout when waiting for auto-suspend; defaults to 60 seconds
+  Update `from_dict` to include both fields and `__repr__` to include them after `test_packages`
 
 **Test scenarios:**
 - `src/vip_tests/workbench/test_session_idle.feature` — two Gherkin scenarios tagged `@workbench @performance`:
@@ -50,7 +57,9 @@ This change adds a new test feature file `test_session_idle.feature` and corresp
 - `selftests/test_config.py` — add test cases verifying `idle_timeout_minutes` is loaded from TOML, defaults to `None`, and appears correctly in `__repr__`
 
 **Documentation:**
-- `vip.toml.example` — add `idle_timeout_minutes = 5` to the `[workbench]` section with a comment explaining it is the deployment's configured value and must be ≤ 15 for the scenarios to run
+- `vip.toml.example` — add to the `[workbench]` section:
+  - `idle_timeout_minutes = 5` with a comment explaining it is the deployment's configured value and must be ≤ 15 for the scenarios to run
+  - `idle_grace_seconds = 60` with a comment explaining it is the grace window added on top of `idle_timeout_minutes` when waiting for auto-suspend (increase for deployments with high clock drift or slow suspend response)
 
 ## Marker choice
 
@@ -61,18 +70,21 @@ Both scenarios are tagged `@performance`, not `@slow`. The `performance` marker 
 `WorkbenchConfig` currently declares fields in this order: `api_key`, `session_profiles`, `session_count`, `job_timeout`, `test_packages`, `extensions`, `kubernetes`. Add `idle_timeout_minutes` alongside `job_timeout` and `test_packages`, not after `kubernetes`. Concretely:
 
 ```python
-# Field declaration — add after test_packages:
+# Field declarations — add after test_packages:
 idle_timeout_minutes: int | None = None
+idle_grace_seconds: int = 60
 
 # In WorkbenchConfig.from_dict — add after test_packages= line:
 idle_timeout_minutes=raw.get("idle_timeout_minutes"),
+idle_grace_seconds=raw.get("idle_grace_seconds", 60),
 
 # In WorkbenchConfig.__repr__ — append after test_packages=:
 f"idle_timeout_minutes={self.idle_timeout_minutes!r}, "
+f"idle_grace_seconds={self.idle_grace_seconds!r}, "
 f"extensions={self.extensions!r}, kubernetes={self.kubernetes!r})"
 ```
 
-The field is `int | None` with `None` as default. There is no Workbench API that exposes the server's live `session-timeout-minutes` value — the test reads the operator-declared value from `vip.toml`, which the admin sets to match the deployment's `rsession.conf`.
+`idle_timeout_minutes` is `int | None` with `None` as default. There is no Workbench API that exposes the server's live `session-timeout-minutes` value — the test reads the operator-declared value from `vip.toml`, which the admin sets to match the deployment's `rsession.conf`. `idle_grace_seconds` is an `int` defaulting to `60`; deployments with high clock drift or slow suspend response can increase this value in `vip.toml`.
 
 ## Active-session scenario: periodic activity loop
 
@@ -84,16 +96,16 @@ Instead, use a **periodic activity loop**: send a short `rstudio_eval` call of a
 import time
 
 @when("a long-running computation keeps the session active")
-def long_running_computation(page, idle_timeout_minutes):
+def long_running_computation(page, idle_timeout_minutes, idle_grace_seconds):
     # Drive the session with periodic interactive inputs across the full window.
     # Each rstudio_eval types an expression into the console, emitting an input
     # event that resets Workbench's idle clock — faithful to "activity correctly
     # resets the idle clock" from the issue.
     #
-    # We poll for idle_timeout_minutes + 1 min (60s grace) in POLL_INTERVAL_S
+    # We poll for idle_timeout_minutes + idle_grace_seconds in POLL_INTERVAL_S
     # increments, using a trivial expression that completes nearly instantly.
     POLL_INTERVAL_S = 90  # send an activity event every 90 seconds
-    end_time = time.monotonic() + (idle_timeout_minutes * 60) + 60
+    end_time = time.monotonic() + (idle_timeout_minutes * 60) + idle_grace_seconds
     while time.monotonic() < end_time:
         rstudio_eval(page, "invisible(NULL)", timeout=15_000)
         remaining = end_time - time.monotonic()
@@ -142,7 +154,10 @@ from vip_tests.workbench.exec import rstudio_eval
    ```bash
    uv run pytest selftests/test_config.py::TestWorkbenchConfig::test_idle_timeout_default \
        selftests/test_config.py::TestWorkbenchConfig::test_idle_timeout_from_dict \
-       selftests/test_config.py::TestWorkbenchConfig::test_repr_includes_idle_timeout -v
+       selftests/test_config.py::TestWorkbenchConfig::test_repr_includes_idle_timeout \
+       selftests/test_config.py::TestWorkbenchConfig::test_idle_grace_seconds_default \
+       selftests/test_config.py::TestWorkbenchConfig::test_idle_grace_seconds_from_dict \
+       selftests/test_config.py::TestWorkbenchConfig::test_repr_includes_idle_grace_seconds -v
    ```
 2. Run ruff checks:
    ```bash
@@ -155,11 +170,10 @@ from vip_tests.workbench.exec import rstudio_eval
    ```
    Expected: two scenarios collected, both tagged `@workbench @performance`.
 
-A live end-to-end verification requires a Workbench deployment with a short idle timeout (≤ 15 minutes, e.g. 5 minutes) configured in `rsession.conf` and `idle_timeout_minutes = 5` in `vip.toml`. The idle scenario should pass when the session auto-suspends within `idle_timeout_minutes * 60 + 60` seconds; the active scenario verifies the session is still Active after the periodic activity loop runs for the full timeout window.
+A live end-to-end verification requires a Workbench deployment with a short idle timeout (≤ 15 minutes, e.g. 5 minutes) configured in `rsession.conf` and `idle_timeout_minutes = 5` in `vip.toml`. The idle scenario should pass when the session auto-suspends within `idle_timeout_minutes * 60 + idle_grace_seconds` seconds; the active scenario verifies the session is still Active after the periodic activity loop runs for the full timeout window.
 
 ## Open questions
 
-- The issue proposes a grace window (timeout + 60s) to account for clock drift. Should this be a fixed 60-second buffer, a configurable field, or a percentage of the timeout? Defaulting to a fixed 60-second buffer is simplest and matches the issue's suggestion. This can be revisited if deployments with high clock drift are encountered.
 - Should the `@performance` marker automatically deselect these tests unless `--performance` is passed as a CLI flag, or is manual `pytest -m "not performance"` filtering sufficient? The existing `performance` marker is documented as opt-in/excluded by default but deselection is done via standard pytest `-m` expressions rather than a VIP-specific flag — this is consistent with the rest of VIP's performance tests.
 - The 15-minute ceiling on `idle_timeout_minutes` is chosen as a pragmatic test limit. If a deployment legitimately uses a shorter timeout (e.g. 2–5 minutes), the ceiling can be tightened further. If a future VIP release adds a `--slow` / `--long-running` opt-in mechanism, the ceiling could become a soft advisory rather than a hard skip.
 
