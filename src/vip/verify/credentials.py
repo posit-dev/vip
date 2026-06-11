@@ -525,6 +525,9 @@ def _get_keycloak_admin_token(
             raise ValueError("access_token missing from token response")
 
         return access_token
+
+
+def _find_keycloak_user_id(
     client: httpx.Client,
     users_url: str,
     username: str,
