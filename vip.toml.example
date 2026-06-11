@@ -155,6 +155,13 @@ enabled = false
 # load_test_tool = "auto"        # "auto" | "async" | "locust" | "threadpool"
 # load_test_duration = 30         # seconds (locust only)
 # load_test_spawn_rate = 10       # users/sec (locust only)
+#
+# Slow VMs: to scale every operation timeout up by 3×, set the env var:
+#   VIP_TIMEOUT_SCALE=3 vip verify --connect-url https://connect.example.com
+# This multiplies Playwright waits, API polling deadlines, and httpx timeouts
+# uniformly. The per-section knobs above set absolute values; the scale
+# multiplies on top of whatever effective value (default or configured) is in
+# play. Values < 1.0 are valid for speeding up CI smoke checks.
 
 [tls]
 # TLS configuration for self-signed or corporate CAs.

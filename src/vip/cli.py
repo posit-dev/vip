@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from vip.config import Mode
 
+from vip.timeouts import scaled
+
 # Buffer subtracted from the user-supplied timeout when setting the pytest
 # timeout inside the K8s Job.  The Job's own deadline is set to args.timeout,
 # so we give pytest a slightly shorter limit so it can finish and write results
@@ -26,7 +28,7 @@ _JOB_MIN_PYTEST_TIMEOUT_SECONDS = 60
 # Default for ``vip verify --test-timeout``.  Generous enough for a full
 # Connect suite with several content deployments (each can take 3-5 minutes
 # for R package restore or Python venv creation).
-DEFAULT_TEST_TIMEOUT_SECONDS = 3600
+DEFAULT_TEST_TIMEOUT_SECONDS = int(scaled(3600))
 
 # Valid test categories. Maps every accepted spelling (hyphenated and
 # underscored) to the internal pytest marker name.
@@ -1227,7 +1229,7 @@ def main() -> None:
     k8s_group.add_argument(
         "--timeout",
         type=int,
-        default=900,
+        default=int(scaled(900)),
         help="Job timeout in seconds (default: 900)",
     )
     k8s_group.add_argument(

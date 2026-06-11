@@ -19,6 +19,7 @@ from pathlib import Path
 import httpx
 
 from vip.auth import _delete_api_key, start_interactive_auth
+from vip.timeouts import scaled
 
 # Name of the K8s Secret that holds VIP test user credentials.
 _VIP_TEST_CREDENTIALS_SECRET = "vip-test-credentials"
@@ -513,7 +514,7 @@ def _get_keycloak_admin_token(
         "password": password,
     }
 
-    with httpx.Client(timeout=30.0, verify=verify) as client:
+    with httpx.Client(timeout=scaled(30.0), verify=verify) as client:
         resp = client.post(token_url, data=data)
         resp.raise_for_status()
 
@@ -524,9 +525,6 @@ def _get_keycloak_admin_token(
             raise ValueError("access_token missing from token response")
 
         return access_token
-
-
-def _find_keycloak_user_id(
     client: httpx.Client,
     users_url: str,
     username: str,
@@ -589,7 +587,7 @@ def _create_keycloak_user(
     else:
         verify = True
 
-    with httpx.Client(timeout=30.0, verify=verify) as client:
+    with httpx.Client(timeout=scaled(30.0), verify=verify) as client:
         users_url = f"{keycloak_url}/admin/realms/{realm}/users"
         headers = {"Authorization": f"Bearer {token}"}
 

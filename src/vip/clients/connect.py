@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from vip.clients.base import BaseClient
+from vip.timeouts import scaled
 
 _VIP_CONTENT_TAG = "_vip_test"
 
@@ -35,7 +36,7 @@ class ConnectClient(BaseClient):
         base_url: str,
         api_key: str,
         *,
-        timeout: float = 30.0,
+        timeout: float | None = None,
         insecure: bool = False,
         ca_bundle: Path | None = None,
         auth: httpx.Auth | None = None,
@@ -191,7 +192,7 @@ class ConnectClient(BaseClient):
         resp.raise_for_status()
         return resp.json()
 
-    def wait_for_task(self, task_id: str, timeout: float = 60.0) -> dict[str, Any]:
+    def wait_for_task(self, task_id: str, timeout: float | None = None) -> dict[str, Any]:
         """Poll a task until it finishes or timeout is reached.
 
         Polls ``get_task`` every 3 seconds, handling transient HTTP errors
@@ -203,7 +204,8 @@ class ConnectClient(BaseClient):
         """
         import time
 
-        deadline = time.time() + timeout
+        effective_timeout = scaled(60.0) if timeout is None else timeout
+        deadline = time.time() + effective_timeout
         task: dict[str, Any] = {}
         while time.time() < deadline:
             try:
@@ -412,12 +414,13 @@ class ConnectClient(BaseClient):
         resp.raise_for_status()
         return resp.json()
 
-    def wait_for_system_check(self, check_id: str | int, timeout: float = 120.0) -> dict[str, Any]:
+    def wait_for_system_check(self, check_id: str | int, timeout: float | None = None) -> dict[str, Any]:
         """Poll a system check run until it completes or timeout is reached."""
         import time
 
         transient_status_codes = {404, 502, 503, 504}
-        deadline = time.time() + timeout
+        effective_timeout = scaled(120.0) if timeout is None else timeout
+        deadline = time.time() + effective_timeout
         last_exception: Exception | None = None
 
         while time.time() < deadline:

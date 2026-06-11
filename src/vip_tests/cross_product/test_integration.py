@@ -45,12 +45,12 @@ def deploy_r_content_on_connect(connect_client):
     result = connect_client.deploy_bundle(guid, bundle["id"])
 
     task_id = result["task_id"]
-    task = connect_client.wait_for_task(task_id, timeout=300)
+    task = connect_client.wait_for_task(task_id)
 
     if not task.get("finished"):
         output_lines = task.get("output", []) or []
         pytest.fail(
-            "Deployment did not complete within 300 seconds\n\n"
+            "Deployment did not finish in time\n\n"
             "--- Task output (last 30 lines) ---\n" + "\n".join(output_lines[-30:])
         )
 

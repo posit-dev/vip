@@ -29,6 +29,11 @@ from playwright.sync_api import (
 )
 
 
+import httpx
+
+from vip.timeouts import scaled
+
+
 class AuthConfigError(ValueError):
     """Raised for user-facing authentication configuration errors."""
 
@@ -393,7 +398,7 @@ def start_interactive_auth(
 
         # Poll until login completes
         base = primary_url.rstrip("/")
-        deadline = time.monotonic() + 300
+        deadline = time.monotonic() + scaled(300)
         login_completed = False
 
         # Login detection: for Connect check we left /__login__,
@@ -703,7 +708,7 @@ def _navigate_to_idp(page: Page, product_url: str) -> None:
         "#auth-sign-in-link",
     ):
         try:
-            page.click(selector, timeout=3_000)
+            page.click(selector, timeout=int(scaled(3_000)))
             page.wait_for_load_state("domcontentloaded")
             # Check if we left the product page.
             if not page.url.lower().startswith(product_base):
@@ -715,7 +720,7 @@ def _navigate_to_idp(page: Page, product_url: str) -> None:
     try:
         page.wait_for_url(
             lambda url: not url.lower().startswith(product_base),
-            timeout=10_000,
+            timeout=int(scaled(10_000)),
         )
     except Exception:
         pass
@@ -739,7 +744,7 @@ def _fill_product_login(page: Page, username: str, password: str) -> None:
     )
 
     _log_verbose(">>> Filling product login form ...")
-    page.locator(username_selectors).first.wait_for(timeout=15_000)
+    page.locator(username_selectors).first.wait_for(timeout=int(scaled(15_000)))
     page.locator(username_selectors).first.fill(username)
     page.locator(password_selectors).first.fill(password)
     page.locator(submit_selectors).first.click()
@@ -749,7 +754,7 @@ def _fill_product_login(page: Page, username: str, password: str) -> None:
 def _wait_for_product_redirect(page: Page, product_url: str) -> None:
     """Wait until the browser has returned to the product after IdP auth."""
     base = product_url.rstrip("/").lower()
-    deadline = time.monotonic() + 300  # 5-minute timeout
+    deadline = time.monotonic() + scaled(300)  # 5-minute timeout
     clicked_oidc_confirm = False
 
     while time.monotonic() < deadline:
@@ -867,7 +872,7 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
         "#auth-sign-in-link",
     ):
         try:
-            page.click(selector, timeout=2_000)
+            page.click(selector, timeout=int(scaled(2_000)))
             break
         except Exception:
             continue
@@ -876,11 +881,11 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
     print(">>> Waiting for Workbench SSO redirect chain ...")
     print(">>> If prompted, please complete authentication in the browser.\n")
 
-    deadline = time.monotonic() + 120  # 2-minute timeout
+    deadline = time.monotonic() + scaled(120)  # 2-minute timeout
     last_url = url
     while time.monotonic() < deadline:
         try:
-            page.wait_for_load_state("networkidle", timeout=5_000)
+            page.wait_for_load_state("networkidle", timeout=int(scaled(5_000)))
         except Exception:
             pass
         try:
@@ -961,7 +966,7 @@ def _delete_api_key(
     with httpx.Client(
         base_url=f"{base}/__api__",
         headers={"Authorization": f"Key {api_key}"},
-        timeout=10.0,
+        timeout=scaled(10.0),
         verify=verify,
     ) as client:
         for keys_path in ("/v1/user/api_keys", "/keys"):
@@ -1235,7 +1240,7 @@ def _resolve_connect_api_base(
     verify = _httpx_verify(insecure, ca_bundle)
     primary = connect_url.rstrip("/") + "/__api__/server_settings"
     try:
-        primary_resp = httpx.get(primary, timeout=10.0, verify=verify, follow_redirects=True)
+        primary_resp = httpx.get(primary, timeout=scaled(10.0), verify=verify, follow_redirects=True)
     except httpx.HTTPError:
         return connect_url
     if primary_resp.status_code == 200:
@@ -1244,7 +1249,7 @@ def _resolve_connect_api_base(
     root = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
     secondary = root + "/__api__/server_settings"
     try:
-        secondary_resp = httpx.get(secondary, timeout=10.0, verify=verify, follow_redirects=True)
+        secondary_resp = httpx.get(secondary, timeout=scaled(10.0), verify=verify, follow_redirects=True)
     except httpx.HTTPError:
         return connect_url
     if secondary_resp.status_code != 200:
@@ -1347,7 +1352,7 @@ def _create_api_key_via_session(
             base_url=base,
             headers=headers,
             cookies=cookies,
-            timeout=10.0,
+            timeout=scaled(10.0),
             verify=verify,
         ) as client:
             me_resp = client.get("/v1/user")

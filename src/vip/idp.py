@@ -13,6 +13,7 @@ from playwright.sync_api import Error, Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from vip import totp
+from vip.timeouts import scaled, timeout_scale
 
 # Keycloak selectors — validated by PPM's e2e test suite.
 _KC_USERNAME = "input[id='username']"
@@ -41,11 +42,12 @@ _SF_NEXT_FORM_TIMEOUT = 20_000
 # Time to wait for an optional "Allow" consent screen (ms).
 _SF_CONSENT_TIMEOUT = 5_000
 
-# Timeout for waiting on form elements (ms).
-_FORM_TIMEOUT = 15_000
-# Timeout for detecting whether MFA is required after login submit (ms).
-_MFA_DETECT_TIMEOUT = 10_000
+# Timeout for waiting on form elements (ms) — scaled at definition time.
+_FORM_TIMEOUT = int(15_000 * timeout_scale())
+# Timeout for detecting whether MFA is required after login submit (ms) — scaled.
+_MFA_DETECT_TIMEOUT = int(10_000 * timeout_scale())
 # Timeout for MFA completion after user is prompted (ms).
+# This is a human wait, not a server operation — deliberately not scaled.
 _MFA_TIMEOUT = 300_000  # 5 minutes
 
 
@@ -290,7 +292,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
 
     # Wait for the page to settle after authenticator selection.
     try:
-        page.wait_for_load_state("networkidle", timeout=10_000)
+        page.wait_for_load_state("networkidle", timeout=int(scaled(10_000)))
     except PlaywrightTimeout:
         pass
 
