@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import importlib
 
-import pytest
-
 import vip.timeouts as timeouts_mod
 from vip.timeouts import scaled, timeout_scale
 
