@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.41.0 (2026-06-11)
+
+### Features
+
+- **workbench**: Verify expected R/Python runtime versions (closes #303)
+  ([#327](https://github.com/posit-dev/vip/pull/327),
+  [`2cfed3b`](https://github.com/posit-dev/vip/commit/2cfed3b26d3c6644d6d26e17e2fc2a7cadd9f108))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+
 ## v0.40.0 (2026-06-10)
 
 ### Continuous Integration
