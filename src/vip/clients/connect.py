@@ -414,7 +414,9 @@ class ConnectClient(BaseClient):
         resp.raise_for_status()
         return resp.json()
 
-    def wait_for_system_check(self, check_id: str | int, timeout: float | None = None) -> dict[str, Any]:
+    def wait_for_system_check(
+        self, check_id: str | int, timeout: float | None = None
+    ) -> dict[str, Any]:
         """Poll a system check run until it completes or timeout is reached."""
         import time
 

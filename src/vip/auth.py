@@ -956,7 +956,6 @@ def _delete_api_key(
     ca_bundle: Path | None = None,
 ) -> None:
     """Delete the VIP API key using the key itself for authentication."""
-    import httpx
 
     verify = _httpx_verify(insecure, ca_bundle)
 
@@ -1165,7 +1164,6 @@ def _probe_server_settings(client, base: str, me_status: int, connect_url: str) 
 
     Best-effort: any transport error is logged and swallowed.
     """
-    import httpx
 
     try:
         probe = client.get("/server_settings")
@@ -1224,8 +1222,6 @@ def _resolve_connect_api_base(
     """
     from urllib.parse import urlparse, urlunparse
 
-    import httpx
-
     if not connect_url:
         return connect_url
 
@@ -1238,7 +1234,9 @@ def _resolve_connect_api_base(
     verify = _httpx_verify(insecure, ca_bundle)
     primary = connect_url.rstrip("/") + "/__api__/server_settings"
     try:
-        primary_resp = httpx.get(primary, timeout=scaled(10.0), verify=verify, follow_redirects=True)
+        primary_resp = httpx.get(
+            primary, timeout=scaled(10.0), verify=verify, follow_redirects=True
+        )
     except httpx.HTTPError:
         return connect_url
     if primary_resp.status_code == 200:
@@ -1247,7 +1245,9 @@ def _resolve_connect_api_base(
     root = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
     secondary = root + "/__api__/server_settings"
     try:
-        secondary_resp = httpx.get(secondary, timeout=scaled(10.0), verify=verify, follow_redirects=True)
+        secondary_resp = httpx.get(
+            secondary, timeout=scaled(10.0), verify=verify, follow_redirects=True
+        )
     except httpx.HTTPError:
         return connect_url
     if secondary_resp.status_code != 200:
@@ -1322,7 +1322,6 @@ def _create_api_key_via_session(
     covered by selftests.  The ``_httpx_verify`` unit tests confirm the verify
     plumbing; manual testing against a staging cluster is needed to close #239.
     """
-    import httpx
 
     verify = _httpx_verify(insecure, ca_bundle)
     base = connect_url.rstrip("/") + "/__api__"
