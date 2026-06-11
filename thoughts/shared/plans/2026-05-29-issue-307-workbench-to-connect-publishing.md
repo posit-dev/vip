@@ -30,34 +30,94 @@ The test reuses the existing `"the user is logged in to Workbench"` step defined
 in the same `workbench/` package without redefinition. No new shared step registration
 is needed.
 
-### Content GUID flow (cleanup via `target_fixture`)
+### Fixtures supplying Connect credentials
 
-The deployed content's GUID must flow from the deploy step to the cleanup step without
-using a module-level global. Use a `pytest.fixture`-backed dict as `target_fixture`:
+The following session-scoped fixtures from `src/vip_tests/conftest.py` supply the Connect
+credentials and URL needed by the deploy step:
+
+- `connect_client` — `ConnectClient` instance (already authenticated); `None` when Connect
+  is not configured
+- `connect_url` — bare Connect URL string (`vip_config.connect.url`)
+- `vip_config` — full config object; the raw Connect API key is at
+  `vip_config.connect.api_key`, which is populated from `VIP_CONNECT_API_KEY` when not set
+  in `vip.toml`
+
+The `rsconnect deploy` CLI command receives the API key as a CLI argument:
+```
+rsconnect deploy shiny {bundle_path} --server {connect_url} --api-key {vip_config.connect.api_key} --title vip_test_shiny
+```
+This keeps the secret out of environment variables set at the subprocess level and
+matches the pattern used in performance tests (`test_load.py`, `test_user_simulation.py`).
+
+### Content cleanup — tracking fixtures promoted to root conftest
+
+**Problem:** The three cleanup fixtures in `src/vip_tests/connect/conftest.py` —
+`_connect_created_guids`, `_connect_content_cleanup`, and `_connect_end_of_run_sweep` —
+are not visible from `src/vip_tests/workbench/`. A workbench test that creates Connect
+content cannot register into that list.
+
+**Decision: promote the fixtures to `src/vip_tests/conftest.py` (root).**
+
+This is the correct option because:
+1. The fixtures already guard against `connect_client is None` (lines 57–61 and 68–70 of
+   `connect/conftest.py`), so they are safe to activate in workbench-only runs where
+   Connect is not configured.
+2. Moving them to the root is the DRY choice — no duplication of the cleanup pattern
+   across packages, and any future cross-product test that creates Connect content
+   automatically benefits.
+3. The alternative (a duplicate minimal-cleanup fixture in the workbench conftest) would
+   mean two separate tracking lists that never reconcile, leaving the end-of-run sweep
+   incomplete from each package's perspective.
+
+**Migration:** Remove the three fixtures from `src/vip_tests/connect/conftest.py` and add
+them to `src/vip_tests/conftest.py`. Existing connect tests that already reference
+`_connect_created_guids` by name (e.g. `test_packages.py`, `test_content_deploy.py`)
+continue to resolve it from the root conftest without any change; pytest conftest
+resolution walks up to the nearest ancestor that defines the fixture.
+
+### Content GUID discovery — API lookup as primary, stdout parse as fallback
+
+The deployed content GUID must be registered into `_connect_created_guids` so the
+promoted cleanup fixtures delete it on pass or fail.
+
+**Primary method: Connect API lookup by title.**
+
+After `terminal_run` returns, query Connect for content with the title
+`"vip_test_shiny_<worker_suffix>"` (the same title passed to `rsconnect deploy --title`).
+The client already has `_find_content_by_name(name)` (a private method in
+`src/vip/clients/connect.py`) that calls `GET /v1/content?name=<name>` and returns the
+first match. The deploy step calls:
 
 ```python
-@pytest.fixture
-def publish_context():
-    """Holds the Connect content GUID created during publishing."""
-    return {"guid": None}
-
-@when("the user deploys the Python Shiny app via the terminal", target_fixture="publish_context")
-def deploy_via_terminal(page, publish_context, ...):
-    output = terminal_run(page, "rsconnect deploy shiny ...")
-    # parse GUID from rsconnect output
-    publish_context["guid"] = _parse_guid(output)
-    return publish_context
-
-@then("the published content is cleaned up")
-def cleanup_published_content(connect_client, publish_context):
-    guid = publish_context.get("guid")
-    if guid:
-        connect_client.delete_content(guid)
+content = connect_client._find_content_by_name(title)
+assert content, f"Could not find deployed content '{title}' on Connect"
+guid = content["guid"]
+_connect_created_guids.append(guid)
 ```
 
-`connect_client.delete_content(guid)` calls `DELETE /__api__/v1/content/{guid}` and is
-already implemented in `src/vip/clients/connect.py`. If the deploy step did not produce
-a GUID (e.g., because it was skipped), the cleanup step is a no-op.
+This is robust to rsconnect CLI version changes and naturally dovetails with cleanup:
+the title includes the `_vip_test` marker string (the tag sweep in `cleanup_vip_content`
+uses the Connect tag API, not the name field, but the GUID-based cleanup path is the
+primary route here).
+
+**Fallback: stdout parse.**
+
+If the API lookup returns `None` — which can happen when there is a race between
+rsconnect finishing and Connect finishing the deploy asynchronously — attempt to extract
+the GUID from the rsconnect CLI output line:
+
+```
+Output created: https://<host>/connect/#/apps/<guid>
+```
+
+using `re.search(r"/apps/([0-9a-f-]{36})", output)`. If neither path produces a GUID,
+the cleanup step logs a warning and the end-of-run `cleanup_vip_content()` tag sweep
+serves as the safety net.
+
+**Why API lookup first:** The API is stable across rsconnect-python versions; the stdout
+format has changed between releases (the line prefix and URL structure differ in older
+versions). The `_find_content_by_name` path is already exercised by `create_content`'s
+conflict-resolution logic, so it is tested implicitly.
 
 ## Components
 
@@ -72,11 +132,13 @@ a GUID (e.g., because it was skipped), the cleanup step is a no-op.
   Shiny bundle
 
 **Modified files:**
-- `src/vip_tests/workbench/conftest.py` — Add `publish_context` fixture if it should be
-  session-scoped across future publishing tests; otherwise define it locally in the step
-  file. The Python Shiny bundle path should be a module-level constant or a `@pytest.fixture`
-  returning `Path(__file__).parent.parent / "_bundles" / "python_shiny"` to keep steps
-  lean.
+- `src/vip_tests/conftest.py` — Add the three promoted cleanup fixtures:
+  `_connect_created_guids`, `_connect_content_cleanup`, `_connect_end_of_run_sweep`
+- `src/vip_tests/connect/conftest.py` — Remove those same three fixtures (now inherited
+  from root)
+- `src/vip_tests/workbench/conftest.py` — Add `python_shiny_bundle_path` fixture
+  returning `Path(__file__).parent.parent / "_bundles" / "python_shiny"`, used to keep
+  deploy step lean
 
 **Not a deliverable at plan time:**
 - `validation_docs/demo-bot-plan-issue-307.md` — A showboat demo requires running code to
@@ -94,7 +156,6 @@ Scenario: User deploys a Python Shiny app from a Workbench terminal
   And the user opens a VS Code session
   When the user deploys the Python Shiny app via the terminal
   Then the app is reachable on Connect
-  And the published content is cleaned up
 ```
 
 The `"the user is logged in to Workbench"` step is reused verbatim from
@@ -103,17 +164,37 @@ The `"the user is logged in to Workbench"` step is reused verbatim from
 ```python
 from vip_tests.workbench.exec import terminal_run
 
+title = f"vip_test_shiny_{unique_session_name(__file__)}"
+
 output = terminal_run(
     page,
     f"rsconnect deploy shiny {bundle_path} "
-    f"--server {connect_url} --api-key {connect_api_key} --title vip_test_shiny",
+    f"--server {connect_url} --api-key {vip_config.connect.api_key} --title {title}",
     timeout=120_000,
     readback_lang="python",  # VS Code session without R extension
 )
+
+# Primary: API lookup by title (stable across rsconnect versions)
+content = connect_client._find_content_by_name(title)
+if content:
+    guid = content["guid"]
+else:
+    # Fallback: parse stdout
+    m = re.search(r"/apps/([0-9a-f-]{36})", output)
+    guid = m.group(1) if m else None
+
+if guid:
+    _connect_created_guids.append(guid)
+else:
+    warnings.warn(f"Could not determine GUID for deployed content '{title}'; "
+                  "relying on end-of-run tag sweep for cleanup.")
 ```
 
-The GUID is parsed from the rsconnect CLI output line
-`"Output created: https://<host>/connect/#/apps/<guid>"` using a regex.
+Cleanup happens automatically via the promoted `_connect_content_cleanup` fixture (runs
+after every test, on pass or fail) and the session-scoped `_connect_end_of_run_sweep`
+safety net. No explicit cleanup step in the Gherkin is needed — and none should be added,
+because explicit cleanup steps fail silently when an earlier step raises, leaving content
+behind.
 
 ### Scenario 2 (blocked — explicit skip): Posit Publisher extension UI
 
@@ -145,10 +226,12 @@ uv run vip verify --config vip.toml --categories workbench -- -k publish_to_conn
 Success criteria:
 - Both scenarios are collected when `@workbench` and `@connect` products are configured
 - Terminal scenario creates a Workbench session, runs `rsconnect deploy` via
-  `terminal_run()`, parses the GUID, and verifies the app is reachable on Connect
+  `terminal_run()`, discovers the GUID via Connect API title lookup (with stdout-parse
+  fallback), appends it to `_connect_created_guids`, and verifies the app is reachable
+  on Connect
 - Publisher scenario is collected but immediately skipped with an actionable message
-- Cleanup step deletes the deployed content item via `connect_client.delete_content(guid)`;
-  GUID flows through `publish_context` fixture dict, never a module-level global
+- Cleanup is automatic via the promoted `_connect_content_cleanup` autouse fixture —
+  no explicit cleanup step in the Gherkin scenarios
 - Neither scenario is collected when only one product is configured (plugin deselects both)
 - Lint passes: `uv run ruff check src/vip_tests/ selftests/`
 
