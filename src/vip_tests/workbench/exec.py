@@ -21,6 +21,7 @@ import time
 import uuid
 
 from playwright.sync_api import Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from vip_tests.workbench.pages import (
     ConsolePaneSelectors,
@@ -153,8 +154,10 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
         Raw text between the VIP markers, stripped of whitespace.
 
     Raises:
-        ExecError: End marker did not appear within *timeout*, or the output
-            cannot be parsed.
+        ExecError: End marker did not appear within *timeout*, or the R console
+            did not show a ready prompt (``> ``) within *timeout* — the latter
+            typically means a startup script (e.g. an ``.Rprofile`` with an
+            acceptable-use policy prompt) is blocking the console.
         PlaywrightTimeoutError: Console input was not visible within *timeout*.
     """
     start, end = _make_sentinels()
@@ -162,6 +165,21 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
 
     console_input = page.locator(ConsolePaneSelectors.INPUT)
     expect(console_input).to_be_visible(timeout=timeout)
+
+    # Wait for the standard R prompt ("> ") to appear in the console output
+    # before typing.  If a startup script (e.g. an .Rprofile with an
+    # acceptable-use policy) is holding the console, the prompt will never
+    # arrive and we fail here with a clear message instead of letting the typed
+    # expression be consumed by the blocking readline() call.
+    console_output_element = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT)
+    try:
+        expect(console_output_element).to_contain_text("> ", timeout=timeout)
+    except PlaywrightTimeoutError as exc:
+        raise ExecError(
+            "R console did not reach a ready prompt — a startup script "
+            "(.Rprofile) may be blocking the console"
+        ) from exc
+
     console_input.click()
     console_input.type(wrapped)
     console_input.press("Enter")
