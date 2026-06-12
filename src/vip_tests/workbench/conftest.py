@@ -499,6 +499,18 @@ app = App(app_ui, server)
 '''
 
 
+def _write_python_shiny_bundle(bundle_dir: Path) -> Path:
+    """Write a minimal Python Shiny bundle (app.py + requirements.txt) into bundle_dir.
+
+    Returns *bundle_dir* for convenience so callers can write::
+
+        path = _write_python_shiny_bundle(some_dir)
+    """
+    (bundle_dir / "app.py").write_text(_PYTHON_SHINY_APP)
+    (bundle_dir / "requirements.txt").write_text("shiny\n")
+    return bundle_dir
+
+
 @pytest.fixture(scope="session")
 def python_shiny_bundle_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a session-scoped Python Shiny test bundle in a temp directory.
@@ -510,7 +522,4 @@ def python_shiny_bundle_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     be the Workbench server, or a host whose /tmp is reachable from the
     Workbench session terminal).
     """
-    bundle_dir = tmp_path_factory.mktemp("python_shiny_bundle")
-    (bundle_dir / "app.py").write_text(_PYTHON_SHINY_APP)
-    (bundle_dir / "requirements.txt").write_text("shiny\n")
-    return bundle_dir
+    return _write_python_shiny_bundle(tmp_path_factory.mktemp("python_shiny_bundle"))

@@ -15,12 +15,8 @@ import ast
 from pathlib import Path
 
 # Paths to the conftest files under test
-_ROOT_CONFTEST = (
-    Path(__file__).parent.parent / "src" / "vip_tests" / "conftest.py"
-)
-_CONNECT_CONFTEST = (
-    Path(__file__).parent.parent / "src" / "vip_tests" / "connect" / "conftest.py"
-)
+_ROOT_CONFTEST = Path(__file__).parent.parent / "src" / "vip_tests" / "conftest.py"
+_CONNECT_CONFTEST = Path(__file__).parent.parent / "src" / "vip_tests" / "connect" / "conftest.py"
 _WORKBENCH_CONFTEST = (
     Path(__file__).parent.parent / "src" / "vip_tests" / "workbench" / "conftest.py"
 )
@@ -112,40 +108,39 @@ class TestPythonShinyBundlePath:
             f"Expected fixture 'python_shiny_bundle_path' in {_WORKBENCH_CONFTEST}"
         )
 
-    def test_bundle_creates_app_py(self, tmp_path_factory):
+    def test_bundle_creates_app_py(self, tmp_path):
         """The fixture must create app.py in the returned directory."""
-        from vip_tests.workbench.conftest import python_shiny_bundle_path
+        from vip_tests.workbench.conftest import _write_python_shiny_bundle
 
-        # Manually invoke the fixture (it's session-scoped; we call it directly here).
-        bundle_dir = python_shiny_bundle_path(tmp_path_factory)
+        bundle_dir = _write_python_shiny_bundle(tmp_path)
         app_py = bundle_dir / "app.py"
         assert app_py.exists(), f"app.py not found in bundle directory {bundle_dir}"
 
-    def test_bundle_creates_requirements_txt(self, tmp_path_factory):
+    def test_bundle_creates_requirements_txt(self, tmp_path):
         """The fixture must create requirements.txt in the returned directory."""
-        from vip_tests.workbench.conftest import python_shiny_bundle_path
+        from vip_tests.workbench.conftest import _write_python_shiny_bundle
 
-        bundle_dir = python_shiny_bundle_path(tmp_path_factory)
+        bundle_dir = _write_python_shiny_bundle(tmp_path)
         req_txt = bundle_dir / "requirements.txt"
         assert req_txt.exists(), f"requirements.txt not found in {bundle_dir}"
         assert "shiny" in req_txt.read_text()
 
-    def test_app_py_is_valid_python(self, tmp_path_factory):
+    def test_app_py_is_valid_python(self, tmp_path):
         """app.py must parse as valid Python."""
-        from vip_tests.workbench.conftest import python_shiny_bundle_path
+        from vip_tests.workbench.conftest import _write_python_shiny_bundle
 
-        bundle_dir = python_shiny_bundle_path(tmp_path_factory)
+        bundle_dir = _write_python_shiny_bundle(tmp_path)
         source = (bundle_dir / "app.py").read_text()
         try:
             ast.parse(source)
         except SyntaxError as exc:
             raise AssertionError(f"app.py contains invalid Python: {exc}") from exc
 
-    def test_app_py_contains_shiny_app(self, tmp_path_factory):
+    def test_app_py_contains_shiny_app(self, tmp_path):
         """app.py must define a Shiny App object."""
-        from vip_tests.workbench.conftest import python_shiny_bundle_path
+        from vip_tests.workbench.conftest import _write_python_shiny_bundle
 
-        bundle_dir = python_shiny_bundle_path(tmp_path_factory)
+        bundle_dir = _write_python_shiny_bundle(tmp_path)
         source = (bundle_dir / "app.py").read_text()
         assert "App(" in source, "app.py must contain a Shiny App(...) call"
         assert "app_ui" in source, "app.py must define app_ui"
@@ -169,9 +164,9 @@ def test_cleanup_fixtures_are_autouse():
             if not isinstance(dec, ast.Call):
                 continue
             func = dec.func
-            is_fixture_call = (
-                isinstance(func, ast.Attribute) and func.attr == "fixture"
-            ) or (isinstance(func, ast.Name) and func.id == "fixture")
+            is_fixture_call = (isinstance(func, ast.Attribute) and func.attr == "fixture") or (
+                isinstance(func, ast.Name) and func.id == "fixture"
+            )
             if not is_fixture_call:
                 continue
             for kw in dec.keywords:
