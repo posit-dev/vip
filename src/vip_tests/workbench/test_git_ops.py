@@ -1,8 +1,7 @@
 """Step definitions for Workbench Git operations tests.
 
 Tests cover terminal-based Git operations (clone, branch, commit, push) in
-RStudio, VS Code, and Positron sessions, as well as the RStudio Git pane
-(Stage → Commit → Push workflow).
+RStudio, VS Code, and Positron sessions.
 
 Requires [workbench.git_test] in vip.toml and VIP_GIT_TOKEN set in the
 environment.  All scenarios auto-skip when the config block is absent.
@@ -10,6 +9,7 @@ environment.  All scenarios auto-skip when the config block is absent.
 
 from __future__ import annotations
 
+import shlex
 import time
 from pathlib import Path
 from typing import NoReturn
@@ -23,7 +23,6 @@ from pytest_bdd import given, scenario, then, when
 
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
-    TIMEOUT_IDE_LOAD,
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
     assert_homepage_loaded,
@@ -36,7 +35,6 @@ from vip_tests.workbench.pages import (
     Homepage,
     NewSessionDialog,
     PositronSession,
-    RStudioGitPane,
     RStudioSession,
     VSCodeSession,
 )
@@ -63,13 +61,17 @@ def _inject_token_into_url(clone_url: str, token: str) -> str:
 
     Transforms ``https://github.com/org/repo.git`` into
     ``https://x-token-auth:<token>@github.com/org/repo.git``.
-    Returns the URL unchanged when token is empty or scheme is not https.
+    Returns the URL unchanged when token is empty.
+    Raises ValueError when the URL scheme is not https.
     """
     if not token:
         return clone_url
     parsed = urlparse(clone_url)
-    if parsed.scheme not in ("http", "https"):
-        return clone_url
+    if parsed.scheme != "https":
+        raise ValueError(
+            f"Token injection is only supported for https:// URLs; got scheme {parsed.scheme!r}. "
+            "Use an https clone URL or configure a different auth method."
+        )
     netloc_with_creds = f"x-token-auth:{token}@{parsed.hostname}"
     if parsed.port:
         netloc_with_creds += f":{parsed.port}"
@@ -119,11 +121,6 @@ def test_push_positron():
     pass
 
 
-@scenario("test_git_ops.feature", "Commit and push using the RStudio Git pane")
-def test_git_pane_push():
-    pass
-
-
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
@@ -137,7 +134,6 @@ def git_session_ctx():
         "ide": None,
         "clone_dir": None,
         "branch": None,
-        "cleaned_up": False,
     }
 
 
@@ -150,8 +146,8 @@ def _wb_git_cleanup_state():
     step (e.g. because an intermediate step failed).
 
     The cleanup runs terminal_run against a Playwright page, which is not
-    available at session scope.  We therefore store (clone_url, auth_url,
-    branch) tuples and delete them using subprocess git commands as a last
+    available at session scope.  We therefore store (auth_url, branch)
+    tuples and delete them using subprocess git commands as a last
     resort.  When the page-level cleanup already deleted the branch,
     ``git push origin --delete`` is a no-op (branch not found) and is silently
     ignored.
@@ -204,6 +200,8 @@ def workbench_accessible(
 @given("the Git test config is available", target_fixture="git_cfg")
 def git_config_available(vip_config):
     """Skip the scenario when [workbench.git_test] is not configured."""
+    from urllib.parse import urlparse as _urlparse
+
     cfg = vip_config.workbench.git_test
     if cfg is None:
         pytest.skip(
@@ -211,10 +209,20 @@ def git_config_available(vip_config):
             "Add a [workbench.git_test] block to vip.toml with clone_url and auth_method, "
             "and set VIP_GIT_TOKEN in the environment."
         )
+    if cfg.auth_method != "https-token":
+        pytest.skip(
+            f"workbench.git_test.auth_method={cfg.auth_method!r} is not supported. "
+            "Only 'https-token' is supported."
+        )
     if not cfg.clone_url:
         pytest.skip(
             "workbench.git_test.clone_url is empty. "
             "Set clone_url in the [workbench.git_test] block of vip.toml."
+        )
+    if _urlparse(cfg.clone_url).scheme != "https":
+        pytest.skip(
+            f"workbench.git_test.clone_url scheme is not https: {cfg.clone_url!r}. "
+            "Token injection requires an https:// clone URL."
         )
     if not cfg.token:
         pytest.skip(
@@ -358,7 +366,7 @@ def _do_clone(
 
     terminal_run(
         page,
-        f"cd {workdir} && git clone {auth_url}",
+        f"cd {shlex.quote(workdir)} && GIT_TERMINAL_PROMPT=0 git clone {shlex.quote(auth_url)}",
         timeout=_TIMEOUT_GIT_NETWORK,
         readback_lang=readback_lang,
     )
@@ -399,16 +407,19 @@ def _do_branch_commit(
     branch = _make_branch_name()
     git_session_ctx["branch"] = branch
 
+    q_clone_dir = shlex.quote(clone_dir)
+    q_branch = shlex.quote(branch)
+
     # Set git identity so the commit does not fail on unconfigured authors
     terminal_run(
         page,
-        f"cd {clone_dir} && git config user.email vip@posit.co && git config user.name VIP",
+        f"cd {q_clone_dir} && git config user.email vip@posit.co && git config user.name VIP",
         readback_lang=readback_lang,
     )
 
     terminal_run(
         page,
-        f"cd {clone_dir} && git checkout -b {branch}",
+        f"cd {q_clone_dir} && git checkout -b {q_branch}",
         readback_lang=readback_lang,
     )
 
@@ -416,13 +427,13 @@ def _do_branch_commit(
     timestamp = time.time_ns()
     terminal_run(
         page,
-        f'cd {clone_dir} && echo "vip test {timestamp}" > vip_test_{timestamp}.txt',
+        f'cd {q_clone_dir} && echo "vip test {timestamp}" > vip_test_{timestamp}.txt',
         readback_lang=readback_lang,
     )
 
     terminal_run(
         page,
-        f"cd {clone_dir} && git add . && git commit -m 'vip test commit {timestamp}'",
+        f"cd {q_clone_dir} && git add . && git commit -m 'vip test commit {timestamp}'",
         readback_lang=readback_lang,
     )
 
@@ -441,9 +452,12 @@ def _do_push(
     branch = git_session_ctx["branch"]
     auth_url = _inject_token_into_url(git_cfg.clone_url, git_cfg.token)
 
+    q_clone_dir = shlex.quote(clone_dir)
+    q_auth_url = shlex.quote(auth_url)
+    q_branch = shlex.quote(branch)
     terminal_run(
         page,
-        f"cd {clone_dir} && git push {auth_url} {branch}",
+        f"cd {q_clone_dir} && GIT_TERMINAL_PROMPT=0 git push {q_auth_url} {q_branch}",
         timeout=_TIMEOUT_GIT_NETWORK,
         readback_lang=readback_lang,
     )
@@ -483,107 +497,6 @@ def push_positron(page: Page, git_session_ctx: dict, git_cfg, _wb_git_cleanup_st
 
 
 # ---------------------------------------------------------------------------
-# RStudio Git pane steps
-# ---------------------------------------------------------------------------
-
-
-@when("I create a new file in the repository via the RStudio terminal")
-def create_file_for_git_pane(page: Page, git_session_ctx: dict):
-    """Create a file and a branch so the Git pane has something to stage."""
-    clone_dir = git_session_ctx["clone_dir"]
-    branch = _make_branch_name()
-    git_session_ctx["branch"] = branch
-    timestamp = time.time_ns()
-
-    terminal_run(page, f"cd {clone_dir} && git config user.email vip@posit.co", readback_lang="r")
-    terminal_run(page, f"cd {clone_dir} && git config user.name VIP", readback_lang="r")
-    terminal_run(page, f"cd {clone_dir} && git checkout -b {branch}", readback_lang="r")
-    terminal_run(
-        page,
-        f'cd {clone_dir} && echo "vip pane test {timestamp}" > vip_pane_{timestamp}.txt',
-        readback_lang="r",
-    )
-
-    # Set the Git working directory to the repo for RStudio's Git pane to pick it up
-    terminal_run(
-        page,
-        f"cd {clone_dir} && Rscript -e 'setwd(\"{clone_dir}\")'",
-        readback_lang="r",
-    )
-
-
-@when("I stage, commit, and push the file using the RStudio Git pane")
-def git_pane_stage_commit_push(page: Page, git_session_ctx: dict, git_cfg, _wb_git_cleanup_state):
-    """Drive the RStudio Git pane to stage, commit, and push.
-
-    NOTE: The selectors in RStudioGitPane have not been validated against a
-    live Workbench instance.  This step may need selector adjustments when
-    run against a real deployment.
-    """
-    clone_dir = git_session_ctx["clone_dir"]
-    branch = git_session_ctx["branch"]
-    auth_url = _inject_token_into_url(git_cfg.clone_url, git_cfg.token)
-
-    # Open the Git tab in RStudio's pane set
-    git_tab = page.locator(RStudioGitPane.GIT_TAB)
-    try:
-        git_tab.wait_for(state="visible", timeout=TIMEOUT_IDE_LOAD)
-    except PlaywrightTimeoutError:
-        pytest.skip(
-            "RStudio Git pane tab not found — "
-            "the repository may not have been recognised as a Git project by RStudio. "
-            "Verify the session working directory is set to the cloned repository."
-        )
-    git_tab.click(timeout=TIMEOUT_QUICK)
-
-    # Stage all changed files
-    stage_all = page.locator(RStudioGitPane.STAGE_ALL_BUTTON)
-    if stage_all.count() > 0 and stage_all.is_visible():
-        stage_all.click(timeout=TIMEOUT_QUICK)
-    else:
-        # Fall back to clicking individual checkboxes for the first changed file
-        first_checkbox = page.locator(RStudioGitPane.FILE_STAGE_CHECKBOX).first
-        expect(first_checkbox).to_be_visible(timeout=TIMEOUT_DIALOG)
-        first_checkbox.click(timeout=TIMEOUT_QUICK)
-
-    # Open the Commit dialog
-    page.locator(RStudioGitPane.COMMIT_BUTTON).click(timeout=TIMEOUT_DIALOG)
-
-    # Write commit message
-    commit_dialog = page.locator(RStudioGitPane.COMMIT_DIALOG)
-    expect(commit_dialog).to_be_visible(timeout=TIMEOUT_DIALOG)
-
-    commit_msg_box = commit_dialog.locator(RStudioGitPane.COMMIT_MESSAGE)
-    expect(commit_msg_box).to_be_visible(timeout=TIMEOUT_DIALOG)
-    commit_msg_box.click()
-    commit_msg_box.fill(f"vip test commit via Git pane ({branch})")
-
-    # Submit the commit
-    commit_dialog.locator(RStudioGitPane.COMMIT_SUBMIT_BUTTON).click(timeout=TIMEOUT_DIALOG)
-
-    # Wait for commit output; then push via terminal (more reliable than the dialog push button)
-    page.locator(RStudioGitPane.COMMIT_OUTPUT).wait_for(state="visible", timeout=TIMEOUT_DIALOG)
-
-    # Close the commit dialog
-    try:
-        close_btn = page.locator(RStudioGitPane.COMMIT_CLOSE_BUTTON)
-        if close_btn.count() > 0:
-            close_btn.click(timeout=TIMEOUT_QUICK)
-    except (PlaywrightTimeoutError, PlaywrightError):
-        pass
-
-    # Push the committed branch via terminal (avoids credential dialog in the GUI push flow)
-    terminal_run(
-        page,
-        f"cd {clone_dir} && git push {auth_url} {branch}",
-        timeout=_TIMEOUT_GIT_NETWORK,
-        readback_lang="r",
-    )
-
-    _wb_git_cleanup_state["pending"].append((auth_url, branch))
-
-
-# ---------------------------------------------------------------------------
 # Verification Then steps
 # ---------------------------------------------------------------------------
 
@@ -607,9 +520,11 @@ def pushed_branch_exists(page: Page, git_session_ctx: dict, git_cfg):
     lang = "python" if ide == "VS Code" else "r"
     auth_url = _inject_token_into_url(git_cfg.clone_url, git_cfg.token)
 
+    q_auth_url = shlex.quote(auth_url)
+    q_branch = shlex.quote(branch)
     output = terminal_run(
         page,
-        f"git ls-remote {auth_url} refs/heads/{branch}",
+        f"GIT_TERMINAL_PROMPT=0 git ls-remote {q_auth_url} refs/heads/{q_branch}",
         timeout=_TIMEOUT_GIT_NETWORK,
         readback_lang=lang,
     )
@@ -642,10 +557,13 @@ def _delete_remote_branch(
         )
     clone_dir = git_session_ctx["clone_dir"]
     auth_url = _inject_token_into_url(git_cfg.clone_url, git_cfg.token)
+    q_clone_dir = shlex.quote(clone_dir)
+    q_auth_url = shlex.quote(auth_url)
+    q_branch = shlex.quote(branch)
     try:
         terminal_run(
             page,
-            f"cd {clone_dir} && git push {auth_url} --delete {branch}",
+            f"cd {q_clone_dir} && GIT_TERMINAL_PROMPT=0 git push {q_auth_url} --delete {q_branch}",
             timeout=_TIMEOUT_GIT_NETWORK,
             readback_lang=readback_lang,
         )

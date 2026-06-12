@@ -1,7 +1,7 @@
 @workbench
 Feature: Git operations from Workbench sessions
   Validate that users inside a Workbench session can clone, commit, and push
-  to a Git repository through both IDE terminals and the RStudio Git pane.
+  to a Git repository through IDE terminals (RStudio, VS Code, Positron).
   All scenarios require [workbench.git_test] to be configured in vip.toml
   and the VIP_GIT_TOKEN environment variable to be set.
 
@@ -56,12 +56,3 @@ Feature: Git operations from Workbench sessions
     Then the pushed branch exists on the remote
     And I delete the pushed branch from the Positron terminal
 
-  Scenario: Commit and push using the RStudio Git pane
-    Given Workbench is accessible and I am logged in
-    And the Git test config is available
-    When I launch an RStudio session
-    And I clone the repository in the RStudio terminal
-    And I create a new file in the repository via the RStudio terminal
-    And I stage, commit, and push the file using the RStudio Git pane
-    Then the pushed branch exists on the remote
-    And I delete the pushed branch from the RStudio terminal

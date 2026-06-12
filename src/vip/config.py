@@ -198,7 +198,14 @@ class GitTestConfig:
     auth_method: str = "https-token"  # only supported value currently
     token: str = ""
 
+    _SUPPORTED_AUTH_METHODS = ("https-token",)
+
     def __post_init__(self) -> None:
+        if self.auth_method not in self._SUPPORTED_AUTH_METHODS:
+            raise ValueError(
+                f"workbench.git_test.auth_method={self.auth_method!r} is not supported. "
+                f"Supported values: {', '.join(self._SUPPORTED_AUTH_METHODS)}"
+            )
         if not self.token:
             self.token = os.environ.get("VIP_GIT_TOKEN", "")
 
