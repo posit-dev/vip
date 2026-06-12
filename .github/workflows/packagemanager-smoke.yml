@@ -279,11 +279,15 @@ jobs:
   status:
     name: Package Manager Smoke Tests Status
     if: always()
-    needs: [packagemanager-smoke]
+    needs: [changes, packagemanager-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Check smoke test result
         run: |
+          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
+            echo "Change-detection job failed; cannot confirm smoke scope"
+            exit 1
+          fi
           if [ "${{ needs.packagemanager-smoke.result }}" = "failure" ] || [ "${{ needs.packagemanager-smoke.result }}" = "cancelled" ]; then
             echo "Package Manager smoke tests failed or were cancelled"
             exit 1
