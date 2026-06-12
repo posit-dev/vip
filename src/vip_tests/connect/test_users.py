@@ -52,6 +52,7 @@ def user_list_not_empty(user_list):
 def check_test_user_in_list(user_list, test_username):
     if not test_username or not test_username.strip():
         pytest.skip("No test user configured — skipping user lookup assertion")
+    test_username = test_username.strip()
     expected = test_username.split("@", 1)[0]
     usernames = [u.get("username") for u in user_list]
     assert expected in usernames, (
