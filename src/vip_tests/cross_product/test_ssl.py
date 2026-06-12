@@ -88,19 +88,30 @@ def request_http(product, vip_config):
         http_url = f"http://{parsed.hostname}"
     try:
         resp_no_follow = httpx.get(http_url, follow_redirects=False, timeout=10)
-        # Also follow redirects to detect ALB / load-balancer patterns where
-        # the HTTP→HTTPS upgrade happens transparently (no client-visible 3xx).
-        resp_followed = httpx.get(http_url, follow_redirects=True, timeout=10)
-        return {
-            "status": resp_no_follow.status_code,
-            "location": resp_no_follow.headers.get("location", ""),
-            "final_url_scheme": str(resp_followed.url).split(":")[0],
-            "error": None,
-        }
     except httpx.ConnectError:
         return {"status": None, "location": "", "final_url_scheme": None, "error": "port_closed"}
     except Exception as exc:
         return {"status": None, "location": "", "final_url_scheme": None, "error": str(exc)}
+
+    # Also follow redirects to detect ALB / load-balancer patterns where the
+    # HTTP→HTTPS upgrade happens transparently (no client-visible 3xx).  This is
+    # best-effort: a failure here must not discard the successful non-follow
+    # response above, so swallow exceptions and leave the scheme unknown.
+    final_url_scheme: str | None = None
+    try:
+        resp_followed = httpx.get(
+            http_url, follow_redirects=True, timeout=10, verify=vip_config.verify
+        )
+        final_url_scheme = resp_followed.url.scheme
+    except Exception:
+        final_url_scheme = None
+
+    return {
+        "status": resp_no_follow.status_code,
+        "location": resp_no_follow.headers.get("location", ""),
+        "final_url_scheme": final_url_scheme,
+        "error": None,
+    }
 
 
 @then("the response redirects to HTTPS")
