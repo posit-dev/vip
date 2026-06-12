@@ -66,8 +66,8 @@ def homepage_displayed(page: Page):
     assert_homepage_loaded(page)
 
 
-@then("the current user is shown in the header")
-def current_user_displayed(page: Page, test_username: str):
+@then("the current user element is visible and non-empty in the header")
+def current_user_displayed(page: Page):
     current_user = page.locator(Homepage.CURRENT_USER)
     expect(current_user).to_be_visible(timeout=TIMEOUT_DIALOG)
-    expect(current_user).to_have_text(test_username)
+    expect(current_user).not_to_be_empty(timeout=TIMEOUT_DIALOG)

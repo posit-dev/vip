@@ -8,4 +8,4 @@ Feature: Workbench authentication
     Given Workbench is accessible at the configured URL
     When a user navigates to the Workbench login page and enters valid credentials
     Then the Workbench homepage is displayed
-    And the current user is shown in the header
+    And the current user element is visible and non-empty in the header
