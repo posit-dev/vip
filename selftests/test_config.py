@@ -128,6 +128,42 @@ class TestWorkbenchConfig:
         with pytest.raises(ValueError, match="must be a list of strings"):
             WorkbenchConfig.from_dict({"url": "https://workbench.example.com", "test_packages": 42})
 
+    def test_idle_timeout_default(self):
+        wc = WorkbenchConfig(url="https://workbench.example.com")
+        assert wc.idle_timeout_minutes is None
+
+    def test_idle_timeout_from_dict(self):
+        wc = WorkbenchConfig.from_dict(
+            {"url": "https://workbench.example.com", "idle_timeout_minutes": 5}
+        )
+        assert wc.idle_timeout_minutes == 5
+
+    def test_idle_timeout_default_from_dict(self):
+        wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com"})
+        assert wc.idle_timeout_minutes is None
+
+    def test_idle_grace_seconds_default(self):
+        wc = WorkbenchConfig(url="https://workbench.example.com")
+        assert wc.idle_grace_seconds == 60
+
+    def test_idle_grace_seconds_from_dict(self):
+        wc = WorkbenchConfig.from_dict(
+            {"url": "https://workbench.example.com", "idle_grace_seconds": 120}
+        )
+        assert wc.idle_grace_seconds == 120
+
+    def test_repr_includes_idle_timeout(self):
+        wc = WorkbenchConfig.from_dict(
+            {"url": "https://workbench.example.com", "idle_timeout_minutes": 5}
+        )
+        assert "idle_timeout_minutes=5" in repr(wc)
+
+    def test_repr_includes_idle_grace_seconds(self):
+        wc = WorkbenchConfig.from_dict(
+            {"url": "https://workbench.example.com", "idle_grace_seconds": 90}
+        )
+        assert "idle_grace_seconds=90" in repr(wc)
+
 
 class TestWorkbenchExtensionsConfig:
     def test_defaults_empty(self):
