@@ -2,7 +2,7 @@
 
 Demonstrates how to write a VIP test extension that:
 - Verifies specific R/Python versions are available on Connect
-- Verifies that key packages (DESeq2, PyDeSEQ2) are installable on Connect
+- Verifies that key packages (jsonlite, PyDeSEQ2) are installable on Connect
 - Verifies package installation in a live Workbench RStudio session
 
 This file uses VIP's four-layer architecture:
@@ -148,9 +148,9 @@ _PLUMBER_R = '#* @get /\nfunction() list(status = "ok")\n'
 
 @when(
     "I deploy a minimal content item that installs the R package",
-    target_fixture="r_deploy_state",
+    target_fixture="deploy_state",
 )
-def deploy_r_package(connect_client, r_package_name):
+def deploy_r_package(connect_client, r_package_name, vip_config):
     content_name = f"vip_test_r_pkg_{r_package_name.lower()}_check"
     content = connect_client.create_content(
         content_name,
@@ -166,8 +166,22 @@ def deploy_r_package(connect_client, r_package_name):
     }
     bundle_bytes = _make_tar_gz(bundle_files)
     bundle = connect_client.upload_bundle(guid, bundle_bytes)
-    connect_client.deploy_bundle(guid, bundle["id"])
-    return {"guid": guid}
+    result = connect_client.deploy_bundle(guid, bundle["id"])
+    task_id = result["task_id"]
+
+    timeout = vip_config.connect.deploy_timeout
+    task = connect_client.wait_for_task(task_id, timeout=timeout)
+    if not task.get("finished"):
+        output = "\n".join(task.get("output", []))
+        pytest.fail(
+            f"Deployment did not complete within {timeout} seconds\n\n--- Task output ---\n{output}"
+        )
+    if task.get("code") != 0:
+        output = "\n".join(task.get("output", []))
+        error = task.get("error", "unknown error")
+        pytest.fail(f"Deployment failed: {error}\n\n--- Task output ---\n{output}")
+
+    return {"guid": guid, "task_result": task}
 
 
 def _python_package_manifest(package_name: str) -> str:
@@ -195,9 +209,9 @@ _FLASK_APP_PY = (
 
 @when(
     "I deploy a minimal content item that installs the Python package",
-    target_fixture="python_deploy_state",
+    target_fixture="deploy_state",
 )
-def deploy_python_package(connect_client, python_package_name):
+def deploy_python_package(connect_client, python_package_name, vip_config):
     content_name = f"vip_test_py_pkg_{python_package_name.lower()}_check"
     content = connect_client.create_content(
         content_name,
@@ -213,8 +227,22 @@ def deploy_python_package(connect_client, python_package_name):
     }
     bundle_bytes = _make_tar_gz(bundle_files)
     bundle = connect_client.upload_bundle(guid, bundle_bytes)
-    connect_client.deploy_bundle(guid, bundle["id"])
-    return {"guid": guid}
+    result = connect_client.deploy_bundle(guid, bundle["id"])
+    task_id = result["task_id"]
+
+    timeout = vip_config.connect.deploy_timeout
+    task = connect_client.wait_for_task(task_id, timeout=timeout)
+    if not task.get("finished"):
+        output = "\n".join(task.get("output", []))
+        pytest.fail(
+            f"Deployment did not complete within {timeout} seconds\n\n--- Task output ---\n{output}"
+        )
+    if task.get("code") != 0:
+        output = "\n".join(task.get("output", []))
+        error = task.get("error", "unknown error")
+        pytest.fail(f"Deployment failed: {error}\n\n--- Task output ---\n{output}")
+
+    return {"guid": guid, "task_result": task}
 
 
 @when(
@@ -249,14 +277,15 @@ def python_versions_present(expected_python_versions, available_python):
 
 
 @then("the deployment succeeds")
-def deployment_succeeds(r_deploy_state, connect_client):
-    # connect_client.deploy_bundle raises on failure; reaching here means success.
-    assert r_deploy_state.get("guid"), "No GUID recorded for deployed content"
+def deployment_succeeds(deploy_state):
+    # deploy_bundle raises on task failure (handled in the When step);
+    # reaching here means the deployment completed successfully.
+    assert deploy_state.get("guid"), "No GUID recorded for deployed content"
 
 
 @then("I clean up the deployed content")
-def cleanup_deployed_content(r_deploy_state, connect_client):
-    guid = r_deploy_state.get("guid")
+def cleanup_deployed_content(deploy_state, connect_client):
+    guid = deploy_state.get("guid")
     if guid:
         connect_client.cleanup_content([guid])
 
@@ -266,6 +295,6 @@ def r_install_succeeds(install_output, r_package_name):
     # Rscript exits 0 on success. If the package was not found or install
     # failed, the output typically contains "ERROR" or "Warning message".
     lowered = install_output.lower()
-    assert "error" not in lowered or "warning" in lowered, (
+    assert "error" not in lowered and "warning" not in lowered, (
         f"R package installation may have failed. Output:\n{install_output}"
     )

@@ -17,7 +17,7 @@ vip scaffold --output ./my-custom-tests
 |---|---|---|
 | Connect R versions match requirements | Connect API | httpx |
 | Connect Python versions match requirements | Connect API | httpx |
-| R package (DESeq2) is installable on Connect | Connect API + bundle deploy | httpx |
+| R package (jsonlite) is installable on Connect | Connect API + bundle deploy | httpx |
 | Python package (PyDeSEQ2) is installable on Connect | Connect API + bundle deploy | httpx |
 | R package installable in Workbench RStudio session | Workbench terminal | Playwright |
 
@@ -25,10 +25,10 @@ vip scaffold --output ./my-custom-tests
 
 ```bash
 # Run with a vip.toml that has both Connect and Workbench configured
-vip verify --config vip.toml --extensions ./cross_product_validation
+vip verify --config vip.toml --extensions .
 
 # Dry-run: collect tests without executing
-vip verify --config vip.toml --extensions ./cross_product_validation --collect-only
+vip verify --config vip.toml --extensions . --collect-only
 
 # Skip the slow package-install scenarios
 # Edit conftest.py and set check_packages to return False

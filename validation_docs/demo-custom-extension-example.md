@@ -8,8 +8,9 @@ This PR adds two things to VIP:
 1. A new `vip scaffold` CLI subcommand that copies a reference cross-product validation
    example to a user-specified directory.
 2. The reference example itself at `examples/cross_product_validation/`, which verifies
-   R/Python runtime versions and DESeq2/PyDeSEQ2 package installability across Connect
-   and Workbench — the pattern GxP deployments and other regulated environments need.
+   R/Python runtime versions and package installability (jsonlite/PyDeSEQ2 by default,
+   overridable) across Connect and Workbench — the pattern GxP deployments and other
+   regulated environments need.
 
 Selftests at `selftests/test_cli_scaffold.py` verify the scaffold command output.
 
@@ -73,7 +74,7 @@ test_gxp_validation.py
 ```
 
 ```bash
-uv run pytest --vip-config=/tmp/claude/vip-test.toml --vip-extensions=/tmp/claude/scaffold-demo --collect-only -q 2>&1 | grep -E 'test_gxp|collected'
+uv run pytest --vip-config=/tmp/claude/vip-test.toml --vip-extensions=/tmp/claude/scaffold-demo --collect-only -q 2>&1 | grep -E 'test_gxp|collected' | sed 's/ in [0-9.]*s//'
 ```
 
 ```output
@@ -82,7 +83,7 @@ test_gxp_validation.py::test_connect_python_versions
 test_gxp_validation.py::test_connect_r_package
 test_gxp_validation.py::test_connect_python_package
 test_gxp_validation.py::test_workbench_r_package
-93/121 tests collected (28 deselected) in 0.07s
+93/121 tests collected (28 deselected)
 ```
 
 ```bash

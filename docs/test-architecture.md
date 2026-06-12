@@ -263,9 +263,11 @@ Two canonical examples ship with VIP:
 - `examples/cross_product_validation/` — cross-product runtime + package validation (GxP pattern)
 
 **Key requirement for auto-skip to work in extensions:** apply `@pytest.mark.connect` and/or
-`@pytest.mark.workbench` decorators directly on every `@scenario` function. Feature-level Gherkin
-tags (`@connect`, `@workbench`) alone are not sufficient for extensions — the pytest plugin's
-`_should_deselect_for_product` function keys off pytest markers set on the test item via
-`item.get_closest_marker()`, and Gherkin tags only flow into markers for the built-in step
-definitions that include a `Given <product> is accessible` step. Direct marker decoration is the
-reliable, portable mechanism.
+`@pytest.mark.workbench` decorators directly on every `@scenario` function. With pytest-bdd,
+scenario-level Gherkin tags (e.g. `@connect` on a `Scenario:` block) do become pytest markers and
+participate in auto-deselect via `item.get_closest_marker()`. However, feature-level tags apply to
+every scenario in the file — if you tag the whole `Feature:` with both `@connect` and `@workbench`,
+every scenario requires both products, which causes incorrect deselection when only one product is
+configured. The safe, portable pattern is to tag each `Scenario:` with only the product(s) it
+actually uses, or to apply `@pytest.mark.connect`/`@pytest.mark.workbench` directly on the
+`@scenario` decorator function in Python.

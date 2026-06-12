@@ -6,7 +6,7 @@ automatically via the VIP plugin.
 
 This conftest adds only the fixtures unique to this example:
   - check_packages   -- set to False to skip slow install-verification scenarios
-  - r_package_name   -- the R package to verify (default: DESeq2)
+  - r_package_name   -- the R package to verify (default: jsonlite)
   - python_package_name -- the Python package to verify (default: PyDeSEQ2)
 
 Note: expected_r_versions and expected_python_versions are intentionally NOT
@@ -30,7 +30,7 @@ import pytest
 def check_packages() -> bool:
     """Control whether package install scenarios are executed.
 
-    Set to False to skip the slow DESeq2/PyDeSEQ2 install checks when you
+    Set to False to skip the slow package install checks when you
     only need runtime-version verification. Override in your own conftest.py:
 
         @pytest.fixture(scope="session")
@@ -44,14 +44,14 @@ def check_packages() -> bool:
 def r_package_name() -> str:
     """The R package to verify is installable on Connect and Workbench.
 
-    Defaults to DESeq2. Override in your own conftest.py to check a
-    different package:
+    Defaults to jsonlite (a standard CRAN package). Override in your own
+    conftest.py to check a different package:
 
         @pytest.fixture(scope="session")
         def r_package_name() -> str:
             return "ggplot2"
     """
-    return "DESeq2"
+    return "jsonlite"
 
 
 @pytest.fixture(scope="session")

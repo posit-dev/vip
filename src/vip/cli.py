@@ -940,20 +940,34 @@ def run_uninstall(args: argparse.Namespace) -> None:
 
 def run_scaffold(args: argparse.Namespace) -> None:
     """Copy the cross_product_validation example to a user-specified directory."""
+    import importlib.resources
     import shutil
 
-    src = Path(__file__).parent.parent.parent / "examples" / "cross_product_validation"
-    if not src.is_dir():
-        # Installed package: examples live alongside the package source.
-        # Fall back to a path relative to the installed package location.
-        import vip as _vip_pkg
+    # Prefer the bundled copy inside the installed wheel (_scaffold/ is embedded
+    # via [tool.hatch.build.targets.wheel.force-include]).  Fall back to the
+    # repo's top-level examples/ directory so in-repo usage and selftests work
+    # without building a wheel first.
+    src: Path | None = None
+    try:
+        scaffold_pkg = importlib.resources.files("vip") / "_scaffold" / "cross_product_validation"
+        # files() returns a Traversable; we need a real Path for shutil.copytree.
+        with importlib.resources.as_file(scaffold_pkg) as p:
+            if p.is_dir():
+                src = p
+    except (TypeError, FileNotFoundError):
+        pass
 
-        src = Path(_vip_pkg.__file__).parent.parent / "examples" / "cross_product_validation"
+    if src is None:
+        # Source checkout: three levels up from src/vip/cli.py → repo root.
+        repo_root = Path(__file__).parent.parent.parent
+        candidate = repo_root / "examples" / "cross_product_validation"
+        if candidate.is_dir():
+            src = candidate
 
-    if not src.is_dir():
+    if src is None:
         print(
             "Error: could not locate examples/cross_product_validation/. "
-            "Ensure VIP is installed from source or with the examples included.",
+            "Ensure VIP is installed from source or as a wheel built with examples.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -967,20 +981,23 @@ def run_scaffold(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     if dest.exists():
-        shutil.rmtree(dest)
+        if dest.is_dir() and not dest.is_symlink():
+            shutil.rmtree(dest)
+        else:
+            dest.unlink()
 
     shutil.copytree(src, dest)
     print(f"Scaffolded extension to: {dest}")
     print(
         f"\nNext steps:\n"
-        f"  1. Edit {dest}/conftest.py to set your package names and versions.\n"
+        f"  1. Edit {dest / 'conftest.py'} to set your package names and versions.\n"
         f"  2. Add a [runtimes] block to vip.toml:\n"
         f"       [runtimes]\n"
         f'       r_versions = ["4.4.0"]\n'
         f'       python_versions = ["3.11.0"]\n'
         f"  3. Run the extension:\n"
         f"       vip verify --config vip.toml --extensions {dest}\n"
-        f"\nSee {dest}/README.md for full customization instructions."
+        f"\nSee {dest / 'README.md'} for full customization instructions."
     )
 
 
