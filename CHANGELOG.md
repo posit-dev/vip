@@ -1,6 +1,31 @@
 # CHANGELOG
 
 
+## v0.46.0 (2026-06-12)
+
+### Continuous Integration
+
+- Fix agentic workflow tooling and screenshot PR detection
+  ([#382](https://github.com/posit-dev/vip/pull/382),
+  [`43d9a84`](https://github.com/posit-dev/vip/commit/43d9a848115c518dcebabfb700e6690f04a715ff))
+
+- Fix smoke workflow deadlock by moving path filters to job-level gate
+  ([#383](https://github.com/posit-dev/vip/pull/383),
+  [`4b84ac2`](https://github.com/posit-dev/vip/commit/4b84ac2b941af021393866dd57d6bb29be69c38d))
+
+### Features
+
+- **workbench**: Add idle session auto-suspend behavior tests (closes #305)
+  ([#380](https://github.com/posit-dev/vip/pull/380),
+  [`da98411`](https://github.com/posit-dev/vip/commit/da98411fa70b1d56fae6242f6a0dec6805891894))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.45.0 (2026-06-12)
 
 ### Documentation
