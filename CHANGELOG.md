@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.41.2 (2026-06-12)
+
+### Bug Fixes
+
+- **workbench**: Raise descriptive error when R console output times out (closes #275)
+  ([#362](https://github.com/posit-dev/vip/pull/362),
+  [`2400548`](https://github.com/posit-dev/vip/commit/2400548acbbdc95bbfe2c31bf7ee28c5c36852f9))
+
+
 ## v0.41.1 (2026-06-12)
 
 ### Bug Fixes
