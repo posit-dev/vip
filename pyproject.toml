@@ -120,6 +120,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/vip", "src/vip_tests"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"examples/cross_product_validation" = "vip/_scaffold/cross_product_validation"
+
 [tool.pytest.ini_options]
 testpaths = ["src/vip_tests"]
 addopts = "-n auto --dist loadgroup"

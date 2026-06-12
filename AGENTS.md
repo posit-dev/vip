@@ -145,7 +145,7 @@ Key principles:
 
 | File | Purpose |
 |------------------------------------|------------------------------------|
-| `src/vip/cli.py` | CLI entry point: verify, cleanup, install, uninstall, cluster, auth commands |
+| `src/vip/cli.py` | CLI entry point: verify, cleanup, install, uninstall, cluster, auth, scaffold commands |
 | `src/vip/config.py` | TOML config loader, dataclasses, `Mode` enum, per-mode validation |
 | `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers |
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
@@ -170,6 +170,25 @@ Key principles:
 | `src/vip_tests/conftest.py` | Root fixtures: clients, auth, runtimes, data sources |
 | `report/index.qmd` | Quarto summary page |
 | `report/details.qmd` | Quarto detailed results page |
+
+## Extension examples
+
+VIP ships two canonical extension examples in `examples/`:
+
+| Directory | Purpose |
+|---|---|
+| `examples/custom_tests/` | Minimal HTTP health-check extension (simpler starting point) |
+| `examples/cross_product_validation/` | GxP/regulated-environment pattern: runtime version checks + DESeq2/PyDeSEQ2 package installability across Connect and Workbench |
+
+Generate the cross-product example in a new directory with:
+
+```bash
+vip scaffold --output ./my-custom-tests
+```
+
+When writing a new extension example, follow the same four-layer architecture and add
+`@pytest.mark.connect` / `@pytest.mark.workbench` decorators to every `@scenario` function so
+auto-skip works correctly (feature-level Gherkin tags alone are not sufficient).
 
 ## Fixtures available in product tests
 
