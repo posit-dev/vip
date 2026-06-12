@@ -21,6 +21,7 @@ import time
 import uuid
 
 from playwright.sync_api import Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from vip_tests.workbench.pages import (
     ConsolePaneSelectors,
@@ -153,8 +154,10 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
         Raw text between the VIP markers, stripped of whitespace.
 
     Raises:
-        ExecError: End marker did not appear within *timeout*, or the output
-            cannot be parsed.
+        ExecError: End marker did not appear within *timeout* — typically means
+            a startup script (e.g. an ``.Rprofile`` with an interactive
+            Acceptable-Usage-Policy prompt) is blocking the console before it
+            can accept input.
         PlaywrightTimeoutError: Console input was not visible within *timeout*.
     """
     start, end = _make_sentinels()
@@ -167,7 +170,15 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
     console_input.press("Enter")
 
     console_output = page.locator(ConsolePaneSelectors.OUTPUT)
-    expect(console_output).to_contain_text(end, timeout=timeout)
+    try:
+        expect(console_output).to_contain_text(end, timeout=timeout)
+    except PlaywrightTimeoutError as exc:
+        raise ExecError(
+            "R console did not return the expected output within "
+            f"{timeout} ms. A startup script (e.g. an .Rprofile with an "
+            "interactive Acceptable-Usage-Policy prompt) may be blocking the "
+            "console before it can accept input."
+        ) from exc
 
     text = console_output.text_content() or ""
     return _extract_between_markers(text, start, end)

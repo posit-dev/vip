@@ -87,16 +87,31 @@ def request_http(product, vip_config):
     if parsed.scheme != "http":
         http_url = f"http://{parsed.hostname}"
     try:
-        resp = httpx.get(http_url, follow_redirects=False, timeout=10)
-        return {
-            "status": resp.status_code,
-            "location": resp.headers.get("location", ""),
-            "error": None,
-        }
+        resp_no_follow = httpx.get(http_url, follow_redirects=False, timeout=10)
     except httpx.ConnectError:
-        return {"status": None, "location": "", "error": "port_closed"}
+        return {"status": None, "location": "", "final_url_scheme": None, "error": "port_closed"}
     except Exception as exc:
-        return {"status": None, "location": "", "error": str(exc)}
+        return {"status": None, "location": "", "final_url_scheme": None, "error": str(exc)}
+
+    # Also follow redirects to detect ALB / load-balancer patterns where the
+    # HTTP→HTTPS upgrade happens transparently (no client-visible 3xx).  This is
+    # best-effort: a failure here must not discard the successful non-follow
+    # response above, so swallow exceptions and leave the scheme unknown.
+    final_url_scheme: str | None = None
+    try:
+        resp_followed = httpx.get(
+            http_url, follow_redirects=True, timeout=10, verify=vip_config.verify
+        )
+        final_url_scheme = resp_followed.url.scheme
+    except Exception:
+        final_url_scheme = None
+
+    return {
+        "status": resp_no_follow.status_code,
+        "location": resp_no_follow.headers.get("location", ""),
+        "final_url_scheme": final_url_scheme,
+        "error": None,
+    }
 
 
 @then("the response redirects to HTTPS")
@@ -104,11 +119,21 @@ def redirects_to_https(http_response):
     if http_response["error"] == "port_closed":
         # HTTP port not open is acceptable (handled by the "Or" clause).
         return
-    assert http_response["status"] in (301, 302, 307, 308), (
-        f"Expected redirect, got HTTP {http_response['status']}"
-    )
-    assert http_response["location"].startswith("https://"), (
-        f"Redirect target is not HTTPS: {http_response['location']}"
+
+    # Primary path: a standard 3xx redirect with an https:// Location header.
+    direct_redirect = http_response["status"] in (301, 302, 307, 308) and http_response[
+        "location"
+    ].startswith("https://")
+
+    # Fallback path: following the redirect chain (including ALB/LB transparent
+    # upgrades) ends up at an HTTPS URL — this is what a browser would observe.
+    followed_to_https = http_response.get("final_url_scheme") == "https"
+
+    assert direct_redirect or followed_to_https, (
+        f"HTTP did not redirect to HTTPS. "
+        f"Initial response: HTTP {http_response['status']}, "
+        f"Location: {http_response['location']!r}, "
+        f"final URL scheme after following redirects: {http_response.get('final_url_scheme')!r}"
     )
 
 
