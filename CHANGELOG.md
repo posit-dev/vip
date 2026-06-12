@@ -1,6 +1,25 @@
 # CHANGELOG
 
 
+## v0.44.0 (2026-06-12)
+
+### Features
+
+- **examples**: Add custom test extension example and vip scaffold (closes #298)
+  ([#374](https://github.com/posit-dev/vip/pull/374),
+  [`bef4c13`](https://github.com/posit-dev/vip/commit/bef4c1345d566a649d428ad937daa74637f6894f))
+
+- **workbench**: Add Workbench sign-out scenario (closes #308)
+  ([#366](https://github.com/posit-dev/vip/pull/366),
+  [`5e5db99`](https://github.com/posit-dev/vip/commit/5e5db991835f1537f0c844052c8825a3fbab3029))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.43.0 (2026-06-12)
 
 ### Features
