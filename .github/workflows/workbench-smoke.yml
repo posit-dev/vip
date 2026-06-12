@@ -9,19 +9,36 @@ on:
       - 'uv.lock'
       - '.github/workflows/workbench-smoke.yml'
   pull_request:
-    paths:
-      - 'src/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/workbench-smoke.yml'
 
 permissions:
   contents: read
   checks: write
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - 'src/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/workbench-smoke.yml'
+
   workbench-smoke:
-    if: github.actor != 'dependabot[bot]'
+    needs: [changes]
+    if: needs.changes.outputs.relevant == 'true' && github.actor != 'dependabot[bot]'
     name: Smoke test against Workbench ${{ matrix.workbench-version }}
     runs-on: ubuntu-latest
     strategy:
@@ -242,11 +259,15 @@ jobs:
   status:
     name: Workbench Smoke Tests Status
     if: always()
-    needs: [workbench-smoke]
+    needs: [changes, workbench-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Check smoke test result
         run: |
+          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
+            echo "Change-detection job failed; cannot confirm smoke scope"
+            exit 1
+          fi
           if [ "${{ needs.workbench-smoke.result }}" = "failure" ] || [ "${{ needs.workbench-smoke.result }}" = "cancelled" ]; then
             echo "Workbench smoke tests failed or were cancelled"
             exit 1
