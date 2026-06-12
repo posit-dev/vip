@@ -87,6 +87,18 @@ url = "https://workbench.example.com"
 # "Small" = 2.0
 # "Large" = 8.0
 
+# Git operations testing.
+# Validates that users can clone, commit, and push from Workbench sessions
+# (RStudio terminal, VS Code terminal, Positron terminal, and RStudio Git pane).
+# All Git scenarios auto-skip when this block is absent.
+#
+# Token is never stored in this file — set VIP_GIT_TOKEN in the environment.
+#   export VIP_GIT_TOKEN="ghp_..."
+#
+# [workbench.git_test]
+# clone_url = "https://github.com/org/repo.git"
+# auth_method = "https-token"    # only supported value; SSH is out of scope
+
 [package_manager]
 enabled = true
 url = "https://packagemanager.example.com"
