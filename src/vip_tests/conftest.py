@@ -48,7 +48,12 @@ def vip_verbose(request: pytest.FixtureRequest) -> bool:
 @pytest.fixture(scope="session")
 def connect_client(vip_config: VIPConfig) -> ConnectClient | None:
     if not vip_config.connect.is_configured:
-        return None
+        # Yield (not return) None: this is a generator fixture, and the root
+        # autouse Connect-cleanup fixtures request it on every test — including
+        # PM-only and Workbench-only runs where Connect is unconfigured.  A bare
+        # ``return`` here would raise "connect_client did not yield a value".
+        yield None
+        return
     # A registered client-auth provider (e.g. Snowflake JWT) authenticates the
     # request itself, so a Connect API key is not required in that case.
     auth = build_client_auth(vip_config, "connect", vip_config.connect.url)
