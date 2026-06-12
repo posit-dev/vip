@@ -1,6 +1,131 @@
 # CHANGELOG
 
 
+## v0.43.0 (2026-06-12)
+
+### Features
+
+- **workbench**: Cover Git operations from Workbench sessions (closes #306)
+  ([#363](https://github.com/posit-dev/vip/pull/363),
+  [`01e09b5`](https://github.com/posit-dev/vip/commit/01e09b505e2e86c529be0d0479e0bd2ccf108d96))
+
+
+## v0.42.0 (2026-06-12)
+
+### Features
+
+- **workbench**: Publish to Connect from Workbench terminal (closes #307)
+  ([#371](https://github.com/posit-dev/vip/pull/371),
+  [`3a753dc`](https://github.com/posit-dev/vip/commit/3a753dc2d1665092381d0fb781ce3afde832df84))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
+## v0.41.3 (2026-06-12)
+
+### Bug Fixes
+
+- **workbench**: Stop asserting exact username on homepage login check (closes #273)
+  ([#361](https://github.com/posit-dev/vip/pull/361),
+  [`66d9872`](https://github.com/posit-dev/vip/commit/66d9872a15422c112641f313b2f44987ea75fe96))
+
+
+## v0.41.2 (2026-06-12)
+
+### Bug Fixes
+
+- **workbench**: Raise descriptive error when R console output times out (closes #275)
+  ([#362](https://github.com/posit-dev/vip/pull/362),
+  [`2400548`](https://github.com/posit-dev/vip/commit/2400548acbbdc95bbfe2c31bf7ee28c5c36852f9))
+
+
+## v0.41.1 (2026-06-12)
+
+### Bug Fixes
+
+- **connect**: Skip user-list assertion when no test user is configured (closes #264)
+  ([#359](https://github.com/posit-dev/vip/pull/359),
+  [`2175d9f`](https://github.com/posit-dev/vip/commit/2175d9ff86dce230de07ef824fa1e12a32b0f29e))
+
+- **ssl**: Accept HTTPS termination behind load balancers in redirect test (closes #265)
+  ([#360](https://github.com/posit-dev/vip/pull/360),
+  [`80e0390`](https://github.com/posit-dev/vip/commit/80e0390430647114e8b07a4b4f317b1cd6505983))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group across 1 directory with 4 updates
+  ([#358](https://github.com/posit-dev/vip/pull/358),
+  [`e0447d7`](https://github.com/posit-dev/vip/commit/e0447d74daf8c45d8d30a0efe29753a2bb9234c0))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+- **deps**: Bump the python-dependencies group across 1 directory with 7 updates
+  ([#370](https://github.com/posit-dev/vip/pull/370),
+  [`567d239`](https://github.com/posit-dev/vip/commit/567d239ec045c1c064c8ed5c444098d280132b9d))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Continuous Integration
+
+- Exempt dependabot from the uv.lock guard ([#365](https://github.com/posit-dev/vip/pull/365),
+  [`272840a`](https://github.com/posit-dev/vip/commit/272840acc803fc833a10ee95e7768ab160e39887))
+
+### Documentation
+
+- Plan for #288 — improved timeout configuration ([#332](https://github.com/posit-dev/vip/pull/332),
+  [`6f59822`](https://github.com/posit-dev/vip/commit/6f5982274661b8c1ab87883b5595ab124ac2ff29))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+- Plan for #298 — custom test extension scaffolding
+  ([#299](https://github.com/posit-dev/vip/pull/299),
+  [`452dae3`](https://github.com/posit-dev/vip/commit/452dae306f168d3525371b68cf98ed659501c6bb))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+- Plan for #307 — publish to Connect from Workbench
+  ([#313](https://github.com/posit-dev/vip/pull/313),
+  [`426e791`](https://github.com/posit-dev/vip/commit/426e791cafba511aa850c0e2eecb0763a07f4ea5))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+- Plan for #308 — Workbench sign-out, AI defaults, runtime extension install
+  ([#310](https://github.com/posit-dev/vip/pull/310),
+  [`c29865e`](https://github.com/posit-dev/vip/commit/c29865e1c05a0532fbefeec36d3458e972c69fd9))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Copilot <198982749+Copilot@users.noreply.github.com>
+
+Co-authored-by: ian-flores <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.41.0 (2026-06-11)
 
 ### Features

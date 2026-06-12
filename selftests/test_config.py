@@ -8,6 +8,7 @@ from vip.config import (
     AuthConfig,
     ClusterConfig,
     ConnectConfig,
+    GitTestConfig,
     Mode,
     PerformanceConfig,
     ProductConfig,
@@ -506,6 +507,151 @@ class TestLoadConfigTLS:
         path = tmp_toml('[tls]\nca_bundle = "/nonexistent/path/ca.pem"\n')
         with pytest.raises(ValueError, match="ca_bundle path does not exist"):
             load_config(path)
+
+
+class TestGitTestConfig:
+    def test_defaults(self):
+        cfg = GitTestConfig()
+        assert cfg.clone_url == ""
+        assert cfg.auth_method == "https-token"
+        assert cfg.token == ""
+
+    def test_clone_url_from_constructor(self):
+        cfg = GitTestConfig(clone_url="https://github.com/org/repo.git")
+        assert cfg.clone_url == "https://github.com/org/repo.git"
+
+    def test_auth_method_default(self):
+        cfg = GitTestConfig(clone_url="https://github.com/org/repo.git")
+        assert cfg.auth_method == "https-token"
+
+    def test_explicit_auth_method(self):
+        cfg = GitTestConfig(clone_url="https://github.com/org/repo.git", auth_method="https-token")
+        assert cfg.auth_method == "https-token"
+
+    def test_token_from_env(self, monkeypatch):
+        monkeypatch.setenv("VIP_GIT_TOKEN", "ghp_test_token")
+        cfg = GitTestConfig(clone_url="https://github.com/org/repo.git")
+        assert cfg.token == "ghp_test_token"
+
+    def test_explicit_token_takes_precedence_over_env(self, monkeypatch):
+        monkeypatch.setenv("VIP_GIT_TOKEN", "env-token")
+        cfg = GitTestConfig(clone_url="https://github.com/org/repo.git", token="explicit-token")
+        assert cfg.token == "explicit-token"
+
+    def test_token_empty_when_env_not_set(self, monkeypatch):
+        monkeypatch.delenv("VIP_GIT_TOKEN", raising=False)
+        cfg = GitTestConfig(clone_url="https://github.com/org/repo.git")
+        assert cfg.token == ""
+
+    def test_from_dict_parses_fields(self):
+        cfg = GitTestConfig.from_dict(
+            {
+                "clone_url": "https://github.com/org/repo.git",
+                "auth_method": "https-token",
+            }
+        )
+        assert cfg.clone_url == "https://github.com/org/repo.git"
+        assert cfg.auth_method == "https-token"
+
+    def test_from_dict_empty_uses_defaults(self):
+        cfg = GitTestConfig.from_dict({})
+        assert cfg.clone_url == ""
+        assert cfg.auth_method == "https-token"
+
+    def test_invalid_auth_method_raises(self):
+        with pytest.raises(ValueError, match="auth_method.*not supported"):
+            GitTestConfig(clone_url="https://github.com/org/repo.git", auth_method="ssh-key")
+
+    def test_repr_redacts_token(self):
+        cfg = GitTestConfig(clone_url="https://github.com/org/repo.git", token="secret")
+        assert "secret" not in repr(cfg)
+        assert "'***'" in repr(cfg)
+
+    def test_repr_empty_token_shows_empty_string(self, monkeypatch):
+        monkeypatch.delenv("VIP_GIT_TOKEN", raising=False)
+        cfg = GitTestConfig(clone_url="https://github.com/org/repo.git")
+        assert "'***'" not in repr(cfg)
+        assert "''" in repr(cfg)
+
+
+class TestWorkbenchConfigGitTest:
+    def test_git_test_absent_by_default(self):
+        wc = WorkbenchConfig(url="https://workbench.example.com")
+        assert wc.git_test is None
+
+    def test_git_test_absent_from_dict_when_key_missing(self):
+        wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com"})
+        assert wc.git_test is None
+
+    def test_git_test_parsed_from_dict(self):
+        wc = WorkbenchConfig.from_dict(
+            {
+                "url": "https://workbench.example.com",
+                "git_test": {"clone_url": "https://github.com/org/repo.git"},
+            }
+        )
+        assert wc.git_test is not None
+        assert wc.git_test.clone_url == "https://github.com/org/repo.git"
+
+    def test_git_test_token_from_env(self, monkeypatch):
+        monkeypatch.setenv("VIP_GIT_TOKEN", "tok123")
+        wc = WorkbenchConfig.from_dict(
+            {
+                "url": "https://workbench.example.com",
+                "git_test": {"clone_url": "https://github.com/org/repo.git"},
+            }
+        )
+        assert wc.git_test is not None
+        assert wc.git_test.token == "tok123"
+
+    def test_git_test_none_when_env_not_set_and_no_block(self, monkeypatch):
+        monkeypatch.delenv("VIP_GIT_TOKEN", raising=False)
+        wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com"})
+        assert wc.git_test is None
+
+
+class TestLoadConfigGitTest:
+    def test_git_test_block_parsed(self, tmp_toml, monkeypatch):
+        monkeypatch.delenv("VIP_GIT_TOKEN", raising=False)
+        path = tmp_toml(
+            """
+[workbench]
+url = "https://workbench.example.com"
+
+[workbench.git_test]
+clone_url = "https://github.com/org/repo.git"
+auth_method = "https-token"
+"""
+        )
+        cfg = load_config(path)
+        assert cfg.workbench.git_test is not None
+        assert cfg.workbench.git_test.clone_url == "https://github.com/org/repo.git"
+        assert cfg.workbench.git_test.auth_method == "https-token"
+
+    def test_git_test_block_absent_yields_none(self, tmp_toml):
+        path = tmp_toml(
+            """
+[workbench]
+url = "https://workbench.example.com"
+"""
+        )
+        cfg = load_config(path)
+        assert cfg.workbench.git_test is None
+
+    def test_git_test_token_from_env(self, tmp_toml, monkeypatch):
+        monkeypatch.setenv("VIP_GIT_TOKEN", "env-token-xyz")
+        path = tmp_toml(
+            """
+[workbench]
+url = "https://workbench.example.com"
+
+[workbench.git_test]
+clone_url = "https://github.com/org/repo.git"
+"""
+        )
+        cfg = load_config(path)
+        assert cfg.workbench.git_test is not None
+        assert cfg.workbench.git_test.token == "env-token-xyz"
 
 
 class TestMode:

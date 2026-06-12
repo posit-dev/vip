@@ -5,7 +5,10 @@
 !README.md
 plans/
 selftests/
-examples/
+examples/*
+# Keep the scaffold template: pyproject force-includes it into the wheel, so
+# `uv sync` inside the Docker builds needs it present in the build context.
+!examples/cross_product_validation
 .gitignore
 .gitattributes
 vip.toml

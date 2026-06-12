@@ -258,3 +258,43 @@ Values < 1.0 are valid and useful for speeding up CI smoke checks
 - **Fat step definitions**: If a step definition is more than ~10 lines, it's doing too much. Push logic down to the client layer.
 - **Shared mutable state**: Use `target_fixture` to pass state between steps, not module-level globals.
 - **Testing implementation, not behavior**: Scenarios should describe what the user experiences, not how the system works internally.
+
+## Writing a Test Extension
+
+VIP's extension mechanism lets you load custom test directories alongside the built-in suite:
+
+```bash
+vip verify --config vip.toml --extensions ./my-custom-tests
+```
+
+Or in `vip.toml`:
+
+```toml
+[general]
+extension_dirs = ["./my-custom-tests"]
+```
+
+Use `vip scaffold` to generate a ready-to-run reference implementation:
+
+```bash
+vip scaffold --output ./my-custom-tests
+```
+
+This creates `examples/cross_product_validation/` — a full GxP validation example that verifies
+R/Python runtime versions and package installability across Connect and Workbench. It follows the
+same four-layer architecture as the built-in suite.
+
+Two canonical examples ship with VIP:
+
+- `examples/custom_tests/` — minimal HTTP health-check (simplest possible extension)
+- `examples/cross_product_validation/` — cross-product runtime + package validation (GxP pattern)
+
+**Key requirement for auto-skip to work in extensions:** apply `@pytest.mark.connect` and/or
+`@pytest.mark.workbench` decorators directly on every `@scenario` function. With pytest-bdd,
+scenario-level Gherkin tags (e.g. `@connect` on a `Scenario:` block) do become pytest markers and
+participate in auto-deselect via `item.get_closest_marker()`. However, feature-level tags apply to
+every scenario in the file — if you tag the whole `Feature:` with both `@connect` and `@workbench`,
+every scenario requires both products, which causes incorrect deselection when only one product is
+configured. The safe, portable pattern is to tag each `Scenario:` with only the product(s) it
+actually uses, or to apply `@pytest.mark.connect`/`@pytest.mark.workbench` directly on the
+`@scenario` decorator function in Python.

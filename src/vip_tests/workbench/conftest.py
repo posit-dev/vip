@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import Locator, Page, expect
@@ -476,3 +477,52 @@ def workbench_accessible_and_logged_in(
         workbench_auth_error=workbench_auth_error,
     )
     assert_homepage_loaded(page)
+
+
+# ---------------------------------------------------------------------------
+# Bundle path fixtures
+# ---------------------------------------------------------------------------
+
+_PYTHON_SHINY_APP = '''\
+"""Minimal Python Shiny VIP test application."""
+
+from shiny import App, ui
+
+app_ui = ui.page_fixed(
+    ui.h1("VIP Python Shiny Test"),
+    ui.p("Deployed by VIP from a Workbench session."),
+)
+
+
+def server(input, output, session):
+    pass
+
+
+app = App(app_ui, server)
+'''
+
+
+def _write_python_shiny_bundle(bundle_dir: Path) -> Path:
+    """Write a minimal Python Shiny bundle (app.py + requirements.txt) into bundle_dir.
+
+    Returns *bundle_dir* for convenience so callers can write::
+
+        path = _write_python_shiny_bundle(some_dir)
+    """
+    (bundle_dir / "app.py").write_text(_PYTHON_SHINY_APP)
+    (bundle_dir / "requirements.txt").write_text("shiny\n")
+    return bundle_dir
+
+
+@pytest.fixture(scope="session")
+def python_shiny_bundle_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create a session-scoped Python Shiny test bundle in a temp directory.
+
+    Writes a minimal ``app.py`` and ``requirements.txt`` to a fresh temp
+    directory and returns the path.  The bundle is suitable for
+    ``rsconnect deploy shiny <path>``.  Using ``tmp_path_factory`` means the
+    files are created at test-run time on the machine running VIP (which must
+    be the Workbench server, or a host whose /tmp is reachable from the
+    Workbench session terminal).
+    """
+    return _write_python_shiny_bundle(tmp_path_factory.mktemp("python_shiny_bundle"))

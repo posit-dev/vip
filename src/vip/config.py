@@ -183,6 +183,49 @@ class WorkbenchExtensionsConfig:
 
 
 @dataclass
+class GitTestConfig:
+    """Configuration for [workbench.git_test] Git operations testing.
+
+    Enables terminal and GUI Git scenarios (clone, branch, commit, push)
+    against a real Git repository.  All scenarios auto-skip when this block
+    is absent from the config file.
+
+    Token is never stored in the TOML file.  Set VIP_GIT_TOKEN in the
+    environment (same pattern as VIP_PACKAGE_MANAGER_TOKEN).
+    """
+
+    clone_url: str = ""
+    auth_method: str = "https-token"  # only supported value currently
+    token: str = ""
+
+    _SUPPORTED_AUTH_METHODS = ("https-token",)
+
+    def __post_init__(self) -> None:
+        if self.auth_method not in self._SUPPORTED_AUTH_METHODS:
+            raise ValueError(
+                f"workbench.git_test.auth_method={self.auth_method!r} is not supported. "
+                f"Supported values: {', '.join(self._SUPPORTED_AUTH_METHODS)}"
+            )
+        if not self.token:
+            self.token = os.environ.get("VIP_GIT_TOKEN", "")
+
+    def __repr__(self) -> str:
+        token_repr = "'***'" if self.token else "''"
+        return (
+            f"GitTestConfig(clone_url={self.clone_url!r}, "
+            f"auth_method={self.auth_method!r}, token={token_repr})"
+        )
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> GitTestConfig:
+        return cls(
+            clone_url=raw.get("clone_url", ""),
+            auth_method=raw.get("auth_method", "https-token"),
+            token=raw.get("token", ""),
+        )
+
+
+@dataclass
 class WorkbenchConfig(ProductConfig):
     """Workbench-specific configuration."""
 
@@ -199,6 +242,7 @@ class WorkbenchConfig(ProductConfig):
     test_packages: list[str] = field(default_factory=list)
     extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
     kubernetes: WorkbenchKubernetesConfig = field(default_factory=WorkbenchKubernetesConfig)
+    git_test: GitTestConfig | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -213,11 +257,13 @@ class WorkbenchConfig(ProductConfig):
             f"session_profiles={self.session_profiles!r}, "
             f"session_count={self.session_count!r}, job_timeout={self.job_timeout!r}, "
             f"test_packages={self.test_packages!r}, "
-            f"extensions={self.extensions!r}, kubernetes={self.kubernetes!r})"
+            f"extensions={self.extensions!r}, kubernetes={self.kubernetes!r}, "
+            f"git_test={self.git_test!r})"
         )
 
     @classmethod
     def from_dict(cls, raw: dict) -> WorkbenchConfig:
+        git_test_raw = raw.get("git_test")
         return cls(
             enabled=raw.get("enabled", True),
             url=raw.get("url", ""),
@@ -229,6 +275,7 @@ class WorkbenchConfig(ProductConfig):
             test_packages=_as_str_list(raw.get("test_packages", []), "workbench.test_packages"),
             extensions=WorkbenchExtensionsConfig.from_dict(raw.get("extensions", {})),
             kubernetes=WorkbenchKubernetesConfig.from_dict(raw.get("kubernetes", {})),
+            git_test=GitTestConfig.from_dict(git_test_raw) if git_test_raw is not None else None,
         )
 
 
