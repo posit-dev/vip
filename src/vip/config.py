@@ -240,6 +240,12 @@ class WorkbenchConfig(ProductConfig):
     # R or Python packages to install and verify in package-install scenarios.
     # Example: ["sf", "DBI", "Matrix"]
     test_packages: list[str] = field(default_factory=list)
+    # The deployment's configured session idle timeout in minutes (from rsession.conf
+    # session-timeout-minutes).  None = skip idle timeout scenarios.
+    idle_timeout_minutes: int | None = None
+    # Grace window (seconds) added on top of idle_timeout_minutes when waiting for
+    # auto-suspend.  Increase for deployments with high clock drift or slow suspend.
+    idle_grace_seconds: int = 60
     extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
     kubernetes: WorkbenchKubernetesConfig = field(default_factory=WorkbenchKubernetesConfig)
     git_test: GitTestConfig | None = None
@@ -257,6 +263,8 @@ class WorkbenchConfig(ProductConfig):
             f"session_profiles={self.session_profiles!r}, "
             f"session_count={self.session_count!r}, job_timeout={self.job_timeout!r}, "
             f"test_packages={self.test_packages!r}, "
+            f"idle_timeout_minutes={self.idle_timeout_minutes!r}, "
+            f"idle_grace_seconds={self.idle_grace_seconds!r}, "
             f"extensions={self.extensions!r}, kubernetes={self.kubernetes!r}, "
             f"git_test={self.git_test!r})"
         )
@@ -273,6 +281,8 @@ class WorkbenchConfig(ProductConfig):
             session_count=raw.get("session_count", 3),
             job_timeout=raw.get("job_timeout", 120),
             test_packages=_as_str_list(raw.get("test_packages", []), "workbench.test_packages"),
+            idle_timeout_minutes=raw.get("idle_timeout_minutes"),
+            idle_grace_seconds=raw.get("idle_grace_seconds", 60),
             extensions=WorkbenchExtensionsConfig.from_dict(raw.get("extensions", {})),
             kubernetes=WorkbenchKubernetesConfig.from_dict(raw.get("kubernetes", {})),
             git_test=GitTestConfig.from_dict(git_test_raw) if git_test_raw is not None else None,

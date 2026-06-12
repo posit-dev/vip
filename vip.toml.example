@@ -53,6 +53,13 @@ url = "https://workbench.example.com"
 # session_profiles = ["Small", "Medium", "Large"]
 # session_count = 3
 
+# Idle session timeout testing.
+# Set idle_timeout_minutes to match the deployment's session-timeout-minutes
+# from rsession.conf.  Must be ≤ 15 for the idle scenarios to run within
+# practical time budgets; values above 15 cause those scenarios to skip.
+# idle_timeout_minutes = 5   # must be ≤ 15 for the idle scenarios to run
+# idle_grace_seconds = 60    # seconds added on top of idle_timeout_minutes before asserting suspend
+
 # Additional IDE extensions to validate beyond the built-in Posit Workbench
 # integration (which is always checked).  Use extension IDs for VS Code and
 # Positron, and package names for JupyterLab.
