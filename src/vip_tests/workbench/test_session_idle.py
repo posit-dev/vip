@@ -254,9 +254,7 @@ def session_still_active(
 
 
 @then("the active idle session is cleaned up")
-def cleanup_active_idle_session(
-    page: Page, workbench_url: str, idle_session_context: dict
-):
+def cleanup_active_idle_session(page: Page, workbench_url: str, idle_session_context: dict):
     """Navigate to homepage and quit the test session."""
     session_name = idle_session_context["name"]
     home_url = workbench_url.rstrip("/") + "/home"
