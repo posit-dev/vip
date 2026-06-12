@@ -45,9 +45,12 @@ network:
 
 When this workflow runs:
 
-1. Confirm the triggering workflow run succeeded (`conclusion == success`). If it did not, stop.
-2. Read `github.event.workflow_run.pull_requests` and find the first PR number. If no PR is attached, stop.
-3. Compute preview URLs for that PR number:
+1. Confirm the triggering workflow run succeeded (`conclusion == success`). If it did not, stop immediately and exit silently — do NOT call `report_incomplete`, do NOT create an issue.
+2. The triggering run's event type is `${{ github.event.workflow_run.event }}` and its head SHA is `${{ github.event.workflow_run.head_sha }}`.
+   If the event type is not `pull_request` (for example, it is `push`), this run was not triggered by a pull request. **Exit silently and immediately**: do NOT call `report_incomplete`, do NOT create an issue, do NOT add a comment. This is not a failure; it is a normal non-PR run.
+   Do NOT attempt to read `GITHUB_EVENT_PATH` or any event file on disk.
+3. If the event type IS `pull_request`, find the PR number by using the GitHub MCP tool to search for open pull requests whose head SHA matches `${{ github.event.workflow_run.head_sha }}`. Use the first match as the PR number. If no matching PR is found, exit silently — do NOT call `report_incomplete`.
+4. Compute preview URLs for that PR number:
    - Website: `https://posit-dev.github.io/vip/pr-preview-site/pr-<PR_NUMBER>/`
    - Report: `https://posit-dev.github.io/vip/pr-preview/pr-<PR_NUMBER>/`
 
