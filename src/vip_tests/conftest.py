@@ -48,7 +48,12 @@ def vip_verbose(request: pytest.FixtureRequest) -> bool:
 @pytest.fixture(scope="session")
 def connect_client(vip_config: VIPConfig) -> ConnectClient | None:
     if not vip_config.connect.is_configured:
-        return None
+        # Yield (not return) None: this is a generator fixture, and the root
+        # autouse Connect-cleanup fixtures request it on every test — including
+        # PM-only and Workbench-only runs where Connect is unconfigured.  A bare
+        # ``return`` here would raise "connect_client did not yield a value".
+        yield None
+        return
     # A registered client-auth provider (e.g. Snowflake JWT) authenticates the
     # request itself, so a Connect API key is not required in that case.
     auth = build_client_auth(vip_config, "connect", vip_config.connect.url)
@@ -249,6 +254,44 @@ def data_sources(vip_config: VIPConfig):
 @pytest.fixture(scope="session")
 def email_enabled(vip_config: VIPConfig) -> bool:
     return vip_config.email_enabled
+
+
+# ---------------------------------------------------------------------------
+# Connect content cleanup — promoted from connect/conftest.py so that any
+# package (workbench, cross_product, …) that creates Connect content can
+# register GUIDs into the shared tracking list.  The fixtures guard against
+# ``connect_client is None`` so they are safe to activate in workbench-only
+# runs where Connect is not configured.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def _connect_created_guids():
+    """Append-only record of content GUIDs created this run (tag-independent)."""
+    return []
+
+
+@pytest.fixture(autouse=True)
+def _connect_content_cleanup(connect_client, _connect_created_guids):
+    """Delete content created during this test, on pass or fail."""
+    start = len(_connect_created_guids)
+    yield
+    if connect_client is None:
+        return
+    created = _connect_created_guids[start:]
+    if created:
+        connect_client.cleanup_content(created)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _connect_end_of_run_sweep(connect_client, _connect_created_guids):
+    """End-of-run safety net: delete tracked GUIDs, then tag-based cross-run sweep."""
+    yield
+    if connect_client is None:
+        return
+    if _connect_created_guids:
+        connect_client.cleanup_content(_connect_created_guids)
+    connect_client.cleanup_vip_content()
 
 
 # ---------------------------------------------------------------------------
