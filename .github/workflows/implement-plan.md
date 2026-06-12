@@ -56,6 +56,13 @@ safe-outputs:
     branch-prefix: "bot-"
     draft: false
     max: 1
+steps:
+  - name: Install uv
+    uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+    with:
+      enable-cache: true
+  - name: Install just
+    uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
 network:
   allowed:
     - defaults

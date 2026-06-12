@@ -27,6 +27,11 @@ safe-outputs:
   add-comment:
     max: 1
     discussions: false
+  noop:
+    # Non-PR / no-PR runs emit a noop so gh-aw does not raise "No Safe Outputs
+    # Generated"; report-as-issue:false keeps these expected no-ops from
+    # creating noisy [aw] failure issues.
+    report-as-issue: false
 network:
   allowed:
     - defaults
@@ -45,9 +50,19 @@ network:
 
 When this workflow runs:
 
-1. Confirm the triggering workflow run succeeded (`conclusion == success`). If it did not, stop.
-2. Read `github.event.workflow_run.pull_requests` and find the first PR number. If no PR is attached, stop.
-3. Compute preview URLs for that PR number:
+In any of the early-exit cases below, you MUST emit a single `noop` safe output
+with a one-line reason and then stop. Do NOT call `report_incomplete`, do NOT
+create an issue, do NOT add a comment. (Emitting `noop` is required — stopping
+with no safe output at all makes gh-aw raise "No Safe Outputs Generated", which
+is itself a failure. The `noop` output is configured with `report-as-issue:
+false`, so it does not create an issue.)
+
+1. Confirm the triggering workflow run succeeded (`conclusion == success`). If it did not, emit a `noop` (reason: "triggering run did not succeed") and stop.
+2. The triggering run's event type is `${{ github.event.workflow_run.event }}` and its head SHA is `${{ github.event.workflow_run.head_sha }}`.
+   If the event type is not `pull_request` (for example, it is `push`), this run was not triggered by a pull request — this is normal, not a failure. Emit a `noop` (reason: "triggering run was not a pull_request; nothing to screenshot") and stop.
+   Do NOT attempt to read `GITHUB_EVENT_PATH` or any event file on disk.
+3. If the event type IS `pull_request`, find the PR number by using the GitHub MCP tool to search for open pull requests whose head SHA matches `${{ github.event.workflow_run.head_sha }}`. Use the first match as the PR number. If no matching PR is found, emit a `noop` (reason: "no open PR matches the head SHA") and stop.
+4. Compute preview URLs for that PR number:
    - Website: `https://posit-dev.github.io/vip/pr-preview-site/pr-<PR_NUMBER>/`
    - Report: `https://posit-dev.github.io/vip/pr-preview/pr-<PR_NUMBER>/`
 
