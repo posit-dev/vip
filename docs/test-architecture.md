@@ -214,6 +214,33 @@ In practice, it means changes stay local:
 
 The `.feature` files only need to change when the requirements change.
 
+## Tuning timeouts on slow hardware
+
+VIP ships with generous defaults, but on small QA VMs some operations — launching
+a Workbench session, deploying content to Connect — can take much longer than on
+production hardware.  Set the `VIP_TIMEOUT_SCALE` environment variable to multiply
+every operation timeout uniformly:
+
+```bash
+VIP_TIMEOUT_SCALE=3 vip verify --connect-url https://connect.example.com
+```
+
+This scales:
+- All Playwright wait/expect timeouts (Workbench session start, IDE load, page load, …)
+- IdP login-form and network-idle waits
+- API polling deadlines (`wait_for_task`, `wait_for_system_check`)
+- The default httpx client timeout (30 s)
+- The local-mode pytest subprocess budget and the Kubernetes job deadline
+
+Deliberately **not** scaled:
+- The 5-minute MFA prompt window — a human wait, not a server operation
+- UI busy-loop pacing sleeps (e.g. `wait_for_timeout(500)`) — scaling poll intervals
+  only slows the loop without preventing any timeout
+- Explicit values: callers that pass an explicit timeout value opt out of scaling
+
+Values < 1.0 are valid and useful for speeding up CI smoke checks
+(`VIP_TIMEOUT_SCALE=0.5`).
+
 ## Adding a New Test: Layer-by-Layer Checklist
 
 1. **Layer 1 -- Feature file**: Write the Gherkin scenario with a `@product` tag. Focus on business intent, not implementation.

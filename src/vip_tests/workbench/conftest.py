@@ -14,21 +14,24 @@ from playwright.sync_api import Locator, Page, expect
 from pytest_bdd import given
 
 from vip.clients.workbench import WorkbenchClient
+from vip.timeouts import timeout_scale
 from vip_tests.workbench.pages import Homepage, LoginPage
 
 pytestmark = [pytest.mark.workbench, pytest.mark.xdist_group("workbench")]
 
 # ---------------------------------------------------------------------------
 # Playwright timeout constants (milliseconds)
+# Scaled at definition time so all 9 importing step files pick up the scale
+# without any call-site changes.  Set VIP_TIMEOUT_SCALE=N before running.
 # ---------------------------------------------------------------------------
 
-TIMEOUT_QUICK = 5_000
-TIMEOUT_DIALOG = 10_000
-TIMEOUT_PAGE_LOAD = 15_000
-TIMEOUT_CLEANUP = 30_000
-TIMEOUT_CODE_EXEC = 30_000
-TIMEOUT_IDE_LOAD = 60_000
-TIMEOUT_SESSION_START = 90_000
+TIMEOUT_QUICK = int(5_000 * timeout_scale())
+TIMEOUT_DIALOG = int(10_000 * timeout_scale())
+TIMEOUT_PAGE_LOAD = int(15_000 * timeout_scale())
+TIMEOUT_CLEANUP = int(30_000 * timeout_scale())
+TIMEOUT_CODE_EXEC = int(30_000 * timeout_scale())
+TIMEOUT_IDE_LOAD = int(60_000 * timeout_scale())
+TIMEOUT_SESSION_START = int(90_000 * timeout_scale())
 
 # Poll interval (ms) used while waiting for a session to reach Active.
 _SESSION_POLL_INTERVAL = 500

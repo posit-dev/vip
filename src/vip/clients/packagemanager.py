@@ -18,7 +18,7 @@ class PackageManagerClient(BaseClient):
         base_url: str,
         token: str = "",
         *,
-        timeout: float = 30.0,
+        timeout: float | None = None,
         insecure: bool = False,
         ca_bundle: Path | None = None,
         auth: httpx.Auth | None = None,

@@ -88,14 +88,14 @@ def deploy_r_content(connect_client, _connect_created_guids):
     bundle = connect_client.upload_bundle(guid, archive)
     result = connect_client.deploy_bundle(guid, bundle["id"])
 
-    # Wait for deployment to finish (5 min max for package installs).
+    # Wait for deployment to finish (5 min max for package installs, scaled by VIP_TIMEOUT_SCALE).
     task_id = result["task_id"]
-    task = connect_client.wait_for_task(task_id, timeout=300)
+    task = connect_client.wait_for_task(task_id)
 
     if not task.get("finished"):
         output_lines = task.get("output", []) or []
         pytest.fail(
-            "Deployment did not complete within 300 seconds\n\n"
+            "Deployment did not finish in time\n\n"
             "--- Task output (last 30 lines) ---\n" + "\n".join(output_lines[-30:])
         )
 

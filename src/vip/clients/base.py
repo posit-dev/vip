@@ -8,6 +8,8 @@ from typing import TypeVar
 
 import httpx
 
+from vip.timeouts import scaled
+
 _T = TypeVar("_T", bound="BaseClient")
 
 
@@ -52,7 +54,7 @@ class BaseClient:
         base_url: str,
         auth_header_value: str = "",
         api_prefix: str = "",
-        timeout: float = 30.0,
+        timeout: float | None = None,
         insecure: bool = False,
         ca_bundle: Path | None = None,
         auth: httpx.Auth | None = None,
@@ -88,10 +90,13 @@ class BaseClient:
         # be set on the transport itself.  Pass ``verify`` to HTTPTransport so
         # that insecure / ca_bundle settings are actually honored.
         transport = httpx.HTTPTransport(retries=3, verify=verify)
+        # None sentinel: scale the 30-second default. Callers that supply an
+        # explicit value opt out of scaling (their choice is honored as-is).
+        effective_timeout = scaled(30.0) if timeout is None else timeout
         self._client = httpx.Client(
             base_url=f"{self._base_url}{api_prefix}",
             headers=headers,
-            timeout=timeout,
+            timeout=effective_timeout,
             transport=transport,
             auth=auth,
         )
