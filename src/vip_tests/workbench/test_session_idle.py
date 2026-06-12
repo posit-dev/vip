@@ -186,16 +186,20 @@ def keep_session_active_with_periodic_input(
 
     Each ``rstudio_eval`` call types a trivial expression into the RStudio
     console, emitting an input event that resets Workbench's idle clock.
-    Polling every 90 s across ``idle_timeout_minutes * 60 + idle_grace_seconds``
-    seconds keeps the session alive for the entire window.
+    The poll interval is derived from the idle timeout (at most half of it, and
+    no more than 90 s) so the session is always nudged well before it would
+    suspend — a hard-coded 90 s would let a short timeout (e.g. 1 min) suspend
+    before the next nudge. Polling across
+    ``idle_timeout_minutes * 60 + idle_grace_seconds`` seconds keeps the session
+    alive for the entire window.
     """
-    POLL_INTERVAL_S = 90
+    poll_interval_s = max(15, min(90, (idle_timeout_minutes * 60) // 2))
     end_time = time.monotonic() + (idle_timeout_minutes * 60) + idle_grace_seconds
     while time.monotonic() < end_time:
         rstudio_eval(page, "invisible(NULL)", timeout=15_000)
         remaining = end_time - time.monotonic()
         if remaining > 0:
-            time.sleep(min(POLL_INTERVAL_S, remaining))
+            time.sleep(min(poll_interval_s, remaining))
 
 
 # ---------------------------------------------------------------------------
