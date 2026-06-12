@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.43.0 (2026-06-12)
+
+### Features
+
+- **workbench**: Cover Git operations from Workbench sessions (closes #306)
+  ([#363](https://github.com/posit-dev/vip/pull/363),
+  [`01e09b5`](https://github.com/posit-dev/vip/commit/01e09b505e2e86c529be0d0479e0bd2ccf108d96))
+
+
 ## v0.42.0 (2026-06-12)
 
 ### Features
