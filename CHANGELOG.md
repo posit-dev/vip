@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.41.3 (2026-06-12)
+
+### Bug Fixes
+
+- **workbench**: Stop asserting exact username on homepage login check (closes #273)
+  ([#361](https://github.com/posit-dev/vip/pull/361),
+  [`66d9872`](https://github.com/posit-dev/vip/commit/66d9872a15422c112641f313b2f44987ea75fe96))
+
+
 ## v0.41.2 (2026-06-12)
 
 ### Bug Fixes
