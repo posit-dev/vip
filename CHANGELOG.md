@@ -1,6 +1,35 @@
 # CHANGELOG
 
 
+## v0.45.0 (2026-06-12)
+
+### Documentation
+
+- Plan for #305 — workbench idle session auto-suspend behavior
+  ([#315](https://github.com/posit-dev/vip/pull/315),
+  [`1cb7ea6`](https://github.com/posit-dev/vip/commit/1cb7ea6e52d2cb3dcd856e3e889c0af15cdba86d))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+
+### Features
+
+- **timeouts**: Add VIP_TIMEOUT_SCALE env-var multiplier (closes #288)
+  ([#368](https://github.com/posit-dev/vip/pull/368),
+  [`6505322`](https://github.com/posit-dev/vip/commit/6505322e5d9fe66e2faf4765d24f9c7586459243))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.44.0 (2026-06-12)
 
 ### Features
