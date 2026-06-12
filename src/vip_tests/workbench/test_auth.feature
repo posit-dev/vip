@@ -9,3 +9,8 @@ Feature: Workbench authentication
     When a user navigates to the Workbench login page and enters valid credentials
     Then the Workbench homepage is displayed
     And the current user element is visible and non-empty in the header
+
+  Scenario: User can sign out of Workbench
+    Given Workbench is accessible and I am logged in
+    When I sign out of Workbench
+    Then I am redirected to the Workbench login page
