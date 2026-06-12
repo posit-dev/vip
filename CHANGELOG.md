@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.42.0 (2026-06-12)
+
+### Features
+
+- **workbench**: Publish to Connect from Workbench terminal (closes #307)
+  ([#371](https://github.com/posit-dev/vip/pull/371),
+  [`3a753dc`](https://github.com/posit-dev/vip/commit/3a753dc2d1665092381d0fb781ce3afde832df84))
+
+Co-authored-by: posit-vip-triage[bot] <288714212+posit-vip-triage[bot]@users.noreply.github.com>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.41.3 (2026-06-12)
 
 ### Bug Fixes

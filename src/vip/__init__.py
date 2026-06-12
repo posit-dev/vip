@@ -1,3 +1,3 @@
 """VIP - Verified Installation of Posit."""
 
-__version__ = "0.41.3"
+__version__ = "0.42.0"
