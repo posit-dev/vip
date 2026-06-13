@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from playwright.sync_api import Browser, Page, expect
 from pytest_bdd import given, scenario, then, when
@@ -26,17 +28,28 @@ def test_workbench_signout():
 
 
 @pytest.fixture
-def page(browser: Browser, browser_context_args: dict):
-    """Override the default page fixture to strip storage_state.
+def page(request: pytest.FixtureRequest, browser: Browser, browser_context_args: dict):
+    """Override the default page fixture for the login-form test only.
 
-    Ensures the login form is genuinely exercised even when --headless-auth
-    pre-authenticated other tests by injecting storage_state into
-    browser_context_args.  All other context args (TLS, CA bundle, etc.)
-    are preserved so this test behaves consistently with the rest of the
-    suite.  The autouse _cleanup_sessions fixture in workbench/conftest.py
-    will use this same page, keeping cleanup and execution in the same context.
+    The login scenario must genuinely exercise the password login form, so it
+    needs a *logged-out* context: storage_state (injected by --interactive-auth
+    / --headless-auth) is stripped. Every other test in this module — notably
+    the sign-out scenario — must stay *logged in* via that session, so they
+    keep storage_state. Stripping it for sign-out would leave the browser
+    anonymous and, under SSO, unable to re-authenticate (no password), so the
+    "I am logged in" precondition could never be met.
+
+    All other context args (TLS, CA bundle, etc.) are preserved so this page
+    behaves consistently with the rest of the suite. The autouse
+    _cleanup_sessions fixture in workbench/conftest.py uses this same page,
+    keeping cleanup and execution in the same context.
     """
-    args = {k: v for k, v in browser_context_args.items() if k != "storage_state"}
+    strip_storage_state = request.node.name.startswith("test_workbench_login")
+    args = {
+        k: v
+        for k, v in browser_context_args.items()
+        if not (strip_storage_state and k == "storage_state")
+    }
     context = browser.new_context(**args)
     pg = context.new_page()
     try:
@@ -110,5 +123,17 @@ def sign_out(page: Page):
 
 @then("I am redirected to the Workbench login page")
 def redirected_to_login_page(page: Page):
-    """Verify the login form becomes visible after sign-out."""
-    expect(page.locator(LoginPage.USERNAME)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+    """Verify the login page is shown after sign-out.
+
+    Password deployments render the native form (``#username``); SSO/OIDC
+    deployments render a "Sign in with <provider>" page that has no username
+    field. Accept either affordance, and fall back to the login URL so the
+    check is independent of the configured auth provider.
+    """
+    username = page.locator(LoginPage.USERNAME)
+    sign_in_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE))
+    username_or_signin = username.or_(sign_in_button)
+    try:
+        username_or_signin.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
+    except Exception:
+        expect(page).to_have_url(re.compile(r"sign-in|login|auth"), timeout=TIMEOUT_PAGE_LOAD)

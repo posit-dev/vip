@@ -27,6 +27,7 @@ from vip_tests.workbench.pages import (
     ConsolePaneSelectors,
     JupyterLabSession,
     PositronSession,
+    RStudioSession,
     VSCodeSession,
 )
 
@@ -162,6 +163,13 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
     """
     start, end = _make_sentinels()
     wrapped = _wrap_r_expr(expr, start, end)
+
+    # Ensure the Console tab is active. Console and Terminal are tabs in the
+    # same RStudio pane, so a prior terminal_run may have left the Terminal tab
+    # selected, which hides the console input and would stall this readback.
+    console_tab = page.locator(ConsolePaneSelectors.TAB)
+    if console_tab.count() > 0:
+        console_tab.click()
 
     console_input = page.locator(ConsolePaneSelectors.INPUT)
     expect(console_input).to_be_visible(timeout=timeout)
@@ -333,6 +341,34 @@ def vscode_eval(page: Page, expr: str, lang: str = "python", timeout: int = 30_0
 # ---------------------------------------------------------------------------
 
 
+def _ensure_terminal_open(page: Page, timeout: int = 30_000) -> None:
+    """Make the IDE's integrated terminal input visible before use.
+
+    A freshly launched session does not start on the terminal: in RStudio the
+    Console tab is selected and the Terminal tab's xterm widget is not rendered
+    until the tab is activated; in VS Code/Positron no terminal panel exists
+    until one is created. ``terminal_run`` therefore cannot assume
+    ``.xterm-helper-textarea`` is already present. This helper is idempotent —
+    it returns immediately when a terminal input is already visible.
+    """
+    terminal_input = page.locator(VSCodeSession.TERMINAL_INPUT)
+    if terminal_input.count() > 0 and terminal_input.first.is_visible():
+        return
+
+    if page.locator(RStudioSession.CONTAINER).count() > 0:
+        # RStudio: activate the Terminal tab in the console pane. Tab ids follow
+        # #rstudio_workbench_tab_<name>; clicking creates a terminal on first open.
+        term_tab = page.locator("#rstudio_workbench_tab_terminal")
+        if term_tab.count() == 0:
+            term_tab = page.get_by_role("tab", name=re.compile(r"\bTerminal\b"))
+        if term_tab.count() > 0:
+            term_tab.first.click()
+    elif page.locator(VSCodeSession.WORKBENCH).count() > 0:
+        # VS Code / Positron: open the integrated terminal (creates one if none).
+        page.keyboard.press("Control+`")
+    expect(terminal_input).to_be_visible(timeout=timeout)
+
+
 def terminal_run(
     page: Page,
     cmd: str,
@@ -347,10 +383,12 @@ def terminal_run(
     rather than scraping the xterm canvas/WebGL terminal widget.
 
     Strategy:
-    1. Type ``{cmd} > {tmpfile} 2>&1 && echo VIP_DONE >> {tmpfile}`` in the
+    1. Ensure the IDE terminal is open (activate the RStudio Terminal tab or
+       create a VS Code/Positron terminal) so its input is present.
+    2. Type ``{cmd} > {tmpfile} 2>&1 && echo VIP_DONE >> {tmpfile}`` in the
        terminal input (``.xterm-helper-textarea``).
-    2. Press Enter to execute.
-    3. Poll for the done marker by calling ``read_file`` (which uses
+    3. Press Enter to execute.
+    4. Poll for the done marker by calling ``read_file`` (which uses
        ``rstudio_eval`` or ``vscode_eval`` depending on *readback_lang*).
 
     Args:
@@ -368,8 +406,8 @@ def terminal_run(
     tmpfile = f"/tmp/vip_term_{uuid.uuid4().hex}.txt"
     shell_cmd = f'{cmd} > {tmpfile} 2>&1 && echo "{done_marker}" >> {tmpfile}'
 
+    _ensure_terminal_open(page, timeout=timeout)
     terminal_input = page.locator(VSCodeSession.TERMINAL_INPUT)
-    expect(terminal_input).to_be_visible(timeout=timeout)
     terminal_input.click()
     terminal_input.type(shell_cmd)
     terminal_input.press("Enter")
