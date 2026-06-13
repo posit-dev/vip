@@ -365,8 +365,7 @@ def _ensure_terminal_open(page: Page, timeout: int = 30_000) -> None:
             term_tab.first.click()
     elif page.locator(VSCodeSession.WORKBENCH).count() > 0:
         # VS Code / Positron: open the integrated terminal (creates one if none).
-        page.keyboard.press("Control+Backquote")
-
+        page.keyboard.press("Control+`")
     expect(terminal_input).to_be_visible(timeout=timeout)
 
 
