@@ -132,7 +132,8 @@ def redirected_to_login_page(page: Page):
     """
     username = page.locator(LoginPage.USERNAME)
     sign_in_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE))
+    username_or_signin = username.or_(sign_in_button)
     try:
-        expect(username.or_(sign_in_button).first).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-    except AssertionError:
+        username_or_signin.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
+    except Exception:
         expect(page).to_have_url(re.compile(r"sign-in|login|auth"), timeout=TIMEOUT_PAGE_LOAD)
