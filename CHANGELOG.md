@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.46.1 (2026-06-13)
+
+### Bug Fixes
+
+- **workbench**: Fix terminal-open and SSO sign-out tests
+  ([#385](https://github.com/posit-dev/vip/pull/385),
+  [`49abfb8`](https://github.com/posit-dev/vip/commit/49abfb82f15797216f47247bcf82ca07df2cba57))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+
 ## v0.46.0 (2026-06-12)
 
 ### Continuous Integration
