@@ -7,6 +7,8 @@ These tests cover the deterministic, Playwright-free functions extracted from
 - ``_extract_between_markers`` — output extraction between UUID sentinels
 - ``_strip_r_index`` — R vector-index prefix stripping
 - ``_make_sentinels`` — UUID sentinel format validation
+- ``_detect_ide`` — IDE detection from page DOM selectors
+- Routing in ``file_exists`` and ``read_file`` per detected IDE
 - Error-path behavior (missing start/end markers)
 
 No live Workbench deployment or Playwright browser is required.
@@ -15,18 +17,24 @@ No live Workbench deployment or Playwright browser is required.
 from __future__ import annotations
 
 import re
+from unittest.mock import MagicMock
 
 import pytest
 
+import vip_tests.workbench.exec as exec_mod
 from vip_tests.workbench.exec import (
     ExecError,
+    _detect_ide,
     _extract_between_markers,
     _make_sentinels,
     _split_marker,
     _strip_r_index,
     _wrap_python_expr,
     _wrap_r_expr,
+    file_exists,
+    read_file,
 )
+from vip_tests.workbench.pages import PositronSession, RStudioSession, VSCodeSession
 
 # ---------------------------------------------------------------------------
 # _make_sentinels
@@ -283,3 +291,250 @@ class TestStripRIndex:
         """There should be no leading space after the index is removed."""
         result = _strip_r_index("[1] value")
         assert not result.startswith(" ")
+
+
+# ---------------------------------------------------------------------------
+# _detect_ide
+# ---------------------------------------------------------------------------
+
+
+def _make_page_mock(present_selectors: set[str]) -> MagicMock:
+    """Return a MagicMock page whose locator().count() reflects *present_selectors*.
+
+    Any selector in *present_selectors* returns count() == 1; others return 0.
+    """
+    page = MagicMock()
+
+    def locator_side_effect(selector):
+        loc = MagicMock()
+        loc.count.return_value = 1 if selector in present_selectors else 0
+        return loc
+
+    page.locator.side_effect = locator_side_effect
+    return page
+
+
+class TestDetectIde:
+    def test_rstudio_detected(self):
+        page = _make_page_mock({RStudioSession.CONTAINER})
+        assert _detect_ide(page) == "rstudio"
+
+    def test_positron_detected_even_with_monaco(self):
+        """Positron renders .monaco-workbench AND .positron-console; must win over vscode."""
+        page = _make_page_mock({PositronSession.CONSOLE_PANEL, VSCodeSession.WORKBENCH})
+        assert _detect_ide(page) == "positron"
+
+    def test_vscode_detected_without_positron_console(self):
+        page = _make_page_mock({VSCodeSession.WORKBENCH})
+        assert _detect_ide(page) == "vscode"
+
+    def test_unknown_when_nothing_present(self):
+        page = _make_page_mock(set())
+        assert _detect_ide(page) == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Routing in file_exists
+# ---------------------------------------------------------------------------
+
+
+class TestFileExistsRouting:
+    def test_rstudio_calls_rstudio_eval(self, monkeypatch):
+        page = MagicMock()
+        monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "rstudio")
+        mock_rstudio_eval = MagicMock(return_value="TRUE")
+        mock_positron_eval_r = MagicMock()
+        mock_positron_eval_python = MagicMock()
+        mock_editor_read = MagicMock()
+        monkeypatch.setattr(exec_mod, "rstudio_eval", mock_rstudio_eval)
+        monkeypatch.setattr(exec_mod, "positron_eval_r", mock_positron_eval_r)
+        monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
+        monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
+
+        result = file_exists(page, "/tmp/foo.txt", lang="r")
+
+        assert result is True
+        mock_rstudio_eval.assert_called_once()
+        mock_positron_eval_r.assert_not_called()
+        mock_positron_eval_python.assert_not_called()
+        mock_editor_read.assert_not_called()
+
+    def test_positron_r_calls_positron_eval_r(self, monkeypatch):
+        page = MagicMock()
+        monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "positron")
+        mock_rstudio_eval = MagicMock()
+        mock_positron_eval_r = MagicMock(return_value="TRUE")
+        mock_positron_eval_python = MagicMock()
+        mock_editor_read = MagicMock()
+        monkeypatch.setattr(exec_mod, "rstudio_eval", mock_rstudio_eval)
+        monkeypatch.setattr(exec_mod, "positron_eval_r", mock_positron_eval_r)
+        monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
+        monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
+
+        result = file_exists(page, "/tmp/foo.txt", lang="r")
+
+        assert result is True
+        mock_positron_eval_r.assert_called_once()
+        mock_rstudio_eval.assert_not_called()
+        mock_positron_eval_python.assert_not_called()
+        mock_editor_read.assert_not_called()
+
+    def test_positron_python_calls_positron_eval_python(self, monkeypatch):
+        page = MagicMock()
+        monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "positron")
+        mock_rstudio_eval = MagicMock()
+        mock_positron_eval_r = MagicMock()
+        mock_positron_eval_python = MagicMock(return_value="True")
+        mock_editor_read = MagicMock()
+        monkeypatch.setattr(exec_mod, "rstudio_eval", mock_rstudio_eval)
+        monkeypatch.setattr(exec_mod, "positron_eval_r", mock_positron_eval_r)
+        monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
+        monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
+
+        result = file_exists(page, "/tmp/foo.txt", lang="python")
+
+        assert result is True
+        mock_positron_eval_python.assert_called_once()
+        mock_rstudio_eval.assert_not_called()
+        mock_positron_eval_r.assert_not_called()
+        mock_editor_read.assert_not_called()
+
+    def test_vscode_uses_terminal_run(self, monkeypatch):
+        """VS Code file_exists routes through terminal_run (no console eval)."""
+        page = MagicMock()
+        monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "vscode")
+        mock_rstudio_eval = MagicMock()
+        mock_positron_eval_r = MagicMock()
+        mock_positron_eval_python = MagicMock()
+        mock_editor_read = MagicMock()
+        mock_terminal_run = MagicMock(return_value="VIP_EXISTS")
+        monkeypatch.setattr(exec_mod, "rstudio_eval", mock_rstudio_eval)
+        monkeypatch.setattr(exec_mod, "positron_eval_r", mock_positron_eval_r)
+        monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
+        monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
+        monkeypatch.setattr(exec_mod, "terminal_run", mock_terminal_run)
+
+        result = file_exists(page, "/tmp/foo.txt", lang="python")
+
+        assert result is True
+        mock_terminal_run.assert_called_once()
+        mock_rstudio_eval.assert_not_called()
+        mock_positron_eval_r.assert_not_called()
+        mock_positron_eval_python.assert_not_called()
+        mock_editor_read.assert_not_called()
+
+    def test_vscode_returns_false_when_missing(self, monkeypatch):
+        """VS Code file_exists returns False when VIP_MISSING is in terminal output."""
+        page = MagicMock()
+        monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "vscode")
+        mock_terminal_run = MagicMock(return_value="VIP_MISSING")
+        monkeypatch.setattr(exec_mod, "terminal_run", mock_terminal_run)
+
+        result = file_exists(page, "/tmp/nonexistent.txt", lang="python")
+
+        assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Routing in read_file
+# ---------------------------------------------------------------------------
+
+
+class TestReadFileRouting:
+    def test_rstudio_calls_rstudio_eval(self, monkeypatch):
+        page = MagicMock()
+        monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "rstudio")
+        mock_rstudio_eval = MagicMock(return_value="[1] hello world")
+        mock_positron_eval_r = MagicMock()
+        mock_positron_eval_python = MagicMock()
+        mock_editor_read = MagicMock()
+        monkeypatch.setattr(exec_mod, "rstudio_eval", mock_rstudio_eval)
+        monkeypatch.setattr(exec_mod, "positron_eval_r", mock_positron_eval_r)
+        monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
+        monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
+
+        result = read_file(page, "/tmp/foo.txt", lang="r")
+
+        assert result == "hello world"  # _strip_r_index applied
+        mock_rstudio_eval.assert_called_once()
+        mock_positron_eval_r.assert_not_called()
+        mock_positron_eval_python.assert_not_called()
+        mock_editor_read.assert_not_called()
+
+    def test_positron_r_calls_positron_eval_r(self, monkeypatch):
+        page = MagicMock()
+        monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "positron")
+        mock_rstudio_eval = MagicMock()
+        mock_positron_eval_r = MagicMock(return_value="[1] file contents")
+        mock_positron_eval_python = MagicMock()
+        mock_editor_read = MagicMock()
+        monkeypatch.setattr(exec_mod, "rstudio_eval", mock_rstudio_eval)
+        monkeypatch.setattr(exec_mod, "positron_eval_r", mock_positron_eval_r)
+        monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
+        monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
+
+        result = read_file(page, "/tmp/foo.txt", lang="r")
+
+        assert result == "file contents"  # _strip_r_index applied
+        mock_positron_eval_r.assert_called_once()
+        mock_rstudio_eval.assert_not_called()
+        mock_positron_eval_python.assert_not_called()
+        mock_editor_read.assert_not_called()
+
+    def test_positron_python_calls_positron_eval_python(self, monkeypatch):
+        page = MagicMock()
+        monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "positron")
+        mock_rstudio_eval = MagicMock()
+        mock_positron_eval_r = MagicMock()
+        mock_positron_eval_python = MagicMock(return_value="python file contents")
+        mock_editor_read = MagicMock()
+        monkeypatch.setattr(exec_mod, "rstudio_eval", mock_rstudio_eval)
+        monkeypatch.setattr(exec_mod, "positron_eval_r", mock_positron_eval_r)
+        monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
+        monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
+
+        result = read_file(page, "/tmp/foo.txt", lang="python")
+
+        assert result == "python file contents"
+        mock_positron_eval_python.assert_called_once()
+        mock_rstudio_eval.assert_not_called()
+        mock_positron_eval_r.assert_not_called()
+        mock_editor_read.assert_not_called()
+
+    def test_vscode_calls_editor_read(self, monkeypatch):
+        """VS Code read_file routes to read_file_via_vscode_editor (no console eval)."""
+        page = MagicMock()
+        monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "vscode")
+        mock_rstudio_eval = MagicMock()
+        mock_positron_eval_r = MagicMock()
+        mock_positron_eval_python = MagicMock()
+        mock_editor_read = MagicMock(return_value="vscode file contents")
+        monkeypatch.setattr(exec_mod, "rstudio_eval", mock_rstudio_eval)
+        monkeypatch.setattr(exec_mod, "positron_eval_r", mock_positron_eval_r)
+        monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
+        monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
+
+        result = read_file(page, "/tmp/foo.txt", lang="python")
+
+        assert result == "vscode file contents"
+        mock_editor_read.assert_called_once()
+        mock_rstudio_eval.assert_not_called()
+        mock_positron_eval_r.assert_not_called()
+        mock_positron_eval_python.assert_not_called()
+
+    def test_vscode_read_ignores_lang_parameter(self, monkeypatch):
+        """VS Code read_file uses editor-open regardless of lang."""
+        page = MagicMock()
+        monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "vscode")
+        mock_editor_read = MagicMock(return_value="editor contents")
+        mock_rstudio_eval = MagicMock()
+        monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
+        monkeypatch.setattr(exec_mod, "rstudio_eval", mock_rstudio_eval)
+
+        result_r = read_file(page, "/tmp/foo.txt", lang="r")
+        result_py = read_file(page, "/tmp/foo.txt", lang="python")
+
+        assert result_r == "editor contents"
+        assert result_py == "editor contents"
+        assert mock_editor_read.call_count == 2
+        mock_rstudio_eval.assert_not_called()

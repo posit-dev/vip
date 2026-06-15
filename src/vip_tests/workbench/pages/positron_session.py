@@ -20,8 +20,14 @@ class PositronSession:
 
     # Positron-specific elements
     CONSOLE_PANEL = ".positron-console"
-    # Monaco editor textarea within the Positron console input area
-    CONSOLE_INPUT = ".positron-console .repl-input-wrapper textarea"
+    # Console tab in the bottom panel (shares the panel with Terminal). Used as
+    # the "Positron is loaded" signal and to re-activate the console after a
+    # terminal_run leaves the Terminal tab selected.
+    CONSOLE_TAB = 'a.action-label[aria-label="Console"]'
+    # Active console instance + its Monaco input (confirmed live; see
+    # posit-dev/positron/test/e2e/pages/console.ts and exec.py).
+    ACTIVE_CONSOLE = '.console-instance[style*="z-index: auto"]'
+    CONSOLE_INPUT = ".console-input"
     VARIABLES_PANE = ".positron-variables"
     PLOTS_PANE = ".positron-plots"
     HELP_PANE = ".positron-help"
