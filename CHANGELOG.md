@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.46.2 (2026-06-16)
+
+### Bug Fixes
+
+- **deps**: Bump deps to clear new pip-audit advisories
+  ([#392](https://github.com/posit-dev/vip/pull/392),
+  [`f8ad698`](https://github.com/posit-dev/vip/commit/f8ad698d8f9c7eb82f4f9ea34e41805d9efd9e3d))
+
+
 ## v0.46.1 (2026-06-13)
 
 ### Bug Fixes
