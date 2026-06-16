@@ -21,6 +21,7 @@ from playwright.sync_api import Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given, scenario, then, when
 
+from vip.timeouts import timeout_scale
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
@@ -41,11 +42,14 @@ from vip_tests.workbench.pages import (
 
 _FILENAME = Path(__file__).name
 
-# Extra timeout (ms) for Git network operations (clone / push)
-_TIMEOUT_GIT_NETWORK = 120_000
+# Extra timeout (ms) for Git network operations (clone / push). Scaled by
+# VIP_TIMEOUT_SCALE so slow deployments don't time out mid-clone.
+_TIMEOUT_GIT_NETWORK = int(120_000 * timeout_scale())
 
-# Timeout (ms) for waiting for the IDE to be functional after session join
-_TIMEOUT_IDE_READY = 60_000
+# Timeout (ms) for waiting for the IDE to be functional after session join.
+# Scaled by VIP_TIMEOUT_SCALE — Positron's console can take well over the
+# unscaled 60s to appear on slow/cold deployments.
+_TIMEOUT_IDE_READY = int(60_000 * timeout_scale())
 
 # Prefix used for test branches; mirrors unique_session_name style
 _BRANCH_PREFIX = "vip"
@@ -387,7 +391,8 @@ def clone_vscode(page: Page, git_session_ctx: dict, git_cfg):
 @when("I clone the repository in the Positron terminal", target_fixture="clone_dir")
 def clone_positron(page: Page, git_session_ctx: dict, git_cfg):
     # Positron supports both R and Python; use "r" as the default readback
-    # language (see exec.py: positron_eval_r is the R console path).
+    # language. read_file/file_exists auto-detect Positron and route to
+    # positron_eval_r (R path) or positron_eval_python (Python path).
     return _do_clone(page, git_session_ctx, git_cfg, readback_lang="r")
 
 
