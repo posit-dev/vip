@@ -72,6 +72,17 @@ class ConnectClient(BaseClient):
         resp = self._client.get("/server_settings")
         return resp.status_code
 
+    def chronicle_status(self) -> dict[str, Any]:
+        """Return the embedded Chronicle usage-data subprocess status.
+
+        Reports ``enabled`` (Chronicle is on in the server config) and
+        ``ready`` (the subprocess is running and accepting work). Requires an
+        admin API key.
+        """
+        resp = self._client.get("/v1/system/chronicle")
+        resp.raise_for_status()
+        return resp.json()
+
     # -- Users --------------------------------------------------------------
 
     def current_user(self) -> dict[str, Any]:

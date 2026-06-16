@@ -158,6 +158,11 @@ enabled = false
 # Set enabled = true if monitoring / logging is configured.
 enabled = false
 
+[chronicle]
+# Set enabled = true if Connect's embedded Chronicle usage data collection
+# is configured. VIP verifies the Chronicle subprocess is running and ready.
+enabled = false
+
 [performance]
 # Thresholds for performance tests.  All time values are in seconds.
 # page_load_timeout = 10.0
