@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.46.3 (2026-06-16)
+
+### Bug Fixes
+
+- **workbench**: Route git-ops readback by detected IDE
+  ([#391](https://github.com/posit-dev/vip/pull/391),
+  [`5d17668`](https://github.com/posit-dev/vip/commit/5d17668f5dedc937e2f1c127a4f15c5fb22a49e3))
+
+
 ## v0.46.2 (2026-06-16)
 
 ### Bug Fixes
