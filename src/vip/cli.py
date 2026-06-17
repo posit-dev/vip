@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from vip.timeouts import scaled
 
 if TYPE_CHECKING:
-    from vip.config import Mode
+    from vip.config import Mode, VIPConfig
 
 # Buffer subtracted from the user-supplied timeout when setting the pytest
 # timeout inside the K8s Job.  The Job's own deadline is set to args.timeout,
@@ -729,7 +729,7 @@ def run_report(args: argparse.Namespace) -> None:
     sys.exit(result.returncode)
 
 
-def _collect_status(config: object) -> dict:
+def _collect_status(config: VIPConfig) -> dict:
     """Run health checks and return structured status data.
 
     Returns a dict with the schema::
@@ -751,9 +751,9 @@ def _collect_status(config: object) -> dict:
     from vip.clients.workbench import WorkbenchClient
 
     checks = [
-        ("connect", config.connect),  # type: ignore[attr-defined]
-        ("workbench", config.workbench),  # type: ignore[attr-defined]
-        ("package_manager", config.package_manager),  # type: ignore[attr-defined]
+        ("connect", config.connect),
+        ("workbench", config.workbench),
+        ("package_manager", config.package_manager),
     ]
 
     products: dict[str, dict] = {}

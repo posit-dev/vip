@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 def _make_args(**overrides) -> argparse.Namespace:
@@ -188,74 +189,61 @@ class TestCollectStatus:
 class TestRunStatusTextMode:
     """Text mode preserves the original format."""
 
-    def _run(self, config, args=None):
-        """Run run_status with mocked load_config and sys.exit, return (out, exit_code)."""
+    def _run(self, config, args=None, capsys=None):
+        """Run run_status, return (out, exit_code) using capsys."""
         if args is None:
             args = _make_args()
-        exit_code_holder = []
 
-        def fake_exit(code=0):
-            exit_code_holder.append(code)
+        from vip.cli import run_status
 
         with (
             patch("vip.config.load_config", return_value=config),
-            patch("vip.cli.sys.exit", side_effect=fake_exit),
         ):
-            import io
-
-            from vip.cli import run_status
-
-            captured = io.StringIO()
-            old_stdout = sys.stdout
-            sys.stdout = captured
-            try:
+            with pytest.raises(SystemExit) as excinfo:
                 run_status(args)
-            except SystemExit:
-                pass
-            finally:
-                sys.stdout = old_stdout
 
-        return captured.getvalue(), exit_code_holder[0] if exit_code_holder else None
+        out = capsys.readouterr().out
+        return out, excinfo.value.code
 
-    def test_skip_line_format(self):
+    def test_skip_line_format(self, capsys):
         config = _make_config()
-        out, _ = self._run(config)
+        out, _ = self._run(config, capsys=capsys)
         # Format: "  SKIP  package_manager       not configured"
         assert "SKIP" in out
         assert "not configured" in out
 
-    def test_ok_line_format(self):
+    def test_ok_line_format(self, capsys):
         config = _make_config(connect_url="https://c.example.com", connect_configured=True)
 
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
         with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
-            out, _ = self._run(config)
+            out, _ = self._run(config, capsys=capsys)
 
         assert "OK  " in out
         assert "HTTP 200" in out
 
-    def test_exit_0_when_all_ok_or_skip(self):
+    def test_exit_0_when_all_ok_or_skip(self, capsys):
         config = _make_config()
-        _, code = self._run(config)
+        _, code = self._run(config, capsys=capsys)
         assert code == 0
 
-    def test_exit_1_when_any_fail(self):
+    def test_exit_1_when_any_fail(self, capsys):
         config = _make_config(connect_url="https://c.example.com", connect_configured=True)
 
         mock_client = MagicMock()
         mock_client.health.return_value = 503
 
         with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
-            _, code = self._run(config)
+            _, code = self._run(config, capsys=capsys)
 
         assert code == 1
 
-    def test_text_line_width_format(self):
+    def test_text_line_width_format(self, capsys):
         """Verify the exact column format: '  {STATE:4s}  {name:20s}  {detail}'."""
         config = _make_config()
-        out, _ = self._run(config)
+        out, _ = self._run(config, capsys=capsys)
         lines = [line for line in out.splitlines() if line.strip()]
         assert len(lines) == 3  # one per product
         for line in lines:
@@ -266,52 +254,37 @@ class TestRunStatusTextMode:
 class TestRunStatusJsonMode:
     """JSON mode emits the documented schema to stdout."""
 
-    def _run_json(self, config):
+    def _run_json(self, config, capsys):
         """Run run_status with --json flag, return parsed JSON and exit_code."""
         args = _make_args(json=True)
-        exit_code_holder = []
 
-        def fake_exit(code=0):
-            exit_code_holder.append(code)
-            raise SystemExit(code)
+        from vip.cli import run_status
 
         with (
             patch("vip.config.load_config", return_value=config),
-            patch("vip.cli.sys.exit", side_effect=fake_exit),
         ):
-            import io
-
-            from vip.cli import run_status
-
-            captured = io.StringIO()
-            old_stdout = sys.stdout
-            sys.stdout = captured
-            try:
+            with pytest.raises(SystemExit) as excinfo:
                 run_status(args)
-            except SystemExit:
-                pass
-            finally:
-                sys.stdout = old_stdout
 
-        output = captured.getvalue()
+        output = capsys.readouterr().out
         parsed = json.loads(output)
-        return parsed, exit_code_holder[0] if exit_code_holder else None
+        return parsed, excinfo.value.code
 
-    def test_json_top_level_keys(self):
+    def test_json_top_level_keys(self, capsys):
         config = _make_config()
-        parsed, _ = self._run_json(config)
+        parsed, _ = self._run_json(config, capsys)
         assert "products" in parsed
         assert "outcome" in parsed
         assert "exit_status" in parsed
 
-    def test_json_products_keys(self):
+    def test_json_products_keys(self, capsys):
         config = _make_config()
-        parsed, _ = self._run_json(config)
+        parsed, _ = self._run_json(config, capsys)
         assert set(parsed["products"].keys()) == {"connect", "workbench", "package_manager"}
 
-    def test_json_unconfigured_skip(self):
+    def test_json_unconfigured_skip(self, capsys):
         config = _make_config()
-        parsed, _ = self._run_json(config)
+        parsed, _ = self._run_json(config, capsys)
         for name in ("connect", "workbench", "package_manager"):
             product = parsed["products"][name]
             assert product["configured"] is False
@@ -320,14 +293,14 @@ class TestRunStatusJsonMode:
             assert "url" not in product
             assert "http_status" not in product
 
-    def test_json_configured_ok(self):
+    def test_json_configured_ok(self, capsys):
         config = _make_config(connect_url="https://c.example.com", connect_configured=True)
 
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
         with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
-            parsed, _ = self._run_json(config)
+            parsed, _ = self._run_json(config, capsys)
 
         product = parsed["products"]["connect"]
         assert product["configured"] is True
@@ -335,128 +308,109 @@ class TestRunStatusJsonMode:
         assert product["url"] == "https://c.example.com"
         assert product["http_status"] == 200
 
-    def test_json_configured_fail_http(self):
+    def test_json_configured_fail_http(self, capsys):
         config = _make_config(connect_url="https://c.example.com", connect_configured=True)
 
         mock_client = MagicMock()
         mock_client.health.return_value = 503
 
         with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
-            parsed, _ = self._run_json(config)
+            parsed, _ = self._run_json(config, capsys)
 
         product = parsed["products"]["connect"]
         assert product["state"] == "fail"
         assert product["http_status"] == 503
 
-    def test_json_configured_exception(self):
+    def test_json_configured_exception(self, capsys):
         config = _make_config(connect_url="https://c.example.com", connect_configured=True)
 
         mock_client = MagicMock()
         mock_client.health.side_effect = ConnectionError("connection refused")
 
         with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
-            parsed, _ = self._run_json(config)
+            parsed, _ = self._run_json(config, capsys)
 
         product = parsed["products"]["connect"]
         assert product["state"] == "fail"
         assert "connection refused" in product["detail"]
         assert "http_status" not in product
 
-    def test_json_outcome_ok_all_skip(self):
+    def test_json_outcome_ok_all_skip(self, capsys):
         config = _make_config()
-        parsed, code = self._run_json(config)
+        parsed, code = self._run_json(config, capsys)
         assert parsed["outcome"] == "ok"
         assert parsed["exit_status"] == 0
         assert code == 0
 
-    def test_json_outcome_ok_with_ok_product(self):
+    def test_json_outcome_ok_with_ok_product(self, capsys):
         config = _make_config(connect_url="https://c.example.com", connect_configured=True)
 
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
         with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
-            parsed, code = self._run_json(config)
+            parsed, code = self._run_json(config, capsys)
 
         assert parsed["outcome"] == "ok"
         assert parsed["exit_status"] == 0
         assert code == 0
 
-    def test_json_outcome_fail_any_fail(self):
+    def test_json_outcome_fail_any_fail(self, capsys):
         config = _make_config(connect_url="https://c.example.com", connect_configured=True)
 
         mock_client = MagicMock()
         mock_client.health.return_value = 503
 
         with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
-            parsed, code = self._run_json(config)
+            parsed, code = self._run_json(config, capsys)
 
         assert parsed["outcome"] == "fail"
         assert parsed["exit_status"] == 1
         assert code == 1
 
-    def test_json_exit_1_on_exception(self):
+    def test_json_exit_1_on_exception(self, capsys):
         config = _make_config(connect_url="https://c.example.com", connect_configured=True)
 
         mock_client = MagicMock()
         mock_client.health.side_effect = OSError("timeout")
 
         with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
-            parsed, code = self._run_json(config)
+            parsed, code = self._run_json(config, capsys)
 
         assert parsed["exit_status"] == 1
         assert code == 1
 
-    def test_json_is_valid_json(self):
+    def test_json_is_valid_json(self, capsys):
         """stdout must be valid JSON — no extra human-readable text mixed in."""
         config = _make_config()
         args = _make_args(json=True)
 
+        from vip.cli import run_status
+
         with (
             patch("vip.config.load_config", return_value=config),
-            patch("vip.cli.sys.exit"),
         ):
-            import io
-
-            from vip.cli import run_status
-
-            captured = io.StringIO()
-            old_stdout = sys.stdout
-            sys.stdout = captured
-            try:
+            with pytest.raises(SystemExit):
                 run_status(args)
-            except SystemExit:
-                pass
-            finally:
-                sys.stdout = old_stdout
 
+        output = capsys.readouterr().out
         # Must not raise
-        json.loads(captured.getvalue())
+        json.loads(output)
 
-    def test_json_mode_no_human_text_mixed_in(self):
+    def test_json_mode_no_human_text_mixed_in(self, capsys):
         """JSON mode must not print any human-readable lines outside the JSON object."""
         config = _make_config()
         args = _make_args(json=True)
 
+        from vip.cli import run_status
+
         with (
             patch("vip.config.load_config", return_value=config),
-            patch("vip.cli.sys.exit"),
         ):
-            import io
-
-            from vip.cli import run_status
-
-            captured = io.StringIO()
-            old_stdout = sys.stdout
-            sys.stdout = captured
-            try:
+            with pytest.raises(SystemExit):
                 run_status(args)
-            except SystemExit:
-                pass
-            finally:
-                sys.stdout = old_stdout
 
-        output = captured.getvalue().strip()
+        output = capsys.readouterr().out.strip()
         # Should be a single JSON object, not multiple lines of mixed text
         parsed = json.loads(output)
         assert isinstance(parsed, dict)

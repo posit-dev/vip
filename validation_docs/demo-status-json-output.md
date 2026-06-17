@@ -10,12 +10,10 @@ This adds a `--json` flag to `vip status`. The check loop was refactored into a 
 ### Default text mode is unchanged
 
 ```bash
-uv run vip status
+uv run vip status 2>/dev/null
 ```
 
 ```output
-/Users/ianfloressiaca/ptd-workspace/.worktrees/vip-status-json-output/src/vip/cli.py:800: UserWarning: Config file not found: vip.toml
-  config = load_config(args.config)
   SKIP  connect               not configured
   SKIP  workbench             not configured
   SKIP  package_manager       not configured
