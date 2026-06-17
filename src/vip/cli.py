@@ -763,7 +763,7 @@ def _collect_status(config: object) -> dict:
             continue
         try:
             if name == "connect":
-                client = ConnectClient(
+                client: ConnectClient | WorkbenchClient | PackageManagerClient = ConnectClient(
                     pc.url,
                     pc.api_key,  # type: ignore[attr-defined]
                 )
