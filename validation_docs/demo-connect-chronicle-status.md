@@ -5,7 +5,7 @@
 
 Adds a VIP verification test for Connect's embedded Chronicle usage-data subprocess, using the new admin-only `GET /__api__/v1/system/chronicle` endpoint (posit-dev/connect#40652, merged 2026-06-16), which reports `{enabled, ready}`.
 
-Following VIP's model (verify an operator's declared expectation against a live deployment), the test is scoped behind a `[chronicle] enabled` config flag and auto-skips when not declared — mirroring the existing email/monitoring features. No `min_version` gate and no CI provisioning, consistent with how other optional features are handled.
+Following VIP's model (verify an operator's declared expectation against a live deployment), the test is scoped behind a `[chronicle] enabled` config flag and auto-skips when not declared — mirroring the existing email/monitoring features. A `@pytest.mark.min_version(product="connect", version="2026.06.0")` gate ensures servers older than 2026.06.0 skip cleanly rather than failing on the missing endpoint.
 
 Changes:
 - `src/vip/clients/connect.py` — `chronicle_status()` client method

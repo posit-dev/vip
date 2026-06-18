@@ -6,6 +6,7 @@ import pytest
 from pytest_bdd import given, scenario, then, when
 
 
+@pytest.mark.min_version(product="connect", version="2026.06.0")
 @scenario("test_chronicle.feature", "Chronicle reports enabled and ready")
 def test_chronicle_status():
     pass
