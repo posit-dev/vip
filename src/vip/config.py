@@ -487,6 +487,7 @@ class VIPConfig:
 
     email_enabled: bool = False
     monitoring_enabled: bool = False
+    chronicle_enabled: bool = False
     security_policy_checks_enabled: bool = False
 
     insecure: bool = False
@@ -580,6 +581,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     data_sources_raw = raw.get("data_sources", {})
     email_raw = raw.get("email", {})
     monitoring_raw = raw.get("monitoring", {})
+    chronicle_raw = raw.get("chronicle", {})
     security_raw = raw.get("security", {})
     runtimes_raw = raw.get("runtimes", {})
     performance_raw = raw.get("performance", {})
@@ -613,6 +615,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         data_sources=data_sources,
         email_enabled=email_raw.get("enabled", False),
         monitoring_enabled=monitoring_raw.get("enabled", False),
+        chronicle_enabled=chronicle_raw.get("enabled", False),
         security_policy_checks_enabled=security_raw.get("policy_checks_enabled", False),
         insecure=tls_raw.get("insecure", False),
         ca_bundle=_resolve_ca_bundle(tls_raw.get("ca_bundle")),

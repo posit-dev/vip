@@ -256,6 +256,11 @@ def email_enabled(vip_config: VIPConfig) -> bool:
     return vip_config.email_enabled
 
 
+@pytest.fixture(scope="session")
+def chronicle_enabled(vip_config: VIPConfig) -> bool:
+    return vip_config.chronicle_enabled
+
+
 # ---------------------------------------------------------------------------
 # Connect content cleanup — promoted from connect/conftest.py so that any
 # package (workbench, cross_product, …) that creates Connect content can

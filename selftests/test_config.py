@@ -401,6 +401,9 @@ enabled = true
 [monitoring]
 enabled = true
 
+[chronicle]
+enabled = true
+
 [security]
 policy_checks_enabled = true
 """
@@ -408,7 +411,13 @@ policy_checks_enabled = true
         cfg = load_config(path)
         assert cfg.email_enabled is True
         assert cfg.monitoring_enabled is True
+        assert cfg.chronicle_enabled is True
         assert cfg.security_policy_checks_enabled is True
+
+    def test_chronicle_disabled_by_default(self, tmp_toml):
+        path = tmp_toml('[connect]\nurl = "https://connect.example.com"\n')
+        cfg = load_config(path)
+        assert cfg.chronicle_enabled is False
 
     def test_performance_section(self, tmp_toml):
         path = tmp_toml(
