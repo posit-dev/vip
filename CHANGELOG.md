@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.47.0 (2026-06-18)
+
+### Features
+
+- **cli**: Add --json output to vip status ([#396](https://github.com/posit-dev/vip/pull/396),
+  [`0ded78f`](https://github.com/posit-dev/vip/commit/0ded78f4be78b01e5db8f9311497ca82964631ee))
+
+
 ## v0.46.3 (2026-06-16)
 
 ### Bug Fixes
