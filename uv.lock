@@ -2519,7 +2519,7 @@ wheels = [
 
 [[package]]
 name = "posit-vip"
-version = "0.47.0"
+version = "0.46.3"
 source = { editable = "." }
 dependencies = [
     { name = "brand-yml" },
