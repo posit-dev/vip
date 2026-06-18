@@ -1,5 +1,5 @@
 @connect @if_applicable @api_auth
-Feature: Connect Chronicle usage data collection
+Feature: Connect embedded Chronicle
   As a Posit Team administrator
   I want to verify that Connect's embedded Chronicle subprocess is running
   So that I know usage data collection actually came up after enabling it
