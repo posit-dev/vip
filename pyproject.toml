@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "0.46.1"
+version = "0.47.0"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -36,7 +36,7 @@ dependencies = [
     "pip>=26.1.2",  # CVE-2026-3219, PYSEC-2026-196 fix; transitive via pip-api
     "mako>=1.3.12",  # CVE-2026-44307 fix; transitive via pytest-bdd
     "idna>=3.15",  # CVE-2026-45409 fix; transitive via httpx/requests/anyio
-    "starlette>=1.0.1",  # PYSEC-2026-161 fix; transitive via shiny
+    "starlette>=1.3.1",  # PYSEC-2026-161, CVE-2026-54282/54283 fix; transitive via shiny
 ]
 
 [project.optional-dependencies]
@@ -48,7 +48,8 @@ report = [
     "nbclient>=0.8",
     "nbconvert>=7.17.1",  # CVE-2026-39377, CVE-2026-39378 fix; transitive via jupyter
     "mistune>=3.2.1",  # CVE-2026-33079 fix; transitive via nbconvert
-    "tornado>=6.5.5",  # CVE-2026-31958 fix; transitive via jupyter
+    "tornado>=6.5.7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f fix; transitive via jupyter
+    "bleach>=6.4.0",  # GHSA-gj48-438w-jh9v, GHSA-8rfp-98v4-mmr6 fix; transitive via nbconvert[css]
 ]
 cluster = [
     "boto3>=1.26",
@@ -56,7 +57,7 @@ cluster = [
     "azure-mgmt-containerservice>=20.0",
     "pyyaml>=6.0",
     "pyjwt>=2.13.0",  # CVE-2026-32597, PYSEC-2026-175/177/178/179 fix; transitive via msal
-    "cryptography>=46.0.7",  # CVE-2026-39892 fix; transitive via boto3/urllib3
+    "cryptography>=48.0.1",  # GHSA-537c-gmf6-5ccf fix; transitive via boto3/urllib3
 ]
 load = [
     "locust>=2.20",
@@ -80,6 +81,9 @@ vip = "vip.cli:main"
 
 [project.entry-points.pytest11]
 vip = "vip.plugin"
+
+
+
 
 
 

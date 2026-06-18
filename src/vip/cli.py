@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from vip.timeouts import scaled
 
 if TYPE_CHECKING:
-    from vip.config import Mode
+    from vip.config import Mode, VIPConfig
 
 # Buffer subtracted from the user-supplied timeout when setting the pytest
 # timeout inside the K8s Job.  The Job's own deadline is set to args.timeout,
@@ -729,13 +729,26 @@ def run_report(args: argparse.Namespace) -> None:
     sys.exit(result.returncode)
 
 
-def run_status(args: argparse.Namespace) -> None:
-    """Run preflight health checks against each configured product."""
+def _collect_status(config: VIPConfig) -> dict:
+    """Run health checks and return structured status data.
+
+    Returns a dict with the schema::
+
+        {
+            "products": {
+                "connect":         {"configured": bool, "state": "ok"|"fail"|"skip", ...},
+                "workbench":       {...},
+                "package_manager": {...},
+            },
+            "outcome": "ok" | "fail",
+            "exit_status": 0 | 1,
+        }
+
+    No printing or sys.exit side effects; callers handle rendering.
+    """
+    from vip.clients.connect import ConnectClient
     from vip.clients.packagemanager import PackageManagerClient
     from vip.clients.workbench import WorkbenchClient
-    from vip.config import load_config
-
-    config = load_config(args.config)
 
     checks = [
         ("connect", config.connect),
@@ -743,16 +756,14 @@ def run_status(args: argparse.Namespace) -> None:
         ("package_manager", config.package_manager),
     ]
 
-    results = []
+    products: dict[str, dict] = {}
     for name, pc in checks:
         if not pc.is_configured:
-            results.append((name, "not configured", "skip"))
+            products[name] = {"configured": False, "state": "skip", "detail": "not configured"}
             continue
         try:
             if name == "connect":
-                from vip.clients.connect import ConnectClient as CC
-
-                client: CC | WorkbenchClient | PackageManagerClient = CC(
+                client: ConnectClient | WorkbenchClient | PackageManagerClient = ConnectClient(
                     pc.url,
                     pc.api_key,  # type: ignore[attr-defined]
                 )
@@ -760,16 +771,49 @@ def run_status(args: argparse.Namespace) -> None:
                 client = WorkbenchClient(pc.url, pc.api_key)  # type: ignore[attr-defined]
             else:
                 client = PackageManagerClient(pc.url, pc.token)  # type: ignore[attr-defined]
-            status = client.health()
-            state = "ok" if status < 400 else "fail"
-            results.append((name, f"HTTP {status}", state))
+            http_status = client.health()
+            state = "ok" if http_status < 400 else "fail"
+            products[name] = {
+                "configured": True,
+                "url": pc.url,
+                "http_status": http_status,
+                "state": state,
+            }
         except Exception as e:
-            results.append((name, str(e), "fail"))
+            products[name] = {
+                "configured": True,
+                "url": pc.url,
+                "state": "fail",
+                "detail": str(e),
+            }
 
-    for name, detail, state in results:
-        print(f"  {state.upper():4s}  {name:20s}  {detail}")
+    all_ok = all(p["state"] in ("ok", "skip") for p in products.values())
+    outcome = "ok" if all_ok else "fail"
+    exit_status = 0 if all_ok else 1
+    return {"products": products, "outcome": outcome, "exit_status": exit_status}
 
-    sys.exit(0 if all(s in ("ok", "skip") for _, _, s in results) else 1)
+
+def run_status(args: argparse.Namespace) -> None:
+    """Run preflight health checks against each configured product."""
+    from vip.config import load_config
+
+    config = load_config(args.config)
+    data = _collect_status(config)
+
+    if getattr(args, "json", False):
+        print(json.dumps(data))
+    else:
+        for name, product in data["products"].items():
+            state = product["state"]
+            if state == "skip":
+                detail = product.get("detail", "not configured")
+            elif "http_status" in product:
+                detail = f"HTTP {product['http_status']}"
+            else:
+                detail = product.get("detail", "")
+            print(f"  {state.upper():4s}  {name:20s}  {detail}")
+
+    sys.exit(data["exit_status"])
 
 
 def run_app(args: argparse.Namespace) -> None:
@@ -1439,6 +1483,12 @@ def main() -> None:
         "--config",
         default=None,
         help="Path to vip.toml (default: VIP_CONFIG env var or ./vip.toml)",
+    )
+    status_parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Emit machine-readable JSON instead of human-formatted text",
     )
     status_parser.set_defaults(func=run_status)
 

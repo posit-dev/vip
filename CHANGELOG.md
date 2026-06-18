@@ -1,6 +1,32 @@
 # CHANGELOG
 
 
+## v0.47.0 (2026-06-18)
+
+### Features
+
+- **cli**: Add --json output to vip status ([#396](https://github.com/posit-dev/vip/pull/396),
+  [`0ded78f`](https://github.com/posit-dev/vip/commit/0ded78f4be78b01e5db8f9311497ca82964631ee))
+
+
+## v0.46.3 (2026-06-16)
+
+### Bug Fixes
+
+- **workbench**: Route git-ops readback by detected IDE
+  ([#391](https://github.com/posit-dev/vip/pull/391),
+  [`5d17668`](https://github.com/posit-dev/vip/commit/5d17668f5dedc937e2f1c127a4f15c5fb22a49e3))
+
+
+## v0.46.2 (2026-06-16)
+
+### Bug Fixes
+
+- **deps**: Bump deps to clear new pip-audit advisories
+  ([#392](https://github.com/posit-dev/vip/pull/392),
+  [`f8ad698`](https://github.com/posit-dev/vip/commit/f8ad698d8f9c7eb82f4f9ea34e41805d9efd9e3d))
+
+
 ## v0.46.1 (2026-06-13)
 
 ### Bug Fixes

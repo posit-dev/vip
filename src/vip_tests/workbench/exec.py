@@ -192,15 +192,49 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
     return _extract_between_markers(text, start, end)
 
 
+# Positron console selectors — confirmed live via posit-dev/positron/test/e2e/pages/console.ts
+# and READBACK-MECHANISM.md (issue #386).
+_POSITRON_ACTIVE_CONSOLE = PositronSession.ACTIVE_CONSOLE
+_POSITRON_CONSOLE_INPUT = PositronSession.CONSOLE_INPUT
+_POSITRON_CONSOLE_LINES = f"{PositronSession.ACTIVE_CONSOLE} div span"
+_POSITRON_CONSOLE_READY = f"{PositronSession.ACTIVE_CONSOLE} .active-line-number"
+# The Console and Terminal share the bottom panel; a prior terminal_run leaves
+# the Terminal tab selected, hiding the console. Activate the Console tab first.
+_POSITRON_CONSOLE_TAB = PositronSession.CONSOLE_TAB
+
+
+def _activate_positron_console(page: Page) -> None:
+    """Click the Positron Console tab so the console panel is shown.
+
+    ``terminal_run`` runs the command in the Terminal tab, which hides the
+    Console; the console readback must re-activate it (analogous to
+    ``rstudio_eval`` clicking the RStudio Console tab). Best-effort.
+    """
+    tab = page.locator(_POSITRON_CONSOLE_TAB)
+    if tab.count() > 0:
+        try:
+            tab.first.click()
+        except Exception:
+            pass
+
+
+# Settle wait (ms) after the interpreter's active-line-number is visible.
+# Typing during "R 4.4.0 starting." is silently dropped; this pause lets the
+# REPL reach the interactive prompt before we type the wrapped expression.
+_POSITRON_SETTLE_MS = 3_000
+
+
 def positron_eval_r(page: Page, expr: str, timeout: int = 30_000) -> str:
     """Evaluate *expr* as R in the Positron console and return the captured output.
 
-    Uses the same marker-bracketed capture technique as ``rstudio_eval``.
-    Targets the Positron-specific console panel (``.positron-console``).
+    Uses marker-bracketed capture against the active Positron console instance
+    (``.console-instance[style*="z-index: auto"]``).  Waits for the interpreter
+    to reach the interactive prompt before typing to avoid dropped keystrokes
+    during startup.
 
     Args:
         page: Playwright page for an active Positron session.
-        expr: R expression.
+        expr: R expression (single line or semicolon-chained).
         timeout: Max milliseconds to wait for output.
 
     Returns:
@@ -209,23 +243,40 @@ def positron_eval_r(page: Page, expr: str, timeout: int = 30_000) -> str:
     start, end = _make_sentinels()
     wrapped = _wrap_r_expr(expr, start, end)
 
-    console_panel = page.locator(PositronSession.CONSOLE_PANEL)
-    expect(console_panel).to_be_visible(timeout=timeout)
+    _activate_positron_console(page)
+    active = page.locator(_POSITRON_ACTIVE_CONSOLE)
+    expect(active.first).to_be_visible(timeout=timeout)
 
-    console_input = console_panel.locator(PositronSession.CONSOLE_INPUT)
-    expect(console_input).to_be_visible(timeout=timeout)
-    console_input.click()
-    console_input.type(wrapped)
-    console_input.press("Enter")
+    # Wait for the interpreter to be INPUT-ready before typing.
+    expect(active.locator(".active-line-number").first).to_be_visible(timeout=timeout)
+    page.wait_for_timeout(_POSITRON_SETTLE_MS)
 
-    expect(console_panel).to_contain_text(end, timeout=timeout)
+    ci = active.locator(_POSITRON_CONSOLE_INPUT).first
+    ci.click()
+    page.keyboard.type(wrapped)
+    page.keyboard.press("Enter")
 
-    text = console_panel.text_content() or ""
-    return _extract_between_markers(text, start, end)
+    # Poll the joined span text until the end marker appears.
+    deadline = time.monotonic() + timeout / 1000.0
+    while time.monotonic() < deadline:
+        spans = active.locator("div span").all_text_contents()
+        joined = "".join(spans)
+        if end in joined:
+            return _extract_between_markers(joined, start, end)
+        time.sleep(0.5)
+
+    raise ExecError(
+        f"Positron R console did not return the expected output within {timeout} ms "
+        f"(end marker {end!r} not found)."
+    )
 
 
 def positron_eval_python(page: Page, expr: str, timeout: int = 30_000) -> str:
     """Evaluate *expr* as Python in the Positron console and return the captured output.
+
+    Uses the same active-console selectors as ``positron_eval_r``.  Submits the
+    wrapped multi-line expression line-by-line (Enter between lines) as the
+    console requires each line to be individually submitted.
 
     Args:
         page: Playwright page for an active Positron session.
@@ -238,21 +289,34 @@ def positron_eval_python(page: Page, expr: str, timeout: int = 30_000) -> str:
     start, end = _make_sentinels()
     wrapped = _wrap_python_expr(expr, start, end)
 
-    console_panel = page.locator(PositronSession.CONSOLE_PANEL)
-    expect(console_panel).to_be_visible(timeout=timeout)
+    _activate_positron_console(page)
+    active = page.locator(_POSITRON_ACTIVE_CONSOLE)
+    expect(active.first).to_be_visible(timeout=timeout)
 
-    console_input = console_panel.locator(PositronSession.CONSOLE_INPUT)
-    expect(console_input).to_be_visible(timeout=timeout)
-    console_input.click()
-    # Submit each line separately; Enter inserts a newline in the console input
+    # Wait for the interpreter to be INPUT-ready before typing.
+    expect(active.locator(".active-line-number").first).to_be_visible(timeout=timeout)
+    page.wait_for_timeout(_POSITRON_SETTLE_MS)
+
+    ci = active.locator(_POSITRON_CONSOLE_INPUT).first
+    ci.click()
+    # Submit each line separately; Enter submits a complete statement in the Python REPL.
     for line in wrapped.splitlines():
-        console_input.type(line)
-        console_input.press("Enter")
+        page.keyboard.type(line)
+        page.keyboard.press("Enter")
 
-    expect(console_panel).to_contain_text(end, timeout=timeout)
+    # Poll the joined span text until the end marker appears.
+    deadline = time.monotonic() + timeout / 1000.0
+    while time.monotonic() < deadline:
+        spans = active.locator("div span").all_text_contents()
+        joined = "".join(spans)
+        if end in joined:
+            return _extract_between_markers(joined, start, end)
+        time.sleep(0.5)
 
-    text = console_panel.text_content() or ""
-    return _extract_between_markers(text, start, end)
+    raise ExecError(
+        f"Positron Python console did not return the expected output within {timeout} ms "
+        f"(end marker {end!r} not found)."
+    )
 
 
 def jupyterlab_eval(page: Page, expr: str, lang: str = "python", timeout: int = 30_000) -> str:
@@ -299,41 +363,151 @@ def jupyterlab_eval(page: Page, expr: str, lang: str = "python", timeout: int = 
     return _extract_between_markers(text, start, end)
 
 
-def vscode_eval(page: Page, expr: str, lang: str = "python", timeout: int = 30_000) -> str:
-    """Evaluate *expr* in VS Code via the Python or R extension REPL output panel.
+# ---------------------------------------------------------------------------
+# VS Code editor-open readback helpers
+# ---------------------------------------------------------------------------
 
-    Uses the DOM-rendered output panel (Interactive Window for Python, R
-    extension console for R) rather than the integrated terminal, ensuring
-    reliable output capture without xterm canvas scraping.
+
+def _focus_explorer(page: Page) -> None:
+    """Click the Explorer activity-bar tab to move focus off the terminal.
+
+    When the terminal has focus, ``Meta+Shift+P`` / ``Control+Shift+P`` is
+    intercepted by the shell rather than opening the command palette.  Clicking
+    Explorer first reliably defocuses the terminal.
+    """
+    try:
+        page.get_by_role("tab", name=re.compile(r"Explorer", re.I)).first.click()
+    except Exception:
+        # Fallback: click the first action item in the activity bar.
+        try:
+            page.locator(".activitybar .actions-container .action-item").first.click()
+        except Exception:
+            pass
+
+
+def _dismiss_workspace_trust(page: Page) -> None:
+    """Dismiss the Workspace Trust dialog if it is present.
+
+    VS Code shows this dialog when opening files from ``/tmp`` or other paths
+    outside the current workspace.  Clicking "Open" grants trust for the window
+    session.  Idempotent — no-op when the dialog is absent.
+    """
+    dialog_block = page.locator(".monaco-dialog-modal-block")
+    if dialog_block.count() == 0:
+        return
+    # Try the "Open" button first (exact text), then fall back to open/trust/yes.
+    buttons = dialog_block.locator(".dialog-buttons .monaco-button")
+    count = buttons.count()
+    for i in range(count):
+        btn = buttons.nth(i)
+        text = (btn.text_content() or "").strip()
+        if text == "Open":
+            btn.click()
+            return
+    for i in range(count):
+        btn = buttons.nth(i)
+        text = (btn.text_content() or "").strip().lower()
+        if re.search(r"open|trust|yes", text):
+            btn.click()
+            return
+
+
+def _open_file_in_vscode_editor(page: Page, abspath: str, timeout: int = 30_000) -> None:
+    """Open *abspath* in the Monaco editor via the command palette.
+
+    Uses ``>File: Open File`` in the command palette, filling the absolute
+    path into the path input.  Dismisses the Workspace Trust dialog afterward.
+    Mac keybinding (``Meta+Shift+P``) is tried first; ``Control+Shift+P`` is
+    the fallback for Linux sessions.
+    """
+    _focus_explorer(page)
+
+    # Try Meta+Shift+P (Mac keybinding), fall back to Control+Shift+P.
+    page.keyboard.press("Meta+Shift+P")
+    pal = page.locator(".quick-input-box input")
+    try:
+        pal.wait_for(state="visible", timeout=3_000)
+    except PlaywrightTimeoutError:
+        page.keyboard.press("Control+Shift+P")
+        pal.wait_for(state="visible", timeout=timeout)
+
+    pal.fill(">File: Open File")
+    page.wait_for_timeout(300)
+    pal.press("Enter")
+    page.wait_for_timeout(300)
+
+    fp = page.locator(".quick-input-box input")
+    fp.wait_for(state="visible", timeout=timeout)
+    fp.fill(abspath)
+    page.wait_for_timeout(300)
+    fp.press("Enter")
+    page.wait_for_timeout(500)
+
+    _dismiss_workspace_trust(page)
+
+
+def _read_vscode_editor_text(page: Page, timeout: int = 30_000) -> str:
+    """Return the inner text of the active Monaco editor view-lines."""
+    loc = page.locator(".editor-instance .view-lines").first
+    expect(loc).to_be_visible(timeout=timeout)
+    return loc.inner_text()
+
+
+def _close_active_editor(page: Page) -> None:
+    """Close the currently active editor tab.
+
+    Used to force a fresh re-open so the editor re-reads file contents from
+    disk on the next ``_open_file_in_vscode_editor`` call.
+    """
+    try:
+        page.keyboard.press("Meta+W")
+    except Exception:
+        try:
+            page.keyboard.press("Control+W")
+        except Exception:
+            pass
+    page.wait_for_timeout(200)
+
+
+def read_file_via_vscode_editor(page: Page, path: str, timeout: int = 30_000) -> str:
+    """Read *path* from the Workbench server by opening it in the Monaco editor.
+
+    Opens the file via the command palette (``>File: Open File``), reads the
+    ``.view-lines`` text, and returns it.  The file is read once per call;
+    callers that need to re-read a growing file should call this function again
+    (each call closes and re-opens the tab to force a fresh disk read).
 
     Args:
         page: Playwright page for an active VS Code session.
-        expr: Code expression.
-        lang: ``"python"`` (default) or ``"r"``.
-        timeout: Max milliseconds to wait for output.
+        path: Absolute server-side file path to open.
+        timeout: Max milliseconds to wait for the editor to render.
 
     Returns:
-        Raw text between the VIP markers, stripped of whitespace.
+        File contents as a string.
     """
-    start, end = _make_sentinels()
-    if lang.lower() == "r":
-        wrapped = _wrap_r_expr(expr, start, end)
-    else:
-        wrapped = _wrap_python_expr(expr, start, end)
+    _open_file_in_vscode_editor(page, path, timeout=timeout)
+    return _read_vscode_editor_text(page, timeout=timeout)
 
-    repl_input = page.locator(VSCodeSession.REPL_INPUT)
-    expect(repl_input).to_be_visible(timeout=timeout)
-    repl_input.click()
 
-    for line in wrapped.splitlines():
-        repl_input.type(line)
-        repl_input.press("Enter")
+# ---------------------------------------------------------------------------
+# IDE detection helper
+# ---------------------------------------------------------------------------
 
-    repl_output = page.locator(VSCodeSession.REPL_OUTPUT)
-    expect(repl_output).to_contain_text(end, timeout=timeout)
 
-    text = repl_output.text_content() or ""
-    return _extract_between_markers(text, start, end)
+def _detect_ide(page: Page) -> str:
+    """Identify which IDE is rendered on *page*.
+
+    Positron and VS Code both render ``.monaco-workbench``; Positron is
+    distinguished first by its unique ``.positron-console`` panel. Returns one
+    of ``"rstudio"``, ``"positron"``, ``"vscode"``, or ``"unknown"``.
+    """
+    if page.locator(RStudioSession.CONTAINER).count() > 0:
+        return "rstudio"
+    if page.locator(PositronSession.CONSOLE_PANEL).count() > 0:
+        return "positron"
+    if page.locator(VSCodeSession.WORKBENCH).count() > 0:
+        return "vscode"
+    return "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -388,8 +562,11 @@ def terminal_run(
     2. Type ``{cmd} > {tmpfile} 2>&1 && echo VIP_DONE >> {tmpfile}`` in the
        terminal input (``.xterm-helper-textarea``).
     3. Press Enter to execute.
-    4. Poll for the done marker by calling ``read_file`` (which uses
-       ``rstudio_eval`` or ``vscode_eval`` depending on *readback_lang*).
+    4. Poll for the done marker:
+       - RStudio/Positron: call ``read_file`` (console eval, fresh each call).
+       - VS Code: open the file once in the Monaco editor, then loop:
+         read ``.view-lines``; if done_marker present → done; else close tab
+         and re-open so the editor re-reads from disk.
 
     Args:
         page: Playwright page for an active IDE session.
@@ -401,10 +578,17 @@ def terminal_run(
 
     Returns:
         Captured stdout/stderr of the command as a string.
+
+    Note:
+        The VS Code editor-open polling path is UNVALIDATED and pending a live
+        git_ops run.  The open/close/re-read loop may be slow; it will be tuned
+        during live validation.
     """
     done_marker = f"VIP_DONE_{uuid.uuid4().hex}"
     tmpfile = f"/tmp/vip_term_{uuid.uuid4().hex}.txt"
     shell_cmd = f'{cmd} > {tmpfile} 2>&1 && echo "{done_marker}" >> {tmpfile}'
+
+    ide = _detect_ide(page)
 
     _ensure_terminal_open(page, timeout=timeout)
     terminal_input = page.locator(VSCodeSession.TERMINAL_INPUT)
@@ -412,18 +596,36 @@ def terminal_run(
     terminal_input.type(shell_cmd)
     terminal_input.press("Enter")
 
-    # Poll for the done marker via DOM-rendered file readback
     deadline = time.monotonic() + timeout / 1000.0
     poll_interval = 1.0
-    while time.monotonic() < deadline:
-        try:
-            content = read_file(page, tmpfile, timeout=5_000, lang=readback_lang)
-            if done_marker in content:
-                lines = [ln for ln in content.splitlines() if ln.strip() != done_marker]
-                return "\n".join(lines).strip()
-        except Exception:
-            pass
-        time.sleep(poll_interval)
+
+    if ide == "vscode":
+        # VS Code: poll by opening the file in the Monaco editor, reading
+        # .view-lines, and closing+re-opening to force a disk re-read each poll.
+        # NOTE: This path is UNVALIDATED pending a live git_ops run.
+        while time.monotonic() < deadline:
+            try:
+                _open_file_in_vscode_editor(page, tmpfile, timeout=5_000)
+                content = _read_vscode_editor_text(page, timeout=5_000)
+                if done_marker in content:
+                    _close_active_editor(page)
+                    lines = [ln for ln in content.splitlines() if ln.strip() != done_marker]
+                    return "\n".join(lines).strip()
+                _close_active_editor(page)
+            except Exception:
+                pass
+            time.sleep(poll_interval)
+    else:
+        # RStudio / Positron: poll via DOM console eval (read_file handles routing).
+        while time.monotonic() < deadline:
+            try:
+                content = read_file(page, tmpfile, timeout=5_000, lang=readback_lang)
+                if done_marker in content:
+                    lines = [ln for ln in content.splitlines() if ln.strip() != done_marker]
+                    return "\n".join(lines).strip()
+            except Exception:
+                pass
+            time.sleep(poll_interval)
 
     raise ExecError(
         f"terminal_run timed out after {timeout}ms waiting for done marker in {tmpfile!r}"
@@ -438,38 +640,69 @@ def terminal_run(
 def file_exists(page: Page, path: str, timeout: int = 30_000, *, lang: str = "r") -> bool:
     """Check whether *path* exists on the Workbench server via a console expression.
 
-    Uses ``rstudio_eval`` (R) or ``vscode_eval`` (Python) to run a file-check
-    expression in a DOM-rendered console, avoiding any filesystem access from
-    the Playwright process.
+    Auto-detects the IDE (RStudio, Positron, VS Code) and routes to the
+    appropriate eval helper:
+    - RStudio: R console via ``rstudio_eval``.
+    - Positron: R or Python console via ``positron_eval_r`` / ``positron_eval_python``.
+    - VS Code: runs a shell check via ``terminal_run`` (``[ -e path ]``) and
+      inspects the output; no interpreter console is available.
 
     Args:
         page: Playwright page for an active IDE session.
         path: Server-side file path to check.
         timeout: Max milliseconds to wait for output.
-        lang: ``"r"`` (default) or ``"python"``.
+        lang: ``"r"`` (default) or ``"python"``.  Ignored for VS Code (always
+            uses the terminal).
 
     Returns:
         True if the file exists, False otherwise.
     """
+    ide = _detect_ide(page)
+    if ide == "positron":
+        if lang.lower() == "r":
+            result = positron_eval_r(page, f'file.exists("{path}")', timeout=timeout)
+            return "TRUE" in result
+        result = positron_eval_python(
+            page, f'import os; print(os.path.exists("{path}"))', timeout=timeout
+        )
+        return "True" in result
+    if ide == "vscode":
+        # VS Code has no interpreter console: run the check via the terminal and
+        # read the marker back via the editor-open path.
+        # Use an ``if`` form so the redirect in terminal_run ({cmd} > tmpfile)
+        # captures both branches. A bare ``A && B || C`` would bind the redirect
+        # to ``C`` only, dropping VIP_EXISTS when the path exists.
+        output = terminal_run(
+            page,
+            f"if [ -e {path} ]; then echo VIP_EXISTS; else echo VIP_MISSING; fi",
+            timeout=timeout,
+            readback_lang=lang,
+        )
+        return "VIP_EXISTS" in output
+    # RStudio (and unknown — fall back to RStudio R path)
     if lang.lower() == "r":
         result = rstudio_eval(page, f'file.exists("{path}")', timeout=timeout)
         return "TRUE" in result
-    else:
-        result = vscode_eval(page, f'import os; print(os.path.exists("{path}"))', timeout=timeout)
-        return "True" in result
+    result = rstudio_eval(page, f'file.exists("{path}")', timeout=timeout)
+    return "TRUE" in result
 
 
 def read_file(page: Page, path: str, timeout: int = 30_000, *, lang: str = "r") -> str:
     """Read the contents of *path* from the Workbench server via a console expression.
 
-    Uses ``rstudio_eval`` (R) or ``vscode_eval`` (Python) to run a file-read
-    expression in a DOM-rendered console.
+    Auto-detects the IDE (RStudio, Positron, VS Code) and routes to the
+    appropriate eval helper:
+    - RStudio: R console via ``rstudio_eval``.
+    - Positron: R or Python console via ``positron_eval_r`` / ``positron_eval_python``.
+    - VS Code: editor-open via ``read_file_via_vscode_editor`` — opens the file
+      in Monaco and reads the rendered ``.view-lines`` text.
 
     Args:
         page: Playwright page for an active IDE session.
         path: Server-side file path to read.
         timeout: Max milliseconds to wait for output.
-        lang: ``"r"`` (default) or ``"python"``.
+        lang: ``"r"`` (default) or ``"python"``.  Ignored for VS Code (always
+            uses the editor-open path).
 
     Returns:
         File contents as a string.
@@ -477,14 +710,19 @@ def read_file(page: Page, path: str, timeout: int = 30_000, *, lang: str = "r") 
     Raises:
         ExecError: If the expression output cannot be captured.
     """
+    ide = _detect_ide(page)
+    if ide == "positron":
+        if lang.lower() == "r":
+            expr = f'paste(readLines("{path}"), collapse="\\n")'
+            return _strip_r_index(positron_eval_r(page, expr, timeout=timeout))
+        return positron_eval_python(
+            page, f'with open("{path}") as _f: print(_f.read())', timeout=timeout
+        )
+    if ide == "vscode":
+        return read_file_via_vscode_editor(page, path, timeout=timeout)
+    # RStudio (and unknown — fall back to RStudio R path)
     if lang.lower() == "r":
         expr = f'paste(readLines("{path}"), collapse="\\n")'
-        result = rstudio_eval(page, expr, timeout=timeout)
-        return _strip_r_index(result)
-    else:
-        result = vscode_eval(
-            page,
-            f'with open("{path}") as _f: print(_f.read())',
-            timeout=timeout,
-        )
-        return result
+        return _strip_r_index(rstudio_eval(page, expr, timeout=timeout))
+    expr = f'paste(readLines("{path}"), collapse="\\n")'
+    return _strip_r_index(rstudio_eval(page, expr, timeout=timeout))

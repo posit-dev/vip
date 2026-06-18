@@ -30,6 +30,9 @@ class VSCodeSession:
     REPL_INPUT = ".interactive-input-widget textarea"
     REPL_OUTPUT = ".interactive-output-widget"
 
+    # Command palette — used to open the Interactive Window when absent
+    COMMAND_PALETTE_INPUT = ".quick-input-box input"
+
     # Extensions panel
     EXTENSIONS_SEARCH_INPUT = ".extensions-search-container input[type='text']"
 
