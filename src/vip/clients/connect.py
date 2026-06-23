@@ -40,6 +40,7 @@ class ConnectClient(BaseClient):
         insecure: bool = False,
         ca_bundle: Path | None = None,
         auth: httpx.Auth | None = None,
+        cookies: httpx.Cookies | None = None,
     ) -> None:
         api_key = (api_key or "").strip()
         # Send the Connect API key via ``X-RSC-Authorization`` rather than the
@@ -57,6 +58,7 @@ class ConnectClient(BaseClient):
             ca_bundle=ca_bundle,
             auth=auth,
             extra_headers={"X-RSC-Authorization": f"Key {api_key}"} if api_key else None,
+            cookies=cookies,
         )
         # self._verify is set by BaseClient.__init__ and used by fetch_content.
 
@@ -366,6 +368,7 @@ class ConnectClient(BaseClient):
             url,
             headers=auth_headers,
             auth=self._auth,
+            cookies=self._cookies,
             follow_redirects=False,
             timeout=timeout,
             verify=self._verify,
@@ -393,6 +396,7 @@ class ConnectClient(BaseClient):
                 absolute_location,
                 headers=auth_headers,
                 auth=self._auth,
+                cookies=self._cookies,
                 follow_redirects=False,
                 timeout=timeout,
                 verify=self._verify,

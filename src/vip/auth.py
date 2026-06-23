@@ -106,6 +106,42 @@ class InteractiveAuthSession:
     _insecure: bool = field(default=False, repr=False)
     _ca_bundle: Path | None = field(default=None, repr=False)
 
+    def load_cookies(self) -> httpx.Cookies:
+        """Build an httpx cookie jar from the saved Playwright storage state.
+
+        The Playwright storage-state JSON has the form::
+
+            {"cookies": [{"name": ..., "value": ..., "domain": ..., "path": ...}, ...], ...}
+
+        Each cookie's ``domain`` and ``path`` are preserved so a parent-domain
+        wildcard cookie (e.g. ``.current.posit.team``) routes correctly to
+        subdomains like ``pub.current.posit.team`` when the jar is attached to
+        an httpx client.
+
+        All cookies are loaded without filtering by hostname — httpx handles
+        routing by domain/path at request time.
+
+        Returns an empty :class:`httpx.Cookies` when the storage-state file is
+        missing, unreadable, or unparseable (graceful degradation for the
+        config-API-key path where no interactive auth ran).
+        """
+        import json as _json
+
+        cookies = httpx.Cookies()
+        try:
+            raw = _json.loads(self.storage_state_path.read_text())
+            for c in raw.get("cookies", []):
+                name = c.get("name", "")
+                if not name:
+                    continue
+                value = c.get("value", "")
+                domain = c.get("domain", "")
+                path = c.get("path", "/")
+                cookies.set(name, value, domain=domain, path=path)
+        except (OSError, ValueError):
+            pass
+        return cookies
+
     def _cache_references_this_key(self) -> bool:
         """True when the on-disk cache still points at our ``api_key``.
 
