@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.48.2 (2026-06-24)
+
+### Bug Fixes
+
+- **plugin**: Suppress pytest-bdd PytestRemovedIn10Warning on pytest 9.1
+  ([#401](https://github.com/posit-dev/vip/pull/401),
+  [`7a2619e`](https://github.com/posit-dev/vip/commit/7a2619e888a7cbb027dc104f2501c1351368c360))
+
+
 ## v0.48.1 (2026-06-24)
 
 ### Bug Fixes
