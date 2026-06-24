@@ -50,6 +50,7 @@ report = [
     "mistune>=3.2.1",  # CVE-2026-33079 fix; transitive via nbconvert
     "tornado>=6.5.7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f fix; transitive via jupyter
     "bleach>=6.4.0",  # GHSA-gj48-438w-jh9v, GHSA-8rfp-98v4-mmr6 fix; transitive via nbconvert[css]
+    "jupyterlab>=4.5.9",  # GHSA-vmhf-c436-hxj4 fix; transitive via jupyter
 ]
 cluster = [
     "boto3>=1.26",
@@ -61,6 +62,7 @@ cluster = [
 ]
 load = [
     "locust>=2.20",
+    "msgpack>=1.2.1",  # GHSA-6v7p-g79w-8964 fix; transitive via locust
 ]
 dev = [
     "ruff>=0.15.0,<0.16",
@@ -68,6 +70,7 @@ dev = [
     "types-PyYAML>=6.0",
     "pytest-cov>=6.0",
     "pip-audit>=2.7",
+    "msgpack>=1.2.1",  # GHSA-6v7p-g79w-8964 fix; transitive via pip-audit (cachecontrol)
 ]
 
 [project.urls]

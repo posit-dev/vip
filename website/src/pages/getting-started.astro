@@ -92,6 +92,17 @@ vip verify --connect-url https://connect.example.com --api-auth</code></pre>
             configured in advance.
           </p>
           <pre><code>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre>
+          <p>
+            VIP also supports Connect deployments that sit behind an OIDC/SSO
+            forward-auth gateway (for example, an Okta proxy that intercepts
+            <code>/__api__/</code> requests and redirects unauthenticated traffic
+            to the IdP). The browser session cookies captured during interactive
+            auth are automatically forwarded alongside the API key on every
+            httpx API call, so the gateway passes the request through instead of
+            redirecting to the IdP login. Security checks that intentionally send
+            unauthenticated requests accept a cross-host redirect (gateway
+            intercept) as an equivalent "access denied" outcome.
+          </p>
 
           <h3>Headless auth (no display)</h3>
           <p>

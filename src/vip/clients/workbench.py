@@ -38,6 +38,7 @@ class WorkbenchClient(BaseClient):
         insecure: bool = False,
         ca_bundle: Path | None = None,
         auth: httpx.Auth | None = None,
+        cookies: httpx.Cookies | None = None,
     ) -> None:
         super().__init__(
             base_url,
@@ -46,6 +47,7 @@ class WorkbenchClient(BaseClient):
             insecure=insecure,
             ca_bundle=ca_bundle,
             auth=auth,
+            cookies=cookies,
         )
 
     # -- Health / info ------------------------------------------------------

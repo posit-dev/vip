@@ -47,6 +47,13 @@ class BaseClient:
         app-level auth that must NOT occupy the ``Authorization`` header
         because *auth* already owns it — e.g. Connect's ``X-RSC-Authorization``
         when reached through an SPCS ingress that consumes ``Authorization``.
+    cookies:
+        Optional cookie jar forwarded to the underlying ``httpx.Client`` and
+        to ad-hoc httpx requests issued by subclasses (e.g.
+        :meth:`~vip.clients.connect.ConnectClient.fetch_content`).  Use to
+        bridge Playwright storage-state gateway cookies into API calls so an
+        OIDC forward-auth proxy passes requests through instead of
+        307-redirecting to the IdP.  Defaults to ``None`` (no extra cookies).
     """
 
     def __init__(
@@ -59,6 +66,7 @@ class BaseClient:
         ca_bundle: Path | None = None,
         auth: httpx.Auth | None = None,
         extra_headers: dict[str, str] | None = None,
+        cookies: httpx.Cookies | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         headers: dict[str, str] = {}
@@ -80,6 +88,11 @@ class BaseClient:
         # the same TLS configuration and per-request auth (e.g. fetch_content).
         self._verify = verify
         self._auth = auth
+        # Store gateway cookies for injection into ad-hoc httpx requests.
+        # These bridge the Playwright storage-state (captured during interactive
+        # auth) to the API client so OIDC forward-auth gateways pass requests
+        # through instead of 307-redirecting to the IdP.
+        self._cookies = cookies
         # HTTPTransport retries cover connection-level failures (e.g. refused
         # connections, broken pipes).  HTTP-level errors (502/503/504) are not
         # retried here — ConnectClient.wait_for_task already handles those at
@@ -99,6 +112,7 @@ class BaseClient:
             timeout=effective_timeout,
             transport=transport,
             auth=auth,
+            cookies=cookies,
         )
 
     @property
@@ -126,6 +140,17 @@ class BaseClient:
         ingress redirects unauthenticated requests to its OAuth login (302).
         """
         return self._auth
+
+    @property
+    def cookies(self) -> httpx.Cookies | None:
+        """Gateway cookies injected at construction time, if any.
+
+        Subclasses that issue ad-hoc httpx requests (e.g.
+        :meth:`~vip.clients.connect.ConnectClient.fetch_content`) should pass
+        these alongside the API-key header so that an OIDC forward-auth gateway
+        passes the request through instead of 307-redirecting to the IdP.
+        """
+        return self._cookies
 
     def close(self) -> None:
         """Close the underlying httpx client."""

@@ -10,6 +10,8 @@ from __future__ import annotations
 import httpx
 from pytest_bdd import scenarios, then, when
 
+from vip.http_semantics import denied_by_external_gateway
+
 # ---------------------------------------------------------------------------
 # Scenarios
 # ---------------------------------------------------------------------------
@@ -76,9 +78,19 @@ def request_missing_endpoint(vip_config):
 
 @then("the response status is 401")
 def status_is_401(api_response):
+    # An OIDC/SSO forward-auth gateway (e.g. Okta proxy) intercepts
+    # unauthenticated requests and 307-redirects to its IdP login page before
+    # Connect can reply 401.  That redirect is equally "access denied" from
+    # VIP's perspective, so we accept it as a valid outcome.
+    if denied_by_external_gateway(api_response):
+        return
     assert api_response.status_code == 401, f"Expected HTTP 401, got {api_response.status_code}"
 
 
 @then("the response status is 404")
 def status_is_404(api_response):
+    # An OIDC/SSO forward-auth gateway intercepts the request before Connect
+    # has a chance to return 404; a cross-host redirect is accepted here too.
+    if denied_by_external_gateway(api_response):
+        return
     assert api_response.status_code == 404, f"Expected HTTP 404, got {api_response.status_code}"
