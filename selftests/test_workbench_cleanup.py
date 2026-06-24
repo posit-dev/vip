@@ -238,3 +238,109 @@ def test_session_api_reachable_via_cookies_delegates_and_never_raises(monkeypatc
         )
         is False
     )
+
+
+class _FakeLocator:
+    """Stand-in for a Playwright Locator over the homepage session list."""
+
+    def __init__(self, page, selector, index=0):
+        self._page = page
+        self._selector = selector
+        self._index = index
+
+    def count(self) -> int:
+        return len(self._page.session_names)
+
+    def nth(self, i):
+        return _FakeLocator(self._page, self._selector, i)
+
+    @property
+    def first(self):
+        return self
+
+    def get_attribute(self, name):
+        if name == "aria-label":
+            return f"select {self._page.session_names[self._index]}"
+        return None
+
+    def click(self, timeout=None):
+        self._page._click(self._selector)
+
+
+class _FakeHomepage:
+    """Minimal Playwright Page double for the homepage session list.
+
+    Models the rows the UI sweep interacts with: each row exposes a
+    "select <name>" checkbox; clicking Quit removes the selected rows (unless
+    *quit_removes* is False, simulating a quit that does not take effect, e.g.
+    a confirm dialog that never appears). Confirm/force-quit dialog clicks
+    raise (absent), exercising the helper's per-dialog try/except.
+    """
+
+    def __init__(self, session_names, *, quit_removes=True):
+        self.session_names = list(session_names)
+        self._quit_removes = quit_removes
+        self._selected: list[str] = []
+        self.clicked_checkbox_names: list[str] = []
+        self.quit_clicks = 0
+        self.reloads = 0
+
+    def goto(self, *args, **kwargs):
+        pass
+
+    def reload(self, *args, **kwargs):
+        self.reloads += 1
+
+    def locator(self, selector):
+        return _FakeLocator(self, selector)
+
+    def _click(self, selector):
+        from vip_tests.workbench.pages import Homepage
+
+        prefix = "[aria-label='select "
+        if selector.startswith(prefix):
+            name = selector[len(prefix) : -2]  # strip prefix and trailing "']"
+            self.clicked_checkbox_names.append(name)
+            if name in self.session_names:
+                self._selected.append(name)
+            return
+        if selector == Homepage.QUIT_BUTTON:
+            self.quit_clicks += 1
+            if self._quit_removes:
+                for name in self._selected:
+                    if name in self.session_names:
+                        self.session_names.remove(name)
+            self._selected = []
+            return
+        # Confirm / force-quit dialogs: simulate "not present".
+        raise RuntimeError(f"dialog not present: {selector}")
+
+
+def test_quit_vip_sessions_via_ui_quits_only_vip_rows_and_counts_distinct():
+    from vip_tests.workbench.conftest import _quit_vip_sessions_via_ui
+
+    page = _FakeHomepage(
+        ["VIP test_jobs.py - gw0-1", "My real work", "_vip_cap_1_default_0"],
+        quit_removes=True,
+    )
+    count = _quit_vip_sessions_via_ui(page, "https://wb.example.com")
+
+    assert count == 2
+    assert "My real work" not in page.clicked_checkbox_names
+    assert set(page.clicked_checkbox_names) == {
+        "VIP test_jobs.py - gw0-1",
+        "_vip_cap_1_default_0",
+    }
+    assert page.session_names == ["My real work"]
+
+
+def test_quit_vip_sessions_via_ui_counts_persisting_session_once():
+    from vip_tests.workbench.conftest import _quit_vip_sessions_via_ui
+
+    # Quit "succeeds" but the row never disappears, so the same VIP session is
+    # re-selected every iteration. The count must reflect distinct sessions.
+    page = _FakeHomepage(["VIP stuck - gw0-9"], quit_removes=False)
+    count = _quit_vip_sessions_via_ui(page, "https://wb.example.com", max_iterations=4)
+
+    assert count == 1
+    assert page.quit_clicks == 4

@@ -65,6 +65,10 @@ TIMEOUT_CLEANUP = int(30_000 * timeout_scale())
 TIMEOUT_CODE_EXEC = int(30_000 * timeout_scale())
 TIMEOUT_IDE_LOAD = int(60_000 * timeout_scale())
 TIMEOUT_SESSION_START = int(90_000 * timeout_scale())
+# Short probe for optional confirm/force-quit dialogs in the UI session sweep:
+# they render near-instantly or not at all, so we must not wait TIMEOUT_QUICK on
+# each absent one (that would dominate the sweep's runtime).
+TIMEOUT_DIALOG_PROBE = int(1_000 * timeout_scale())
 
 # Poll interval (ms) used while waiting for a session to reach Active.
 _SESSION_POLL_INTERVAL = 500
@@ -536,9 +540,10 @@ def _quit_vip_sessions_via_ui(page: Page, base_url: str, *, max_iterations: int 
     confirmation/force-quit dialogs, repeating until no VIP rows remain or
     *max_iterations* is hit.  Never uses "Quit All".  Best-effort: all
     Playwright errors are swallowed and it never raises.  Returns the number of
-    sessions for which a quit was issued.
+    distinct VIP sessions a quit was issued for (a session that persists across
+    iterations is counted once, not per attempt).
     """
-    quit_count = 0
+    quit_names: set[str] = set()
     try:
         page.goto(base_url.rstrip("/") + "/home", wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
         for _ in range(max_iterations):
@@ -550,32 +555,34 @@ def _quit_vip_sessions_via_ui(page: Page, base_url: str, *, max_iterations: int 
             vip_names = _vip_names_from_select_labels(labels)
             if not vip_names:
                 break
-            selected = 0
+            selected: list[str] = []
             for name in vip_names:
                 try:
                     page.locator(Homepage.session_checkbox(name)).first.click(timeout=TIMEOUT_QUICK)
-                    selected += 1
+                    selected.append(name)
                 except Exception:
                     continue
-            if selected == 0:
+            if not selected:
                 break
             try:
                 page.locator(Homepage.QUIT_BUTTON).first.click(timeout=TIMEOUT_QUICK)
             except Exception:
                 break
+            # Confirm/force-quit dialogs are optional and render fast if at all;
+            # probe each with a short timeout so absent ones don't dominate runtime.
             for sel in (Homepage.CONFIRM_QUIT, Homepage.FORCE_QUIT, Homepage.CONFIRM_FORCE_QUIT):
                 try:
-                    page.locator(sel).first.click(timeout=TIMEOUT_QUICK)
+                    page.locator(sel).first.click(timeout=TIMEOUT_DIALOG_PROBE)
                 except Exception:
                     pass
-            quit_count += selected
+            quit_names.update(selected)
             try:
                 page.reload(wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
             except Exception:
                 break
     except Exception:
         pass
-    return quit_count
+    return len(quit_names)
 
 
 def _session_api_reachable_via_cookies(
