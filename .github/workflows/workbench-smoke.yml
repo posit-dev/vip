@@ -41,6 +41,8 @@ jobs:
               - 'src/vip/config.py'
               - 'src/vip/plugin.py'
               - 'src/vip/cli.py'
+              - 'src/vip/clients/base.py'
+              - 'src/vip/timeouts.py'
               - 'src/vip_tests/conftest.py'
               - 'pyproject.toml'
               - 'uv.lock'
