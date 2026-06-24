@@ -1,34 +1,38 @@
-# Feature: Workbench session-cleanup robustness + macOS console clear
+# Fix: reliable Workbench session cleanup (#277)
 
-*2026-06-24T18:39:25Z by Showboat 0.6.1*
-<!-- showboat-id: 5fa1c913-d846-4abb-a9ff-2c6b79d76f99 -->
+*2026-05-29T18:53:34Z by Showboat 0.6.1*
+<!-- showboat-id: 8db398fc-5077-4456-b28c-ce839a3b2f33 -->
 
-This branch bundles four Workbench-test robustness fixes:
-
-1. ControlOrMeta+a (not Control+a) to clear the Ace console input, so the select-all clear works on macOS (where Ctrl+A is 'go to line start'). Applied to test_data_sources, test_jobs, test_packages.
-2. Fail fast with an actionable message when a session reaches terminal 'Failed' during suspend, instead of an opaque 30s timeout (test_sessions).
-3. Same fail-fast in the idle auto-suspend reload loop (test_session_idle), via shared raise_if_session_failed/_visible_terminal_state.
-4. UI-based fallback session cleanup: a sessions_api_reachable() probe, a VIP-name filter, and a homepage UI sweep wired into _cleanup_sessions (gated on reachability, cached once per session) so orphaned VIP sessions are quit on deployments whose /api/sessions 404s.
-
-Unit-testable pieces are covered by the selftests below. Browser-driven behavior (console clears, suspend/resume, the UI sweep click-through) is verified against a live Workbench; the suspend/resume scenario was confirmed PASS against workbench.posit.it.
+Issue #277: when a Workbench test failed mid-IDE, the session it launched was left running on the homepage, forcing users to quit orphans by hand. Cleanup is now centralized in WorkbenchClient.quit_vip_sessions(), which lists sessions and force-quits only VIP-named ones (the 'VIP ' and '_vip_' prefixes), then re-lists to verify they are gone and retries. It is resilient to malformed API payloads (non-JSON bodies, null/non-string labels) and counts unique sessions. A session-scoped end-of-run sweep is a safety net so a single failed per-test cleanup no longer orphans a session, with an API-key fallback for long runs where browser cookies may have expired. Cleanup authenticates with the browser's cookies, so no API key is required.
 
 ```bash
-uv run pytest selftests/test_workbench_cleanup.py selftests/test_workbench_session_active.py -q 2>&1 | grep -E "passed|failed" | sed 's/ in [0-9.]*s//'
-
+uv run pytest selftests/test_workbench_cleanup.py -n0 -q 2>&1 | grep -E "passed|failed|error" | sed "s/ in [0-9.]*s//"
 ```
 
 ```output
-37 passed
+15 passed
 ```
 
 ```bash
-just check
-
+uvx ruff@0.15.0 check src/ selftests/ examples/ docker/
 ```
 
 ```output
-uv run ruff check src/ selftests/ examples/ docker/
 All checks passed!
-uv run ruff format --check src/ selftests/ examples/ docker/
-160 files already formatted
+```
+
+```bash
+uvx ruff@0.15.0 format --check src/ selftests/ examples/ docker/
+```
+
+```output
+133 files already formatted
+```
+
+```bash
+uv run pytest src/vip_tests/workbench/ --collect-only -q 2>&1 | tail -1 | sed "s/ in [0-9.]*s//"
+```
+
+```output
+no tests collected (12 deselected)
 ```
