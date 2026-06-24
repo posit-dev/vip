@@ -125,6 +125,12 @@ def pytest_configure(config: pytest.Config) -> None:
         "ignore:ssl.TLSVersion.TLSv1_1:DeprecationWarning",
         # pytest-bdd scenario functions return fixture values; not a real issue.
         "ignore::pytest.PytestReturnNotNoneWarning",
+        # pytest-bdd 8.1.0 injects fixtures via _register_fixture(nodeid=...) and
+        # FixtureDef(baseid=...), which pytest >= 9.1 deprecates in favor of node=.
+        # Framework-level and only fixable when pytest-bdd updates; nothing VIP can
+        # change. A category filter is required because the warning surfaces from two
+        # modules (pytest_bdd and _pytest.fixtures), so module/message scoping misses one.
+        "ignore::pytest.PytestRemovedIn10Warning",
         # gevent monkey-patching happens after ssl is imported by other plugins;
         # unavoidable without patching at process start.
         "ignore:Monkey-patching ssl",

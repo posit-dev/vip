@@ -205,6 +205,31 @@ class TestPluginIntegration:
         result.assert_outcomes()
         result.stdout.fnmatch_lines(["*1 deselected*"])
 
+    def test_pytest_bdd_removed_in10_warning_suppressed(self, selftest_pytester):
+        """pytest-bdd's fixture injection emits PytestRemovedIn10Warning on
+        pytest >= 9.1 (``_register_fixture(nodeid=...)``/``FixtureDef(baseid=...)``).
+        The plugin filters that category so it never reaches users who install
+        vip into their own project. We emit the warning directly because the
+        repo-pinned pytest does not warn yet, which keeps the check meaningful
+        regardless of the installed pytest version.
+        """
+        selftest_pytester.makepyfile(
+            """
+            import warnings
+
+            import pytest
+
+            def test_emits_removed_in10():
+                warnings.warn(
+                    "Passing nodeid to _register_fixture is deprecated.",
+                    pytest.PytestRemovedIn10Warning,
+                )
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml")
+        result.assert_outcomes(passed=1)
+        result.stdout.no_fnmatch_line("*PytestRemovedIn10Warning*")
+
     def test_performance_deselected_by_default(self, selftest_pytester):
         """_default_marker_expr excludes performance when --performance-tests is not set."""
         import argparse
