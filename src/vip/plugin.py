@@ -170,6 +170,26 @@ def pytest_configure(config: pytest.Config) -> None:
     if not config.getoption("--vip-verbose", default=False):
         config.option.reportchars = ""
 
+    # Show skip/xfail reasons in full on the verbose (``-v``) test line instead
+    # of ellipsizing them to the terminal width. pytest only prints the
+    # untrimmed reason at *test-case* verbosity >= 2 (see _pytest/terminal.py).
+    # Bumping that fine-grained level — rather than the global ``-v`` count —
+    # leaves failure tracebacks and assertion reprs at the user's chosen
+    # verbosity, and a skip reason never carries a traceback, so this only ever
+    # lengthens a one-line reason. We act only when the user passed exactly
+    # ``-v`` (resolved test-case verbosity 1): at level 0 the reporter is in
+    # dot mode and bumping would force per-test lines on; above 1 it is already
+    # full. An explicit ``verbosity_test_cases`` in the user's config (anything
+    # other than the "auto" default) is respected.
+    try:
+        if (
+            config.getini("verbosity_test_cases") == "auto"
+            and config.get_verbosity(pytest.Config.VERBOSITY_TEST_CASES) == 1
+        ):
+            config._inicache["verbosity_test_cases"] = "2"
+    except (ValueError, AttributeError):
+        pass
+
     # Load VIP config and stash it for fixtures / collection hooks.
     vip_cfg = load_config(config.getoption("--vip-config"))
     config.stash[_vip_config_key] = vip_cfg

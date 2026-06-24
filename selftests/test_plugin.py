@@ -421,6 +421,51 @@ class TestPluginIntegration:
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
         result.stdout.fnmatch_lines(["*PASSED*"])
 
+    def test_skip_reason_shown_in_full_inline(self, selftest_pytester, monkeypatch):
+        """A long skip reason renders in full on the verbose (``-v``) test line.
+
+        pytest ellipsizes the inline reason to the terminal width at the default
+        test-case verbosity; the plugin bumps that level to 2 under ``-v`` so the
+        whole reason is shown (it may wrap, but no text is dropped).
+        """
+        monkeypatch.setenv("COLUMNS", "80")
+        reason = (
+            "Workbench session not established by --interactive-auth so this skip "
+            "reason is intentionally far longer than eighty columns and would "
+            "normally be ellipsized before the END_OF_REASON_SENTINEL"
+        )
+        selftest_pytester.makepyfile(
+            f"""
+            import pytest
+
+            @pytest.mark.skip(reason={reason!r})
+            def test_skips():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(skipped=1)
+        # Collapse whitespace so a wrapped reason still matches end to end.
+        collapsed = "".join(result.stdout.str().split())
+        assert "".join(reason.split()) in collapsed
+        assert "END_OF_REASON_SENTINEL" in collapsed
+
+    def test_skip_reason_not_forced_verbose_in_dot_mode(self, selftest_pytester):
+        """Without ``-v`` the reporter stays in dot mode — the verbosity bump is
+        gated on the user already having asked for per-test lines."""
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.skip(reason="some reason")
+            def test_skips():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml")
+        result.assert_outcomes(skipped=1)
+        result.stdout.no_fnmatch_line("*test_skips*SKIPPED*")
+
     def test_json_report_output(self, selftest_pytester):
         selftest_pytester.makepyfile(
             """
