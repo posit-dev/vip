@@ -526,6 +526,58 @@ def _quit_vip_sessions_via_cookies(
         return 0
 
 
+def _quit_vip_sessions_via_ui(page: Page, base_url: str, *, max_iterations: int = 10) -> int:
+    """Quit orphaned VIP-named sessions through the homepage UI.
+
+    Fallback for deployments whose session API is unreachable (see
+    :meth:`WorkbenchClient.sessions_api_reachable`), where the cookie/API sweep
+    is a no-op.  Navigates to the homepage, selects only VIP-named session rows
+    (validated via :func:`is_vip_session`), clicks Quit, and dismisses any
+    confirmation/force-quit dialogs, repeating until no VIP rows remain or
+    *max_iterations* is hit.  Never uses "Quit All".  Best-effort: all
+    Playwright errors are swallowed and it never raises.  Returns the number of
+    sessions for which a quit was issued.
+    """
+    quit_count = 0
+    try:
+        page.goto(base_url.rstrip("/") + "/home", wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
+        for _ in range(max_iterations):
+            checkboxes = page.locator("[aria-label^='select ']")
+            labels = [
+                checkboxes.nth(i).get_attribute("aria-label") or ""
+                for i in range(checkboxes.count())
+            ]
+            vip_names = _vip_names_from_select_labels(labels)
+            if not vip_names:
+                break
+            selected = 0
+            for name in vip_names:
+                try:
+                    page.locator(Homepage.session_checkbox(name)).first.click(timeout=TIMEOUT_QUICK)
+                    selected += 1
+                except Exception:
+                    continue
+            if selected == 0:
+                break
+            try:
+                page.locator(Homepage.QUIT_BUTTON).first.click(timeout=TIMEOUT_QUICK)
+            except Exception:
+                break
+            for sel in (Homepage.CONFIRM_QUIT, Homepage.FORCE_QUIT, Homepage.CONFIRM_FORCE_QUIT):
+                try:
+                    page.locator(sel).first.click(timeout=TIMEOUT_QUICK)
+                except Exception:
+                    pass
+            quit_count += selected
+            try:
+                page.reload(wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
+            except Exception:
+                break
+    except Exception:
+        pass
+    return quit_count
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _wb_cleanup_state(vip_config, workbench_client):
     """End-of-run safety net: sweep any VIP sessions left behind.

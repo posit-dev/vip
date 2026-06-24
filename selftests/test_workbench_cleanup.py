@@ -204,3 +204,14 @@ def test_vip_names_from_select_labels_keeps_only_vip():
         "VIP test_jobs.py - gw0-1",
         "_vip_cap_1_default_0",
     ]
+
+
+def test_quit_vip_sessions_via_ui_never_raises_on_failure():
+    """A navigation/Playwright failure must not propagate out of cleanup."""
+    from vip_tests.workbench.conftest import _quit_vip_sessions_via_ui
+
+    class _BoomPage:
+        def goto(self, *args, **kwargs):
+            raise RuntimeError("navigation failed")
+
+    assert _quit_vip_sessions_via_ui(_BoomPage(), "https://wb.example.com") == 0
