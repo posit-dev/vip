@@ -201,8 +201,10 @@ def write_test_script(page: Page):
     # The console input is an Ace editor <div>, not a real <input>/<textarea>,
     # so Locator.fill() raises "Element is not an <input>...". Select-all +
     # delete to clear any leftover text, then type real keystrokes into the
-    # focused hidden Ace textarea (matches test_packages.py).
-    page.keyboard.press("Control+a")
+    # focused hidden Ace textarea (matches test_packages.py). Use ControlOrMeta
+    # so select-all maps to Cmd+A on macOS, where Ctrl+A is "go to line start"
+    # and would not clear the input.
+    page.keyboard.press("ControlOrMeta+a")
     page.keyboard.press("Backspace")
     console_input.type(r_cmd)
     console_input.press("Enter")
