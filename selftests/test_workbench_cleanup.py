@@ -190,6 +190,24 @@ def test_sessions_api_reachable_false_on_transport_error():
     assert wc.sessions_api_reachable() is False
 
 
+def test_sessions_api_reachable_false_on_redirect_to_login():
+    # 302 is < 400 but is not a usable session list (e.g. auth bounce).
+    wc = _client_with_handler(lambda r: httpx.Response(302, headers={"location": "/auth-sign-in"}))
+    assert wc.sessions_api_reachable() is False
+
+
+def test_sessions_api_reachable_false_on_200_html():
+    # Some deployments serve the SPA (200 HTML) for unknown API paths.
+    wc = _client_with_handler(lambda r: httpx.Response(200, text="<html>app</html>"))
+    assert wc.sessions_api_reachable() is False
+
+
+def test_sessions_api_reachable_false_on_200_non_list_json():
+    # 200 with a JSON object (not the expected session array) is not usable.
+    wc = _client_with_handler(lambda r: httpx.Response(200, json={"error": "nope"}))
+    assert wc.sessions_api_reachable() is False
+
+
 def test_vip_names_from_select_labels_keeps_only_vip():
     from vip_tests.workbench.conftest import _vip_names_from_select_labels
 
