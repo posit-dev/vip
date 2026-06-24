@@ -281,8 +281,13 @@ class _FakeLocator:
             return f"select {self._page.session_names[self._index]}"
         return None
 
+    def wait_for(self, *, state=None, timeout=None):
+        # Only selectors registered as present "appear"; others time out.
+        if self._selector not in self._page.present_dialogs:
+            raise RuntimeError(f"locator not visible: {self._selector}")
+
     def click(self, timeout=None):
-        self._page._click(self._selector)
+        self._page._click(self._selector, timeout)
 
 
 class _FakeHomepage:
@@ -291,15 +296,19 @@ class _FakeHomepage:
     Models the rows the UI sweep interacts with: each row exposes a
     "select <name>" checkbox; clicking Quit removes the selected rows (unless
     *quit_removes* is False, simulating a quit that does not take effect, e.g.
-    a confirm dialog that never appears). Confirm/force-quit dialog clicks
-    raise (absent), exercising the helper's per-dialog try/except.
+    a confirm dialog that never appears). Only selectors in *present_dialogs*
+    are "visible" to wait_for; any others time out (absent), exercising the
+    helper's per-dialog skip path. Dialog clicks are recorded as
+    (selector, timeout) so tests can assert which timeout was used.
     """
 
-    def __init__(self, session_names, *, quit_removes=True):
+    def __init__(self, session_names, *, quit_removes=True, present_dialogs=()):
         self.session_names = list(session_names)
         self._quit_removes = quit_removes
+        self.present_dialogs = set(present_dialogs)
         self._selected: list[str] = []
         self.clicked_checkbox_names: list[str] = []
+        self.dialog_clicks: list[tuple[str, object]] = []
         self.quit_clicks = 0
         self.reloads = 0
 
@@ -312,7 +321,7 @@ class _FakeHomepage:
     def locator(self, selector):
         return _FakeLocator(self, selector)
 
-    def _click(self, selector):
+    def _click(self, selector, timeout=None):
         from vip_tests.workbench.pages import Homepage
 
         prefix = "[aria-label='select "
@@ -330,8 +339,9 @@ class _FakeHomepage:
                         self.session_names.remove(name)
             self._selected = []
             return
-        # Confirm / force-quit dialogs: simulate "not present".
-        raise RuntimeError(f"dialog not present: {selector}")
+        # A confirm/force-quit dialog click — only reached when wait_for found
+        # it present. Record the selector and the timeout used.
+        self.dialog_clicks.append((selector, timeout))
 
 
 def test_quit_vip_sessions_via_ui_quits_only_vip_rows_and_counts_distinct():
@@ -362,3 +372,21 @@ def test_quit_vip_sessions_via_ui_counts_persisting_session_once():
 
     assert count == 1
     assert page.quit_clicks == 4
+
+
+def test_quit_vip_sessions_via_ui_clicks_present_dialog_with_normal_timeout():
+    from vip_tests.workbench.conftest import TIMEOUT_QUICK, _quit_vip_sessions_via_ui
+    from vip_tests.workbench.pages import Homepage
+
+    page = _FakeHomepage(
+        ["VIP one - gw0-1"],
+        quit_removes=True,
+        present_dialogs={Homepage.CONFIRM_QUIT},
+    )
+    count = _quit_vip_sessions_via_ui(page, "https://wb.example.com")
+
+    assert count == 1
+    # The present confirm dialog is clicked, and with the normal timeout (not the
+    # short probe) so a slow-but-present dialog still completes. Absent dialogs
+    # (force-quit follow-ups) are not clicked.
+    assert page.dialog_clicks == [(Homepage.CONFIRM_QUIT, TIMEOUT_QUICK)]

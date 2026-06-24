@@ -65,9 +65,10 @@ TIMEOUT_CLEANUP = int(30_000 * timeout_scale())
 TIMEOUT_CODE_EXEC = int(30_000 * timeout_scale())
 TIMEOUT_IDE_LOAD = int(60_000 * timeout_scale())
 TIMEOUT_SESSION_START = int(90_000 * timeout_scale())
-# Short probe for optional confirm/force-quit dialogs in the UI session sweep:
-# they render near-instantly or not at all, so we must not wait TIMEOUT_QUICK on
-# each absent one (that would dominate the sweep's runtime).
+# Short window to detect whether an optional confirm/force-quit dialog appeared
+# in the UI session sweep. Used to gate (not to click) so an absent dialog does
+# not cost TIMEOUT_QUICK each iteration; a dialog that does appear is then
+# clicked with the normal TIMEOUT_QUICK.
 TIMEOUT_DIALOG_PROBE = int(1_000 * timeout_scale())
 
 # Poll interval (ms) used while waiting for a session to reach Active.
@@ -568,11 +569,19 @@ def _quit_vip_sessions_via_ui(page: Page, base_url: str, *, max_iterations: int 
                 page.locator(Homepage.QUIT_BUTTON).first.click(timeout=TIMEOUT_QUICK)
             except Exception:
                 break
-            # Confirm/force-quit dialogs are optional and render fast if at all;
-            # probe each with a short timeout so absent ones don't dominate runtime.
+            # Confirm/force-quit dialogs are optional — a normal quit completes
+            # without them (see session_cleaned_up). Probe each within a short
+            # window so an absent dialog doesn't dominate runtime; if one does
+            # appear, click it with the normal timeout so a present-but-slow
+            # dialog still completes (a short click timeout could drop it).
             for sel in (Homepage.CONFIRM_QUIT, Homepage.FORCE_QUIT, Homepage.CONFIRM_FORCE_QUIT):
+                dialog = page.locator(sel)
                 try:
-                    page.locator(sel).first.click(timeout=TIMEOUT_DIALOG_PROBE)
+                    dialog.wait_for(state="visible", timeout=TIMEOUT_DIALOG_PROBE)
+                except Exception:
+                    continue
+                try:
+                    dialog.first.click(timeout=TIMEOUT_QUICK)
                 except Exception:
                     pass
             quit_names.update(selected)
