@@ -207,9 +207,14 @@ def pytest_configure(config: pytest.Config) -> None:
     # credentials are forwarded to workers via pytest_configure_node.
     config.stash[_auth_session_key] = None
 
-    if hasattr(config, "workerinput") and config.workerinput.get("vip_interactive_auth"):
-        # xdist worker — restore auth data shared by the controller.
-        _restore_worker_auth(config, vip_cfg)
+    if hasattr(config, "workerinput"):
+        # xdist worker — restore auth data shared by the controller (if any).
+        # Workers must never re-run the controller-only browser-auth branches
+        # below: pytest_configure fires on every worker, so doing so would, for
+        # example, re-emit the "no auth-requiring products" warning once per
+        # worker, flooding the output.
+        if config.workerinput.get("vip_interactive_auth"):
+            _restore_worker_auth(config, vip_cfg)
     elif config.getoption("--interactive-auth"):
         config.stash[_auth_mode_key] = "interactive"
         connect_url = vip_cfg.connect.url if vip_cfg.connect.is_configured else None

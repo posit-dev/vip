@@ -907,6 +907,33 @@ class TestXdistCompatibility:
                 f"Found xdist worker prefix in output line: {line!r}"
             )
 
+    def test_no_auth_products_warning_not_duplicated_under_xdist(self, selftest_pytester):
+        """The 'no auth-requiring products' skip warning fires once, not per worker.
+
+        ``pytest_configure`` runs on the xdist controller *and* on every worker.
+        The controller-only auth branch must not re-run on workers, or the skip
+        warning floods the output once per worker (controller + N workers).
+        """
+        selftest_pytester.makepyfile(
+            """
+            def test_placeholder():
+                assert True
+            """
+        )
+        result = selftest_pytester.runpytest_subprocess(
+            "--vip-config=vip.toml",
+            "--interactive-auth",
+            "-n",
+            "2",
+            "-W",
+            "always",
+        )
+        assert result.ret == 0
+        result.assert_outcomes(passed=1)
+        combined = result.outlines + result.errlines
+        hits = [line for line in combined if "skipping browser authentication" in line]
+        assert len(hits) == 1, f"expected exactly one skip warning, got {len(hits)}: {hits}"
+
     def test_vip_metadata_survives_xdist(self, selftest_pytester):
         """Custom report attributes (markers, scenario fields) survive xdist transit."""
         # Use a plain test file and verify markers/scenario fields are present in results.
