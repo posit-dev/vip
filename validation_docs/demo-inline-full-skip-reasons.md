@@ -36,3 +36,25 @@ uv run ruff check src/ src/vip_tests/ selftests/ examples/ && uv run ruff format
 All checks passed!
 2 files already formatted
 ```
+
+Second fix in this branch: when --interactive-auth (or --headless-auth) is passed but no auth-requiring product is configured (e.g. only Package Manager), the 'skipping browser authentication' warning was emitted once per xdist worker. pytest_configure runs on the controller AND every worker; only the controller had a session to forward, so workers fell through to the controller-only auth branch and re-warned. With auto-detected workers this floods the output (1 + N copies). The fix guards the worker branch so workers only restore forwarded credentials and never re-run the controller logic.
+
+```bash
+printf "[general]\ndeployment_name = \"Demo\"\n[package_manager]\nurl = \"https://p3m.dev/\"\n" > _demo_vip.toml
+printf "def test_placeholder():\n    assert True\n" > _demo_pm.py
+echo -n "warning count: "
+uv run pytest _demo_pm.py --vip-config=_demo_vip.toml --interactive-auth -n 2 -W always -p no:cacheprovider 2>&1 | grep -c "skipping browser authentication"
+rm -f _demo_vip.toml _demo_pm.py
+```
+
+```output
+warning count: 1
+```
+
+```bash
+uv run pytest selftests/test_plugin.py -k "no_auth_products_warning_not_duplicated or skip_reason" -q -p no:cacheprovider 2>&1 | grep -E "passed|failed|error" | sed "s/ in [0-9.]*s//"
+```
+
+```output
+4 passed
+```
