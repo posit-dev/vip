@@ -607,6 +607,22 @@ class TestGitTestConfig:
         with pytest.raises(ValueError, match="auth_method.*not supported"):
             GitTestConfig(clone_url="https://github.com/org/repo.git", auth_method="ssh-key")
 
+    def test_none_auth_method_is_valid(self):
+        cfg = GitTestConfig(clone_url="https://github.com/org/repo.git", auth_method="none")
+        assert cfg.auth_method == "none"
+
+    def test_none_auth_method_leaves_token_empty_with_env(self, monkeypatch):
+        monkeypatch.setenv("VIP_GIT_TOKEN", "ghp_should_be_ignored")
+        cfg = GitTestConfig(clone_url="https://github.com/org/repo.git", auth_method="none")
+        assert cfg.token == ""
+
+    def test_none_auth_method_from_dict(self):
+        cfg = GitTestConfig.from_dict(
+            {"clone_url": "https://github.com/org/repo.git", "auth_method": "none"}
+        )
+        assert cfg.auth_method == "none"
+        assert cfg.clone_url == "https://github.com/org/repo.git"
+
     def test_repr_redacts_token(self):
         cfg = GitTestConfig(clone_url="https://github.com/org/repo.git", token="secret")
         assert "secret" not in repr(cfg)

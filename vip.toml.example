@@ -99,12 +99,15 @@ url = "https://workbench.example.com"
 # (RStudio terminal, VS Code terminal, Positron terminal, and RStudio Git pane).
 # All Git scenarios auto-skip when this block is absent.
 #
-# Token is never stored in this file — set VIP_GIT_TOKEN in the environment.
+# auth_method = "https-token": set VIP_GIT_TOKEN in the environment (never in
+#   this file); clone and push scenarios run.
 #   export VIP_GIT_TOKEN="ghp_..."
+# auth_method = "none": anonymous HTTPS clone of a public repo; no token needed;
+#   only the clone/connectivity scenarios run (push/commit scenarios skip).
 #
 # [workbench.git_test]
 # clone_url = "https://github.com/org/repo.git"
-# auth_method = "https-token"    # only supported value; SSH is out of scope
+# auth_method = "https-token"    # "https-token" or "none"; SSH is out of scope
 
 [package_manager]
 enabled = true
