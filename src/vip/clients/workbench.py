@@ -80,6 +80,26 @@ class WorkbenchClient(BaseClient):
             return resp.json()
         return []
 
+    def sessions_api_reachable(self) -> bool:
+        """Return True only if ``/api/sessions`` returns a usable session list.
+
+        The API-based cleanup (:meth:`list_sessions` / :meth:`quit_vip_sessions`)
+        works only when this endpoint responds ``200`` with a JSON **array**.
+        Some deployments instead 404 (SPA fallback), serve ``200`` HTML, or
+        redirect to login (``302``) — all status codes that are not a usable
+        list.  Returning True for those would wrongly suppress the UI-driven
+        cleanup fallback and orphan VIP sessions, so we require a ``200`` whose
+        body parses as a ``list``.  Returns False otherwise or on any transport
+        exception; never raises.
+        """
+        try:
+            resp = self._client.get("/api/sessions")
+            if resp.status_code != 200:
+                return False
+            return isinstance(resp.json(), list)
+        except Exception:
+            return False
+
     def quit_session(self, session_id: str) -> bool:
         """Attempt to quit/suspend a session.  Returns True on success."""
         for method, path in (
