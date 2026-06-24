@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.49.0 (2026-06-24)
+
+### Features
+
+- **workbench**: Add anonymous git auth mode (none)
+  ([#403](https://github.com/posit-dev/vip/pull/403),
+  [`33bc3b1`](https://github.com/posit-dev/vip/commit/33bc3b1db60dfa17380e239d9783eab5e82b2a01))
+
+
 ## v0.48.3 (2026-06-24)
 
 ### Bug Fixes
