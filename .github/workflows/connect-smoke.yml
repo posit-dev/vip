@@ -31,7 +31,19 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'src/**'
+              - 'src/vip_tests/connect/**'
+              - 'src/vip/clients/connect.py'
+              # shared across all smoke workflows:
+              - 'src/vip_tests/prerequisites/**'
+              # connect-only shared tests:
+              - 'src/vip_tests/security/**'
+              # shared core — affects all products:
+              - 'src/vip/auth.py'
+              - 'src/vip/idp.py'
+              - 'src/vip/config.py'
+              - 'src/vip/plugin.py'
+              - 'src/vip/cli.py'
+              - 'src/vip_tests/conftest.py'
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/workflows/connect-smoke.yml'
@@ -134,6 +146,16 @@ jobs:
 
       - name: Install dependencies
         run: uv sync
+
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(uv run playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
       - name: Install Playwright browsers
         run: uv run vip install --skip-system
