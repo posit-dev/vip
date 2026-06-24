@@ -215,6 +215,11 @@ def pytest_configure(config: pytest.Config) -> None:
         # worker, flooding the output.
         if config.workerinput.get("vip_interactive_auth"):
             _restore_worker_auth(config, vip_cfg)
+        elif config.workerinput.get("vip_auth_mode"):
+            # No browser session was forwarded (no auth-requiring product), but
+            # still mirror the controller's auth mode so the auth_mode fixture
+            # matches a non-xdist run.
+            config.stash[_auth_mode_key] = config.workerinput["vip_auth_mode"]
     elif config.getoption("--interactive-auth"):
         config.stash[_auth_mode_key] = "interactive"
         connect_url = vip_cfg.connect.url if vip_cfg.connect.is_configured else None
@@ -335,6 +340,13 @@ def _restore_worker_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
 
 def pytest_configure_node(node) -> None:
     """xdist controller hook: share interactive-auth credentials with workers."""
+    # Forward the auth mode even when no browser session was established (e.g.
+    # only Package Manager configured, so the flow was skipped). Workers don't
+    # re-run the controller-only auth branch, so without this their auth_mode
+    # fixture would resolve to "none" while a non-xdist run reports the mode.
+    mode = node.config.stash.get(_auth_mode_key, "")
+    if mode:
+        node.workerinput["vip_auth_mode"] = mode
     auth = node.config.stash.get(_auth_session_key, None)
     if auth is not None:
         node.workerinput["vip_interactive_auth"] = True
@@ -344,7 +356,6 @@ def pytest_configure_node(node) -> None:
         node.workerinput["vip_connect_url"] = auth._connect_url
         node.workerinput["vip_workbench_url"] = auth._workbench_url
         node.workerinput["vip_workbench_auth_error"] = auth.workbench_auth_error or ""
-        node.workerinput["vip_auth_mode"] = node.config.stash.get(_auth_mode_key, "")
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:

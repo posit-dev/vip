@@ -1271,6 +1271,51 @@ class TestAuthModeStash:
             f"expected both xdist workers to restore mode, got workerids={workerids}"
         )
 
+    @pytest.mark.parametrize(
+        ("auth_flag", "expected_mode"),
+        [("--interactive-auth", "interactive"), ("--headless-auth", "headless")],
+    )
+    def test_auth_mode_forwarded_to_workers_without_auth_session(
+        self, pytester, auth_flag, expected_mode
+    ):
+        """auth_mode stays consistent on workers when no auth product is configured.
+
+        With only a non-auth product (Package Manager) the controller sets the
+        auth mode but never establishes a browser session, so the session path
+        forwards nothing. Workers must still mirror the controller's mode, or
+        the ``auth_mode`` fixture diverges between xdist and non-xdist runs.
+        """
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[package_manager]\nurl = "https://p3m.example.com"\n'
+            ),
+        )
+        marker_dir = pytester.path / "worker_markers"
+        marker_dir.mkdir()
+        pytester.makepyfile(
+            f"""
+            import pytest
+            from vip.plugin import _auth_mode_key
+
+            MARKER_DIR = {str(marker_dir)!r}
+
+            @pytest.mark.parametrize("i", list(range(8)))
+            def test_worker_mode(request, i):
+                assert hasattr(request.config, "workerinput"), "expected xdist worker"
+                assert request.config.stash.get(_auth_mode_key, "none") == {expected_mode!r}
+                workerid = request.config.workerinput["workerid"]
+                open(f"{{MARKER_DIR}}/{{workerid}}", "a").close()
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", auth_flag, "-n", "2", "-v")
+        result.assert_outcomes(passed=8)
+        workerids = {p.name for p in marker_dir.iterdir()}
+        assert len(workerids) == 2, (
+            f"expected both xdist workers to restore mode, got workerids={workerids}"
+        )
+
 
 class TestRestoreWorkerAuth:
     """``_restore_worker_auth`` recreates the controller's auth state on each
