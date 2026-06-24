@@ -188,3 +188,19 @@ def test_sessions_api_reachable_false_on_transport_error():
 
     wc = _client_with_handler(handler)
     assert wc.sessions_api_reachable() is False
+
+
+def test_vip_names_from_select_labels_keeps_only_vip():
+    from vip_tests.workbench.conftest import _vip_names_from_select_labels
+
+    labels = [
+        "select VIP test_jobs.py - gw0-1",
+        "select My real work",
+        "select _vip_cap_1_default_0",
+        "garbage without prefix",
+        "VIP no select prefix",
+    ]
+    assert _vip_names_from_select_labels(labels) == [
+        "VIP test_jobs.py - gw0-1",
+        "_vip_cap_1_default_0",
+    ]

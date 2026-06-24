@@ -14,7 +14,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 from pytest_bdd import given
 
-from vip.clients.workbench import WorkbenchClient
+from vip.clients.workbench import WorkbenchClient, is_vip_session
 from vip.plugin import _auth_session_key
 from vip.timeouts import timeout_scale
 from vip_tests.workbench.pages import Homepage, LoginPage
@@ -480,6 +480,26 @@ def workbench_login(
 # ---------------------------------------------------------------------------
 # Shared Fixtures
 # ---------------------------------------------------------------------------
+
+_SELECT_PREFIX = "select "
+
+
+def _vip_names_from_select_labels(labels: list[str]) -> list[str]:
+    """Extract VIP-named session names from session-row checkbox aria-labels.
+
+    Each homepage session row exposes a checkbox whose aria-label is
+    ``"select <session name>"``.  Returns the names (without the ``"select "``
+    prefix) that match :func:`is_vip_session`, so a real user's sessions are
+    never selected for quitting.  Input order is preserved.
+    """
+    names: list[str] = []
+    for label in labels:
+        if not label.startswith(_SELECT_PREFIX):
+            continue
+        name = label[len(_SELECT_PREFIX) :]
+        if is_vip_session(name):
+            names.append(name)
+    return names
 
 
 def _quit_vip_sessions_via_cookies(
