@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.48.3 (2026-06-24)
+
+### Bug Fixes
+
+- **workbench**: Type() instead of fill() for Ace console input
+  ([#402](https://github.com/posit-dev/vip/pull/402),
+  [`408c52d`](https://github.com/posit-dev/vip/commit/408c52db9de5d4b3d26bcb0b2df2923dce1d206a))
+
+
 ## v0.48.2 (2026-06-24)
 
 ### Bug Fixes
