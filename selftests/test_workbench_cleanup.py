@@ -215,3 +215,26 @@ def test_quit_vip_sessions_via_ui_never_raises_on_failure():
             raise RuntimeError("navigation failed")
 
     assert _quit_vip_sessions_via_ui(_BoomPage(), "https://wb.example.com") == 0
+
+
+def test_session_api_reachable_via_cookies_delegates_and_never_raises(monkeypatch):
+    from vip_tests.workbench import conftest as wb
+
+    monkeypatch.setattr(wb.WorkbenchClient, "sessions_api_reachable", lambda self: True)
+    assert (
+        wb._session_api_reachable_via_cookies(
+            "https://wb.example.com", {"c": "v"}, insecure=False, ca_bundle=None
+        )
+        is True
+    )
+
+    def boom(self):
+        raise RuntimeError("nope")
+
+    monkeypatch.setattr(wb.WorkbenchClient, "sessions_api_reachable", boom)
+    assert (
+        wb._session_api_reachable_via_cookies(
+            "https://wb.example.com", {}, insecure=False, ca_bundle=None
+        )
+        is False
+    )

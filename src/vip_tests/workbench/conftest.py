@@ -578,6 +578,30 @@ def _quit_vip_sessions_via_ui(page: Page, base_url: str, *, max_iterations: int 
     return quit_count
 
 
+def _session_api_reachable_via_cookies(
+    base_url: str,
+    cookies: dict[str, str],
+    *,
+    insecure: bool,
+    ca_bundle,
+) -> bool:
+    """Whether the session API is reachable for a cookie-authenticated client.
+
+    Mirrors :func:`_quit_vip_sessions_via_cookies`: uses a scratch
+    ``WorkbenchClient`` so the session-scoped client's cookie jar is untouched.
+    Returns ``False`` on any error.
+    """
+    try:
+        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
+        try:
+            scratch.set_cookies(cookies)
+            return scratch.sessions_api_reachable()
+        finally:
+            scratch.close()
+    except Exception:
+        return False
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _wb_cleanup_state(vip_config, workbench_client):
     """End-of-run safety net: sweep any VIP sessions left behind.
@@ -587,7 +611,7 @@ def _wb_cleanup_state(vip_config, workbench_client):
     run) it does one final ``quit_vip_sessions`` sweep, catching sessions
     orphaned when a per-test cleanup failed outright (e.g. the page crashed).
     """
-    state: dict[str, object] = {"cookies": None, "base_url": None}
+    state: dict[str, object] = {"cookies": None, "base_url": None, "api_reachable": None}
     yield state
     if workbench_client is None:
         return
@@ -631,6 +655,19 @@ def _cleanup_sessions(page, workbench_client, vip_config, _wb_cleanup_state):
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
     )
+    # If the session API is unreachable on this deployment (e.g. /api/sessions
+    # 404s), the cookie/API sweep above is a no-op. Detect reachability once per
+    # session (cached on _wb_cleanup_state) and, when unavailable, fall back to a
+    # UI-driven sweep that quits orphaned VIP sessions via the homepage.
+    if _wb_cleanup_state["api_reachable"] is None:
+        _wb_cleanup_state["api_reachable"] = _session_api_reachable_via_cookies(
+            workbench_client.base_url,
+            cookies,
+            insecure=vip_config.insecure,
+            ca_bundle=vip_config.ca_bundle,
+        )
+    if not _wb_cleanup_state["api_reachable"]:
+        _quit_vip_sessions_via_ui(page, workbench_client.base_url)
 
 
 @pytest.fixture
