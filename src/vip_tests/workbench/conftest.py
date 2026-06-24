@@ -6,6 +6,7 @@ Page selectors are in the pages/ subpackage
 from __future__ import annotations
 
 import os
+import re
 import time
 from pathlib import Path
 
@@ -14,10 +15,42 @@ from playwright.sync_api import Locator, Page, expect
 from pytest_bdd import given
 
 from vip.clients.workbench import WorkbenchClient
+from vip.plugin import _auth_session_key
 from vip.timeouts import timeout_scale
 from vip_tests.workbench.pages import Homepage, LoginPage
 
 pytestmark = [pytest.mark.workbench, pytest.mark.xdist_group("workbench")]
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config,
+    items: list[pytest.Item],
+) -> None:
+    """Serialize Workbench tests onto a single xdist worker when a shared auth session is active.
+
+    Under --interactive-auth / --headless-auth all Workbench tests authenticate as the same
+    shared browser account.  Running them across many parallel workers triggers a
+    simultaneous-login storm against the OIDC IdP that intermittently fails to establish
+    sessions or bounces already-logged-in browsers back to the sign-in page.  Pinning all
+    Workbench tests to one xdist group forces LoadGroupScheduling to run them sequentially
+    on a single worker, eliminating the storm while leaving Connect/PM tests unaffected.
+
+    For password auth (no shared session) the default parallel behavior is preserved.
+    """
+    if config.stash.get(_auth_session_key, None) is None:
+        # No shared auth session — password auth or no auth.  Keep default parallel behavior.
+        return
+
+    workbench_dir = Path(__file__).parent
+    for item in items:
+        item_path = getattr(item, "path", None)
+        if item_path is None or not item_path.is_relative_to(workbench_dir):
+            continue
+        # Remove the default xdist_group("workbench") set by pytestmark so we can
+        # replace it with a group that serializes all workers onto one.
+        item.own_markers = [m for m in item.own_markers if m.name != "xdist_group"]
+        item.add_marker(pytest.mark.xdist_group("workbench_interactive_serial"))
+
 
 # ---------------------------------------------------------------------------
 # Playwright timeout constants (milliseconds)
@@ -262,6 +295,44 @@ def workbench_login(
 
     # Check if we landed on a login/IdP page
     if _on_login_page(page.url):
+        if interactive_auth:
+            # Storage state was pre-loaded by --interactive-auth / --headless-auth.
+            # Workbench's SSO sign-in page does not auto-redirect to the IdP; it
+            # renders a "Sign in with OpenID" button instead.  Clicking it triggers
+            # a silent SSO round-trip using the saved IdP cookies, landing us on the
+            # authenticated homepage with no credentials required.
+            # Wait briefly for the SSO button to render so a slow OIDC sign-in
+            # page is detected reliably; an instant visibility check can race the
+            # page load and fall through to the password path (which then fails
+            # with "Login failed after 3 attempts" on a deployment that has no
+            # password form, e.g. the storage-state-stripped login scenario).
+            sso_button = page.get_by_role(
+                "button", name=re.compile(r"sign in", re.IGNORECASE)
+            ).first
+            try:
+                sso_button.wait_for(state="visible", timeout=TIMEOUT_QUICK)
+                sso_visible = True
+            except Exception:
+                sso_visible = False
+            if sso_visible:
+                sso_button.click()
+                try:
+                    homepage_logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
+                    return  # Silent SSO succeeded
+                except Exception:
+                    # No pre-loaded IdP session (expired, or storage state was
+                    # stripped for the password-login test) — silent SSO can't
+                    # complete on an OIDC deployment, so skip gracefully.
+                    pytest.skip(
+                        _workbench_session_skip_message(
+                            auth_mode=auth_mode,
+                            workbench_auth_error=workbench_auth_error,
+                            landed_url=page.url,
+                        )
+                    )
+            # No SSO button found and interactive_auth is set — fall through to the
+            # skip below (covers non-password providers without an SSO button).
+
         if auth_provider != "password":
             pytest.skip(
                 _workbench_session_skip_message(
@@ -269,6 +340,23 @@ def workbench_login(
                     workbench_auth_error=workbench_auth_error,
                     landed_url=page.url,
                 )
+            )
+        # Even when auth_provider is reported as "password", the deployment may
+        # actually present an SSO/OIDC sign-in page (a "Sign in with ..." button
+        # and no username field) — e.g. auth_provider was mis-detected on a
+        # config-less run.  The password login form is unavailable there, so skip
+        # rather than fail the retry loop with "Login failed after 3 attempts".
+        sso_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE)).first
+        try:
+            sso_button.wait_for(state="visible", timeout=TIMEOUT_QUICK)
+            sso_only = not page.locator(LoginPage.USERNAME).is_visible()
+        except Exception:
+            sso_only = False
+        if sso_only:
+            pytest.skip(
+                "Workbench is configured for SSO/OIDC (no password login form); "
+                "the password-login scenario does not apply. Pass --interactive-auth "
+                "or --headless-auth to exercise authenticated Workbench tests."
             )
         # Password auth - proceed with form login below
     else:
