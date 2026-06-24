@@ -130,7 +130,11 @@ class InteractiveAuthSession:
         cookies = httpx.Cookies()
         try:
             raw = _json.loads(self.storage_state_path.read_text())
+            if not isinstance(raw, dict):
+                return cookies
             for c in raw.get("cookies", []):
+                if not isinstance(c, dict):
+                    continue
                 name = c.get("name", "")
                 if not name:
                     continue
@@ -138,7 +142,7 @@ class InteractiveAuthSession:
                 domain = c.get("domain", "")
                 path = c.get("path", "/")
                 cookies.set(name, value, domain=domain, path=path)
-        except (OSError, ValueError):
+        except (OSError, ValueError, AttributeError, TypeError):
             pass
         return cookies
 

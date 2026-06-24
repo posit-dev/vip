@@ -88,7 +88,11 @@ def workbench_client(
     request: pytest.FixtureRequest, vip_config: VIPConfig
 ) -> WorkbenchClient | None:
     if not vip_config.workbench.is_configured:
-        return None
+        # Yield (not return) None so this generator fixture always yields a value —
+        # autouse cleanup fixtures that request workbench_client would get
+        # "fixture did not yield a value" from a bare return.
+        yield None
+        return
     auth = build_client_auth(vip_config, "workbench", vip_config.workbench.url)
     # Same gateway-cookie injection as connect_client: the identical OIDC proxy
     # that fronts Connect also fronts Workbench on these deployments.

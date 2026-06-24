@@ -47,6 +47,13 @@ class BaseClient:
         app-level auth that must NOT occupy the ``Authorization`` header
         because *auth* already owns it — e.g. Connect's ``X-RSC-Authorization``
         when reached through an SPCS ingress that consumes ``Authorization``.
+    cookies:
+        Optional cookie jar forwarded to the underlying ``httpx.Client`` and
+        to ad-hoc httpx requests issued by subclasses (e.g.
+        :meth:`~vip.clients.connect.ConnectClient.fetch_content`).  Use to
+        bridge Playwright storage-state gateway cookies into API calls so an
+        OIDC forward-auth proxy passes requests through instead of
+        307-redirecting to the IdP.  Defaults to ``None`` (no extra cookies).
     """
 
     def __init__(

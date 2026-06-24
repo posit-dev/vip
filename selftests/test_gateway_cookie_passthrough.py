@@ -177,6 +177,32 @@ class TestLoadCookies:
 
         assert cookies.get("valid_cookie") == "v3"
 
+    def test_returns_empty_cookies_when_root_is_not_dict(self, tmp_path):
+        """A valid JSON file whose top-level value is not a dict (e.g. a list)
+        must not raise AttributeError — return an empty jar."""
+        state = tmp_path / "state.json"
+        state.write_text('[{"name": "x", "value": "y"}]')  # JSON array, not object
+        session = InteractiveAuthSession(storage_state_path=state)
+
+        cookies = session.load_cookies()
+
+        assert isinstance(cookies, httpx.Cookies)
+        assert list(cookies.items()) == []
+
+    def test_skips_non_dict_cookie_entries(self, tmp_path):
+        """Non-dict entries in the cookies array (strings, ints, nulls) are
+        silently skipped rather than raising TypeError."""
+        state = tmp_path / "state.json"
+        state.write_text(
+            '{"cookies": ["not-a-dict", 42, null, {"name": "ok", "value": "val",'
+            ' "domain": ".example.com", "path": "/"}]}'
+        )
+        session = InteractiveAuthSession(storage_state_path=state)
+
+        cookies = session.load_cookies()
+
+        assert cookies.get("ok") == "val"
+
 
 # ---------------------------------------------------------------------------
 # BaseClient / ConnectClient cookies parameter
