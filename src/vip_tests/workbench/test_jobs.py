@@ -199,8 +199,11 @@ def write_test_script(page: Page):
     escaped = _JOB_SCRIPT_CONTENT.replace('"', '\\"')
     r_cmd = f'writeLines("{escaped}", "{_JOB_SCRIPT_FILENAME}")'
     # The console input is an Ace editor <div>, not a real <input>/<textarea>,
-    # so Locator.fill() raises "Element is not an <input>...". Use type() to
-    # send real keystrokes to the focused hidden Ace textarea (see exec.py).
+    # so Locator.fill() raises "Element is not an <input>...". Select-all +
+    # delete to clear any leftover text, then type real keystrokes into the
+    # focused hidden Ace textarea (matches test_packages.py).
+    page.keyboard.press("Control+a")
+    page.keyboard.press("Backspace")
     console_input.type(r_cmd)
     console_input.press("Enter")
 
