@@ -314,7 +314,12 @@ def workbench_login(
                 sso_visible = True
             except Exception:
                 sso_visible = False
-            if sso_visible:
+            # The "sign in" role-name also matches a password form's submit
+            # button, so only treat this as SSO when there is no username field.
+            # On a password deployment with stale storage state this lets us fall
+            # through to the password retry path instead of clicking an empty
+            # submit and then skipping.
+            if sso_visible and not page.locator(LoginPage.USERNAME).is_visible():
                 sso_button.click()
                 try:
                     homepage_logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
