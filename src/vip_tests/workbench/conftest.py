@@ -188,6 +188,38 @@ def format_capacity_failure(total: int, failures: list[str], reasons: list[str])
     return "\n".join(lines)
 
 
+def _visible_terminal_state(page: Page, session_name: str, *, target_state: str) -> str | None:
+    """Return the terminal failure state currently shown for *session_name*, or None.
+
+    Checks each state in :data:`TERMINAL_SESSION_FAILURE_STATES` (skipping
+    *target_state*, the state we are waiting to reach) and returns the first
+    whose status badge is visible.
+    """
+    for state in TERMINAL_SESSION_FAILURE_STATES:
+        if state == target_state:
+            continue
+        loc = page.locator(Homepage.session_row_status(session_name, state))
+        if loc.count() > 0 and loc.first.is_visible():
+            return state
+    return None
+
+
+def raise_if_session_failed(page: Page, session_name: str, *, expected: str) -> None:
+    """Fail fast if *session_name* is currently in a terminal failure state.
+
+    Raises ``AssertionError`` with an actionable message (naming the terminal
+    state observed and the *expected* state) when a session has abnormally
+    exited, so waiters and reload loops surface a clear cause instead of
+    waiting out their budget and emitting an opaque
+    "Locator expected to be visible" error.  No-op otherwise.
+    """
+    failed_state = _visible_terminal_state(page, session_name, target_state=expected)
+    if failed_state is not None:
+        raise AssertionError(
+            _session_failure_message(session_name, failed_state, expected=expected)
+        )
+
+
 def _wait_for_session_state(
     page: Page, session_name: str, target_state: str, *, timeout: int
 ) -> Locator:
@@ -205,40 +237,21 @@ def _wait_for_session_state(
     expect(row).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
     target = page.locator(Homepage.session_row_status(session_name, target_state))
-    terminal = {
-        state: page.locator(Homepage.session_row_status(session_name, state))
-        for state in TERMINAL_SESSION_FAILURE_STATES
-        if state != target_state
-    }
 
     def _target_now() -> bool:
         return target.count() > 0 and target.first.is_visible()
-
-    def _terminal_now() -> str | None:
-        for state, loc in terminal.items():
-            if loc.count() > 0 and loc.first.is_visible():
-                return state
-        return None
 
     deadline = time.monotonic() + timeout / 1000
     while time.monotonic() < deadline:
         if _target_now():
             return row
-        failed_state = _terminal_now()
-        if failed_state is not None:
-            raise AssertionError(
-                _session_failure_message(session_name, failed_state, expected=target_state)
-            )
+        raise_if_session_failed(page, session_name, expected=target_state)
         page.wait_for_timeout(_SESSION_POLL_INTERVAL)
 
     # Final check — the status may have flipped in the last poll interval.
     if _target_now():
         return row
-    failed_state = _terminal_now()
-    if failed_state is not None:
-        raise AssertionError(
-            _session_failure_message(session_name, failed_state, expected=target_state)
-        )
+    raise_if_session_failed(page, session_name, expected=target_state)
     raise AssertionError(
         f"Session {session_name!r} did not reach {target_state} within "
         f"{timeout // 1000}s (no {target_state} or terminal status detected)."

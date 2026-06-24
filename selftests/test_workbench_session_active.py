@@ -13,12 +13,43 @@ requires a live Workbench and is exercised against a real deployment.
 
 from __future__ import annotations
 
+import pytest
+
 from vip_tests.workbench.conftest import (
     TERMINAL_SESSION_FAILURE_STATES,
     _session_failure_message,
     format_capacity_failure,
 )
 from vip_tests.workbench.pages import Homepage
+
+
+class _FakeStatusLocator:
+    """Stand-in for a Playwright Locator whose visibility is fixed."""
+
+    def __init__(self, visible: bool):
+        self._visible = visible
+
+    def count(self) -> int:
+        return 1 if self._visible else 0
+
+    @property
+    def first(self) -> _FakeStatusLocator:
+        return self
+
+    def is_visible(self) -> bool:
+        return self._visible
+
+
+class _FakeStatusPage:
+    """Minimal Page stand-in: a status-row selector is "visible" iff its
+    state word appears in *visible_states*.  Lets us exercise the terminal-
+    state detection without a live browser."""
+
+    def __init__(self, *visible_states: str):
+        self._visible = set(visible_states)
+
+    def locator(self, selector: str) -> _FakeStatusLocator:
+        return _FakeStatusLocator(any(state in selector for state in self._visible))
 
 
 def test_failed_is_a_terminal_state():
@@ -61,6 +92,27 @@ def test_wait_for_session_suspended_is_available():
     from vip_tests.workbench.conftest import wait_for_session_suspended
 
     assert callable(wait_for_session_suspended)
+
+
+def test_raise_if_session_failed_raises_on_terminal_state():
+    """The shared fail-fast helper raises an actionable AssertionError naming
+    both the terminal state observed and the state that was expected."""
+    from vip_tests.workbench.conftest import raise_if_session_failed
+
+    page = _FakeStatusPage("Failed")
+    with pytest.raises(AssertionError) as exc:
+        raise_if_session_failed(page, "sess", expected="Suspended")
+    assert "Failed" in str(exc.value)
+    assert "Suspended" in str(exc.value)
+
+
+def test_raise_if_session_failed_is_a_noop_when_not_terminal():
+    """When the session is not in a terminal state, the helper returns without
+    raising so the caller can keep polling/reloading."""
+    from vip_tests.workbench.conftest import raise_if_session_failed
+
+    page = _FakeStatusPage("Active")
+    raise_if_session_failed(page, "sess", expected="Suspended")
 
 
 def test_status_selector_anchors_on_session_name():

@@ -26,6 +26,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
     assert_homepage_loaded,
+    raise_if_session_failed,
     unique_session_name,
     wait_for_session_active,
     workbench_login,
@@ -219,7 +220,10 @@ def session_auto_suspends(
 
     The wait budget is ``idle_timeout_minutes * 60 + idle_grace_seconds`` seconds.
     The homepage does not auto-poll, so we reload periodically to observe the
-    state transition.
+    state transition.  If the session abnormally exits (terminal "Failed")
+    instead of suspending, fail fast with an actionable message rather than
+    reloading until the budget expires and emitting an opaque
+    "Locator expected to be visible" error.
     """
     session_name = idle_session_context["name"]
     home_url = workbench_url.rstrip("/") + "/home"
@@ -235,6 +239,7 @@ def session_auto_suspends(
             return
         except AssertionError:
             pass
+        raise_if_session_failed(page, session_name, expected="Suspended")
         page.reload(timeout=TIMEOUT_PAGE_LOAD)
         assert_homepage_loaded(page)
 
