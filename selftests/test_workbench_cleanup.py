@@ -170,3 +170,21 @@ def test_quit_vip_sessions_counts_unique_sessions_under_retry():
     wc = _client_with_handler(handler)
     # 3 attempts each DELETE "a" successfully, but it is one unique session.
     assert wc.quit_vip_sessions(retries=3, settle_seconds=0) == 1
+
+
+def test_sessions_api_reachable_true_on_200():
+    wc = _client_with_handler(lambda r: httpx.Response(200, json=[]))
+    assert wc.sessions_api_reachable() is True
+
+
+def test_sessions_api_reachable_false_on_404():
+    wc = _client_with_handler(lambda r: httpx.Response(404, text="<html>not found</html>"))
+    assert wc.sessions_api_reachable() is False
+
+
+def test_sessions_api_reachable_false_on_transport_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("boom")
+
+    wc = _client_with_handler(handler)
+    assert wc.sessions_api_reachable() is False

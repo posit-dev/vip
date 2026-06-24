@@ -80,6 +80,21 @@ class WorkbenchClient(BaseClient):
             return resp.json()
         return []
 
+    def sessions_api_reachable(self) -> bool:
+        """Return True if the session-list API endpoint is served here.
+
+        Some deployments do not expose ``/api/sessions`` (it 404s, served by
+        the SPA fallback).  There, the API-based cleanup silently no-ops and
+        callers should fall back to UI-driven cleanup.  Returns True iff the
+        endpoint responds with a status ``< 400``.  Returns False on any HTTP
+        error status or transport exception; never raises.
+        """
+        try:
+            resp = self._client.get("/api/sessions")
+        except Exception:
+            return False
+        return resp.status_code < 400
+
     def quit_session(self, session_id: str) -> bool:
         """Attempt to quit/suspend a session.  Returns True on success."""
         for method, path in (
