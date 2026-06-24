@@ -209,7 +209,12 @@ class GitTestConfig:
                 f"workbench.git_test.auth_method={self.auth_method!r} is not supported. "
                 f"Supported values: {', '.join(self._SUPPORTED_AUTH_METHODS)}"
             )
-        if self.auth_method == "https-token" and not self.token:
+        if self.auth_method == "none":
+            # Anonymous mode is genuinely tokenless: discard any token from the
+            # environment or an explicit TOML/constructor value so clones never
+            # inject credentials.
+            self.token = ""
+        elif not self.token:
             self.token = os.environ.get("VIP_GIT_TOKEN", "")
 
     def __repr__(self) -> str:

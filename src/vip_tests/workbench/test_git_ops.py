@@ -228,7 +228,8 @@ def git_config_available(vip_config):
     if _urlparse(cfg.clone_url).scheme != "https":
         pytest.skip(
             f"workbench.git_test.clone_url scheme is not https: {cfg.clone_url!r}. "
-            "Token injection requires an https:// clone URL."
+            "Git test scenarios require an https:// clone URL "
+            "(token injection for auth_method='https-token' relies on it)."
         )
     if cfg.auth_method == "https-token" and not cfg.token:
         pytest.skip(

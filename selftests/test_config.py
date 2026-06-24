@@ -616,6 +616,24 @@ class TestGitTestConfig:
         cfg = GitTestConfig(clone_url="https://github.com/org/repo.git", auth_method="none")
         assert cfg.token == ""
 
+    def test_none_auth_method_clears_explicit_token(self):
+        cfg = GitTestConfig(
+            clone_url="https://github.com/org/repo.git",
+            auth_method="none",
+            token="explicit-token",
+        )
+        assert cfg.token == ""
+
+    def test_none_auth_method_from_dict_clears_token(self):
+        cfg = GitTestConfig.from_dict(
+            {
+                "clone_url": "https://github.com/org/repo.git",
+                "auth_method": "none",
+                "token": "explicit-token",
+            }
+        )
+        assert cfg.token == ""
+
     def test_none_auth_method_from_dict(self):
         cfg = GitTestConfig.from_dict(
             {"clone_url": "https://github.com/org/repo.git", "auth_method": "none"}
