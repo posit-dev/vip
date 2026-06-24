@@ -3,8 +3,10 @@
 Tests cover terminal-based Git operations (clone, branch, commit, push) in
 RStudio, VS Code, and Positron sessions.
 
-Requires [workbench.git_test] in vip.toml and VIP_GIT_TOKEN set in the
-environment.  All scenarios auto-skip when the config block is absent.
+Requires [workbench.git_test] in vip.toml.  Clone scenarios run with
+auth_method "https-token" (VIP_GIT_TOKEN set) or "none" (anonymous clone of a
+public repo); push scenarios require "https-token".  All scenarios auto-skip
+when the config block is absent.
 """
 
 from __future__ import annotations
@@ -211,12 +213,12 @@ def git_config_available(vip_config):
         pytest.skip(
             "Git test config is not configured. "
             "Add a [workbench.git_test] block to vip.toml with clone_url and auth_method, "
-            "and set VIP_GIT_TOKEN in the environment."
+            "and set VIP_GIT_TOKEN in the environment (for auth_method='https-token')."
         )
-    if cfg.auth_method != "https-token":
+    if cfg.auth_method not in ("https-token", "none"):
         pytest.skip(
             f"workbench.git_test.auth_method={cfg.auth_method!r} is not supported. "
-            "Only 'https-token' is supported."
+            "Supported values: 'https-token', 'none'."
         )
     if not cfg.clone_url:
         pytest.skip(
@@ -226,14 +228,26 @@ def git_config_available(vip_config):
     if _urlparse(cfg.clone_url).scheme != "https":
         pytest.skip(
             f"workbench.git_test.clone_url scheme is not https: {cfg.clone_url!r}. "
-            "Token injection requires an https:// clone URL."
+            "Git test scenarios require an https:// clone URL "
+            "(token injection for auth_method='https-token' relies on it)."
         )
-    if not cfg.token:
+    if cfg.auth_method == "https-token" and not cfg.token:
         pytest.skip(
             "VIP_GIT_TOKEN is not set. "
-            "Export VIP_GIT_TOKEN=<personal-access-token> before running Git test scenarios."
+            "Export VIP_GIT_TOKEN=<personal-access-token> before running Git test scenarios, "
+            "or set auth_method='none' for an anonymous public-repo clone."
         )
     return cfg
+
+
+@given("the Git test config supports pushing")
+def git_config_supports_pushing(git_cfg):
+    """Skip write scenarios under anonymous (read-only) auth."""
+    if git_cfg.auth_method == "none":
+        pytest.skip(
+            "workbench.git_test.auth_method='none' is anonymous (read-only). "
+            "Push/commit scenarios require auth_method='https-token' with VIP_GIT_TOKEN set."
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -190,15 +190,18 @@ class GitTestConfig:
     against a real Git repository.  All scenarios auto-skip when this block
     is absent from the config file.
 
-    Token is never stored in the TOML file.  Set VIP_GIT_TOKEN in the
-    environment (same pattern as VIP_PACKAGE_MANAGER_TOKEN).
+    Token is never stored in the TOML file.  For ``auth_method = "https-token"``
+    set VIP_GIT_TOKEN in the environment (same pattern as
+    VIP_PACKAGE_MANAGER_TOKEN).  ``auth_method = "none"`` performs an anonymous
+    HTTPS clone of a public repository and needs no token; in that mode the
+    clone/connectivity scenarios run and the push/commit scenarios skip.
     """
 
     clone_url: str = ""
-    auth_method: str = "https-token"  # only supported value currently
+    auth_method: str = "https-token"  # "https-token" or "none" (anonymous clone)
     token: str = ""
 
-    _SUPPORTED_AUTH_METHODS = ("https-token",)
+    _SUPPORTED_AUTH_METHODS = ("https-token", "none")
 
     def __post_init__(self) -> None:
         if self.auth_method not in self._SUPPORTED_AUTH_METHODS:
@@ -206,7 +209,12 @@ class GitTestConfig:
                 f"workbench.git_test.auth_method={self.auth_method!r} is not supported. "
                 f"Supported values: {', '.join(self._SUPPORTED_AUTH_METHODS)}"
             )
-        if not self.token:
+        if self.auth_method == "none":
+            # Anonymous mode is genuinely tokenless: discard any token from the
+            # environment or an explicit TOML/constructor value so clones never
+            # inject credentials.
+            self.token = ""
+        elif not self.token:
             self.token = os.environ.get("VIP_GIT_TOKEN", "")
 
     def __repr__(self) -> str:
