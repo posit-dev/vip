@@ -31,7 +31,17 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'src/**'
+              - 'src/vip_tests/package_manager/**'
+              - 'src/vip/clients/packagemanager.py'
+              # shared across all smoke workflows:
+              - 'src/vip_tests/prerequisites/**'
+              # shared core — affects all products:
+              - 'src/vip/auth.py'
+              - 'src/vip/idp.py'
+              - 'src/vip/config.py'
+              - 'src/vip/plugin.py'
+              - 'src/vip/cli.py'
+              - 'src/vip_tests/conftest.py'
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/workflows/packagemanager-smoke.yml'
