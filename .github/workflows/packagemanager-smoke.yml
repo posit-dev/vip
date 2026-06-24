@@ -216,6 +216,8 @@ jobs:
             "src/vip_tests/prerequisites/test_components.py::test_product_server_is_reachable[Package Manager]" \
             src/vip_tests/prerequisites/test_versions.py \
             src/vip_tests/package_manager/test_repos.py \
+            src/vip_tests/package_manager/test_authenticated_repos.py \
+            src/vip_tests/package_manager/test_private_repos.py \
             -v \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml

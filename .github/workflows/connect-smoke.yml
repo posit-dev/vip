@@ -178,7 +178,7 @@ jobs:
           username = "__bootstrap_admin__"
           EOF
 
-      # Run the subset of tests that work against Docker Connect
+      # Run the full Connect API test suite against Docker Connect (excluding the UI login scenario)
       - name: Run Connect smoke tests
         run: |
           uv run pytest \
@@ -186,6 +186,12 @@ jobs:
             src/vip_tests/connect/test_auth.py \
             src/vip_tests/connect/test_users.py \
             src/vip_tests/connect/test_runtime_versions.py \
+            src/vip_tests/connect/test_system_checks.py \
+            src/vip_tests/connect/test_content_deploy.py \
+            src/vip_tests/connect/test_packages.py \
+            src/vip_tests/connect/test_email.py \
+            src/vip_tests/connect/test_data_sources.py \
+            src/vip_tests/connect/test_chronicle.py \
             src/vip_tests/security/test_error_handling.py \
             -v \
             -k "not connect_login_ui" \
