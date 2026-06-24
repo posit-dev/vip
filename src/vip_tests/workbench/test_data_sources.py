@@ -92,8 +92,11 @@ def _execute_r_command(page: Page, command: str) -> str:
     console_input = page.locator(ConsolePaneSelectors.INPUT)
     expect(console_input).to_be_visible(timeout=_TIMEOUT_CONSOLE_READY)
 
+    # The console input is an Ace editor <div>, not a real <input>/<textarea>,
+    # so Locator.fill() raises "Element is not an <input>...". click() focuses
+    # the editor (empty at a fresh prompt) and type() sends real keystrokes to
+    # the hidden Ace textarea (matches the canonical pattern in exec.py).
     console_input.click()
-    console_input.fill("")
     console_input.type(command)
     console_input.press("Enter")
 

@@ -198,7 +198,10 @@ def write_test_script(page: Page):
     # Build the writeLines() call as a single-line R expression.
     escaped = _JOB_SCRIPT_CONTENT.replace('"', '\\"')
     r_cmd = f'writeLines("{escaped}", "{_JOB_SCRIPT_FILENAME}")'
-    console_input.fill(r_cmd)
+    # The console input is an Ace editor <div>, not a real <input>/<textarea>,
+    # so Locator.fill() raises "Element is not an <input>...". Use type() to
+    # send real keystrokes to the focused hidden Ace textarea (see exec.py).
+    console_input.type(r_cmd)
     console_input.press("Enter")
 
     # Wait for the prompt to return (console is ready for next command).
