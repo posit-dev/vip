@@ -42,7 +42,17 @@ Pass <code data-astro-cid-mwd2jfe2>--interactive-auth</code> to open a Chromium 
             password). After login, VIP mints a temporary API key, saves the
             session, and runs all tests headlessly. No credentials need to be
             configured in advance.
-</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre> <h3 data-astro-cid-mwd2jfe2>Headless auth (no display)</h3> <p data-astro-cid-mwd2jfe2>
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre> <p data-astro-cid-mwd2jfe2>
+VIP also supports Connect deployments that sit behind an OIDC/SSO
+            forward-auth gateway (for example, an Okta proxy that intercepts
+<code data-astro-cid-mwd2jfe2>/__api__/</code> requests and redirects unauthenticated traffic
+            to the IdP). The browser session cookies captured during interactive
+            auth are automatically forwarded alongside the API key on every
+            httpx API call, so the gateway passes the request through instead of
+            redirecting to the IdP login. Security checks that intentionally send
+            unauthenticated requests accept a cross-host redirect (gateway
+            intercept) as an equivalent "access denied" outcome.
+</p> <h3 data-astro-cid-mwd2jfe2>Headless auth (no display)</h3> <p data-astro-cid-mwd2jfe2>
 On a headless Linux server, use <code data-astro-cid-mwd2jfe2>--headless-auth</code> to
             automate the OIDC login in a headless browser. Set
 <code data-astro-cid-mwd2jfe2>idp</code> in your <code data-astro-cid-mwd2jfe2>vip.toml</code> to tell VIP which
