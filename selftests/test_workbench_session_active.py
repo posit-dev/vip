@@ -43,6 +43,26 @@ def test_failure_message_points_at_the_deployment_not_the_test():
     assert "workbench could not launch" in msg
 
 
+def test_failure_message_supports_a_non_active_expected_state():
+    """The suspend path expects 'Suspended', not 'Active'.  The message must
+    name the expected state and must NOT misattribute the cause to a failed
+    launch: the session did launch (it reached Active) and then abnormally
+    exited during suspend."""
+    msg = _session_failure_message("sess", "Failed", expected="Suspended")
+    assert "Suspended" in msg
+    assert "Failed" in msg
+    assert "could not launch" not in msg.lower()
+
+
+def test_wait_for_session_suspended_is_available():
+    """The suspend step delegates to a fail-fast helper, mirroring
+    wait_for_session_active, so a terminal 'Failed' is reported promptly
+    instead of as an opaque timeout."""
+    from vip_tests.workbench.conftest import wait_for_session_suspended
+
+    assert callable(wait_for_session_suspended)
+
+
 def test_status_selector_anchors_on_session_name():
     sel = Homepage.session_row_status("main-123", "Active")
     assert "tr[aria-label$='main-123']" in sel

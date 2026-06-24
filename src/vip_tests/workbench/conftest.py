@@ -146,20 +146,31 @@ def assert_homepage_loaded(page: Page) -> None:
     expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
 
-def _session_failure_message(name: str, state: str) -> str:
+def _session_failure_message(name: str, state: str, *, expected: str = "Active") -> str:
     """Build the error shown when a session reaches a terminal failure state.
 
     Replaces the opaque "Locator expected to be visible" timeout with a
-    message that names the session, the terminal state observed, and the
-    likely cause — so the reader knows the deployment (not the test) could
-    not launch the session.
+    message that names the session, the terminal state observed, the state
+    that was *expected*, and the likely cause — so the reader knows the
+    deployment (not the test) could not reach the expected state.
+
+    ``expected`` defaults to ``"Active"`` (the launch path).  For other
+    targets (e.g. ``"Suspended"``) the cause is phrased as an abnormal exit
+    rather than a failed launch, since the session did start before exiting.
     """
-    return (
-        f"Session {name!r} reached terminal state {state!r} instead of Active — "
-        "Workbench could not launch the session (abnormal exit). Verify the "
-        "deployment can launch sessions: check the launcher, the session image, "
-        "and available CPU/memory/quota."
-    )
+    if expected == "Active":
+        cause = (
+            "Workbench could not launch the session (abnormal exit). Verify the "
+            "deployment can launch sessions: check the launcher, the session image, "
+            "and available CPU/memory/quota."
+        )
+    else:
+        cause = (
+            "the session abnormally exited before reaching that state. Verify the "
+            "deployment can suspend and resume sessions, and has available "
+            "CPU/memory/quota."
+        )
+    return f"Session {name!r} reached terminal state {state!r} instead of {expected} — {cause}"
 
 
 def format_capacity_failure(total: int, failures: list[str], reasons: list[str]) -> str:
@@ -177,31 +188,31 @@ def format_capacity_failure(total: int, failures: list[str], reasons: list[str])
     return "\n".join(lines)
 
 
-def wait_for_session_active(
-    page: Page, session_name: str, *, timeout: int = TIMEOUT_SESSION_START
+def _wait_for_session_state(
+    page: Page, session_name: str, target_state: str, *, timeout: int
 ) -> Locator:
-    """Wait until *session_name* reaches Active, failing fast on terminal states.
+    """Wait until *session_name* reaches *target_state*, failing fast on terminal states.
 
-    Polls the session row for the Active status.  If the session instead
+    Polls the session row for ``target_state``.  If the session instead
     reaches a terminal failure state (see :data:`TERMINAL_SESSION_FAILURE_STATES`),
     raises ``AssertionError`` immediately with an actionable message rather
     than waiting out the full ``timeout`` and emitting an opaque
     "Locator expected to be visible" error.
 
-    Returns the session row locator so callers can chain further actions
-    (e.g. clicking the session's join link).
+    Returns the session row locator so callers can chain further actions.
     """
     row = page.locator(Homepage.session_row(session_name))
     expect(row).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
-    active = page.locator(Homepage.session_row_status(session_name, "Active"))
+    target = page.locator(Homepage.session_row_status(session_name, target_state))
     terminal = {
         state: page.locator(Homepage.session_row_status(session_name, state))
         for state in TERMINAL_SESSION_FAILURE_STATES
+        if state != target_state
     }
 
-    def _active_now() -> bool:
-        return active.count() > 0 and active.first.is_visible()
+    def _target_now() -> bool:
+        return target.count() > 0 and target.first.is_visible()
 
     def _terminal_now() -> str | None:
         for state, loc in terminal.items():
@@ -211,23 +222,52 @@ def wait_for_session_active(
 
     deadline = time.monotonic() + timeout / 1000
     while time.monotonic() < deadline:
-        if _active_now():
+        if _target_now():
             return row
         failed_state = _terminal_now()
         if failed_state is not None:
-            raise AssertionError(_session_failure_message(session_name, failed_state))
+            raise AssertionError(
+                _session_failure_message(session_name, failed_state, expected=target_state)
+            )
         page.wait_for_timeout(_SESSION_POLL_INTERVAL)
 
     # Final check — the status may have flipped in the last poll interval.
-    if _active_now():
+    if _target_now():
         return row
     failed_state = _terminal_now()
     if failed_state is not None:
-        raise AssertionError(_session_failure_message(session_name, failed_state))
+        raise AssertionError(
+            _session_failure_message(session_name, failed_state, expected=target_state)
+        )
     raise AssertionError(
-        f"Session {session_name!r} did not reach Active within {timeout // 1000}s "
-        "(no Active or terminal status detected)."
+        f"Session {session_name!r} did not reach {target_state} within "
+        f"{timeout // 1000}s (no {target_state} or terminal status detected)."
     )
+
+
+def wait_for_session_active(
+    page: Page, session_name: str, *, timeout: int = TIMEOUT_SESSION_START
+) -> Locator:
+    """Wait until *session_name* reaches Active, failing fast on terminal states.
+
+    Returns the session row locator so callers can chain further actions
+    (e.g. clicking the session's join link).
+    """
+    return _wait_for_session_state(page, session_name, "Active", timeout=timeout)
+
+
+def wait_for_session_suspended(
+    page: Page, session_name: str, *, timeout: int = TIMEOUT_CLEANUP
+) -> Locator:
+    """Wait until *session_name* reaches Suspended, failing fast on terminal states.
+
+    The suspend counterpart to :func:`wait_for_session_active`.  If the session
+    abnormally exits (terminal "Failed") instead of suspending, raises
+    ``AssertionError`` immediately with an actionable message naming the
+    abnormal exit, rather than waiting out ``timeout`` and emitting an opaque
+    "Locator expected to be visible" error.
+    """
+    return _wait_for_session_state(page, session_name, "Suspended", timeout=timeout)
 
 
 # ---------------------------------------------------------------------------
