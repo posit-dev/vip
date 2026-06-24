@@ -178,7 +178,7 @@ jobs:
           username = "__bootstrap_admin__"
           EOF
 
-      # Run the full connect category against Docker Connect
+      # Run the full Connect API test suite against Docker Connect (excluding the UI login scenario)
       - name: Run Connect smoke tests
         run: |
           uv run pytest \
