@@ -421,6 +421,25 @@ class TestPluginIntegration:
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
         result.stdout.fnmatch_lines(["*PASSED*"])
 
+    # A skip reason far longer than 80 columns, ending in a unique sentinel so
+    # we can tell a full reason from one pytest has ellipsized to "(reason...)".
+    _LONG_SKIP_REASON = (
+        "Workbench session not established by --interactive-auth so this skip "
+        "reason is intentionally far longer than eighty columns and would "
+        "normally be ellipsized before the END_OF_REASON_SENTINEL"
+    )
+
+    def _make_long_skip_test(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            f"""
+            import pytest
+
+            @pytest.mark.skip(reason={self._LONG_SKIP_REASON!r})
+            def test_skips():
+                pass
+            """
+        )
+
     def test_skip_reason_shown_in_full_inline(self, selftest_pytester, monkeypatch):
         """A long skip reason renders in full on the verbose (``-v``) test line.
 
@@ -429,26 +448,37 @@ class TestPluginIntegration:
         whole reason is shown (it may wrap, but no text is dropped).
         """
         monkeypatch.setenv("COLUMNS", "80")
-        reason = (
-            "Workbench session not established by --interactive-auth so this skip "
-            "reason is intentionally far longer than eighty columns and would "
-            "normally be ellipsized before the END_OF_REASON_SENTINEL"
-        )
-        selftest_pytester.makepyfile(
-            f"""
-            import pytest
-
-            @pytest.mark.skip(reason={reason!r})
-            def test_skips():
-                pass
-            """
-        )
+        self._make_long_skip_test(selftest_pytester)
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
         result.assert_outcomes(skipped=1)
         # Collapse whitespace so a wrapped reason still matches end to end.
         collapsed = "".join(result.stdout.str().split())
-        assert "".join(reason.split()) in collapsed
+        assert "".join(self._LONG_SKIP_REASON.split()) in collapsed
         assert "END_OF_REASON_SENTINEL" in collapsed
+        # The ellipsized form pytest would emit at the default verbosity ends in
+        # "...)" — its absence proves the bump actually fired (and isn't a silent
+        # no-op on a future pytest where the private _inicache write breaks).
+        assert "...)" not in collapsed
+
+    def test_skip_reason_ellipsized_without_bump(self, selftest_pytester, monkeypatch):
+        """Control: with the bump defeated, the same reason IS ellipsized.
+
+        Passing ``-o verbosity_test_cases=1`` makes ``getini`` return ``"1"``
+        instead of ``"auto"``, so the plugin leaves the level alone. This proves
+        the ``COLUMNS=80`` width is honored in-process and that truncation is
+        reachable here — without it, ``test_skip_reason_shown_in_full_inline``
+        could pass vacuously. If this control ever stops truncating, the positive
+        test is no longer meaningful and CI should flag it.
+        """
+        monkeypatch.setenv("COLUMNS", "80")
+        self._make_long_skip_test(selftest_pytester)
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml", "-v", "-o", "verbosity_test_cases=1"
+        )
+        result.assert_outcomes(skipped=1)
+        collapsed = "".join(result.stdout.str().split())
+        assert "...)" in collapsed
+        assert "END_OF_REASON_SENTINEL" not in collapsed
 
     def test_skip_reason_not_forced_verbose_in_dot_mode(self, selftest_pytester):
         """Without ``-v`` the reporter stays in dot mode — the verbosity bump is

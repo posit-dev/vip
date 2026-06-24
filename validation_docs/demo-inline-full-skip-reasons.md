@@ -1,18 +1,20 @@
 # fix: show full skip/xfail reasons inline under -v
 
-*2026-06-24T22:38:40Z by Showboat 0.6.1*
-<!-- showboat-id: 558d9aa2-a861-4655-bbf0-da35d6756985 -->
+*2026-06-24T22:55:59Z by Showboat 0.6.1*
+<!-- showboat-id: 47266cb6-4730-4624-8a68-d1fb6caf9323 -->
 
 Problem: with the default 'vip verify ... -- -v' run, pytest ellipsizes each SKIPPED reason to the terminal width, so the actionable part of the message is cut off (e.g. 'SKIPPED (Workbench session n...)').
 
 Fix: src/vip/plugin.py bumps pytest's fine-grained *test-case* verbosity to 2 when (and only when) the user passed -v. At test-case verbosity >= 2 pytest prints the skip/xfail reason untrimmed (it may wrap, but no text is dropped). The global verbosity is left alone, so failure tracebacks and assertion reprs are unaffected — and skip reasons never carry a traceback. Dot mode (no -v) is untouched, and an explicit verbosity_test_cases in the user's config is respected.
+
+Tests: a treatment test asserts the full reason (and trailing sentinel) appears with no '...)' ellipsis; a control test defeats the bump via '-o verbosity_test_cases=1' and asserts the SAME reason IS ellipsized — proving COLUMNS=80 is honored in-process and that the bump (not a vacuous setup) is what removes the truncation.
 
 ```bash
 uv run pytest selftests/test_plugin.py -k skip_reason -q -p no:cacheprovider 2>&1 | grep -E "passed|failed|error" | sed "s/ in [0-9.]*s//"
 ```
 
 ```output
-2 passed
+3 passed
 ```
 
 ```bash
