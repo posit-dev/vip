@@ -1,6 +1,42 @@
 # CHANGELOG
 
 
+## v0.48.0 (2026-06-24)
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 4 updates
+  ([#395](https://github.com/posit-dev/vip/pull/395),
+  [`747e18b`](https://github.com/posit-dev/vip/commit/747e18bef1652bd18401a01138f83f16716edae1))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+- **deps**: Bump the python-dependencies group with 3 updates
+  ([#394](https://github.com/posit-dev/vip/pull/394),
+  [`a54af7a`](https://github.com/posit-dev/vip/commit/a54af7a29e075e05e0aa8d4f51933fcffd956e44))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Features
+
+- Support Connect behind an OIDC forward-auth gateway
+  ([#397](https://github.com/posit-dev/vip/pull/397),
+  [`d759002`](https://github.com/posit-dev/vip/commit/d759002df9ef698237b08753d498f1e32d64d8a9))
+
+### Testing
+
+- **connect**: Add chronicle status verification ([#393](https://github.com/posit-dev/vip/pull/393),
+  [`1dd5ceb`](https://github.com/posit-dev/vip/commit/1dd5cebc2c56580cd0d357d5a958d0da4c7caa64))
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.47.0 (2026-06-18)
 
 ### Features
