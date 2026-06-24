@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.48.1 (2026-06-24)
+
+### Bug Fixes
+
+- **workbench**: Support interactive auth behind an OIDC IdP
+  ([#398](https://github.com/posit-dev/vip/pull/398),
+  [`347433d`](https://github.com/posit-dev/vip/commit/347433dc584b0b93bd8fa734d06b05868eee17f1))
+
+
 ## v0.48.0 (2026-06-24)
 
 ### Chores
