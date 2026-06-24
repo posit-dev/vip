@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.49.1 (2026-06-24)
+
+### Bug Fixes
+
+- **workbench**: Macos console clear, session fail-fast, ui cleanup
+  ([#405](https://github.com/posit-dev/vip/pull/405),
+  [`3c92deb`](https://github.com/posit-dev/vip/commit/3c92debf20f7f243c31933e0538c2fca8ed0b393))
+
+### Continuous Integration
+
+- Promote full connect category and PM repo tests to smoke
+  ([#406](https://github.com/posit-dev/vip/pull/406),
+  [`4d5898f`](https://github.com/posit-dev/vip/commit/4d5898f253de66652f805205e1aadf35e75d8fc6))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+- Scope smoke-test filters per product and cache Playwright browsers
+  ([#404](https://github.com/posit-dev/vip/pull/404),
+  [`47d6652`](https://github.com/posit-dev/vip/commit/47d6652d56fe8c154055dfa08c8e5cd619dbb076))
+
+
 ## v0.49.0 (2026-06-24)
 
 ### Features
