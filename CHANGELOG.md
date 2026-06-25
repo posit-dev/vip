@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.49.2 (2026-06-25)
+
+### Bug Fixes
+
+- **plugin**: Show full skip reasons and dedup auth warning
+  ([#414](https://github.com/posit-dev/vip/pull/414),
+  [`1335d09`](https://github.com/posit-dev/vip/commit/1335d09093c8b2709fc73c4132c291f2e2b99ed9))
+
+
 ## v0.49.1 (2026-06-24)
 
 ### Bug Fixes
