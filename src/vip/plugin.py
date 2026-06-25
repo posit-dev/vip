@@ -170,6 +170,26 @@ def pytest_configure(config: pytest.Config) -> None:
     if not config.getoption("--vip-verbose", default=False):
         config.option.reportchars = ""
 
+    # Show skip/xfail reasons in full on the verbose (``-v``) test line instead
+    # of ellipsizing them to the terminal width. pytest only prints the
+    # untrimmed reason at *test-case* verbosity >= 2 (see _pytest/terminal.py).
+    # Bumping that fine-grained level — rather than the global ``-v`` count —
+    # leaves failure tracebacks and assertion reprs at the user's chosen
+    # verbosity, and a skip reason never carries a traceback, so this only ever
+    # lengthens a one-line reason. We act only when the user passed exactly
+    # ``-v`` (resolved test-case verbosity 1): at level 0 the reporter is in
+    # dot mode and bumping would force per-test lines on; above 1 it is already
+    # full. An explicit ``verbosity_test_cases`` in the user's config (anything
+    # other than the "auto" default) is respected.
+    try:
+        if (
+            config.getini("verbosity_test_cases") == "auto"
+            and config.get_verbosity(pytest.Config.VERBOSITY_TEST_CASES) == 1
+        ):
+            config._inicache["verbosity_test_cases"] = "2"
+    except (ValueError, AttributeError):
+        pass
+
     # Load VIP config and stash it for fixtures / collection hooks.
     vip_cfg = load_config(config.getoption("--vip-config"))
     config.stash[_vip_config_key] = vip_cfg
@@ -187,9 +207,19 @@ def pytest_configure(config: pytest.Config) -> None:
     # credentials are forwarded to workers via pytest_configure_node.
     config.stash[_auth_session_key] = None
 
-    if hasattr(config, "workerinput") and config.workerinput.get("vip_interactive_auth"):
-        # xdist worker — restore auth data shared by the controller.
-        _restore_worker_auth(config, vip_cfg)
+    if hasattr(config, "workerinput"):
+        # xdist worker — restore auth data shared by the controller (if any).
+        # Workers must never re-run the controller-only browser-auth branches
+        # below: pytest_configure fires on every worker, so doing so would, for
+        # example, re-emit the "no auth-requiring products" warning once per
+        # worker, flooding the output.
+        if config.workerinput.get("vip_interactive_auth"):
+            _restore_worker_auth(config, vip_cfg)
+        elif config.workerinput.get("vip_auth_mode"):
+            # No browser session was forwarded (no auth-requiring product), but
+            # still mirror the controller's auth mode so the auth_mode fixture
+            # matches a non-xdist run.
+            config.stash[_auth_mode_key] = config.workerinput["vip_auth_mode"]
     elif config.getoption("--interactive-auth"):
         config.stash[_auth_mode_key] = "interactive"
         connect_url = vip_cfg.connect.url if vip_cfg.connect.is_configured else None
@@ -310,6 +340,13 @@ def _restore_worker_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
 
 def pytest_configure_node(node) -> None:
     """xdist controller hook: share interactive-auth credentials with workers."""
+    # Forward the auth mode even when no browser session was established (e.g.
+    # only Package Manager configured, so the flow was skipped). Workers don't
+    # re-run the controller-only auth branch, so without this their auth_mode
+    # fixture would resolve to "none" while a non-xdist run reports the mode.
+    mode = node.config.stash.get(_auth_mode_key, "")
+    if mode:
+        node.workerinput["vip_auth_mode"] = mode
     auth = node.config.stash.get(_auth_session_key, None)
     if auth is not None:
         node.workerinput["vip_interactive_auth"] = True
@@ -319,7 +356,6 @@ def pytest_configure_node(node) -> None:
         node.workerinput["vip_connect_url"] = auth._connect_url
         node.workerinput["vip_workbench_url"] = auth._workbench_url
         node.workerinput["vip_workbench_auth_error"] = auth.workbench_auth_error or ""
-        node.workerinput["vip_auth_mode"] = node.config.stash.get(_auth_mode_key, "")
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
