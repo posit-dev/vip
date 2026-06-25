@@ -14,7 +14,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 from pytest_bdd import given
 
-from vip.clients.workbench import WorkbenchClient
+from vip.clients.workbench import WorkbenchClient, is_vip_session
 from vip.plugin import _auth_session_key
 from vip.timeouts import timeout_scale
 from vip_tests.workbench.pages import Homepage, LoginPage
@@ -65,6 +65,11 @@ TIMEOUT_CLEANUP = int(30_000 * timeout_scale())
 TIMEOUT_CODE_EXEC = int(30_000 * timeout_scale())
 TIMEOUT_IDE_LOAD = int(60_000 * timeout_scale())
 TIMEOUT_SESSION_START = int(90_000 * timeout_scale())
+# Short window to detect whether an optional confirm/force-quit dialog appeared
+# in the UI session sweep. Used to gate (not to click) so an absent dialog does
+# not cost TIMEOUT_QUICK each iteration; a dialog that does appear is then
+# clicked with the normal TIMEOUT_QUICK.
+TIMEOUT_DIALOG_PROBE = int(1_000 * timeout_scale())
 
 # Poll interval (ms) used while waiting for a session to reach Active.
 _SESSION_POLL_INTERVAL = 500
@@ -146,20 +151,31 @@ def assert_homepage_loaded(page: Page) -> None:
     expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
 
-def _session_failure_message(name: str, state: str) -> str:
+def _session_failure_message(name: str, state: str, *, expected: str = "Active") -> str:
     """Build the error shown when a session reaches a terminal failure state.
 
     Replaces the opaque "Locator expected to be visible" timeout with a
-    message that names the session, the terminal state observed, and the
-    likely cause — so the reader knows the deployment (not the test) could
-    not launch the session.
+    message that names the session, the terminal state observed, the state
+    that was *expected*, and the likely cause — so the reader knows the
+    deployment (not the test) could not reach the expected state.
+
+    ``expected`` defaults to ``"Active"`` (the launch path).  For other
+    targets (e.g. ``"Suspended"``) the cause is phrased as an abnormal exit
+    rather than a failed launch, since the session did start before exiting.
     """
-    return (
-        f"Session {name!r} reached terminal state {state!r} instead of Active — "
-        "Workbench could not launch the session (abnormal exit). Verify the "
-        "deployment can launch sessions: check the launcher, the session image, "
-        "and available CPU/memory/quota."
-    )
+    if expected == "Active":
+        cause = (
+            "Workbench could not launch the session (abnormal exit). Verify the "
+            "deployment can launch sessions: check the launcher, the session image, "
+            "and available CPU/memory/quota."
+        )
+    else:
+        cause = (
+            "the session abnormally exited before reaching that state. Verify the "
+            "deployment can suspend and resume sessions, and has available "
+            "CPU/memory/quota."
+        )
+    return f"Session {name!r} reached terminal state {state!r} instead of {expected} — {cause}"
 
 
 def format_capacity_failure(total: int, failures: list[str], reasons: list[str]) -> str:
@@ -177,57 +193,99 @@ def format_capacity_failure(total: int, failures: list[str], reasons: list[str])
     return "\n".join(lines)
 
 
-def wait_for_session_active(
-    page: Page, session_name: str, *, timeout: int = TIMEOUT_SESSION_START
-) -> Locator:
-    """Wait until *session_name* reaches Active, failing fast on terminal states.
+def _visible_terminal_state(page: Page, session_name: str, *, target_state: str) -> str | None:
+    """Return the terminal failure state currently shown for *session_name*, or None.
 
-    Polls the session row for the Active status.  If the session instead
+    Checks each state in :data:`TERMINAL_SESSION_FAILURE_STATES` (skipping
+    *target_state*, the state we are waiting to reach) and returns the first
+    whose status badge is visible.
+    """
+    for state in TERMINAL_SESSION_FAILURE_STATES:
+        if state == target_state:
+            continue
+        loc = page.locator(Homepage.session_row_status(session_name, state))
+        if loc.count() > 0 and loc.first.is_visible():
+            return state
+    return None
+
+
+def raise_if_session_failed(page: Page, session_name: str, *, expected: str) -> None:
+    """Fail fast if *session_name* is currently in a terminal failure state.
+
+    Raises ``AssertionError`` with an actionable message (naming the terminal
+    state observed and the *expected* state) when a session has abnormally
+    exited, so waiters and reload loops surface a clear cause instead of
+    waiting out their budget and emitting an opaque
+    "Locator expected to be visible" error.  No-op otherwise.
+    """
+    failed_state = _visible_terminal_state(page, session_name, target_state=expected)
+    if failed_state is not None:
+        raise AssertionError(
+            _session_failure_message(session_name, failed_state, expected=expected)
+        )
+
+
+def _wait_for_session_state(
+    page: Page, session_name: str, target_state: str, *, timeout: int
+) -> Locator:
+    """Wait until *session_name* reaches *target_state*, failing fast on terminal states.
+
+    Polls the session row for ``target_state``.  If the session instead
     reaches a terminal failure state (see :data:`TERMINAL_SESSION_FAILURE_STATES`),
     raises ``AssertionError`` immediately with an actionable message rather
     than waiting out the full ``timeout`` and emitting an opaque
     "Locator expected to be visible" error.
 
-    Returns the session row locator so callers can chain further actions
-    (e.g. clicking the session's join link).
+    Returns the session row locator so callers can chain further actions.
     """
     row = page.locator(Homepage.session_row(session_name))
     expect(row).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
-    active = page.locator(Homepage.session_row_status(session_name, "Active"))
-    terminal = {
-        state: page.locator(Homepage.session_row_status(session_name, state))
-        for state in TERMINAL_SESSION_FAILURE_STATES
-    }
+    target = page.locator(Homepage.session_row_status(session_name, target_state))
 
-    def _active_now() -> bool:
-        return active.count() > 0 and active.first.is_visible()
-
-    def _terminal_now() -> str | None:
-        for state, loc in terminal.items():
-            if loc.count() > 0 and loc.first.is_visible():
-                return state
-        return None
+    def _target_now() -> bool:
+        return target.count() > 0 and target.first.is_visible()
 
     deadline = time.monotonic() + timeout / 1000
     while time.monotonic() < deadline:
-        if _active_now():
+        if _target_now():
             return row
-        failed_state = _terminal_now()
-        if failed_state is not None:
-            raise AssertionError(_session_failure_message(session_name, failed_state))
+        raise_if_session_failed(page, session_name, expected=target_state)
         page.wait_for_timeout(_SESSION_POLL_INTERVAL)
 
     # Final check — the status may have flipped in the last poll interval.
-    if _active_now():
+    if _target_now():
         return row
-    failed_state = _terminal_now()
-    if failed_state is not None:
-        raise AssertionError(_session_failure_message(session_name, failed_state))
+    raise_if_session_failed(page, session_name, expected=target_state)
     raise AssertionError(
-        f"Session {session_name!r} did not reach Active within {timeout // 1000}s "
-        "(no Active or terminal status detected)."
+        f"Session {session_name!r} did not reach {target_state} within "
+        f"{timeout // 1000}s (no {target_state} or terminal status detected)."
     )
+
+
+def wait_for_session_active(
+    page: Page, session_name: str, *, timeout: int = TIMEOUT_SESSION_START
+) -> Locator:
+    """Wait until *session_name* reaches Active, failing fast on terminal states.
+
+    Returns the session row locator so callers can chain further actions
+    (e.g. clicking the session's join link).
+    """
+    return _wait_for_session_state(page, session_name, "Active", timeout=timeout)
+
+
+def wait_for_session_suspended(
+    page: Page, session_name: str, *, timeout: int = TIMEOUT_CLEANUP
+) -> Locator:
+    """Wait until *session_name* reaches Suspended, failing fast on terminal states.
+
+    The suspend counterpart to :func:`wait_for_session_active`.  If the session
+    abnormally exits (terminal "Failed") instead of suspending, raises
+    ``AssertionError`` immediately with an actionable message naming the
+    abnormal exit, rather than waiting out ``timeout`` and emitting an opaque
+    "Locator expected to be visible" error.
+    """
+    return _wait_for_session_state(page, session_name, "Suspended", timeout=timeout)
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +486,26 @@ def workbench_login(
 # Shared Fixtures
 # ---------------------------------------------------------------------------
 
+_SELECT_PREFIX = "select "
+
+
+def _vip_names_from_select_labels(labels: list[str]) -> list[str]:
+    """Extract VIP-named session names from session-row checkbox aria-labels.
+
+    Each homepage session row exposes a checkbox whose aria-label is
+    ``"select <session name>"``.  Returns the names (without the ``"select "``
+    prefix) that match :func:`is_vip_session`, so a real user's sessions are
+    never selected for quitting.  Input order is preserved.
+    """
+    names: list[str] = []
+    for label in labels:
+        if not label.startswith(_SELECT_PREFIX):
+            continue
+        name = label[len(_SELECT_PREFIX) :]
+        if is_vip_session(name):
+            names.append(name)
+    return names
+
 
 def _quit_vip_sessions_via_cookies(
     base_url: str,
@@ -453,6 +531,93 @@ def _quit_vip_sessions_via_cookies(
         return 0
 
 
+def _quit_vip_sessions_via_ui(page: Page, base_url: str, *, max_iterations: int = 10) -> int:
+    """Quit orphaned VIP-named sessions through the homepage UI.
+
+    Fallback for deployments whose session API is unreachable (see
+    :meth:`WorkbenchClient.sessions_api_reachable`), where the cookie/API sweep
+    is a no-op.  Navigates to the homepage, selects only VIP-named session rows
+    (validated via :func:`is_vip_session`), clicks Quit, and dismisses any
+    confirmation/force-quit dialogs, repeating until no VIP rows remain or
+    *max_iterations* is hit.  Never uses "Quit All".  Best-effort: all
+    Playwright errors are swallowed and it never raises.  Returns the number of
+    distinct VIP sessions a quit was issued for (a session that persists across
+    iterations is counted once, not per attempt).
+    """
+    quit_names: set[str] = set()
+    try:
+        page.goto(base_url.rstrip("/") + "/home", wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
+        for _ in range(max_iterations):
+            checkboxes = page.locator("[aria-label^='select ']")
+            labels = [
+                checkboxes.nth(i).get_attribute("aria-label") or ""
+                for i in range(checkboxes.count())
+            ]
+            vip_names = _vip_names_from_select_labels(labels)
+            if not vip_names:
+                break
+            selected: list[str] = []
+            for name in vip_names:
+                try:
+                    page.locator(Homepage.session_checkbox(name)).first.click(timeout=TIMEOUT_QUICK)
+                    selected.append(name)
+                except Exception:
+                    continue
+            if not selected:
+                break
+            try:
+                page.locator(Homepage.QUIT_BUTTON).first.click(timeout=TIMEOUT_QUICK)
+            except Exception:
+                break
+            # Confirm/force-quit dialogs are optional — a normal quit completes
+            # without them (see session_cleaned_up). Probe each within a short
+            # window so an absent dialog doesn't dominate runtime; if one does
+            # appear, click it with the normal timeout so a present-but-slow
+            # dialog still completes (a short click timeout could drop it).
+            for sel in (Homepage.CONFIRM_QUIT, Homepage.FORCE_QUIT, Homepage.CONFIRM_FORCE_QUIT):
+                dialog = page.locator(sel)
+                try:
+                    dialog.wait_for(state="visible", timeout=TIMEOUT_DIALOG_PROBE)
+                except Exception:
+                    continue
+                try:
+                    dialog.first.click(timeout=TIMEOUT_QUICK)
+                except Exception:
+                    pass
+            quit_names.update(selected)
+            try:
+                page.reload(wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
+            except Exception:
+                break
+    except Exception:
+        pass
+    return len(quit_names)
+
+
+def _session_api_reachable_via_cookies(
+    base_url: str,
+    cookies: dict[str, str],
+    *,
+    insecure: bool,
+    ca_bundle,
+) -> bool:
+    """Whether the session API is reachable for a cookie-authenticated client.
+
+    Mirrors :func:`_quit_vip_sessions_via_cookies`: uses a scratch
+    ``WorkbenchClient`` so the session-scoped client's cookie jar is untouched.
+    Returns ``False`` on any error.
+    """
+    try:
+        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
+        try:
+            scratch.set_cookies(cookies)
+            return scratch.sessions_api_reachable()
+        finally:
+            scratch.close()
+    except Exception:
+        return False
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _wb_cleanup_state(vip_config, workbench_client):
     """End-of-run safety net: sweep any VIP sessions left behind.
@@ -462,7 +627,7 @@ def _wb_cleanup_state(vip_config, workbench_client):
     run) it does one final ``quit_vip_sessions`` sweep, catching sessions
     orphaned when a per-test cleanup failed outright (e.g. the page crashed).
     """
-    state: dict[str, object] = {"cookies": None, "base_url": None}
+    state: dict[str, object] = {"cookies": None, "base_url": None, "api_reachable": None}
     yield state
     if workbench_client is None:
         return
@@ -506,6 +671,19 @@ def _cleanup_sessions(page, workbench_client, vip_config, _wb_cleanup_state):
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
     )
+    # If the session API is unreachable on this deployment (e.g. /api/sessions
+    # 404s), the cookie/API sweep above is a no-op. Detect reachability once per
+    # session (cached on _wb_cleanup_state) and, when unavailable, fall back to a
+    # UI-driven sweep that quits orphaned VIP sessions via the homepage.
+    if _wb_cleanup_state["api_reachable"] is None:
+        _wb_cleanup_state["api_reachable"] = _session_api_reachable_via_cookies(
+            workbench_client.base_url,
+            cookies,
+            insecure=vip_config.insecure,
+            ca_bundle=vip_config.ca_bundle,
+        )
+    if not _wb_cleanup_state["api_reachable"]:
+        _quit_vip_sessions_via_ui(page, workbench_client.base_url)
 
 
 @pytest.fixture

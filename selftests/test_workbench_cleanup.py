@@ -170,3 +170,223 @@ def test_quit_vip_sessions_counts_unique_sessions_under_retry():
     wc = _client_with_handler(handler)
     # 3 attempts each DELETE "a" successfully, but it is one unique session.
     assert wc.quit_vip_sessions(retries=3, settle_seconds=0) == 1
+
+
+def test_sessions_api_reachable_true_on_200():
+    wc = _client_with_handler(lambda r: httpx.Response(200, json=[]))
+    assert wc.sessions_api_reachable() is True
+
+
+def test_sessions_api_reachable_false_on_404():
+    wc = _client_with_handler(lambda r: httpx.Response(404, text="<html>not found</html>"))
+    assert wc.sessions_api_reachable() is False
+
+
+def test_sessions_api_reachable_false_on_transport_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("boom")
+
+    wc = _client_with_handler(handler)
+    assert wc.sessions_api_reachable() is False
+
+
+def test_sessions_api_reachable_false_on_redirect_to_login():
+    # 302 is < 400 but is not a usable session list (e.g. auth bounce).
+    wc = _client_with_handler(lambda r: httpx.Response(302, headers={"location": "/auth-sign-in"}))
+    assert wc.sessions_api_reachable() is False
+
+
+def test_sessions_api_reachable_false_on_200_html():
+    # Some deployments serve the SPA (200 HTML) for unknown API paths.
+    wc = _client_with_handler(lambda r: httpx.Response(200, text="<html>app</html>"))
+    assert wc.sessions_api_reachable() is False
+
+
+def test_sessions_api_reachable_false_on_200_non_list_json():
+    # 200 with a JSON object (not the expected session array) is not usable.
+    wc = _client_with_handler(lambda r: httpx.Response(200, json={"error": "nope"}))
+    assert wc.sessions_api_reachable() is False
+
+
+def test_vip_names_from_select_labels_keeps_only_vip():
+    from vip_tests.workbench.conftest import _vip_names_from_select_labels
+
+    labels = [
+        "select VIP test_jobs.py - gw0-1",
+        "select My real work",
+        "select _vip_cap_1_default_0",
+        "garbage without prefix",
+        "VIP no select prefix",
+    ]
+    assert _vip_names_from_select_labels(labels) == [
+        "VIP test_jobs.py - gw0-1",
+        "_vip_cap_1_default_0",
+    ]
+
+
+def test_quit_vip_sessions_via_ui_never_raises_on_failure():
+    """A navigation/Playwright failure must not propagate out of cleanup."""
+    from vip_tests.workbench.conftest import _quit_vip_sessions_via_ui
+
+    class _BoomPage:
+        def goto(self, *args, **kwargs):
+            raise RuntimeError("navigation failed")
+
+    assert _quit_vip_sessions_via_ui(_BoomPage(), "https://wb.example.com") == 0
+
+
+def test_session_api_reachable_via_cookies_delegates_and_never_raises(monkeypatch):
+    from vip_tests.workbench import conftest as wb
+
+    monkeypatch.setattr(wb.WorkbenchClient, "sessions_api_reachable", lambda self: True)
+    assert (
+        wb._session_api_reachable_via_cookies(
+            "https://wb.example.com", {"c": "v"}, insecure=False, ca_bundle=None
+        )
+        is True
+    )
+
+    def boom(self):
+        raise RuntimeError("nope")
+
+    monkeypatch.setattr(wb.WorkbenchClient, "sessions_api_reachable", boom)
+    assert (
+        wb._session_api_reachable_via_cookies(
+            "https://wb.example.com", {}, insecure=False, ca_bundle=None
+        )
+        is False
+    )
+
+
+class _FakeLocator:
+    """Stand-in for a Playwright Locator over the homepage session list."""
+
+    def __init__(self, page, selector, index=0):
+        self._page = page
+        self._selector = selector
+        self._index = index
+
+    def count(self) -> int:
+        return len(self._page.session_names)
+
+    def nth(self, i):
+        return _FakeLocator(self._page, self._selector, i)
+
+    @property
+    def first(self):
+        return self
+
+    def get_attribute(self, name):
+        if name == "aria-label":
+            return f"select {self._page.session_names[self._index]}"
+        return None
+
+    def wait_for(self, *, state=None, timeout=None):
+        # Only selectors registered as present "appear"; others time out.
+        if self._selector not in self._page.present_dialogs:
+            raise RuntimeError(f"locator not visible: {self._selector}")
+
+    def click(self, timeout=None):
+        self._page._click(self._selector, timeout)
+
+
+class _FakeHomepage:
+    """Minimal Playwright Page double for the homepage session list.
+
+    Models the rows the UI sweep interacts with: each row exposes a
+    "select <name>" checkbox; clicking Quit removes the selected rows (unless
+    *quit_removes* is False, simulating a quit that does not take effect, e.g.
+    a confirm dialog that never appears). Only selectors in *present_dialogs*
+    are "visible" to wait_for; any others time out (absent), exercising the
+    helper's per-dialog skip path. Dialog clicks are recorded as
+    (selector, timeout) so tests can assert which timeout was used.
+    """
+
+    def __init__(self, session_names, *, quit_removes=True, present_dialogs=()):
+        self.session_names = list(session_names)
+        self._quit_removes = quit_removes
+        self.present_dialogs = set(present_dialogs)
+        self._selected: list[str] = []
+        self.clicked_checkbox_names: list[str] = []
+        self.dialog_clicks: list[tuple[str, object]] = []
+        self.quit_clicks = 0
+        self.reloads = 0
+
+    def goto(self, *args, **kwargs):
+        pass
+
+    def reload(self, *args, **kwargs):
+        self.reloads += 1
+
+    def locator(self, selector):
+        return _FakeLocator(self, selector)
+
+    def _click(self, selector, timeout=None):
+        from vip_tests.workbench.pages import Homepage
+
+        prefix = "[aria-label='select "
+        if selector.startswith(prefix):
+            name = selector[len(prefix) : -2]  # strip prefix and trailing "']"
+            self.clicked_checkbox_names.append(name)
+            if name in self.session_names:
+                self._selected.append(name)
+            return
+        if selector == Homepage.QUIT_BUTTON:
+            self.quit_clicks += 1
+            if self._quit_removes:
+                for name in self._selected:
+                    if name in self.session_names:
+                        self.session_names.remove(name)
+            self._selected = []
+            return
+        # A confirm/force-quit dialog click — only reached when wait_for found
+        # it present. Record the selector and the timeout used.
+        self.dialog_clicks.append((selector, timeout))
+
+
+def test_quit_vip_sessions_via_ui_quits_only_vip_rows_and_counts_distinct():
+    from vip_tests.workbench.conftest import _quit_vip_sessions_via_ui
+
+    page = _FakeHomepage(
+        ["VIP test_jobs.py - gw0-1", "My real work", "_vip_cap_1_default_0"],
+        quit_removes=True,
+    )
+    count = _quit_vip_sessions_via_ui(page, "https://wb.example.com")
+
+    assert count == 2
+    assert "My real work" not in page.clicked_checkbox_names
+    assert set(page.clicked_checkbox_names) == {
+        "VIP test_jobs.py - gw0-1",
+        "_vip_cap_1_default_0",
+    }
+    assert page.session_names == ["My real work"]
+
+
+def test_quit_vip_sessions_via_ui_counts_persisting_session_once():
+    from vip_tests.workbench.conftest import _quit_vip_sessions_via_ui
+
+    # Quit "succeeds" but the row never disappears, so the same VIP session is
+    # re-selected every iteration. The count must reflect distinct sessions.
+    page = _FakeHomepage(["VIP stuck - gw0-9"], quit_removes=False)
+    count = _quit_vip_sessions_via_ui(page, "https://wb.example.com", max_iterations=4)
+
+    assert count == 1
+    assert page.quit_clicks == 4
+
+
+def test_quit_vip_sessions_via_ui_clicks_present_dialog_with_normal_timeout():
+    from vip_tests.workbench.conftest import TIMEOUT_QUICK, _quit_vip_sessions_via_ui
+    from vip_tests.workbench.pages import Homepage
+
+    page = _FakeHomepage(
+        ["VIP one - gw0-1"],
+        quit_removes=True,
+        present_dialogs={Homepage.CONFIRM_QUIT},
+    )
+    count = _quit_vip_sessions_via_ui(page, "https://wb.example.com")
+
+    assert count == 1
+    # The present confirm dialog is clicked, and with the normal timeout (not the
+    # short probe) so a slow-but-present dialog still completes. Absent dialogs
+    # (force-quit follow-ups) are not clicked.
+    assert page.dialog_clicks == [(Homepage.CONFIRM_QUIT, TIMEOUT_QUICK)]

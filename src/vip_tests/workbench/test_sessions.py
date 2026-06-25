@@ -22,6 +22,7 @@ from vip_tests.workbench.conftest import (
     assert_homepage_loaded,
     unique_session_name,
     wait_for_session_active,
+    wait_for_session_suspended,
     workbench_login,
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
@@ -132,11 +133,14 @@ def user_suspends_session(page: Page, session_context: dict):
 
 @then("the session reaches Suspended state")
 def session_becomes_suspended(page: Page, session_context: dict):
-    """Verify the session transitions to Suspended state."""
-    session_name = session_context["name"]
+    """Verify the session transitions to Suspended state.
 
-    session_suspended = page.locator(Homepage.session_row_status(session_name, "Suspended"))
-    expect(session_suspended).to_be_visible(timeout=TIMEOUT_CLEANUP)
+    Fails fast with an actionable message if the session reaches a terminal
+    state (e.g. Failed / abnormal exit) instead of suspending, rather than
+    waiting out the full timeout and emitting an opaque
+    "Locator expected to be visible" error.
+    """
+    wait_for_session_suspended(page, session_context["name"])
 
 
 @when("the user resumes the session")

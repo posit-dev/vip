@@ -111,7 +111,9 @@ def _execute_r_command(page: Page, command: str) -> str:
     console_input.click()
     # The console input is an ACE editor <div>, not an <input>, so fill()
     # doesn't work.  Select-all + delete to clear any previous content.
-    page.keyboard.press("Control+a")
+    # ControlOrMeta maps select-all to Cmd+A on macOS, where Ctrl+A is "go to
+    # line start" and would leave previous content in place.
+    page.keyboard.press("ControlOrMeta+a")
     page.keyboard.press("Backspace")
     console_input.type(command)
     console_input.press("Enter")

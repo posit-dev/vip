@@ -421,6 +421,81 @@ class TestPluginIntegration:
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
         result.stdout.fnmatch_lines(["*PASSED*"])
 
+    # A skip reason far longer than 80 columns, ending in a unique sentinel so
+    # we can tell a full reason from one pytest has ellipsized to "(reason...)".
+    _LONG_SKIP_REASON = (
+        "Workbench session not established by --interactive-auth so this skip "
+        "reason is intentionally far longer than eighty columns and would "
+        "normally be ellipsized before the END_OF_REASON_SENTINEL"
+    )
+
+    def _make_long_skip_test(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            f"""
+            import pytest
+
+            @pytest.mark.skip(reason={self._LONG_SKIP_REASON!r})
+            def test_skips():
+                pass
+            """
+        )
+
+    def test_skip_reason_shown_in_full_inline(self, selftest_pytester, monkeypatch):
+        """A long skip reason renders in full on the verbose (``-v``) test line.
+
+        pytest ellipsizes the inline reason to the terminal width at the default
+        test-case verbosity; the plugin bumps that level to 2 under ``-v`` so the
+        whole reason is shown (it may wrap, but no text is dropped).
+        """
+        monkeypatch.setenv("COLUMNS", "80")
+        self._make_long_skip_test(selftest_pytester)
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(skipped=1)
+        # Collapse whitespace so a wrapped reason still matches end to end.
+        collapsed = "".join(result.stdout.str().split())
+        assert "".join(self._LONG_SKIP_REASON.split()) in collapsed
+        assert "END_OF_REASON_SENTINEL" in collapsed
+        # The ellipsized form pytest would emit at the default verbosity ends in
+        # "...)" — its absence proves the bump actually fired (and isn't a silent
+        # no-op on a future pytest where the private _inicache write breaks).
+        assert "...)" not in collapsed
+
+    def test_skip_reason_ellipsized_without_bump(self, selftest_pytester, monkeypatch):
+        """Control: with the bump defeated, the same reason IS ellipsized.
+
+        Passing ``-o verbosity_test_cases=1`` makes ``getini`` return ``"1"``
+        instead of ``"auto"``, so the plugin leaves the level alone. This proves
+        the ``COLUMNS=80`` width is honored in-process and that truncation is
+        reachable here — without it, ``test_skip_reason_shown_in_full_inline``
+        could pass vacuously. If this control ever stops truncating, the positive
+        test is no longer meaningful and CI should flag it.
+        """
+        monkeypatch.setenv("COLUMNS", "80")
+        self._make_long_skip_test(selftest_pytester)
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml", "-v", "-o", "verbosity_test_cases=1"
+        )
+        result.assert_outcomes(skipped=1)
+        collapsed = "".join(result.stdout.str().split())
+        assert "...)" in collapsed
+        assert "END_OF_REASON_SENTINEL" not in collapsed
+
+    def test_skip_reason_not_forced_verbose_in_dot_mode(self, selftest_pytester):
+        """Without ``-v`` the reporter stays in dot mode — the verbosity bump is
+        gated on the user already having asked for per-test lines."""
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.skip(reason="some reason")
+            def test_skips():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml")
+        result.assert_outcomes(skipped=1)
+        result.stdout.no_fnmatch_line("*test_skips*SKIPPED*")
+
     def test_json_report_output(self, selftest_pytester):
         selftest_pytester.makepyfile(
             """
@@ -832,6 +907,33 @@ class TestXdistCompatibility:
                 f"Found xdist worker prefix in output line: {line!r}"
             )
 
+    def test_no_auth_products_warning_not_duplicated_under_xdist(self, selftest_pytester):
+        """The 'no auth-requiring products' skip warning fires once, not per worker.
+
+        ``pytest_configure`` runs on the xdist controller *and* on every worker.
+        The controller-only auth branch must not re-run on workers, or the skip
+        warning floods the output once per worker (controller + N workers).
+        """
+        selftest_pytester.makepyfile(
+            """
+            def test_placeholder():
+                assert True
+            """
+        )
+        result = selftest_pytester.runpytest_subprocess(
+            "--vip-config=vip.toml",
+            "--interactive-auth",
+            "-n",
+            "2",
+            "-W",
+            "always",
+        )
+        assert result.ret == 0
+        result.assert_outcomes(passed=1)
+        combined = result.outlines + result.errlines
+        hits = [line for line in combined if "skipping browser authentication" in line]
+        assert len(hits) == 1, f"expected exactly one skip warning, got {len(hits)}: {hits}"
+
     def test_vip_metadata_survives_xdist(self, selftest_pytester):
         """Custom report attributes (markers, scenario fields) survive xdist transit."""
         # Use a plain test file and verify markers/scenario fields are present in results.
@@ -1158,6 +1260,51 @@ class TestAuthModeStash:
             def test_worker_mode(request, i):
                 assert hasattr(request.config, "workerinput"), "expected xdist worker"
                 assert request.config.stash[_auth_mode_key] == {expected_mode!r}
+                workerid = request.config.workerinput["workerid"]
+                open(f"{{MARKER_DIR}}/{{workerid}}", "a").close()
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", auth_flag, "-n", "2", "-v")
+        result.assert_outcomes(passed=8)
+        workerids = {p.name for p in marker_dir.iterdir()}
+        assert len(workerids) == 2, (
+            f"expected both xdist workers to restore mode, got workerids={workerids}"
+        )
+
+    @pytest.mark.parametrize(
+        ("auth_flag", "expected_mode"),
+        [("--interactive-auth", "interactive"), ("--headless-auth", "headless")],
+    )
+    def test_auth_mode_forwarded_to_workers_without_auth_session(
+        self, pytester, auth_flag, expected_mode
+    ):
+        """auth_mode stays consistent on workers when no auth product is configured.
+
+        With only a non-auth product (Package Manager) the controller sets the
+        auth mode but never establishes a browser session, so the session path
+        forwards nothing. Workers must still mirror the controller's mode, or
+        the ``auth_mode`` fixture diverges between xdist and non-xdist runs.
+        """
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[package_manager]\nurl = "https://p3m.example.com"\n'
+            ),
+        )
+        marker_dir = pytester.path / "worker_markers"
+        marker_dir.mkdir()
+        pytester.makepyfile(
+            f"""
+            import pytest
+            from vip.plugin import _auth_mode_key
+
+            MARKER_DIR = {str(marker_dir)!r}
+
+            @pytest.mark.parametrize("i", list(range(8)))
+            def test_worker_mode(request, i):
+                assert hasattr(request.config, "workerinput"), "expected xdist worker"
+                assert request.config.stash.get(_auth_mode_key, "none") == {expected_mode!r}
                 workerid = request.config.workerinput["workerid"]
                 open(f"{{MARKER_DIR}}/{{workerid}}", "a").close()
             """
