@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given, scenario, then, when
@@ -140,6 +141,69 @@ def _read_dropdown_options(page: Page, selector: str) -> list[str]:
     return versions
 
 
+def _dismiss_dialog(page: Page) -> None:
+    """Best-effort close of the New Session dialog.
+
+    The legacy ``#modalCancelBtn`` (``NewSessionDialog.CANCEL_BUTTON``) is not
+    present/actionable in the current Workbench New Session dialog, so a direct
+    click hangs until timeout.  Try the cancel button briefly, fall back to
+    pressing Escape, and never let dialog teardown fail an assertion-focused
+    test.  Mirrors the defensive dismiss in ``test_ide_launch._dismiss_dialog_and_skip``.
+    """
+    dialog = page.locator(NewSessionDialog.DIALOG)
+    try:
+        cancel = page.locator(NewSessionDialog.CANCEL_BUTTON)
+        if cancel.count() > 0:
+            cancel.click(timeout=TIMEOUT_QUICK)
+    except (PlaywrightTimeoutError, PlaywrightError):
+        pass
+    try:
+        if dialog.count() > 0 and dialog.first.is_visible():
+            page.keyboard.press("Escape")
+    except (PlaywrightTimeoutError, PlaywrightError):
+        pass
+    try:
+        expect(dialog).not_to_be_visible(timeout=TIMEOUT_QUICK)
+    except (AssertionError, PlaywrightTimeoutError, PlaywrightError):
+        pass
+
+
+def _open_dialog_with_rstudio_tab(page: Page):
+    """Open the New Session dialog and activate the RStudio Pro IDE tab.
+
+    The current Workbench New Session dialog is tabbed per IDE and defaults to
+    Positron.  Both the R/Python version selectors and an RStudio session
+    require the RStudio Pro tab to be active, so select it explicitly rather
+    than relying on the dialog's default IDE.  Skips gracefully when RStudio Pro
+    is not offered or its Launch control never appears.  Mirrors the tab
+    selection in ``test_ide_launch._start_session``.
+    """
+    page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)
+    dialog = page.locator(NewSessionDialog.DIALOG)
+    expect(dialog).to_be_visible(timeout=TIMEOUT_DIALOG)
+
+    ide_display = NewSessionDialog.ide_display_name("RStudio")  # "RStudio Pro"
+    ide_tab = dialog.get_by_role("tab", name=ide_display)
+    if ide_tab.count() == 0:
+        _dismiss_dialog(page)
+        pytest.skip(f"{ide_display} IDE not available in this Workbench deployment")
+    ide_tab.click(timeout=TIMEOUT_QUICK)
+
+    # The Launch button only appears once the selected tab's content is ready.
+    # If it never shows, the tab exists but the IDE is not functional here.
+    try:
+        page.locator(NewSessionDialog.LAUNCH_BUTTON).wait_for(
+            state="visible", timeout=TIMEOUT_QUICK
+        )
+    except PlaywrightTimeoutError:
+        _dismiss_dialog(page)
+        pytest.skip(
+            f"{ide_display} tab opened but Launch button did not appear — "
+            "the IDE may not be installed or available on this Workbench instance"
+        )
+    return dialog
+
+
 # ---------------------------------------------------------------------------
 # When steps: open dialog and read version lists
 # ---------------------------------------------------------------------------
@@ -150,20 +214,15 @@ def _read_dropdown_options(page: Page, selector: str) -> list[str]:
     target_fixture="available_r",
 )
 def check_r_versions_in_dialog(page: Page) -> list[str]:
-    page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)
-    dialog = page.locator(NewSessionDialog.DIALOG)
-    expect(dialog).to_be_visible(timeout=TIMEOUT_DIALOG)
+    _open_dialog_with_rstudio_tab(page)
 
     versions = _read_dropdown_options(page, NewSessionDialog.R_VERSION_DROPDOWN)
+    _dismiss_dialog(page)
     if not versions:
-        page.locator(NewSessionDialog.CANCEL_BUTTON).click(timeout=TIMEOUT_QUICK)
         pytest.skip(
             "R version selector not present in New Session dialog — "
             "this Workbench instance may not expose a version dropdown"
         )
-
-    page.locator(NewSessionDialog.CANCEL_BUTTON).click(timeout=TIMEOUT_QUICK)
-    expect(dialog).not_to_be_visible(timeout=TIMEOUT_DIALOG)
     return versions
 
 
@@ -172,20 +231,15 @@ def check_r_versions_in_dialog(page: Page) -> list[str]:
     target_fixture="available_python",
 )
 def check_python_versions_in_dialog(page: Page) -> list[str]:
-    page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)
-    dialog = page.locator(NewSessionDialog.DIALOG)
-    expect(dialog).to_be_visible(timeout=TIMEOUT_DIALOG)
+    _open_dialog_with_rstudio_tab(page)
 
     versions = _read_dropdown_options(page, NewSessionDialog.PYTHON_VERSION_DROPDOWN)
+    _dismiss_dialog(page)
     if not versions:
-        page.locator(NewSessionDialog.CANCEL_BUTTON).click(timeout=TIMEOUT_QUICK)
         pytest.skip(
             "Python version selector not present in New Session dialog — "
             "this Workbench instance may not expose a version dropdown"
         )
-
-    page.locator(NewSessionDialog.CANCEL_BUTTON).click(timeout=TIMEOUT_QUICK)
-    expect(dialog).not_to_be_visible(timeout=TIMEOUT_DIALOG)
     return versions
 
 
@@ -270,9 +324,10 @@ def start_rstudio_with_r_version(
     session_context["ide_type"] = "RStudio"
     session_context["expected_r_version"] = expected_r_versions[0]
 
-    page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)
-    dialog = page.locator(NewSessionDialog.DIALOG)
-    expect(dialog).to_be_visible(timeout=TIMEOUT_DIALOG)
+    # Select the RStudio Pro IDE tab so an RStudio session launches.  Without
+    # this the dialog launches its default IDE (Positron on current Workbench),
+    # and the later ``#rstudio_container`` assertion times out.
+    _open_dialog_with_rstudio_tab(page)
 
     # Try to select the expected R version if a dropdown exists
     r_dropdown = page.locator(NewSessionDialog.R_VERSION_DROPDOWN)
