@@ -50,6 +50,8 @@ report = [
 load = [
     "locust>=2.20",
     "msgpack>=1.2.1",  # GHSA-6v7p-g79w-8964 fix; transitive via locust
+    "python-engineio>=4.13.2",  # CVE-2026-48802, CVE-2026-48809 fix; transitive via locust
+    "python-socketio>=5.16.2",  # CVE-2026-48804 fix; transitive via locust
 ]
 dev = [
     "ruff>=0.15.0,<0.16",
