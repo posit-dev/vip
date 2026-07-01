@@ -145,8 +145,8 @@ Key principles:
 
 | File | Purpose |
 |------------------------------------|------------------------------------|
-| `src/vip/cli.py` | CLI entry point: verify, cleanup, install, uninstall, cluster, auth, scaffold commands |
-| `src/vip/config.py` | TOML config loader, dataclasses, `Mode` enum, per-mode validation |
+| `src/vip/cli.py` | CLI entry point: verify, cleanup, install, uninstall, auth, scaffold commands |
+| `src/vip/config.py` | TOML config loader and dataclasses |
 | `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers |
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
 | `src/vip/plugin.py` | pytest plugin: markers, auto-skip, JSON report output |
@@ -154,13 +154,6 @@ Key principles:
 | `src/vip/clients/connect.py` | httpx client for Connect API |
 | `src/vip/clients/workbench.py` | httpx client for Workbench API |
 | `src/vip/clients/packagemanager.py` | httpx client for Package Manager API |
-| `src/vip/cluster/aws.py` | AWS EKS kubeconfig generation |
-| `src/vip/cluster/azure.py` | Azure AKS kubeconfig generation |
-| `src/vip/cluster/kubeconfig.py` | Cloud-agnostic kubeconfig writer |
-| `src/vip/cluster/target.py` | Cluster config validation |
-| `src/vip/verify/site.py` | PTD Site CR parsing, vip.toml generation |
-| `src/vip/verify/credentials.py` | Keycloak + interactive credential provisioning |
-| `src/vip/verify/job.py` | K8s Job creation, log streaming, cleanup |
 | `src/vip/install/platform.py` | Distro detection (rhel/debian/macos) + canonical Chromium package lists |
 | `src/vip/install/manifest.py` | `.vip-install.json` read/write (atomic), schema gate, pending-package helpers |
 | `src/vip/install/packages.py` | `rpm -q` / `dpkg-query` wrappers for pre-existing detection |
@@ -203,7 +196,7 @@ These are defined in `src/vip_tests/conftest.py` and available to all tests:
 -   `data_sources` -- list of `DataSourceEntry` objects
 -   `email_enabled` / `monitoring_enabled` -- feature flags
 
-**Note:** `vip verify --connect-url URL` generates configuration on the fly from CLI flags -- no `vip.toml` is needed. When `--k8s` is used, configuration is auto-generated from PTD Site CRs (posit-dev/team-operator).
+**Note:** `vip verify --connect-url URL` generates configuration on the fly from CLI flags -- no `vip.toml` is needed.
 
 ## API clients
 

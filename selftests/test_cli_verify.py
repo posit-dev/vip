@@ -1,4 +1,4 @@
-"""Tests for _run_verify_local command assembly in vip.cli."""
+"""Tests for run_verify command assembly in vip.cli."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from vip.cli import DEFAULT_TEST_TIMEOUT_SECONDS
 
 
 def _make_args(**overrides) -> argparse.Namespace:
-    """Build a minimal args namespace for _run_verify_local."""
+    """Build a minimal args namespace for run_verify."""
     defaults = {
         "config": None,
         "connect_url": None,
@@ -40,7 +40,7 @@ def _make_args(**overrides) -> argparse.Namespace:
 
 
 def _capture_call(args: argparse.Namespace) -> tuple[list[str], dict]:
-    """Run _run_verify_local with mocked subprocess and return (cmd, kwargs)."""
+    """Run run_verify with mocked subprocess and return (cmd, kwargs)."""
     captured: list[tuple[list[str], dict]] = []
 
     def fake_run(cmd, **kwargs):
@@ -53,16 +53,16 @@ def _capture_call(args: argparse.Namespace) -> tuple[list[str], dict]:
         patch("vip.cli.subprocess.run", side_effect=fake_run),
         patch("vip.cli.sys.exit"),
     ):
-        from vip.cli import _run_verify_local
+        from vip.cli import run_verify
 
-        _run_verify_local(args)
+        run_verify(args)
 
     assert captured, "subprocess.run was never called"
     return captured[0]
 
 
 def _capture_cmd(args: argparse.Namespace) -> list[str]:
-    """Run _run_verify_local with mocked subprocess and return the command."""
+    """Run run_verify with mocked subprocess and return the command."""
     cmd, _kwargs = _capture_call(args)
     return cmd
 
@@ -182,10 +182,10 @@ class TestVerifyLocalCredentialCheck:
     """Exit early when products are configured but credentials are missing."""
 
     def _run_and_expect_exit(self, args):
-        from vip.cli import _run_verify_local
+        from vip.cli import run_verify
 
         with pytest.raises(SystemExit) as exc_info:
-            _run_verify_local(args)
+            run_verify(args)
         assert exc_info.value.code == 1
 
     def test_workbench_url_without_creds_exits(self, tmp_path, monkeypatch, capsys):
@@ -351,18 +351,18 @@ class TestVerifyLocalMissingConfig:
     def test_explicit_config_missing_exits(self, tmp_path):
         missing = str(tmp_path / "does_not_exist.toml")
         with pytest.raises(SystemExit) as exc_info:
-            from vip.cli import _run_verify_local
+            from vip.cli import run_verify
 
-            _run_verify_local(_make_args(config=missing))
+            run_verify(_make_args(config=missing))
         assert exc_info.value.code == 1
 
     def test_no_config_no_urls_missing_default_exits(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         with pytest.raises(SystemExit) as exc_info:
-            from vip.cli import _run_verify_local
+            from vip.cli import run_verify
 
-            _run_verify_local(_make_args())
+            run_verify(_make_args())
         assert exc_info.value.code == 1
 
     def test_url_args_bypass_missing_default(self, tmp_path, monkeypatch):
@@ -597,63 +597,9 @@ class TestPerformanceOptIn:
         )
         assert self._marker_expr(cmd) == "connect"
 
-    @staticmethod
-    def _capture_k8s_categories(args: argparse.Namespace) -> str:
-        """Run _run_k8s_job with mocked K8s helpers and return the categories= value."""
-        from unittest.mock import MagicMock, patch
-
-        captured: dict[str, str] = {}
-
-        def fake_create_job(_job_name, _namespace, _cm_name, **kwargs):
-            captured["categories"] = kwargs.get("categories", "")
-
-        with (
-            patch("vip.cli.secrets.token_hex", return_value="abcd1234"),
-            patch("vip.verify.job.create_config_map"),
-            patch("vip.verify.job.create_job", side_effect=fake_create_job),
-            patch("vip.verify.job.stream_logs"),
-            patch(
-                "vip.verify.job.wait_for_job",
-                return_value=MagicMock(status=MagicMock(failed=None)),
-            ),
-            patch("vip.verify.job.cleanup"),
-        ):
-            from vip.cli import _run_k8s_job
-
-            _run_k8s_job("[general]\n", args)
-        return captured.get("categories", "")
-
-    def test_k8s_default_excludes_performance(self):
-        """K8s path: without --performance-tests, categories expr excludes performance."""
-        args = argparse.Namespace(
-            categories=None,
-            performance_tests=False,
-            namespace="posit-team",
-            image="vip:latest",
-            timeout=3600,
-            filter_expr=None,
-            verbose=False,
-        )
-        categories = self._capture_k8s_categories(args)
-        assert "not performance" in categories
-
-    def test_k8s_flag_removes_exclusion(self):
-        """K8s path: with --performance-tests, performance is not excluded."""
-        args = argparse.Namespace(
-            categories=None,
-            performance_tests=True,
-            namespace="posit-team",
-            image="vip:latest",
-            timeout=3600,
-            filter_expr=None,
-            verbose=False,
-        )
-        categories = self._capture_k8s_categories(args)
-        assert "not performance" not in categories
-
 
 class TestExtraKeepFromArgs:
-    """_extra_keep_from_args mirrors --performance-tests on both local and K8s paths."""
+    """_extra_keep_from_args mirrors --performance-tests into the marker expression."""
 
     def test_no_flag_returns_empty(self):
         """Without --performance-tests the extra-keep set is empty."""
@@ -741,9 +687,9 @@ class TestVerifyLocalTestTimeout:
             patch("vip.cli.subprocess.run", side_effect=fake_run),
             pytest.raises(SystemExit) as exc_info,
         ):
-            from vip.cli import _run_verify_local
+            from vip.cli import run_verify
 
-            _run_verify_local(_make_args(config=str(cfg)))
+            run_verify(_make_args(config=str(cfg)))
 
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
@@ -1031,7 +977,7 @@ class TestVerifyLocalSnowflakeApiAuthGuard:
     def test_api_auth_with_snowflake_idp_flag_exits(self, tmp_path, monkeypatch, capsys):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        from vip.cli import _run_verify_local
+        from vip.cli import run_verify
 
         args = _make_args(
             package_manager_url="https://pm.example.com",
@@ -1039,7 +985,7 @@ class TestVerifyLocalSnowflakeApiAuthGuard:
             idp="snowflake",
         )
         with pytest.raises(SystemExit) as exc_info:
-            _run_verify_local(args)
+            run_verify(args)
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
         assert "--api-auth is not supported with the Snowflake" in err
@@ -1053,11 +999,11 @@ class TestVerifyLocalSnowflakeApiAuthGuard:
             '[package_manager]\nurl = "https://pm.example.com"\n'
             '[auth]\nprovider = "oauth2"\nidp = "snowflake"\n'
         )
-        from vip.cli import _run_verify_local
+        from vip.cli import run_verify
 
         args = _make_args(config=str(cfg), api_auth=True)
         with pytest.raises(SystemExit) as exc_info:
-            _run_verify_local(args)
+            run_verify(args)
         assert exc_info.value.code == 1
         assert "--api-auth is not supported with the Snowflake" in capsys.readouterr().err
 
@@ -1086,7 +1032,7 @@ class TestVerifyLocalSnowflakeApiAuthGuard:
 class TestReorderHelpArgs:
     """`vip -h <subcommand>` should surface the subcommand's help, not top-level."""
 
-    COMMANDS = {"verify", "cleanup", "install", "auth", "cluster", "report"}
+    COMMANDS = {"verify", "cleanup", "install", "auth", "report"}
 
     def test_help_before_subcommand_is_moved_after(self):
         from vip.cli import _reorder_help_args
