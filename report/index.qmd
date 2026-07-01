@@ -107,6 +107,7 @@ _OUTCOME_STYLES = {
     "passed": ("PASS", "#16a34a", "#f0fdf4", "#dcfce7"),
     "failed": ("FAIL", "#dc2626", "#fef2f2", "#fecaca"),
     "skipped": ("SKIP", "#6b7280", "#f9fafb", "#e5e7eb"),
+    "na_version": ("N/A", "#d97706", "#fffbeb", "#fde68a"),
 }
 
 _PRODUCT_BADGE_CSS = {
@@ -117,9 +118,19 @@ _PRODUCT_BADGE_CSS = {
     "prerequisites": ("badge-prerequisites", "Prerequisites"),
 }
 
-_OUTCOME_ORDER = ["failed", "passed", "skipped"]
-_OUTCOME_LABELS = {"failed": "Failed", "passed": "Passed", "skipped": "Skipped"}
-_OUTCOME_COLORS = {"passed": "#16a34a", "failed": "#dc2626", "skipped": "#6b7280"}
+_OUTCOME_ORDER = ["failed", "passed", "skipped", "na_version"]
+_OUTCOME_LABELS = {
+    "failed": "Failed",
+    "passed": "Passed",
+    "skipped": "Skipped",
+    "na_version": "N/A (version)",
+}
+_OUTCOME_COLORS = {
+    "passed": "#16a34a",
+    "failed": "#dc2626",
+    "skipped": "#6b7280",
+    "na_version": "#d97706",
+}
 
 
 def _product_tag(item):
@@ -138,10 +149,12 @@ def _product_tag(item):
 if not data.results:
     display(Markdown("No test results to display."))
 else:
-    # Group: outcome → product tag → items
+    # Group: status → product tag → items. Uses TestResult.status (not raw
+    # outcome) so N/A-by-version results get their own section instead of
+    # being folded into "Skipped".
     _by_outcome = defaultdict(lambda: defaultdict(list))
     for _item in data.results:
-        _by_outcome[_item.outcome][_product_tag(_item)].append(_item)
+        _by_outcome[_item.status][_product_tag(_item)].append(_item)
 
     _html_parts = []
     _html_parts.append("""
@@ -288,7 +301,7 @@ else:
 
             for item in items:
                 label, fg, bg, border_bg = _OUTCOME_STYLES.get(
-                    item.outcome, ("?", "#6b7280", "#f9fafb", "#e5e7eb")
+                    item.status, ("?", "#6b7280", "#f9fafb", "#e5e7eb")
                 )
                 raw_title = item.scenario_title or (
                     item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
@@ -378,7 +391,7 @@ else:
                         if _hp:
                             hints_html = f'<div class="vip-fail-hints">{"".join(_hp)}</div>'
 
-                border = _OUTCOME_COLORS.get(item.outcome, "#d1d5db")
+                border = _OUTCOME_COLORS.get(item.status, "#d1d5db")
                 _html_parts.append(
                     f'<div class="vip-test-card" style="border-left-color:{border}">'
                     f'<div class="vip-test-header">'

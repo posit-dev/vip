@@ -223,6 +223,73 @@ class TestProductInfo:
         assert p.version == "2024.09.0"
 
 
+class TestNAVersionStatus:
+    def test_status_defaults_to_outcome(self):
+        r = TestResult(nodeid="a", outcome="passed")
+        assert r.status == "passed"
+
+    def test_na_version_field_defaults_false(self):
+        r = TestResult(nodeid="a", outcome="skipped")
+        assert r.na_version is False
+        assert r.status == "skipped"
+
+    def test_status_is_na_version_when_flagged_and_skipped(self):
+        r = TestResult(nodeid="a", outcome="skipped", na_version=True)
+        assert r.status == "na_version"
+
+    def test_na_version_flag_ignored_unless_outcome_is_skipped(self):
+        # na_version should never be set on a non-skip in practice, but the
+        # status property must not misreport a passed/failed result as N/A.
+        r = TestResult(nodeid="a", outcome="passed", na_version=True)
+        assert r.status == "passed"
+
+    def test_load_results_parses_na_version(self, tmp_path):
+        import json
+
+        data = {
+            "deployment_name": "Test",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "exit_status": 0,
+            "products": {},
+            "results": [
+                {
+                    "nodeid": "tests/connect/test_a.py::test_needs_recent",
+                    "outcome": "skipped",
+                    "duration": 0.0,
+                    "markers": ["connect"],
+                    "na_version": True,
+                },
+                {
+                    "nodeid": "tests/connect/test_b.py::test_unrelated_skip",
+                    "outcome": "skipped",
+                    "duration": 0.0,
+                    "markers": ["connect"],
+                },
+            ],
+        }
+        p = tmp_path / "results.json"
+        p.write_text(json.dumps(data))
+        rd = load_results(p)
+        assert rd.results[0].na_version is True
+        assert rd.results[0].status == "na_version"
+        assert rd.results[1].na_version is False
+        assert rd.results[1].status == "skipped"
+
+    def test_na_version_still_counts_toward_skipped_total(self):
+        # Documented decision: na_version results are a distinct *status* for
+        # display purposes, but they don't get their own summary count --
+        # they still count toward ReportData.skipped since they are, at the
+        # pytest outcome level, skips.
+        rd = ReportData(
+            results=[
+                TestResult(nodeid="a", outcome="skipped"),
+                TestResult(nodeid="b", outcome="skipped", na_version=True),
+            ]
+        )
+        assert rd.skipped == 2
+        assert rd.total == 2
+
+
 class TestConciseError:
     def test_concise_error_field_default_none(self):
         r = TestResult(nodeid="a", outcome="passed")

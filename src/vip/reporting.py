@@ -23,6 +23,7 @@ class TestResult:
     markers: list[str] = field(default_factory=list)
     scenario_title: str | None = None
     feature_description: str | None = None
+    na_version: bool = False
 
     @property
     def category(self) -> str:
@@ -32,6 +33,21 @@ class TestResult:
         if len(parts) >= 2:
             return parts[1]
         return "unknown"
+
+    @property
+    def status(self) -> str:
+        """Report status, distinguishing N/A-by-version from ordinary skips.
+
+        Returns ``"na_version"`` when the test was skipped because a
+        product's version could not be determined (see
+        ``plugin._skip_version_unknown``), otherwise returns ``outcome``
+        unchanged. Quarto templates key their styling dicts on this value
+        instead of raw ``outcome`` so version gaps render distinctly from
+        both passes/failures and ordinary (unconfigured-feature) skips.
+        """
+        if self.na_version and self.outcome == "skipped":
+            return "na_version"
+        return self.outcome
 
 
 @dataclass
@@ -67,6 +83,10 @@ class ReportData:
 
     @property
     def skipped(self) -> int:
+        # N/A-by-version results are still pytest "skipped" outcomes, so they
+        # count toward the top-line skipped total; they get their own
+        # section/badge in the report via TestResult.status, but the summary
+        # count is not split out separately.
         return sum(1 for r in self.results if r.outcome == "skipped")
 
     @property
@@ -109,6 +129,7 @@ def load_results(path: str | Path) -> ReportData:
             markers=r.get("markers", []),
             scenario_title=r.get("scenario_title"),
             feature_description=r.get("feature_description"),
+            na_version=r.get("na_version", False),
         )
         for r in raw.get("results", [])
     ]

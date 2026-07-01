@@ -6,7 +6,13 @@ for a specific page or component.
 """
 
 from .console_pane import ConsolePaneSelectors
-from .homepage import Homepage, NewSessionDialog
+from .homepage import (
+    Homepage,
+    Homepage_2026_05,
+    NewSessionDialog,
+    get_homepage,
+    get_new_session_dialog_close_strategy,
+)
 from .ide_base import IDEBase
 from .jupyterlab_session import JupyterLabSession
 from .login import LoginPage
@@ -17,6 +23,7 @@ from .vscode_session import VSCodeSession
 __all__ = [
     "ConsolePaneSelectors",
     "Homepage",
+    "Homepage_2026_05",
     "IDEBase",
     "JupyterLabSession",
     "LoginPage",
@@ -24,4 +31,6 @@ __all__ = [
     "PositronSession",
     "RStudioSession",
     "VSCodeSession",
+    "get_homepage",
+    "get_new_session_dialog_close_strategy",
 ]

@@ -88,7 +88,11 @@ Use the `min_version` marker for features that only exist in certain product ver
 @pytest.mark.min_version(product="connect", version="2024.09.0")
 ```
 
-This skips the test when the deployed version is older than the specified minimum, so the same test suite works across multiple product releases.
+This skips the test when the deployed version is older than the specified minimum, so the same test suite works across multiple product releases. Versions are parsed and compared with `vip.version.ProductVersion`, which understands Posit's calendar versioning scheme (`YYYY.MM.patch` plus `-dev`/`-daily`/`-preview`/`+build` suffixes).
+
+When the deployed or required version cannot be determined at all (unconfigured, or unparseable), the test is skipped and flagged with a distinct **"N/A (version)"** report status rather than run optimistically -- a version gap should be visible in the report, not hidden behind a possibly-spurious pass.
+
+`min_version` can only skip a whole test. When a UI change requires switching *behavior or selectors* rather than skipping outright -- for example, a redesigned dialog that closes via Escape instead of a Cancel button -- use a versioned page-object class plus a `get_<page>(version)` factory in `src/vip_tests/workbench/pages/`. Subclasses hold only the delta from the version they change in (cumulative inheritance), and behavior differences that aren't expressible as a selector change use a strategy dict keyed by version threshold, mirroring `vip.idp`'s IdP strategy dict. See `src/vip_tests/workbench/pages/homepage.py` (`Homepage_2026_05`, `get_homepage`, `get_new_session_dialog_close_strategy`) for the pattern.
 
 ## Layer 2: The DSL (step definitions + fixtures)
 
