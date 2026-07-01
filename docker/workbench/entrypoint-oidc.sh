@@ -17,10 +17,13 @@ fi
 # Append -- the stock rserver.conf already carries launcher/admin/health-check
 # settings (launcher-address, launcher-port, etc.) that a `>` overwrite would
 # silently drop, breaking the session launcher.
+# Confirmed against `rserver --help` on this image -- the cert options are
+# `ssl-certificate` / `ssl-certificate-key`, not the `-file`-suffixed names
+# used elsewhere (e.g. Connect's [HTTPS] Certificate/Key gcfg keys).
 cat >> /etc/rstudio/rserver.conf << 'EOF'
 ssl-enabled=1
-ssl-certificate-file=/certs/workbench.crt
-ssl-certificate-key-file=/certs/workbench.key
+ssl-certificate=/certs/workbench.crt
+ssl-certificate-key=/certs/workbench.key
 auth-openid=1
 auth-openid-issuer=https://keycloak.vip.test:8443/realms/vip
 auth-openid-username-claim=preferred_username
