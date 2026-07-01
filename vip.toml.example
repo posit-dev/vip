@@ -12,9 +12,6 @@
 #
 # Headless auth (OIDC/SAML/OAuth2 requires [auth] idp):
 #   vip verify --config vip.toml --headless-auth
-#
-# Kubernetes mode (auto-configure from PTD Site CR, requires posit-dev/team-operator):
-#   vip verify --k8s --site main --namespace posit-team
 
 [general]
 # Human-readable name for this deployment (appears in reports)
@@ -207,17 +204,3 @@ enabled = false
 [security]
 # Set enabled = true to run security-policy compliance tests.
 policy_checks_enabled = false
-
-# Kubernetes cluster access
-# Required for k8s_job mode (default) and config_only mode (--config-only).
-# Not used when running locally (--local).
-# [cluster]
-# provider = "aws"                    # "aws" or "azure"
-# name = "my-cluster-20260101"        # EKS/AKS cluster name
-# region = "us-east-1"                # Cloud region
-# namespace = "posit-team"            # K8s namespace (default: posit-team)
-# site = "main"                       # PTD Site CR name (default: main)
-# profile = "my-staging"              # AWS: profile name
-# role_arn = ""                       # AWS: IAM role ARN for cross-account access
-# subscription_id = ""                # Azure: subscription ID
-# resource_group = ""                 # Azure: resource group

@@ -6,7 +6,6 @@ import argparse
 import json
 import os
 import re
-import secrets
 import subprocess
 import sys
 import tempfile
@@ -16,14 +15,7 @@ from typing import TYPE_CHECKING
 from vip.timeouts import scaled
 
 if TYPE_CHECKING:
-    from vip.config import Mode, VIPConfig
-
-# Buffer subtracted from the user-supplied timeout when setting the pytest
-# timeout inside the K8s Job.  The Job's own deadline is set to args.timeout,
-# so we give pytest a slightly shorter limit so it can finish and write results
-# before Kubernetes kills the pod.
-_JOB_CLEANUP_BUFFER_SECONDS = 60
-_JOB_MIN_PYTEST_TIMEOUT_SECONDS = 60
+    from vip.config import VIPConfig
 
 # Default for ``vip verify --test-timeout``.  Generous enough for a full
 # Connect suite with several content deployments (each can take 3-5 minutes
@@ -130,37 +122,6 @@ def _normalize_categories(expr: str) -> str:
     return result
 
 
-def _connect_cluster(cluster_config) -> Path:
-    """Generate kubeconfig and set KUBECONFIG env var. Returns the path."""
-    from vip.cluster.target import validate_cluster_config
-
-    validate_cluster_config(cluster_config)
-
-    if cluster_config.provider == "aws":
-        from vip.cluster.aws import get_eks_kubeconfig
-
-        kubeconfig_path = get_eks_kubeconfig(
-            cluster_config.name,
-            cluster_config.region,
-            cluster_config.profile or None,
-            cluster_config.role_arn or None,
-        )
-    elif cluster_config.provider == "azure":
-        from vip.cluster.azure import get_aks_kubeconfig
-
-        kubeconfig_path = get_aks_kubeconfig(
-            cluster_config.name,
-            cluster_config.resource_group,
-            cluster_config.subscription_id,
-        )
-    else:
-        raise ValueError(f"Unknown provider: {cluster_config.provider!r}")
-
-    os.environ["KUBECONFIG"] = str(kubeconfig_path)
-    print(f"Connected to cluster: {cluster_config.name}", file=sys.stderr)
-    return kubeconfig_path
-
-
 def mint_connect_key(args: argparse.Namespace) -> None:
     """Launch interactive browser auth and mint a Connect API key."""
     from vip.auth import start_interactive_auth
@@ -177,29 +138,6 @@ def mint_connect_key(args: argparse.Namespace) -> None:
     }
 
     print(json.dumps(result))
-
-
-def connect_to_cluster(args: argparse.Namespace) -> None:
-    """Generate kubeconfig for a cluster and print the path."""
-    from vip.config import load_config
-
-    config = load_config()
-
-    if args.provider:
-        config.cluster.provider = args.provider
-    if args.cluster_name:
-        config.cluster.name = args.cluster_name
-    if args.region:
-        config.cluster.region = args.region
-    if args.resource_group:
-        config.cluster.resource_group = args.resource_group
-    if args.subscription_id:
-        config.cluster.subscription_id = args.subscription_id
-    if args.profile:
-        config.cluster.profile = args.profile
-
-    kubeconfig_path = _connect_cluster(config.cluster)
-    print(str(kubeconfig_path))
 
 
 # ---------------------------------------------------------------------------
@@ -426,82 +364,11 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
 
 
 # ---------------------------------------------------------------------------
-# vip verify (combined local + K8s)
+# vip verify
 # ---------------------------------------------------------------------------
 
 
-def _resolve_mode(args: argparse.Namespace) -> Mode:
-    """Convert boolean CLI flags to a Mode enum value."""
-    from vip.config import Mode
-
-    if args.config_only:
-        return Mode.config_only
-    return Mode.k8s_job
-
-
-def _phase_generate_config(args: argparse.Namespace) -> tuple[str, dict]:
-    """Fetch PTD Site CR and return (vip_config_toml, site_cr) tuple."""
-    from vip.verify.site import fetch_site_cr, generate_vip_config
-
-    site = getattr(args, "site", "main")
-    namespace = getattr(args, "namespace", "posit-team")
-    name = getattr(args, "name", None) or "Posit Team"
-
-    print(f"Fetching PTD Site CR: {site} (namespace: {namespace})")
-    site_cr = fetch_site_cr(site, namespace)
-    return generate_vip_config(site_cr, name), site_cr
-
-
-def _phase_provision_credentials(site_cr: dict, args: argparse.Namespace) -> None:
-    """Provision test credentials in the K8s cluster."""
-    from vip.verify.site import _extract_connect_url, _extract_keycloak_url
-
-    if args.interactive_auth:
-        from vip.verify.credentials import mint_interactive_credentials
-
-        connect_url = _extract_connect_url(site_cr)
-        if not connect_url:
-            print("Error: Connect URL not found in PTD Site CR", file=sys.stderr)
-            sys.exit(1)
-        site = getattr(args, "site", "main")
-        namespace = getattr(args, "namespace", "posit-team")
-        print("Minting credentials via interactive auth...")
-        mint_interactive_credentials(connect_url, site, namespace)
-    else:
-        keycloak_url = _extract_keycloak_url(site_cr)
-        if keycloak_url:
-            from vip.verify.credentials import ensure_keycloak_test_user
-
-            site = getattr(args, "site", "main")
-            namespace = getattr(args, "namespace", "posit-team")
-            admin_secret_name = f"{site}-keycloak-initial-admin"
-            print(f"Ensuring Keycloak test user exists (admin secret: {admin_secret_name})")
-            try:
-                ensure_keycloak_test_user(
-                    keycloak_url,
-                    "posit",
-                    "vip-test-user",
-                    admin_secret_name,
-                    namespace,
-                )
-            except Exception as e:
-                print(
-                    f"Warning: Could not create Keycloak test user: {e}",
-                    file=sys.stderr,
-                )
-                print("Continuing without Keycloak credentials...", file=sys.stderr)
-
-
 def run_verify(args: argparse.Namespace) -> None:
-    """Run VIP tests. Handles both local and K8s modes."""
-    if args.k8s or args.config_only:
-        _run_verify_k8s(args)
-        return
-
-    _run_verify_local(args)
-
-
-def _run_verify_local(args: argparse.Namespace) -> None:
     """Run VIP tests locally against URL args or a vip.toml config."""
     config_path = args.config
     temp_config = None
@@ -630,83 +497,6 @@ def _run_verify_local(args: argparse.Namespace) -> None:
             Path(temp_config).unlink(missing_ok=True)
 
 
-def _run_verify_k8s(args: argparse.Namespace) -> None:
-    """K8s workflow: fetch PTD Site CR, provision credentials, run as Job."""
-    from vip.config import Mode, load_config
-
-    config = load_config()
-    mode = _resolve_mode(args)
-    config.validate_for_mode(mode)
-
-    if config.cluster.is_configured:
-        _connect_cluster(config.cluster)
-
-    vip_config_toml, site_cr = _phase_generate_config(args)
-
-    if mode == Mode.config_only:
-        print(vip_config_toml)
-        return
-
-    _phase_provision_credentials(site_cr, args)
-    _run_k8s_job(vip_config_toml, args)
-
-
-def _run_k8s_job(vip_config_toml: str, args: argparse.Namespace) -> None:
-    """Run VIP tests as a K8s Job."""
-    from vip.verify.job import cleanup, create_config_map, create_job, stream_logs, wait_for_job
-
-    namespace = getattr(args, "namespace", "posit-team")
-    suffix = secrets.token_hex(4)
-    job_name = f"vip-verify-{suffix}"
-    cm_name = f"vip-config-{suffix}"
-
-    try:
-        print(f"Creating ConfigMap: {cm_name}")
-        create_config_map(cm_name, namespace, vip_config_toml)
-
-        print(f"Creating Job: {job_name}")
-        pytest_timeout = args.timeout - _JOB_CLEANUP_BUFFER_SECONDS
-        if pytest_timeout <= 0:
-            import warnings
-
-            warnings.warn(
-                f"--timeout ({args.timeout}s) is too short to subtract the "
-                f"{_JOB_CLEANUP_BUFFER_SECONDS}s cleanup buffer. "
-                f"Using minimum pytest timeout of {_JOB_MIN_PYTEST_TIMEOUT_SECONDS}s.",
-                stacklevel=2,
-            )
-            pytest_timeout = _JOB_MIN_PYTEST_TIMEOUT_SECONDS
-        create_job(
-            job_name,
-            namespace,
-            cm_name,
-            image=args.image,
-            categories=(
-                _normalize_categories(args.categories)
-                if args.categories
-                else _default_marker_expr(_extra_keep_from_args(args))
-            ),
-            filter_expr=getattr(args, "filter_expr", None),
-            timeout_seconds=pytest_timeout,
-            verbose=getattr(args, "verbose", False),
-        )
-
-        print(f"Streaming logs from Job: {job_name}")
-        stream_logs(job_name, namespace, timeout=args.timeout)
-
-        print(f"Waiting for Job to complete: {job_name}")
-        success = wait_for_job(job_name, namespace, timeout=args.timeout)
-
-        if not success:
-            print("Verification failed", file=sys.stderr)
-            sys.exit(1)
-        else:
-            print("Verification completed successfully")
-    finally:
-        print(f"Cleaning up Job and ConfigMap: {job_name}, {cm_name}")
-        cleanup(job_name, cm_name, namespace)
-
-
 def run_report(args: argparse.Namespace) -> None:
     """Render the Quarto report from a results.json file."""
     import shutil
@@ -814,34 +604,6 @@ def run_status(args: argparse.Namespace) -> None:
             print(f"  {state.upper():4s}  {name:20s}  {detail}")
 
     sys.exit(data["exit_status"])
-
-
-def run_app(args: argparse.Namespace) -> None:
-    """Launch the VIP Shiny app."""
-    try:
-        from shiny import run_app as _run_shiny  # noqa: F811
-    except ImportError:
-        print(
-            "Error: the 'shiny' package is not installed.\nInstall with: uv sync",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # The --config flag is not currently supported for the Shiny app.
-    # Fail fast instead of silently ignoring it.
-    if getattr(args, "config", None):
-        print(
-            "Error: the '--config' option is not supported for 'vip app' at this time.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
-    _run_shiny(  # type: ignore[misc]  # shiny is an optional dep
-        "vip.app.app:app",
-        host=args.host,
-        port=args.port,
-        launch_browser=not args.no_browser,
-    )
 
 
 def run_install(args: argparse.Namespace) -> None:
@@ -1050,61 +812,35 @@ def run_scaffold(args: argparse.Namespace) -> None:
 def run_cleanup(args: argparse.Namespace) -> None:
     """Delete VIP test credentials and resources.
 
-    Supports two modes:
-
-    - **Local mode** (auto-detected or ``--connect-url``): connects directly
-      to a Connect server and deletes all content tagged ``_vip_test``.
-    - **Cluster mode**: uses the PTD Site CR to look up credentials and runs
-      the full cluster-aware cleanup (K8s secrets, etc.).
-
-    Local mode is used when *any* of the following is true:
-    - ``--connect-url`` is provided on the command line, or
-    - no cluster config is present in ``vip.toml`` and a Connect URL is found
-      in the config file.
+    Connects directly to a Connect server and deletes all content tagged
+    ``_vip_test``. The Connect URL is taken from ``--connect-url`` or, if
+    omitted, from ``[connect] url`` in ``vip.toml``.
     """
-    from vip.config import load_config
-
-    config = load_config()
-
-    # Determine Connect URL and API key for local content cleanup.
+    # Determine Connect URL and API key for content cleanup.
     connect_url = getattr(args, "connect_url", None)
     api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
 
-    # Auto-detect local mode: explicit --connect-url or no cluster config.
-    use_local = bool(connect_url) or not config.cluster.is_configured
+    # Fall back to vip.toml for the URL only when no CLI override is supplied,
+    # so `vip cleanup --connect-url ...` runs without a "config not found" warning.
+    if not connect_url:
+        from vip.config import load_config
 
-    if use_local:
-        # Fall back to config file values when no CLI override is supplied.
-        if not connect_url and config.connect and config.connect.url:
+        config = load_config()
+        if config.connect and config.connect.url:
             connect_url = config.connect.url
-        if not connect_url:
-            print(
-                "Error: no Connect URL found. Pass --connect-url or set [connect] url in vip.toml.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+    if not connect_url:
+        print(
+            "Error: no Connect URL found. Pass --connect-url or set [connect] url in vip.toml.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-        from vip.clients.connect import ConnectClient
+    from vip.clients.connect import ConnectClient
 
-        print(f"Cleaning up VIP test content on Connect at {connect_url}")
-        with ConnectClient(connect_url, api_key) as client:
-            deleted = client.cleanup_vip_content()
-        print(f"Deleted {deleted} VIP test content item(s)")
-        print("Cleanup completed successfully")
-        return
-
-    # Cluster mode: requires K8s access.
-    from vip.verify.credentials import cleanup_credentials
-    from vip.verify.site import _extract_connect_url, fetch_site_cr
-
-    if config.cluster.is_configured:
-        _connect_cluster(config.cluster)
-
-    site_cr = fetch_site_cr(args.site, args.namespace)
-    connect_url = _extract_connect_url(site_cr)
-
-    print(f"Cleaning up credentials for site: {args.site}")
-    cleanup_credentials(args.namespace, connect_url)
+    print(f"Cleaning up VIP test content on Connect at {connect_url}")
+    with ConnectClient(connect_url, api_key) as client:
+        deleted = client.cleanup_vip_content()
+    print(f"Deleted {deleted} VIP test content item(s)")
     print("Cleanup completed successfully")
 
 
@@ -1165,8 +901,6 @@ def main() -> None:
             "tests run headlessly and the browser session is cleaned up.\n\n"
             "With an existing config file:\n"
             "  vip verify --config vip.toml --no-interactive-auth\n\n"
-            "Kubernetes mode (requires posit-dev/team-operator PTD Site CR):\n"
-            "  vip verify --k8s --site main --namespace posit-team\n\n"
             "Filter tests by name:\n"
             "  vip verify --connect-url https://connect.example.com --filter 'login'\n\n"
             "Any arguments after -- are passed directly to pytest:\n"
@@ -1308,44 +1042,6 @@ def main() -> None:
         ),
     )
 
-    # K8s mode
-    k8s_group = verify_parser.add_argument_group("Kubernetes mode")
-    k8s_group.add_argument(
-        "--k8s",
-        action="store_true",
-        default=False,
-        help="Fetch config from a PTD Site CR and run tests as a K8s Job "
-        "(requires posit-dev/team-operator)",
-    )
-    k8s_group.add_argument("--site", default="main", help="PTD Site CR name (default: main)")
-    k8s_group.add_argument(
-        "--namespace",
-        default="posit-team",
-        help="Kubernetes namespace (default: posit-team)",
-    )
-    k8s_group.add_argument(
-        "--name",
-        default=None,
-        help="Deployment name for reports (default: Posit Team)",
-    )
-    k8s_group.add_argument(
-        "--image",
-        default="ghcr.io/posit-dev/vip:latest",
-        help="VIP container image (default: ghcr.io/posit-dev/vip:latest)",
-    )
-    k8s_group.add_argument(
-        "--timeout",
-        type=int,
-        default=int(scaled(900)),
-        help="Job timeout in seconds (default: 900)",
-    )
-    k8s_group.add_argument(
-        "--config-only",
-        action="store_true",
-        default=False,
-        help="Generate config from PTD Site CR and print it (no tests run)",
-    )
-
     # Pytest passthrough
     verify_parser.add_argument(
         "pytest_args",
@@ -1358,35 +1054,22 @@ def main() -> None:
     # vip cleanup
     cleanup_parser = subparsers.add_parser(
         "cleanup",
-        help="Delete VIP test credentials and resources",
+        help="Delete VIP _vip_test content from Connect",
         description=(
-            "Delete VIP test credentials and resources.\n\n"
-            "Local mode (auto-detected when no cluster config is present):\n"
-            "  vip cleanup --connect-url https://connect.example.com\n\n"
-            "Cluster mode (requires K8s access and PTD Site CR):\n"
-            "  vip cleanup --site main --namespace posit-team\n"
+            "Delete VIP _vip_test-tagged content from Connect.\n\n"
+            "  vip cleanup --connect-url https://connect.example.com\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    local_group = cleanup_parser.add_argument_group(
-        "local mode (Connect content cleanup, no K8s required)"
-    )
-    local_group.add_argument(
+    cleanup_parser.add_argument(
         "--connect-url",
         default=None,
-        help="Connect server URL (enables local mode; falls back to vip.toml if omitted)",
+        help="Connect server URL (falls back to vip.toml if omitted)",
     )
-    local_group.add_argument(
+    cleanup_parser.add_argument(
         "--api-key",
         default=None,
         help="Connect API key (default: VIP_CONNECT_API_KEY env var)",
-    )
-    cluster_group = cleanup_parser.add_argument_group("cluster mode (K8s credential cleanup)")
-    cluster_group.add_argument("--site", default="main", help="PTD Site CR name (default: main)")
-    cluster_group.add_argument(
-        "--namespace",
-        default="posit-team",
-        help="Kubernetes namespace (default: posit-team)",
     )
     cleanup_parser.set_defaults(func=run_cleanup)
 
@@ -1441,20 +1124,6 @@ def main() -> None:
     )
     uninstall_parser.add_argument("--api-key", default=None)
     uninstall_parser.set_defaults(func=run_uninstall)
-
-    # vip cluster
-    cluster_parser = subparsers.add_parser("cluster", help="Cluster connection tools")
-    cluster_sub = cluster_parser.add_subparsers(dest="cluster_command")
-
-    # vip cluster connect
-    connect_parser = cluster_sub.add_parser("connect", help="Generate kubeconfig for a cluster")
-    connect_parser.add_argument("--provider", help="Cloud provider (aws or azure)")
-    connect_parser.add_argument("--cluster-name", help="Cluster name")
-    connect_parser.add_argument("--region", help="Cloud region (AWS)")
-    connect_parser.add_argument("--resource-group", help="Resource group (Azure)")
-    connect_parser.add_argument("--subscription-id", help="Subscription ID (Azure)")
-    connect_parser.add_argument("--profile", help="AWS profile name")
-    connect_parser.set_defaults(func=connect_to_cluster)
 
     # vip report
     report_parser = subparsers.add_parser(
@@ -1521,26 +1190,6 @@ def main() -> None:
     )
     scaffold_parser.set_defaults(func=run_scaffold)
 
-    # vip app
-    app_parser = subparsers.add_parser(
-        "app",
-        help="Launch the VIP Shiny app (graphical test runner)",
-    )
-    app_parser.add_argument(
-        "--config",
-        default=None,
-        help="Path to vip.toml (passed to the app as default config)",
-    )
-    app_parser.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)")
-    app_parser.add_argument("--port", type=int, default=0, help="Port (default: auto)")
-    app_parser.add_argument(
-        "--no-browser",
-        action="store_true",
-        default=False,
-        help="Don't open a browser window automatically",
-    )
-    app_parser.set_defaults(func=run_app)
-
     # Map command names to their parsers for context-appropriate help
     subcommand_parsers = {
         "verify": verify_parser,
@@ -1548,10 +1197,8 @@ def main() -> None:
         "install": install_parser,
         "uninstall": uninstall_parser,
         "auth": auth_parser,
-        "cluster": cluster_parser,
         "report": report_parser,
         "status": status_parser,
-        "app": app_parser,
         "scaffold": scaffold_parser,
     }
 

@@ -230,7 +230,7 @@ This scales:
 - IdP login-form and network-idle waits
 - API polling deadlines (`wait_for_task`, `wait_for_system_check`)
 - The default httpx client timeout (30 s)
-- The local-mode pytest subprocess budget and the Kubernetes job deadline
+- The pytest subprocess budget (`--test-timeout`)
 
 Deliberately **not** scaled:
 - The 5-minute MFA prompt window — a human wait, not a server operation
