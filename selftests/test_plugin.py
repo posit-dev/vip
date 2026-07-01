@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from vip.plugin import _extract_exception_info, _format_concise_error, _version_tuple
+from vip.plugin import _extract_exception_info, _format_concise_error
 
 
 class TestFormatConciseError:
@@ -154,26 +154,6 @@ class TestExtractExceptionInfo:
         exc_type, exc_message = _extract_exception_info(longrepr)
         assert exc_type == "AssertionError"
         assert "Connect: /metrics returned 403" in exc_message
-
-
-class TestVersionTuple:
-    def test_simple(self):
-        assert _version_tuple("1.2.3") == (1, 2, 3)
-
-    def test_two_part(self):
-        assert _version_tuple("2024.05") == (2024, 5)
-
-    def test_prerelease_suffix(self):
-        assert _version_tuple("1.2.3rc1") == (1, 2, 3)
-
-    def test_single_number(self):
-        assert _version_tuple("42") == (42,)
-
-    def test_comparison(self):
-        assert _version_tuple("2024.05.0") < _version_tuple("2024.06.0")
-        assert _version_tuple("2024.05.0") == _version_tuple("2024.05.0")
-        assert _version_tuple("1.0.0") < _version_tuple("2.0.0")
-        assert _version_tuple("1.9.9") < _version_tuple("1.10.0")
 
 
 class TestPluginIntegration:
@@ -417,9 +397,62 @@ class TestPluginIntegration:
                 assert True
             """
         )
-        # Connect has no version set, so the test runs optimistically.
+        # Connect has no version set. This used to run optimistically (PASS);
+        # the policy changed so an unknown version skips + warns instead of
+        # risking a spurious pass.
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
-        result.stdout.fnmatch_lines(["*PASSED*"])
+        result.stdout.fnmatch_lines(["*SKIPPED*"])
+        result.stdout.fnmatch_lines(
+            ["*VIP: cannot evaluate min_version(product='connect', version='9999.01.0')*"]
+        )
+
+    def test_version_skip_unparseable_deployed_version(self, selftest_pytester):
+        """An unparseable deployed version also skips + warns, not runs optimistically."""
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://example.com"\nversion = "not-a-version"\n'
+            ),
+        )
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.min_version(product="connect", version="2024.09.0")
+            def test_needs_recent_connect():
+                assert True
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.stdout.fnmatch_lines(["*SKIPPED*"])
+        result.stdout.fnmatch_lines(
+            ["*VIP: cannot evaluate min_version(product='connect', version='2024.09.0')*"]
+        )
+
+    def test_version_skip_known_below_minimum_is_plain_skip(self, selftest_pytester):
+        """A known deployed version below the minimum is a plain skip, not N/A."""
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://example.com"\nversion = "2024.01.0"\n'
+            ),
+        )
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.min_version(product="connect", version="2024.09.0")
+            def test_needs_recent_connect():
+                assert True
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "--vip-verbose", "-v", "-rs")
+        result.stdout.fnmatch_lines(["*SKIPPED*"])
+        result.stdout.fnmatch_lines(["*connect version 2024.01.0 < required 2024.09.0*"])
+        # No N/A warning for this path — the version is known, just too old.
+        assert "cannot evaluate min_version" not in result.stdout.str()
 
     # A skip reason far longer than 80 columns, ending in a unique sentinel so
     # we can tell a full reason from one pytest has ellipsized to "(reason...)".
@@ -573,6 +606,50 @@ class TestPluginIntegration:
         assert "feature_description" in result
         assert result["scenario_title"] is None
         assert result["feature_description"] is None
+
+    def test_json_report_includes_na_version_flag(self, selftest_pytester):
+        """Results JSON flags version-unknown skips with na_version: true."""
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://example.com"\n'
+            ),
+        )
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.min_version(product="connect", version="9999.01.0")
+            def test_future_version():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        result = data["results"][0]
+        assert result["outcome"] == "skipped"
+        assert result["na_version"] is True
+
+    def test_json_report_na_version_defaults_false(self, selftest_pytester):
+        """Ordinary results (including ordinary skips) report na_version: false."""
+        selftest_pytester.makepyfile(
+            """
+            def test_plain():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        result = data["results"][0]
+        assert result["na_version"] is False
 
     def test_interactive_auth_skipped_when_no_auth_products(self, selftest_pytester):
         """--interactive-auth skips the browser flow when no auth-requiring products are enabled.

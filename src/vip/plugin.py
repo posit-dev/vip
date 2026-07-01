@@ -31,6 +31,7 @@ from typing import Any
 import pytest
 
 from vip.config import VIPConfig, load_config
+from vip.version import ProductVersion
 
 # ---------------------------------------------------------------------------
 # Stash keys
@@ -41,6 +42,7 @@ _ext_dirs_key = pytest.StashKey[list[str]]()
 _results_key = pytest.StashKey[list[dict[str, Any]]]()
 _auth_session_key = pytest.StashKey[Any]()
 _auth_mode_key = pytest.StashKey[str]()
+_version_na_key = pytest.StashKey[bool]()
 
 # Module-level reference to the active pytest.Config, set in pytest_configure.
 # Safe because pytester runs in a subprocess (fresh import each time).
@@ -565,6 +567,15 @@ def require_connect_api_key(vip_cfg: VIPConfig) -> None:
 
 
 def _maybe_skip_for_version(item: pytest.Item, cfg: VIPConfig) -> None:
+    """Skip *item* when its ``min_version`` marker requirement is not met.
+
+    When the deployed or required version cannot be parsed as a
+    ``ProductVersion`` (including the "version unknown" case, ``pc.version
+    is None``), the test is skipped and flagged as N/A-by-version rather
+    than run optimistically or skipped indistinguishably from an ordinary
+    skip. This surfaces version-detection gaps in the report instead of
+    hiding them behind a possibly-spurious pass or a generic "skipped".
+    """
     marker = item.get_closest_marker("min_version")
     if marker is None:
         return
@@ -580,18 +591,46 @@ def _maybe_skip_for_version(item: pytest.Item, cfg: VIPConfig) -> None:
         return
 
     if pc.version is None:
-        # Version unknown - run the test optimistically.
+        _skip_version_unknown(item, product, version, reason="version unknown")
         return
 
-    if _version_tuple(pc.version) < _version_tuple(version):
+    try:
+        deployed = ProductVersion(pc.version)
+    except ValueError:
+        _skip_version_unknown(
+            item, product, version, reason=f"deployed version {pc.version!r} is unparseable"
+        )
+        return
+
+    try:
+        required = ProductVersion(version)
+    except ValueError:
+        _skip_version_unknown(
+            item, product, version, reason=f"required version {version!r} is unparseable"
+        )
+        return
+
+    if deployed < required:
         item.add_marker(
             pytest.mark.skip(reason=f"{product} version {pc.version} < required {version}")
         )
 
 
-def _version_tuple(v: str) -> tuple[int, ...]:
-    """Parse a dotted version string into a comparable tuple."""
-    return tuple(int(m.group()) if (m := re.match(r"\d+", seg)) else 0 for seg in v.split("."))
+def _skip_version_unknown(item: pytest.Item, product: str, version: str, *, reason: str) -> None:
+    """Skip *item* and flag it as N/A-by-version, warning about the gap."""
+    item.stash[_version_na_key] = True
+    item.add_marker(
+        pytest.mark.skip(
+            reason=f"VIP: version unknown for {product} — cannot evaluate "
+            f"min_version(product={product!r}, version={version!r}) ({reason})"
+        )
+    )
+    warnings.warn(
+        f"VIP: cannot evaluate min_version(product={product!r}, version={version!r}) "
+        f"for {item.nodeid} — {reason}. Skipping and marking N/A instead of running "
+        "optimistically.",
+        stacklevel=1,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -787,13 +826,16 @@ def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
 
         item_stash = getattr(item, "stash", None)
         scenario_meta: dict[str, str | None] = {}
+        na_version = False
         if item_stash is not None:
             scenario_meta = item_stash.get(_scenario_stash_key, {})
+            na_version = item_stash.get(_version_na_key, False)
 
         # These attributes survive xdist worker→controller serialization.
         report.vip_markers = markers  # type: ignore[attr-defined]
         report.vip_scenario_title = scenario_meta.get("scenario_title")  # type: ignore[attr-defined]
         report.vip_feature_description = scenario_meta.get("feature_description")  # type: ignore[attr-defined]
+        report.vip_na_version = na_version  # type: ignore[attr-defined]
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -840,6 +882,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
                     "markers": list(getattr(report, "vip_markers", ())),
                     "scenario_title": getattr(report, "vip_scenario_title", None),
                     "feature_description": getattr(report, "vip_feature_description", None),
+                    "na_version": getattr(report, "vip_na_version", False),
                 }
             )
 
