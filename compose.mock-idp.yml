@@ -97,7 +97,11 @@ services:
       start_period: 30s
 
   workbench:
-    image: rstudio/rstudio-workbench:${RSW_VERSION:-latest}
+    build:
+      context: ./docker/workbench
+      dockerfile: Dockerfile.oidc
+      args:
+        RSW_VERSION: ${RSW_VERSION:-latest}
     depends_on:
       cert-init:
         condition: service_completed_successfully
@@ -107,7 +111,6 @@ services:
       RSW_LICENSE: ${RSW_LICENSE:-}
     volumes:
       - workbench-oidc-home:/home
-      - ./docker/workbench/oidc-init.sh:/etc/cont-init.d/98-vip-oidc:ro
       - mock-idp-certs:/certs:ro
     ports:
       - "127.0.0.1:8787:8787"
