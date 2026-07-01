@@ -3,8 +3,13 @@
 # The stock Connect image has no cont-init.d-style pre-start hook (unlike
 # Workbench's s6-overlay), so trusting the stack's shared CA before the
 # Connect process starts requires overriding the entrypoint.
+#
+# ghcr.io/posit-dev/connect is the current registry (post-2026.04 cutover,
+# see posit-dev/with-connect's get_docker_tag()) -- NOT the legacy
+# ghcr.io/rstudio/rstudio-connect image, whose :latest tag is frozen at a
+# 2022.08.0 build that predates OAuth2 config keys like UsePKCE.
 ARG RSC_VERSION=latest
-FROM ghcr.io/rstudio/rstudio-connect:${RSC_VERSION}
+FROM ghcr.io/posit-dev/connect:${RSC_VERSION}
 
 COPY entrypoint-oidc.sh /usr/local/bin/entrypoint-oidc.sh
 RUN chmod +x /usr/local/bin/entrypoint-oidc.sh

@@ -65,6 +65,13 @@ services:
       dockerfile: Dockerfile.oidc
       args:
         RSC_VERSION: ${RSC_VERSION:-latest}
+    # ghcr.io/posit-dev/connect's rsandbox privilege-separation subsystem
+    # (which runs content under per-user OS accounts) needs a privileged
+    # container -- confirmed against posit-dev/with-connect, which always
+    # runs its Connect container with privileged=True. Without it, Connect
+    # fails at startup with "Unable to execute commands with
+    # Applications.RunAs" (rsandbox: Operation not permitted).
+    privileged: true
     depends_on:
       cert-init:
         condition: service_completed_successfully
