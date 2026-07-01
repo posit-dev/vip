@@ -1,0 +1,66 @@
+name: Scheduled Dependency Audit
+
+# Audits the FULL dependency tree (all extras) daily against the live advisory
+# database. Unlike the PR-time audit (ci.yml, scoped to shipped runtime deps),
+# a newly-disclosed CVE here does NOT block PRs -- it opens or updates a
+# tracking issue instead, so a vuln in the world never turns unrelated PRs red.
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily at 6am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: security-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Full dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Audit full dependency tree
+        id: audit
+        run: |
+          set +e
+          uv run pip-audit --skip-editable --format markdown > audit-report.md 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat audit-report.md
+          exit 0
+
+      - name: Open or update tracking issue on vulnerabilities
+        if: steps.audit.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Dependency audit: known vulnerabilities detected"
+          {
+            echo "The scheduled full-tree dependency audit found known vulnerabilities."
+            echo ""
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            cat audit-report.md
+          } > issue-body.md
+          existing=$(gh issue list --state open --json number,title \
+            --jq ".[] | select(.title==\"$title\") | .number" | head -1)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file issue-body.md
+          else
+            gh issue create --title "$title" --body-file issue-body.md
+          fi
