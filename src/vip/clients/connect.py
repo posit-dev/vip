@@ -436,7 +436,7 @@ class ConnectClient(BaseClient):
         import time
 
         transient_status_codes = {404, 502, 503, 504}
-        effective_timeout = scaled(120.0) if timeout is None else timeout
+        effective_timeout = scaled(300.0) if timeout is None else timeout
         deadline = time.time() + effective_timeout
         last_exception: Exception | None = None
 
