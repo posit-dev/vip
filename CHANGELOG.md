@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.50.1 (2026-07-01)
+
+### Bug Fixes
+
+- Extend connect system checks default timeout to 5min
+  ([#417](https://github.com/posit-dev/vip/pull/417),
+  [`31b90a8`](https://github.com/posit-dev/vip/commit/31b90a8e37a284d1527ad94badd8a9d9ef1aece2))
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.50.0 (2026-07-01)
 
 ### Chores
