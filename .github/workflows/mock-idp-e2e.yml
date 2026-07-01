@@ -1,0 +1,163 @@
+name: Mock-IdP E2E Tests
+
+# Exercises VIP's OIDC auth flows (--headless-auth and --interactive-auth)
+# against real Connect and Workbench containers fronted by a real, seeded
+# Keycloak realm -- no customer IdP required. See
+# thoughts/shared/plans/2026-06-30-issue-409-robust-cicd-design.md (Child A).
+#
+# Unlike the smoke workflows (password auth against bare containers), this
+# workflow is the only one that exercises the vip.idp Keycloak strategy and
+# the OIDC branches of auth.py end-to-end with a real IdP round-trip.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/vip/auth.py'
+      - 'src/vip/idp.py'
+      - 'src/vip/totp.py'
+      - 'src/vip/cli.py'
+      - 'src/vip_tests/conftest.py'
+      - 'src/vip_tests/connect/test_auth.py'
+      - 'src/vip_tests/connect/test_auth.feature'
+      - 'src/vip_tests/workbench/test_auth.py'
+      - 'src/vip_tests/workbench/test_auth.feature'
+      - 'docker/keycloak/**'
+      - 'docker/connect/**'
+      - 'docker/workbench/**'
+      - 'docker/tls/**'
+      - 'compose.mock-idp.yml'
+      - 'Dockerfile'
+      - '.github/workflows/mock-idp-e2e.yml'
+  pull_request:
+    paths:
+      - 'src/vip/auth.py'
+      - 'src/vip/idp.py'
+      - 'src/vip/totp.py'
+      - 'src/vip/cli.py'
+      - 'src/vip_tests/conftest.py'
+      - 'src/vip_tests/connect/test_auth.py'
+      - 'src/vip_tests/connect/test_auth.feature'
+      - 'src/vip_tests/workbench/test_auth.py'
+      - 'src/vip_tests/workbench/test_auth.feature'
+      - 'docker/keycloak/**'
+      - 'docker/connect/**'
+      - 'docker/workbench/**'
+      - 'docker/tls/**'
+      - 'compose.mock-idp.yml'
+      - 'Dockerfile'
+      - '.github/workflows/mock-idp-e2e.yml'
+  schedule:
+    - cron: "30 5 * * *" # daily at 5:30am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mock-idp-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mock-idp-e2e:
+    name: Mock-IdP E2E (headless-auth)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # All three services share one throwaway CA and terminate TLS under
+      # *.vip.test -- both Connect's OpenIDConnectIssuer and Workbench's
+      # auth-openid-issuer reject self-signed / bare-HTTP issuers. The runner
+      # (VIP + Playwright's Chromium, via --ca-bundle) needs the same
+      # hostnames to resolve to the published container ports.
+      - name: Add vip.test hostnames
+        run: |
+          echo "127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test" | sudo tee -a /etc/hosts
+
+      - name: Start mock-IdP stack (Keycloak + Connect + Workbench)
+        env:
+          RSC_LICENSE: ${{ secrets.CONNECT_LICENSE }}
+          RSW_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
+        run: docker compose -f compose.mock-idp.yml up -d --build --wait
+
+      - name: Surface stack startup failures
+        if: failure()
+        run: docker compose -f compose.mock-idp.yml logs
+
+      - name: Build VIP runner image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: .
+          load: true
+          tags: vip-mock-idp-runner:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Bind-mounted into the runner container so its JSON/JUnit output lands
+      # on the workflow runner's filesystem for the upload-artifact step
+      # below. world-writable because the container's `ubuntu` user (UID
+      # 1000, see Dockerfile) doesn't always match the actions runner's UID.
+      - name: Create output directory for test results
+        run: mkdir -m 777 -p mock-idp-out
+
+      # Runs on the host network so the container can resolve *.vip.test the
+      # same way the runner just configured via /etc/hosts, and reach the
+      # compose stack's published ports directly. Overrides the image's
+      # default `uv run pytest` entrypoint to drive the CLI directly, the
+      # same way a real user would.
+      #
+      # --interactive-auth is NOT covered by this job: unlike --headless-auth,
+      # it opens a headed browser and blocks waiting for a *human* to click
+      # through the IdP's login form (auth.py's start_interactive_auth has no
+      # form-filling logic of its own). Automating that would require a
+      # second process driving the browser via CDP while vip verify blocks on
+      # it -- deferred as follow-up work; see selftests/test_auth.py for
+      # unit-level coverage of the interactive-auth login-detection state
+      # machine in the meantime.
+      - name: Run headless-auth E2E (Connect + Workbench)
+        run: |
+          docker run --rm --network host \
+            -v vip-mock-idp_mock-idp-certs:/certs:ro \
+            -v "${{ github.workspace }}/mock-idp-out:/app/out" \
+            -e VIP_TEST_USERNAME=vip_test \
+            -e VIP_TEST_PASSWORD=vip_test_password \
+            -e VIP_TEST_TOTP_SECRET=JBSWY3DPEHPK3PXP \
+            --entrypoint uv \
+            vip-mock-idp-runner:latest \
+            run vip verify \
+            --connect-url https://connect.vip.test:3939 \
+            --workbench-url https://workbench.vip.test:8787 \
+            --ca-bundle /certs/ca.crt \
+            --headless-auth --idp keycloak \
+            --categories connect,workbench \
+            --filter "test_connect_login_ui or test_workbench_login" \
+            --report out/results.json \
+            -- --junitxml=out/mock-idp-results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mock-idp-e2e-results-headless
+          path: mock-idp-out/
+          if-no-files-found: ignore
+
+      - name: Stop mock-IdP stack
+        if: always()
+        run: docker compose -f compose.mock-idp.yml down -v
+
+  status:
+    name: Mock-IdP E2E Status
+    if: always()
+    needs: [mock-idp-e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check result
+        run: |
+          if [ "${{ needs.mock-idp-e2e.result }}" = "failure" ] || [ "${{ needs.mock-idp-e2e.result }}" = "cancelled" ]; then
+            echo "Mock-IdP E2E tests failed or were cancelled"
+            exit 1
+          fi
+          echo "Mock-IdP E2E tests passed or were skipped"

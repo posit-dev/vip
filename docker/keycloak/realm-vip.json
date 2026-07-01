@@ -1,0 +1,65 @@
+{
+  "realm": "vip",
+  "enabled": true,
+  "sslRequired": "none",
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "otpPolicyLookAheadWindow": 1,
+  "clients": [
+    {
+      "clientId": "vip-connect",
+      "name": "VIP Connect (mock-IdP E2E)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "secret": "vip-connect-secret",
+      "redirectUris": [
+        "https://connect.vip.test/__login__/callback",
+        "https://connect.vip.test/*"
+      ],
+      "webOrigins": ["https://connect.vip.test"]
+    },
+    {
+      "clientId": "vip-workbench",
+      "name": "VIP Workbench (mock-IdP E2E)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "secret": "vip-workbench-secret",
+      "redirectUris": [
+        "https://workbench.vip.test/openid/callback",
+        "https://workbench.vip.test/*"
+      ],
+      "webOrigins": ["https://workbench.vip.test"]
+    }
+  ],
+  "users": [
+    {
+      "username": "vip_test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "vip_test@vip.test",
+      "firstName": "VIP",
+      "lastName": "Test",
+      "realmRoles": ["default-roles-vip"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "vip_test_password",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}",
+          "secretData": "{\"value\":\"JBSWY3DPEHPK3PXP\"}"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+; Posit Connect configuration for the mock-IdP E2E stack.
+; WARNING: For CI/local mock-IdP testing only -- the OIDC client secret below
+; is a throwaway value seeded into docker/keycloak/realm-vip.json, not a
+; production credential.
+
+[Server]
+SenderEmail = vip@localhost
+Address = https://connect.vip.test:3939
+
+[HTTPS]
+Listen = :3939
+Certificate = /certs/connect.crt
+Key = /certs/connect.key
+
+[Authentication]
+Provider = oauth2
+
+[OAuth2]
+ClientId = vip-connect
+ClientSecret = vip-connect-secret
+OpenIDConnectIssuer = https://keycloak.vip.test:8443/realms/vip
+RequireUsernameClaim = true
+UsePKCE = true
+
+[Python]
+Enabled = true

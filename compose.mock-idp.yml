@@ -1,0 +1,125 @@
+# Mock-IdP E2E stack: a real Keycloak realm fronting real Connect and
+# Workbench containers, for exercising VIP's --headless-auth and
+# --interactive-auth OIDC flows in CI without a real customer IdP.
+#
+# Topology: every service serves HTTPS with a cert signed by one shared,
+# throwaway CA (generated once by `cert-init`), because both Connect's
+# OpenIDConnectIssuer and Workbench's auth-openid-issuer reject self-signed
+# certs and require a CA-trusted HTTPS issuer. All three hostnames
+# (keycloak/connect/workbench.vip.test) must resolve identically from inside
+# the containers -- via Compose's built-in DNS and the `aliases` declared
+# below -- and from the test runner/browser (Playwright), which needs its own
+# /etc/hosts entries pointing all three names at 127.0.0.1 (see
+# .github/workflows/mock-idp-e2e.yml and `just mock-idp-up`).
+#
+# Usage:
+#   just mock-idp-up      # generate certs, start Keycloak + Connect + Workbench
+#   just mock-idp-down    # tear down and remove the generated certs/volumes
+#
+# License keys (required, same as compose.yml):
+#   RSC_LICENSE, RSW_LICENSE
+
+# Fixed project name so the `mock-idp-certs` volume has a deterministic name
+# regardless of the checkout directory -- the CI workflow mounts it into the
+# VIP runner container by name (`vip-mock-idp_mock-idp-certs`).
+name: vip-mock-idp
+
+services:
+  cert-init:
+    image: alpine/openssl:3.5.4
+    entrypoint: ["/bin/sh", "/gen-certs.sh"]
+    volumes:
+      - ./docker/tls/gen-certs.sh:/gen-certs.sh:ro
+      - mock-idp-certs:/certs
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5
+    command: ["start-dev", "--import-realm", "--https-port=8443", "--hostname=https://keycloak.vip.test:8443"]
+    depends_on:
+      cert-init:
+        condition: service_completed_successfully
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTPS_CERTIFICATE_FILE: /certs/keycloak.crt
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /certs/keycloak.key
+    volumes:
+      - mock-idp-certs:/certs:ro
+      - ./docker/keycloak/realm-vip.json:/opt/keycloak/data/import/realm-vip.json:ro
+    ports:
+      - "127.0.0.1:8443:8443"
+    networks:
+      vip-mock-idp:
+        aliases:
+          - keycloak.vip.test
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8443"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+
+  connect:
+    build:
+      context: ./docker/connect
+      dockerfile: Dockerfile.oidc
+      args:
+        RSC_VERSION: ${RSC_VERSION:-latest}
+    depends_on:
+      cert-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+    environment:
+      RSC_LICENSE: ${RSC_LICENSE:-}
+    volumes:
+      - connect-oidc-data:/var/lib/rstudio-connect
+      - ./docker/connect/rstudio-connect-oidc.gcfg:/etc/rstudio-connect/rstudio-connect.gcfg:ro
+      - mock-idp-certs:/certs:ro
+    ports:
+      - "127.0.0.1:3939:3939"
+    networks:
+      vip-mock-idp:
+        aliases:
+          - connect.vip.test
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:3939/__ping__"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  workbench:
+    image: rstudio/rstudio-workbench:${RSW_VERSION:-latest}
+    depends_on:
+      cert-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+    environment:
+      RSW_LICENSE: ${RSW_LICENSE:-}
+    volumes:
+      - workbench-oidc-home:/home
+      - ./docker/workbench/oidc-init.sh:/etc/cont-init.d/98-vip-oidc:ro
+      - mock-idp-certs:/certs:ro
+    ports:
+      - "127.0.0.1:8787:8787"
+    networks:
+      vip-mock-idp:
+        aliases:
+          - workbench.vip.test
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:8787"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+networks:
+  vip-mock-idp:
+    driver: bridge
+
+volumes:
+  mock-idp-certs:
+  connect-oidc-data:
+  workbench-oidc-home:
