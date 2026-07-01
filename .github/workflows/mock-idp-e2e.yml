@@ -86,6 +86,12 @@ jobs:
         if: failure()
         run: docker compose -f compose.mock-idp.yml logs
 
+      # The default `docker` driver can't export to the GHA cache backend
+      # (`type=gha` requires a buildx builder) -- see docker.yml for the same
+      # pairing.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+
       - name: Build VIP runner image
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
