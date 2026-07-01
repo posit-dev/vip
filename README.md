@@ -67,7 +67,7 @@ content from Connect.
 |---|---|
 | `vip verify` | Run verification tests against a Posit Team deployment |
 | `vip status` | Quick health check for each configured product |
-| `vip cleanup` | Delete VIP test credentials and resources |
+| `vip cleanup` | Delete VIP `_vip_test` content from Connect |
 | `vip report` | Render the HTML report from test results (requires [Quarto CLI](https://quarto.org/docs/download/)) |
 | `vip auth` | Authentication tools (e.g. mint Connect API keys) |
 

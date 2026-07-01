@@ -816,17 +816,18 @@ def run_cleanup(args: argparse.Namespace) -> None:
     ``_vip_test``. The Connect URL is taken from ``--connect-url`` or, if
     omitted, from ``[connect] url`` in ``vip.toml``.
     """
-    from vip.config import load_config
-
-    config = load_config()
-
     # Determine Connect URL and API key for content cleanup.
     connect_url = getattr(args, "connect_url", None)
     api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
 
-    # Fall back to config file values when no CLI override is supplied.
-    if not connect_url and config.connect and config.connect.url:
-        connect_url = config.connect.url
+    # Fall back to vip.toml for the URL only when no CLI override is supplied,
+    # so `vip cleanup --connect-url ...` runs without a "config not found" warning.
+    if not connect_url:
+        from vip.config import load_config
+
+        config = load_config()
+        if config.connect and config.connect.url:
+            connect_url = config.connect.url
     if not connect_url:
         print(
             "Error: no Connect URL found. Pass --connect-url or set [connect] url in vip.toml.",
@@ -1053,9 +1054,9 @@ def main() -> None:
     # vip cleanup
     cleanup_parser = subparsers.add_parser(
         "cleanup",
-        help="Delete VIP test credentials and resources",
+        help="Delete VIP _vip_test content from Connect",
         description=(
-            "Delete VIP test credentials and resources.\n\n"
+            "Delete VIP _vip_test-tagged content from Connect.\n\n"
             "  vip cleanup --connect-url https://connect.example.com\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
