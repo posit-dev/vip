@@ -52,15 +52,16 @@ jobs:
           title="Dependency audit: known vulnerabilities detected"
           {
             echo "The scheduled full-tree dependency audit found known vulnerabilities."
+            echo "This issue is refreshed in place on each daily run; see the edit history for changes."
             echo ""
-            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "Last run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             echo ""
             cat audit-report.md
           } > issue-body.md
-          existing=$(gh issue list --state open --json number,title \
+          existing=$(gh issue list --state open --limit 200 --json number,title \
             --jq ".[] | select(.title==\"$title\") | .number" | head -1)
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body-file issue-body.md
+            gh issue edit "$existing" --body-file issue-body.md
           else
             gh issue create --title "$title" --body-file issue-body.md
           fi
