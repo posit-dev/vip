@@ -102,11 +102,14 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install dependencies
-        run: uv sync --all-extras
-
-      - name: Audit dependencies
-        run: uv run pip-audit --skip-editable
+      # Sync only the shipped runtime dependencies (no extras) and audit that
+      # environment. A CVE disclosed in test-only tooling (jupyter, locust,
+      # pip-audit, ...) must not block feature PRs. The full tree is scanned
+      # daily by security-audit.yml, which files a tracking issue instead.
+      - name: Audit runtime dependencies
+        run: |
+          uv sync
+          uv run --with pip-audit pip-audit --skip-editable
 
   selftest:
     name: Selftests (${{ matrix.os }} / ${{ matrix.python-version }})
