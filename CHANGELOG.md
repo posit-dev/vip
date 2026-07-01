@@ -1,6 +1,44 @@
 # CHANGELOG
 
 
+## v0.50.0 (2026-07-01)
+
+### Chores
+
+- **deps**: Bump python-socketio and python-engineio for CVE fixes
+  ([#424](https://github.com/posit-dev/vip/pull/424),
+  [`79a4126`](https://github.com/posit-dev/vip/commit/79a41268da77e06a95e966a535ac92779adc7aec))
+
+- **deps**: Bump the actions-dependencies group with 3 updates
+  ([#408](https://github.com/posit-dev/vip/pull/408),
+  [`10d6477`](https://github.com/posit-dev/vip/commit/10d64772799236e909a9b106733ad1e9b821d62d))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+Co-authored-by: Brian Deitte <brian.deitte@posit.co>
+
+- **deps**: Bump the python-dependencies group with 6 updates
+  ([#407](https://github.com/posit-dev/vip/pull/407),
+  [`4950890`](https://github.com/posit-dev/vip/commit/4950890f5ff64fea29084cc51db9a808d436b4eb))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Continuous Integration
+
+- Scope PR dependency audit; add scheduled full-tree audit
+  ([#426](https://github.com/posit-dev/vip/pull/426),
+  [`8cb457f`](https://github.com/posit-dev/vip/commit/8cb457f181cdc52eeb33d638f0071b81c95aee61))
+
+### Features
+
+- Remove Shiny app and Kubernetes modes ([#423](https://github.com/posit-dev/vip/pull/423),
+  [`803fed1`](https://github.com/posit-dev/vip/commit/803fed168286eae9326b92a534f790d0a0bb57dd))
+
+
 ## v0.49.2 (2026-06-25)
 
 ### Bug Fixes
