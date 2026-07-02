@@ -114,13 +114,14 @@ jobs:
       # same way a real user would.
       #
       # `--ca-bundle` only reaches Node/httpx's own TLS stack (NODE_EXTRA_CA_
-      # CERTS) -- Playwright's Chromium ignores that entirely for page
-      # navigation and validates against the container's OS trust store
-      # instead (there's no per-context "trust this CA" API for Chromium).
-      # So the CA must also be installed into the runner container's own
-      # trust store before vip verify launches Chromium. Runs as root
-      # (--user root) so update-ca-certificates can write to
-      # /usr/local/share/ca-certificates and /etc/ssl/certs -- this is an
+      # CERTS) -- Playwright's Chromium on Linux validates certs against its
+      # own NSS database (cert9.db), never the OS/OpenSSL trust store, so
+      # `update-ca-certificates` alone has no effect on it (confirmed:
+      # https://github.com/microsoft/playwright/issues/28967). The CA must
+      # also be seeded into NSS via `certutil` (from libnss3-tools, not
+      # installed by default) at the path Chromium actually reads:
+      # sql:$HOME/.pki/nssdb. Runs as root (--user root) so apt-get/
+      # update-ca-certificates/certutil can all write -- this is an
       # ephemeral, single-purpose CI container, not a shared host, so the
       # image's normal non-root convention doesn't buy anything here.
       #
@@ -145,6 +146,10 @@ jobs:
             -c '
               cp /certs/ca.crt /usr/local/share/ca-certificates/vip-mock-idp-ca.crt &&
               update-ca-certificates &&
+              apt-get update -qq && apt-get install -qq -y libnss3-tools > /dev/null &&
+              mkdir -p "$HOME/.pki/nssdb" &&
+              certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password &&
+              certutil -d "sql:$HOME/.pki/nssdb" -A -t "C,," -n vip-mock-idp-ca -i /certs/ca.crt &&
               exec uv run vip verify \
                 --connect-url https://connect.vip.test:3939 \
                 --workbench-url https://workbench.vip.test:8787 \
