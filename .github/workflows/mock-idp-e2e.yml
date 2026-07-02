@@ -137,7 +137,7 @@ jobs:
             --workbench-url https://workbench.vip.test:8787 \
             --ca-bundle /certs/ca.crt \
             --headless-auth --idp keycloak \
-            --categories connect,workbench \
+            --categories "connect or workbench" \
             --filter "test_connect_login_ui or test_workbench_login" \
             --report out/results.json \
             -- --junitxml=out/mock-idp-results.xml
