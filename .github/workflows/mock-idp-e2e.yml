@@ -82,10 +82,6 @@ jobs:
           RSW_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
         run: docker compose -f compose.mock-idp.yml up -d --build --wait
 
-      - name: Surface stack startup failures
-        if: failure()
-        run: docker compose -f compose.mock-idp.yml logs
-
       # The default `docker` driver can't export to the GHA cache backend
       # (`type=gha` requires a buildx builder) -- see docker.yml for the same
       # pairing.
@@ -160,6 +156,16 @@ jobs:
                 --report out/results.json \
                 -- --junitxml=out/mock-idp-results.xml --vip-verbose
             '
+
+      # Placed after the E2E step (not just after "Start mock-IdP stack") so
+      # a failure during the actual login flow -- not just container
+      # startup -- still surfaces Keycloak/Connect/Workbench container logs
+      # for diagnosis. `docker compose logs` also emits `if: failure()`
+      # logs from a startup failure by the time this runs, since the
+      # containers are still up (torn down separately, below).
+      - name: Surface stack logs on failure
+        if: failure()
+        run: docker compose -f compose.mock-idp.yml logs
 
       - name: Upload test results
         if: always()
