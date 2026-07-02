@@ -20,7 +20,12 @@ permissions:
 
 jobs:
   example-report:
-    if: github.event.action != 'closed'
+    # Dependabot PRs run without access to repository secrets, so the
+    # license-gated product startup inside example-report can never succeed
+    # there. Skip it on Dependabot PRs instead of failing them with a
+    # spurious License Error. (The preview job below needs this one, so it
+    # skips too.)
+    if: github.event.action != 'closed' && github.actor != 'dependabot[bot]'
     uses: ./.github/workflows/example-report.yml
     secrets: inherit
 

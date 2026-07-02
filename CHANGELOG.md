@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.51.0 (2026-07-01)
+
+### Continuous Integration
+
+- Skip example-report on dependabot PRs (no secret access)
+  ([#433](https://github.com/posit-dev/vip/pull/433),
+  [`69ac412`](https://github.com/posit-dev/vip/commit/69ac412bc8aed3480160acdbc75c41062910b926))
+
+### Features
+
+- Add robust version gating, N/A status, versioned page objects
+  ([#432](https://github.com/posit-dev/vip/pull/432),
+  [`3ab28b8`](https://github.com/posit-dev/vip/commit/3ab28b819df7580fcffd51a5ccfc430ae5eba5ae))
+
+
 ## v0.50.1 (2026-07-01)
 
 ### Bug Fixes
