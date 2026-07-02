@@ -6,10 +6,8 @@ import pytest
 
 from vip.config import (
     AuthConfig,
-    ClusterConfig,
     ConnectConfig,
     GitTestConfig,
-    Mode,
     PerformanceConfig,
     ProductConfig,
     VIPConfig,
@@ -731,36 +729,6 @@ clone_url = "https://github.com/org/repo.git"
         cfg = load_config(path)
         assert cfg.workbench.git_test is not None
         assert cfg.workbench.git_test.token == "env-token-xyz"
-
-
-class TestMode:
-    def test_enum_values(self):
-        assert Mode.local.value == "local"
-        assert Mode.k8s_job.value == "k8s_job"
-        assert Mode.config_only.value == "config_only"
-
-    def test_str_comparison(self):
-        assert Mode.local == "local"
-
-
-class TestVIPConfigValidateForMode:
-    def test_local_mode_no_cluster_required(self):
-        cfg = VIPConfig()  # no cluster configured
-        cfg.validate_for_mode(Mode.local)  # must not raise
-
-    def test_k8s_job_requires_cluster(self):
-        cfg = VIPConfig()
-        with pytest.raises(ValueError, match="cluster configuration"):
-            cfg.validate_for_mode(Mode.k8s_job)
-
-    def test_k8s_job_passes_with_cluster(self):
-        cfg = VIPConfig(cluster=ClusterConfig(provider="aws", name="my-cluster"))
-        cfg.validate_for_mode(Mode.k8s_job)  # must not raise
-
-    def test_config_only_requires_cluster(self):
-        cfg = VIPConfig()
-        with pytest.raises(ValueError, match="cluster configuration"):
-            cfg.validate_for_mode(Mode.config_only)
 
 
 class TestVIPConfigVerify:

@@ -1,0 +1,15 @@
+# Thin wrapper around the official Workbench image for the mock-IdP E2E stack.
+#
+# The stock image has no cont-init.d/s6-overlay pre-start hook -- ENTRYPOINT
+# is unset and CMD runs supervisord directly (confirmed via `docker inspect`)
+# -- so trusting the stack's shared CA and writing the OIDC rserver.conf
+# lines before rserver starts requires overriding the entrypoint, the same
+# pattern used for Connect (see docker/connect/Dockerfile.oidc).
+ARG RSW_VERSION=latest
+FROM rstudio/rstudio-workbench:${RSW_VERSION}
+
+COPY entrypoint-oidc.sh /usr/local/bin/entrypoint-oidc.sh
+RUN chmod +x /usr/local/bin/entrypoint-oidc.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint-oidc.sh"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

@@ -51,12 +51,14 @@ _OUTCOME_STYLES = {
     "passed": ("PASS", "#16a34a", "#dcfce7"),
     "failed": ("FAIL", "#dc2626", "#fecaca"),
     "skipped": ("SKIP", "#6b7280", "#e5e7eb"),
+    "na_version": ("N/A", "#d97706", "#fde68a"),
 }
 
 _BORDER_COLORS = {
     "passed": "#16a34a",
     "failed": "#dc2626",
     "skipped": "#d1d5db",
+    "na_version": "#d97706",
 }
 
 _PRODUCT_BADGE_CSS = {
@@ -232,7 +234,8 @@ else:
         cat_label = cat.replace("_", " ").title()
         cat_passed = sum(1 for i in items if i.outcome == "passed")
         cat_failed = sum(1 for i in items if i.outcome == "failed")
-        cat_skipped = sum(1 for i in items if i.outcome == "skipped")
+        cat_skipped = sum(1 for i in items if i.status == "skipped")
+        cat_na_version = sum(1 for i in items if i.status == "na_version")
 
         counts = []
         if cat_passed:
@@ -241,6 +244,8 @@ else:
             counts.append(f"{cat_failed} failed")
         if cat_skipped:
             counts.append(f"{cat_skipped} skipped")
+        if cat_na_version:
+            counts.append(f"{cat_na_version} N/A (version)")
 
         _html.append(
             f'<div class="vip-cat-section">'
@@ -251,9 +256,9 @@ else:
 
         for item in items:
             label, fg, badge_bg = _OUTCOME_STYLES.get(
-                item.outcome, ("?", "#6b7280", "#e5e7eb")
+                item.status, ("?", "#6b7280", "#e5e7eb")
             )
-            border_color = _BORDER_COLORS.get(item.outcome, "#d1d5db")
+            border_color = _BORDER_COLORS.get(item.status, "#d1d5db")
             raw_title = item.scenario_title or (
                 item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
             )

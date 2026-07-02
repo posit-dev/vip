@@ -103,6 +103,23 @@ report-selftest:
     uv run pytest selftests/
     cd report && uv run quarto render
 
+# Start the mock-IdP E2E stack (Keycloak + Connect + Workbench, real OIDC).
+# Requires RSC_LICENSE and RSW_LICENSE. Add vip.test hostnames to /etc/hosts
+# first: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test`.
+mock-idp-up:
+    docker compose -f compose.mock-idp.yml up -d --build --wait
+    @docker compose -f compose.mock-idp.yml ps
+
+# Stop the mock-IdP E2E stack and remove its volumes (certs, realm state, home dirs)
+mock-idp-down:
+    docker compose -f compose.mock-idp.yml down -v
+
+# Print the mock-IdP stack's auto-generated TOTP seed. Export it before
+# running `vip verify --headless-auth` locally:
+#   export VIP_TEST_TOTP_SECRET=$(just mock-idp-totp-secret)
+mock-idp-totp-secret:
+    @docker run --rm -v vip-mock-idp_mock-idp-certs:/certs:ro alpine/openssl:3.5.4 cat /certs/totp-secret.b32
+
 # Build and run the RHEL 9 headless Chromium smoke test
 rhel9-smoke:
     ./scripts/rhel-smoke.sh 9

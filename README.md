@@ -67,26 +67,11 @@ content from Connect.
 |---|---|
 | `vip verify` | Run verification tests against a Posit Team deployment |
 | `vip status` | Quick health check for each configured product |
-| `vip cleanup` | Delete VIP test credentials and resources |
+| `vip cleanup` | Delete VIP `_vip_test` content from Connect |
 | `vip report` | Render the HTML report from test results (requires [Quarto CLI](https://quarto.org/docs/download/)) |
-| `vip app` | Launch the Shiny GUI for interactive test running |
 | `vip auth` | Authentication tools (e.g. mint Connect API keys) |
-| `vip cluster` | Cluster connection tools for Kubernetes deployments |
 
 Run `vip --help` or `vip <command> --help` for full usage details.
-
-## Shiny app (graphical test runner)
-
-VIP includes a Shiny for Python app that lets you select test categories,
-run tests, and view the report — all from a browser.  This is especially
-convenient inside a Posit Workbench session (RStudio or Positron) where
-the app opens in the Viewer pane.
-
-```bash
-uv run vip app
-```
-
-See the [Shiny App guide](https://posit-dev.github.io/vip/shiny-app/) for details.
 
 ## Development
 

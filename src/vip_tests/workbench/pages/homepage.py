@@ -3,6 +3,17 @@
 Mirrors: rstudio-pro/e2e/pages/homepage.page.ts
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import TypeVar
+
+from playwright.sync_api import Page
+
+from vip.version import ProductVersion
+
+_T = TypeVar("_T")
+
 
 class NewSessionDialog:
     """Selectors for the new session dialog."""
@@ -200,3 +211,118 @@ class Homepage:
             f"{row} button[aria-label='{status}'], "
             f"{row} button:text-is('{status}')"
         )
+
+
+class Homepage_2026_05(Homepage):  # noqa: N801 - version-embedded name matches design convention
+    """Homepage selectors for the 2026.05 shadcn redesign onward.
+
+    ``SESSION_DETAILS_DIALOG`` is the one confirmed selector-only delta in
+    this file: baseline ``Homepage`` still targets the legacy Bootstrap-style
+    ``[class*='modal-dialog']`` container, which does not match the shadcn
+    ``data-slot``-based dialog markup shipped from 2026.05 onward (see the
+    workaround note in ``test_sessions.py::resume_suspended_session``, which
+    currently targets the stable "Launch" button text instead of the
+    container for exactly this reason). Every other selector already reads
+    correctly on both old and new markup (either unchanged, or already
+    unioned like ``QUIT_BUTTON`` / ``session_row_status``), so nothing else
+    needs to be overridden here.
+    """
+
+    SESSION_DETAILS_DIALOG = "[data-slot='dialog-content']"
+
+
+# Resolution table for get_homepage(): (minimum version, page-object class),
+# sorted ascending by threshold. The class for the highest threshold that is
+# <= the detected version wins; versions below the lowest threshold (or an
+# unparseable/None version) fall back to the oldest class. Single-sided
+# thresholds only -- no version ranges/max_version (see design doc scope cut).
+_HOMEPAGE_VERSIONS: list[tuple[ProductVersion, type[Homepage]]] = [
+    (ProductVersion("2026.05.0"), Homepage_2026_05),
+]
+
+
+def _resolve_by_version(
+    version: ProductVersion | str | None,
+    table: list[tuple[ProductVersion, _T]],
+    oldest: _T,
+) -> _T:
+    """Return the table entry for the highest threshold <= *version*.
+
+    Shared resolution logic for both the page-object factory
+    (``get_homepage``) and the behavior-strategy lookup
+    (``get_new_session_dialog_close_strategy``): both are UI-resolution
+    concerns rather than test-gating, so an unparseable or missing version
+    falls back to *oldest* instead of raising (unlike the pytest marker path
+    in ``plugin.py``, there is no "skip" concept here).
+    """
+    if version is None:
+        return oldest
+    if isinstance(version, str):
+        try:
+            version = ProductVersion(version)
+        except ValueError:
+            return oldest
+
+    resolved = oldest
+    for threshold, value in table:
+        if version >= threshold:
+            resolved = value
+        else:
+            break
+    return resolved
+
+
+def get_homepage(version: ProductVersion | str | None) -> type[Homepage]:
+    """Return the ``Homepage`` subclass matching the deployed Workbench version.
+
+    Accepts ``None`` or an unparseable string and falls back to the oldest
+    known class (``Homepage``) -- page-object selection is a UI concern, not
+    test gating, so there's no skip path here.
+    """
+    return _resolve_by_version(version, _HOMEPAGE_VERSIONS, Homepage)
+
+
+# ---------------------------------------------------------------------------
+# New Session dialog close behavior (Escape vs. Cancel button)
+# ---------------------------------------------------------------------------
+#
+# Unlike SESSION_DETAILS_DIALOG above, the 2026.05 shadcn redesign changed how
+# the New Session dialog is dismissed: the legacy `#modalCancelBtn` (see
+# `NewSessionDialog.CANCEL_BUTTON`, still used by existing step files) does
+# not exist in the new dialog at all -- pressing Escape closes it instead.
+# That's a BEHAVIOR difference, not a selector difference, so it can't be
+# expressed as a page-object override; it needs a strategy dict keyed by
+# version, mirroring idp.py's `_IDP_STRATEGIES` but keyed by version
+# threshold instead of a flat IdP name.
+#
+# These strategies are not wired into any step file yet (issue #409's job)
+# -- this only builds the resolution mechanism and its own selftest.
+
+
+def _close_dialog_via_cancel_button(page: Page) -> None:
+    """Dismiss the New Session dialog via the legacy Cancel button (pre-2026.05)."""
+    page.locator(NewSessionDialog.CANCEL_BUTTON).click()
+
+
+def _close_dialog_via_escape(page: Page) -> None:
+    """Dismiss the New Session dialog by pressing Escape (2026.05 shadcn onward)."""
+    page.keyboard.press("Escape")
+
+
+_NEW_SESSION_DIALOG_CLOSE_STRATEGIES: list[tuple[ProductVersion, Callable[[Page], None]]] = [
+    (ProductVersion("2026.05.0"), _close_dialog_via_escape),
+]
+
+
+def get_new_session_dialog_close_strategy(
+    version: ProductVersion | str | None,
+) -> Callable[[Page], None]:
+    """Return the function that dismisses the New Session dialog for *version*.
+
+    Same fallback policy as ``get_homepage``: ``None`` or an unparseable
+    string resolves to the oldest known strategy (the legacy Cancel button)
+    rather than raising.
+    """
+    return _resolve_by_version(
+        version, _NEW_SESSION_DIALOG_CLOSE_STRATEGIES, _close_dialog_via_cancel_button
+    )

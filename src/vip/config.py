@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import enum
 import os
 import sys
 import warnings
@@ -14,19 +13,6 @@ if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
-
-
-class Mode(str, enum.Enum):
-    """Execution mode for a VIP verification run.
-
-    local       -- run pytest directly on the caller's machine
-    k8s_job     -- submit a Kubernetes Job and stream its logs
-    config_only -- generate vip.toml from the PTD Site CR and print it; no tests run
-    """
-
-    local = "local"
-    k8s_job = "k8s_job"
-    config_only = "config_only"
 
 
 def _normalize_url(url: str) -> str:
@@ -360,58 +346,6 @@ class AuthConfig:
 
 
 @dataclass
-class ClusterConfig:
-    """Kubernetes cluster access configuration."""
-
-    provider: str = ""  # "aws" or "azure"
-    name: str = ""  # Cluster name (e.g., "ganso01-staging-20260101")
-    region: str = ""  # Cloud region
-    namespace: str = ""  # K8s namespace for Posit products
-    site: str = "main"  # PTD Site CR name (posit-dev/team-operator)
-
-    # AWS-specific
-    profile: str = ""  # AWS profile name
-    role_arn: str = ""  # IAM role ARN for cross-account access
-
-    # Azure-specific
-    subscription_id: str = ""  # Azure subscription ID
-    resource_group: str = ""  # Azure resource group
-
-    @property
-    def is_configured(self) -> bool:
-        return bool(self.provider and self.name)
-
-    def __post_init__(self) -> None:
-        if not self.provider:
-            self.provider = os.environ.get("VIP_CLUSTER_PROVIDER", "")
-        if not self.name:
-            self.name = os.environ.get("VIP_CLUSTER_NAME", "")
-        if not self.region:
-            self.region = os.environ.get("VIP_CLUSTER_REGION", "")
-        if not self.namespace:
-            env_ns = os.environ.get("VIP_CLUSTER_NAMESPACE", "")
-            self.namespace = env_ns if env_ns else "posit-team"
-        if not self.profile:
-            self.profile = os.environ.get("VIP_AWS_PROFILE", "")
-        if not self.role_arn:
-            self.role_arn = os.environ.get("VIP_AWS_ROLE_ARN", "")
-
-    @classmethod
-    def from_dict(cls, raw: dict) -> ClusterConfig:
-        return cls(
-            provider=raw.get("provider", ""),
-            name=raw.get("name", ""),
-            region=raw.get("region", ""),
-            namespace=raw.get("namespace", ""),
-            site=raw.get("site", "main"),
-            profile=raw.get("profile", ""),
-            role_arn=raw.get("role_arn", ""),
-            subscription_id=raw.get("subscription_id", ""),
-            resource_group=raw.get("resource_group", ""),
-        )
-
-
-@dataclass
 class DataSourceEntry:
     """A single external data source to verify."""
 
@@ -488,7 +422,6 @@ class VIPConfig:
     package_manager: PackageManagerConfig = field(default_factory=PackageManagerConfig)
 
     auth: AuthConfig = field(default_factory=AuthConfig)
-    cluster: ClusterConfig = field(default_factory=ClusterConfig)
     runtimes: RuntimesConfig = field(default_factory=RuntimesConfig)
     performance: PerformanceConfig = field(default_factory=PerformanceConfig)
     data_sources: list[DataSourceEntry] = field(default_factory=list)
@@ -514,25 +447,6 @@ class VIPConfig:
         if self.ca_bundle is not None:
             return str(self.ca_bundle)
         return True
-
-    def validate_for_mode(self, mode: Mode) -> None:
-        """Raise ValueError if required fields are missing for *mode*.
-
-        Call this after loading config from file and after CLI overrides
-        have been applied, before executing any I/O.
-
-        Fields required by mode:
-          local:       none beyond product URLs (config.py defaults are fine)
-          k8s_job:     cluster.is_configured (provider + name)
-          config_only: cluster.is_configured (need to reach the API server)
-        """
-        if mode in (Mode.k8s_job, Mode.config_only):
-            if not self.cluster.is_configured:
-                raise ValueError(
-                    f"mode={mode.value!r} requires cluster configuration "
-                    "(set [cluster] provider and name in vip.toml or via env vars "
-                    "VIP_CLUSTER_PROVIDER and VIP_CLUSTER_NAME)"
-                )
 
     def product_config(self, product: str) -> ProductConfig:
         """Look up a product configuration by name."""
@@ -612,7 +526,6 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         workbench=WorkbenchConfig.from_dict(raw.get("workbench", {})),
         package_manager=PackageManagerConfig.from_dict(raw.get("package_manager", {})),
         auth=AuthConfig.from_dict(raw.get("auth", {})),
-        cluster=ClusterConfig.from_dict(raw.get("cluster", {})),
         runtimes=RuntimesConfig(
             r_versions=runtimes_raw.get("r_versions", []),
             python_versions=runtimes_raw.get("python_versions", []),
