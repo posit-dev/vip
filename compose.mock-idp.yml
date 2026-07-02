@@ -12,8 +12,13 @@
 # /etc/hosts entries pointing all three names at 127.0.0.1 (see
 # .github/workflows/mock-idp-e2e.yml and `just mock-idp-up`).
 #
+# `cert-init` also generates a random TOTP seed for the realm's test user
+# and renders the realm import file with it (docker/keycloak/gen-totp-secret.sh)
+# rather than baking a fixed secret into the repo. Read it back with
+# `just mock-idp-totp-secret` and export it as VIP_TEST_TOTP_SECRET.
+#
 # Usage:
-#   just mock-idp-up      # generate certs, start Keycloak + Connect + Workbench
+#   just mock-idp-up      # generate certs + TOTP seed, start Keycloak + Connect + Workbench
 #   just mock-idp-down    # tear down and remove the generated certs/volumes
 #
 # License keys (required, same as compose.yml):
@@ -27,10 +32,13 @@ name: vip-mock-idp
 services:
   cert-init:
     image: alpine/openssl:3.5.4
-    entrypoint: ["/bin/sh", "/gen-certs.sh"]
+    entrypoint: ["/bin/sh", "-c", "/bin/sh /gen-certs.sh && /bin/sh /gen-totp-secret.sh"]
     volumes:
       - ./docker/tls/gen-certs.sh:/gen-certs.sh:ro
+      - ./docker/keycloak/gen-totp-secret.sh:/gen-totp-secret.sh:ro
+      - ./docker/keycloak/realm-vip.json:/realm-vip.template.json:ro
       - mock-idp-certs:/certs
+      - mock-idp-realm-import:/import
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.5
@@ -45,7 +53,7 @@ services:
       KC_HTTPS_CERTIFICATE_KEY_FILE: /certs/keycloak.key
     volumes:
       - mock-idp-certs:/certs:ro
-      - ./docker/keycloak/realm-vip.json:/opt/keycloak/data/import/realm-vip.json:ro
+      - mock-idp-realm-import:/opt/keycloak/data/import:ro
     ports:
       - "127.0.0.1:8443:8443"
     networks:
@@ -131,5 +139,6 @@ networks:
 
 volumes:
   mock-idp-certs:
+  mock-idp-realm-import:
   connect-oidc-data:
   workbench-oidc-home:

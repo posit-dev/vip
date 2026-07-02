@@ -114,6 +114,12 @@ mock-idp-up:
 mock-idp-down:
     docker compose -f compose.mock-idp.yml down -v
 
+# Print the mock-IdP stack's auto-generated TOTP seed. Export it before
+# running `vip verify --headless-auth` locally:
+#   export VIP_TEST_TOTP_SECRET=$(just mock-idp-totp-secret)
+mock-idp-totp-secret:
+    @docker run --rm -v vip-mock-idp_mock-idp-certs:/certs:ro alpine/openssl:3.5.4 cat /certs/totp-secret.b32
+
 # Build and run the RHEL 9 headless Chromium smoke test
 rhel9-smoke:
     ./scripts/rhel-smoke.sh 9

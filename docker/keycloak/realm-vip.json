@@ -57,7 +57,7 @@
         {
           "type": "otp",
           "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}",
-          "secretData": "{\"value\":\"MockIdpVipTotpSeed1\"}"
+          "secretData": "{\"value\":\"__TOTP_SECRET__\"}"
         }
       ]
     }
