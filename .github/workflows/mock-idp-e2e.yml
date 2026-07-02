@@ -103,8 +103,7 @@ jobs:
 
       # Bind-mounted into the runner container so its JSON/JUnit output lands
       # on the workflow runner's filesystem for the upload-artifact step
-      # below. world-writable because the container's `ubuntu` user (UID
-      # 1000, see Dockerfile) doesn't always match the actions runner's UID.
+      # below.
       - name: Create output directory for test results
         run: mkdir -m 777 -p mock-idp-out
 
@@ -113,6 +112,17 @@ jobs:
       # compose stack's published ports directly. Overrides the image's
       # default `uv run pytest` entrypoint to drive the CLI directly, the
       # same way a real user would.
+      #
+      # `--ca-bundle` only reaches Node/httpx's own TLS stack (NODE_EXTRA_CA_
+      # CERTS) -- Playwright's Chromium ignores that entirely for page
+      # navigation and validates against the container's OS trust store
+      # instead (there's no per-context "trust this CA" API for Chromium).
+      # So the CA must also be installed into the runner container's own
+      # trust store before vip verify launches Chromium. Runs as root
+      # (--user root) so update-ca-certificates can write to
+      # /usr/local/share/ca-certificates and /etc/ssl/certs -- this is an
+      # ephemeral, single-purpose CI container, not a shared host, so the
+      # image's normal non-root convention doesn't buy anything here.
       #
       # --interactive-auth is NOT covered by this job: unlike --headless-auth,
       # it opens a headed browser and blocks waiting for a *human* to click
@@ -124,23 +134,27 @@ jobs:
       # machine in the meantime.
       - name: Run headless-auth E2E (Connect + Workbench)
         run: |
-          docker run --rm --network host \
+          docker run --rm --network host --user root \
             -v vip-mock-idp_mock-idp-certs:/certs:ro \
             -v "${{ github.workspace }}/mock-idp-out:/app/out" \
             -e VIP_TEST_USERNAME=vip_test \
             -e VIP_TEST_PASSWORD=vip_test_password \
             -e VIP_TEST_TOTP_SECRET=JBSWY3DPEHPK3PXP \
-            --entrypoint uv \
+            --entrypoint sh \
             vip-mock-idp-runner:latest \
-            run vip verify \
-            --connect-url https://connect.vip.test:3939 \
-            --workbench-url https://workbench.vip.test:8787 \
-            --ca-bundle /certs/ca.crt \
-            --headless-auth --idp keycloak \
-            --categories "connect or workbench" \
-            --filter "test_connect_login_ui or test_workbench_login" \
-            --report out/results.json \
-            -- --junitxml=out/mock-idp-results.xml
+            -c '
+              cp /certs/ca.crt /usr/local/share/ca-certificates/vip-mock-idp-ca.crt &&
+              update-ca-certificates &&
+              exec uv run vip verify \
+                --connect-url https://connect.vip.test:3939 \
+                --workbench-url https://workbench.vip.test:8787 \
+                --ca-bundle /certs/ca.crt \
+                --headless-auth --idp keycloak \
+                --categories "connect or workbench" \
+                --filter "test_connect_login_ui or test_workbench_login" \
+                --report out/results.json \
+                -- --junitxml=out/mock-idp-results.xml
+            '
 
       - name: Upload test results
         if: always()
