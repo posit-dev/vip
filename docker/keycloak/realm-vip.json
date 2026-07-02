@@ -18,10 +18,10 @@
       "directAccessGrantsEnabled": false,
       "secret": "vip-connect-secret",
       "redirectUris": [
-        "https://connect.vip.test/__login__/callback",
-        "https://connect.vip.test/*"
+        "https://connect.vip.test:3939/__login__/callback",
+        "https://connect.vip.test:3939/*"
       ],
-      "webOrigins": ["https://connect.vip.test"]
+      "webOrigins": ["https://connect.vip.test:3939"]
     },
     {
       "clientId": "vip-workbench",
@@ -33,10 +33,10 @@
       "directAccessGrantsEnabled": false,
       "secret": "vip-workbench-secret",
       "redirectUris": [
-        "https://workbench.vip.test/openid/callback",
-        "https://workbench.vip.test/*"
+        "https://workbench.vip.test:8787/openid/callback",
+        "https://workbench.vip.test:8787/*"
       ],
-      "webOrigins": ["https://workbench.vip.test"]
+      "webOrigins": ["https://workbench.vip.test:8787"]
     }
   ],
   "users": [
