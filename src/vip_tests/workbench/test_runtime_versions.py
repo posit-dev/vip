@@ -180,7 +180,12 @@ def _open_dialog_with_rstudio_tab(page: Page):
     """
     page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)
     dialog = page.locator(NewSessionDialog.DIALOG)
-    expect(dialog).to_be_visible(timeout=TIMEOUT_DIALOG)
+    # Assert the New Session dialog title rather than relying on the broad
+    # ``[role='dialog']`` selector, which can match unrelated dialogs.  Mirrors
+    # the title assertion in ``test_ide_launch._start_session``.
+    expect(dialog.locator(NewSessionDialog.TITLE)).to_have_text(
+        "New Session", timeout=TIMEOUT_DIALOG
+    )
 
     ide_display = NewSessionDialog.ide_display_name("RStudio")  # "RStudio Pro"
     ide_tab = dialog.get_by_role("tab", name=ide_display)
@@ -192,7 +197,7 @@ def _open_dialog_with_rstudio_tab(page: Page):
     # The Launch button only appears once the selected tab's content is ready.
     # If it never shows, the tab exists but the IDE is not functional here.
     try:
-        page.locator(NewSessionDialog.LAUNCH_BUTTON).wait_for(
+        dialog.locator(NewSessionDialog.LAUNCH_BUTTON).wait_for(
             state="visible", timeout=TIMEOUT_QUICK
         )
     except PlaywrightTimeoutError:
@@ -327,7 +332,7 @@ def start_rstudio_with_r_version(
     # Select the RStudio Pro IDE tab so an RStudio session launches.  Without
     # this the dialog launches its default IDE (Positron on current Workbench),
     # and the later ``#rstudio_container`` assertion times out.
-    _open_dialog_with_rstudio_tab(page)
+    dialog = _open_dialog_with_rstudio_tab(page)
 
     # Try to select the expected R version if a dropdown exists
     r_dropdown = page.locator(NewSessionDialog.R_VERSION_DROPDOWN)
@@ -350,7 +355,7 @@ def start_rstudio_with_r_version(
         join_checkbox.click()
     expect(join_checkbox).not_to_be_checked(timeout=TIMEOUT_QUICK)
 
-    page.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=TIMEOUT_QUICK)
+    dialog.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=TIMEOUT_QUICK)
     return session_context
 
 
