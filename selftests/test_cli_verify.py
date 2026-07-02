@@ -17,7 +17,9 @@ def _make_args(**overrides) -> argparse.Namespace:
     defaults = {
         "config": None,
         "connect_url": None,
+        "connect_version": None,
         "workbench_url": None,
+        "workbench_version": None,
         "package_manager_url": None,
         "report": "report/results.json",
         "interactive_auth": False,
@@ -969,6 +971,52 @@ class TestVerifyLocalTLSFlags:
         finally:
             if path:
                 Path(path).unlink(missing_ok=True)
+
+
+class TestVerifyLocalVersionFlags:
+    """--connect-version and --workbench-version are encoded in the temp config."""
+
+    def test_connect_version_written_to_temp_config(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(connect_url="https://c.example.com", connect_version="2026.06.0")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.connect.version == "2026.06.0"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_workbench_version_written_to_temp_config(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://w.example.com", workbench_version="2026.06.0")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.workbench.version == "2026.06.0"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_no_version_line_when_flag_absent(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+
+        path = _generate_temp_config(_make_args(connect_url="https://c.example.com"))
+        try:
+            content = Path(path).read_text()
+            assert "version" not in content
+        finally:
+            Path(path).unlink(missing_ok=True)
 
 
 class TestVerifyLocalSnowflakeApiAuthGuard:

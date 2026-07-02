@@ -278,12 +278,20 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     lines = ["[general]", 'deployment_name = "Posit Team"', ""]
 
     if args.connect_url:
-        lines.extend(["[connect]", f'url = "{args.connect_url}"', ""])
+        lines.extend(["[connect]", f'url = "{args.connect_url}"'])
+        connect_version = getattr(args, "connect_version", None)
+        if connect_version:
+            lines.append(f'version = "{connect_version}"')
+        lines.append("")
     else:
         lines.extend(["[connect]", "enabled = false", ""])
 
     if args.workbench_url:
-        lines.extend(["[workbench]", f'url = "{args.workbench_url}"', ""])
+        lines.extend(["[workbench]", f'url = "{args.workbench_url}"'])
+        workbench_version = getattr(args, "workbench_version", None)
+        if workbench_version:
+            lines.append(f'version = "{workbench_version}"')
+        lines.append("")
     else:
         lines.extend(["[workbench]", "enabled = false", ""])
 
@@ -914,6 +922,22 @@ def main() -> None:
     url_group.add_argument("--connect-url", default=None, help="Connect server URL")
     url_group.add_argument("--workbench-url", default=None, help="Workbench server URL")
     url_group.add_argument("--package-manager-url", default=None, help="Package Manager server URL")
+    url_group.add_argument(
+        "--connect-version",
+        default=None,
+        help=(
+            "Deployed Connect version (e.g. 2026.06.0). Required for tests with a "
+            "min_version marker to run instead of being skipped as N/A-by-version."
+        ),
+    )
+    url_group.add_argument(
+        "--workbench-version",
+        default=None,
+        help=(
+            "Deployed Workbench version (e.g. 2026.06.0). Required for tests with a "
+            "min_version marker to run instead of being skipped as N/A-by-version."
+        ),
+    )
 
     # TLS configuration
     tls_group = verify_parser.add_argument_group("TLS configuration")
