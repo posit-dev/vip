@@ -158,7 +158,7 @@ jobs:
                 --categories "connect or workbench" \
                 --filter "test_connect_login_ui or test_workbench_login" \
                 --report out/results.json \
-                -- --junitxml=out/mock-idp-results.xml
+                -- --junitxml=out/mock-idp-results.xml --vip-verbose
             '
 
       - name: Upload test results
