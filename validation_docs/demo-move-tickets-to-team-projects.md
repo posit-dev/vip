@@ -1,7 +1,7 @@
 # Feature: route team-labeled issues to product boards
 
-*2026-07-02T00:18:25Z by Showboat 0.6.1*
-<!-- showboat-id: 34afcca0-459c-49c0-98a5-3be1c8934d1e -->
+*2026-07-02T00:31:14Z by Showboat 0.6.1*
+<!-- showboat-id: 5dfa34c6-75ad-451f-bbb6-b6e52b8de5b7 -->
 
 Issue #413: route team-labeled issues onto product team project boards. Adds .github/workflows/add-to-team-project.yml — when a 'team: connect', 'team: workbench', or 'team: package manager' label is applied to an issue, the issue is added to that product team's org-level GitHub project board via a cross-org GitHub App token. Ported from rstudio/helm's issues.yml, dropping the chronicle and launcher teams. Also creates the three team labels the workflow keys off of.
 
@@ -46,7 +46,7 @@ jobs:
 
       - name: Generate token for GitHub App
         id: generate-token
-        if: steps.project-url.outputs.project != 'none'
+        if: steps.project-url.outputs.PROJECT != 'none'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
         with:
           app-id: ${{ secrets.POSIT_PLATFORM_APP_ID }}
@@ -56,7 +56,7 @@ jobs:
 
       - name: Add issue to project
         id: add-to-project
-        if: steps.project-url.outputs.project != 'none'
+        if: steps.project-url.outputs.PROJECT != 'none'
         uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd  # v2.0.0
         with:
           project-url: ${{ steps.project-url.outputs.PROJECT }}
