@@ -129,6 +129,13 @@ jobs:
       # it -- deferred as follow-up work; see selftests/test_auth.py for
       # unit-level coverage of the interactive-auth login-detection state
       # machine in the meantime.
+      # VIP_TEST_TOTP_SECRET must be the base32 encoding of the realm's
+      # seeded otp secretData.value (docker/keycloak/realm-vip.json), NOT
+      # the same literal string. Keycloak's HmacOTP uses secretData.value's
+      # raw bytes directly as the HMAC-SHA1 key; pyotp (src/vip/totp.py)
+      # base32-decodes VIP_TEST_TOTP_SECRET before using it as the key.
+      # Reusing one string for both makes the two sides derive different
+      # keys, so every generated code is rejected with invalid_user_credentials.
       - name: Run headless-auth E2E (Connect + Workbench)
         run: |
           docker run --rm --network host --user root \
@@ -136,7 +143,7 @@ jobs:
             -v "${{ github.workspace }}/mock-idp-out:/app/out" \
             -e VIP_TEST_USERNAME=vip_test \
             -e VIP_TEST_PASSWORD=vip_test_password \
-            -e VIP_TEST_TOTP_SECRET=JBSWY3DPEHPK3PXP \
+            -e VIP_TEST_TOTP_SECRET=JVXWG22JMRYFM2LQKRXXI4CTMVSWIMI= \
             --entrypoint sh \
             vip-mock-idp-runner:latest \
             -c '
