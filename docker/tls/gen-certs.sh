@@ -41,12 +41,17 @@ for name in ${DOMAINS}; do
   openssl req -newkey rsa:2048 -sha256 -nodes \
     -keyout "${OUT}/${name}.key" -out "${OUT}/${name}.csr" \
     -subj "/CN=${domain}"
+  # -extfile needs a real file, not process substitution (<(...) is a
+  # bashism and this script runs under /bin/sh, e.g. busybox ash in the
+  # alpine/openssl cert-init container).
+  extfile="${OUT}/${name}.extfile"
+  printf "subjectAltName=DNS:%s" "${domain}" > "${extfile}"
   openssl x509 -req -sha256 -days 30 \
     -in "${OUT}/${name}.csr" \
     -CA "${OUT}/ca.crt" -CAkey "${OUT}/ca.key" -CAcreateserial \
     -out "${OUT}/${name}.crt" \
-    -extfile <(printf "subjectAltName=DNS:%s" "${domain}")
-  rm -f "${OUT}/${name}.csr"
+    -extfile "${extfile}"
+  rm -f "${OUT}/${name}.csr" "${extfile}"
 done
 
 chmod 644 "${OUT}"/*.crt
