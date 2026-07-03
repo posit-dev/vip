@@ -1,6 +1,40 @@
 # CHANGELOG
 
 
+## v0.52.0 (2026-07-03)
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 4 updates
+  ([#429](https://github.com/posit-dev/vip/pull/429),
+  [`63c8c5b`](https://github.com/posit-dev/vip/commit/63c8c5b9d80aae8a0aa354b49c251e7fc87fc099))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+Co-authored-by: Brian Deitte <brian.deitte@posit.co>
+
+- **deps**: Bump the python-dependencies group across 1 directory with 4 updates
+  ([#428](https://github.com/posit-dev/vip/pull/428),
+  [`f7d5b78`](https://github.com/posit-dev/vip/commit/f7d5b78c23bb132269ad5fde1c457f638bffb229))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Continuous Integration
+
+- Add mock-IdP E2E stack for OIDC auth testing ([#431](https://github.com/posit-dev/vip/pull/431),
+  [`4ffc741`](https://github.com/posit-dev/vip/commit/4ffc741729ed15b41a47eaa47fe957e488a3a3ad))
+
+### Features
+
+- **cli**: Add --connect-version and --workbench-version to vip verify
+  ([#436](https://github.com/posit-dev/vip/pull/436),
+  [`ac3cd02`](https://github.com/posit-dev/vip/commit/ac3cd02e3b2c4f3eb4649faf41939dcb508f150c))
+
+
 ## v0.51.0 (2026-07-01)
 
 ### Continuous Integration
