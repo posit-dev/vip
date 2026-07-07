@@ -243,6 +243,15 @@ class WorkbenchConfig(ProductConfig):
     extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
     kubernetes: WorkbenchKubernetesConfig = field(default_factory=WorkbenchKubernetesConfig)
     git_test: GitTestConfig | None = None
+    # Set to True when Chronicle is enabled on this Workbench deployment.
+    # Enables the in-session Chronicle data-collection test, which launches an
+    # RStudio session and uses the chronicle.reports R package to verify that
+    # Chronicle has written queryable telemetry to chronicle_data_path.
+    chronicle_enabled: bool = False
+    # Base path of Chronicle's Parquet data on the Workbench server.  Defaults
+    # to the embedded-Workbench location under the shared-storage tree.  This
+    # is passed to chronicle.reports as base_path inside the session.
+    chronicle_data_path: str = "/var/lib/rstudio-server/shared-storage/chronicle"
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -260,7 +269,9 @@ class WorkbenchConfig(ProductConfig):
             f"idle_timeout_minutes={self.idle_timeout_minutes!r}, "
             f"idle_grace_seconds={self.idle_grace_seconds!r}, "
             f"extensions={self.extensions!r}, kubernetes={self.kubernetes!r}, "
-            f"git_test={self.git_test!r})"
+            f"git_test={self.git_test!r}, "
+            f"chronicle_enabled={self.chronicle_enabled!r}, "
+            f"chronicle_data_path={self.chronicle_data_path!r})"
         )
 
     @classmethod
@@ -280,6 +291,10 @@ class WorkbenchConfig(ProductConfig):
             extensions=WorkbenchExtensionsConfig.from_dict(raw.get("extensions", {})),
             kubernetes=WorkbenchKubernetesConfig.from_dict(raw.get("kubernetes", {})),
             git_test=GitTestConfig.from_dict(git_test_raw) if git_test_raw is not None else None,
+            chronicle_enabled=raw.get("chronicle_enabled", False),
+            chronicle_data_path=raw.get(
+                "chronicle_data_path", "/var/lib/rstudio-server/shared-storage/chronicle"
+            ),
         )
 
 
