@@ -4,18 +4,18 @@ Feature: Workbench Chronicle observability
   I want to verify that Chronicle is collecting Workbench telemetry
   So that I know the observability pipeline is actually producing usable data
 
-  Chronicle stores telemetry as Parquet files on the Workbench server; it has
-  no query API. The only way to prove it is collecting is to read that data.
-  This test launches an RStudio session and, inside it, uses the
-  chronicle.reports R package to confirm Chronicle has written queryable data
-  for each of its three collection paths. Launching the session exercises the
-  pipeline by generating fresh session telemetry.
+  Chronicle stores telemetry on the Workbench server and has no query API. It
+  writes raw chunk files to its storage path as it scrapes, compacting them into
+  the daily/curated datasets only much later. The only timely way to prove it is
+  collecting is to read those raw chunk files back. This test launches an RStudio
+  session and, inside it, reads Chronicle's raw chunk files to confirm it has
+  written queryable telemetry for its two deterministically collected paths.
+  Reading in-session also proves the session user can read the data directory.
 
-  Enabling chronicle_enabled asserts full Chronicle functionality: all three
-  collection paths must be configured and producing data (see vip.toml.example
-  for the required rserver.conf / chronicle-local.gcfg settings per path).
+  Enabling [chronicle] enabled requires chronicle-enabled=1, metrics-enabled=1,
+  and workbench-api-admin-enabled=1 in rserver.conf (see vip.toml.example).
 
-  Scenario: Chronicle has collected telemetry across all three paths
+  Scenario: Chronicle has collected telemetry readable in-session
     Given the user is logged in to Workbench
     And Chronicle verification is enabled in vip.toml
     When the user starts a new RStudio session
@@ -23,5 +23,4 @@ Feature: Workbench Chronicle observability
     And the RStudio IDE is displayed and functional
     Then Chronicle has collected runtime metrics via the Prometheus scrape
     And Chronicle has collected user information via the Workbench admin API
-    And Chronicle has collected session events via OTLP
     And the session is cleaned up

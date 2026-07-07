@@ -57,34 +57,10 @@ url = "https://workbench.example.com"
 # idle_timeout_minutes = 5   # must be ≤ 15 for the idle scenarios to run
 # idle_grace_seconds = 60    # seconds added on top of idle_timeout_minutes before asserting suspend
 
-# Set to true when Chronicle is enabled on this Workbench deployment
-# (chronicle-enabled=1 and metrics-enabled=1 in rserver.conf). This enables the
-# in-session Chronicle test, which launches an RStudio session and uses the
-# chronicle.reports R package to verify Chronicle has written queryable data.
-#
-# Chronicle collects from Workbench through three independent paths. The VIP
-# test reads runtime metrics (path 1); paths 2 and 3 need extra server config
-# for full functionality (see the Workbench "Posit Chronicle" admin docs):
-#   1. Runtime metrics (Prometheus scrape) — works once Chronicle is enabled.
-#   2. Audit/session events + logs (OTLP) — set otel-enabled=1,
-#      otel-logs-enabled=1, otel-logs-endpoint=http://localhost:<port>/v1/logs
-#      in rserver.conf and [Workbench] LogOTLPEndpoint = localhost:<port> in
-#      chronicle-local.gcfg. Requires the Monitoring license feature.
-#   3. User information (Workbench admin API) — set workbench-api-admin-enabled=1
-#      in rserver.conf. Needed for the curated workbench/user_* datasets.
-#
-# Requirements in the session: chronicle.reports must be installed, and the
-# session user must be able to read chronicle_data_path. Chronicle restricts
-# data to the owning group by default ([LocalStorage] Access = group). To let
-# session users read it, set Access = all (world-readable) in
-# /etc/rstudio/chronicle-local.gcfg (Workbench rewrites the generated
-# chronicle.gcfg on every restart, so override it there):
-#   [LocalStorage]
-#   Access = all
-# Alternatively keep the default and add the session user to the owning group.
-# chronicle_enabled = false
-#
-# Base path of Chronicle's Parquet data on the Workbench server. Defaults to the
+# The in-session Chronicle data-collection test is gated by the top-level
+# [chronicle] enabled flag (see below); it launches an RStudio session and reads
+# Chronicle's raw data chunks to verify it has collected queryable telemetry.
+# Base path of Chronicle's data on the Workbench server. Defaults to the
 # embedded-Workbench location below; override if chronicle-storage-location is set.
 # chronicle_data_path = "/var/lib/rstudio-server/shared-storage/chronicle"
 
@@ -190,8 +166,23 @@ enabled = false
 enabled = false
 
 [chronicle]
-# Set enabled = true if Connect's embedded Chronicle usage data collection
-# is configured. VIP verifies the Chronicle subprocess is running and ready.
+# Set enabled = true when Chronicle usage data collection is configured. This
+# single flag gates every Chronicle test:
+#   - Connect:   VIP verifies the embedded Chronicle subprocess is running/ready.
+#   - Workbench: VIP launches an RStudio session and reads Chronicle's raw data
+#                chunks (under [workbench] chronicle_data_path) to verify it has
+#                collected queryable telemetry. It checks the two deterministically
+#                collected paths: runtime metrics (Prometheus scrape) and user
+#                information (Workbench admin API). Enable both in rserver.conf:
+#                  chronicle-enabled=1
+#                  metrics-enabled=1
+#                  workbench-api-admin-enabled=1
+#                The session user must be able to read chronicle_data_path.
+#                Chronicle restricts data to the owning group by default
+#                ([LocalStorage] Access = group); set Access = all in
+#                /etc/rstudio/chronicle-local.gcfg (Workbench rewrites the
+#                generated chronicle.gcfg on every restart) or add the session
+#                user to the owning group.
 enabled = false
 
 [performance]
