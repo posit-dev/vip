@@ -133,11 +133,10 @@ def check_pypi_wheels(pm_client):
         pytest.skip(
             f"PyPI simple index not found for 'numpy' in repo {repo!r} — PyPI may not be synced yet"
         )
-    if not found and status == 200:
-        pytest.skip(
-            f"PyPI simple index for 'numpy' in repo {repo!r} contains no wheel files — "
-            "binary wheels may not be synced for this deployment"
-        )
+    # A 200 index with no wheels is a failure, not a skip: 'numpy' always ships
+    # manylinux wheels, so a wheel-less index means binary serving is broken —
+    # the exact case this suite exists to catch (matches the CRAN steps and the
+    # module docstring's "200 without usable content" contract).
     return found, status
 
 
@@ -145,6 +144,6 @@ def check_pypi_wheels(pm_client):
 def binary_index_is_reachable(binary_index_result):
     found, status = binary_index_result
     assert found, (
-        f"Binary package index request failed with HTTP {status}. "
+        f"Binary package index not served or contains no binaries (HTTP {status}). "
         "Binary serving may be broken for this deployment."
     )
