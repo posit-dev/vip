@@ -134,6 +134,28 @@ def _strip_r_index(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _parse_done_marker(content: str, done_marker: str) -> tuple[str, int] | None:
+    """Look for a ``{done_marker}:<exit_code>`` line in *content*.
+
+    ``terminal_run`` writes this marker unconditionally, with the command's
+    exit code appended, so a fast failure can be told apart from "still
+    running" (see issue #439 -- a marker written only via ``&&`` never
+    appears when the command exits non-zero).
+
+    Returns:
+        ``(captured_output, exit_code)`` with the marker line removed, or
+        ``None`` if the marker has not appeared in *content* yet.
+    """
+    prefix = f"{done_marker}:"
+    lines = content.splitlines()
+    for line in lines:
+        if line.strip().startswith(prefix):
+            exit_code = int(line.strip()[len(prefix) :])
+            output = "\n".join(ln for ln in lines if ln.strip() != line.strip())
+            return output.strip(), exit_code
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Console / cell eval primitives
 # ---------------------------------------------------------------------------
@@ -559,14 +581,19 @@ def terminal_run(
     Strategy:
     1. Ensure the IDE terminal is open (activate the RStudio Terminal tab or
        create a VS Code/Positron terminal) so its input is present.
-    2. Type ``{cmd} > {tmpfile} 2>&1 && echo VIP_DONE >> {tmpfile}`` in the
-       terminal input (``.xterm-helper-textarea``).
+    2. Type ``{cmd} > {tmpfile} 2>&1; echo "VIP_DONE:$?" >> {tmpfile}`` in the
+       terminal input (``.xterm-helper-textarea``).  The marker is appended
+       with ``;`` rather than ``&&`` so it is always written, even when *cmd*
+       fails -- see issue #439.
     3. Press Enter to execute.
     4. Poll for the done marker:
        - RStudio/Positron: call ``read_file`` (console eval, fresh each call).
        - VS Code: open the file once in the Monaco editor, then loop:
          read ``.view-lines``; if done_marker present → done; else close tab
          and re-open so the editor re-reads from disk.
+    5. Once the marker appears, parse the exit code appended to it. A
+       non-zero exit code raises ``ExecError`` immediately with the captured
+       output, instead of waiting out the full timeout.
 
     Args:
         page: Playwright page for an active IDE session.
@@ -579,6 +606,11 @@ def terminal_run(
     Returns:
         Captured stdout/stderr of the command as a string.
 
+    Raises:
+        ExecError: *cmd* exited with a non-zero status (message includes the
+            exit code and captured output), or the done marker never
+            appeared within *timeout*.
+
     Note:
         The VS Code editor-open polling path is UNVALIDATED and pending a live
         git_ops run.  The open/close/re-read loop may be slow; it will be tuned
@@ -586,7 +618,7 @@ def terminal_run(
     """
     done_marker = f"VIP_DONE_{uuid.uuid4().hex}"
     tmpfile = f"/tmp/vip_term_{uuid.uuid4().hex}.txt"
-    shell_cmd = f'{cmd} > {tmpfile} 2>&1 && echo "{done_marker}" >> {tmpfile}'
+    shell_cmd = f'{cmd} > {tmpfile} 2>&1; echo "{done_marker}:$?" >> {tmpfile}'
 
     ide = _detect_ide(page)
 
@@ -607,11 +639,18 @@ def terminal_run(
             try:
                 _open_file_in_vscode_editor(page, tmpfile, timeout=5_000)
                 content = _read_vscode_editor_text(page, timeout=5_000)
-                if done_marker in content:
-                    _close_active_editor(page)
-                    lines = [ln for ln in content.splitlines() if ln.strip() != done_marker]
-                    return "\n".join(lines).strip()
                 _close_active_editor(page)
+                parsed = _parse_done_marker(content, done_marker)
+                if parsed is not None:
+                    output, exit_code = parsed
+                    if exit_code != 0:
+                        raise ExecError(
+                            f"terminal_run: command {cmd!r} exited with status "
+                            f"{exit_code}: {output}"
+                        )
+                    return output
+            except ExecError:
+                raise
             except Exception:
                 pass
             time.sleep(poll_interval)
@@ -620,9 +659,17 @@ def terminal_run(
         while time.monotonic() < deadline:
             try:
                 content = read_file(page, tmpfile, timeout=5_000, lang=readback_lang)
-                if done_marker in content:
-                    lines = [ln for ln in content.splitlines() if ln.strip() != done_marker]
-                    return "\n".join(lines).strip()
+                parsed = _parse_done_marker(content, done_marker)
+                if parsed is not None:
+                    output, exit_code = parsed
+                    if exit_code != 0:
+                        raise ExecError(
+                            f"terminal_run: command {cmd!r} exited with status "
+                            f"{exit_code}: {output}"
+                        )
+                    return output
+            except ExecError:
+                raise
             except Exception:
                 pass
             time.sleep(poll_interval)
