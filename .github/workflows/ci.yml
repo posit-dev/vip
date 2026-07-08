@@ -220,7 +220,7 @@ jobs:
       # (github/gh-aw-actions/setup); bump this pin and recompile together.
       - name: Verify gh-aw lockfiles are freshly compiled
         run: |
-          gh extension install github/gh-aw --pin v0.74.8 --force
+          gh extension install github/gh-aw --pin v0.81.6 --force
           gh aw compile --no-check-update
           if ! git diff --exit-code .github/workflows/*.lock.yml; then
             echo "::error::gh-aw lockfiles are stale. Run 'gh aw compile' and commit the regenerated .lock.yml files."
