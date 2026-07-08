@@ -127,6 +127,14 @@ vip = "vip.plugin"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv]
+# Pin the uv version used in this repo so `uv.lock` is reproducible across
+# machines. Older uv (< 0.11) strips the `upload-time` wheel annotations and
+# uses an older lockfile revision, which churns ~2000 lines on any relock. The
+# floor rejects those versions for every uv command; `just relock` pins an exact
+# version on top of it. See docs/development.md ("The lockfile").
+required-version = ">=0.11"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/vip", "src/vip_tests"]
 

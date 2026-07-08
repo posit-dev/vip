@@ -8,7 +8,7 @@ RUN dnf install -y \
     && dnf clean all
 
 # Install uv (matches version pinned in vip's main Dockerfile)
-COPY --from=ghcr.io/astral-sh/uv:0.6.3 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 COPY . .
