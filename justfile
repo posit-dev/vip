@@ -1,5 +1,9 @@
 # VIP - Verified Installation of Posit
 
+# Exact uv version used to regenerate uv.lock. Must satisfy the
+# `required-version` floor in pyproject.toml's [tool.uv]. Bump both together.
+UV_VERSION := "0.11.28"
+
 # List available recipes
 default:
     @just --list
@@ -11,6 +15,14 @@ setup:
 
 # Same as `setup` — kept for muscle memory; vip install handles RHEL detection.
 setup-rhel: setup
+
+# Regenerate uv.lock with the pinned uv version (see UV_VERSION above).
+# Use this instead of a bare `uv lock` so the lockfile is byte-reproducible
+# regardless of the uv installed locally — `uvx` fetches the exact pin. This is
+# also how you resolve a uv.lock merge conflict: take either side, then relock.
+#   git checkout --theirs uv.lock && just relock
+relock:
+    uvx --from uv=={{ UV_VERSION }} uv lock
 
 # Run ruff linter
 lint:
