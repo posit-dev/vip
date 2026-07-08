@@ -44,6 +44,43 @@ uv run ruff format src/ src/vip_tests/       # reformat
 uv run mypy src/
 ```
 
+## The lockfile
+
+`uv.lock` is committed and must stay reproducible across machines. The uv
+version is pinned so relocking always produces the same output:
+
+- `pyproject.toml`'s `[tool.uv] required-version = ">=0.11"` rejects any uv
+  older than 0.11 for **every** uv command in this repo. Older uv (e.g. the
+  0.6.x still shipped by some package managers) strips the `upload-time` wheel
+  annotations and writes an older lockfile revision, which churns ~2000 lines
+  on any relock. If uv refuses to run, upgrade it (`uv self update`, or
+  `brew upgrade uv`).
+- `just relock` regenerates the lockfile with an **exact** pinned uv version
+  (`UV_VERSION` in the `justfile`), fetched via `uvx` — so the output is
+  identical even when your local uv is a different version. Always relock with
+  this recipe rather than a bare `uv lock`:
+
+  ```bash
+  just relock
+  ```
+
+  When bumping the pin, change both `UV_VERSION` in the `justfile` and the
+  `required-version` floor in `pyproject.toml` together.
+
+### Resolving a uv.lock merge conflict
+
+Never hand-edit conflict markers in `uv.lock`. Take either side wholesale, then
+regenerate deterministically:
+
+```bash
+git checkout --theirs -- uv.lock   # or --ours; the starting point doesn't matter
+just relock                     # re-resolves from pyproject.toml with the pinned uv
+git add uv.lock
+```
+
+Because the uv version is pinned, the regenerated lockfile is identical to what
+CI and other contributors produce, so the conflict resolves cleanly.
+
 ## Design principles
 
 - **Non-destructive** — tests create, verify, and clean up their own content.

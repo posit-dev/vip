@@ -1,6 +1,52 @@
 # CHANGELOG
 
 
+## v0.52.1 (2026-07-08)
+
+### Bug Fixes
+
+- **workbench**: Remove stale clone dir before git-ops clone
+  ([#443](https://github.com/posit-dev/vip/pull/443),
+  [`4dc896c`](https://github.com/posit-dev/vip/commit/4dc896c5892ff2d297d21d886f4d99f6313f21b2))
+
+Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Build System
+
+- Pin uv version for deterministic uv.lock ([#442](https://github.com/posit-dev/vip/pull/442),
+  [`721f9ce`](https://github.com/posit-dev/vip/commit/721f9ce98ed339cd24c7a13e032662574c997cce))
+
+### Chores
+
+- **deps**: Bump the python-dependencies group with 2 updates
+  ([#446](https://github.com/posit-dev/vip/pull/446),
+  [`362a65c`](https://github.com/posit-dev/vip/commit/362a65c29cf09539003f9bcc2983dbde9ef4c709))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Continuous Integration
+
+- Bump gh-aw lockfile pin to v0.81.6 and recompile
+  ([#448](https://github.com/posit-dev/vip/pull/448),
+  [`6559a2e`](https://github.com/posit-dev/vip/commit/6559a2e0c8d542806b8d1e36627649b71e469b0d))
+
+### Testing
+
+- Pin interactive-auth poll-loop detection (headless-only stance)
+  ([#444](https://github.com/posit-dev/vip/pull/444),
+  [`3c241a3`](https://github.com/posit-dev/vip/commit/3c241a3d758fd020d2993d7f44c754d93b12f17c))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+- **package-manager**: Add binary package serving coverage
+  ([#437](https://github.com/posit-dev/vip/pull/437),
+  [`dcacaae`](https://github.com/posit-dev/vip/commit/dcacaaeb197ea956505310332438deb07b20dce2))
+
+Co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+
+
 ## v0.52.0 (2026-07-03)
 
 ### Chores
