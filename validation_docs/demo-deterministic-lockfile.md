@@ -1,7 +1,7 @@
 # Feature: deterministic uv.lock handling (#425 part 2)
 
-*2026-07-08T16:21:01Z by Showboat 0.6.1*
-<!-- showboat-id: 6c558e25-212d-40cf-88f3-48535733826c -->
+*2026-07-08T16:57:07Z by Showboat 0.6.1*
+<!-- showboat-id: e0f4674a-03c3-4116-9850-5184ea0c45dd -->
 
 Local uv 0.6.3 strips the `upload-time` wheel annotations and writes an older lockfile revision, churning ~2000 lines on any relock and driving constant merge conflicts. This change pins the uv version used for locking so `uv.lock` is byte-reproducible everywhere: a `required-version` floor in pyproject.toml, a pinned `just relock` recipe, and contributor docs for deterministic conflict resolution.
 
@@ -29,13 +29,13 @@ UV_VERSION := "0.11.28"
 
 
 # Regenerate uv.lock with the pinned uv version (see UV_VERSION above).
-# Use this instead of a bare `uv lock` so the lockfile is byte-reproducible
-# regardless of the uv installed locally — `uvx` fetches the exact pin. This is
-# also how you resolve a uv.lock merge conflict: take either side, then relock.
-#   git checkout --theirs uv.lock && just relock
+# Use this instead of a bare `uv lock`: `uvx` fetches the exact pinned uv, so
+# the lockfile is byte-reproducible even when your local uv is a different
+# version. This is also how you resolve a uv.lock merge conflict — take either
+# side, then relock:
+#   git checkout --theirs -- uv.lock && just relock
 relock:
     uvx --from uv=={{ UV_VERSION }} uv lock
-
 ```
 
 **Proof 1 — determinism.** Regenerating with the pinned uv leaves the committed `uv.lock` byte-identical (no churn), so a fresh relock never fights the lockfile:
@@ -71,4 +71,4 @@ uv run ruff format --check src/ selftests/ examples/ docker/
 149 files already formatted
 ```
 
-**Docs.** `docs/development.md` gains a "The lockfile" section explaining the pin, the `just relock` recipe, and deterministic merge-conflict resolution (`git checkout --theirs uv.lock && just relock` — take either side, then regenerate).
+**Docs.** `docs/development.md` gains a "The lockfile" section explaining the pin, the `just relock` recipe, and deterministic merge-conflict resolution (`git checkout --theirs -- uv.lock && just relock` — take either side, then regenerate).

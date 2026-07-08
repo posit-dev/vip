@@ -56,9 +56,9 @@ version is pinned so relocking always produces the same output:
   on any relock. If uv refuses to run, upgrade it (`uv self update`, or
   `brew upgrade uv`).
 - `just relock` regenerates the lockfile with an **exact** pinned uv version
-  (`UV_VERSION` in the `justfile`), fetched via `uvx` so it doesn't matter which
-  uv you have installed. Always relock with this recipe rather than a bare
-  `uv lock`:
+  (`UV_VERSION` in the `justfile`), fetched via `uvx` — so the output is
+  identical even when your local uv is a different version. Always relock with
+  this recipe rather than a bare `uv lock`:
 
   ```bash
   just relock
@@ -73,7 +73,7 @@ Never hand-edit conflict markers in `uv.lock`. Take either side wholesale, then
 regenerate deterministically:
 
 ```bash
-git checkout --theirs uv.lock   # or --ours; the starting point doesn't matter
+git checkout --theirs -- uv.lock   # or --ours; the starting point doesn't matter
 just relock                     # re-resolves from pyproject.toml with the pinned uv
 git add uv.lock
 ```

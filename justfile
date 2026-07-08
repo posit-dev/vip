@@ -17,10 +17,11 @@ setup:
 setup-rhel: setup
 
 # Regenerate uv.lock with the pinned uv version (see UV_VERSION above).
-# Use this instead of a bare `uv lock` so the lockfile is byte-reproducible
-# regardless of the uv installed locally — `uvx` fetches the exact pin. This is
-# also how you resolve a uv.lock merge conflict: take either side, then relock.
-#   git checkout --theirs uv.lock && just relock
+# Use this instead of a bare `uv lock`: `uvx` fetches the exact pinned uv, so
+# the lockfile is byte-reproducible even when your local uv is a different
+# version. This is also how you resolve a uv.lock merge conflict — take either
+# side, then relock:
+#   git checkout --theirs -- uv.lock && just relock
 relock:
     uvx --from uv=={{ UV_VERSION }} uv lock
 
