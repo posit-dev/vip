@@ -405,16 +405,28 @@ class TestStartInteractiveAuthPollLoop:
     @staticmethod
     def _make_playwright_stub(urls: list[str]) -> MagicMock:
         """Stub sync_playwright() so ``page.url`` yields *urls* in order,
-        then repeats the last value once exhausted.  ``page.wait_for_timeout``
-        is left as a MagicMock no-op so the loop iterates instantly."""
-        from unittest.mock import PropertyMock
+        then repeats the last value once exhausted. ``page.wait_for_timeout``
+        is a no-op so the loop iterates instantly."""
+
+        class _PageStub:
+            def __init__(self, urls: list[str]):
+                self._urls = list(urls)
+
+            @property
+            def url(self) -> str:
+                if len(self._urls) > 1:
+                    return self._urls.pop(0)
+                return self._urls[0]
+
+            def goto(self, *_args, **_kwargs) -> None:
+                return None
+
+            def wait_for_timeout(self, *_args, **_kwargs) -> None:
+                return None
 
         pw = MagicMock()
         browser = pw.start.return_value.chromium.launch.return_value
-        page = browser.new_context.return_value.new_page.return_value
-        type(page).url = PropertyMock(
-            side_effect=lambda urls=list(urls): urls.pop(0) if len(urls) > 1 else urls[0]
-        )
+        browser.new_context.return_value.new_page.return_value = _PageStub(urls)
         return pw
 
     def test_connect_login_completes_once_login_path_is_left(self, monkeypatch):
