@@ -27,7 +27,7 @@ updates:
   ignore:
   - dependency-name: "github/gh-aw-actions/**" # Managed by gh aw compile. Version-locked to the gh-aw compiler; do not bump.
   - dependency-name: "actions/create-github-app-token" # Only used inside gh-aw .lock.yml (compiler-managed); bumping it there leaves the lockfile stale.
-  - dependency-name: "actions/cache" # gh-aw pins cache/restore + cache/save to v5.0.5 inside .lock.yml; dependabot bumping them to v6.x is reverted on recompile and fails the lockfile guard. Hand-written workflows already use the latest cache.
+  - dependency-name: "actions/cache/**" # gh-aw pins cache/restore + cache/save to v5.0.5 inside .lock.yml; dependabot bumping them to v6.x is reverted on recompile and fails the lockfile guard. Hand-written workflows already use the latest cache.
   package-ecosystem: github-actions
   schedule:
     interval: weekly
