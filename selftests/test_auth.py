@@ -392,6 +392,87 @@ class TestInteractiveAuthSessionCleanup:
         )
 
 
+class TestStartInteractiveAuthPollLoop:
+    """start_interactive_auth() launches a headed browser and blocks on an
+    INLINE poll loop (auth.py ~437-470) waiting for a human to complete
+    login through the IdP.  This loop is separate from the headless
+    ``_wait_for_product_redirect`` helper that ``start_headless_auth`` uses
+    (see ``TestWaitForProductRedirect`` below) — it has its own
+    success/timeout detection that previously had no direct test.  These
+    tests pin that detection down with no real browser or wall-clock wait.
+    """
+
+    @staticmethod
+    def _make_playwright_stub(urls: list[str]) -> MagicMock:
+        """Stub sync_playwright() so ``page.url`` yields *urls* in order,
+        then repeats the last value once exhausted.  ``page.wait_for_timeout``
+        is left as a MagicMock no-op so the loop iterates instantly."""
+        from unittest.mock import PropertyMock
+
+        pw = MagicMock()
+        browser = pw.start.return_value.chromium.launch.return_value
+        page = browser.new_context.return_value.new_page.return_value
+        type(page).url = PropertyMock(
+            side_effect=lambda urls=list(urls): urls.pop(0) if len(urls) > 1 else urls[0]
+        )
+        return pw
+
+    def test_connect_login_completes_once_login_path_is_left(self, monkeypatch):
+        """Connect: login is detected once the URL contains the base URL
+        and no longer contains ``/__login__``."""
+        from vip.auth import start_interactive_auth
+
+        stub = self._make_playwright_stub(
+            [
+                "https://connect.example.com/__login__",
+                "https://connect.example.com/",
+            ]
+        )
+        monkeypatch.setattr("vip.auth.sync_playwright", lambda: stub)
+        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr("vip.auth._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY")
+
+        session = start_interactive_auth(connect_url="https://connect.example.com")
+
+        assert session.api_key == "FAKE_KEY"
+
+    def test_workbench_only_login_completes_off_signin_page(self, monkeypatch):
+        """Workbench-only: login is detected once the URL is on the base
+        URL and is NOT a page whose URL contains sign-in/login/auth."""
+        from vip.auth import start_interactive_auth
+
+        stub = self._make_playwright_stub(
+            [
+                "https://wb.example.com/auth-sign-in",
+                "https://wb.example.com/",
+            ]
+        )
+        monkeypatch.setattr("vip.auth.sync_playwright", lambda: stub)
+
+        session = start_interactive_auth(workbench_url="https://wb.example.com")
+
+        assert session.api_key is None
+        assert session._workbench_url == "https://wb.example.com"
+
+    def test_timeout_raises_runtime_error(self, monkeypatch):
+        """If the URL never satisfies the completion condition before the
+        deadline, the loop must raise RuntimeError rather than continue
+        or return silently."""
+        from vip import auth as auth_mod
+
+        stub = self._make_playwright_stub(["https://wb.example.com/auth-sign-in"])
+        monkeypatch.setattr(auth_mod, "sync_playwright", lambda: stub)
+
+        # First call computes the deadline, second is the loop's own
+        # `while time.monotonic() < deadline` check — make it already
+        # expired so the loop body never runs and page.url is never read.
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        with pytest.raises(RuntimeError, match="did not complete within 5 minutes"):
+            auth_mod.start_interactive_auth(workbench_url="https://wb.example.com")
+
+
 class TestAuthenticateWorkbench:
     """_authenticate_workbench establishes the Workbench SSO session after
     Connect auth has already succeeded.  Network failures here must NOT
