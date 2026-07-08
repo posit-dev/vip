@@ -662,3 +662,38 @@ class TestTerminalRun:
 
         with pytest.raises(ExecError, match="timed out"):
             exec_mod.terminal_run(page, "sleep 999", timeout=10)
+
+    def _patch_vscode(self, monkeypatch, content):
+        """VS Code polls via editor-open/read/close instead of ``read_file``."""
+        self._patch_common(monkeypatch, ide="vscode")
+        monkeypatch.setattr(
+            exec_mod, "_open_file_in_vscode_editor", lambda p, path, timeout=5_000: None
+        )
+        monkeypatch.setattr(exec_mod, "_close_active_editor", lambda p: None)
+        mock_read = MagicMock(return_value=content)
+        monkeypatch.setattr(exec_mod, "_read_vscode_editor_text", mock_read)
+        return mock_read
+
+    def test_vscode_returns_output_on_success(self, monkeypatch):
+        """The VS Code editor-open polling path has its own copy of the
+        marker-parsing logic and must be covered independently of the
+        RStudio/Positron ``read_file`` path exercised above."""
+        self._patch_vscode(monkeypatch, "hello\nVIP_DONE_deadbeef:0")
+        page = MagicMock()
+
+        result = exec_mod.terminal_run(page, "echo hello", timeout=1_000)
+
+        assert result == "hello"
+
+    def test_vscode_raises_exec_error_immediately_on_nonzero_exit(self, monkeypatch):
+        """Regression guard: the VS Code branch must also raise ExecError
+        immediately on failure rather than looping until timeout (#439)."""
+        error_output = "fatal: destination path 'repo' already exists"
+        mock_read = self._patch_vscode(monkeypatch, f"{error_output}\nVIP_DONE_deadbeef:128")
+        page = MagicMock()
+
+        with pytest.raises(ExecError, match="128") as excinfo:
+            exec_mod.terminal_run(page, "git clone ...", timeout=1_000)
+
+        assert error_output in str(excinfo.value)
+        mock_read.assert_called_once()
