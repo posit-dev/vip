@@ -142,17 +142,30 @@ def _parse_done_marker(content: str, done_marker: str) -> tuple[str, int] | None
     running" (see issue #439 -- a marker written only via ``&&`` never
     appears when the command exits non-zero).
 
+    The marker is searched for anywhere within a line, not just at its start:
+    if *cmd*'s final output line has no trailing newline, the marker glues
+    onto it (``>>`` appends raw bytes with no separator), and any text before
+    the marker on that line is real output that must be kept, not discarded.
+    A suffix that isn't purely digits means the marker line is still being
+    written, so this reports "not done yet" rather than raising.
+
     Returns:
-        ``(captured_output, exit_code)`` with the marker line removed, or
-        ``None`` if the marker has not appeared in *content* yet.
+        ``(captured_output, exit_code)`` with the marker line removed (any
+        leading output on that line is preserved), or ``None`` if the marker
+        has not fully appeared in *content* yet.
     """
     prefix = f"{done_marker}:"
     lines = content.splitlines()
-    for line in lines:
-        if line.strip().startswith(prefix):
-            exit_code = int(line.strip()[len(prefix) :])
-            output = "\n".join(ln for ln in lines if ln.strip() != line.strip())
-            return output.strip(), exit_code
+    for i, line in enumerate(lines):
+        pos = line.find(prefix)
+        if pos == -1:
+            continue
+        code = line[pos + len(prefix) :].strip()
+        if not code.isdigit():
+            return None
+        before = line[:pos]
+        kept = lines[:i] + ([before] if before else []) + lines[i + 1 :]
+        return "\n".join(kept).strip(), int(code)
     return None
 
 
@@ -581,7 +594,7 @@ def terminal_run(
     Strategy:
     1. Ensure the IDE terminal is open (activate the RStudio Terminal tab or
        create a VS Code/Positron terminal) so its input is present.
-    2. Type ``{cmd} > {tmpfile} 2>&1; echo "VIP_DONE:$?" >> {tmpfile}`` in the
+    2. Type ``{cmd} > {tmpfile} 2>&1; echo "{done_marker}:$?" >> {tmpfile}`` in the
        terminal input (``.xterm-helper-textarea``).  The marker is appended
        with ``;`` rather than ``&&`` so it is always written, even when *cmd*
        fails -- see issue #439.

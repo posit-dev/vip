@@ -332,6 +332,19 @@ class TestParseDoneMarker:
         content = "output\nVIP_DONE_other:0"
         assert _parse_done_marker(content, "VIP_DONE_abc") is None
 
+    def test_marker_glued_to_output_with_no_trailing_newline(self):
+        """cmd's last line lacking a trailing newline glues the marker onto
+        it (`>>` appends raw bytes with no separator); the glued-on leading
+        text is real output and must be kept, not dropped."""
+        content = "foobar" + "VIP_DONE_abc:0"
+        assert _parse_done_marker(content, "VIP_DONE_abc") == ("foobar", 0)
+
+    def test_returns_none_for_non_digit_suffix(self):
+        """A marker line whose exit-code suffix isn't purely digits yet (a
+        partial write mid-poll) must be treated as still-running, not raise."""
+        content = "VIP_DONE_abc:"
+        assert _parse_done_marker(content, "VIP_DONE_abc") is None
+
 
 # ---------------------------------------------------------------------------
 # _detect_ide
