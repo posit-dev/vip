@@ -59,6 +59,13 @@ class TestRawChunkProbeExpr:
         assert "decreasing = TRUE" in expr
         assert "readLines" in expr
 
+    def test_requires_chunk_to_be_readable(self):
+        # A chunk the session user cannot open (e.g. permission denied) must
+        # report no data rather than a false positive, so the probe checks
+        # read access before attempting to read the file.
+        expr = raw_chunk_probe_expr(BASE, "pwb_users")
+        assert "file.access(newest, mode = 4) != 0" in expr
+
     def test_non_csv_chunk_counts_as_data(self):
         # readLines failing (e.g. a Parquet chunk) yields NA; the expression
         # must treat a non-empty non-CSV chunk as data present, not absent.

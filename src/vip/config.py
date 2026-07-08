@@ -243,10 +243,10 @@ class WorkbenchConfig(ProductConfig):
     extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
     kubernetes: WorkbenchKubernetesConfig = field(default_factory=WorkbenchKubernetesConfig)
     git_test: GitTestConfig | None = None
-    # Base path of Chronicle's Parquet data on the Workbench server.  Defaults
-    # to the embedded-Workbench location under the shared-storage tree.  This
-    # is passed to chronicle.reports as base_path inside the session.  The
-    # in-session Chronicle data-collection test that reads this path is gated by
+    # Base path of Chronicle's on-disk data on the Workbench server.  Defaults
+    # to the embedded-Workbench location under the shared-storage tree.  The
+    # in-session probe reads the raw chunk files under this path directly
+    # (Chronicle exposes no query API).  That data-collection test is gated by
     # the top-level ``[chronicle] enabled`` flag (VIPConfig.chronicle_enabled).
     chronicle_data_path: str = "/var/lib/rstudio-server/shared-storage/chronicle"
 

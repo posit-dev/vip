@@ -284,7 +284,6 @@ def chronicle_user_information(page: Page, vip_config: VIPConfig):
 def session_cleaned_up(page: Page, workbench_url: str, session_context: dict):
     """Navigate back to homepage and quit the session."""
     session_name = session_context["name"]
-    session_context["cleaned_up"] = True
 
     home_url = workbench_url.rstrip("/") + "/home"
     page.goto(home_url)
@@ -300,3 +299,7 @@ def session_cleaned_up(page: Page, workbench_url: str, session_context: dict):
 
     session_link = page.locator(Homepage.session_link(session_name))
     expect(session_link).not_to_be_visible(timeout=TIMEOUT_CLEANUP)
+
+    # Only mark cleaned up once the quit actually completed, so a failure above
+    # still leaves the fixture finalizer to attempt best-effort cleanup.
+    session_context["cleaned_up"] = True
