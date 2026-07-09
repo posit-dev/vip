@@ -37,7 +37,7 @@ grep -rn --include='*.py' "EXTENSIONS_SEARCH_INPUT" src/
 ```
 
 ```output
-src/vip_tests/workbench/test_ide_extensions.py:312:    extensions_input = page.locator(selectors.EXTENSIONS_SEARCH_INPUT)
+src/vip_tests/workbench/test_ide_extensions.py:312:    extensions_input = page.locator(selectors.EXTENSIONS_SEARCH_INPUT).first
 src/vip_tests/workbench/pages/vscode_session.py:41:    EXTENSIONS_SEARCH_INPUT = "div[data-uri='extensions:searchinput'] .view-line"
 src/vip_tests/workbench/pages/positron_session.py:43:    EXTENSIONS_SEARCH_INPUT = "div[data-uri='extensions:searchinput'] .view-line"
 ```
