@@ -36,7 +36,11 @@ class PositronSession:
     DATA_EXPLORER = ".positron-data-explorer"
 
     # Extensions panel (same as VS Code)
-    EXTENSIONS_SEARCH_INPUT = ".extensions-search-container input[type='text']"
+    # The extensions search box is a Monaco editor, not an <input> — the old
+    # `input[type='text']` selector matches nothing on Workbench 2026.04+.
+    # Locator reported working on a live 2026.04 deployment in #280. Click to
+    # focus, then type keystrokes; Locator.fill() rejects Monaco widgets.
+    EXTENSIONS_SEARCH_INPUT = "div[data-uri='extensions:searchinput'] .view-line"
 
     # Posit Workbench extension
     POSIT_EXTENSION_TAB_NAME = "Posit Workbench"
