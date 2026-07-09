@@ -1,6 +1,39 @@
 # CHANGELOG
 
 
+## v0.52.3 (2026-07-09)
+
+### Bug Fixes
+
+- **ssl**: Skip https/tls scenarios on http-only or insecure deployments
+  ([#455](https://github.com/posit-dev/vip/pull/455),
+  [`7902fdd`](https://github.com/posit-dev/vip/commit/7902fdd2406065c548736330494c1d85d410a6b8))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group across 1 directory with 6 updates
+  ([#454](https://github.com/posit-dev/vip/pull/454),
+  [`07450e7`](https://github.com/posit-dev/vip/commit/07450e741e006c23f45c25b309dba68739580753))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Continuous Integration
+
+- Ignore gh-aw-managed shared actions in dependabot
+  ([#453](https://github.com/posit-dev/vip/pull/453),
+  [`6bab845`](https://github.com/posit-dev/vip/commit/6bab8450d86c6fe618be4c78ec67f445d81033a1))
+
+### Testing
+
+- **workbench**: Add in-session Chronicle data-collection test
+  ([#440](https://github.com/posit-dev/vip/pull/440),
+  [`b0dddaa`](https://github.com/posit-dev/vip/commit/b0dddaa7648cea3ebaf13f918f9a979f93f02595))
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.52.2 (2026-07-09)
 
 ### Bug Fixes
