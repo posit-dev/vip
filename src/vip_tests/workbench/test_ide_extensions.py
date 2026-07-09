@@ -308,7 +308,7 @@ def _verify_extensions_panel(page: Page, selectors, extension_ids: list[str]) ->
     if not extension_ids:
         return
 
-    page.keyboard.press("Control+Shift+x")
+    page.keyboard.press("ControlOrMeta+Shift+x")
     extensions_input = page.locator(selectors.EXTENSIONS_SEARCH_INPUT).first
     expect(extensions_input).to_be_visible(timeout=TIMEOUT_DIALOG)
 
@@ -324,7 +324,7 @@ def _verify_extensions_panel(page: Page, selectors, extension_ids: list[str]) ->
         ext_item = page.locator(selectors.extension_list_item(ext_id))
         expect(ext_item).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
 
-    page.keyboard.press("Control+Shift+x")
+    page.keyboard.press("ControlOrMeta+Shift+x")
 
 
 @then("all configured VS Code extensions are installed")

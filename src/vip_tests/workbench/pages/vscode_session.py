@@ -36,8 +36,8 @@ class VSCodeSession:
     # Extensions panel
     # The extensions search box is a Monaco editor, not an <input> — the old
     # `input[type='text']` selector matches nothing on Workbench 2026.04+.
-    # Locator reported working on a live 2026.04 deployment in #280. Click to
-    # focus, then type keystrokes; Locator.fill() rejects Monaco widgets.
+    # Selector taken from the reporter's live-2026.04 findings in #280; not yet
+    # re-validated by VIP. Click to focus, then type; fill() rejects Monaco.
     EXTENSIONS_SEARCH_INPUT = "div[data-uri='extensions:searchinput'] .view-line"
 
     # Posit Workbench extension
