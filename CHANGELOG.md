@@ -1,6 +1,27 @@
 # CHANGELOG
 
 
+## v0.52.2 (2026-07-09)
+
+### Bug Fixes
+
+- **workbench**: Select RStudio tab and dismiss dialog defensively
+  ([#418](https://github.com/posit-dev/vip/pull/418),
+  [`c580c39`](https://github.com/posit-dev/vip/commit/c580c3985284f7d0eda0d1367828f2ffd7d108fa))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+Co-authored-by: Brian Deitte <brian.deitte@posit.co>
+
+### Continuous Integration
+
+- Ignore actions/cache in dependabot (gh-aw lockfile guard)
+  ([#451](https://github.com/posit-dev/vip/pull/451),
+  [`c25d276`](https://github.com/posit-dev/vip/commit/c25d276c2b2cdf5f066c85e9dc108178a109f84f))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+
 ## v0.52.1 (2026-07-08)
 
 ### Bug Fixes
