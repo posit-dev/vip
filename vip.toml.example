@@ -214,6 +214,10 @@ enabled = false
 #
 # Disable TLS certificate verification (equivalent to curl -k).
 # Use only in trusted environments; this silently ignores certificate errors.
+# Also skips the certificate-validity test scenario (asserting a valid cert
+# contradicts disabling verification).  Note: HTTPS-enforcement and TLS-version
+# tests are governed by the URL scheme, not this flag — they skip automatically
+# when a product URL is http://.
 # Overridable on the command line with: vip verify --insecure
 # insecure = false
 #
