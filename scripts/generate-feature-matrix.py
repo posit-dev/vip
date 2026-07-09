@@ -47,6 +47,7 @@ AREA_NAMES: dict[str, str] = {
     "test_auth": "Authentication",
     "test_auth_configured": "Auth Configuration",
     "test_auth_policy": "Auth Policy",
+    "test_chronicle": "Chronicle Observability",
     "test_components": "Health Checks",
     "test_concurrency": "Concurrency",
     "test_content_deploy": "Content Deployment",
@@ -231,7 +232,6 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
 
     # Not-yet-covered areas (from issue #108).
     not_covered = [
-        {"name": "Chronicle", "description": "Not yet available in VIP"},
         {"name": "Flightdeck", "description": "Not yet available in VIP"},
         {
             "name": "LDAP/SAML/OAuth2 auth flows in CI",

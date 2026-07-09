@@ -243,6 +243,12 @@ class WorkbenchConfig(ProductConfig):
     extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
     kubernetes: WorkbenchKubernetesConfig = field(default_factory=WorkbenchKubernetesConfig)
     git_test: GitTestConfig | None = None
+    # Base path of Chronicle's on-disk data on the Workbench server.  Defaults
+    # to the embedded-Workbench location under the shared-storage tree.  The
+    # in-session probe reads the raw chunk files under this path directly
+    # (Chronicle exposes no query API).  That data-collection test is gated by
+    # the top-level ``[chronicle] enabled`` flag (VIPConfig.chronicle_enabled).
+    chronicle_data_path: str = "/var/lib/rstudio-server/shared-storage/chronicle"
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -260,7 +266,8 @@ class WorkbenchConfig(ProductConfig):
             f"idle_timeout_minutes={self.idle_timeout_minutes!r}, "
             f"idle_grace_seconds={self.idle_grace_seconds!r}, "
             f"extensions={self.extensions!r}, kubernetes={self.kubernetes!r}, "
-            f"git_test={self.git_test!r})"
+            f"git_test={self.git_test!r}, "
+            f"chronicle_data_path={self.chronicle_data_path!r})"
         )
 
     @classmethod
@@ -280,6 +287,9 @@ class WorkbenchConfig(ProductConfig):
             extensions=WorkbenchExtensionsConfig.from_dict(raw.get("extensions", {})),
             kubernetes=WorkbenchKubernetesConfig.from_dict(raw.get("kubernetes", {})),
             git_test=GitTestConfig.from_dict(git_test_raw) if git_test_raw is not None else None,
+            chronicle_data_path=raw.get(
+                "chronicle_data_path", "/var/lib/rstudio-server/shared-storage/chronicle"
+            ),
         )
 
 

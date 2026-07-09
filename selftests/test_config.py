@@ -162,6 +162,20 @@ class TestWorkbenchConfig:
         )
         assert "idle_grace_seconds=90" in repr(wc)
 
+    def test_chronicle_data_path_default(self):
+        wc = WorkbenchConfig(url="https://workbench.example.com")
+        assert wc.chronicle_data_path == "/var/lib/rstudio-server/shared-storage/chronicle"
+
+    def test_chronicle_data_path_default_from_dict(self):
+        wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com"})
+        assert wc.chronicle_data_path == "/var/lib/rstudio-server/shared-storage/chronicle"
+
+    def test_chronicle_data_path_from_dict(self):
+        wc = WorkbenchConfig.from_dict(
+            {"url": "https://workbench.example.com", "chronicle_data_path": "/mnt/chronicle"}
+        )
+        assert wc.chronicle_data_path == "/mnt/chronicle"
+
 
 class TestWorkbenchExtensionsConfig:
     def test_defaults_empty(self):
