@@ -39,6 +39,10 @@ def check_ssl_cert(product, vip_config):
     parsed = urlparse(product_url)
     if parsed.scheme != "https":
         pytest.skip(f"URL is not HTTPS: {product_url}")
+    if vip_config.insecure:
+        # The user explicitly disabled certificate verification
+        # (tls.insecure=true) — asserting cert validity contradicts that. #268.
+        pytest.skip("tls.insecure=true — certificate validity checks are disabled")
 
     hostname = parsed.hostname
     port = parsed.port or 443
@@ -82,6 +86,9 @@ def request_http(product, vip_config):
         pytest.skip(f"{product} is not configured")
 
     product_url = pc.url
+    if not product_url.startswith("https://"):
+        # No HTTPS endpoint to redirect to on an HTTP-only deployment. See #268.
+        pytest.skip(f"URL is not HTTPS: {product_url}")
     http_url = product_url.replace("https://", "http://")
     parsed = urlparse(http_url)
     if parsed.scheme != "http":
