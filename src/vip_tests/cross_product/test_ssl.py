@@ -86,10 +86,10 @@ def request_http(product, vip_config):
         pytest.skip(f"{product} is not configured")
 
     product_url = pc.url
-    if not product_url.startswith("https://"):
+    if urlparse(product_url).scheme != "https":
         # No HTTPS endpoint to redirect to on an HTTP-only deployment. See #268.
         pytest.skip(f"URL is not HTTPS: {product_url}")
-    http_url = product_url.replace("https://", "http://")
+    http_url = product_url.replace("https://", "http://", 1)
     parsed = urlparse(http_url)
     if parsed.scheme != "http":
         http_url = f"http://{parsed.hostname}"
