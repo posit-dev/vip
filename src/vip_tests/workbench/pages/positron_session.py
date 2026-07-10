@@ -36,7 +36,11 @@ class PositronSession:
     DATA_EXPLORER = ".positron-data-explorer"
 
     # Extensions panel (same as VS Code)
-    EXTENSIONS_SEARCH_INPUT = ".extensions-search-container input[type='text']"
+    # The extensions search box is a Monaco editor, not an <input> — the old
+    # `input[type='text']` selector matches nothing on Workbench 2026.04+.
+    # Selector taken from the reporter's live-2026.04 findings in #280; not yet
+    # re-validated by VIP. Click to focus, then type; fill() rejects Monaco.
+    EXTENSIONS_SEARCH_INPUT = "div[data-uri='extensions:searchinput'] .view-line"
 
     # Posit Workbench extension
     POSIT_EXTENSION_TAB_NAME = "Posit Workbench"
@@ -44,7 +48,13 @@ class PositronSession:
 
     @staticmethod
     def extension_list_item(extension_id: str) -> str:
-        """Selector for an installed extension by its ID (e.g. 'quarto.quarto')."""
+        """Selector for an installed extension by its ID (e.g. 'quarto.quarto').
+
+        ``data-extension-id`` is carried on the outer ``.monaco-list-row``; the
+        nested ``.extension-list-item`` div does not have it, so a combined
+        ``.extension-list-item[data-extension-id=...]`` never matches (verified
+        on VS Code web 1.105.1, issue #280).
+        """
         if not EXTENSION_ID_RE.match(extension_id):
             raise ValueError(f"Invalid extension ID (contains unsafe characters): {extension_id!r}")
-        return f".extension-list-item[data-extension-id='{extension_id}']"
+        return f".monaco-list-row[data-extension-id='{extension_id}']"
