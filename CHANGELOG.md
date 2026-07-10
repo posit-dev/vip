@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.52.4 (2026-07-10)
+
+### Bug Fixes
+
+- **workbench**: Extensions search input selector and keyboard entry
+  ([#456](https://github.com/posit-dev/vip/pull/456),
+  [`5b4d200`](https://github.com/posit-dev/vip/commit/5b4d2009b259d7b86601cbf1429d9237fa38695e))
+
+
 ## v0.52.3 (2026-07-09)
 
 ### Bug Fixes
