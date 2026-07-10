@@ -46,7 +46,13 @@ class VSCodeSession:
 
     @staticmethod
     def extension_list_item(extension_id: str) -> str:
-        """Selector for an installed extension by its ID (e.g. 'quarto.quarto')."""
+        """Selector for an installed extension by its ID (e.g. 'quarto.quarto').
+
+        ``data-extension-id`` is carried on the outer ``.monaco-list-row``; the
+        nested ``.extension-list-item`` div does not have it, so a combined
+        ``.extension-list-item[data-extension-id=...]`` never matches (verified
+        on VS Code web 1.105.1, issue #280).
+        """
         if not EXTENSION_ID_RE.match(extension_id):
             raise ValueError(f"Invalid extension ID (contains unsafe characters): {extension_id!r}")
-        return f".extension-list-item[data-extension-id='{extension_id}']"
+        return f".monaco-list-row[data-extension-id='{extension_id}']"

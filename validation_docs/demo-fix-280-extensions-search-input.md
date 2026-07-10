@@ -91,8 +91,21 @@ no tests collected (35 deselected)
 
 ## Live validation status
 
-**Pending.** There is no live Workbench 2026.04 environment available in
-this session, so the Monaco selector and the click/keyboard-type flow have
-not been exercised against a running IDE. This must be validated against a
-real Workbench 2026.04+ deployment (VS Code and Positron sessions, extensions
-panel) before this PR merges.
+**Validated against real VS Code web (openvscode-server, VS Code 1.105.1).**
+Using the actual repo selectors and query, the full flow was exercised
+end-to-end: `ControlOrMeta+Shift+x` opens the Extensions panel, the Monaco
+search box (`div[data-uri='extensions:searchinput'] .view-line`) accepts
+keyboard input, and an installed extension's row
+(`.monaco-list-row[data-extension-id='ms-python.python']`) is found with
+count 1. Negative controls confirmed all three original bugs were real: the
+old `input[type='text']` selector never resolves, the old `@installed <id>`
+query returns zero rows (VS Code filters free text by display name, not the
+dotted id — hence `@installed @id:<id>`), and the old
+`.extension-list-item[data-extension-id=...]` selector never matches (the
+attribute lives on `.monaco-list-row`).
+
+**Still pending:** validation against Workbench-hosted VS Code and Positron
+specifically — the local Workbench 2026.04+ containers available had expired
+licenses, so those paths could not be exercised. The underlying Monaco DOM is
+shared, but Positron's marketplace UI should be confirmed on a licensed
+deployment before relying on this in production.

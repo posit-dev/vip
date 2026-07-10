@@ -320,7 +320,11 @@ def _verify_extensions_panel(page: Page, selectors, extension_ids: list[str]) ->
         extensions_input.click()
         page.keyboard.press("ControlOrMeta+a")
         page.keyboard.press("Backspace")
-        page.keyboard.type(f"@installed {ext_id}")
+        # VS Code filters free text against the display name, not the dotted
+        # publisher.name id, so `@installed ms-python.python` returns nothing.
+        # The `@id:` qualifier filters by exact id (validated on VS Code web
+        # 1.105.1 against issue #280).
+        page.keyboard.type(f"@installed @id:{ext_id}")
         ext_item = page.locator(selectors.extension_list_item(ext_id))
         expect(ext_item).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
 
