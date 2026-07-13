@@ -46,25 +46,25 @@ _ECOSYSTEMS: dict[str, dict] = {
         "type": "cran",
         "hint": "cran",
         "package": "Matrix",
-        "available": lambda c, r: c.cran_package_available(r, "Matrix"),
+        "available": lambda c, r, p: c.cran_package_available(r, p),
     },
     "PyPI": {
         "type": "pypi",
         "hint": "pypi",
         "package": "requests",
-        "available": lambda c, r: c.pypi_package_available(r, "requests"),
+        "available": lambda c, r, p: c.pypi_package_available(r, p),
     },
     "Bioconductor": {
         "type": "bioconductor",
         "hint": "bioc",
         "package": "BiocGenerics",
-        "available": lambda c, r: c.bioconductor_package_available(r, "BiocGenerics"),
+        "available": lambda c, r, p: c.bioconductor_package_available(r, p),
     },
     "OpenVSX": {
         "type": "vsx",
         "hint": "vsx",
         "package": "golang.Go",
-        "available": lambda c, r: c.openvsx_extension_available(r, "golang.Go"),
+        "available": lambda c, r, p: c.openvsx_extension_available(r, p),
     },
 }
 
@@ -83,7 +83,7 @@ def _find_ui_target(pm_client, ecosystem: str) -> dict[str, str]:
         hint_matches = eco["hint"] in name.lower()
         if not (type_matches or hint_matches):
             continue
-        if eco["available"](pm_client, name):
+        if eco["available"](pm_client, name, eco["package"]):
             return {"repo": name, "package": eco["package"], "ecosystem": ecosystem}
     return {}
 

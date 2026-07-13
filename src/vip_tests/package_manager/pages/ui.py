@@ -11,12 +11,30 @@ full page load.
 from __future__ import annotations
 
 from playwright.sync_api import Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from vip.timeouts import timeout_scale
 
 # Scaled the same way the Workbench UI tests scale theirs, via VIP_TIMEOUT_SCALE.
 TIMEOUT_PAGE_LOAD = int(15_000 * timeout_scale())
 TIMEOUT_ELEMENT = int(10_000 * timeout_scale())
+
+
+def _settle_network(page: Page) -> None:
+    """Best-effort wait for the SPA's network activity to go idle.
+
+    ``networkidle`` is a heuristic — it waits for a 500ms gap in network
+    activity, which a single background poll or keep-alive can defeat, so a
+    timeout here is not a failure. Bound it with the module's scaled timeout so
+    it honors ``VIP_TIMEOUT_SCALE`` (rather than Playwright's unscaled 30s
+    default), but swallow the timeout: the explicit element and URL waits that
+    follow every call are the real readiness gates, and letting a never-idle
+    page fail here just makes the smoke tests flaky.
+    """
+    try:
+        page.wait_for_load_state("networkidle", timeout=TIMEOUT_PAGE_LOAD)
+    except PlaywrightTimeoutError:
+        pass
 
 
 class Homepage:
@@ -64,18 +82,18 @@ def open_repo_packages(page: Page, base_url: str, repo: str) -> None:
     """Navigate to a repository's packages page and wait for it to settle.
 
     Resets to the app root first so the subsequent hash-only change triggers a
-    real SPA navigation, then waits for network idle so the page's queries
-    resolve before a caller interacts with the search input (mirrors Package
-    Manager's own NavigateToPackage helper).
+    real SPA navigation, gives the page a best-effort chance to settle (see
+    _settle_network), then gates on the search input being visible before a
+    caller interacts with it — the deterministic readiness signal.
     """
     page.goto(_root(base_url) + "/#/", wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
-    page.wait_for_load_state("networkidle")
+    _settle_network(page)
     page.goto(
         f"{_root(base_url)}/#/repos/{repo}/packages",
         wait_until="load",
         timeout=TIMEOUT_PAGE_LOAD,
     )
-    page.wait_for_load_state("networkidle")
+    _settle_network(page)
     expect(page.locator(PackagesPage.SEARCH_INPUT)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
 
