@@ -1,6 +1,149 @@
 # CHANGELOG
 
 
+## v0.52.4 (2026-07-10)
+
+### Bug Fixes
+
+- **workbench**: Extensions search input selector and keyboard entry
+  ([#456](https://github.com/posit-dev/vip/pull/456),
+  [`5b4d200`](https://github.com/posit-dev/vip/commit/5b4d2009b259d7b86601cbf1429d9237fa38695e))
+
+
+## v0.52.3 (2026-07-09)
+
+### Bug Fixes
+
+- **ssl**: Skip https/tls scenarios on http-only or insecure deployments
+  ([#455](https://github.com/posit-dev/vip/pull/455),
+  [`7902fdd`](https://github.com/posit-dev/vip/commit/7902fdd2406065c548736330494c1d85d410a6b8))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group across 1 directory with 6 updates
+  ([#454](https://github.com/posit-dev/vip/pull/454),
+  [`07450e7`](https://github.com/posit-dev/vip/commit/07450e741e006c23f45c25b309dba68739580753))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Continuous Integration
+
+- Ignore gh-aw-managed shared actions in dependabot
+  ([#453](https://github.com/posit-dev/vip/pull/453),
+  [`6bab845`](https://github.com/posit-dev/vip/commit/6bab8450d86c6fe618be4c78ec67f445d81033a1))
+
+### Testing
+
+- **workbench**: Add in-session Chronicle data-collection test
+  ([#440](https://github.com/posit-dev/vip/pull/440),
+  [`b0dddaa`](https://github.com/posit-dev/vip/commit/b0dddaa7648cea3ebaf13f918f9a979f93f02595))
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
+## v0.52.2 (2026-07-09)
+
+### Bug Fixes
+
+- **workbench**: Select RStudio tab and dismiss dialog defensively
+  ([#418](https://github.com/posit-dev/vip/pull/418),
+  [`c580c39`](https://github.com/posit-dev/vip/commit/c580c3985284f7d0eda0d1367828f2ffd7d108fa))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+Co-authored-by: Brian Deitte <brian.deitte@posit.co>
+
+### Continuous Integration
+
+- Ignore actions/cache in dependabot (gh-aw lockfile guard)
+  ([#451](https://github.com/posit-dev/vip/pull/451),
+  [`c25d276`](https://github.com/posit-dev/vip/commit/c25d276c2b2cdf5f066c85e9dc108178a109f84f))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+
+## v0.52.1 (2026-07-08)
+
+### Bug Fixes
+
+- **workbench**: Remove stale clone dir before git-ops clone
+  ([#443](https://github.com/posit-dev/vip/pull/443),
+  [`4dc896c`](https://github.com/posit-dev/vip/commit/4dc896c5892ff2d297d21d886f4d99f6313f21b2))
+
+Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Build System
+
+- Pin uv version for deterministic uv.lock ([#442](https://github.com/posit-dev/vip/pull/442),
+  [`721f9ce`](https://github.com/posit-dev/vip/commit/721f9ce98ed339cd24c7a13e032662574c997cce))
+
+### Chores
+
+- **deps**: Bump the python-dependencies group with 2 updates
+  ([#446](https://github.com/posit-dev/vip/pull/446),
+  [`362a65c`](https://github.com/posit-dev/vip/commit/362a65c29cf09539003f9bcc2983dbde9ef4c709))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Continuous Integration
+
+- Bump gh-aw lockfile pin to v0.81.6 and recompile
+  ([#448](https://github.com/posit-dev/vip/pull/448),
+  [`6559a2e`](https://github.com/posit-dev/vip/commit/6559a2e0c8d542806b8d1e36627649b71e469b0d))
+
+### Testing
+
+- Pin interactive-auth poll-loop detection (headless-only stance)
+  ([#444](https://github.com/posit-dev/vip/pull/444),
+  [`3c241a3`](https://github.com/posit-dev/vip/commit/3c241a3d758fd020d2993d7f44c754d93b12f17c))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+- **package-manager**: Add binary package serving coverage
+  ([#437](https://github.com/posit-dev/vip/pull/437),
+  [`dcacaae`](https://github.com/posit-dev/vip/commit/dcacaaeb197ea956505310332438deb07b20dce2))
+
+Co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+
+
+## v0.52.0 (2026-07-03)
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 4 updates
+  ([#429](https://github.com/posit-dev/vip/pull/429),
+  [`63c8c5b`](https://github.com/posit-dev/vip/commit/63c8c5b9d80aae8a0aa354b49c251e7fc87fc099))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+Co-authored-by: Brian Deitte <brian.deitte@posit.co>
+
+- **deps**: Bump the python-dependencies group across 1 directory with 4 updates
+  ([#428](https://github.com/posit-dev/vip/pull/428),
+  [`f7d5b78`](https://github.com/posit-dev/vip/commit/f7d5b78c23bb132269ad5fde1c457f638bffb229))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Continuous Integration
+
+- Add mock-IdP E2E stack for OIDC auth testing ([#431](https://github.com/posit-dev/vip/pull/431),
+  [`4ffc741`](https://github.com/posit-dev/vip/commit/4ffc741729ed15b41a47eaa47fe957e488a3a3ad))
+
+### Features
+
+- **cli**: Add --connect-version and --workbench-version to vip verify
+  ([#436](https://github.com/posit-dev/vip/pull/436),
+  [`ac3cd02`](https://github.com/posit-dev/vip/commit/ac3cd02e3b2c4f3eb4649faf41939dcb508f150c))
+
+
 ## v0.51.0 (2026-07-01)
 
 ### Continuous Integration

@@ -119,14 +119,19 @@ def query_openvsx(pm_client):
     vsx_repos = [r for r in repos if is_vsx(r)]
     if not vsx_repos:
         pytest.skip("No OpenVSX repository configured in Package Manager")
-    repo_name = vsx_repos[0]["name"]
-    found = pm_client.openvsx_extension_available(repo_name, "golang.Go")
-    if not found:
-        pytest.skip(
-            f"OpenVSX extension 'golang.Go' not available in repo {repo_name!r} — "
-            "repo may not be synced yet"
-        )
-    return True
+    # A deployment can host several VSX repos (e.g. a full openvsx mirror
+    # alongside a curated subset). Check each until the extension is found,
+    # rather than assuming the first repo carries it.
+    tried = []
+    for repo in vsx_repos:
+        repo_name = repo["name"]
+        tried.append(repo_name)
+        if pm_client.openvsx_extension_available(repo_name, "golang.Go"):
+            return True
+    pytest.skip(
+        f"OpenVSX extension 'golang.Go' not available in any VSX repo {tried} — "
+        "repo may not be synced yet"
+    )
 
 
 @when("I list all repositories", target_fixture="repo_list")

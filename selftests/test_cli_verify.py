@@ -17,8 +17,11 @@ def _make_args(**overrides) -> argparse.Namespace:
     defaults = {
         "config": None,
         "connect_url": None,
+        "connect_version": None,
         "workbench_url": None,
+        "workbench_version": None,
         "package_manager_url": None,
+        "package_manager_version": None,
         "report": "report/results.json",
         "interactive_auth": False,
         "no_auth": False,
@@ -969,6 +972,97 @@ class TestVerifyLocalTLSFlags:
         finally:
             if path:
                 Path(path).unlink(missing_ok=True)
+
+
+class TestVerifyLocalVersionFlags:
+    """--connect-version, --workbench-version, --package-manager-version are
+    encoded in the temp config."""
+
+    def test_connect_version_written_to_temp_config(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(connect_url="https://c.example.com", connect_version="2026.06.0")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.connect.version == "2026.06.0"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_workbench_version_written_to_temp_config(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://w.example.com", workbench_version="2026.06.0")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.workbench.version == "2026.06.0"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_package_manager_version_written_to_temp_config(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(
+                package_manager_url="https://pm.example.com",
+                package_manager_version="2026.06.0",
+            )
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.package_manager.version == "2026.06.0"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_no_version_set_when_flags_absent(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(
+                connect_url="https://c.example.com",
+                workbench_url="https://w.example.com",
+                package_manager_url="https://pm.example.com",
+            )
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.connect.version is None
+            assert cfg.workbench.version is None
+            assert cfg.package_manager.version is None
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_version_value_with_quote_survives_round_trip(self, tmp_path, monkeypatch):
+        """Values containing a quote must not break the generated TOML."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        tricky = '2026.06.0"; malicious = true'
+        path = _generate_temp_config(
+            _make_args(connect_url="https://c.example.com", connect_version=tricky)
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.connect.version == tricky
+        finally:
+            Path(path).unlink(missing_ok=True)
 
 
 class TestVerifyLocalSnowflakeApiAuthGuard:

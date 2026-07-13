@@ -57,6 +57,13 @@ url = "https://workbench.example.com"
 # idle_timeout_minutes = 5   # must be ≤ 15 for the idle scenarios to run
 # idle_grace_seconds = 60    # seconds added on top of idle_timeout_minutes before asserting suspend
 
+# The in-session Chronicle data-collection test is gated by the top-level
+# [chronicle] enabled flag (see below); it launches an RStudio session and reads
+# Chronicle's raw data chunks to verify it has collected queryable telemetry.
+# Base path of Chronicle's data on the Workbench server. Defaults to the
+# embedded-Workbench location below; override if chronicle-storage-location is set.
+# chronicle_data_path = "/var/lib/rstudio-server/shared-storage/chronicle"
+
 # Additional IDE extensions to validate beyond the built-in Posit Workbench
 # integration (which is always checked).  Use extension IDs for VS Code and
 # Positron, and package names for JupyterLab.
@@ -159,8 +166,23 @@ enabled = false
 enabled = false
 
 [chronicle]
-# Set enabled = true if Connect's embedded Chronicle usage data collection
-# is configured. VIP verifies the Chronicle subprocess is running and ready.
+# Set enabled = true when Chronicle usage data collection is configured. This
+# single flag gates every Chronicle test:
+#   - Connect:   VIP verifies the embedded Chronicle subprocess is running/ready.
+#   - Workbench: VIP launches an RStudio session and reads Chronicle's raw data
+#                chunks (under [workbench] chronicle_data_path) to verify it has
+#                collected queryable telemetry. It checks the two deterministically
+#                collected paths: runtime metrics (Prometheus scrape) and user
+#                information (Workbench admin API). Enable both in rserver.conf:
+#                  chronicle-enabled=1
+#                  metrics-enabled=1
+#                  workbench-api-admin-enabled=1
+#                The session user must be able to read chronicle_data_path.
+#                Chronicle restricts data to the owning group by default
+#                ([LocalStorage] Access = group); set Access = all in
+#                /etc/rstudio/chronicle-local.gcfg (Workbench rewrites the
+#                generated chronicle.gcfg on every restart) or add the session
+#                user to the owning group.
 enabled = false
 
 [performance]
@@ -192,6 +214,10 @@ enabled = false
 #
 # Disable TLS certificate verification (equivalent to curl -k).
 # Use only in trusted environments; this silently ignores certificate errors.
+# Also skips the certificate-validity test scenario (asserting a valid cert
+# contradicts disabling verification).  Note: HTTPS-enforcement and TLS-version
+# tests are governed by the URL scheme, not this flag — they skip automatically
+# when a product URL is http://.
 # Overridable on the command line with: vip verify --insecure
 # insecure = false
 #

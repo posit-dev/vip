@@ -384,7 +384,8 @@ def _do_clone(
 
     terminal_run(
         page,
-        f"cd {shlex.quote(workdir)} && GIT_TERMINAL_PROMPT=0 git clone {shlex.quote(auth_url)}",
+        f"rm -rf {shlex.quote(clone_dir)} && cd {shlex.quote(workdir)} && "
+        f"GIT_TERMINAL_PROMPT=0 git clone {shlex.quote(auth_url)}",
         timeout=_TIMEOUT_GIT_NETWORK,
         readback_lang=readback_lang,
     )

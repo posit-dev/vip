@@ -1,0 +1,31 @@
+; Posit Connect configuration for the mock-IdP E2E stack.
+; WARNING: For CI/local mock-IdP testing only -- the OIDC client secret below
+; is a throwaway value seeded into docker/keycloak/realm-vip.json, not a
+; production credential.
+
+[Server]
+SenderEmail = vip@localhost
+Address = https://connect.vip.test:3939
+
+[HTTPS]
+Listen = :3939
+Certificate = /certs/connect.crt
+Key = /certs/connect.key
+
+[Authentication]
+Provider = oauth2
+
+[OAuth2]
+ClientId = vip-connect
+ClientSecret = vip-connect-secret
+OpenIDConnectIssuer = https://keycloak.vip.test:8443/realms/vip
+RequireUsernameClaim = true
+UsePKCE = true
+
+[Python]
+Enabled = true
+; Explicit path required: without it Connect's auto-detection fails with
+; "Could not locate a Python installation" on ghcr.io/posit-dev/connect.
+; Matches the image's own default rstudio-connect.gcfg -- bump this if
+; RSC_VERSION moves to an image with a different bundled Python version.
+Executable = /opt/python/3.14.6/bin/python

@@ -1,5 +1,9 @@
 # VIP - Verified Installation of Posit
 
+# Exact uv version used to regenerate uv.lock. Must satisfy the
+# `required-version` floor in pyproject.toml's [tool.uv]. Bump both together.
+UV_VERSION := "0.11.28"
+
 # List available recipes
 default:
     @just --list
@@ -11,6 +15,15 @@ setup:
 
 # Same as `setup` — kept for muscle memory; vip install handles RHEL detection.
 setup-rhel: setup
+
+# Regenerate uv.lock with the pinned uv version (see UV_VERSION above).
+# Use this instead of a bare `uv lock`: `uvx` fetches the exact pinned uv, so
+# the lockfile is byte-reproducible even when your local uv is a different
+# version. This is also how you resolve a uv.lock merge conflict — take either
+# side, then relock:
+#   git checkout --theirs -- uv.lock && just relock
+relock:
+    uvx --from uv=={{ UV_VERSION }} uv lock
 
 # Run ruff linter
 lint:
@@ -102,6 +115,23 @@ test-local-full *ARGS:
 report-selftest:
     uv run pytest selftests/
     cd report && uv run quarto render
+
+# Start the mock-IdP E2E stack (Keycloak + Connect + Workbench, real OIDC).
+# Requires RSC_LICENSE and RSW_LICENSE. Add vip.test hostnames to /etc/hosts
+# first: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test`.
+mock-idp-up:
+    docker compose -f compose.mock-idp.yml up -d --build --wait
+    @docker compose -f compose.mock-idp.yml ps
+
+# Stop the mock-IdP E2E stack and remove its volumes (certs, realm state, home dirs)
+mock-idp-down:
+    docker compose -f compose.mock-idp.yml down -v
+
+# Print the mock-IdP stack's auto-generated TOTP seed. Export it before
+# running `vip verify --headless-auth` locally:
+#   export VIP_TEST_TOTP_SECRET=$(just mock-idp-totp-secret)
+mock-idp-totp-secret:
+    @docker run --rm -v vip-mock-idp_mock-idp-certs:/certs:ro alpine/openssl:3.5.4 cat /certs/totp-secret.b32
 
 # Build and run the RHEL 9 headless Chromium smoke test
 rhel9-smoke:

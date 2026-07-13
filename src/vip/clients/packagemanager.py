@@ -9,6 +9,23 @@ import httpx
 
 from vip.clients.base import BaseClient
 
+# Binary-package probe tables.  PPM's macOS routing ties R version to arch:
+# R 4.6+ -> sonoma-{arm64,x86_64}; R 4.1-4.5 -> big-sur-{arm64,x86_64}.
+_MACOS_BINARY_PROBES: tuple[tuple[str, str], ...] = (
+    ("4.6", "sonoma-arm64"),
+    ("4.5", "big-sur-arm64"),
+    ("4.4", "big-sur-arm64"),
+    ("4.3", "big-sur-arm64"),
+)
+# Linux binary path: bin/linux/{distro}-{arch}/{r_version}/src/contrib/PACKAGES
+_LINUX_BINARY_PROBES: tuple[tuple[str, str], ...] = (
+    ("4.4", "jammy-x86_64"),
+    ("4.4", "noble-x86_64"),
+    ("4.3", "jammy-x86_64"),
+    ("4.4", "centos7-x86_64"),
+)
+_WINDOWS_BINARY_R_VERSIONS: tuple[str, ...] = ("4.4", "4.3", "4.5", "4.2")
+
 
 class PackageManagerClient(BaseClient):
     """Minimal Package Manager HTTP wrapper."""
@@ -109,3 +126,65 @@ class PackageManagerClient(BaseClient):
         """Check whether a PyPI package is available in a repo."""
         resp = self._client.get(f"/{repo_name}/latest/simple/{package}/")
         return resp.status_code == 200
+
+    # -- CRAN binary packages -----------------------------------------------
+
+    def cran_windows_binary_index_reachable(self, repo_name: str) -> tuple[bool, int]:
+        """Check if a Windows binary PACKAGES index is served for any recent R version.
+
+        Returns ``(found, status)``. *found* is True only when a probe returns
+        HTTP 200 with a real PACKAGES index body. On failure, *status* is the
+        most severe status seen across probes (a 5xx outranks a 404) so callers
+        can tell a broken server (fail) from an unsynced platform (skip).
+        """
+        worst = 0
+        for r_version in _WINDOWS_BINARY_R_VERSIONS:
+            resp = self._client.get(f"/{repo_name}/latest/bin/windows/contrib/{r_version}/PACKAGES")
+            if resp.status_code == 200 and "Package:" in resp.text:
+                return True, resp.status_code
+            worst = max(worst, resp.status_code)
+        return False, worst
+
+    def cran_macos_binary_index_reachable(self, repo_name: str) -> tuple[bool, int]:
+        """Check if a macOS binary PACKAGES index is served for any recent R version.
+
+        Uses the correct macOS arch per PPM's routing: R 4.6+ -> sonoma-arm64,
+        R 4.1-4.5 -> big-sur-arm64. See ``cran_windows_binary_index_reachable``
+        for the return-value contract.
+        """
+        worst = 0
+        for r_version, arch in _MACOS_BINARY_PROBES:
+            resp = self._client.get(
+                f"/{repo_name}/latest/bin/macosx/{arch}/contrib/{r_version}/PACKAGES"
+            )
+            if resp.status_code == 200 and "Package:" in resp.text:
+                return True, resp.status_code
+            worst = max(worst, resp.status_code)
+        return False, worst
+
+    def cran_linux_binary_index_reachable(self, repo_name: str) -> tuple[bool, int]:
+        """Check if a Linux binary PACKAGES index is served for any common distro.
+
+        Uses PPM's binary Linux format:
+        ``bin/linux/{distro}-{arch}/{r_version}/src/contrib/PACKAGES``.
+        Probes Ubuntu (jammy, noble) and CentOS 7. See
+        ``cran_windows_binary_index_reachable`` for the return-value contract.
+        """
+        worst = 0
+        for r_version, distro_arch in _LINUX_BINARY_PROBES:
+            resp = self._client.get(
+                f"/{repo_name}/latest/bin/linux/{distro_arch}/{r_version}/src/contrib/PACKAGES"
+            )
+            if resp.status_code == 200 and "Package:" in resp.text:
+                return True, resp.status_code
+            worst = max(worst, resp.status_code)
+        return False, worst
+
+    # -- PyPI binary (wheels) -----------------------------------------------
+
+    def pypi_wheel_available(self, repo_name: str, package: str) -> tuple[bool, int]:
+        """Check if any wheel (.whl) file is listed in the PyPI simple index for a package."""
+        resp = self._client.get(f"/{repo_name}/latest/simple/{package}/")
+        if resp.status_code != 200:
+            return False, resp.status_code
+        return ".whl" in resp.text, resp.status_code
