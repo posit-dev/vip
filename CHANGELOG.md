@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.53.0 (2026-07-13)
+
+### Features
+
+- Add workflow to route team-labeled issues to product boards
+  ([#435](https://github.com/posit-dev/vip/pull/435),
+  [`9918bce`](https://github.com/posit-dev/vip/commit/9918bcef65ed8740bf6dd3bbd4192083f6a32b8e))
+
+Co-authored-by: Benjamin R. J. Schwedler <ben@posit.co>
+
+
 ## v0.52.4 (2026-07-10)
 
 ### Bug Fixes
