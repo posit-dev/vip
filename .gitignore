@@ -245,6 +245,8 @@ __marimo__/
 .positai
 presentations/se-overview/index.html
 presentations/se-overview/index_files/
+presentations/qa-overview/index.html
+presentations/qa-overview/index_files/
 
 # Riptide artifacts (cloud-synced)
 .humanlayer/tasks/
