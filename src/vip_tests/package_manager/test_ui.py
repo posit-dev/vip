@@ -20,9 +20,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from vip_tests.package_manager.pages.ui import (
-    TIMEOUT_ELEMENT,
-    TIMEOUT_PAGE_LOAD,
+from vip_tests.package_manager.pages import (
     Homepage,
     PackageDetailPage,
     PackagesPage,
@@ -31,6 +29,7 @@ from vip_tests.package_manager.pages.ui import (
     open_repo_packages,
     search_packages,
 )
+from vip_tests.package_manager.pages.ui import TIMEOUT_ELEMENT, TIMEOUT_PAGE_LOAD
 
 scenarios("test_ui.feature")
 
