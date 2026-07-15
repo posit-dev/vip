@@ -110,8 +110,9 @@ class ProductVersion:
 # Posit Team product versions this release of VIP is built and validated
 # against. This is a curated statement of intent -- what the release targets --
 # not a mechanical floor derived from the ``@pytest.mark.min_version`` markers.
-# Keep it in sync when the suite starts targeting a newer product release.
-# Surfaced by ``vip --product-versions``.
+# Keys are product display names (matching the CLI's other user-facing output,
+# e.g. ``_print_skip_notes``). Keep it in sync when the suite starts targeting a
+# newer product release. Surfaced by ``vip --product-versions``.
 TARGETED_PRODUCT_VERSIONS: dict[str, str] = {
-    "connect": "2026.06.0",
+    "Connect": "2026.06.0",
 }
