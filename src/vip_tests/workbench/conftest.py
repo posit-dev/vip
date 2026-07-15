@@ -15,7 +15,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 from pytest_bdd import given
 
-from vip.clients.workbench import WorkbenchClient, is_vip_session
+from vip.clients.workbench import WorkbenchClient
 from vip.plugin import _auth_session_key
 from vip.timeouts import timeout_scale
 from vip.workbench_ui import (
@@ -568,12 +568,7 @@ def _vip_session_count_via_cookies(
         scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
         try:
             scratch.set_cookies(cookies)
-            sessions = scratch.list_sessions()
-            return sum(
-                1
-                for s in sessions
-                if isinstance(s, dict) and is_vip_session(str(s.get("label") or ""))
-            )
+            return scratch.count_vip_sessions()
         finally:
             scratch.close()
     except Exception:

@@ -220,6 +220,52 @@ def test_quit_vip_sessions_no_warning_when_fully_cleaned(caplog):
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
+def test_count_vip_sessions_counts_only_vip():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=[
+                {"id": "a", "label": "VIP foo"},
+                {"id": "b", "label": "My real work"},
+                {"id": "c", "label": "_vip_cap_1_default_0"},
+            ],
+        )
+
+    wc = _client_with_handler(handler)
+    assert wc.count_vip_sessions() == 2
+
+
+def test_count_vip_sessions_zero_when_no_vip_sessions():
+    wc = _client_with_handler(lambda r: httpx.Response(200, json=[{"id": "b", "label": "real"}]))
+    assert wc.count_vip_sessions() == 0
+
+
+def test_count_vip_sessions_minus_one_on_non_200():
+    wc = _client_with_handler(lambda r: httpx.Response(503))
+    assert wc.count_vip_sessions() == -1
+
+
+def test_count_vip_sessions_minus_one_on_transport_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("boom")
+
+    wc = _client_with_handler(handler)
+    assert wc.count_vip_sessions() == -1
+
+
+def test_count_vip_sessions_minus_one_on_non_list_json():
+    # A 200 whose body is a JSON object (not the expected array) must read as
+    # "unknown" (-1), never as "confirmed clean" (0) — else the caller would
+    # suppress the UI escalation and re-orphan sessions (issue #467).
+    wc = _client_with_handler(lambda r: httpx.Response(200, json={"error": "nope"}))
+    assert wc.count_vip_sessions() == -1
+
+
+def test_count_vip_sessions_minus_one_on_non_json_body():
+    wc = _client_with_handler(lambda r: httpx.Response(200, text="<html>app</html>"))
+    assert wc.count_vip_sessions() == -1
+
+
 def test_sessions_api_reachable_true_on_200():
     wc = _client_with_handler(lambda r: httpx.Response(200, json=[]))
     assert wc.sessions_api_reachable() is True

@@ -848,7 +848,7 @@ def _cleanup_workbench_sessions(
         start_headless_auth,
         start_interactive_auth,
     )
-    from vip.clients.workbench import WorkbenchClient, is_vip_session
+    from vip.clients.workbench import WorkbenchClient
     from vip.workbench_ui import quit_vip_sessions_via_ui
 
     insecure = config.insecure
@@ -904,15 +904,15 @@ def _cleanup_workbench_sessions(
             if api_reachable:
                 quit_count = client.quit_vip_sessions()
                 print(f"Quit {quit_count} VIP Workbench session(s) via the API")
-                remaining = sum(
-                    1
-                    for s in client.list_sessions()
-                    if isinstance(s, dict) and is_vip_session(str(s.get("label") or ""))
-                )
+                remaining = client.count_vip_sessions()
             else:
-                remaining = 0  # unknown — escalation below is driven by api_reachable
+                remaining = -1  # unknown — escalate below
 
-            if not api_reachable or remaining:
+            # Escalate when the API is unreachable, when VIP sessions remain, or
+            # when the count is undeterminable (-1). Only a confirmed 0 skips the
+            # UI sweep, so an unparseable API response can never silently orphan
+            # sessions (issue #467).
+            if not api_reachable or remaining != 0:
                 print("Escalating to browser-driven session cleanup ...")
                 with authenticated_page(session, insecure=insecure, ca_bundle=ca_bundle) as page:
                     ui_count = quit_vip_sessions_via_ui(page, workbench_url)
@@ -921,6 +921,25 @@ def _cleanup_workbench_sessions(
             client.close()
     finally:
         session.cleanup()
+
+
+def _load_cleanup_config() -> VIPConfig:
+    """Load ``vip.toml`` if present, else a default ``VIPConfig``.
+
+    ``load_config`` warns when no config file exists, which is noise for
+    ``vip cleanup`` when the user passes URLs explicitly and has no
+    ``vip.toml``. This loads the file only when it actually exists; otherwise
+    it returns a default ``VIPConfig`` whose ``__post_init__`` still picks up
+    env-based credentials (``VIP_TEST_USERNAME``/``VIP_TEST_PASSWORD``,
+    ``VIP_WORKBENCH_API_KEY``, etc.).
+    """
+    from vip.config import VIPConfig, load_config
+
+    env = os.environ.get("VIP_CONFIG")
+    path = Path(env) if env else Path("vip.toml")
+    if path.exists():
+        return load_config()
+    return VIPConfig()
 
 
 def run_cleanup(args: argparse.Namespace) -> None:
@@ -939,18 +958,15 @@ def run_cleanup(args: argparse.Namespace) -> None:
     api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
     workbench_url = getattr(args, "workbench_url", None)
 
-    # Fall back to vip.toml for whichever URL(s) weren't passed on the CLI, so
-    # `vip cleanup --connect-url ...` (or --workbench-url) runs without a
-    # "config not found" warning when only one product is being cleaned up.
-    config: VIPConfig | None = None
-    if not connect_url or not workbench_url:
-        from vip.config import load_config
-
-        config = load_config()
-        if not connect_url and config.connect and config.connect.url:
-            connect_url = config.connect.url
-        if not workbench_url and config.workbench and config.workbench.url:
-            workbench_url = config.workbench.url
+    # Load vip.toml when present to fill in any URL not passed on the CLI, and
+    # to supply TLS/auth settings for the Workbench path. Loaded quietly: an
+    # explicit `vip cleanup --connect-url ...` with no vip.toml must not emit a
+    # "Config file not found" warning (env-based credentials still apply).
+    config = _load_cleanup_config()
+    if not connect_url and config.connect and config.connect.url:
+        connect_url = config.connect.url
+    if not workbench_url and config.workbench and config.workbench.url:
+        workbench_url = config.workbench.url
 
     if not connect_url and not workbench_url:
         print(
@@ -969,10 +985,6 @@ def run_cleanup(args: argparse.Namespace) -> None:
         print(f"Deleted {deleted} VIP test content item(s)")
 
     if workbench_url:
-        if config is None:
-            from vip.config import load_config
-
-            config = load_config()
         _cleanup_workbench_sessions(workbench_url, args, config)
 
     print("Cleanup completed successfully")

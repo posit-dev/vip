@@ -20,6 +20,7 @@ import vip.auth
 import vip.cli
 import vip.workbench_ui
 from vip.auth import InteractiveAuthSession
+from vip.clients.workbench import is_vip_session
 
 
 def _make_args(**overrides) -> argparse.Namespace:
@@ -50,6 +51,10 @@ class _FakeWorkbenchClient:
         self._api_reachable = True
         self._quit_count = 0
         self._remaining_sessions: list[dict] = []
+        # When set (not None), count_vip_sessions returns this verbatim so a
+        # test can force the "unknown" (-1) signal; otherwise it is derived
+        # from _remaining_sessions like the real client would.
+        self._vip_count: int | None = None
         type(self).instances.append(self)
 
     def sessions_api_reachable(self):
@@ -58,8 +63,14 @@ class _FakeWorkbenchClient:
     def quit_vip_sessions(self):
         return self._quit_count
 
-    def list_sessions(self):
-        return self._remaining_sessions
+    def count_vip_sessions(self):
+        if self._vip_count is not None:
+            return self._vip_count
+        return sum(
+            1
+            for s in self._remaining_sessions
+            if isinstance(s, dict) and is_vip_session(str(s.get("label") or ""))
+        )
 
     def close(self):
         self.closed = True
@@ -172,6 +183,33 @@ class TestConnectWorkbenchRouting:
         out = capsys.readouterr().out
         assert "Deleted 1 VIP test content item(s)" in out
         assert called["url"] == "https://wb.example.com"
+
+    def test_connect_only_without_vip_toml_does_not_warn(self, tmp_path, monkeypatch, recwarn):
+        # `vip cleanup --connect-url ...` with no vip.toml must not emit a
+        # "Config file not found" warning (issue #467 review): the URL was
+        # supplied explicitly, so there is nothing to warn about.
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+
+        class _FakeConnectClient:
+            def __init__(self, *a, **k):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def cleanup_vip_content(self):
+                return 0
+
+        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+
+        vip.cli.run_cleanup(_make_args(connect_url="https://c.example.com"))
+
+        messages = [str(w.message) for w in recwarn.list]
+        assert not any("Config file not found" in m for m in messages), messages
 
     def test_workbench_url_falls_back_to_vip_toml(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -311,7 +349,7 @@ class TestWorkbenchUiEscalation:
     """The UI sweep must fire when the API is unreachable or leaves VIP
     sessions behind, and must be skipped when the API sweep is confirmed clean."""
 
-    def _run(self, tmp_path, monkeypatch, *, api_reachable, remaining):
+    def _run(self, tmp_path, monkeypatch, *, api_reachable, remaining, count=None):
         from vip.config import VIPConfig
 
         monkeypatch.setattr(vip.auth, "start_interactive_auth", lambda **k: _fake_session(tmp_path))
@@ -320,6 +358,7 @@ class TestWorkbenchUiEscalation:
             client = _FakeWorkbenchClient(*args, **kwargs)
             client._api_reachable = api_reachable
             client._remaining_sessions = remaining
+            client._vip_count = count
             return client
 
         monkeypatch.setattr("vip.clients.workbench.WorkbenchClient", _fake_client_ctor)
@@ -360,3 +399,10 @@ class TestWorkbenchUiEscalation:
     def test_skips_ui_when_api_sweep_is_clean(self, tmp_path, monkeypatch):
         ui_calls = self._run(tmp_path, monkeypatch, api_reachable=True, remaining=[])
         assert ui_calls == []
+
+    def test_escalates_when_count_is_unknown(self, tmp_path, monkeypatch):
+        # A reachable API whose post-sweep count cannot be determined (-1, e.g.
+        # a non-list body) must escalate rather than be mistaken for clean —
+        # otherwise an unparseable response silently re-orphans sessions (#467).
+        ui_calls = self._run(tmp_path, monkeypatch, api_reachable=True, remaining=[], count=-1)
+        assert ui_calls == ["https://wb.example.com"]

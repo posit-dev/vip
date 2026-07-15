@@ -40,7 +40,7 @@ uv run pytest selftests/test_workbench_cleanup.py -q 2>&1 | grep -E 'passed|fail
 ```
 
 ```output
-35 passed
+41 passed
 ```
 
 New selftests covering Change B (per-test cleanup fixture escalation logic in _run_session_cleanup) and Change C (authenticated_page, vip cleanup CLI wiring) all pass:
@@ -50,7 +50,7 @@ uv run pytest selftests/test_auth.py selftests/test_cli_cleanup.py -q 2>&1 | gre
 ```
 
 ```output
-96 passed, 4 warnings
+98 passed
 ```
 
 The new --workbench-url flag on vip cleanup:
@@ -116,5 +116,5 @@ uv run pytest selftests/ --ignore=selftests/test_load_engine.py -q 2>&1 | grep -
 ```
 
 ```output
-922 passed, 26 warnings
+930 passed, 22 warnings
 ```

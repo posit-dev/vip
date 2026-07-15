@@ -83,6 +83,31 @@ class WorkbenchClient(BaseClient):
             return resp.json()
         return []
 
+    def count_vip_sessions(self) -> int:
+        """Count VIP-named sessions currently listed, or ``-1`` if undeterminable.
+
+        Returns the number of sessions matching :func:`is_vip_session`
+        (``0`` when the list genuinely holds none), or ``-1`` when the count
+        cannot be determined — a transport error, a non-200, or a body that is
+        not a JSON ``list`` (e.g. a ``200`` HTML/SPA fallback or an error
+        object).  Callers use the ``-1`` "unknown" signal to escalate cleanup
+        defensively rather than mistake an unparseable response for "clean"
+        (which would suppress the UI sweep and re-orphan sessions — issue #467).
+        Never raises.
+        """
+        try:
+            resp = self._client.get("/api/sessions")
+            if resp.status_code != 200:
+                return -1
+            sessions = resp.json()
+        except Exception:
+            return -1
+        if not isinstance(sessions, list):
+            return -1
+        return sum(
+            1 for s in sessions if isinstance(s, dict) and is_vip_session(str(s.get("label") or ""))
+        )
+
     def sessions_api_reachable(self) -> bool:
         """Return True only if ``/api/sessions`` returns a usable session list.
 
