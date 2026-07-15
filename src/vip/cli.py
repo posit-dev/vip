@@ -12,7 +12,6 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from vip.product_targets import scan_targeted_product_versions as _scan_targeted_product_versions
 from vip.timeouts import scaled
 
 if TYPE_CHECKING:
@@ -883,23 +882,11 @@ def _reorder_help_args(argv: list[str], commands: set[str]) -> list[str]:
     return reordered
 
 
-def _format_product_versions() -> str:
-    """Render the Posit product versions this release of vip targets.
+def _format_minimum_supported_version() -> str:
+    """Render the oldest Posit Team release this build of vip supports."""
+    from vip.version import MINIMUM_SUPPORTED_POSIT_TEAM
 
-    Derived from the suite's ``@pytest.mark.min_version`` markers so the output
-    stays in lockstep with what the tests actually require.
-    """
-    from vip import __version__
-
-    targets = _scan_targeted_product_versions()
-    header = f"Posit product versions targeted by vip {__version__}:"
-    if not targets:
-        return f"{header}\n  (no product version requirements found)"
-    width = max(len(p) for p in targets)
-    lines = [header]
-    for product, version in targets.items():
-        lines.append(f"  {product.ljust(width)}  {version}")
-    return "\n".join(lines)
+    return f"Minimum supported Posit Team version: {MINIMUM_SUPPORTED_POSIT_TEAM}"
 
 
 def main() -> None:
@@ -916,9 +903,9 @@ def main() -> None:
         help="Print the vip version and exit",
     )
     parser.add_argument(
-        "--product-versions",
+        "--minimum-supported-version",
         action="store_true",
-        help="Print the Posit product versions this release of vip targets and exit",
+        help="Print the oldest Posit Team release this build of vip supports and exit",
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -1273,8 +1260,8 @@ def main() -> None:
 
     argv = _reorder_help_args(sys.argv[1:], set(subcommand_parsers))
     args = parser.parse_args(argv)
-    if getattr(args, "product_versions", False):
-        print(_format_product_versions())
+    if getattr(args, "minimum_supported_version", False):
+        print(_format_minimum_supported_version())
         sys.exit(0)
     if not hasattr(args, "func"):
         sub = subcommand_parsers.get(args.command)
