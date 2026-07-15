@@ -1,6 +1,30 @@
 # CHANGELOG
 
 
+## v0.53.1 (2026-07-15)
+
+### Bug Fixes
+
+- **workbench**: Raise ExecError immediately on terminal_run failure
+  ([#445](https://github.com/posit-dev/vip/pull/445),
+  [`ea0c544`](https://github.com/posit-dev/vip/commit/ea0c54420ed3265d4b94e10aab0284347dfe1d75))
+
+Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>
+
+### Documentation
+
+- Add QA-focused VIP architecture presentation ([#468](https://github.com/posit-dev/vip/pull/468),
+  [`44cdd89`](https://github.com/posit-dev/vip/commit/44cdd8942610ec0984bb2411b9031ac80c8f9849))
+
+### Testing
+
+- **package-manager**: Add web UI smoke tests across ecosystems
+  ([#460](https://github.com/posit-dev/vip/pull/460),
+  [`5ef2574`](https://github.com/posit-dev/vip/commit/5ef25749674c66a0255adcbed0f87f0827644a14))
+
+Co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+
+
 ## v0.53.0 (2026-07-13)
 
 ### Features
