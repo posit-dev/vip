@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from vip.product_targets import scan_targeted_product_versions as _scan_targeted_product_versions
 from vip.timeouts import scaled
 
 if TYPE_CHECKING:
@@ -883,13 +884,20 @@ def _reorder_help_args(argv: list[str], commands: set[str]) -> list[str]:
 
 
 def _format_product_versions() -> str:
-    """Render the Posit product versions this release of vip targets."""
-    from vip import __version__
-    from vip.version import TARGETED_PRODUCT_VERSIONS
+    """Render the Posit product versions this release of vip targets.
 
-    lines = [f"Posit product versions targeted by vip {__version__}:"]
-    width = max((len(p) for p in TARGETED_PRODUCT_VERSIONS), default=0)
-    for product, version in sorted(TARGETED_PRODUCT_VERSIONS.items()):
+    Derived from the suite's ``@pytest.mark.min_version`` markers so the output
+    stays in lockstep with what the tests actually require.
+    """
+    from vip import __version__
+
+    targets = _scan_targeted_product_versions()
+    header = f"Posit product versions targeted by vip {__version__}:"
+    if not targets:
+        return f"{header}\n  (no product version requirements found)"
+    width = max(len(p) for p in targets)
+    lines = [header]
+    for product, version in targets.items():
         lines.append(f"  {product.ljust(width)}  {version}")
     return "\n".join(lines)
 

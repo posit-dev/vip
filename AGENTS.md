@@ -151,6 +151,7 @@ Key principles:
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
 | `src/vip/plugin.py` | pytest plugin: markers, auto-skip, JSON report output |
 | `src/vip/version.py` | `ProductVersion` -- Posit calendar-version parsing and comparison for `min_version` gating |
+| `src/vip/product_targets.py` | Derives the product versions this release targets from the suite's `@min_version` markers (powers `vip --product-versions`) |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
 | `src/vip/clients/connect.py` | httpx client for Connect API |
 | `src/vip/clients/workbench.py` | httpx client for Workbench API |
