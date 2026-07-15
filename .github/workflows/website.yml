@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "website/**"
+      - "presentations/**"
       - "src/vip_tests/**"
       - "report/**"
       - "src/vip/**"
@@ -56,12 +57,28 @@ jobs:
           cache: npm
           cache-dependency-path: website/package-lock.json
 
+      - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2
+
       - name: Build website
         run: |
           cd website
           npm ci
           npm run build
           touch dist/.nojekyll
+
+      # Render the standalone reveal.js decks into the built site so they are
+      # served alongside it (e.g. posit-dev.github.io/vip/qa-overview/). Runs
+      # after the Astro build, which clears website/dist.
+      - name: Render presentations into the site
+        run: |
+          for deck in se-overview qa-overview; do
+            quarto render "presentations/$deck/index.qmd"
+            mkdir -p "website/dist/$deck"
+            cp -R "presentations/$deck/index.html" \
+                  "presentations/$deck/index_files" \
+                  "presentations/$deck/images" \
+                  "website/dist/$deck/"
+          done
 
       - name: Download example report
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
