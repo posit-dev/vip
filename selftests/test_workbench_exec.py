@@ -27,6 +27,7 @@ from vip_tests.workbench.exec import (
     _detect_ide,
     _extract_between_markers,
     _make_sentinels,
+    _parse_done_marker,
     _split_marker,
     _strip_r_index,
     _wrap_python_expr,
@@ -294,6 +295,58 @@ class TestStripRIndex:
 
 
 # ---------------------------------------------------------------------------
+# _parse_done_marker
+# ---------------------------------------------------------------------------
+
+
+class TestParseDoneMarker:
+    def test_returns_none_when_marker_absent(self):
+        """Command still running: no marker line yet, regardless of content."""
+        assert _parse_done_marker("some partial output", "VIP_DONE_abc") is None
+
+    def test_parses_success_exit_code(self):
+        content = "hello\nworld\nVIP_DONE_abc:0"
+        result = _parse_done_marker(content, "VIP_DONE_abc")
+        assert result == ("hello\nworld", 0)
+
+    def test_parses_nonzero_exit_code(self):
+        """Regression guard for #439: marker is now written even on failure."""
+        content = "fatal: destination path 'x' already exists\nVIP_DONE_abc:128"
+        result = _parse_done_marker(content, "VIP_DONE_abc")
+        assert result == ("fatal: destination path 'x' already exists", 128)
+
+    def test_marker_line_removed_from_output(self):
+        content = "line1\nVIP_DONE_abc:1\nline2"
+        output, exit_code = _parse_done_marker(content, "VIP_DONE_abc")
+        assert "VIP_DONE_abc" not in output
+        assert "line1" in output
+        assert "line2" in output
+        assert exit_code == 1
+
+    def test_empty_output_between_marker(self):
+        content = "VIP_DONE_abc:0"
+        assert _parse_done_marker(content, "VIP_DONE_abc") == ("", 0)
+
+    def test_does_not_match_different_marker(self):
+        """A different run's marker must not be mistaken for this one."""
+        content = "output\nVIP_DONE_other:0"
+        assert _parse_done_marker(content, "VIP_DONE_abc") is None
+
+    def test_marker_glued_to_output_with_no_trailing_newline(self):
+        """cmd's last line lacking a trailing newline glues the marker onto
+        it (`>>` appends raw bytes with no separator); the glued-on leading
+        text is real output and must be kept, not dropped."""
+        content = "foobar" + "VIP_DONE_abc:0"
+        assert _parse_done_marker(content, "VIP_DONE_abc") == ("foobar", 0)
+
+    def test_returns_none_for_non_digit_suffix(self):
+        """A marker line whose exit-code suffix isn't purely digits yet (a
+        partial write mid-poll) must be treated as still-running, not raise."""
+        content = "VIP_DONE_abc:"
+        assert _parse_done_marker(content, "VIP_DONE_abc") is None
+
+
+# ---------------------------------------------------------------------------
 # _detect_ide
 # ---------------------------------------------------------------------------
 
@@ -538,3 +591,109 @@ class TestReadFileRouting:
         assert result_py == "editor contents"
         assert mock_editor_read.call_count == 2
         mock_rstudio_eval.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# terminal_run
+# ---------------------------------------------------------------------------
+
+
+class _FixedUUID:
+    hex = "deadbeef"
+
+
+class TestTerminalRun:
+    """Regression coverage for #439: fast-failing commands must raise
+    ExecError immediately with the real output, not a generic timeout."""
+
+    def _patch_common(self, monkeypatch, ide="rstudio"):
+        monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: ide)
+        monkeypatch.setattr(exec_mod, "_ensure_terminal_open", lambda p, timeout=30_000: None)
+        monkeypatch.setattr(exec_mod.uuid, "uuid4", lambda: _FixedUUID())
+
+    def test_writes_done_marker_unconditionally(self, monkeypatch):
+        """The marker must be appended with ``;`` so it is written even when
+        *cmd* fails -- ``&&`` silently drops it on non-zero exit (#439)."""
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(
+            exec_mod, "read_file", MagicMock(return_value="ok\nVIP_DONE_deadbeef:0")
+        )
+        page = MagicMock()
+
+        exec_mod.terminal_run(page, "false", timeout=1_000)
+
+        typed_cmd = page.locator.return_value.type.call_args[0][0]
+        assert "&&" not in typed_cmd
+        assert 'echo "VIP_DONE_deadbeef:$?"' in typed_cmd
+
+    def test_returns_output_on_success(self, monkeypatch):
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(
+            exec_mod, "read_file", MagicMock(return_value="hello\nVIP_DONE_deadbeef:0")
+        )
+        page = MagicMock()
+
+        result = exec_mod.terminal_run(page, "echo hello", timeout=1_000)
+
+        assert result == "hello"
+
+    def test_raises_exec_error_immediately_on_nonzero_exit(self, monkeypatch):
+        """Fast failure must surface as an immediate ExecError with the real
+        output, not a 120s timeout with the output discarded."""
+        self._patch_common(monkeypatch)
+        error_output = "fatal: destination path 'repo' already exists"
+        mock_read_file = MagicMock(return_value=f"{error_output}\nVIP_DONE_deadbeef:128")
+        monkeypatch.setattr(exec_mod, "read_file", mock_read_file)
+        page = MagicMock()
+
+        with pytest.raises(ExecError, match="128") as excinfo:
+            exec_mod.terminal_run(page, "git clone ...", timeout=1_000)
+
+        assert error_output in str(excinfo.value)
+        # Must not have looped until timeout -- a single poll is enough.
+        mock_read_file.assert_called_once()
+
+    def test_still_times_out_when_marker_never_appears(self, monkeypatch):
+        """A genuinely hung command (no marker at all) still times out."""
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(exec_mod, "read_file", MagicMock(return_value="still running..."))
+        monkeypatch.setattr(exec_mod.time, "sleep", lambda s: None)
+        page = MagicMock()
+
+        with pytest.raises(ExecError, match="timed out"):
+            exec_mod.terminal_run(page, "sleep 999", timeout=10)
+
+    def _patch_vscode(self, monkeypatch, content):
+        """VS Code polls via editor-open/read/close instead of ``read_file``."""
+        self._patch_common(monkeypatch, ide="vscode")
+        monkeypatch.setattr(
+            exec_mod, "_open_file_in_vscode_editor", lambda p, path, timeout=5_000: None
+        )
+        monkeypatch.setattr(exec_mod, "_close_active_editor", lambda p: None)
+        mock_read = MagicMock(return_value=content)
+        monkeypatch.setattr(exec_mod, "_read_vscode_editor_text", mock_read)
+        return mock_read
+
+    def test_vscode_returns_output_on_success(self, monkeypatch):
+        """The VS Code editor-open polling path has its own copy of the
+        marker-parsing logic and must be covered independently of the
+        RStudio/Positron ``read_file`` path exercised above."""
+        self._patch_vscode(monkeypatch, "hello\nVIP_DONE_deadbeef:0")
+        page = MagicMock()
+
+        result = exec_mod.terminal_run(page, "echo hello", timeout=1_000)
+
+        assert result == "hello"
+
+    def test_vscode_raises_exec_error_immediately_on_nonzero_exit(self, monkeypatch):
+        """Regression guard: the VS Code branch must also raise ExecError
+        immediately on failure rather than looping until timeout (#439)."""
+        error_output = "fatal: destination path 'repo' already exists"
+        mock_read = self._patch_vscode(monkeypatch, f"{error_output}\nVIP_DONE_deadbeef:128")
+        page = MagicMock()
+
+        with pytest.raises(ExecError, match="128") as excinfo:
+            exec_mod.terminal_run(page, "git clone ...", timeout=1_000)
+
+        assert error_output in str(excinfo.value)
+        mock_read.assert_called_once()
