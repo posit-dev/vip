@@ -1,4 +1,4 @@
-"""Tests for ``vip --version`` and ``vip --minimum-supported-version``."""
+"""Tests for ``vip --version`` and the ``vip version`` subcommand."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ class TestMinimumSupportedVersion:
 
 
 class TestVersionFlag:
-    """``vip --version`` prints the vip version and exits 0."""
+    """``vip --version`` prints the vip version (one line) and exits 0."""
 
     def test_prints_version_and_exits(self, capsys, monkeypatch):
         from vip import __version__
@@ -48,17 +48,17 @@ class TestVersionFlag:
         assert "supported" not in out.lower()
 
 
-class TestMinimumSupportedVersionFlag:
-    """``vip --minimum-supported-version`` prints the support floor and exits 0."""
+class TestVersionSubcommand:
+    """``vip version`` prints the vip version and the support floor."""
 
-    def test_prints_floor_and_exits(self, capsys, monkeypatch):
+    def test_prints_version_and_floor(self, capsys, monkeypatch):
+        from vip import __version__
         from vip.cli import main
         from vip.version import MINIMUM_SUPPORTED_POSIT_TEAM
 
-        monkeypatch.setattr(sys, "argv", ["vip", "--minimum-supported-version"])
-        with pytest.raises(SystemExit) as exc_info:
-            main()
-        assert exc_info.value.code == 0
+        monkeypatch.setattr(sys, "argv", ["vip", "version"])
+        main()  # a subcommand returns normally; no SystemExit
         out = capsys.readouterr().out
+        assert f"vip {__version__}" in out
         assert MINIMUM_SUPPORTED_POSIT_TEAM in out
-        assert "posit team" in out.lower()
+        assert "minimum supported posit team version" in out.lower()

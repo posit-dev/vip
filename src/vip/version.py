@@ -113,5 +113,5 @@ class ProductVersion:
 # above this floor; they do not define the floor itself. Posit Team products
 # (Connect, Workbench, Package Manager) ship on a shared calendar version, so a
 # single floor covers the whole stack. Bump this only when dropping support for
-# an older release. Surfaced by ``vip --minimum-supported-version``.
+# an older release. Surfaced by ``vip version``.
 MINIMUM_SUPPORTED_POSIT_TEAM = "2026.04.0"

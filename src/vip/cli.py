@@ -882,11 +882,19 @@ def _reorder_help_args(argv: list[str], commands: set[str]) -> list[str]:
     return reordered
 
 
-def _format_minimum_supported_version() -> str:
-    """Render the oldest Posit Team release this build of vip supports."""
+def _format_version_details() -> str:
+    """Render the vip version and the minimum supported Posit Team release."""
+    from vip import __version__
     from vip.version import MINIMUM_SUPPORTED_POSIT_TEAM
 
-    return f"Minimum supported Posit Team version: {MINIMUM_SUPPORTED_POSIT_TEAM}"
+    return (
+        f"vip {__version__}\nMinimum supported Posit Team version: {MINIMUM_SUPPORTED_POSIT_TEAM}"
+    )
+
+
+def run_version(args: argparse.Namespace) -> None:
+    """Print the vip version and the minimum supported Posit Team version."""
+    print(_format_version_details())
 
 
 def main() -> None:
@@ -902,12 +910,14 @@ def main() -> None:
         version=f"%(prog)s {__version__}",
         help="Print the vip version and exit",
     )
-    parser.add_argument(
-        "--minimum-supported-version",
-        action="store_true",
-        help="Print the oldest Posit Team release this build of vip supports and exit",
-    )
     subparsers = parser.add_subparsers(dest="command")
+
+    # vip version
+    version_parser = subparsers.add_parser(
+        "version",
+        help="Print the vip version and the minimum supported Posit Team version",
+    )
+    version_parser.set_defaults(func=run_version)
 
     # vip auth
     auth_parser = subparsers.add_parser("auth", help="Authentication tools")
@@ -1248,6 +1258,7 @@ def main() -> None:
 
     # Map command names to their parsers for context-appropriate help
     subcommand_parsers = {
+        "version": version_parser,
         "verify": verify_parser,
         "cleanup": cleanup_parser,
         "install": install_parser,
@@ -1260,9 +1271,6 @@ def main() -> None:
 
     argv = _reorder_help_args(sys.argv[1:], set(subcommand_parsers))
     args = parser.parse_args(argv)
-    if getattr(args, "minimum_supported_version", False):
-        print(_format_minimum_supported_version())
-        sys.exit(0)
     if not hasattr(args, "func"):
         sub = subcommand_parsers.get(args.command)
         if sub:

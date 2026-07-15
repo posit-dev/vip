@@ -70,8 +70,8 @@ content from Connect.
 | `vip cleanup` | Delete VIP `_vip_test` content from Connect |
 | `vip report` | Render the HTML report from test results (requires [Quarto CLI](https://quarto.org/docs/download/)) |
 | `vip auth` | Authentication tools (e.g. mint Connect API keys) |
+| `vip version` | Print the vip version and the minimum supported Posit Team version |
 | `vip --version` | Print the installed vip version |
-| `vip --minimum-supported-version` | Print the oldest Posit Team release this build of vip supports |
 
 Run `vip --help` or `vip <command> --help` for full usage details.
 
