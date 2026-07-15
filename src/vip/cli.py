@@ -882,10 +882,35 @@ def _reorder_help_args(argv: list[str], commands: set[str]) -> list[str]:
     return reordered
 
 
+def _format_product_versions() -> str:
+    """Render the Posit product versions this release of vip targets."""
+    from vip import __version__
+    from vip.version import TARGETED_PRODUCT_VERSIONS
+
+    lines = [f"Posit product versions targeted by vip {__version__}:"]
+    width = max((len(p) for p in TARGETED_PRODUCT_VERSIONS), default=0)
+    for product, version in sorted(TARGETED_PRODUCT_VERSIONS.items()):
+        lines.append(f"  {product.ljust(width)}  {version}")
+    return "\n".join(lines)
+
+
 def main() -> None:
     """Main entry point for the VIP CLI."""
+    from vip import __version__
+
     parser = argparse.ArgumentParser(
         prog="vip", description="VIP verification and credential tools"
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Print the vip version and exit",
+    )
+    parser.add_argument(
+        "--product-versions",
+        action="store_true",
+        help="Print the Posit product versions this release of vip targets and exit",
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -1240,6 +1265,9 @@ def main() -> None:
 
     argv = _reorder_help_args(sys.argv[1:], set(subcommand_parsers))
     args = parser.parse_args(argv)
+    if getattr(args, "product_versions", False):
+        print(_format_product_versions())
+        sys.exit(0)
     if not hasattr(args, "func"):
         sub = subcommand_parsers.get(args.command)
         if sub:

@@ -105,3 +105,13 @@ class ProductVersion:
 
     def __repr__(self) -> str:
         return f"ProductVersion({self._raw!r})"
+
+
+# Posit Team product versions this release of VIP is built and validated
+# against. This is a curated statement of intent -- what the release targets --
+# not a mechanical floor derived from the ``@pytest.mark.min_version`` markers.
+# Keep it in sync when the suite starts targeting a newer product release.
+# Surfaced by ``vip --product-versions``.
+TARGETED_PRODUCT_VERSIONS: dict[str, str] = {
+    "connect": "2026.06.0",
+}

@@ -145,7 +145,7 @@ Key principles:
 
 | File | Purpose |
 |------------------------------------|------------------------------------|
-| `src/vip/cli.py` | CLI entry point: verify, cleanup, install, uninstall, auth, scaffold commands |
+| `src/vip/cli.py` | CLI entry point: verify, cleanup, install, uninstall, auth, scaffold commands; `--version`/`--product-versions` flags |
 | `src/vip/config.py` | TOML config loader and dataclasses |
 | `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers |
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
