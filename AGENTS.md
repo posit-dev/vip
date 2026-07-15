@@ -145,12 +145,12 @@ Key principles:
 
 | File | Purpose |
 |------------------------------------|------------------------------------|
-| `src/vip/cli.py` | CLI entry point: verify, cleanup, install, uninstall, auth, scaffold commands |
+| `src/vip/cli.py` | CLI entry point: version, verify, cleanup, install, uninstall, auth, scaffold commands; `--version` flag |
 | `src/vip/config.py` | TOML config loader and dataclasses |
 | `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers |
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
 | `src/vip/plugin.py` | pytest plugin: markers, auto-skip, JSON report output |
-| `src/vip/version.py` | `ProductVersion` -- Posit calendar-version parsing and comparison for `min_version` gating |
+| `src/vip/version.py` | `ProductVersion` parsing/comparison for `min_version` gating; `MINIMUM_SUPPORTED_POSIT_TEAM` support floor (powers `vip version`) |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
 | `src/vip/clients/connect.py` | httpx client for Connect API |
 | `src/vip/clients/workbench.py` | httpx client for Workbench API |

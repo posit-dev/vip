@@ -105,3 +105,13 @@ class ProductVersion:
 
     def __repr__(self) -> str:
         return f"ProductVersion({self._raw!r})"
+
+
+# The oldest Posit Team release this build of VIP officially supports. This is a
+# deliberate support-policy decision, not something derived from the suite's
+# ``@pytest.mark.min_version`` markers -- those gate individual feature-tests
+# above this floor; they do not define the floor itself. Posit Team products
+# (Connect, Workbench, Package Manager) ship on a shared calendar version, so a
+# single floor covers the whole stack. Bump this only when dropping support for
+# an older release. Surfaced by ``vip version``.
+MINIMUM_SUPPORTED_POSIT_TEAM = "2026.04.0"
