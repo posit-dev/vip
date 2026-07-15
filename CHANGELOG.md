@@ -1,6 +1,29 @@
 # CHANGELOG
 
 
+## v0.54.0 (2026-07-15)
+
+### Continuous Integration
+
+- Publish reveal.js presentations to GitHub Pages
+  ([#470](https://github.com/posit-dev/vip/pull/470),
+  [`21db2fa`](https://github.com/posit-dev/vip/commit/21db2faeedef3bb1ff35452112d075f555f083b8))
+
+### Documentation
+
+- Mention Bioconductor and OpenVSX in Package Manager landing copy
+  ([#471](https://github.com/posit-dev/vip/pull/471),
+  [`6cec3ea`](https://github.com/posit-dev/vip/commit/6cec3ea3d186935010a87a0f86128f045ac18bdc))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+### Features
+
+- **cli**: Add --version flag and version subcommand
+  ([#472](https://github.com/posit-dev/vip/pull/472),
+  [`9abe224`](https://github.com/posit-dev/vip/commit/9abe224cfd443b51278ade6683ed3032144eeb3b))
+
+
 ## v0.53.1 (2026-07-15)
 
 ### Bug Fixes
