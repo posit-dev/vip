@@ -6,6 +6,8 @@ httpx client is replaced with one backed by httpx.MockTransport.
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 import pytest
 
@@ -170,6 +172,52 @@ def test_quit_vip_sessions_counts_unique_sessions_under_retry():
     wc = _client_with_handler(handler)
     # 3 attempts each DELETE "a" successfully, but it is one unique session.
     assert wc.quit_vip_sessions(retries=3, settle_seconds=0) == 1
+
+
+def test_quit_vip_sessions_warns_when_stuck_session_persists(caplog):
+    """A VIP session that never disappears across all retries must WARN (issue #467).
+
+    quit_session() treats any HTTP status < 400 as success without verifying
+    termination -- so a deployment whose DELETE is a silent no-op looks
+    "successful" while the session persists. The final re-check after the
+    retry loop must catch that and log loudly instead of returning quietly.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/sessions":
+            # Always still listed -- simulates a no-op DELETE/suspend.
+            return httpx.Response(200, json=[{"id": "a", "label": "VIP stuck"}])
+        return httpx.Response(200)
+
+    wc = _client_with_handler(handler)
+    with caplog.at_level(logging.WARNING):
+        quit_count = wc.quit_vip_sessions(retries=2, settle_seconds=0)
+
+    assert quit_count == 1  # the quit call "succeeded" once, distinct session
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warnings, "expected a WARNING when a VIP session persists after cleanup"
+    assert any("VIP stuck" in r.message for r in warnings)
+    assert any("id=a" in r.message for r in warnings)
+
+
+def test_quit_vip_sessions_no_warning_when_fully_cleaned(caplog):
+    """No warning should fire when the retry loop confirms everything is gone."""
+    list_calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/sessions":
+            list_calls["n"] += 1
+            if list_calls["n"] == 1:
+                return httpx.Response(200, json=[{"id": "a", "label": "VIP foo"}])
+            return httpx.Response(200, json=[])
+        return httpx.Response(200)
+
+    wc = _client_with_handler(handler)
+    with caplog.at_level(logging.WARNING):
+        quit_count = wc.quit_vip_sessions(retries=3, settle_seconds=0)
+
+    assert quit_count == 1
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
 def test_sessions_api_reachable_true_on_200():
@@ -390,3 +438,168 @@ def test_quit_vip_sessions_via_ui_clicks_present_dialog_with_normal_timeout():
     # short probe) so a slow-but-present dialog still completes. Absent dialogs
     # (force-quit follow-ups) are not clicked.
     assert page.dialog_clicks == [(Homepage.CONFIRM_QUIT, TIMEOUT_QUICK)]
+
+
+# ---------------------------------------------------------------------------
+# _run_session_cleanup — escalation logic (issue #467)
+# ---------------------------------------------------------------------------
+
+
+def _fake_vip_config(*, api_key: str = ""):
+    from types import SimpleNamespace
+
+    workbench = SimpleNamespace(api_key=api_key)
+    return SimpleNamespace(workbench=workbench, insecure=False, ca_bundle=None)
+
+
+def _fake_page(cookies: list[dict]):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(context=SimpleNamespace(cookies=lambda: cookies))
+
+
+def _fresh_state() -> dict[str, object]:
+    return {"cookies": None, "base_url": None, "api_reachable": None}
+
+
+def _recording_ui_sweep(ui_calls: list[tuple], return_value: int = 0):
+    """Build a fake ``_quit_vip_sessions_via_ui`` that records its (page, base_url) call."""
+
+    def _fake(page, base_url, **_k):
+        ui_calls.append((page, base_url))
+        return return_value
+
+    return _fake
+
+
+def test_run_session_cleanup_escalates_to_ui_when_api_leaves_leftovers(monkeypatch):
+    """API sweep runs but VIP sessions remain -> the UI sweep must fire.
+
+    This is the core #467 fix: a reachable API whose DELETE is a no-op must
+    not be trusted just because it didn't error.
+    """
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import conftest as wb
+
+    ui_calls: list[tuple] = []
+
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: True)
+    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 1))
+
+    page = _fake_page([{"name": "a", "value": "b"}])
+    workbench_client = SimpleNamespace(base_url="https://wb.example.com")
+    state = _fresh_state()
+
+    wb._run_session_cleanup(page, workbench_client, _fake_vip_config(), state)
+
+    assert len(ui_calls) == 1
+    assert ui_calls[0][1] == "https://wb.example.com"
+
+
+def test_run_session_cleanup_skips_ui_when_api_sweep_fully_cleans(monkeypatch):
+    """API reachable and confirmed zero VIP sessions remaining -> no UI escalation."""
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import conftest as wb
+
+    ui_calls: list[tuple] = []
+
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: True)
+    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: 0)
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
+
+    page = _fake_page([{"name": "a", "value": "b"}])
+    workbench_client = SimpleNamespace(base_url="https://wb.example.com")
+    state = _fresh_state()
+
+    wb._run_session_cleanup(page, workbench_client, _fake_vip_config(), state)
+
+    assert ui_calls == []
+
+
+def test_run_session_cleanup_escalates_when_api_unreachable(monkeypatch):
+    """Existing behavior preserved: an unreachable API still escalates to the UI."""
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import conftest as wb
+
+    ui_calls: list[tuple] = []
+
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 0)
+    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: False)
+    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: -1)
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
+
+    page = _fake_page([{"name": "a", "value": "b"}])
+    workbench_client = SimpleNamespace(base_url="https://wb.example.com")
+    state = _fresh_state()
+
+    wb._run_session_cleanup(page, workbench_client, _fake_vip_config(), state)
+
+    assert len(ui_calls) == 1
+
+
+def test_run_session_cleanup_warns_when_no_cookies_and_no_api_key(monkeypatch, caplog):
+    """No browser cookies and no [workbench] api_key -> warn, do not attempt any sweep."""
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import conftest as wb
+
+    def _fail(*a, **k):
+        pytest.fail("no sweep should be attempted without cookies or an api_key")
+
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _fail)
+
+    page = _fake_page([])
+    workbench_client = SimpleNamespace(base_url="https://wb.example.com")
+    state = _fresh_state()
+
+    with caplog.at_level(logging.WARNING):
+        wb._run_session_cleanup(page, workbench_client, _fake_vip_config(api_key=""), state)
+
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warnings, "expected a warning when cleanup cannot authenticate"
+    assert any("authenticate" in r.message for r in warnings)
+
+
+def test_run_session_cleanup_no_warning_when_no_cookies_but_api_key_present(monkeypatch, caplog):
+    """No browser cookies but an api_key is configured -> no warning (belt-and-suspenders
+    end-of-run sweep will use the api_key), and no per-test sweep is attempted either
+    (cookies are required for the per-test cookie-authenticated sweep)."""
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import conftest as wb
+
+    def _fail(*a, **k):
+        pytest.fail("no cookie-based sweep should run without cookies")
+
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _fail)
+
+    page = _fake_page([])
+    workbench_client = SimpleNamespace(base_url="https://wb.example.com")
+    state = _fresh_state()
+
+    with caplog.at_level(logging.WARNING):
+        wb._run_session_cleanup(page, workbench_client, _fake_vip_config(api_key="k"), state)
+
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_run_session_cleanup_returns_early_when_workbench_client_is_none(monkeypatch):
+    """workbench_client=None (product not configured) -> no-op, no errors."""
+    from vip_tests.workbench import conftest as wb
+
+    page = _fake_page([{"name": "a", "value": "b"}])
+    state = _fresh_state()
+
+    wb._run_session_cleanup(page, None, _fake_vip_config(), state)  # must not raise

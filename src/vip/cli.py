@@ -821,38 +821,160 @@ def run_scaffold(args: argparse.Namespace) -> None:
     )
 
 
-def run_cleanup(args: argparse.Namespace) -> None:
-    """Delete VIP test credentials and resources.
+def _cleanup_workbench_sessions(
+    workbench_url: str,
+    args: argparse.Namespace,
+    config: VIPConfig,
+) -> None:
+    """Authenticate to Workbench and quit orphaned VIP-named sessions.
 
-    Connects directly to a Connect server and deletes all content tagged
-    ``_vip_test``. The Connect URL is taken from ``--connect-url`` or, if
-    omitted, from ``[connect] url`` in ``vip.toml``.
+    API-first: quits via :meth:`~vip.clients.workbench.WorkbenchClient.quit_vip_sessions`
+    when the session API is reachable. Escalates to a browser-driven UI sweep
+    (:func:`vip.workbench_ui.quit_vip_sessions_via_ui`) when the API is
+    unreachable *or* VIP sessions remain after the API sweep — a reachable API
+    whose DELETE/suspend call is a silent no-op is exactly the #467 bug, so a
+    "no error" response is not trusted on its own.
+
+    Authentication is cache-aware: reuses a storage state saved by a prior
+    ``vip verify`` run (same cache path, <4h old) when available. Uses
+    ``--headless-auth``'s flow when ``VIP_TEST_USERNAME``/``VIP_TEST_PASSWORD``
+    are set, otherwise opens an interactive browser login. Never lets an
+    authentication failure crash with a bare traceback — prints an actionable
+    error and exits 1.
     """
-    # Determine Connect URL and API key for content cleanup.
-    connect_url = getattr(args, "connect_url", None)
-    api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
+    from vip.auth import (
+        AuthConfigError,
+        authenticated_page,
+        start_headless_auth,
+        start_interactive_auth,
+    )
+    from vip.clients.workbench import WorkbenchClient, is_vip_session
+    from vip.workbench_ui import quit_vip_sessions_via_ui
 
-    # Fall back to vip.toml for the URL only when no CLI override is supplied,
-    # so `vip cleanup --connect-url ...` runs without a "config not found" warning.
-    if not connect_url:
-        from vip.config import load_config
+    insecure = config.insecure
+    ca_bundle = config.ca_bundle
+    # Mirrors plugin.py's cache path (Path(config.rootpath) / ".vip-auth-cache.json"):
+    # there is no pytest config here, so the invocation directory stands in for
+    # rootpath, matching where a prior `vip verify` run from the same directory
+    # would have written its cache.
+    cache_path = Path.cwd() / ".vip-auth-cache.json"
 
-        config = load_config()
-        if config.connect and config.connect.url:
-            connect_url = config.connect.url
-    if not connect_url:
+    username = config.auth.username
+    password = config.auth.password
+
+    try:
+        if username and password:
+            session = start_headless_auth(
+                workbench_url=workbench_url,
+                provider=config.auth.provider,
+                username=username,
+                password=password,
+                idp=config.auth.idp,
+                cache_path=cache_path,
+                insecure=insecure,
+                ca_bundle=ca_bundle,
+            )
+        else:
+            session = start_interactive_auth(
+                workbench_url=workbench_url,
+                cache_path=cache_path,
+                insecure=insecure,
+                ca_bundle=ca_bundle,
+            )
+    except AuthConfigError as exc:
+        print(f"Error: could not authenticate to Workbench: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as exc:
         print(
-            "Error: no Connect URL found. Pass --connect-url or set [connect] url in vip.toml.",
+            f"Error: could not authenticate to Workbench at {workbench_url}: {exc}\n"
+            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD for non-interactive cleanup, "
+            "or run this command where a browser can open for an interactive login.",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    from vip.clients.connect import ConnectClient
+    try:
+        print(f"Cleaning up orphaned Workbench sessions at {workbench_url}")
+        cookies = session.load_cookies()
+        client = WorkbenchClient(
+            workbench_url, cookies=cookies, insecure=insecure, ca_bundle=ca_bundle
+        )
+        try:
+            api_reachable = client.sessions_api_reachable()
+            if api_reachable:
+                quit_count = client.quit_vip_sessions()
+                print(f"Quit {quit_count} VIP Workbench session(s) via the API")
+                remaining = sum(
+                    1
+                    for s in client.list_sessions()
+                    if isinstance(s, dict) and is_vip_session(str(s.get("label") or ""))
+                )
+            else:
+                remaining = 0  # unknown — escalation below is driven by api_reachable
 
-    print(f"Cleaning up VIP test content on Connect at {connect_url}")
-    with ConnectClient(connect_url, api_key) as client:
-        deleted = client.cleanup_vip_content()
-    print(f"Deleted {deleted} VIP test content item(s)")
+            if not api_reachable or remaining:
+                print("Escalating to browser-driven session cleanup ...")
+                with authenticated_page(session, insecure=insecure, ca_bundle=ca_bundle) as page:
+                    ui_count = quit_vip_sessions_via_ui(page, workbench_url)
+                print(f"Quit {ui_count} VIP Workbench session(s) via the UI")
+        finally:
+            client.close()
+    finally:
+        session.cleanup()
+
+
+def run_cleanup(args: argparse.Namespace) -> None:
+    """Delete VIP test content from Connect and quit orphaned Workbench sessions.
+
+    Connect cleanup deletes all content tagged ``_vip_test``. Workbench
+    cleanup quits VIP-named sessions (see
+    :func:`vip.clients.workbench.is_vip_session`), escalating to a
+    browser-driven UI sweep when the session API is unreachable or sessions
+    persist despite the API reporting success. The Connect/Workbench URLs
+    come from ``--connect-url``/``--workbench-url`` or, if omitted, from
+    ``[connect] url``/``[workbench] url`` in ``vip.toml``. At least one of
+    the two must resolve.
+    """
+    connect_url = getattr(args, "connect_url", None)
+    api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
+    workbench_url = getattr(args, "workbench_url", None)
+
+    # Fall back to vip.toml for whichever URL(s) weren't passed on the CLI, so
+    # `vip cleanup --connect-url ...` (or --workbench-url) runs without a
+    # "config not found" warning when only one product is being cleaned up.
+    config: VIPConfig | None = None
+    if not connect_url or not workbench_url:
+        from vip.config import load_config
+
+        config = load_config()
+        if not connect_url and config.connect and config.connect.url:
+            connect_url = config.connect.url
+        if not workbench_url and config.workbench and config.workbench.url:
+            workbench_url = config.workbench.url
+
+    if not connect_url and not workbench_url:
+        print(
+            "Error: no Connect or Workbench URL found. Pass --connect-url / "
+            "--workbench-url, or set [connect] url / [workbench] url in vip.toml.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if connect_url:
+        from vip.clients.connect import ConnectClient
+
+        print(f"Cleaning up VIP test content on Connect at {connect_url}")
+        with ConnectClient(connect_url, api_key) as client:
+            deleted = client.cleanup_vip_content()
+        print(f"Deleted {deleted} VIP test content item(s)")
+
+    if workbench_url:
+        if config is None:
+            from vip.config import load_config
+
+            config = load_config()
+        _cleanup_workbench_sessions(workbench_url, args, config)
+
     print("Cleanup completed successfully")
 
 
@@ -1120,10 +1242,13 @@ def main() -> None:
     # vip cleanup
     cleanup_parser = subparsers.add_parser(
         "cleanup",
-        help="Delete VIP _vip_test content from Connect",
+        help="Delete VIP _vip_test content from Connect and quit orphaned Workbench sessions",
         description=(
-            "Delete VIP _vip_test-tagged content from Connect.\n\n"
+            "Delete VIP _vip_test-tagged content from Connect, and/or quit orphaned\n"
+            "VIP-named Workbench sessions. At least one of --connect-url /\n"
+            "--workbench-url (or the corresponding vip.toml URL) must resolve.\n\n"
             "  vip cleanup --connect-url https://connect.example.com\n"
+            "  vip cleanup --workbench-url https://workbench.example.com\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1136,6 +1261,17 @@ def main() -> None:
         "--api-key",
         default=None,
         help="Connect API key (default: VIP_CONNECT_API_KEY env var)",
+    )
+    cleanup_parser.add_argument(
+        "--workbench-url",
+        default=None,
+        help=(
+            "Workbench server URL (falls back to vip.toml if omitted). Quits orphaned "
+            "VIP-named sessions via the session API, escalating to a browser-driven UI "
+            "sweep if the API is unreachable or sessions persist. Requires "
+            "VIP_TEST_USERNAME/VIP_TEST_PASSWORD for non-interactive auth, or an "
+            "interactive browser login."
+        ),
     )
     cleanup_parser.set_defaults(func=run_cleanup)
 

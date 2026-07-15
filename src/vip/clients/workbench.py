@@ -6,6 +6,7 @@ APIs than Connect, so many checks are done via the web UI with Playwright.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,8 @@ from typing import Any
 import httpx
 
 from vip.clients.base import BaseClient
+
+logger = logging.getLogger(__name__)
 
 _VIP_SESSION_PREFIXES = ("VIP ", "_vip_")
 
@@ -128,8 +131,19 @@ class WorkbenchClient(BaseClient):
 
         Authentication uses whatever this client already carries (cookies set
         via :meth:`set_cookies`, or an API-key Authorization header).
+
+        :meth:`quit_session` treats any HTTP status below 400 as success
+        without confirming the session actually terminated — some
+        deployments accept the DELETE/suspend call but leave the session
+        running (issue #467).  If the retry loop runs out its full budget
+        without ever observing an empty listing (i.e. VIP sessions were still
+        listed on the final attempt), a ``WARNING`` is logged naming the
+        labels/ids still present so the leak is visible instead of silent.
+        No warning is logged when a listing already confirmed nothing
+        remains (the loop exited via the "no targets" break).
         """
         quit_ids: set[str] = set()
+        exhausted_with_targets = False
         for attempt in range(retries):
             try:
                 resp = self._client.get("/api/sessions")
@@ -153,4 +167,38 @@ class WorkbenchClient(BaseClient):
                     quit_ids.add(str(sid))
             if attempt < retries - 1:
                 time.sleep(settle_seconds)
+            exhausted_with_targets = attempt == retries - 1
+        if exhausted_with_targets:
+            self._warn_if_vip_sessions_remain()
         return len(quit_ids)
+
+    def _warn_if_vip_sessions_remain(self) -> None:
+        """Log a WARNING naming any VIP session still listed right now.
+
+        Called after :meth:`quit_vip_sessions` exhausts its retries with VIP
+        sessions still present on the last listing, so a session that quietly
+        survived every quit attempt is surfaced loudly instead of the caller
+        just getting back a count.  Best-effort: swallows all exceptions and
+        never raises.
+        """
+        try:
+            resp = self._client.get("/api/sessions")
+            sessions = resp.json() if resp.status_code == 200 else []
+        except Exception:
+            return
+        if not isinstance(sessions, list):
+            return
+        remaining = [
+            s for s in sessions if isinstance(s, dict) and is_vip_session(str(s.get("label") or ""))
+        ]
+        if not remaining:
+            return
+        details = ", ".join(
+            f"{s.get('label')!r} (id={s.get('id') or s.get('session_id') or '?'})"
+            for s in remaining
+        )
+        logger.warning(
+            "quit_vip_sessions: %d VIP-named Workbench session(s) still present after cleanup: %s",
+            len(remaining),
+            details,
+        )

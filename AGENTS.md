@@ -145,15 +145,16 @@ Key principles:
 
 | File | Purpose |
 |------------------------------------|------------------------------------|
-| `src/vip/cli.py` | CLI entry point: version, verify, cleanup, install, uninstall, auth, scaffold commands; `--version` flag |
+| `src/vip/cli.py` | CLI entry point: version, verify, cleanup (Connect content + orphaned Workbench sessions via `--workbench-url`), install, uninstall, auth, scaffold commands; `--version` flag |
 | `src/vip/config.py` | TOML config loader and dataclasses |
-| `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers |
+| `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers; `authenticated_page` opens a headless page from a cached auth session for `vip cleanup --workbench-url` |
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
 | `src/vip/plugin.py` | pytest plugin: markers, auto-skip, JSON report output |
 | `src/vip/version.py` | `ProductVersion` parsing/comparison for `min_version` gating; `MINIMUM_SUPPORTED_POSIT_TEAM` support floor (powers `vip version`) |
+| `src/vip/workbench_ui.py` | Browser-driven Workbench session-cleanup sweep (`quit_vip_sessions_via_ui`), shared by the per-test cleanup fixture and `vip cleanup --workbench-url` |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
 | `src/vip/clients/connect.py` | httpx client for Connect API |
-| `src/vip/clients/workbench.py` | httpx client for Workbench API |
+| `src/vip/clients/workbench.py` | httpx client for Workbench API; `quit_vip_sessions` warns loudly (not silently) when a VIP session persists after all retries |
 | `src/vip/clients/packagemanager.py` | httpx client for Package Manager API |
 | `src/vip/install/platform.py` | Distro detection (rhel/debian/macos) + canonical Chromium package lists |
 | `src/vip/install/manifest.py` | `.vip-install.json` read/write (atomic), schema gate, pending-package helpers |

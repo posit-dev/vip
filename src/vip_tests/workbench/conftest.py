@@ -5,6 +5,7 @@ Page selectors are in the pages/ subpackage
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
@@ -17,7 +18,18 @@ from pytest_bdd import given
 from vip.clients.workbench import WorkbenchClient, is_vip_session
 from vip.plugin import _auth_session_key
 from vip.timeouts import timeout_scale
+from vip.workbench_ui import (
+    quit_vip_sessions_via_ui as _quit_vip_sessions_via_ui,
+)
+
+# Re-exported for selftests/test_workbench_cleanup.py, which imports it from
+# here (not from vip.workbench_ui directly) to match the pre-move layout.
+from vip.workbench_ui import (
+    vip_names_from_select_labels as _vip_names_from_select_labels,  # noqa: F401
+)
 from vip_tests.workbench.pages import Homepage, LoginPage
+
+logger = logging.getLogger(__name__)
 
 pytestmark = [pytest.mark.workbench, pytest.mark.xdist_group("workbench")]
 
@@ -486,26 +498,6 @@ def workbench_login(
 # Shared Fixtures
 # ---------------------------------------------------------------------------
 
-_SELECT_PREFIX = "select "
-
-
-def _vip_names_from_select_labels(labels: list[str]) -> list[str]:
-    """Extract VIP-named session names from session-row checkbox aria-labels.
-
-    Each homepage session row exposes a checkbox whose aria-label is
-    ``"select <session name>"``.  Returns the names (without the ``"select "``
-    prefix) that match :func:`is_vip_session`, so a real user's sessions are
-    never selected for quitting.  Input order is preserved.
-    """
-    names: list[str] = []
-    for label in labels:
-        if not label.startswith(_SELECT_PREFIX):
-            continue
-        name = label[len(_SELECT_PREFIX) :]
-        if is_vip_session(name):
-            names.append(name)
-    return names
-
 
 def _quit_vip_sessions_via_cookies(
     base_url: str,
@@ -531,69 +523,6 @@ def _quit_vip_sessions_via_cookies(
         return 0
 
 
-def _quit_vip_sessions_via_ui(page: Page, base_url: str, *, max_iterations: int = 10) -> int:
-    """Quit orphaned VIP-named sessions through the homepage UI.
-
-    Fallback for deployments whose session API is unreachable (see
-    :meth:`WorkbenchClient.sessions_api_reachable`), where the cookie/API sweep
-    is a no-op.  Navigates to the homepage, selects only VIP-named session rows
-    (validated via :func:`is_vip_session`), clicks Quit, and dismisses any
-    confirmation/force-quit dialogs, repeating until no VIP rows remain or
-    *max_iterations* is hit.  Never uses "Quit All".  Best-effort: all
-    Playwright errors are swallowed and it never raises.  Returns the number of
-    distinct VIP sessions a quit was issued for (a session that persists across
-    iterations is counted once, not per attempt).
-    """
-    quit_names: set[str] = set()
-    try:
-        page.goto(base_url.rstrip("/") + "/home", wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
-        for _ in range(max_iterations):
-            checkboxes = page.locator("[aria-label^='select ']")
-            labels = [
-                checkboxes.nth(i).get_attribute("aria-label") or ""
-                for i in range(checkboxes.count())
-            ]
-            vip_names = _vip_names_from_select_labels(labels)
-            if not vip_names:
-                break
-            selected: list[str] = []
-            for name in vip_names:
-                try:
-                    page.locator(Homepage.session_checkbox(name)).first.click(timeout=TIMEOUT_QUICK)
-                    selected.append(name)
-                except Exception:
-                    continue
-            if not selected:
-                break
-            try:
-                page.locator(Homepage.QUIT_BUTTON).first.click(timeout=TIMEOUT_QUICK)
-            except Exception:
-                break
-            # Confirm/force-quit dialogs are optional — a normal quit completes
-            # without them (see session_cleaned_up). Probe each within a short
-            # window so an absent dialog doesn't dominate runtime; if one does
-            # appear, click it with the normal timeout so a present-but-slow
-            # dialog still completes (a short click timeout could drop it).
-            for sel in (Homepage.CONFIRM_QUIT, Homepage.FORCE_QUIT, Homepage.CONFIRM_FORCE_QUIT):
-                dialog = page.locator(sel)
-                try:
-                    dialog.wait_for(state="visible", timeout=TIMEOUT_DIALOG_PROBE)
-                except Exception:
-                    continue
-                try:
-                    dialog.first.click(timeout=TIMEOUT_QUICK)
-                except Exception:
-                    pass
-            quit_names.update(selected)
-            try:
-                page.reload(wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
-            except Exception:
-                break
-    except Exception:
-        pass
-    return len(quit_names)
-
-
 def _session_api_reachable_via_cookies(
     base_url: str,
     cookies: dict[str, str],
@@ -616,6 +545,39 @@ def _session_api_reachable_via_cookies(
             scratch.close()
     except Exception:
         return False
+
+
+def _vip_session_count_via_cookies(
+    base_url: str,
+    cookies: dict[str, str],
+    *,
+    insecure: bool,
+    ca_bundle,
+) -> int:
+    """Count VIP-named sessions still listed for a cookie-authenticated client.
+
+    Mirrors :func:`_quit_vip_sessions_via_cookies` / :func:`_session_api_reachable_via_cookies`:
+    uses a scratch ``WorkbenchClient`` so the session-scoped client's cookie
+    jar is untouched.  Convention: returns ``0`` only when the list call
+    genuinely succeeded and no VIP sessions were found; returns ``-1`` when
+    the count could not be determined at all (transport error, non-200,
+    unparseable body) so callers can tell "confirmed clean" apart from
+    "unknown" and escalate defensively in the latter case.  Never raises.
+    """
+    try:
+        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
+        try:
+            scratch.set_cookies(cookies)
+            sessions = scratch.list_sessions()
+            return sum(
+                1
+                for s in sessions
+                if isinstance(s, dict) and is_vip_session(str(s.get("label") or ""))
+            )
+        finally:
+            scratch.close()
+    except Exception:
+        return -1
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -650,10 +612,21 @@ def _wb_cleanup_state(vip_config, workbench_client):
             pass
 
 
-@pytest.fixture(autouse=True)
-def _cleanup_sessions(page, workbench_client, vip_config, _wb_cleanup_state):
-    """Quit any VIP-named Workbench sessions created during the test."""
-    yield
+def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, object]) -> None:
+    """Quit any VIP-named Workbench sessions created during the test.
+
+    Factored out of the ``_cleanup_sessions`` fixture body so it can be unit
+    tested directly (the fixture depends on ``page``/``workbench_client``/
+    ``vip_config``/``_wb_cleanup_state``, which are awkward to construct in a
+    selftest). Runs the cookie/API sweep first, then escalates to a
+    browser-driven UI sweep (:func:`_quit_vip_sessions_via_ui`) whenever the
+    session API is unreachable *or* VIP sessions remain after the API sweep --
+    not only when the API is unreachable, since a deployment can accept the
+    DELETE/suspend call without the session actually terminating (issue #467).
+    Defensive throughout: every network/Playwright call is wrapped so cleanup
+    never raises out of the fixture; failures are logged as warnings (cleanup
+    is a safety net, not an assertion) rather than failing the test.
+    """
     if workbench_client is None:
         return
     try:
@@ -661,29 +634,67 @@ def _cleanup_sessions(page, workbench_client, vip_config, _wb_cleanup_state):
     except Exception:
         cookies = {}
     if not cookies:
+        if not vip_config.workbench.api_key:
+            logger.warning(
+                "could not authenticate to clean up Workbench sessions at %s "
+                "(no browser cookies captured and no [workbench] api_key configured); "
+                "orphaned VIP sessions may remain.",
+                workbench_client.base_url,
+            )
         return
     # Remember the latest good cookies for the end-of-run sweep.
-    _wb_cleanup_state["cookies"] = cookies
-    _wb_cleanup_state["base_url"] = workbench_client.base_url
+    state["cookies"] = cookies
+    state["base_url"] = workbench_client.base_url
     _quit_vip_sessions_via_cookies(
         workbench_client.base_url,
         cookies,
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
     )
-    # If the session API is unreachable on this deployment (e.g. /api/sessions
-    # 404s), the cookie/API sweep above is a no-op. Detect reachability once per
-    # session (cached on _wb_cleanup_state) and, when unavailable, fall back to a
-    # UI-driven sweep that quits orphaned VIP sessions via the homepage.
-    if _wb_cleanup_state["api_reachable"] is None:
-        _wb_cleanup_state["api_reachable"] = _session_api_reachable_via_cookies(
+    # Detect API reachability once per session (cached on state).
+    if state["api_reachable"] is None:
+        state["api_reachable"] = _session_api_reachable_via_cookies(
             workbench_client.base_url,
             cookies,
             insecure=vip_config.insecure,
             ca_bundle=vip_config.ca_bundle,
         )
-    if not _wb_cleanup_state["api_reachable"]:
+    api_reachable = bool(state["api_reachable"])
+    # Escalate to the UI sweep both when the API is unreachable (the cookie/API
+    # sweep above was necessarily a no-op) AND when the API is reachable but
+    # left VIP sessions behind (a no-op DELETE/suspend -- the actual #467 bug).
+    # -1 ("could not determine") is treated the same as "sessions remain":
+    # when in doubt, escalate rather than silently trust an unconfirmed sweep.
+    remaining = _vip_session_count_via_cookies(
+        workbench_client.base_url,
+        cookies,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+    )
+    if not api_reachable or remaining != 0:
         _quit_vip_sessions_via_ui(page, workbench_client.base_url)
+        # Best-effort post-escalation check, for logging only -- never blocks
+        # or fails the test.
+        still_remaining = _vip_session_count_via_cookies(
+            workbench_client.base_url,
+            cookies,
+            insecure=vip_config.insecure,
+            ca_bundle=vip_config.ca_bundle,
+        )
+        if still_remaining > 0:
+            logger.warning(
+                "%d VIP-named Workbench session(s) may still be running at %s "
+                "after the UI cleanup escalation; manual cleanup may be required.",
+                still_remaining,
+                workbench_client.base_url,
+            )
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_sessions(page, workbench_client, vip_config, _wb_cleanup_state):
+    """Quit any VIP-named Workbench sessions created during the test."""
+    yield
+    _run_session_cleanup(page, workbench_client, vip_config, _wb_cleanup_state)
 
 
 @pytest.fixture
