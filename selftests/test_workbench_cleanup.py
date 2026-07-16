@@ -370,6 +370,14 @@ class _FakeLocator:
     def first(self):
         return self
 
+    def is_visible(self):
+        # The fake models an already-authenticated homepage, so the Posit logo
+        # (the "logged in" marker _complete_sso_if_needed checks) is visible;
+        # nothing else is.
+        from vip_tests.workbench.pages import Homepage
+
+        return self._selector == Homepage.POSIT_LOGO
+
     def get_attribute(self, name):
         if name == "aria-label":
             return f"select {self._page.session_names[self._index]}"
@@ -405,9 +413,10 @@ class _FakeHomepage:
         self.dialog_clicks: list[tuple[str, object]] = []
         self.quit_clicks = 0
         self.reloads = 0
+        self.goto_urls: list[str] = []
 
-    def goto(self, *args, **kwargs):
-        pass
+    def goto(self, url, *args, **kwargs):
+        self.goto_urls.append(url)
 
     def reload(self, *args, **kwargs):
         self.reloads += 1
@@ -484,6 +493,132 @@ def test_quit_vip_sessions_via_ui_clicks_present_dialog_with_normal_timeout():
     # short probe) so a slow-but-present dialog still completes. Absent dialogs
     # (force-quit follow-ups) are not clicked.
     assert page.dialog_clicks == [(Homepage.CONFIRM_QUIT, TIMEOUT_QUICK)]
+
+
+def test_quit_vip_sessions_via_ui_navigates_to_root_not_home():
+    """The sweep must load the homepage at the site root, not ``/home``.
+
+    On WB 2026.06 the session table lives at the root (the URL the tests use);
+    ``/home`` renders no session list, which silently orphaned sessions (#467).
+    """
+    from vip_tests.workbench.conftest import _quit_vip_sessions_via_ui
+
+    page = _FakeHomepage(["VIP one - gw0-1"], quit_removes=True)
+    _quit_vip_sessions_via_ui(page, "https://wb.example.com/")
+
+    assert page.goto_urls[0] == "https://wb.example.com"
+    assert not any(u.endswith("/home") for u in page.goto_urls)
+
+
+def test_quit_vip_sessions_via_ui_bails_when_sso_cannot_complete(monkeypatch):
+    """When the homepage can't be reached (SSO not completed), quit 0 and warn."""
+    import vip.workbench_ui as wbui
+
+    monkeypatch.setattr(wbui, "_complete_sso_if_needed", lambda page: False)
+    page = _FakeHomepage(["VIP one - gw0-1"], quit_removes=True)
+    assert wbui.quit_vip_sessions_via_ui(page, "https://wb.example.com") == 0
+    # It never tried to enumerate/quit rows once auth failed.
+    assert page.quit_clicks == 0
+
+
+class _SsoFakePage:
+    """Page double for :func:`_complete_sso_if_needed`.
+
+    Models an OIDC sign-in page: a "Sign in with OpenID" button whose click
+    completes a silent SSO (making the homepage logo appear) iff *idp_valid*.
+    """
+
+    def __init__(
+        self, *, url, logo_visible=False, sso_visible=True, has_username=False, idp_valid=True
+    ):
+        self.url = url
+        self._logo_visible = logo_visible
+        self._sso_visible = sso_visible
+        self._has_username = has_username
+        self._idp_valid = idp_valid
+        self.sso_clicked = False
+
+    def locator(self, selector):
+        from vip_tests.workbench.pages import Homepage, LoginPage
+
+        if selector == Homepage.POSIT_LOGO:
+            return _SsoFakeLocator(lambda: self._logo_visible)
+        if selector == LoginPage.USERNAME:
+            return _SsoFakeLocator(lambda: self._has_username)
+        return _SsoFakeLocator(lambda: False)
+
+    def get_by_role(self, role, name=None):
+        page = self
+
+        def _on_click() -> None:
+            page.sso_clicked = True
+            if page._idp_valid:
+                page._logo_visible = True
+
+        return _SsoFakeLocator(lambda: page._sso_visible, on_click=_on_click)
+
+
+class _SsoFakeLocator:
+    def __init__(self, is_visible_fn, *, on_click=None):
+        self._is_visible_fn = is_visible_fn
+        self._on_click = on_click
+
+    @property
+    def first(self):
+        return self
+
+    def is_visible(self):
+        return self._is_visible_fn()
+
+    def wait_for(self, *, state=None, timeout=None):
+        if not self._is_visible_fn():
+            raise RuntimeError("not visible")
+
+    def click(self, timeout=None):
+        if self._on_click is not None:
+            self._on_click()
+
+
+def test_complete_sso_true_when_already_authenticated():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    page = _SsoFakePage(url="https://wb.example.com/", logo_visible=True)
+    assert _complete_sso_if_needed(page) is True
+    assert page.sso_clicked is False  # no SSO needed
+
+
+def test_complete_sso_clicks_button_and_succeeds_with_valid_idp():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    page = _SsoFakePage(url="https://wb.example.com/auth-sign-in?appUri=%2F", idp_valid=True)
+    assert _complete_sso_if_needed(page) is True
+    assert page.sso_clicked is True
+
+
+def test_complete_sso_false_when_idp_session_expired():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    # SSO button present and clicked, but the homepage logo never appears.
+    page = _SsoFakePage(url="https://wb.example.com/auth-sign-in", idp_valid=False)
+    assert _complete_sso_if_needed(page) is False
+    assert page.sso_clicked is True
+
+
+def test_complete_sso_false_on_password_form():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    # A username field means a password form, not silent SSO: don't click.
+    page = _SsoFakePage(url="https://wb.example.com/auth-sign-in", has_username=True)
+    assert _complete_sso_if_needed(page) is False
+    assert page.sso_clicked is False
+
+
+def test_complete_sso_false_when_not_on_login_page():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    # No logo and not a login URL — nothing we can do.
+    page = _SsoFakePage(url="https://wb.example.com/some/other/page", sso_visible=False)
+    assert _complete_sso_if_needed(page) is False
 
 
 # ---------------------------------------------------------------------------

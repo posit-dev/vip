@@ -40,7 +40,7 @@ uv run pytest selftests/test_workbench_cleanup.py -q 2>&1 | grep -E 'passed|fail
 ```
 
 ```output
-41 passed
+48 passed
 ```
 
 New selftests covering Change B (per-test cleanup fixture escalation logic in _run_session_cleanup) and Change C (authenticated_page, vip cleanup CLI wiring) all pass:
@@ -116,5 +116,5 @@ uv run pytest selftests/ --ignore=selftests/test_load_engine.py -q 2>&1 | grep -
 ```
 
 ```output
-930 passed, 22 warnings
+937 passed, 22 warnings
 ```
