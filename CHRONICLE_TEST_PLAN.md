@@ -175,4 +175,3 @@ cd ~/git/rstudio-ide-automation/fuzzbucket && ./deployIDE.sh -d ubuntu22
   `internal/config/config.go` (`[LocalStorage] Access` = all|group|owner).
 - Full Chronicle env (alternative to hand-config): Pulumi `dogfood` stack —
   `~/git/rstudio-pro/pulumi/eks-reference/README-dogfood.md`.
-- Demo of the branch: `validation_docs/demo-chronicle-tests.md`.
