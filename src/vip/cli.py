@@ -515,6 +515,11 @@ def run_verify(args: argparse.Namespace) -> None:
 _REPORT_TEMPLATE_FILES = ("index.qmd", "details.qmd", "_quarto.yml", "styles.css")
 
 
+def _has_all_report_templates(directory: Path) -> bool:
+    """Whether ``directory`` contains every required Quarto template file."""
+    return all((directory / name).is_file() for name in _REPORT_TEMPLATE_FILES)
+
+
 def _copy_report_templates(src: Path, report_dir: Path) -> None:
     import shutil
 
@@ -530,8 +535,10 @@ def _ensure_report_templates(report_dir: Path) -> bool:
     Prefers the copy bundled in the installed wheel (``vip/_report``),
     refreshing ``report_dir`` from it on every run so an upgraded VIP renders
     its current templates. Falls back to the repo's top-level ``report/`` so
-    in-repo usage and selftests work without building a wheel. Returns
-    ``True`` when templates are available, ``False`` otherwise.
+    in-repo usage and selftests work without building a wheel. Returns ``True``
+    only when *all* of ``_REPORT_TEMPLATE_FILES`` are present in ``report_dir``,
+    so a partial source (e.g. a template missing from one location) is topped
+    up from the other rather than silently rendering a degraded report.
     """
     import importlib.resources
 
@@ -539,21 +546,20 @@ def _ensure_report_templates(report_dir: Path) -> bool:
     try:
         bundled = importlib.resources.files("vip") / "_report"
         with importlib.resources.as_file(bundled) as p:
-            if (p / "index.qmd").is_file():
+            if _has_all_report_templates(p):
                 _copy_report_templates(p, report_dir)
-                return True
     except (TypeError, FileNotFoundError, ModuleNotFoundError):
         pass
 
     # Source checkout: three levels up from src/vip/cli.py → repo root/report.
-    repo_report = Path(__file__).parent.parent.parent / "report"
-    if (repo_report / "index.qmd").is_file():
-        if repo_report.resolve() != report_dir.resolve():
+    if not _has_all_report_templates(report_dir):
+        repo_report = Path(__file__).parent.parent.parent / "report"
+        if _has_all_report_templates(repo_report) and repo_report.resolve() != report_dir.resolve():
             _copy_report_templates(repo_report, report_dir)
-        return True
 
-    # Already-populated working directory (e.g. a prior run's copy).
-    return (report_dir / "index.qmd").is_file()
+    # True only if the working directory now has the complete set (from a
+    # bundled/repo copy above, or from a prior run's copy already present).
+    return _has_all_report_templates(report_dir)
 
 
 def run_report(args: argparse.Namespace) -> None:

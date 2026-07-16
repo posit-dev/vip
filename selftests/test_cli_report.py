@@ -64,6 +64,19 @@ class TestEnsureReportTemplates:
 
         assert ".badge-connect" in (report_dir / "styles.css").read_text()
 
+    def test_partial_template_set_is_not_complete(self, tmp_path):
+        from vip.cli import _REPORT_TEMPLATE_FILES, _has_all_report_templates
+
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        # Only one of the required files present — must not count as complete.
+        (report_dir / "index.qmd").write_text("x")
+        assert _has_all_report_templates(report_dir) is False
+
+        for name in _REPORT_TEMPLATE_FILES:
+            (report_dir / name).write_text("x")
+        assert _has_all_report_templates(report_dir) is True
+
 
 class TestRunReportFromArbitraryDir:
     """run_report works from a directory that is not a source checkout."""
@@ -145,6 +158,7 @@ class TestReportCLI:
             capture_output=True,
             text=True,
         )
+        assert result.returncode == 0
         assert "report" in result.stdout
 
     def test_report_subcommand_help(self):
