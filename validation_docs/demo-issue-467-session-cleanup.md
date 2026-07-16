@@ -94,7 +94,7 @@ just check
 uv run ruff check src/ selftests/ examples/ docker/
 All checks passed!
 uv run ruff format --check src/ selftests/ examples/ docker/
-159 files already formatted
+160 files already formatted
 ```
 
 Type checking (mypy, run in CI as a separate job):
@@ -116,5 +116,5 @@ uv run pytest selftests/ --ignore=selftests/test_load_engine.py -q 2>&1 | grep -
 ```
 
 ```output
-937 passed, 22 warnings
+940 passed, 22 warnings
 ```

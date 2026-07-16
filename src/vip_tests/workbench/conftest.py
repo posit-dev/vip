@@ -365,48 +365,50 @@ def workbench_login(
 
     # Check if we landed on a login/IdP page
     if _on_login_page(page.url):
-        if interactive_auth:
+        # The sign-in page renders client-side after ``load``; wait once for
+        # either the password form's username field or an OIDC "Sign in with ..."
+        # button to appear before deciding which flow applies. A short fixed wait
+        # on only the SSO button races the render and can misread a slow OIDC
+        # sign-in page (e.g. an ``?error=2`` bounce) as a password deployment --
+        # which then fails the retry loop with "Login failed after 3 attempts"
+        # instead of skipping. Waiting for either control settles that race
+        # without penalising real password deployments (the username field
+        # appears promptly there).
+        try:
+            page.locator(f"{LoginPage.USERNAME}, button:has-text('Sign in')").first.wait_for(
+                state="visible", timeout=TIMEOUT_PAGE_LOAD
+            )
+        except Exception:
+            pass
+
+        # An OIDC sign-in page shows a "Sign in with ..." button and no username
+        # field. The "sign in" role-name also matches a password form's submit
+        # button, so the *absence* of the username field is what distinguishes a
+        # true SSO-only page from a password form.
+        sso_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE)).first
+        sso_only = sso_button.is_visible() and not page.locator(LoginPage.USERNAME).is_visible()
+
+        if interactive_auth and sso_only:
             # Storage state was pre-loaded by --interactive-auth / --headless-auth.
             # Workbench's SSO sign-in page does not auto-redirect to the IdP; it
-            # renders a "Sign in with OpenID" button instead.  Clicking it triggers
-            # a silent SSO round-trip using the saved IdP cookies, landing us on the
+            # renders a "Sign in with OpenID" button.  Clicking it triggers a
+            # silent SSO round-trip using the saved IdP cookies, landing on the
             # authenticated homepage with no credentials required.
-            # Wait briefly for the SSO button to render so a slow OIDC sign-in
-            # page is detected reliably; an instant visibility check can race the
-            # page load and fall through to the password path (which then fails
-            # with "Login failed after 3 attempts" on a deployment that has no
-            # password form, e.g. the storage-state-stripped login scenario).
-            sso_button = page.get_by_role(
-                "button", name=re.compile(r"sign in", re.IGNORECASE)
-            ).first
+            sso_button.click()
             try:
-                sso_button.wait_for(state="visible", timeout=TIMEOUT_QUICK)
-                sso_visible = True
+                homepage_logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
+                return  # Silent SSO succeeded
             except Exception:
-                sso_visible = False
-            # The "sign in" role-name also matches a password form's submit
-            # button, so only treat this as SSO when there is no username field.
-            # On a password deployment with stale storage state this lets us fall
-            # through to the password retry path instead of clicking an empty
-            # submit and then skipping.
-            if sso_visible and not page.locator(LoginPage.USERNAME).is_visible():
-                sso_button.click()
-                try:
-                    homepage_logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
-                    return  # Silent SSO succeeded
-                except Exception:
-                    # No pre-loaded IdP session (expired, or storage state was
-                    # stripped for the password-login test) — silent SSO can't
-                    # complete on an OIDC deployment, so skip gracefully.
-                    pytest.skip(
-                        _workbench_session_skip_message(
-                            auth_mode=auth_mode,
-                            workbench_auth_error=workbench_auth_error,
-                            landed_url=page.url,
-                        )
+                # No usable IdP session (expired, or storage state was stripped
+                # for the password-login test) — silent SSO can't complete on an
+                # OIDC deployment, so skip gracefully.
+                pytest.skip(
+                    _workbench_session_skip_message(
+                        auth_mode=auth_mode,
+                        workbench_auth_error=workbench_auth_error,
+                        landed_url=page.url,
                     )
-            # No SSO button found and interactive_auth is set — fall through to the
-            # skip below (covers non-password providers without an SSO button).
+                )
 
         if auth_provider != "password":
             pytest.skip(
@@ -418,15 +420,9 @@ def workbench_login(
             )
         # Even when auth_provider is reported as "password", the deployment may
         # actually present an SSO/OIDC sign-in page (a "Sign in with ..." button
-        # and no username field) — e.g. auth_provider was mis-detected on a
-        # config-less run.  The password login form is unavailable there, so skip
-        # rather than fail the retry loop with "Login failed after 3 attempts".
-        sso_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE)).first
-        try:
-            sso_button.wait_for(state="visible", timeout=TIMEOUT_QUICK)
-            sso_only = not page.locator(LoginPage.USERNAME).is_visible()
-        except Exception:
-            sso_only = False
+        # and no username field) — e.g. auth_provider defaulted to "password" on
+        # a config-less run against an OIDC deployment.  The password login form
+        # is unavailable there, so skip rather than fail the retry loop.
         if sso_only:
             pytest.skip(
                 "Workbench is configured for SSO/OIDC (no password login form); "
