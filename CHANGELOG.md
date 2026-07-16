@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.54.1 (2026-07-16)
+
+### Bug Fixes
+
+- **workbench**: Escalate orphaned-session cleanup to the UI sweep
+  ([#474](https://github.com/posit-dev/vip/pull/474),
+  [`673ddee`](https://github.com/posit-dev/vip/commit/673ddee21dc359f5a8b8db19c356211f67939447))
+
+### Chores
+
+- **deps**: Bump mypy from 2.1.0 to 2.2.0 in the python-dependencies group
+  ([#475](https://github.com/posit-dev/vip/pull/475),
+  [`1dcda11`](https://github.com/posit-dev/vip/commit/1dcda118f84e46d0bf2e3d02acda9a6eddfa6390))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump the actions-dependencies group with 3 updates
+  ([#476](https://github.com/posit-dev/vip/pull/476),
+  [`dfe1507`](https://github.com/posit-dev/vip/commit/dfe15078e117ed04567b50553ca5fe2e3874bf07))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
 ## v0.54.0 (2026-07-15)
 
 ### Continuous Integration
