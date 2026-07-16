@@ -24,13 +24,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/ruff-action@0ce1b0bf8b818ef400413f810f8a11cdbda0034b # v4.0.0
+      - uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
         name: Ruff lint
         with:
           version: "0.15.0"
           args: check src/ selftests/ examples/ docker/
 
-      - uses: astral-sh/ruff-action@0ce1b0bf8b818ef400413f810f8a11cdbda0034b # v4.0.0
+      - uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
         name: Ruff format
         with:
           version: "0.15.0"
