@@ -510,26 +510,101 @@ def run_verify(args: argparse.Namespace) -> None:
             Path(temp_config).unlink(missing_ok=True)
 
 
+# Quarto report template files copied into the working report/ directory.
+# Keep in sync with the force-include block in pyproject.toml.
+_REPORT_TEMPLATE_FILES = ("index.qmd", "details.qmd", "_quarto.yml", "styles.css")
+
+
+def _copy_report_templates(src: Path, report_dir: Path) -> None:
+    import shutil
+
+    for name in _REPORT_TEMPLATE_FILES:
+        candidate = src / name
+        if candidate.is_file():
+            shutil.copy2(candidate, report_dir / name)
+
+
+def _ensure_report_templates(report_dir: Path) -> bool:
+    """Make sure the Quarto templates exist in ``report_dir``.
+
+    Prefers the copy bundled in the installed wheel (``vip/_report``),
+    refreshing ``report_dir`` from it on every run so an upgraded VIP renders
+    its current templates. Falls back to the repo's top-level ``report/`` so
+    in-repo usage and selftests work without building a wheel. Returns
+    ``True`` when templates are available, ``False`` otherwise.
+    """
+    import importlib.resources
+
+    # Bundled wheel copy: refresh templates into the working directory.
+    try:
+        bundled = importlib.resources.files("vip") / "_report"
+        with importlib.resources.as_file(bundled) as p:
+            if (p / "index.qmd").is_file():
+                _copy_report_templates(p, report_dir)
+                return True
+    except (TypeError, FileNotFoundError, ModuleNotFoundError):
+        pass
+
+    # Source checkout: three levels up from src/vip/cli.py → repo root/report.
+    repo_report = Path(__file__).parent.parent.parent / "report"
+    if (repo_report / "index.qmd").is_file():
+        if repo_report.resolve() != report_dir.resolve():
+            _copy_report_templates(repo_report, report_dir)
+        return True
+
+    # Already-populated working directory (e.g. a prior run's copy).
+    return (report_dir / "index.qmd").is_file()
+
+
 def run_report(args: argparse.Namespace) -> None:
     """Render the Quarto report from a results.json file."""
     import shutil
     import webbrowser
 
+    report_dir = Path("report")
+    report_dir.mkdir(parents=True, exist_ok=True)
+
     results_src = Path(args.results)
-    results_dest = Path("report/results.json")
+    results_dest = report_dir / "results.json"
 
     if results_src.resolve() != results_dest.resolve():
         if not results_src.exists():
             print(f"Error: results file not found: {results_src}", file=sys.stderr)
             sys.exit(1)
         shutil.copy2(results_src, results_dest)
+    elif not results_dest.exists():
+        print(
+            f"Error: no results found at {results_dest}. "
+            "Run 'vip verify' first, or pass --results PATH.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    result = subprocess.run(["quarto", "render"], cwd="report")
+    if not _ensure_report_templates(report_dir):
+        print(
+            "Error: could not locate the VIP report templates. "
+            "Reinstall posit-vip so the bundled report is available.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    if args.open and result.returncode == 0:
-        webbrowser.open(str(Path("report/_site/index.html").resolve()))
+    result = subprocess.run(["quarto", "render"], cwd=str(report_dir))
 
-    sys.exit(result.returncode)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+    output = report_dir / "_output" / "index.html"
+    if not output.exists():
+        print(
+            "Error: no report was produced. Ensure Quarto is installed and the "
+            "report extra is available (pip install 'posit-vip[report]').",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print(f"Report generated: {output}")
+    if args.open:
+        webbrowser.open(output.resolve().as_uri())
 
 
 def _collect_status(config: VIPConfig) -> dict:

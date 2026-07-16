@@ -155,6 +155,57 @@ def load_results(path: str | Path) -> ReportData:
     )
 
 
+def _installed_vip_tests_dir() -> Path | None:
+    """Return the directory of the installed ``vip_tests`` package, if any."""
+    try:
+        import vip_tests
+    except Exception:
+        return None
+    location = getattr(vip_tests, "__file__", None)
+    return Path(location).resolve().parent if location else None
+
+
+def troubleshooting_path() -> Path | None:
+    """Locate ``troubleshooting.toml`` in a source checkout or installed package.
+
+    The report templates render from a working ``report/`` directory, so a
+    source checkout is found via the repo-relative ``../src/vip_tests`` path.
+    When VIP is installed as a wheel that path does not exist, so fall back to
+    the copy shipped inside the installed ``vip_tests`` package. Returns
+    ``None`` when neither is present (the report then renders without hints).
+    """
+    repo = Path("../src/vip_tests/troubleshooting.toml")
+    if repo.exists():
+        return repo
+    pkg = _installed_vip_tests_dir()
+    if pkg is not None:
+        candidate = pkg / "troubleshooting.toml"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def feature_file_for_nodeid(nodeid: str) -> Path | None:
+    """Resolve the ``.feature`` file for a pytest nodeid.
+
+    Works both from a source checkout (repo-relative paths) and when VIP is
+    installed as a wheel (resolving inside the installed ``vip_tests``
+    package). Returns ``None`` when no matching feature file exists.
+    """
+    py_file = nodeid.split("::", 1)[0]
+    feature_rel = py_file.rsplit(".", 1)[0] + ".feature"
+    candidates = [Path("..") / feature_rel, Path(feature_rel)]
+    if "vip_tests/" in feature_rel:
+        sub = feature_rel.split("vip_tests/", 1)[1]
+        pkg = _installed_vip_tests_dir()
+        if pkg is not None:
+            candidates.append(pkg / sub)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def load_troubleshooting(path: str | Path) -> dict[str, dict]:
     """Load troubleshooting hints from a TOML file.
 
