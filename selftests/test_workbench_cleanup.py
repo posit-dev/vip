@@ -6,6 +6,8 @@ httpx client is replaced with one backed by httpx.MockTransport.
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 import pytest
 
@@ -172,6 +174,98 @@ def test_quit_vip_sessions_counts_unique_sessions_under_retry():
     assert wc.quit_vip_sessions(retries=3, settle_seconds=0) == 1
 
 
+def test_quit_vip_sessions_warns_when_stuck_session_persists(caplog):
+    """A VIP session that never disappears across all retries must WARN (issue #467).
+
+    quit_session() treats any HTTP status < 400 as success without verifying
+    termination -- so a deployment whose DELETE is a silent no-op looks
+    "successful" while the session persists. The final re-check after the
+    retry loop must catch that and log loudly instead of returning quietly.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/sessions":
+            # Always still listed -- simulates a no-op DELETE/suspend.
+            return httpx.Response(200, json=[{"id": "a", "label": "VIP stuck"}])
+        return httpx.Response(200)
+
+    wc = _client_with_handler(handler)
+    with caplog.at_level(logging.WARNING):
+        quit_count = wc.quit_vip_sessions(retries=2, settle_seconds=0)
+
+    assert quit_count == 1  # the quit call "succeeded" once, distinct session
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warnings, "expected a WARNING when a VIP session persists after cleanup"
+    assert any("VIP stuck" in r.message for r in warnings)
+    assert any("id=a" in r.message for r in warnings)
+
+
+def test_quit_vip_sessions_no_warning_when_fully_cleaned(caplog):
+    """No warning should fire when the retry loop confirms everything is gone."""
+    list_calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/sessions":
+            list_calls["n"] += 1
+            if list_calls["n"] == 1:
+                return httpx.Response(200, json=[{"id": "a", "label": "VIP foo"}])
+            return httpx.Response(200, json=[])
+        return httpx.Response(200)
+
+    wc = _client_with_handler(handler)
+    with caplog.at_level(logging.WARNING):
+        quit_count = wc.quit_vip_sessions(retries=3, settle_seconds=0)
+
+    assert quit_count == 1
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_count_vip_sessions_counts_only_vip():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=[
+                {"id": "a", "label": "VIP foo"},
+                {"id": "b", "label": "My real work"},
+                {"id": "c", "label": "_vip_cap_1_default_0"},
+            ],
+        )
+
+    wc = _client_with_handler(handler)
+    assert wc.count_vip_sessions() == 2
+
+
+def test_count_vip_sessions_zero_when_no_vip_sessions():
+    wc = _client_with_handler(lambda r: httpx.Response(200, json=[{"id": "b", "label": "real"}]))
+    assert wc.count_vip_sessions() == 0
+
+
+def test_count_vip_sessions_minus_one_on_non_200():
+    wc = _client_with_handler(lambda r: httpx.Response(503))
+    assert wc.count_vip_sessions() == -1
+
+
+def test_count_vip_sessions_minus_one_on_transport_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("boom")
+
+    wc = _client_with_handler(handler)
+    assert wc.count_vip_sessions() == -1
+
+
+def test_count_vip_sessions_minus_one_on_non_list_json():
+    # A 200 whose body is a JSON object (not the expected array) must read as
+    # "unknown" (-1), never as "confirmed clean" (0) — else the caller would
+    # suppress the UI escalation and re-orphan sessions (issue #467).
+    wc = _client_with_handler(lambda r: httpx.Response(200, json={"error": "nope"}))
+    assert wc.count_vip_sessions() == -1
+
+
+def test_count_vip_sessions_minus_one_on_non_json_body():
+    wc = _client_with_handler(lambda r: httpx.Response(200, text="<html>app</html>"))
+    assert wc.count_vip_sessions() == -1
+
+
 def test_sessions_api_reachable_true_on_200():
     wc = _client_with_handler(lambda r: httpx.Response(200, json=[]))
     assert wc.sessions_api_reachable() is True
@@ -276,6 +370,14 @@ class _FakeLocator:
     def first(self):
         return self
 
+    def is_visible(self):
+        # The fake models an already-authenticated homepage, so the Posit logo
+        # (the "logged in" marker _complete_sso_if_needed checks) is visible;
+        # nothing else is.
+        from vip_tests.workbench.pages import Homepage
+
+        return self._selector == Homepage.POSIT_LOGO
+
     def get_attribute(self, name):
         if name == "aria-label":
             return f"select {self._page.session_names[self._index]}"
@@ -311,9 +413,10 @@ class _FakeHomepage:
         self.dialog_clicks: list[tuple[str, object]] = []
         self.quit_clicks = 0
         self.reloads = 0
+        self.goto_urls: list[str] = []
 
-    def goto(self, *args, **kwargs):
-        pass
+    def goto(self, url, *args, **kwargs):
+        self.goto_urls.append(url)
 
     def reload(self, *args, **kwargs):
         self.reloads += 1
@@ -390,3 +493,294 @@ def test_quit_vip_sessions_via_ui_clicks_present_dialog_with_normal_timeout():
     # short probe) so a slow-but-present dialog still completes. Absent dialogs
     # (force-quit follow-ups) are not clicked.
     assert page.dialog_clicks == [(Homepage.CONFIRM_QUIT, TIMEOUT_QUICK)]
+
+
+def test_quit_vip_sessions_via_ui_navigates_to_root_not_home():
+    """The sweep must load the homepage at the site root, not ``/home``.
+
+    On WB 2026.06 the session table lives at the root (the URL the tests use);
+    ``/home`` renders no session list, which silently orphaned sessions (#467).
+    """
+    from vip_tests.workbench.conftest import _quit_vip_sessions_via_ui
+
+    page = _FakeHomepage(["VIP one - gw0-1"], quit_removes=True)
+    _quit_vip_sessions_via_ui(page, "https://wb.example.com/")
+
+    assert page.goto_urls[0] == "https://wb.example.com"
+    assert not any(u.endswith("/home") for u in page.goto_urls)
+
+
+def test_quit_vip_sessions_via_ui_bails_when_sso_cannot_complete(monkeypatch):
+    """When the homepage can't be reached (SSO not completed), quit 0 and warn."""
+    import vip.workbench_ui as wbui
+
+    monkeypatch.setattr(wbui, "_complete_sso_if_needed", lambda page: False)
+    page = _FakeHomepage(["VIP one - gw0-1"], quit_removes=True)
+    assert wbui.quit_vip_sessions_via_ui(page, "https://wb.example.com") == 0
+    # It never tried to enumerate/quit rows once auth failed.
+    assert page.quit_clicks == 0
+
+
+class _SsoFakePage:
+    """Page double for :func:`_complete_sso_if_needed`.
+
+    Models an OIDC sign-in page: a "Sign in with OpenID" button whose click
+    completes a silent SSO (making the homepage logo appear) iff *idp_valid*.
+    """
+
+    def __init__(
+        self, *, url, logo_visible=False, sso_visible=True, has_username=False, idp_valid=True
+    ):
+        self.url = url
+        self._logo_visible = logo_visible
+        self._sso_visible = sso_visible
+        self._has_username = has_username
+        self._idp_valid = idp_valid
+        self.sso_clicked = False
+
+    def locator(self, selector):
+        from vip_tests.workbench.pages import Homepage, LoginPage
+
+        if selector == Homepage.POSIT_LOGO:
+            return _SsoFakeLocator(lambda: self._logo_visible)
+        if selector == LoginPage.USERNAME:
+            return _SsoFakeLocator(lambda: self._has_username)
+        return _SsoFakeLocator(lambda: False)
+
+    def get_by_role(self, role, name=None):
+        page = self
+
+        def _on_click() -> None:
+            page.sso_clicked = True
+            if page._idp_valid:
+                page._logo_visible = True
+
+        return _SsoFakeLocator(lambda: page._sso_visible, on_click=_on_click)
+
+
+class _SsoFakeLocator:
+    def __init__(self, is_visible_fn, *, on_click=None):
+        self._is_visible_fn = is_visible_fn
+        self._on_click = on_click
+
+    @property
+    def first(self):
+        return self
+
+    def is_visible(self):
+        return self._is_visible_fn()
+
+    def wait_for(self, *, state=None, timeout=None):
+        if not self._is_visible_fn():
+            raise RuntimeError("not visible")
+
+    def click(self, timeout=None):
+        if self._on_click is not None:
+            self._on_click()
+
+
+def test_complete_sso_true_when_already_authenticated():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    page = _SsoFakePage(url="https://wb.example.com/", logo_visible=True)
+    assert _complete_sso_if_needed(page) is True
+    assert page.sso_clicked is False  # no SSO needed
+
+
+def test_complete_sso_clicks_button_and_succeeds_with_valid_idp():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    page = _SsoFakePage(url="https://wb.example.com/auth-sign-in?appUri=%2F", idp_valid=True)
+    assert _complete_sso_if_needed(page) is True
+    assert page.sso_clicked is True
+
+
+def test_complete_sso_false_when_idp_session_expired():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    # SSO button present and clicked, but the homepage logo never appears.
+    page = _SsoFakePage(url="https://wb.example.com/auth-sign-in", idp_valid=False)
+    assert _complete_sso_if_needed(page) is False
+    assert page.sso_clicked is True
+
+
+def test_complete_sso_false_on_password_form():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    # A username field means a password form, not silent SSO: don't click.
+    page = _SsoFakePage(url="https://wb.example.com/auth-sign-in", has_username=True)
+    assert _complete_sso_if_needed(page) is False
+    assert page.sso_clicked is False
+
+
+def test_complete_sso_false_when_not_on_login_page():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    # No logo and not a login URL — nothing we can do.
+    page = _SsoFakePage(url="https://wb.example.com/some/other/page", sso_visible=False)
+    assert _complete_sso_if_needed(page) is False
+
+
+# ---------------------------------------------------------------------------
+# _run_session_cleanup — escalation logic (issue #467)
+# ---------------------------------------------------------------------------
+
+
+def _fake_vip_config(*, api_key: str = ""):
+    from types import SimpleNamespace
+
+    workbench = SimpleNamespace(api_key=api_key)
+    return SimpleNamespace(workbench=workbench, insecure=False, ca_bundle=None)
+
+
+def _fake_page(cookies: list[dict]):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(context=SimpleNamespace(cookies=lambda: cookies))
+
+
+def _fresh_state() -> dict[str, object]:
+    return {"cookies": None, "base_url": None, "api_reachable": None}
+
+
+def _recording_ui_sweep(ui_calls: list[tuple], return_value: int = 0):
+    """Build a fake ``_quit_vip_sessions_via_ui`` that records its (page, base_url) call."""
+
+    def _fake(page, base_url, **_k):
+        ui_calls.append((page, base_url))
+        return return_value
+
+    return _fake
+
+
+def test_run_session_cleanup_escalates_to_ui_when_api_leaves_leftovers(monkeypatch):
+    """API sweep runs but VIP sessions remain -> the UI sweep must fire.
+
+    This is the core #467 fix: a reachable API whose DELETE is a no-op must
+    not be trusted just because it didn't error.
+    """
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import conftest as wb
+
+    ui_calls: list[tuple] = []
+
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: True)
+    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 1))
+
+    page = _fake_page([{"name": "a", "value": "b"}])
+    workbench_client = SimpleNamespace(base_url="https://wb.example.com")
+    state = _fresh_state()
+
+    wb._run_session_cleanup(page, workbench_client, _fake_vip_config(), state)
+
+    assert len(ui_calls) == 1
+    assert ui_calls[0][1] == "https://wb.example.com"
+
+
+def test_run_session_cleanup_skips_ui_when_api_sweep_fully_cleans(monkeypatch):
+    """API reachable and confirmed zero VIP sessions remaining -> no UI escalation."""
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import conftest as wb
+
+    ui_calls: list[tuple] = []
+
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: True)
+    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: 0)
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
+
+    page = _fake_page([{"name": "a", "value": "b"}])
+    workbench_client = SimpleNamespace(base_url="https://wb.example.com")
+    state = _fresh_state()
+
+    wb._run_session_cleanup(page, workbench_client, _fake_vip_config(), state)
+
+    assert ui_calls == []
+
+
+def test_run_session_cleanup_escalates_when_api_unreachable(monkeypatch):
+    """Existing behavior preserved: an unreachable API still escalates to the UI."""
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import conftest as wb
+
+    ui_calls: list[tuple] = []
+
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 0)
+    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: False)
+    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: -1)
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
+
+    page = _fake_page([{"name": "a", "value": "b"}])
+    workbench_client = SimpleNamespace(base_url="https://wb.example.com")
+    state = _fresh_state()
+
+    wb._run_session_cleanup(page, workbench_client, _fake_vip_config(), state)
+
+    assert len(ui_calls) == 1
+
+
+def test_run_session_cleanup_warns_when_no_cookies_and_no_api_key(monkeypatch, caplog):
+    """No browser cookies and no [workbench] api_key -> warn, do not attempt any sweep."""
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import conftest as wb
+
+    def _fail(*a, **k):
+        pytest.fail("no sweep should be attempted without cookies or an api_key")
+
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _fail)
+
+    page = _fake_page([])
+    workbench_client = SimpleNamespace(base_url="https://wb.example.com")
+    state = _fresh_state()
+
+    with caplog.at_level(logging.WARNING):
+        wb._run_session_cleanup(page, workbench_client, _fake_vip_config(api_key=""), state)
+
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warnings, "expected a warning when cleanup cannot authenticate"
+    assert any("authenticate" in r.message for r in warnings)
+
+
+def test_run_session_cleanup_no_warning_when_no_cookies_but_api_key_present(monkeypatch, caplog):
+    """No browser cookies but an api_key is configured -> no warning (belt-and-suspenders
+    end-of-run sweep will use the api_key), and no per-test sweep is attempted either
+    (cookies are required for the per-test cookie-authenticated sweep)."""
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import conftest as wb
+
+    def _fail(*a, **k):
+        pytest.fail("no cookie-based sweep should run without cookies")
+
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", _fail)
+    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _fail)
+
+    page = _fake_page([])
+    workbench_client = SimpleNamespace(base_url="https://wb.example.com")
+    state = _fresh_state()
+
+    with caplog.at_level(logging.WARNING):
+        wb._run_session_cleanup(page, workbench_client, _fake_vip_config(api_key="k"), state)
+
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_run_session_cleanup_returns_early_when_workbench_client_is_none(monkeypatch):
+    """workbench_client=None (product not configured) -> no-op, no errors."""
+    from vip_tests.workbench import conftest as wb
+
+    page = _fake_page([{"name": "a", "value": "b"}])
+    state = _fresh_state()
+
+    wb._run_session_cleanup(page, None, _fake_vip_config(), state)  # must not raise

@@ -12,7 +12,8 @@ import os
 import shutil
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -196,6 +197,64 @@ class InteractiveAuthSession:
 
         if self._tmpdir and os.path.isdir(self._tmpdir):
             shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+
+@contextmanager
+def authenticated_page(
+    session: InteractiveAuthSession,
+    *,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
+) -> Iterator[Page]:
+    """Open a headless, authenticated Playwright page from a cached auth session.
+
+    Loads *session*'s saved storage state into a fresh headless browser
+    context, so callers outside of a pytest run (e.g. ``vip cleanup
+    --workbench-url``, see :func:`vip.cli.run_cleanup`) can drive a product's
+    UI using the same login a prior ``vip verify`` already completed, without
+    prompting for credentials again.
+
+    Honors *insecure*/*ca_bundle* the same way :func:`start_headless_auth`
+    does (TLS verification skip, ``NODE_EXTRA_CA_CERTS`` for a custom CA).
+    Closes the page's context, the browser, and the Playwright driver on
+    exit, restoring ``NODE_EXTRA_CA_CERTS`` to its previous value, regardless
+    of how the ``with`` block exits.
+    """
+    pw = None
+    browser = None
+    _prev_node_ca = os.environ.get("NODE_EXTRA_CA_CERTS")
+    if ca_bundle is not None:
+        os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
+    try:
+        pw = sync_playwright().start()
+        browser = _launch_chromium(pw, headless=True)
+        context = browser.new_context(
+            storage_state=str(session.storage_state_path),
+            ignore_https_errors=insecure,
+        )
+        try:
+            yield context.new_page()
+        finally:
+            try:
+                context.close()
+            except Exception:
+                pass
+    finally:
+        if browser is not None:
+            try:
+                browser.close()
+            except Exception:
+                pass
+        if pw is not None:
+            try:
+                pw.stop()
+            except Exception:
+                pass
+        if ca_bundle is not None:
+            if _prev_node_ca is None:
+                os.environ.pop("NODE_EXTRA_CA_CERTS", None)
+            else:
+                os.environ["NODE_EXTRA_CA_CERTS"] = _prev_node_ca
 
 
 def _load_cached_auth(

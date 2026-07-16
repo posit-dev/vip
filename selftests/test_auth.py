@@ -6,7 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vip.auth import AuthConfigError, start_headless_auth
+from vip.auth import (
+    AuthConfigError,
+    InteractiveAuthSession,
+    authenticated_page,
+    start_headless_auth,
+)
 
 
 class TestStartHeadlessAuthValidation:
@@ -1852,3 +1857,89 @@ class TestHeadlessAuthTLSFlags:
                 )
 
         assert os.environ.get("NODE_EXTRA_CA_CERTS") == prev_value
+
+
+class TestAuthenticatedPage:
+    """Tests for authenticated_page(): the CLI cleanup escape hatch's
+    browser-driven Workbench UI access (see vip.cli.run_cleanup)."""
+
+    def _make_session(self, tmp_path) -> InteractiveAuthSession:
+        state_path = tmp_path / "vip-auth-state.json"
+        state_path.write_text('{"cookies": []}')
+        return InteractiveAuthSession(storage_state_path=state_path, _tmpdir="")
+
+    def test_loads_storage_state_and_yields_page(self, tmp_path):
+        session = self._make_session(tmp_path)
+
+        pw = MagicMock()
+        browser = pw.start.return_value.chromium.launch.return_value
+        context = browser.new_context.return_value
+        page = context.new_page.return_value
+
+        with patch("vip.auth.sync_playwright", return_value=pw):
+            with authenticated_page(session) as yielded_page:
+                assert yielded_page is page
+
+        browser.new_context.assert_called_once_with(
+            storage_state=str(session.storage_state_path),
+            ignore_https_errors=False,
+        )
+        context.close.assert_called_once()
+        browser.close.assert_called_once()
+        pw.start.return_value.stop.assert_called_once()
+
+    def test_insecure_passed_through_to_new_context(self, tmp_path):
+        session = self._make_session(tmp_path)
+
+        pw = MagicMock()
+        browser = pw.start.return_value.chromium.launch.return_value
+        context = browser.new_context.return_value
+
+        with patch("vip.auth.sync_playwright", return_value=pw):
+            with authenticated_page(session, insecure=True):
+                pass
+
+        _, kwargs = browser.new_context.call_args
+        assert kwargs["ignore_https_errors"] is True
+        context.close.assert_called_once()
+
+    def test_closes_browser_and_context_even_when_block_raises(self, tmp_path):
+        session = self._make_session(tmp_path)
+
+        pw = MagicMock()
+        browser = pw.start.return_value.chromium.launch.return_value
+        context = browser.new_context.return_value
+
+        with patch("vip.auth.sync_playwright", return_value=pw):
+            with pytest.raises(RuntimeError, match="boom"):
+                with authenticated_page(session):
+                    raise RuntimeError("boom")
+
+        context.close.assert_called_once()
+        browser.close.assert_called_once()
+        pw.start.return_value.stop.assert_called_once()
+
+    def test_ca_bundle_sets_and_restores_node_extra_ca_certs(self, tmp_path, monkeypatch):
+        import os
+
+        monkeypatch.delenv("NODE_EXTRA_CA_CERTS", raising=False)
+        session = self._make_session(tmp_path)
+        ca_file = tmp_path / "ca.pem"
+        ca_file.write_text("# fake CA")
+
+        captured: list[str | None] = []
+
+        pw = MagicMock()
+
+        def capturing_launch(*args, **kwargs):
+            captured.append(os.environ.get("NODE_EXTRA_CA_CERTS"))
+            return pw.start.return_value.chromium.launch.return_value
+
+        pw.start.return_value.chromium.launch.side_effect = capturing_launch
+
+        with patch("vip.auth.sync_playwright", return_value=pw):
+            with authenticated_page(session, ca_bundle=ca_file):
+                pass
+
+        assert captured == [str(ca_file)]
+        assert os.environ.get("NODE_EXTRA_CA_CERTS") is None
