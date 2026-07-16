@@ -229,8 +229,6 @@ The report lives in `report/` and reads `report/results.json` (written by pytest
 -   **`ci.yml`** -- ruff lint/format (pinned to 0.15.0) + selftests on Python 3.10 and 3.12. Uses uv cache.
 -   **`preview.yml`** -- runs selftests, renders Quarto report, publishes PR preview to gh-pages via `rossjrw/pr-preview-action@v1`. Uses uv and Quarto caches.
 -   **`pr-title.yml`** -- validates PR titles follow conventional commit format. Squash merges use the PR title as the commit message.
--   **`issue-triage.md`** + `issue-triage.lock.yml` -- gh-aw agent that triages issues a maintainer opts in via the `needs-bot-triage` label, opening either a fix PR (bugs) or a plan PR (enhancements). See `docs/agentic-workflows.md`.
--   **`implement-plan.md`** + `implement-plan.lock.yml` -- gh-aw agent that fires when a plan PR merges and opens the implementation PR.
 -   **`add-to-team-project.yml`** -- when a `team: connect`, `team: workbench`, or `team: package manager` label is added to an issue, adds it to that product team's org-level GitHub project board. Ported from rstudio/helm. Requires the cross-org `POSIT_PLATFORM_CLIENT_ID`/`POSIT_PLATFORM_PEM` app secrets.
 
 ## PR titles
