@@ -71,9 +71,8 @@ PR is merged into `main`.
 
 ## Bot identity
 
-PRs are authored by the `Copilot` identity (the same account that opens
-the screenshot-gallery PRs from `preview-screenshot-gallery.md`). To
-filter the bot's PRs in the GitHub UI, search for `author:app/copilot`.
+PRs are authored by the `Copilot` identity. To filter the bot's PRs in
+the GitHub UI, search for `author:app/copilot`.
 
 ## Source files
 

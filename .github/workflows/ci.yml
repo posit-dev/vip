@@ -215,7 +215,7 @@ jobs:
       # Dependabot bumps of the shared actions (checkout, github-script, etc.)
       # edit the .lock.yml copies without recompiling, leaving them stale. At
       # run time the workflow's stale-lock check then skips the agent and files
-      # a failure issue (this is what broke the preview-screenshot gallery; see
+      # a failure issue (this is what broke an agentic workflow; see
       # #347). Recompile here and fail on any drift so it is caught in PR CI.
       # Pinned to the gh-aw version the lockfiles target
       # (github/gh-aw-actions/setup); bump this pin and recompile together.
