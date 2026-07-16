@@ -53,6 +53,10 @@ safe-outputs:
     branch-prefix: "bot-"
     draft: false
     max: 1
+  noop:
+    # Gate-exit runs emit a no-op; report-as-issue:false stops them from
+    # posting to the shared "[aw] No-Op Runs" tracking issue (#158).
+    report-as-issue: false
 network:
   allowed:
     - defaults
