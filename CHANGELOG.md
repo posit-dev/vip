@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.54.4 (2026-07-17)
+
+### Bug Fixes
+
+- **workbench**: Make JupyterLab launch/exec resilient to SPA timing
+  ([#494](https://github.com/posit-dev/vip/pull/494),
+  [`31f2728`](https://github.com/posit-dev/vip/commit/31f27285e733a1e2739d80a4777ffa75b12fea42))
+
+
 ## v0.54.3 (2026-07-17)
 
 ### Bug Fixes
