@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.54.5 (2026-07-17)
+
+### Bug Fixes
+
+- **report**: Render from any directory and add badge styling
+  ([#487](https://github.com/posit-dev/vip/pull/487),
+  [`d038eb9`](https://github.com/posit-dev/vip/commit/d038eb95bf85d3bbb773604aa134c7fe26f41ee3))
+
+
 ## v0.54.4 (2026-07-17)
 
 ### Bug Fixes
