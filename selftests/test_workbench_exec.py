@@ -28,6 +28,7 @@ from vip_tests.workbench.exec import (
     _extract_between_markers,
     _make_sentinels,
     _parse_done_marker,
+    _read_file_r_expr,
     _split_marker,
     _strip_r_index,
     _wrap_python_expr,
@@ -345,6 +346,39 @@ class TestParseDoneMarker:
         content = "VIP_DONE_abc:"
         assert _parse_done_marker(content, "VIP_DONE_abc") is None
 
+    def test_raw_exit_code_parses_but_quoted_does_not(self):
+        """Regression guard: R's auto-print wraps a bare (un-cat'd) character
+        result in a trailing closing quote, turning ``...:0`` into ``...:0"``.
+        The raw form must parse as exit 0; the quoted form must be treated as
+        still-running rather than silently misparsed. This is why
+        ``_read_file_r_expr`` wraps its read expression in ``cat()`` -- so the
+        marker line R's console echoes back is always the raw form."""
+        raw = "hello\nVIP_DONE_abc:0"
+        quoted = 'hello\nVIP_DONE_abc:0"'
+        assert _parse_done_marker(raw, "VIP_DONE_abc") == ("hello", 0)
+        assert _parse_done_marker(quoted, "VIP_DONE_abc") is None
+
+
+# ---------------------------------------------------------------------------
+# _read_file_r_expr
+# ---------------------------------------------------------------------------
+
+
+class TestReadFileRExpr:
+    def test_wraps_read_in_cat(self):
+        """The read expression must be cat()'d, not left as a bare/auto-printed
+        expression -- R's console auto-print wraps a bare character result in
+        quotes and escapes embedded newlines as literal ``\\n``, which broke
+        the done-marker exit-code parse (see TestParseDoneMarker above)."""
+        expr = _read_file_r_expr("/tmp/foo.txt")
+        assert expr.startswith("cat(")
+        assert "readLines(" in expr
+        assert "paste(" in expr
+
+    def test_embeds_path(self):
+        expr = _read_file_r_expr("/tmp/vip_term_abc.txt")
+        assert '"/tmp/vip_term_abc.txt"' in expr
+
 
 # ---------------------------------------------------------------------------
 # _detect_ide
@@ -497,7 +531,9 @@ class TestReadFileRouting:
     def test_rstudio_calls_rstudio_eval(self, monkeypatch):
         page = MagicMock()
         monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "rstudio")
-        mock_rstudio_eval = MagicMock(return_value="[1] hello world")
+        # cat()'d output is raw -- no "[1]" index, no quoting -- so the mock
+        # return value here is the *raw* form, not R's auto-printed form.
+        mock_rstudio_eval = MagicMock(return_value="hello world")
         mock_positron_eval_r = MagicMock()
         mock_positron_eval_python = MagicMock()
         mock_editor_read = MagicMock()
@@ -508,7 +544,9 @@ class TestReadFileRouting:
 
         result = read_file(page, "/tmp/foo.txt", lang="r")
 
-        assert result == "hello world"  # _strip_r_index applied
+        assert result == "hello world"
+        rstudio_expr = mock_rstudio_eval.call_args[0][1]
+        assert rstudio_expr.startswith("cat(")  # not a bare auto-printed expr
         mock_rstudio_eval.assert_called_once()
         mock_positron_eval_r.assert_not_called()
         mock_positron_eval_python.assert_not_called()
@@ -518,7 +556,8 @@ class TestReadFileRouting:
         page = MagicMock()
         monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "positron")
         mock_rstudio_eval = MagicMock()
-        mock_positron_eval_r = MagicMock(return_value="[1] file contents")
+        # cat()'d output is raw -- no "[1]" index, no quoting.
+        mock_positron_eval_r = MagicMock(return_value="file contents")
         mock_positron_eval_python = MagicMock()
         mock_editor_read = MagicMock()
         monkeypatch.setattr(exec_mod, "rstudio_eval", mock_rstudio_eval)
@@ -528,7 +567,9 @@ class TestReadFileRouting:
 
         result = read_file(page, "/tmp/foo.txt", lang="r")
 
-        assert result == "file contents"  # _strip_r_index applied
+        assert result == "file contents"
+        positron_expr = mock_positron_eval_r.call_args[0][1]
+        assert positron_expr.startswith("cat(")  # not a bare auto-printed expr
         mock_positron_eval_r.assert_called_once()
         mock_rstudio_eval.assert_not_called()
         mock_positron_eval_python.assert_not_called()

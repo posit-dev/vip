@@ -85,6 +85,18 @@ def _wrap_r_expr(expr: str, start: str, end: str) -> str:
     return f'cat("{s1}", "{s2}\\n", sep=""); {expr}; cat("\\n", "{e1}", "{e2}\\n", sep="")'
 
 
+def _read_file_r_expr(path: str) -> str:
+    """Build the R expression that reads *path* and emits its raw contents.
+
+    Wrapped in ``cat()`` so R prints the file bytes directly. A bare
+    ``paste(readLines(...))`` is auto-printed by the R REPL as a quoted,
+    backslash-escaped character vector -- which appends a stray ``"`` to the
+    done-marker line (``...:0"``) and makes ``_parse_done_marker`` reject the
+    exit code as non-numeric, hanging ``terminal_run`` until timeout.
+    """
+    return f'cat(paste(readLines("{path}"), collapse="\\n"))'
+
+
 def _wrap_python_expr(expr: str, start: str, end: str) -> str:
     """Wrap *expr* with Python print() markers.
 
@@ -773,16 +785,11 @@ def read_file(page: Page, path: str, timeout: int = 30_000, *, lang: str = "r") 
     ide = _detect_ide(page)
     if ide == "positron":
         if lang.lower() == "r":
-            expr = f'paste(readLines("{path}"), collapse="\\n")'
-            return _strip_r_index(positron_eval_r(page, expr, timeout=timeout))
+            return positron_eval_r(page, _read_file_r_expr(path), timeout=timeout)
         return positron_eval_python(
             page, f'with open("{path}") as _f: print(_f.read())', timeout=timeout
         )
     if ide == "vscode":
         return read_file_via_vscode_editor(page, path, timeout=timeout)
     # RStudio (and unknown — fall back to RStudio R path)
-    if lang.lower() == "r":
-        expr = f'paste(readLines("{path}"), collapse="\\n")'
-        return _strip_r_index(rstudio_eval(page, expr, timeout=timeout))
-    expr = f'paste(readLines("{path}"), collapse="\\n")'
-    return _strip_r_index(rstudio_eval(page, expr, timeout=timeout))
+    return rstudio_eval(page, _read_file_r_expr(path), timeout=timeout)
