@@ -20,14 +20,28 @@ class PositronSession:
 
     # Positron-specific elements
     CONSOLE_PANEL = ".positron-console"
-    # Console tab in the bottom panel (shares the panel with Terminal). Used as
-    # the "Positron is loaded" signal and to re-activate the console after a
-    # terminal_run leaves the Terminal tab selected.
+    # Console tab in the bottom panel (shares the panel with Terminal). Used to
+    # re-activate the console after a terminal_run leaves the Terminal tab
+    # selected. Only present once a console session is running (see below).
     CONSOLE_TAB = 'a.action-label[aria-label="Console"]'
+    # Positron (Workbench 2026+) opens to a Welcome page with NO auto-started
+    # console: CONSOLE_PANEL / CONSOLE_TAB / ACTIVE_CONSOLE / CONSOLE_INPUT do
+    # not exist until a console session is started via this button (its visible
+    # text is "Start Session"; the aria-label is the stable hook). Clicking it
+    # opens the interpreter quickpick. Confirmed live on dev.current (issue #477).
+    START_CONSOLE_BUTTON = 'button[aria-label="Start New Console Session"]'
+    # Interpreter rows in the quickpick opened by START_CONSOLE_BUTTON.
+    # Interpreter discovery is asynchronous (~10s on a cold session), so callers
+    # must POLL this for a populated list before selecting a row.
+    INTERPRETER_QUICKPICK_ROW = (
+        ".quick-input-widget .monaco-list-row, .quick-input-list .monaco-list-row"
+    )
     # Active console instance + its Monaco input (confirmed live; see
     # posit-dev/positron/test/e2e/pages/console.ts and exec.py).
     ACTIVE_CONSOLE = '.console-instance[style*="z-index: auto"]'
     CONSOLE_INPUT = ".console-input"
+    # Present even on the Welcome page (before any console starts), so it is a
+    # console-independent "this is Positron" discriminator for _detect_ide.
     VARIABLES_PANE = ".positron-variables"
     PLOTS_PANE = ".positron-plots"
     HELP_PANE = ".positron-help"

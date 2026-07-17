@@ -33,6 +33,7 @@ from vip_tests.workbench.exec import (
     _strip_r_index,
     _wrap_python_expr,
     _wrap_r_expr,
+    ensure_positron_console,
     file_exists,
     read_file,
 )
@@ -411,6 +412,13 @@ class TestDetectIde:
         page = _make_page_mock({PositronSession.CONSOLE_PANEL, VSCodeSession.WORKBENCH})
         assert _detect_ide(page) == "positron"
 
+    def test_positron_detected_via_variables_pane_without_console(self):
+        """Positron opens without an auto-started console (issue #477): the console
+        panel is absent on the Welcome page, but ``.positron-variables`` is always
+        present, so detection must not depend on a running console."""
+        page = _make_page_mock({PositronSession.VARIABLES_PANE, VSCodeSession.WORKBENCH})
+        assert _detect_ide(page) == "positron"
+
     def test_vscode_detected_without_positron_console(self):
         page = _make_page_mock({VSCodeSession.WORKBENCH})
         assert _detect_ide(page) == "vscode"
@@ -418,6 +426,147 @@ class TestDetectIde:
     def test_unknown_when_nothing_present(self):
         page = _make_page_mock(set())
         assert _detect_ide(page) == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# ensure_positron_console
+# ---------------------------------------------------------------------------
+
+
+class _FakeKeyboard:
+    def __init__(self, raises=False):
+        self.pressed: list[str] = []
+        self._raises = raises
+
+    def press(self, key):
+        if self._raises:
+            raise RuntimeError("keyboard detached")
+        self.pressed.append(key)
+
+
+class _EnsureFakeLocator:
+    """Locator whose count()/click() reflect the parent fake page's state."""
+
+    def __init__(self, page, selector):
+        self._page = page
+        self._selector = selector
+
+    @property
+    def first(self):
+        return self
+
+    def count(self):
+        p = self._page
+        if self._selector == PositronSession.CONSOLE_PANEL:
+            if p.has_console_panel:
+                return 1
+            return 1 if (p.interpreter_selected and p.console_renders) else 0
+        if self._selector == PositronSession.START_CONSOLE_BUTTON:
+            return 1 if p.has_start_button else 0
+        if self._selector == PositronSession.INTERPRETER_QUICKPICK_ROW:
+            if p.quickpick_after is None:
+                return 0
+            return 1 if p.polls >= p.quickpick_after else 0
+        return 0
+
+    def click(self, timeout=None):
+        if self._selector == PositronSession.START_CONSOLE_BUTTON:
+            self._page.start_clicked += 1
+        elif self._selector == PositronSession.INTERPRETER_QUICKPICK_ROW:
+            if self._page.row_click_raises:
+                raise RuntimeError("row detached")
+            self._page.rows_clicked += 1
+            self._page.interpreter_selected = True
+
+
+class _EnsureFakePage:
+    """Scriptable fake Positron page for ensure_positron_console tests.
+
+    - ``has_console_panel``: a console is already running.
+    - ``has_start_button``: the "Start New Console Session" button is present.
+    - ``quickpick_after``: number of poll cycles before the interpreter quickpick
+      populates (``None`` = never, i.e. no interpreter resolves).
+    - ``console_renders``: whether the console appears after selecting an interpreter.
+    """
+
+    def __init__(
+        self,
+        *,
+        has_console_panel=False,
+        has_start_button=True,
+        quickpick_after=0,
+        console_renders=True,
+        row_click_raises=False,
+        keyboard_raises=False,
+    ):
+        self.has_console_panel = has_console_panel
+        self.has_start_button = has_start_button
+        self.quickpick_after = quickpick_after
+        self.console_renders = console_renders
+        self.row_click_raises = row_click_raises
+        self.polls = 0
+        self.interpreter_selected = False
+        self.start_clicked = 0
+        self.rows_clicked = 0
+        self.keyboard = _FakeKeyboard(raises=keyboard_raises)
+
+    def locator(self, selector):
+        return _EnsureFakeLocator(self, selector)
+
+    def wait_for_timeout(self, ms):
+        self.polls += 1
+
+
+class TestEnsurePositronConsole:
+    def test_returns_true_without_clicking_when_console_already_running(self):
+        page = _EnsureFakePage(has_console_panel=True)
+        assert ensure_positron_console(page) is True
+        assert page.start_clicked == 0
+
+    def test_returns_false_when_no_start_button(self):
+        page = _EnsureFakePage(has_console_panel=False, has_start_button=False)
+        assert ensure_positron_console(page) is False
+
+    def test_starts_console_when_quickpick_populates_asynchronously(self):
+        """Interpreter discovery lags the Start click (~10s live). ensure must
+        poll the quickpick, then select an interpreter and confirm the console."""
+        page = _EnsureFakePage(quickpick_after=2, console_renders=True)
+        assert ensure_positron_console(page, timeout=10_000) is True
+        assert page.start_clicked == 1
+        assert page.rows_clicked == 1
+        assert page.interpreter_selected is True
+
+    def test_returns_false_when_no_interpreter_resolves(self):
+        """Genuinely no interpreter available: quickpick never populates → False
+        (caller decides on an accurate skip, not a misleading 'not installed')."""
+        page = _EnsureFakePage(quickpick_after=None)
+        assert ensure_positron_console(page, timeout=3_000) is False
+        assert page.rows_clicked == 0
+
+    def test_returns_false_when_console_never_renders_after_select(self):
+        page = _EnsureFakePage(quickpick_after=0, console_renders=False)
+        assert ensure_positron_console(page, timeout=3_000) is False
+        assert page.interpreter_selected is True
+
+    def test_never_raises_when_both_row_click_and_enter_fail(self):
+        """Honour the "never raises" contract: if selecting the interpreter row
+        fails AND the Enter keyboard fallback also raises, return False."""
+        page = _EnsureFakePage(
+            quickpick_after=0,
+            console_renders=False,
+            row_click_raises=True,
+            keyboard_raises=True,
+        )
+        assert ensure_positron_console(page, timeout=2_000) is False
+
+    def test_total_wait_bounded_by_timeout(self):
+        """The poll budget is SHARED across discovery + render, so total waits
+        never exceed ~timeout (not ~2x). Interpreter resolves after 2 polls but
+        the console never renders; with timeout=5000ms / 1000ms poll the total
+        wait cycles must stay <= 5 (a per-loop budget would allow ~7)."""
+        page = _EnsureFakePage(quickpick_after=2, console_renders=False)
+        assert ensure_positron_console(page, timeout=5_000) is False
+        assert page.polls <= 5
 
 
 # ---------------------------------------------------------------------------
