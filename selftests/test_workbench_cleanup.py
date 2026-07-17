@@ -421,9 +421,14 @@ class _FakeHomepage:
         self.quit_clicks = 0
         self.reloads = 0
         self.goto_urls: list[str] = []
+        # Authenticated homepage URL (Workbench redirects the root into an
+        # active session's workspace); not a login page, so _complete_sso_if_needed
+        # takes the bounded-logo-wait path.
+        self.url = "https://wb.example.com/s/abc123/workspaces/"
 
     def goto(self, url, *args, **kwargs):
         self.goto_urls.append(url)
+        self.url = url
 
     def reload(self, *args, **kwargs):
         self.reloads += 1

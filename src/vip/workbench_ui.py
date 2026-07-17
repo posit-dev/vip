@@ -89,24 +89,29 @@ def _complete_sso_if_needed(page: Page) -> bool:
     session itself has expired).  Best-effort: never raises.
     """
     logo = page.locator(Homepage.POSIT_LOGO)
+    # Decide the login state first. The homepage logo can never appear on the
+    # OIDC sign-in page, so only pages that are NOT a login page get the bounded
+    # logo wait below -- otherwise every expired-auth cleanup attempt would burn
+    # TIMEOUT_QUICK waiting for a logo that will never show (PR #492 review).
     try:
-        # Bounded wait, not a one-shot is_visible(): the 2026.05+ homepage is a
-        # shadcn SPA that mounts the logo a few seconds after the `load` event
-        # (and Workbench redirects the root URL into an active session's
-        # workspace when sessions exist). A snapshot check races hydration and
-        # wrongly concludes "not authenticated", aborting the sweep with a
-        # misleading expired-session warning even though the session list is
-        # reachable -- the same race _wait_for_session_list already guards
-        # against for the row checkboxes (issue #491).
-        logo.wait_for(state="visible", timeout=TIMEOUT_QUICK)
-        return True  # already authenticated (e.g. the in-test page)
-    except Exception:
-        pass
-    try:
-        if not any(kw in page.url.lower() for kw in _LOGIN_URL_KEYWORDS):
-            return False  # not on a login page, but no homepage either
+        on_login_page = any(kw in page.url.lower() for kw in _LOGIN_URL_KEYWORDS)
     except Exception:
         return False
+    if not on_login_page:
+        # Not a login page -> this is (or is becoming) the authenticated
+        # homepage. The 2026.05+ dashboard is a shadcn SPA that mounts the logo
+        # a few seconds after the `load` event (and Workbench redirects the root
+        # URL into an active session's workspace when sessions exist), so use a
+        # bounded wait, not a one-shot is_visible(): a snapshot races hydration
+        # and wrongly concludes "not authenticated", aborting the sweep with a
+        # misleading expired-session warning even though the session list is
+        # reachable -- the same race _wait_for_session_list guards against for
+        # the row checkboxes (issue #491).
+        try:
+            logo.wait_for(state="visible", timeout=TIMEOUT_QUICK)
+            return True  # already authenticated (e.g. the in-test page)
+        except Exception:
+            return False  # not a login page, but no homepage logo either
     # The OIDC sign-in page renders a "Sign in with OpenID" button. Wait briefly
     # so a slow sign-in page is detected reliably rather than raced.
     try:

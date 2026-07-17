@@ -12,7 +12,7 @@ grep -n "logo.wait_for(state=\"visible\", timeout=TIMEOUT_QUICK)" src/vip/workbe
 ```
 
 ```output
-101:        logo.wait_for(state="visible", timeout=TIMEOUT_QUICK)
+111:            logo.wait_for(state="visible", timeout=TIMEOUT_QUICK)
 ```
 
 New regression test reproduces the race (logo missed by a snapshot is_visible() but caught by a bounded wait_for) — it fails on the old code and passes on the fix:
