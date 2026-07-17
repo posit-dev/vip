@@ -7,10 +7,9 @@
 An open-source, extensible test suite that validates Posit Team deployments are
 installed correctly and functioning properly.
 
-VIP uses **BDD-style tests** (pytest-bdd + Playwright) to verify Connect,
-Workbench, and Package Manager across standalone, Kubernetes, and Snowflake
-Native App deployments.  Results are compiled into an **HTML report** that can
-be published to a Connect server.
+VIP uses BDD-style tests (pytest-bdd + Playwright) to verify Connect,
+Workbench, and Package Manager deployments. Results can be viewed
+from the command-line runs or compiled into an HTML report.
 
 **Documentation:** https://posit-dev.github.io/vip/
 
