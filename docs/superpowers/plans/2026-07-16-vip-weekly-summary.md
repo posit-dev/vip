@@ -20,7 +20,8 @@
 - Bot filter: exclude authors matching `dependabot[bot]` / `github-actions[bot]` (and `app/` forms).
 - Post to Slack ONLY on `schedule` / `workflow_dispatch`; `pull_request` is a dry run (build + log payload, never post).
 - Secrets/infra (provisioned outside this repo): `SLACK_WEBHOOK_VIP_WEEKLY_SUMMARY`; AWS role `arn:aws:iam::528395739535:role/claude-code-gha`, region `us-east-2`.
-- Runner date is GNU (`date -u -d '7 days ago'`). For LOCAL testing on macOS use BSD `date -u -v-7d` instead.
+- Query the merged window with precise UTC timestamp bounds `merged:$WEEK_START_TS..$WEEK_END_TS` — never a bare-date `merged:>=DATE`, which is unbounded upward and double-counts PRs merged between 00:00 and the run time across consecutive weeks.
+- Runner date is GNU (`date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ`). For LOCAL testing on macOS use BSD `date -u -v-7d +%Y-%m-%dT%H:%M:%SZ` instead.
 - Highlight output contract: `{"highlights":[{"text": string, "number": integer|null}]}`.
 
 ---
@@ -192,13 +193,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          WEEK_END=$(date -u +%Y-%m-%d)
+          # Bounded, run-aligned 7-day window using precise UTC timestamps. A
+          # bare-date lower bound (merged:>=DATE) is unbounded upward and begins
+          # at 00:00, so PRs merged between 00:00 and the Monday run time would
+          # appear in two consecutive weekly summaries. Timestamp bounds fix that.
+          WEEK_START_TS=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          WEEK_END_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           WEEK_START=$(date -u -d '7 days ago' +%Y-%m-%d)
+          WEEK_END=$(date -u +%Y-%m-%d)
           echo "week_start=$WEEK_START" >> "$GITHUB_OUTPUT"
           echo "week_end=$WEEK_END" >> "$GITHUB_OUTPUT"
 
           gh pr list --repo posit-dev/vip --state merged \
-            --search "merged:>=$WEEK_START" \
+            --search "merged:$WEEK_START_TS..$WEEK_END_TS" \
             --json number,title,author,labels,url \
             --limit 300 > all-prs.json
 
@@ -231,9 +238,10 @@ Expected: `YAML OK`
 
 macOS uses BSD `date`, so compute the window with `-v-7d`. This exercises the exact `gh` + `jq` pipeline the workflow runs:
 ```bash
-WEEK_START=$(date -u -v-7d +%Y-%m-%d)
+WEEK_START_TS=$(date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)
+WEEK_END_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 gh pr list --repo posit-dev/vip --state merged \
-  --search "merged:>=$WEEK_START" \
+  --search "merged:$WEEK_START_TS..$WEEK_END_TS" \
   --json number,title,author,labels,url --limit 300 > /tmp/all-prs.json
 jq '[.[] | select((.author.login // "") | test("^app/(dependabot|github-actions)$|^(dependabot|github-actions)\\[bot\\]$"; "i") | not)]' \
   /tmp/all-prs.json > /tmp/weekly-prs.json

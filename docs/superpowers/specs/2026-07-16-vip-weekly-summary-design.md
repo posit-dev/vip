@@ -71,8 +71,10 @@ Steps:
 1. Checkout (`actions/checkout`, SHA-pinned as elsewhere in vip). No
    `fetch-depth: 0` needed — there is no NEWS diff.
 2. Gather merged PRs (`GH_TOKEN: ${{ github.token }}`):
-   - `WEEK_START = 7 days ago`, `WEEK_END = today` (UTC).
-   - `gh pr list --repo posit-dev/vip --state merged --search "merged:>=$WEEK_START" --json number,title,author,labels,url --limit 300 > weekly-prs.json`.
+   - Compute a bounded, run-aligned 7-day window with precise UTC timestamps:
+     `WEEK_START_TS = 7 days ago`, `WEEK_END_TS = now` (ISO-8601 `Z`). Keep
+     date-only `week_start`/`week_end` for the Slack display line.
+   - `gh pr list --repo posit-dev/vip --state merged --search "merged:$WEEK_START_TS..$WEEK_END_TS" --json number,title,author,labels,url --limit 300`. A bare-date `merged:>=DATE` is unbounded upward and starts at 00:00, so PRs merged between 00:00 and the run time would appear in two consecutive summaries.
    - Filter out fully-automated actors (`dependabot[bot]`, `github-actions[bot]`)
      with `jq`.
    - Emit `week_start`, `week_end`, `pr_count`, and `has_prs` to `$GITHUB_OUTPUT`.
