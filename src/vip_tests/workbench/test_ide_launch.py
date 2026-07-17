@@ -27,7 +27,7 @@ from vip_tests.workbench.conftest import (
     wait_for_session_active,
     workbench_login,
 )
-from vip_tests.workbench.exec import rstudio_eval
+from vip_tests.workbench.exec import ensure_positron_console, rstudio_eval
 from vip_tests.workbench.pages import (
     Homepage,
     JupyterLabSession,
@@ -442,29 +442,26 @@ def jupyterlab_executes_code(page: Page):
 
 @then("the Positron console is accessible")
 def positron_console_accessible(page: Page):
-    """Verify the Positron console panel is visible and ready.
+    """Start a Positron console session and verify the console panel renders.
 
-    Positron (VS Code-based) exposes a dedicated console pane.  We assert it
-    is visible, confirming the runtime connection is established without
-    requiring a full code-execution round-trip.  If the console panel
-    selector never appears, the DOM structure may have changed (e.g. a
-    Positron update) — skip rather than hard-fail.
+    Positron (Workbench 2026+) opens to a Welcome page with **no auto-started
+    console**: ``.positron-console`` does not exist until a console session is
+    started and an interpreter is selected (discovery is asynchronous, ~10 s).
+    The previous gate waited for ``.positron-console`` on the Welcome page — where
+    it can never appear — and skipped with a misleading "may not be installed"
+    even though Positron was fully loaded (issue #477).
 
-    Uses ``TIMEOUT_CODE_EXEC`` (30 s) to match the original intent: the
-    console panel should appear promptly once the IDE has loaded.  A
-    console-specific skip message is used to distinguish this failure from
-    the IDE-not-installed skip emitted by the workbench check.
+    ``ensure_positron_console`` clicks "Start New Console Session", waits for the
+    interpreter quickpick, selects an interpreter, and waits for the console.  If
+    Positron loaded but no interpreter could be started, skip with an accurate
+    reason rather than implying Positron is missing.
     """
-    _expect_ide_or_skip(
-        page,
-        PositronSession.CONSOLE_PANEL,
-        "Positron console",
-        timeout=TIMEOUT_CODE_EXEC,
-        skip_reason=(
-            "Positron console element not found within timeout — "
-            "selector may have changed or Positron may not be fully available ({exc})"
-        ),
-    )
+    if not ensure_positron_console(page, timeout=TIMEOUT_IDE_LOAD):
+        pytest.skip(
+            "Positron loaded but no console session could be started — no R/Python "
+            "interpreter resolved on this deployment (issue #477)."
+        )
+    expect(page.locator(PositronSession.CONSOLE_PANEL)).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
 
 
 @then("the session is cleaned up")

@@ -248,6 +248,69 @@ _POSITRON_CONSOLE_READY = f"{PositronSession.ACTIVE_CONSOLE} .active-line-number
 # The Console and Terminal share the bottom panel; a prior terminal_run leaves
 # the Terminal tab selected, hiding the console. Activate the Console tab first.
 _POSITRON_CONSOLE_TAB = PositronSession.CONSOLE_TAB
+_POSITRON_START_BUTTON = PositronSession.START_CONSOLE_BUTTON
+_POSITRON_QUICKPICK_ROW = PositronSession.INTERPRETER_QUICKPICK_ROW
+# Poll cadence for the "start a console" flow. Interpreter discovery is async
+# (~10s live on a cold session), so we poll rather than assume immediacy.
+_POSITRON_POLL_MS = 1_000
+
+
+def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
+    """Ensure a Positron console session is running on *page*.
+
+    Positron (Workbench 2026+) opens to a Welcome page with **no auto-started
+    console** — ``.positron-console`` and its input do not exist until a console
+    session is started (issue #477). This clicks "Start New Console Session",
+    polls for the asynchronously-discovered interpreter quickpick, selects the
+    first interpreter, and waits for the console to render.
+
+    Idempotent: returns immediately if a console is already present. Never
+    raises — returns ``True`` when a console is running (already-open or freshly
+    started) and ``False`` when none could be started (no Start button, or no
+    interpreter resolved within *timeout*). Callers decide whether ``False`` is
+    an accurate skip or a failure.
+
+    Args:
+        page: Playwright page for an active Positron session.
+        timeout: Max milliseconds to wait for both interpreter discovery and the
+            console to render.
+
+    Returns:
+        ``True`` if a console is running, ``False`` otherwise.
+    """
+    if page.locator(PositronSession.CONSOLE_PANEL).count() > 0:
+        return True
+
+    start = page.locator(_POSITRON_START_BUTTON)
+    if start.count() == 0:
+        return False
+    try:
+        start.first.click()
+    except Exception:
+        return False
+
+    max_polls = max(1, timeout // _POSITRON_POLL_MS)
+
+    # Poll the interpreter quickpick — discovery lags the click on a cold session.
+    for _ in range(max_polls):
+        if page.locator(_POSITRON_QUICKPICK_ROW).count() > 0:
+            break
+        page.wait_for_timeout(_POSITRON_POLL_MS)
+    rows = page.locator(_POSITRON_QUICKPICK_ROW)
+    if rows.count() == 0:
+        return False
+
+    try:
+        rows.first.click()
+    except Exception:
+        page.keyboard.press("Enter")
+
+    # Wait for the console panel to render after the interpreter is selected.
+    for _ in range(max_polls):
+        if page.locator(PositronSession.CONSOLE_PANEL).count() > 0:
+            return True
+        page.wait_for_timeout(_POSITRON_POLL_MS)
+    return page.locator(PositronSession.CONSOLE_PANEL).count() > 0
 
 
 def _activate_positron_console(page: Page) -> None:
@@ -290,6 +353,11 @@ def positron_eval_r(page: Page, expr: str, timeout: int = 30_000) -> str:
     start, end = _make_sentinels()
     wrapped = _wrap_r_expr(expr, start, end)
 
+    if not ensure_positron_console(page, timeout=timeout):
+        raise ExecError(
+            "No Positron console could be started (no R/Python interpreter "
+            "resolved); cannot evaluate the expression."
+        )
     _activate_positron_console(page)
     active = page.locator(_POSITRON_ACTIVE_CONSOLE)
     expect(active.first).to_be_visible(timeout=timeout)
@@ -336,6 +404,11 @@ def positron_eval_python(page: Page, expr: str, timeout: int = 30_000) -> str:
     start, end = _make_sentinels()
     wrapped = _wrap_python_expr(expr, start, end)
 
+    if not ensure_positron_console(page, timeout=timeout):
+        raise ExecError(
+            "No Positron console could be started (no R/Python interpreter "
+            "resolved); cannot evaluate the expression."
+        )
     _activate_positron_console(page)
     active = page.locator(_POSITRON_ACTIVE_CONSOLE)
     expect(active.first).to_be_visible(timeout=timeout)
@@ -545,12 +618,18 @@ def _detect_ide(page: Page) -> str:
     """Identify which IDE is rendered on *page*.
 
     Positron and VS Code both render ``.monaco-workbench``; Positron is
-    distinguished first by its unique ``.positron-console`` panel. Returns one
-    of ``"rstudio"``, ``"positron"``, ``"vscode"``, or ``"unknown"``.
+    distinguished by its unique ``.positron-variables`` pane, which is present
+    even on the Welcome page before any console starts (``.positron-console`` is
+    console-gated and absent until a console session is started — issue #477).
+    ``.positron-console`` is accepted as a fallback. Returns one of
+    ``"rstudio"``, ``"positron"``, ``"vscode"``, or ``"unknown"``.
     """
     if page.locator(RStudioSession.CONTAINER).count() > 0:
         return "rstudio"
-    if page.locator(PositronSession.CONSOLE_PANEL).count() > 0:
+    if (
+        page.locator(PositronSession.VARIABLES_PANE).count() > 0
+        or page.locator(PositronSession.CONSOLE_PANEL).count() > 0
+    ):
         return "positron"
     if page.locator(VSCodeSession.WORKBENCH).count() > 0:
         return "vscode"
