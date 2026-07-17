@@ -294,8 +294,16 @@ def vscode_displayed(page: Page):
 
 @then("the JupyterLab IDE is displayed")
 def jupyter_displayed(page: Page):
-    """Verify JupyterLab IDE core elements are visible."""
-    _expect_ide_or_skip(page, JupyterLabSession.LAUNCHER, "JupyterLab")
+    """Verify JupyterLab IDE core elements are visible.
+
+    Gates on the JupyterLab application shell (``.jp-LabShell``), which is
+    present on every JupyterLab load regardless of the active view — NOT on
+    ``.jp-Launcher``, which only exists while the Launcher tab is open.  On
+    some deployments JupyterLab opens without the Launcher tab, so gating on
+    the launcher produced a false "IDE may not be installed" skip even though
+    JupyterLab was fully loaded (issue #478).
+    """
+    _expect_ide_or_skip(page, JupyterLabSession.SHELL, "JupyterLab")
 
 
 @then("the Positron IDE is displayed")
@@ -336,6 +344,25 @@ def vscode_terminal_accessible(page: Page):
     expect(terminal_input).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
 
 
+def _accept_open_dialogs(page: Page, *, attempts: int = 20) -> None:
+    """Dismiss JupyterLab modal dialogs (e.g. "Select Kernel") by accepting the
+    default, polling because they can appear a moment after the triggering
+    action rather than immediately.  Best-effort: never raises.
+    """
+    for _ in range(attempts):
+        if page.locator(JupyterLabSession.DIALOG).count() == 0:
+            return
+        accept = page.locator(JupyterLabSession.DIALOG_ACCEPT).first
+        try:
+            if accept.count() > 0:
+                accept.click(timeout=TIMEOUT_QUICK)
+            else:
+                page.keyboard.press("Enter")
+        except (PlaywrightTimeoutError, PlaywrightError):
+            pass
+        page.wait_for_timeout(1000)
+
+
 @then("JupyterLab can execute code in a notebook")
 def jupyterlab_executes_code(page: Page):
     """Open a new notebook from the launcher and execute ``1 + 1``.
@@ -347,20 +374,53 @@ def jupyterlab_executes_code(page: Page):
     Skips gracefully if no notebook kernel cards are available (e.g., when
     the Docker image lacks a working kernel).
     """
-    # The launcher should already be visible (asserted in the previous step).
-    # Click the first notebook launcher card to open a new notebook.
+    # JupyterLab's shell (.jp-LabShell) mounts before the app finishes booting:
+    # the #jupyterlab-splash overlay lingers for a few seconds, intercepting
+    # clicks and detaching elements mid-hydration.  Wait for it to clear before
+    # interacting, otherwise the launcher-open click is raced away (issue #478).
+    try:
+        page.locator(JupyterLabSession.SPLASH).wait_for(state="hidden", timeout=TIMEOUT_IDE_LOAD)
+    except (PlaywrightTimeoutError, PlaywrightError):
+        pass  # splash already gone (or never rendered)
+
+    # A fresh JupyterLab session on some deployments opens with no Launcher tab
+    # (issue #478), so no launcher cards are present.  Open a Launcher via
+    # JupyterLab's built-in ``launcher:create`` command control (retrying once),
+    # then wait for the notebook kernel card to appear.
     notebook_card = page.locator(JupyterLabSession.LAUNCHER_NOTEBOOK_CARD).first
+    for _attempt in range(2):
+        if notebook_card.count() > 0:
+            break
+        opener = page.locator(JupyterLabSession.LAUNCHER_CREATE_COMMAND).first
+        if opener.count() == 0:
+            break
+        try:
+            opener.click(timeout=TIMEOUT_QUICK)
+            page.locator(JupyterLabSession.LAUNCHER_NOTEBOOK_CARD).first.wait_for(
+                state="visible", timeout=TIMEOUT_IDE_LOAD
+            )
+        except (PlaywrightTimeoutError, PlaywrightError):
+            pass  # fall through; re-check below and retry or skip
+        notebook_card = page.locator(JupyterLabSession.LAUNCHER_NOTEBOOK_CARD).first
     if notebook_card.count() == 0:
         pytest.skip("No notebook kernel cards available in JupyterLab launcher")
     expect(notebook_card).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
     notebook_card.click()
 
-    # Wait for the notebook panel to appear
-    notebook_panel = page.locator(JupyterLabSession.NOTEBOOK_PANEL)
+    # Clicking the card opens a notebook as the active dock tab.  Several hidden
+    # notebook panels can coexist, so target the *visible* (active) one rather
+    # than a bare selector that would match multiple, then work within it.
+    notebook_panel = page.locator(f"{JupyterLabSession.NOTEBOOK_PANEL}:visible").first
     expect(notebook_panel).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
 
-    # Click into the first code cell input and type the expression
-    cell_input = page.locator(JupyterLabSession.CELL_INPUT).first
+    # A new notebook pops a modal "Select Kernel" dialog that intercepts clicks.
+    # It appears a moment *after* the notebook opens (once the kernel connects),
+    # so poll and dismiss it (accept the default kernel) rather than checking
+    # once — accepting the default makes the cell interactive (issue #478).
+    _accept_open_dialogs(page)
+
+    # Click into the first code cell input of the active notebook and type.
+    cell_input = notebook_panel.locator(JupyterLabSession.CELL_INPUT).first
     expect(cell_input).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
     cell_input.click()
     cell_input.type("1 + 1")
@@ -370,7 +430,7 @@ def jupyterlab_executes_code(page: Page):
 
     # Assert the output area shows 2.  The kernel may be slow to start in
     # Docker CI, so allow a generous timeout before skipping.
-    cell_output = page.locator(JupyterLabSession.CELL_OUTPUT).first
+    cell_output = notebook_panel.locator(JupyterLabSession.CELL_OUTPUT).first
     try:
         expect(cell_output).to_contain_text("2", timeout=TIMEOUT_CODE_EXEC)
     except AssertionError:
