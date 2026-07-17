@@ -231,7 +231,9 @@ def vscode_displayed(page: Page):
 
 @then("the JupyterLab IDE is displayed")
 def jupyter_displayed(page: Page):
-    _expect_ide_or_skip(page, JupyterLabSession.LAUNCHER, "JupyterLab")
+    # Gate on the JupyterLab app shell, not the Launcher tab (which some
+    # deployments do not auto-open) — see issue #478.
+    _expect_ide_or_skip(page, JupyterLabSession.SHELL, "JupyterLab")
 
 
 @then("the Positron IDE is displayed")

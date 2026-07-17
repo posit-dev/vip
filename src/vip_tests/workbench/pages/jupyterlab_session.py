@@ -10,9 +10,21 @@ class JupyterLabSession:
     """Selectors for the JupyterLab IDE."""
 
     # Core UI elements
+    # The JupyterLab application shell — present on every load regardless of the
+    # active view, so it is the reliable "JupyterLab is up" readiness signal.
+    # (`.jp-Launcher` only exists while the Launcher tab is open, which some
+    # deployments do not auto-open — see issue #478.)
+    SHELL = ".jp-LabShell"
+    # Boot splash overlay; lingers after SHELL mounts and intercepts clicks
+    # until the app finishes hydrating, so wait for it to clear before
+    # interacting (issue #478).
+    SPLASH = "#jupyterlab-splash"
     LAUNCHER = ".jp-Launcher"
     NOTEBOOK_PANEL = ".jp-NotebookPanel"
     MAIN_AREA = ".jp-MainAreaWidget"
+    # Modal dialog (e.g. "Select Kernel" for a new notebook) and its accept button.
+    DIALOG = ".jp-Dialog"
+    DIALOG_ACCEPT = ".jp-Dialog .jp-Dialog-button.jp-mod-accept"
 
     # Sidebar
     FILE_BROWSER = ".jp-FileBrowser"
@@ -35,6 +47,12 @@ class JupyterLabSession:
     # Launcher cards (to open a new notebook from the launcher)
     LAUNCHER_CARD = ".jp-LauncherCard"
     LAUNCHER_NOTEBOOK_CARD = ".jp-LauncherCard[data-category='Notebook']"
+
+    # JupyterLab's built-in "New Launcher" command control — used to open a
+    # Launcher tab on deployments that do not auto-open one (issue #478). The
+    # ``:visible`` filter picks the clickable toolbar/menu control over any
+    # hidden duplicate registered for the same command.
+    LAUNCHER_CREATE_COMMAND = '[data-command="launcher:create"]:visible'
 
     # Extension Manager
     EXTENSION_MANAGER_TAB = ".jp-SideBar .lm-TabBar-tab[data-id='extensionmanager.main-view']"
