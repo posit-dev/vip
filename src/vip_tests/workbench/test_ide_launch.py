@@ -458,8 +458,9 @@ def positron_console_accessible(page: Page):
     """
     if not ensure_positron_console(page, timeout=TIMEOUT_IDE_LOAD):
         pytest.skip(
-            "Positron loaded but no console session could be started — no R/Python "
-            "interpreter resolved on this deployment (issue #477)."
+            "Positron loaded but no console session could be started — the "
+            '"Start New Console Session" control was unavailable, no R/Python '
+            "interpreter resolved, or the console did not render (issue #477)."
         )
     expect(page.locator(PositronSession.CONSOLE_PANEL)).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
 

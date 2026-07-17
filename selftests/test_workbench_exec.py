@@ -434,10 +434,13 @@ class TestDetectIde:
 
 
 class _FakeKeyboard:
-    def __init__(self):
+    def __init__(self, raises=False):
         self.pressed: list[str] = []
+        self._raises = raises
 
     def press(self, key):
+        if self._raises:
+            raise RuntimeError("keyboard detached")
         self.pressed.append(key)
 
 
@@ -470,6 +473,8 @@ class _EnsureFakeLocator:
         if self._selector == PositronSession.START_CONSOLE_BUTTON:
             self._page.start_clicked += 1
         elif self._selector == PositronSession.INTERPRETER_QUICKPICK_ROW:
+            if self._page.row_click_raises:
+                raise RuntimeError("row detached")
             self._page.rows_clicked += 1
             self._page.interpreter_selected = True
 
@@ -491,16 +496,19 @@ class _EnsureFakePage:
         has_start_button=True,
         quickpick_after=0,
         console_renders=True,
+        row_click_raises=False,
+        keyboard_raises=False,
     ):
         self.has_console_panel = has_console_panel
         self.has_start_button = has_start_button
         self.quickpick_after = quickpick_after
         self.console_renders = console_renders
+        self.row_click_raises = row_click_raises
         self.polls = 0
         self.interpreter_selected = False
         self.start_clicked = 0
         self.rows_clicked = 0
-        self.keyboard = _FakeKeyboard()
+        self.keyboard = _FakeKeyboard(raises=keyboard_raises)
 
     def locator(self, selector):
         return _EnsureFakeLocator(self, selector)
@@ -539,6 +547,26 @@ class TestEnsurePositronConsole:
         page = _EnsureFakePage(quickpick_after=0, console_renders=False)
         assert ensure_positron_console(page, timeout=3_000) is False
         assert page.interpreter_selected is True
+
+    def test_never_raises_when_both_row_click_and_enter_fail(self):
+        """Honour the "never raises" contract: if selecting the interpreter row
+        fails AND the Enter keyboard fallback also raises, return False."""
+        page = _EnsureFakePage(
+            quickpick_after=0,
+            console_renders=False,
+            row_click_raises=True,
+            keyboard_raises=True,
+        )
+        assert ensure_positron_console(page, timeout=2_000) is False
+
+    def test_total_wait_bounded_by_timeout(self):
+        """The poll budget is SHARED across discovery + render, so total waits
+        never exceed ~timeout (not ~2x). Interpreter resolves after 2 polls but
+        the console never renders; with timeout=5000ms / 1000ms poll the total
+        wait cycles must stay <= 5 (a per-loop budget would allow ~7)."""
+        page = _EnsureFakePage(quickpick_after=2, console_renders=False)
+        assert ensure_positron_console(page, timeout=5_000) is False
+        assert page.polls <= 5
 
 
 # ---------------------------------------------------------------------------

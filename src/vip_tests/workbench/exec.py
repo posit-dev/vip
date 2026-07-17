@@ -266,14 +266,14 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
 
     Idempotent: returns immediately if a console is already present. Never
     raises — returns ``True`` when a console is running (already-open or freshly
-    started) and ``False`` when none could be started (no Start button, or no
-    interpreter resolved within *timeout*). Callers decide whether ``False`` is
-    an accurate skip or a failure.
+    started) and ``False`` when none could be started (no/unclickable Start
+    button, no interpreter resolved, or the console never rendered within
+    *timeout*). Callers decide whether ``False`` is an accurate skip or a failure.
 
     Args:
         page: Playwright page for an active Positron session.
-        timeout: Max milliseconds to wait for both interpreter discovery and the
-            console to render.
+        timeout: Max total milliseconds to wait, SHARED across interpreter
+            discovery and console rendering (not applied twice).
 
     Returns:
         ``True`` if a console is running, ``False`` otherwise.
@@ -289,27 +289,35 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
     except Exception:
         return False
 
-    max_polls = max(1, timeout // _POSITRON_POLL_MS)
+    # A single poll budget is shared across both phases below so the total wait
+    # is bounded by *timeout* rather than ~2x it.
+    remaining = max(1, timeout // _POSITRON_POLL_MS)
 
-    # Poll the interpreter quickpick — discovery lags the click on a cold session.
-    for _ in range(max_polls):
-        if page.locator(_POSITRON_QUICKPICK_ROW).count() > 0:
-            break
+    # Phase 1: poll the interpreter quickpick — discovery lags the click on a
+    # cold session (~10s live).
+    while page.locator(_POSITRON_QUICKPICK_ROW).count() == 0 and remaining > 0:
         page.wait_for_timeout(_POSITRON_POLL_MS)
+        remaining -= 1
     rows = page.locator(_POSITRON_QUICKPICK_ROW)
     if rows.count() == 0:
         return False
 
+    # Select the first interpreter; fall back to Enter. Both are best-effort so
+    # the "never raises" contract holds even if the row/keyboard is detached.
     try:
         rows.first.click()
     except Exception:
-        page.keyboard.press("Enter")
+        try:
+            page.keyboard.press("Enter")
+        except Exception:
+            return False
 
-    # Wait for the console panel to render after the interpreter is selected.
-    for _ in range(max_polls):
+    # Phase 2: wait (with the remaining budget) for the console to render.
+    while remaining > 0:
         if page.locator(PositronSession.CONSOLE_PANEL).count() > 0:
             return True
         page.wait_for_timeout(_POSITRON_POLL_MS)
+        remaining -= 1
     return page.locator(PositronSession.CONSOLE_PANEL).count() > 0
 
 
