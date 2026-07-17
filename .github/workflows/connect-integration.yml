@@ -93,7 +93,7 @@ jobs:
           echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           enable-cache: true
 
@@ -191,7 +191,7 @@ jobs:
     if: ${{ failure() }}
     steps:
       - name: Notify Slack
-        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+        uses: slackapi/slack-github-action@fc46ded2fc4d7f11bfa62864526f920cf1a1167d # v3.0.4
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_CONNECT_CI }}
           webhook-type: incoming-webhook
