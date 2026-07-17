@@ -44,6 +44,8 @@ from vip_tests.workbench.pages import (
     VSCodeSession,
 )
 
+pytestmark = pytest.mark.order(60)
+
 _FILENAME = Path(__file__).name
 
 # Extra timeout (ms) for Git network operations (clone / push). Scaled by

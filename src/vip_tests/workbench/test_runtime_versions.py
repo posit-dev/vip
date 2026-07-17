@@ -28,6 +28,8 @@ from vip_tests.workbench.pages import (
     RStudioSession,
 )
 
+pytestmark = pytest.mark.order(50)
+
 _FILENAME = Path(__file__).name
 
 

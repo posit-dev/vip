@@ -33,6 +33,8 @@ from vip_tests.workbench.conftest import (
 from vip_tests.workbench.pages import Homepage, NewSessionDialog, RStudioSession
 from vip_tests.workbench.pages.console_pane import ConsolePaneSelectors
 
+pytestmark = pytest.mark.order(60)
+
 # R script that the job runs — output used for verification.
 _JOB_SCRIPT_CONTENT = 'Sys.sleep(2)\ncat("hello from job\\n")'
 _JOB_SCRIPT_FILENAME = "test_job_vip.R"

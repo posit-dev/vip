@@ -31,6 +31,8 @@ from vip_tests.workbench.conftest import (
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
 
+pytestmark = pytest.mark.order(40)
+
 scenarios("test_session_capacity_k8s.feature")
 
 _SESSION_PREFIX = f"_vip_k8s_{int(time.time())}_"
