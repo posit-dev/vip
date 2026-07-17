@@ -340,17 +340,20 @@ extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
         <section id="uninstalling">
           <h2>Uninstalling</h2>
           <p>
-            When you are done with VIP, preview what will be removed. By default
-            <code>vip uninstall</code> prints a dry-run plan &mdash; the Chromium
-            browser, system libraries, and other artifacts that
-            <code>vip install</code> added &mdash; without changing anything:
+            When you are done with VIP, run <code>vip uninstall</code> to preview
+            what will be removed. It prints a dry-run plan &mdash; the Chromium
+            browser cache and other test artifacts &mdash; without changing
+            anything:
           </p>
           <pre><code>vip uninstall</code></pre>
           <p>
-            Pass <code>--yes</code> to execute the plan, then remove the package
-            itself:
+            Pass <code>--yes</code> to remove those artifacts. On Linux, VIP does
+            not remove the system libraries it installed; instead it prints a
+            <code>sudo</code> command for you to run. Complete the uninstall in
+            this order:
           </p>
           <pre><code>vip uninstall --yes
+# then run the sudo removal command that vip uninstall prints, if any
 uv pip uninstall posit-vip</code></pre>
         </section>
       </article>
