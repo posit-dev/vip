@@ -80,7 +80,6 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::440849847947:role/claude-code-gha
           role-session-name: vip-weekly-summary-${{ github.run_id }}
-          role-session-name: ${{ steps.session-name.outputs.value }}
           aws-region: us-east-2
 
       - name: Generate highlights with Claude
