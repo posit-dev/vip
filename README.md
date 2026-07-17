@@ -17,10 +17,8 @@ be published to a Connect server.
 ## Quick start
 
 ```bash
-uv venv
-source .venv/bin/activate
-uv pip install posit-vip
-uv run vip install
+uv tool install posit-vip
+vip install
 vip verify --connect-url https://connect.example.com --interactive-auth
 ```
 
@@ -48,9 +46,11 @@ vip verify --config vip.toml
 To reverse what `vip install` (or `just setup`) did:
 
 ```bash
-uv run vip uninstall        # dry run; prints the full plan including any sudo command
-uv run vip uninstall --yes  # remove Playwright cache + manifest; prints the sudo command
-                            # for any system packages so you can remove them yourself
+vip uninstall        # dry run; prints the full plan including any sudo command
+vip uninstall --yes  # remove Playwright cache + manifest; prints the sudo command
+                     # for any system packages so you can remove them yourself
+
+uv tool uninstall posit-vip  # remove vip itself once you're done
 ```
 
 `vip uninstall` only removes packages and files that `vip install` recorded
