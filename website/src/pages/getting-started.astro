@@ -341,14 +341,13 @@ extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
           <h2>Uninstalling</h2>
           <p>
             When you are done with VIP, run <code>vip uninstall</code> to preview
-            what will be removed. It prints a dry-run plan &mdash; the Chromium
-            browser cache and other test artifacts &mdash; without changing
+            what will be removed. It prints a dry-run plan without changing
             anything:
           </p>
           <pre><code>vip uninstall</code></pre>
           <p>
             Pass <code>--yes</code> to remove those artifacts. On Linux, VIP does
-            not remove the system libraries it installed; instead it prints a
+            not remove the system libraries it installed and instead it prints a
             <code>sudo</code> command for you to run. Complete the uninstall in
             this order:
           </p>
