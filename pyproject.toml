@@ -148,6 +148,13 @@ packages = ["src/vip", "src/vip_tests"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "examples/cross_product_validation" = "vip/_scaffold/cross_product_validation"
+# Quarto report templates so `vip report` works when installed as a wheel,
+# not only from a source checkout. Copied into the working ./report dir by
+# run_report(). Keep this list in sync with cli._REPORT_TEMPLATE_FILES.
+"report/index.qmd" = "vip/_report/index.qmd"
+"report/details.qmd" = "vip/_report/details.qmd"
+"report/_quarto.yml" = "vip/_report/_quarto.yml"
+"report/styles.css" = "vip/_report/styles.css"
 
 [tool.pytest.ini_options]
 testpaths = ["src/vip_tests"]
