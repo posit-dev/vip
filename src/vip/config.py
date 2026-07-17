@@ -168,13 +168,21 @@ class WorkbenchExtensionsConfig:
         )
 
 
+# Default anonymous-clone target used when [workbench.git_test] is absent, so
+# the clone/connectivity scenarios have something to run against out-of-the-box.
+DEFAULT_PUBLIC_CLONE_URL = "https://github.com/posit-dev/posit-cli.git"
+
+
 @dataclass
 class GitTestConfig:
     """Configuration for [workbench.git_test] Git operations testing.
 
     Enables terminal and GUI Git scenarios (clone, branch, commit, push)
-    against a real Git repository.  All scenarios auto-skip when this block
-    is absent from the config file.
+    against a real Git repository.  When this block is absent from the config
+    file, ``WorkbenchConfig.from_dict`` synthesizes a default pointing at a
+    public repository (``DEFAULT_PUBLIC_CLONE_URL``) with ``auth_method =
+    "none"``, so clone/connectivity scenarios run out-of-the-box; push/commit
+    scenarios skip as read-only until the user configures a token.
 
     Token is never stored in the TOML file.  For ``auth_method = "https-token"``
     set VIP_GIT_TOKEN in the environment (same pattern as
@@ -242,6 +250,9 @@ class WorkbenchConfig(ProductConfig):
     idle_grace_seconds: int = 60
     extensions: WorkbenchExtensionsConfig = field(default_factory=WorkbenchExtensionsConfig)
     kubernetes: WorkbenchKubernetesConfig = field(default_factory=WorkbenchKubernetesConfig)
+    # None only when constructed directly (e.g. in tests); ``from_dict`` always
+    # populates this, defaulting to an anonymous public-repo clone when
+    # [workbench.git_test] is absent from the TOML file.
     git_test: GitTestConfig | None = None
     # Base path of Chronicle's on-disk data on the Workbench server.  Defaults
     # to the embedded-Workbench location under the shared-storage tree.  The
@@ -286,7 +297,11 @@ class WorkbenchConfig(ProductConfig):
             idle_grace_seconds=raw.get("idle_grace_seconds", 60),
             extensions=WorkbenchExtensionsConfig.from_dict(raw.get("extensions", {})),
             kubernetes=WorkbenchKubernetesConfig.from_dict(raw.get("kubernetes", {})),
-            git_test=GitTestConfig.from_dict(git_test_raw) if git_test_raw is not None else None,
+            git_test=(
+                GitTestConfig.from_dict(git_test_raw)
+                if git_test_raw is not None
+                else GitTestConfig(clone_url=DEFAULT_PUBLIC_CLONE_URL, auth_method="none")
+            ),
             chronicle_data_path=raw.get(
                 "chronicle_data_path", "/var/lib/rstudio-server/shared-storage/chronicle"
             ),
