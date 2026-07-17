@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.54.3 (2026-07-17)
+
+### Bug Fixes
+
+- **workbench**: Wait for homepage logo so cleanup sweep finds sessions
+  ([#492](https://github.com/posit-dev/vip/pull/492),
+  [`9d709db`](https://github.com/posit-dev/vip/commit/9d709db9338acbdfc5261c2227a88081250f86ca))
+
+
 ## v0.54.2 (2026-07-17)
 
 ### Bug Fixes
