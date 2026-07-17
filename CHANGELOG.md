@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.54.7 (2026-07-17)
+
+### Bug Fixes
+
+- **workbench**: Start Positron console session before gating on it
+  ([#497](https://github.com/posit-dev/vip/pull/497),
+  [`aef3abb`](https://github.com/posit-dev/vip/commit/aef3abbd31ca69c9be470626404eecf977384ea5))
+
+### Chores
+
+- Rework repo automation and add weekly Slack summary
+  ([#493](https://github.com/posit-dev/vip/pull/493),
+  [`d912850`](https://github.com/posit-dev/vip/commit/d912850d1f8a6a4068cc6ac2ed3c6b87a2c5da6b))
+
+
 ## v0.54.6 (2026-07-17)
 
 ### Bug Fixes
