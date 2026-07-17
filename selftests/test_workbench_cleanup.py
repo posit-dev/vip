@@ -384,7 +384,14 @@ class _FakeLocator:
         return None
 
     def wait_for(self, *, state=None, timeout=None):
-        # Only selectors registered as present "appear"; others time out.
+        from vip_tests.workbench.pages import Homepage
+
+        # The Posit logo is the authenticated-homepage marker (see is_visible);
+        # _complete_sso_if_needed now wait_for()s it rather than snapshotting,
+        # so model it as present. Other selectors "appear" only when registered
+        # as a present dialog; otherwise they time out.
+        if self._selector == Homepage.POSIT_LOGO:
+            return
         if self._selector not in self._page.present_dialogs:
             raise RuntimeError(f"locator not visible: {self._selector}")
 
@@ -619,6 +626,62 @@ def test_complete_sso_false_when_not_on_login_page():
     # No logo and not a login URL — nothing we can do.
     page = _SsoFakePage(url="https://wb.example.com/some/other/page", sso_visible=False)
     assert _complete_sso_if_needed(page) is False
+
+
+class _DelayedLogoLocator:
+    """Logo a one-shot is_visible() snapshot misses but a bounded wait_for()
+    catches -- models the shadcn SPA mounting the logo a few seconds after the
+    page ``load`` event (issue #491)."""
+
+    def __init__(self):
+        self.waited = False
+
+    @property
+    def first(self):
+        return self
+
+    def is_visible(self):
+        return False  # snapshot loses the hydration race
+
+    def wait_for(self, *, state=None, timeout=None):
+        self.waited = True  # bounded wait catches the logo once it mounts
+
+    def click(self, timeout=None):
+        pass
+
+
+class _HydrationRacePage:
+    """Authenticated homepage whose logo mounts after ``load``; Workbench has
+    redirected the root URL into an active session's workspace (issue #491)."""
+
+    def __init__(self, url="https://wb.example.com/s/abc123/workspaces/"):
+        self.url = url
+        self.logo = _DelayedLogoLocator()
+
+    def locator(self, selector):
+        from vip_tests.workbench.pages import Homepage
+
+        if selector == Homepage.POSIT_LOGO:
+            return self.logo
+        return _SsoFakeLocator(lambda: False)
+
+    def get_by_role(self, role, name=None):
+        return _SsoFakeLocator(lambda: False)  # no SSO button should be reached
+
+
+def test_complete_sso_true_when_logo_mounts_after_load():
+    """Regression for #491: the authenticated homepage's logo mounts a few
+    seconds after ``load`` (shadcn hydration), and Workbench redirects the root
+    URL into an active session's workspace. A one-shot ``is_visible()`` snapshot
+    raced hydration and returned False, aborting the cleanup sweep with a
+    misleading expired-session warning even though the session list was
+    reachable. A bounded ``wait_for`` must detect the logo and report
+    authenticated."""
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    page = _HydrationRacePage()
+    assert _complete_sso_if_needed(page) is True
+    assert page.logo.waited is True  # used the bounded wait, not a snapshot
 
 
 # ---------------------------------------------------------------------------

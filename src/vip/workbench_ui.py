@@ -90,8 +90,16 @@ def _complete_sso_if_needed(page: Page) -> bool:
     """
     logo = page.locator(Homepage.POSIT_LOGO)
     try:
-        if logo.is_visible():
-            return True  # already authenticated (e.g. the in-test page)
+        # Bounded wait, not a one-shot is_visible(): the 2026.05+ homepage is a
+        # shadcn SPA that mounts the logo a few seconds after the `load` event
+        # (and Workbench redirects the root URL into an active session's
+        # workspace when sessions exist). A snapshot check races hydration and
+        # wrongly concludes "not authenticated", aborting the sweep with a
+        # misleading expired-session warning even though the session list is
+        # reachable -- the same race _wait_for_session_list already guards
+        # against for the row checkboxes (issue #491).
+        logo.wait_for(state="visible", timeout=TIMEOUT_QUICK)
+        return True  # already authenticated (e.g. the in-test page)
     except Exception:
         pass
     try:
