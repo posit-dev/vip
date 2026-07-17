@@ -24,8 +24,8 @@ import Footer from "../components/Footer.astro";
           <li><a href="#running-tests">Running tests</a></li>
           <li><a href="#configuration-file">Configuration file</a></li>
           <li><a href="#generating-reports">Generating reports</a></li>
-          <li><a href="#uninstalling">Uninstalling</a></li>
           <li><a href="#extending-vip">Extending VIP</a></li>
+          <li><a href="#uninstalling">Uninstalling</a></li>
         </ul>
       </aside>
 
@@ -320,23 +320,6 @@ quarto publish connect --server https://connect.example.com</code></pre>
           </p>
         </section>
 
-        <section id="uninstalling">
-          <h2>Uninstalling</h2>
-          <p>
-            When you are done with VIP, preview what will be removed. By default
-            <code>vip uninstall</code> prints a dry-run plan &mdash; the Chromium
-            browser, system libraries, and other artifacts that
-            <code>vip install</code> added &mdash; without changing anything:
-          </p>
-          <pre><code>vip uninstall</code></pre>
-          <p>
-            Pass <code>--yes</code> to execute the plan, then remove the package
-            itself:
-          </p>
-          <pre><code>vip uninstall --yes
-uv pip uninstall posit-vip</code></pre>
-        </section>
-
         <section id="extending-vip">
           <h2>Extending VIP</h2>
           <p>
@@ -352,6 +335,23 @@ extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
           <p>
             See <a href="https://github.com/posit-dev/vip/tree/main/examples/custom_tests"><code>examples/custom_tests/</code></a> in the repository for a working example.
           </p>
+        </section>
+
+        <section id="uninstalling">
+          <h2>Uninstalling</h2>
+          <p>
+            When you are done with VIP, preview what will be removed. By default
+            <code>vip uninstall</code> prints a dry-run plan &mdash; the Chromium
+            browser, system libraries, and other artifacts that
+            <code>vip install</code> added &mdash; without changing anything:
+          </p>
+          <pre><code>vip uninstall</code></pre>
+          <p>
+            Pass <code>--yes</code> to execute the plan, then remove the package
+            itself:
+          </p>
+          <pre><code>vip uninstall --yes
+uv pip uninstall posit-vip</code></pre>
         </section>
       </article>
     </div>
