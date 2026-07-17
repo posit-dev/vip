@@ -1,0 +1,75 @@
+name: Weekly Summary
+
+# Posts a weekly summary of merged posit-dev/vip PRs to Slack.
+
+on:
+  schedule:
+    - cron: '0 16 * * 1'  # Monday 16:00 UTC (11am ET / 8am PT)
+  workflow_dispatch:       # Manual trigger (posts to Slack, like a scheduled run)
+  pull_request:            # Dry run: builds and logs the payload but does NOT post
+    paths:
+      - '.github/workflows/weekly-summary.yml'
+      - '.claude/agents/weekly-summary.md'
+
+jobs:
+  weekly-summary:
+    # Skip PRs from forks: this job assumes an AWS role and runs Claude over
+    # contributor-authored PR titles. Scheduled and manual runs always pass.
+    # Also skip dependabot PRs: their secrets store lacks the AWS/Slack secrets.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: weekly-summary-${{ github.event_name }}-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write   # for AWS OIDC (Bedrock)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Gather merged PRs
+        id: gather
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Bounded, run-aligned 7-day window using precise UTC timestamps. A
+          # bare-date lower bound (merged:>=DATE) is unbounded upward and begins
+          # at 00:00, so PRs merged between 00:00 and the Monday run time would
+          # appear in two consecutive weekly summaries. Timestamp bounds fix that.
+          WEEK_START_TS=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          WEEK_END_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          WEEK_START=$(date -u -d '7 days ago' +%Y-%m-%d)
+          WEEK_END=$(date -u +%Y-%m-%d)
+          echo "week_start=$WEEK_START" >> "$GITHUB_OUTPUT"
+          echo "week_end=$WEEK_END" >> "$GITHUB_OUTPUT"
+
+          gh pr list --repo posit-dev/vip --state merged \
+            --search "merged:$WEEK_START_TS..$WEEK_END_TS" \
+            --json number,title,author,labels,url \
+            --limit 300 > all-prs.json
+
+          # Exclude fully-automated actors (dependabot version bumps, the
+          # github-actions release bot). Human/Copilot-authored PRs stay in.
+          jq '[.[] | select((.author.login // "") | test("^app/(dependabot|github-actions)$|^(dependabot|github-actions)\\[bot\\]$"; "i") | not)]' \
+            all-prs.json > weekly-prs.json
+
+          PR_COUNT=$(jq 'length' weekly-prs.json)
+          echo "pr_count=$PR_COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$PR_COUNT" -eq 0 ]; then
+            echo "has_prs=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_prs=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "Found $PR_COUNT merged PRs for $WEEK_START..$WEEK_END."
+          jq -r '.[] | "#\(.number) \(.title)"' weekly-prs.json || true
