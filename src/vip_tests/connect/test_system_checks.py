@@ -43,7 +43,7 @@ def _scrub_secrets(value: Any) -> Any:
     return _scrub_job_keys(_scrub_license_keys(value))
 
 
-def _redact_license_outputs(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _redact_sensitive_outputs(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return a copy of *results* with sensitive data removed.
 
     Connect system check results echo the running configuration, and some checks
@@ -120,7 +120,7 @@ def download_report_artifact(connect_client, system_check, pytestconfig):
     if vip_report:
         safe_results = {
             **results,
-            "results": _redact_license_outputs(results.get("results", [])),
+            "results": _redact_sensitive_outputs(results.get("results") or []),
         }
         artifact_path = Path(vip_report).parent / "connect_system_checks.json"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
