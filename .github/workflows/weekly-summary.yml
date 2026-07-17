@@ -110,6 +110,9 @@ jobs:
         id: payload
         env:
           STRUCTURED: ${{ steps.analyze.outputs.structured_output }}
+          WEEK_START: ${{ steps.gather.outputs.week_start }}
+          WEEK_END: ${{ steps.gather.outputs.week_end }}
+          PR_COUNT: ${{ steps.gather.outputs.pr_count }}
         run: |
           set -euo pipefail
           # Only claim has_highlights when a highlight with non-empty text
@@ -130,18 +133,22 @@ jobs:
           echo "has_highlights=true" >> "$GITHUB_OUTPUT"
           # Link each highlight to its PR deterministically (links stay out of
           # Claude's job). A hallucinated/null number degrades to plain text.
+          # Escape Slack mrkdwn control chars in Claude-derived text (& first) so a
+          # crafted PR title echoed into a highlight cannot trigger <!channel>/<@user>
+          # mentions or fake links; the trusted PR link is appended separately.
           LINKED=$(printf '%s' "$FILTERED" | jq -c --slurpfile prs weekly-prs.json '
             map(. as $h
+              | ($h.text | gsub("&";"&amp;") | gsub("<";"&lt;") | gsub(">";"&gt;")) as $t
               | ([$prs[0][] | select(.number == $h.number) | .url] | first) as $u
-              | if $u == null then $h.text
-                else "\($h.text) (<\($u)|#\($h.number)>)"
+              | if $u == null then $t
+                else "\($t) (<\($u)|#\($h.number)>)"
                 end)')
           HIGHLIGHTS=$(printf '%s' "$LINKED" | jq 'map("• " + .) | join("\n")')
           jq -n \
             --argjson highlights "$HIGHLIGHTS" \
-            --arg week_start "${{ steps.gather.outputs.week_start }}" \
-            --arg week_end "${{ steps.gather.outputs.week_end }}" \
-            --arg pr_count "${{ steps.gather.outputs.pr_count }}" \
+            --arg week_start "$WEEK_START" \
+            --arg week_end "$WEEK_END" \
+            --arg pr_count "$PR_COUNT" \
             '{
               text: "vip Weekly Summary",
               blocks: [
@@ -150,7 +157,7 @@ jobs:
                 {type: "section", text: {type: "mrkdwn", text: ("*Highlights*\n" + $highlights)}}
               ]
             }' > /tmp/slack-payload.json
-          echo "Slack payload (dry run on pull_request):"
+          echo "Slack payload (posted only on schedule/workflow_dispatch):"
           cat /tmp/slack-payload.json
 
       - name: Post summary to Slack
