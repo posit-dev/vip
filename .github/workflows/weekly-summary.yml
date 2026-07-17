@@ -104,3 +104,66 @@ jobs:
             --fallback-model us.anthropic.claude-sonnet-4-6
             --allowedTools Read
             --json-schema '{"type":"object","additionalProperties":false,"required":["highlights"],"properties":{"highlights":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["text","number"],"properties":{"text":{"type":"string"},"number":{"type":["integer","null"]}}}}}}'
+
+      - name: Build Slack payload
+        if: steps.gather.outputs.has_prs == 'true'
+        id: payload
+        env:
+          STRUCTURED: ${{ steps.analyze.outputs.structured_output }}
+        run: |
+          set -euo pipefail
+          # Only claim has_highlights when a highlight with non-empty text
+          # survives; guards empty/missing/garbage output under set -e.
+          STRUCTURED="${STRUCTURED:-}"
+          if [ -z "$STRUCTURED" ]; then
+            echo "No structured output from Claude; skipping."
+            echo "has_highlights=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          FILTERED=$(printf '%s' "$STRUCTURED" | jq -c 'if (.highlights | type) == "array" then [.highlights[] | select(type == "object" and (.text | type) == "string" and .text != "")] else [] end' 2>/dev/null || echo '[]')
+          COUNT=$(printf '%s' "$FILTERED" | jq 'length' 2>/dev/null || echo 0)
+          if [ "${COUNT:-0}" -eq 0 ]; then
+            echo "No usable highlights from Claude; skipping."
+            echo "has_highlights=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_highlights=true" >> "$GITHUB_OUTPUT"
+          # Link each highlight to its PR deterministically (links stay out of
+          # Claude's job). A hallucinated/null number degrades to plain text.
+          LINKED=$(printf '%s' "$FILTERED" | jq -c --slurpfile prs weekly-prs.json '
+            map(. as $h
+              | ([$prs[0][] | select(.number == $h.number) | .url] | first) as $u
+              | if $u == null then $h.text
+                else "\($h.text) (<\($u)|#\($h.number)>)"
+                end)')
+          HIGHLIGHTS=$(printf '%s' "$LINKED" | jq 'map("• " + .) | join("\n")')
+          jq -n \
+            --argjson highlights "$HIGHLIGHTS" \
+            --arg week_start "${{ steps.gather.outputs.week_start }}" \
+            --arg week_end "${{ steps.gather.outputs.week_end }}" \
+            --arg pr_count "${{ steps.gather.outputs.pr_count }}" \
+            '{
+              text: "vip Weekly Summary",
+              blocks: [
+                {type: "header", text: {type: "plain_text", text: "🧪 vip Weekly Summary", emoji: true}},
+                {type: "context", elements: [{type: "mrkdwn", text: ("*" + $week_start + "* to *" + $week_end + "* | " + $pr_count + " merged PRs")}]},
+                {type: "section", text: {type: "mrkdwn", text: ("*Highlights*\n" + $highlights)}}
+              ]
+            }' > /tmp/slack-payload.json
+          echo "Slack payload (dry run on pull_request):"
+          cat /tmp/slack-payload.json
+
+      - name: Post summary to Slack
+        if: >
+          steps.gather.outputs.has_prs == 'true' &&
+          steps.payload.outputs.has_highlights == 'true' &&
+          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_VIP_WEEKLY_SUMMARY }}
+          webhook-type: incoming-webhook
+          payload-file-path: /tmp/slack-payload.json
+
+      - name: Quiet week notice
+        if: steps.gather.outputs.has_prs == 'false'
+        run: echo "Quiet week — no merged PRs to summarize. Nothing sent to Slack."
