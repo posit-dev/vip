@@ -9,9 +9,11 @@ loudly instead of silently producing nothing.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -40,6 +42,25 @@ def _fake_quarto(create_output: bool):
         return types.SimpleNamespace(returncode=0)
 
     return _run
+
+
+def _fake_bundled_templates(monkeypatch, tmp_path) -> Path:
+    """Point importlib.resources at a fake installed ``vip/_report`` directory.
+
+    Selftests run from an editable install where the wheel bundle does not
+    exist, so tests of the bundled-refresh path fake one on disk.
+    """
+    import importlib.resources
+
+    from vip.cli import _REPORT_TEMPLATE_FILES
+
+    pkg_root = tmp_path / "installed-vip"
+    bundled = pkg_root / "_report"
+    bundled.mkdir(parents=True)
+    for name in _REPORT_TEMPLATE_FILES:
+        (bundled / name).write_text(f"packaged {name}\n")
+    monkeypatch.setattr(importlib.resources, "files", lambda pkg: pkg_root)
+    return bundled
 
 
 class TestEnsureReportTemplates:
@@ -76,6 +97,75 @@ class TestEnsureReportTemplates:
         for name in _REPORT_TEMPLATE_FILES:
             (report_dir / name).write_text("x")
         assert _has_all_report_templates(report_dir) is True
+
+    def test_pyproject_force_include_matches_template_list(self):
+        try:
+            import tomllib
+        except ModuleNotFoundError:
+            import tomli as tomllib
+
+        from vip.cli import _REPORT_TEMPLATE_FILES
+
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        with pyproject.open("rb") as f:
+            data = tomllib.load(f)
+        force_include = data["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+
+        expected = {f"report/{name}": f"vip/_report/{name}" for name in _REPORT_TEMPLATE_FILES}
+        bundled = {s: d for s, d in force_include.items() if d.startswith("vip/_report/")}
+        assert bundled == expected
+
+
+class TestTemplateRefresh:
+    """The bundled-template refresh is loud about overwrites and skips identical files."""
+
+    def test_customized_template_is_refreshed_with_notice(self, tmp_path, monkeypatch, capsys):
+        from vip.cli import _ensure_report_templates
+
+        _fake_bundled_templates(monkeypatch, tmp_path)
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        _ensure_report_templates(report_dir)
+        capsys.readouterr()
+        (report_dir / "styles.css").write_text("custom user styles\n")
+
+        assert _ensure_report_templates(report_dir) is True
+
+        assert (report_dir / "styles.css").read_text() == "packaged styles.css\n"
+        assert "styles.css" in capsys.readouterr().err
+
+    def test_unchanged_templates_are_not_rewritten(self, tmp_path, monkeypatch, capsys):
+        from vip.cli import _REPORT_TEMPLATE_FILES, _ensure_report_templates
+
+        _fake_bundled_templates(monkeypatch, tmp_path)
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        _ensure_report_templates(report_dir)
+        sentinel = 946684800  # 2000-01-01, distinct from any freshly written mtime
+        for name in _REPORT_TEMPLATE_FILES:
+            os.utime(report_dir / name, (sentinel, sentinel))
+
+        assert _ensure_report_templates(report_dir) is True
+
+        for name in _REPORT_TEMPLATE_FILES:
+            assert (report_dir / name).stat().st_mtime == sentinel, f"{name} was rewritten"
+        assert capsys.readouterr().err == ""
+
+    def test_bundled_lookup_oserror_falls_back_to_checkout(self, tmp_path, monkeypatch):
+        import importlib.resources
+
+        from vip.cli import _ensure_report_templates
+
+        def _raise_is_a_directory(path):
+            raise IsADirectoryError(str(path))
+
+        # as_file can raise OSError subclasses for zip-imported packages on
+        # Python < 3.12; the repo-checkout fallback must still succeed.
+        monkeypatch.setattr(importlib.resources, "as_file", _raise_is_a_directory)
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+
+        assert _ensure_report_templates(report_dir) is True
 
 
 class TestRunReportFromArbitraryDir:
@@ -123,6 +213,25 @@ class TestRunReportFromArbitraryDir:
 
         assert exc.value.code == 1
         assert "results file not found" in capsys.readouterr().err
+
+    def test_errors_when_quarto_not_installed(self, tmp_path, monkeypatch, capsys):
+        from vip import cli
+
+        monkeypatch.chdir(tmp_path)
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        (report_dir / "results.json").write_text('{"results": []}')
+
+        def _missing_quarto(cmd, cwd=None, **kwargs):
+            raise FileNotFoundError(2, "No such file or directory", cmd[0])
+
+        monkeypatch.setattr(cli.subprocess, "run", _missing_quarto)
+
+        with pytest.raises(SystemExit) as exc:
+            cli.run_report(_make_args())
+
+        assert exc.value.code == 1
+        assert "quarto was not found" in capsys.readouterr().err
 
 
 class TestSupportFileResolution:

@@ -520,13 +520,27 @@ def _has_all_report_templates(directory: Path) -> bool:
     return all((directory / name).is_file() for name in _REPORT_TEMPLATE_FILES)
 
 
-def _copy_report_templates(src: Path, report_dir: Path) -> None:
+def _copy_report_templates(src: Path, report_dir: Path) -> list[str]:
+    """Copy template files from ``src``, returning names whose content changed.
+
+    Files already identical in ``report_dir`` are left untouched, and only
+    pre-existing files that were overwritten with different content are
+    reported (fresh copies into an empty directory are not).
+    """
     import shutil
 
+    replaced = []
     for name in _REPORT_TEMPLATE_FILES:
         candidate = src / name
-        if candidate.is_file():
-            shutil.copy2(candidate, report_dir / name)
+        dest = report_dir / name
+        if not candidate.is_file():
+            continue
+        if dest.is_file():
+            if dest.read_bytes() == candidate.read_bytes():
+                continue
+            replaced.append(name)
+        shutil.copy2(candidate, dest)
+    return replaced
 
 
 def _ensure_report_templates(report_dir: Path) -> bool:
@@ -539,23 +553,36 @@ def _ensure_report_templates(report_dir: Path) -> bool:
     only when *all* of ``_REPORT_TEMPLATE_FILES`` are present in ``report_dir``,
     so a partial source (e.g. a template missing from one location) is topped
     up from the other rather than silently rendering a degraded report.
+
+    Identical files are not rewritten, and a notice lists any existing files
+    that the refresh did overwrite, so local template customizations never
+    disappear silently.
     """
     import importlib.resources
 
+    replaced: list[str] = []
+
     # Bundled wheel copy: refresh templates into the working directory.
+    # OSError covers as_file() failures on zip-imported packages (< 3.12).
     try:
         bundled = importlib.resources.files("vip") / "_report"
         with importlib.resources.as_file(bundled) as p:
             if _has_all_report_templates(p):
-                _copy_report_templates(p, report_dir)
-    except (TypeError, FileNotFoundError, ModuleNotFoundError):
+                replaced += _copy_report_templates(p, report_dir)
+    except (TypeError, OSError, ModuleNotFoundError):
         pass
 
     # Source checkout: three levels up from src/vip/cli.py → repo root/report.
     if not _has_all_report_templates(report_dir):
         repo_report = Path(__file__).parent.parent.parent / "report"
         if _has_all_report_templates(repo_report) and repo_report.resolve() != report_dir.resolve():
-            _copy_report_templates(repo_report, report_dir)
+            replaced += _copy_report_templates(repo_report, report_dir)
+
+    if replaced:
+        print(
+            f"Refreshed report templates in {report_dir}: {', '.join(replaced)}",
+            file=sys.stderr,
+        )
 
     # True only if the working directory now has the complete set (from a
     # bundled/repo copy above, or from a prior run's copy already present).
@@ -594,7 +621,15 @@ def run_report(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    result = subprocess.run(["quarto", "render"], cwd=str(report_dir))
+    try:
+        result = subprocess.run(["quarto", "render"], cwd=str(report_dir))
+    except FileNotFoundError:
+        print(
+            "Error: quarto was not found on PATH. Install Quarto "
+            "(https://quarto.org/docs/get-started/) and re-run.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     if result.returncode != 0:
         sys.exit(result.returncode)
