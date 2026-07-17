@@ -55,7 +55,7 @@ jobs:
 
           gh pr list --repo posit-dev/vip --state merged \
             --search "merged:$WEEK_START_TS..$WEEK_END_TS" \
-            --json number,title,author,labels,url \
+            --json number,title,author,labels,url,additions,deletions,changedFiles \
             --limit 300 > all-prs.json
 
           # Exclude fully-automated actors (dependabot version bumps, the
@@ -73,6 +73,21 @@ jobs:
 
           echo "Found $PR_COUNT merged PRs for $WEEK_START..$WEEK_END."
           jq -r '.[] | "#\(.number) \(.title)"' weekly-prs.json || true
+
+          # Releases published in the same window, as an oldest→newest range
+          # (e.g. "v0.52.4 to v0.54.6"). Drafts and prereleases are excluded.
+          gh release list --repo posit-dev/vip \
+            --json tagName,publishedAt,isDraft,isPrerelease --limit 100 > all-releases.json
+          RELEASES=$(jq -r --arg start "$WEEK_START_TS" --arg end "$WEEK_END_TS" '
+            [ .[]
+              | select(.isDraft == false and .isPrerelease == false)
+              | select(.publishedAt >= $start and .publishedAt <= $end) ]
+            | sort_by(.publishedAt)
+            | if length == 0 then ""
+              elif length == 1 then .[0].tagName
+              else "\(.[0].tagName) to \(.[-1].tagName)" end' all-releases.json)
+          echo "releases=$RELEASES" >> "$GITHUB_OUTPUT"
+          echo "Releases in window: ${RELEASES:-(none)}"
 
       - name: Configure AWS credentials
         if: steps.gather.outputs.has_prs == 'true'
@@ -103,7 +118,7 @@ jobs:
             --model us.anthropic.claude-opus-4-8
             --fallback-model us.anthropic.claude-sonnet-4-6
             --allowedTools Read
-            --json-schema '{"type":"object","additionalProperties":false,"required":["highlights"],"properties":{"highlights":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["text","number"],"properties":{"text":{"type":"string"},"number":{"type":["integer","null"]}}}}}}'
+            --json-schema '{"type":"object","additionalProperties":false,"required":["highlights"],"properties":{"highlights":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["text","number","category"],"properties":{"text":{"type":"string"},"number":{"type":["integer","null"]},"category":{"type":"string","enum":["feature","fix"]}}}}}}'
 
       - name: Build Slack payload
         if: steps.gather.outputs.has_prs == 'true'
@@ -113,6 +128,7 @@ jobs:
           WEEK_START: ${{ steps.gather.outputs.week_start }}
           WEEK_END: ${{ steps.gather.outputs.week_end }}
           PR_COUNT: ${{ steps.gather.outputs.pr_count }}
+          RELEASES: ${{ steps.gather.outputs.releases }}
         run: |
           set -euo pipefail
           # Only claim has_highlights when a highlight with non-empty text
@@ -136,26 +152,36 @@ jobs:
           # Escape Slack mrkdwn control chars in Claude-derived text (& first) so a
           # crafted PR title echoed into a highlight cannot trigger <!channel>/<@user>
           # mentions or fake links; the trusted PR link is appended separately.
+          # Carry each highlight's category so we can split it into two sections;
+          # anything not tagged "feature" falls back to the fixes/chores group.
           LINKED=$(printf '%s' "$FILTERED" | jq -c --slurpfile prs weekly-prs.json '
             map(. as $h
               | ($h.text | gsub("&";"&amp;") | gsub("<";"&lt;") | gsub(">";"&gt;")) as $t
               | ([$prs[0][] | select(.number == $h.number) | .url] | first) as $u
-              | if $u == null then $t
-                else "\($t) (<\($u)|#\($h.number)>)"
-                end)')
-          HIGHLIGHTS=$(printf '%s' "$LINKED" | jq 'map("• " + .) | join("\n")')
+              | { category: (if $h.category == "feature" then "feature" else "fix" end),
+                  line: (if $u == null then $t else "\($t) (<\($u)|PR #\($h.number)>)" end) })')
+          # Two Slack sections: features/tests first, then fixes/chores.
+          FEATURES=$(printf '%s' "$LINKED" | jq -r '[.[] | select(.category == "feature") | "• " + .line] | join("\n")')
+          FIXES=$(printf '%s' "$LINKED" | jq -r '[.[] | select(.category == "fix") | "• " + .line] | join("\n")')
           jq -n \
-            --argjson highlights "$HIGHLIGHTS" \
             --arg week_start "$WEEK_START" \
             --arg week_end "$WEEK_END" \
             --arg pr_count "$PR_COUNT" \
+            --arg releases "$RELEASES" \
+            --arg features "$FEATURES" \
+            --arg fixes "$FIXES" \
             '{
               text: "vip Weekly Summary",
-              blocks: [
+              blocks: ([
                 {type: "header", text: {type: "plain_text", text: "🧪 vip Weekly Summary", emoji: true}},
-                {type: "context", elements: [{type: "mrkdwn", text: ("*" + $week_start + "* to *" + $week_end + "* | " + $pr_count + " merged PRs")}]},
-                {type: "section", text: {type: "mrkdwn", text: ("*Highlights*\n" + $highlights)}}
+                {type: "context", elements: [{type: "mrkdwn", text: (
+                  "*\($week_start)* to *\($week_end)* | <https://github.com/posit-dev/vip/pulls?q=is%3Apr+is%3Aclosed|\($pr_count) merged PRs>"
+                  + (if $releases == "" then "" else " | <https://github.com/posit-dev/vip/releases|\($releases)>" end)
+                )}]}
               ]
+              + (if $features == "" then [] else [{type: "section", text: {type: "mrkdwn", text: ("*🚀 Features &amp; tests*\n" + $features)}}] end)
+              + (if $fixes == "" then [] else [{type: "section", text: {type: "mrkdwn", text: ("*🔧 Fixes &amp; chores*\n" + $fixes)}}] end)
+              )
             }' > /tmp/slack-payload.json
           echo "Slack payload (posted only on schedule/workflow_dispatch):"
           cat /tmp/slack-payload.json
