@@ -1,6 +1,30 @@
 # CHANGELOG
 
 
+## v0.54.3 (2026-07-17)
+
+### Bug Fixes
+
+- **workbench**: Wait for homepage logo so cleanup sweep finds sessions
+  ([#492](https://github.com/posit-dev/vip/pull/492),
+  [`9d709db`](https://github.com/posit-dev/vip/commit/9d709db9338acbdfc5261c2227a88081250f86ca))
+
+
+## v0.54.2 (2026-07-17)
+
+### Bug Fixes
+
+- **workbench**: Default git clone repo, accurate skips, and R readback
+  ([#490](https://github.com/posit-dev/vip/pull/490),
+  [`e68d9e8`](https://github.com/posit-dev/vip/commit/e68d9e803ae97e339cd9f13405e0a91792ce6a73))
+
+### Documentation
+
+- **website**: Remove Shiny mode and Kubernetes deployment mentions
+  ([#486](https://github.com/posit-dev/vip/pull/486),
+  [`0d97a04`](https://github.com/posit-dev/vip/commit/0d97a04cba623c97e25a895f1e2dc1fd3ea9d6d1))
+
+
 ## v0.54.1 (2026-07-16)
 
 ### Bug Fixes

@@ -32,8 +32,8 @@ import Footer from "../components/Footer.astro";
         <section id="quick-start">
           <h2>Quick start</h2>
           <p>
-            VIP verifies Posit Team across standalone, Kubernetes, and Snowflake
-            Native App deployments.
+            VIP verifies Posit Team across standalone and Snowflake Native App
+            deployments.
           </p>
           <p>Install VIP, then point it at your server:</p>
           <pre><code>uv pip install posit-vip
@@ -53,10 +53,6 @@ uv run vip install</code></pre>
           </p>
           <pre><code>uv sync
 uv run vip install</code></pre>
-          <p>
-            See the <a href="../shiny-app/">Shiny app</a> page for the full
-            graphical workflow.
-          </p>
 
           <p>Run your first test against a Connect server:</p>
           <pre><code>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre>
@@ -187,12 +183,6 @@ vip verify --connect-url https://connect.example.com --no-interactive-auth</code
 
         <section id="running-tests">
           <h2>Running tests</h2>
-          <p>
-            <strong>Prefer a graphical interface?</strong> VIP includes a
-            <a href="../shiny-app/">Shiny app</a> that lets you select
-            categories, run tests, and view the report from your browser or
-            the Workbench Viewer pane.
-          </p>
           <p>Target specific products or test categories:</p>
           <pre><code># Run all tests
 vip verify --connect-url https://connect.example.com

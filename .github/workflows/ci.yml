@@ -3,19 +3,46 @@ name: CI
 on:
   push:
     branches: [main]
+  # No `paths:` filter here on purpose. Required status checks that live in this
+  # workflow (Lint & Format, Selftests Status) must report on *every* PR. A
+  # workflow-level path filter skips the whole run for docs/website-only PRs, so
+  # those required checks never report and the PR is blocked forever ("Expected
+  # — waiting for status to be reported"). Instead the workflow always runs and a
+  # `changes` job below gates the expensive code jobs.
   pull_request:
-    paths:
-      - 'src/**'
-      - 'selftests/**'
-      - 'examples/**'
-      - 'docker/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - '.github/workflows/**'
-      - '.github/zizmor.yml'
-      - '.github/dependabot.yml'
 
 jobs:
+  # Detect whether this PR/push touches code that the CI jobs actually validate.
+  # Expensive jobs gate on `relevant`; the always-run required checks (lint and
+  # the Selftests Status shim) report success even when the code jobs are skipped.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - 'src/**'
+              - 'selftests/**'
+              - 'examples/**'
+              - 'docker/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.github/workflows/**'
+              - '.github/zizmor.yml'
+              - '.github/dependabot.yml'
+
+  # Ruff is cheap (seconds) and "Lint & Format" is a required check, so it always
+  # runs — no `changes` gate — to guarantee the required status always reports.
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
@@ -38,6 +65,8 @@ jobs:
 
   typecheck:
     name: Type Check
+    needs: [changes]
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -56,6 +85,8 @@ jobs:
 
   actions-lint:
     name: Actions Lint (zizmor)
+    needs: [changes]
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -93,6 +124,8 @@ jobs:
 
   audit:
     name: Dependency Audit
+    needs: [changes]
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -114,6 +147,8 @@ jobs:
 
   selftest:
     name: Selftests (${{ matrix.os }} / ${{ matrix.python-version }})
+    needs: [changes]
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -148,14 +183,21 @@ jobs:
           name: selftest-results-${{ matrix.os }}-py${{ matrix.python-version }}
           path: selftest-results.xml
 
+  # Always-run required check. Reports success when selftests pass OR when they
+  # were skipped (docs/website-only PR), so the required "Selftests Status" check
+  # always reports and never leaves the PR stuck waiting.
   selftests-status:
     name: Selftests Status
     if: always()
-    needs: [selftest]
+    needs: [changes, selftest]
     runs-on: ubuntu-latest
     steps:
       - name: Check selftest matrix result
         run: |
+          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
+            echo "Change-detection job failed; cannot confirm selftest scope"
+            exit 1
+          fi
           if [ "${{ needs.selftest.result }}" = "failure" ] || [ "${{ needs.selftest.result }}" = "cancelled" ]; then
             echo "Selftests failed or were cancelled"
             exit 1
@@ -164,12 +206,16 @@ jobs:
 
   lockfile-guard:
     name: Lockfile Guard
+    needs: [changes]
     # Dependabot legitimately ships lockfile-only updates (in-range bumps never
     # touch pyproject.toml), so it is exempt; the guard targets bot-generated
-    # plan/docs PRs that carry a stale uv.lock by accident.
+    # plan/docs PRs that carry a stale uv.lock by accident. A stray uv.lock in an
+    # otherwise docs-only PR still flips `relevant` (uv.lock is in the filter), so
+    # gating on it keeps the guard effective while skipping true docs-only PRs.
     if: >-
       github.event_name == 'pull_request' &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -197,4 +243,3 @@ jobs:
             exit 1
           fi
           echo "uv.lock guard passed: no stray lockfile change detected."
-
