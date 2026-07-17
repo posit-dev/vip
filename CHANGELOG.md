@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.54.8 (2026-07-17)
+
+### Bug Fixes
+
+- **connect**: Redact license and job keys from system check report
+  ([#501](https://github.com/posit-dev/vip/pull/501),
+  [`2e01346`](https://github.com/posit-dev/vip/commit/2e01346cdf05a3e111c80ff80f28bfcbcb0f203d))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 2 updates
+  ([#499](https://github.com/posit-dev/vip/pull/499),
+  [`306ca43`](https://github.com/posit-dev/vip/commit/306ca433facfefa166769a6f55a6d362808fa2f0))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump the python-dependencies group with 3 updates
+  ([#498](https://github.com/posit-dev/vip/pull/498),
+  [`82477bc`](https://github.com/posit-dev/vip/commit/82477bc1baad7768c6ab8090b84c7965ad725532))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
 ## v0.54.7 (2026-07-17)
 
 ### Bug Fixes
