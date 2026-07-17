@@ -24,6 +24,7 @@ import Footer from "../components/Footer.astro";
           <li><a href="#running-tests">Running tests</a></li>
           <li><a href="#configuration-file">Configuration file</a></li>
           <li><a href="#generating-reports">Generating reports</a></li>
+          <li><a href="#uninstalling">Uninstalling</a></li>
           <li><a href="#extending-vip">Extending VIP</a></li>
         </ul>
       </aside>
@@ -76,16 +77,6 @@ vip verify --connect-url https://connect.example.com --api-auth</code></pre>
             reading the command-line help:
           </p>
           <pre><code>vip --help</code></pre>
-          <p>
-            Whenever you are done with vip, you can see how uninstall will go with:
-          </p>
-          <pre><code>vip uninstall</code></pre>
-          <p>
-            And then to finish the uninstall:
-          </p>
-          <pre><code>vip uninstall --yes
-uv pip uninstall posit-vip
-</code></pre>
         </section>
 
         <section id="authentication">
@@ -327,6 +318,23 @@ quarto publish connect --server https://connect.example.com</code></pre>
             <a href="https://quarto.org/docs/download/">Quarto CLI</a> must be
             installed.
           </p>
+        </section>
+
+        <section id="uninstalling">
+          <h2>Uninstalling</h2>
+          <p>
+            When you are done with VIP, preview what will be removed. By default
+            <code>vip uninstall</code> prints a dry-run plan &mdash; the Chromium
+            browser, system libraries, and other artifacts that
+            <code>vip install</code> added &mdash; without changing anything:
+          </p>
+          <pre><code>vip uninstall</code></pre>
+          <p>
+            Pass <code>--yes</code> to execute the plan, then remove the package
+            itself:
+          </p>
+          <pre><code>vip uninstall --yes
+uv pip uninstall posit-vip</code></pre>
         </section>
 
         <section id="extending-vip">
