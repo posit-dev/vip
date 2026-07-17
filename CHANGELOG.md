@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.54.6 (2026-07-17)
+
+### Bug Fixes
+
+- **report**: Let template copy failures propagate
+  ([#496](https://github.com/posit-dev/vip/pull/496),
+  [`7acf18d`](https://github.com/posit-dev/vip/commit/7acf18d4ccdd5b1bee0dd0183598077916c61d7c))
+
+### Documentation
+
+- **website**: Refresh getting started and feature matrix content
+  ([#488](https://github.com/posit-dev/vip/pull/488),
+  [`a0eef4f`](https://github.com/posit-dev/vip/commit/a0eef4fefd1720793682c2cf192c212d6345b121))
+
+
 ## v0.54.5 (2026-07-17)
 
 ### Bug Fixes
