@@ -9,7 +9,7 @@ installed correctly and functioning properly.
 
 VIP uses BDD-style tests (pytest-bdd + Playwright) to verify Connect,
 Workbench, and Package Manager deployments. Results can be viewed
-from the command-line runs or compiled into an HTML report.
+from the command-line output or compiled into an HTML report.
 
 **Documentation:** https://posit-dev.github.io/vip/
 
