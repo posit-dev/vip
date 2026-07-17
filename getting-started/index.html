@@ -12,28 +12,33 @@ GitHub
             1.1.16 1.92.08 2.12.51.56.82 1.27.82
             2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54
             1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013
-            8.013 0 0016 8c0-4.42-3.58-8-8-8z" data-astro-cid-3ef6ksr2></path> </svg> </a> </nav> </div> </header>  <div class="page-header" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <h1 data-astro-cid-mwd2jfe2>Getting Started</h1> <p data-astro-cid-mwd2jfe2>Validate your Posit Team deployment in minutes.</p> </div> </div> <main class="content" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <aside class="toc" data-astro-cid-mwd2jfe2> <h4 data-astro-cid-mwd2jfe2>On this page</h4> <ul data-astro-cid-mwd2jfe2> <li data-astro-cid-mwd2jfe2><a href="#quick-start" data-astro-cid-mwd2jfe2>Quick start</a></li> <li data-astro-cid-mwd2jfe2><a href="#authentication" data-astro-cid-mwd2jfe2>Authentication</a></li> <li data-astro-cid-mwd2jfe2><a href="#running-tests" data-astro-cid-mwd2jfe2>Running tests</a></li> <li data-astro-cid-mwd2jfe2><a href="#configuration-file" data-astro-cid-mwd2jfe2>Configuration file</a></li> <li data-astro-cid-mwd2jfe2><a href="#generating-reports" data-astro-cid-mwd2jfe2>Generating reports</a></li> <li data-astro-cid-mwd2jfe2><a href="#extending-vip" data-astro-cid-mwd2jfe2>Extending VIP</a></li> </ul> </aside> <article class="docs" data-astro-cid-mwd2jfe2> <section id="quick-start" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Quick start</h2> <p data-astro-cid-mwd2jfe2>
-VIP verifies Posit Team across standalone and Snowflake Native App
-            deployments.
-</p> <p data-astro-cid-mwd2jfe2>Install VIP, then point it at your server:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>uv pip install posit-vip
-uv run vip install</code></pre> <p data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>vip install</code> installs Playwright's Chromium browser
-            and the system libraries it needs. These can be later removed safely,
-            along with other test artifacts, with <code data-astro-cid-mwd2jfe2>vip uninstall</code> </p> <h3 data-astro-cid-mwd2jfe2>Using RStudio or Positron?</h3> <p data-astro-cid-mwd2jfe2>
-You can set up VIP as an RStudio project instead. Go to
-<em data-astro-cid-mwd2jfe2>File &rarr; New Project &rarr; Version Control &rarr; Git</em>
-and enter <code data-astro-cid-mwd2jfe2>https://github.com/posit-dev/vip.git</code> as
-            the Repository URL. Then install dependencies from the Terminal tab:
-</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>uv sync
-uv run vip install</code></pre> <p data-astro-cid-mwd2jfe2>Run your first test against a Connect server:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre> <p data-astro-cid-mwd2jfe2>
+            8.013 0 0016 8c0-4.42-3.58-8-8-8z" data-astro-cid-3ef6ksr2></path> </svg> </a> </nav> </div> </header>  <div class="page-header" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <h1 data-astro-cid-mwd2jfe2>Getting Started</h1> <p data-astro-cid-mwd2jfe2>Validate your Posit Team deployment in minutes.</p> </div> </div> <main class="content" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <aside class="toc" data-astro-cid-mwd2jfe2> <h4 data-astro-cid-mwd2jfe2>On this page</h4> <ul data-astro-cid-mwd2jfe2> <li data-astro-cid-mwd2jfe2><a href="#quick-start" data-astro-cid-mwd2jfe2>Quick start</a></li> <li data-astro-cid-mwd2jfe2><a href="#authentication" data-astro-cid-mwd2jfe2>Authentication</a></li> <li data-astro-cid-mwd2jfe2><a href="#running-tests" data-astro-cid-mwd2jfe2>Running tests</a></li> <li data-astro-cid-mwd2jfe2><a href="#configuration-file" data-astro-cid-mwd2jfe2>Configuration file</a></li> <li data-astro-cid-mwd2jfe2><a href="#generating-reports" data-astro-cid-mwd2jfe2>Generating reports</a></li> <li data-astro-cid-mwd2jfe2><a href="#extending-vip" data-astro-cid-mwd2jfe2>Extending VIP</a></li> <li data-astro-cid-mwd2jfe2><a href="#uninstalling" data-astro-cid-mwd2jfe2>Uninstalling</a></li> </ul> </aside> <article class="docs" data-astro-cid-mwd2jfe2> <section id="quick-start" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Quick start</h2> <p data-astro-cid-mwd2jfe2>
+VIP verifies Posit Team across standalone deployments.
+</p> <p data-astro-cid-mwd2jfe2>Install VIP to start:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>uv tool install posit-vip
+vip install</code></pre> <p data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>vip install</code> installs Playwright's Chromium browser
+            and the system libraries it needs. These can later be removed
+            safely, along with other test artifacts, with
+<code data-astro-cid-mwd2jfe2>vip uninstall</code>.
+</p> <p data-astro-cid-mwd2jfe2>
+Run your first VIP test against Posit Public Package Manager:
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --package-manager-url https://p3m.dev --filter 'not test_product_does_not_expose_sensitive_headers and not test_prometheus_metrics'</code></pre> <p data-astro-cid-mwd2jfe2>The above command should finish in under a minute and show a
+          successful run with some tests skipped.</p> <p data-astro-cid-mwd2jfe2>Now it is time to run against one of your own servers. If you have
+          Connect set up, you can run against it like this:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre> <p data-astro-cid-mwd2jfe2>
 The <code data-astro-cid-mwd2jfe2>--interactive-auth</code> flag opens a Chromium window so
             you can log in. After authentication completes, VIP runs the test
             suite headlessly and cleans up the session automatically.
-</p> <p data-astro-cid-mwd2jfe2>Check product health without running the full test suite:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip status</code></pre> <p data-astro-cid-mwd2jfe2>Already have an API key? Skip browser auth entirely with <code data-astro-cid-mwd2jfe2>--api-auth</code>:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>export VIP_CONNECT_API_KEY="your-api-key"
-vip verify --connect-url https://connect.example.com --api-auth</code></pre> <p data-astro-cid-mwd2jfe2>Test multiple products at once:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify \
-  --connect-url https://connect.example.com \
-  --workbench-url https://workbench.example.com \
-  --package-manager-url https://packagemanager.example.com \
-  --interactive-auth</code></pre> </section> <section id="authentication" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Authentication</h2> <h3 data-astro-cid-mwd2jfe2>Interactive auth</h3> <p data-astro-cid-mwd2jfe2>
+</p> <p data-astro-cid-mwd2jfe2>
+If you have an API key, you can skip browser auth entirely with <code data-astro-cid-mwd2jfe2>--api-auth</code>:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>export VIP_CONNECT_API_KEY="your-api-key"
+vip verify --connect-url https://connect.example.com --api-auth</code></pre> <p data-astro-cid-mwd2jfe2>There are more authentication options, including headless auth with OIDC,
+          explained below.</p> <p data-astro-cid-mwd2jfe2>At this point, you may see some tests failing and want to fix what
+          isn't right and then try again. You can rerun just those tests with the
+<code data-astro-cid-mwd2jfe2>--filter</code> flag:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com --interactive-auth --filter test_deploy_shiny</code></pre> <p data-astro-cid-mwd2jfe2>
+As you get comfortable with how one server is running, you can move
+            on to others using not just <code data-astro-cid-mwd2jfe2>--connect-url</code> but also
+<code data-astro-cid-mwd2jfe2>--workbench-url</code> and <code data-astro-cid-mwd2jfe2>--package-manager-url</code>.
+            You can also see what other options are available by reading below or
+            reading the command-line help:
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip --help</code></pre> </section> <section id="authentication" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Authentication</h2> <h3 data-astro-cid-mwd2jfe2>Interactive auth</h3> <p data-astro-cid-mwd2jfe2>
 Pass <code data-astro-cid-mwd2jfe2>--interactive-auth</code> to open a Chromium window where
             you can log in through any identity provider (Okta, SAML, OIDC,
             password). After login, VIP mints a temporary API key, saves the
@@ -140,7 +145,18 @@ Add site-specific tests without modifying the VIP source tree. Create a director
 [general]
 extension_dirs = ["/opt/vip-custom-tests"]</code></pre> <p data-astro-cid-mwd2jfe2>
 See <a href="https://github.com/posit-dev/vip/tree/main/examples/custom_tests" data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>examples/custom_tests/</code></a> in the repository for a working example.
-</p> </section> </article> </div> </main> <footer class="footer" data-astro-cid-sz7xmlte> <div class="footer-inner" data-astro-cid-sz7xmlte> <p class="copyright" data-astro-cid-sz7xmlte>
+</p> </section> <section id="uninstalling" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Uninstalling</h2> <p data-astro-cid-mwd2jfe2>
+When you are done with VIP, run <code data-astro-cid-mwd2jfe2>vip uninstall</code> to preview
+            what will be removed. It prints a dry-run plan without changing
+            anything:
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip uninstall</code></pre> <p data-astro-cid-mwd2jfe2>
+Pass <code data-astro-cid-mwd2jfe2>--yes</code> to remove those artifacts. On Linux, VIP does
+            not remove the system libraries it installed and instead it prints a
+<code data-astro-cid-mwd2jfe2>sudo</code> command for you to run. Complete the uninstall in
+            this order:
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip uninstall --yes
+# then run the sudo removal command that vip uninstall prints, if any
+uv tool uninstall posit-vip</code></pre> </section> </article> </div> </main> <footer class="footer" data-astro-cid-sz7xmlte> <div class="footer-inner" data-astro-cid-sz7xmlte> <p class="copyright" data-astro-cid-sz7xmlte>
 &copy; 2026 <a href="https://posit.co" target="_blank" rel="noopener" data-astro-cid-sz7xmlte>Posit, PBC</a>.
       VIP is open source under the
 <a href="https://github.com/posit-dev/vip/blob/main/LICENSE" target="_blank" rel="noopener" data-astro-cid-sz7xmlte>MIT License</a>.
