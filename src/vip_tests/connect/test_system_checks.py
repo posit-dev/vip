@@ -3,9 +3,54 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+from typing import Any
 
 from pytest_bdd import scenario, then, when
+
+_REDACTED = "[redacted]"
+
+# Posit license keys are seven hyphen-separated groups of four uppercase
+# alphanumerics (e.g. ABCD-1234-EFGH-5678-IJKL-9012-MNOP). Scrub anything of
+# this shape so a key never reaches the report even if it surfaces in a check
+# whose name does not mention "license".
+_LICENSE_KEY_RE = re.compile(r"\b[A-Z0-9]{4}(?:-[A-Z0-9]{4}){6}\b")
+
+
+def _scrub_license_keys(value: Any) -> Any:
+    """Replace Posit-license-key-shaped tokens in *value* if it is a string."""
+    if isinstance(value, str):
+        return _LICENSE_KEY_RE.sub(_REDACTED, value)
+    return value
+
+
+def _redact_license_outputs(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a copy of *results* with license data removed.
+
+    Connect system check results echo the running configuration, and the
+    license checks (e.g. ``connect-license`` runs ``license-manager status``)
+    print the activated product key. Two layers guard against that key reaching
+    the saved artifact or the rendered report:
+
+    * Any check whose group or test name mentions "license" has its ``output``
+      and ``error`` fully redacted.
+    * Every other ``output``/``error`` is scrubbed for anything shaped like a
+      Posit license key, as defense in depth for unexpectedly named checks.
+
+    The input is not mutated.
+    """
+    redacted = []
+    for r in results:
+        group_name = (r.get("group") or {}).get("name", "")
+        test_name = (r.get("test") or {}).get("name", "")
+        if "license" in group_name.lower() or "license" in test_name.lower():
+            r = {**r, "output": _REDACTED, "error": _REDACTED}
+        else:
+            scrubbed = {k: _scrub_license_keys(r[k]) for k in ("output", "error") if k in r}
+            r = {**r, **scrubbed}
+        redacted.append(r)
+    return redacted
 
 
 @scenario(
@@ -49,11 +94,17 @@ def download_report_artifact(connect_client, system_check, pytestconfig):
     assert results, f"System check results for id={check_id!r} were empty"
 
     # Persist alongside results.json so the Quarto report can embed it.
+    # Redact license check output/error before writing so that license keys
+    # never appear in the saved artifact or the rendered report.
     vip_report = pytestconfig.getoption("--vip-report")
     if vip_report:
+        safe_results = {
+            **results,
+            "results": _redact_license_outputs(results.get("results", [])),
+        }
         artifact_path = Path(vip_report).parent / "connect_system_checks.json"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(
-            json.dumps(results, indent=2) + "\n",
+            json.dumps(safe_results, indent=2) + "\n",
             encoding="utf-8",
         )
