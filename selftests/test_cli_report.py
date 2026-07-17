@@ -151,6 +151,25 @@ class TestTemplateRefresh:
             assert (report_dir / name).stat().st_mtime == sentinel, f"{name} was rewritten"
         assert capsys.readouterr().err == ""
 
+    def test_copy_failure_is_not_swallowed(self, tmp_path, monkeypatch):
+        from vip.cli import _ensure_report_templates
+
+        _fake_bundled_templates(monkeypatch, tmp_path)
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        _ensure_report_templates(report_dir)
+        stale = report_dir / "index.qmd"
+        stale.write_text("stale local copy\n")
+        stale.chmod(0o444)
+
+        # A failed refresh must surface rather than silently rendering the
+        # stale template set that is already present in report_dir.
+        try:
+            with pytest.raises(PermissionError):
+                _ensure_report_templates(report_dir)
+        finally:
+            stale.chmod(0o644)
+
     def test_bundled_lookup_oserror_falls_back_to_checkout(self, tmp_path, monkeypatch):
         import importlib.resources
 

@@ -558,19 +558,24 @@ def _ensure_report_templates(report_dir: Path) -> bool:
     that the refresh did overwrite, so local template customizations never
     disappear silently.
     """
+    import contextlib
     import importlib.resources
 
     replaced: list[str] = []
 
-    # Bundled wheel copy: refresh templates into the working directory.
-    # OSError covers as_file() failures on zip-imported packages (< 3.12).
-    try:
-        bundled = importlib.resources.files("vip") / "_report"
-        with importlib.resources.as_file(bundled) as p:
-            if _has_all_report_templates(p):
-                replaced += _copy_report_templates(p, report_dir)
-    except (TypeError, OSError, ModuleNotFoundError):
-        pass
+    # Bundled wheel copy: refresh templates into the working directory. Only
+    # materializing the resource is guarded (OSError covers as_file() failures
+    # on zip-imported packages before Python 3.12); a failure while copying
+    # into report_dir must propagate, or a stale set already present there
+    # would be rendered as if it were current.
+    with contextlib.ExitStack() as stack:
+        try:
+            bundled = importlib.resources.files("vip") / "_report"
+            p = stack.enter_context(importlib.resources.as_file(bundled))
+        except (TypeError, OSError, ModuleNotFoundError):
+            p = None
+        if p is not None and _has_all_report_templates(p):
+            replaced += _copy_report_templates(p, report_dir)
 
     # Source checkout: three levels up from src/vip/cli.py → repo root/report.
     if not _has_all_report_templates(report_dir):
