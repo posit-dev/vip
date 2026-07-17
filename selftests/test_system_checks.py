@@ -7,11 +7,16 @@ import pytest
 from vip_tests.connect.test_system_checks import (
     _REDACTED,
     _redact_license_outputs,
+    _scrub_job_keys,
     _scrub_license_keys,
 )
 
 # A realistic Posit product key shape (seven groups of four).
 _SAMPLE_KEY = "A33R-D4BT-JFGA-NBA3-A6VF-AUGQ-PSTA"
+
+# A Connect session job key as printed by the connect-session process, e.g.
+# "[connect-session] Job Key: ZbPLlfduV5wlvLb1".
+_SAMPLE_JOB_KEY = "ZbPLlfduV5wlvLb1"
 
 
 def _make_result(group: str, test: str, output: str = "data", error: str = "") -> dict:
@@ -116,6 +121,30 @@ class TestRedactLicenseOutputs:
         assert _SAMPLE_KEY not in redacted[0]["error"]
         assert _REDACTED in redacted[0]["error"]
 
+    def test_job_key_in_non_license_check_is_scrubbed(self):
+        # The rmarkdown-sandbox check echoes the connect-session job key, which
+        # is neither a "license" check nor a license-key-shaped token, so it must
+        # be scrubbed by its own layer while leaving the surrounding log intact.
+        output = f"[connect-session] Job Key: {_SAMPLE_JOB_KEY}\nJob started"
+        results = [_make_result("rmarkdown-sandbox", "mounts", output=output)]
+        redacted = _redact_license_outputs(results)
+        assert _SAMPLE_JOB_KEY not in redacted[0]["output"]
+        assert _REDACTED in redacted[0]["output"]
+        assert "Job started" in redacted[0]["output"]
+
+    def test_job_key_in_non_license_check_error_is_scrubbed(self):
+        error = f"Job Key: {_SAMPLE_JOB_KEY}"
+        results = [_make_result("rmarkdown-sandbox", "mounts", output="", error=error)]
+        redacted = _redact_license_outputs(results)
+        assert _SAMPLE_JOB_KEY not in redacted[0]["error"]
+        assert _REDACTED in redacted[0]["error"]
+
+    def test_original_results_not_mutated_by_job_key_scrub(self):
+        output = f"Job Key: {_SAMPLE_JOB_KEY}"
+        original = [_make_result("rmarkdown-sandbox", "mounts", output=output)]
+        _redact_license_outputs(original)
+        assert original[0]["output"] == output
+
 
 class TestScrubLicenseKeys:
     def test_exact_key_is_scrubbed(self):
@@ -142,3 +171,40 @@ class TestScrubLicenseKeys:
     def test_non_string_values_pass_through(self):
         assert _scrub_license_keys(None) is None
         assert _scrub_license_keys(42) == 42
+
+
+class TestScrubJobKeys:
+    def test_job_key_after_label_is_scrubbed(self):
+        line = f"[connect-session] Job Key: {_SAMPLE_JOB_KEY}"
+        assert _scrub_job_keys(line) == "[connect-session] Job Key: [redacted]"
+
+    def test_label_is_preserved(self):
+        result = _scrub_job_keys(f"Job Key: {_SAMPLE_JOB_KEY}")
+        assert result == f"Job Key: {_REDACTED}"
+        assert _SAMPLE_JOB_KEY not in result
+
+    def test_multiline_output_only_key_scrubbed(self):
+        text = f"line one\n[connect-session] Job Key: {_SAMPLE_JOB_KEY}\nJob started"
+        scrubbed = _scrub_job_keys(text)
+        assert _SAMPLE_JOB_KEY not in scrubbed
+        assert "line one" in scrubbed
+        assert "Job started" in scrubbed
+
+    def test_case_insensitive_label_match(self):
+        assert _scrub_job_keys(f"job key: {_SAMPLE_JOB_KEY}") == f"job key: {_REDACTED}"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "no job key here",
+            "Jobs Key: value",  # not the "Job Key:" label
+            "4.3.1",
+            "",
+        ],
+    )
+    def test_text_without_job_key_label_is_left_alone(self, text):
+        assert _scrub_job_keys(text) == text
+
+    def test_non_string_values_pass_through(self):
+        assert _scrub_job_keys(None) is None
+        assert _scrub_job_keys(42) == 42
