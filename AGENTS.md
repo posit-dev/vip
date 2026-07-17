@@ -226,12 +226,11 @@ The report lives in `report/` and reads `report/results.json` (written by pytest
 
 ## CI workflows
 
--   **`ci.yml`** -- ruff lint/format (pinned to 0.15.0) + selftests on Python 3.10 and 3.12. Uses uv cache.
+-   **`ci.yml`** -- on every PR/push: ruff lint/format (pinned to 0.15.0), mypy type-check, zizmor actions-lint, a runtime dependency audit, and selftests (Ubuntu + macOS, Python 3.10 and 3.12). A `changes` path-filter gates the expensive jobs, while `Lint & Format` and `Selftests Status` always run as required checks. Uses uv cache.
 -   **`preview.yml`** -- runs selftests, renders Quarto report, publishes PR preview to gh-pages via `rossjrw/pr-preview-action@v1`. Uses uv and Quarto caches.
 -   **`pr-title.yml`** -- validates PR titles follow conventional commit format. Squash merges use the PR title as the commit message.
--   **`issue-triage.md`** + `issue-triage.lock.yml` -- gh-aw agent that triages issues a maintainer opts in via the `needs-bot-triage` label, opening either a fix PR (bugs) or a plan PR (enhancements). See `docs/agentic-workflows.md`.
--   **`implement-plan.md`** + `implement-plan.lock.yml` -- gh-aw agent that fires when a plan PR merges and opens the implementation PR.
 -   **`add-to-team-project.yml`** -- when a `team: connect`, `team: workbench`, or `team: package manager` label is added to an issue, adds it to that product team's org-level GitHub project board. Ported from rstudio/helm. Requires the cross-org `POSIT_PLATFORM_CLIENT_ID`/`POSIT_PLATFORM_PEM` app secrets.
+-   **`weekly-summary.yml`** -- Mondays (and on demand via `workflow_dispatch`) gathers the week's merged PRs, has Claude pick the highlights via Bedrock, and posts a Slack summary; `pull_request` runs are a dry run that builds and logs the payload without posting. Requires the `SLACK_WEBHOOK_VIP_WEEKLY_SUMMARY` secret and permission to assume the `claude-code-gha` AWS role.
 
 ## PR titles
 
@@ -288,71 +287,6 @@ refactor(connect)!: rename client constructor parameters
 -   Capitalizing the description (e.g. `feat: Add feature` — use lowercase `feat: add feature`).
 -   Missing the colon and space after the type (e.g. `feat add feature` — must be `feat: add feature`).
 -   Using a PR title that is not conventional when the branch will be squash-merged.
-
-## Showboat demos
-
-After completing work on a branch, create a showboat demo that proves your changes work. The demo file is committed to the branch and its contents are pasted into the PR body under a `## Demo` heading.
-
-### Getting started
-
-Run `uvx showboat --help` at the start of a session to learn the tool.
-
-### Creating a demo
-
-``` bash
-uvx showboat init demo.md "Feature: <title>"
-uvx showboat note demo.md "Explanation of what was done..."
-uvx showboat exec demo.md bash "uv run pytest selftests/ -v"
-uvx showboat exec demo.md bash "just check"
-```
-
-Use `uvx showboat image demo.md <path>` if screenshots are relevant.
-
-### Avoiding timing-sensitive output
-
-`showboat verify` re-runs every code block and diffs the output exactly. Commands that include wall-clock timing (e.g. pytest's `N passed in X.XXs`) will fail verification because the time changes on each run.
-
-Two safe patterns:
-
-1.  **Strip the timing suffix with `sed`:**
-
-    ``` bash
-    uv run pytest selftests/ -q 2>&1 | grep -E "passed|failed|error" | sed 's/ in [0-9.]*s//'
-    ```
-
-    Expected output becomes `243 passed, 4 warnings` (no time).
-
-2.  **Use `--no-header -rN` and filter aggressively** if you need a one-liner count without any pytest preamble.
-
-Similarly, avoid capturing absolute timestamps, PID numbers, or any other value that varies between runs. When `just` is not available in the environment, replace `just check` with the underlying `uv run ruff ...` commands directly.
-
-Beyond timing, watch for **flaky tests in the suite you exec**. If your demo runs `uv run pytest selftests/`, a single non-deterministic test elsewhere in the suite (e.g. timing-sensitive cases in `selftests/test_load_engine.py`) can fail verification on re-run even though your code is fine. Either narrow the demo to specific test paths (`selftests/install/`) or add `--ignore=<path>` for known-flaky files.
-
-### What to demonstrate
-
--   **New tests:** run the new tests and show them passing
--   **New features:** exercise the feature with concrete examples
--   **Bug fixes:** show the fix in action (before/after if feasible)
--   **Refactors:** show that existing tests still pass
--   **Always** include `just check` (lint/format) output
-
-### Before committing
-
-Use `just demo-save` to verify and move the demo in one step:
-
-``` bash
-just demo-save my-feature-name
-```
-
-This runs `showboat verify demo.md`, then moves it to `validation_docs/demo-my-feature-name.md`. The root `demo.md` is gitignored and should never be committed directly -- it is a working file only.
-
-### PR workflow
-
-1.  Run `just demo-save <name>` to verify and archive the demo
-2.  Commit `validation_docs/demo-<name>.md` with your branch
-3.  Paste the contents into the PR body under `## Demo`
-
-CI will run `showboat verify` on any new or changed files in `validation_docs/` for PRs that include them.
 
 ## Pytest warning filters
 

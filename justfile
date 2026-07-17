@@ -72,20 +72,6 @@ report *ARGS:
     uv run pytest tests/ {{ ARGS }}
     cd report && uv run quarto render
 
-# Create a new showboat demo document
-demo-init TITLE:
-    uvx showboat init demo.md "{{ TITLE }}"
-
-# Verify an existing demo document
-demo-verify:
-    uvx showboat verify demo.md
-
-# Verify and move demo.md to validation_docs/ with a descriptive name
-demo-save NAME:
-    uvx showboat verify demo.md
-    mv demo.md validation_docs/demo-{{ NAME }}.md
-    @echo "Saved to validation_docs/demo-{{ NAME }}.md"
-
 # Generate test catalog and feature matrix JSON for the website
 website-data:
     uv run python scripts/generate-test-catalog.py
