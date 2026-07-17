@@ -23,7 +23,7 @@ const products = [
   {
     name: "Package Manager",
     flag: "package-manager-url",
-    description: "CRAN, PyPI, Bioconductor, and OpenVSX mirrors, repository configuration, and authenticated/private package access",
+    description: "CRAN, PyPI, Bioconductor, and OpenVSX mirrors, repository configuration, and private package access",
     logo: `${base}logo-packagemanager.svg`,
     testsId: "package_manager",
   },
@@ -45,7 +45,7 @@ const categories = [
       <p class="hero-label">Open Source</p>
       <h1>Verified Installation<br />of Posit Team</h1>
       <p class="hero-subtitle">
-        An extensible BDD test suite that validates your Posit Team deployment is installed correctly
+        An extensible test suite that validates your Posit Team deployment is installed correctly
         and functioning properly.
       </p>
       <div class="hero-actions">
@@ -89,7 +89,7 @@ const categories = [
           <span class="step-number">1</span>
           <div>
             <h4>Install</h4>
-            <p><code>uv pip install posit-vip</code></p>
+            <p><code>uv tool install posit-vip</code></p>
             <p><code>vip install</code></p>
           </div>
         </div>
@@ -104,7 +104,7 @@ const categories = [
           <span class="step-number">3</span>
           <div>
             <h4>Review</h4>
-            <p>Generate a Quarto report with detailed results you can publish to Connect.</p>
+            <p>You can review the output from the run on the command line or generate a Quarto report with <code>vip report</code>.</p>
           </div>
         </div>
       </div>
@@ -115,8 +115,8 @@ const categories = [
     <div class="container">
       <h2 class="section-title">What VIP validates</h2>
       <p class="section-subtitle">
-        VIP tests Connect, Workbench, and Package Manager using pytest-bdd with Gherkin feature
-        files and Playwright for browser automation.
+        VIP tests Connect, Workbench, and Package Manager using open source testing software:
+        pytest-bdd with Gherkin feature files and Playwright for browser automation.
       </p>
 
       <div class="product-grid">

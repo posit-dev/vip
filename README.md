@@ -7,20 +7,17 @@
 An open-source, extensible test suite that validates Posit Team deployments are
 installed correctly and functioning properly.
 
-VIP uses **BDD-style tests** (pytest-bdd + Playwright) to verify Connect,
-Workbench, and Package Manager across standalone, Kubernetes, and Snowflake
-Native App deployments.  Results are compiled into an **HTML report** that can
-be published to a Connect server.
+VIP uses BDD-style tests (pytest-bdd + Playwright) to verify Connect,
+Workbench, and Package Manager deployments. Results can be viewed
+from the command-line output or compiled into an HTML report.
 
 **Documentation:** https://posit-dev.github.io/vip/
 
 ## Quick start
 
 ```bash
-uv venv
-source .venv/bin/activate
-uv pip install posit-vip
-uv run vip install
+uv tool install posit-vip
+vip install
 vip verify --connect-url https://connect.example.com --interactive-auth
 ```
 
@@ -48,9 +45,11 @@ vip verify --config vip.toml
 To reverse what `vip install` (or `just setup`) did:
 
 ```bash
-uv run vip uninstall        # dry run; prints the full plan including any sudo command
-uv run vip uninstall --yes  # remove Playwright cache + manifest; prints the sudo command
-                            # for any system packages so you can remove them yourself
+vip uninstall        # dry run; prints the full plan including any sudo command
+vip uninstall --yes  # remove Playwright cache + manifest; prints the sudo command
+                     # for any system packages so you can remove them yourself
+
+uv tool uninstall posit-vip  # remove vip itself once you're done
 ```
 
 `vip uninstall` only removes packages and files that `vip install` recorded

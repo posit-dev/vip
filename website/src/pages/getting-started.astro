@@ -25,6 +25,7 @@ import Footer from "../components/Footer.astro";
           <li><a href="#configuration-file">Configuration file</a></li>
           <li><a href="#generating-reports">Generating reports</a></li>
           <li><a href="#extending-vip">Extending VIP</a></li>
+          <li><a href="#uninstalling">Uninstalling</a></li>
         </ul>
       </aside>
 
@@ -32,48 +33,50 @@ import Footer from "../components/Footer.astro";
         <section id="quick-start">
           <h2>Quick start</h2>
           <p>
-            VIP verifies Posit Team across standalone and Snowflake Native App
-            deployments.
+            VIP verifies Posit Team across standalone deployments.
           </p>
-          <p>Install VIP, then point it at your server:</p>
-          <pre><code>uv pip install posit-vip
-uv run vip install</code></pre>
+          <p>Install VIP to start:</p>
+          <pre><code>uv tool install posit-vip
+vip install</code></pre>
           <p>
             <code>vip install</code> installs Playwright's Chromium browser
-            and the system libraries it needs. These can be later removed safely,
-            along with other test artifacts, with <code>vip uninstall</code>
+            and the system libraries it needs. These can later be removed
+            safely, along with other test artifacts, with
+            <code>vip uninstall</code>.
           </p>
-
-          <h3>Using RStudio or Positron?</h3>
           <p>
-            You can set up VIP as an RStudio project instead. Go to
-            <em>File &rarr; New Project &rarr; Version Control &rarr; Git</em>
-            and enter <code>https://github.com/posit-dev/vip.git</code> as
-            the Repository URL. Then install dependencies from the Terminal tab:
+            Run your first VIP test against Posit Public Package Manager:
           </p>
-          <pre><code>uv sync
-uv run vip install</code></pre>
-
-          <p>Run your first test against a Connect server:</p>
+          <pre><code>vip verify --package-manager-url https://p3m.dev --filter 'not test_product_does_not_expose_sensitive_headers and not test_prometheus_metrics'</code></pre>
+          <p>The above command should finish in under a minute and show a
+          successful run with some tests skipped.</p>
+          <p>Now it is time to run against one of your own servers. If you have
+          Connect set up, you can run against it like this:</p>
           <pre><code>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre>
           <p>
             The <code>--interactive-auth</code> flag opens a Chromium window so
             you can log in. After authentication completes, VIP runs the test
             suite headlessly and cleans up the session automatically.
           </p>
-          <p>Check product health without running the full test suite:</p>
-          <pre><code>vip status</code></pre>
-
-          <p>Already have an API key? Skip browser auth entirely with <code>--api-auth</code>:</p>
+          <p>
+            If you have an API key, you can skip browser auth entirely with <code>--api-auth</code>:</p>
           <pre><code>export VIP_CONNECT_API_KEY="your-api-key"
 vip verify --connect-url https://connect.example.com --api-auth</code></pre>
 
-          <p>Test multiple products at once:</p>
-          <pre><code>vip verify \
-  --connect-url https://connect.example.com \
-  --workbench-url https://workbench.example.com \
-  --package-manager-url https://packagemanager.example.com \
-  --interactive-auth</code></pre>
+          <p>There are more authentication options, including headless auth with OIDC,
+          explained below.</p>
+          <p>At this point, you may see some tests failing and want to fix what
+          isn't right and then try again. You can rerun just those tests with the
+          <code>--filter</code> flag:</p>
+          <pre><code>vip verify --connect-url https://connect.example.com --interactive-auth --filter test_deploy_shiny</code></pre>
+          <p>
+            As you get comfortable with how one server is running, you can move
+            on to others using not just <code>--connect-url</code> but also
+            <code>--workbench-url</code> and <code>--package-manager-url</code>.
+            You can also see what other options are available by reading below or
+            reading the command-line help:
+          </p>
+          <pre><code>vip --help</code></pre>
         </section>
 
         <section id="authentication">
@@ -332,6 +335,25 @@ extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
           <p>
             See <a href="https://github.com/posit-dev/vip/tree/main/examples/custom_tests"><code>examples/custom_tests/</code></a> in the repository for a working example.
           </p>
+        </section>
+
+        <section id="uninstalling">
+          <h2>Uninstalling</h2>
+          <p>
+            When you are done with VIP, run <code>vip uninstall</code> to preview
+            what will be removed. It prints a dry-run plan without changing
+            anything:
+          </p>
+          <pre><code>vip uninstall</code></pre>
+          <p>
+            Pass <code>--yes</code> to remove those artifacts. On Linux, VIP does
+            not remove the system libraries it installed and instead it prints a
+            <code>sudo</code> command for you to run. Complete the uninstall in
+            this order:
+          </p>
+          <pre><code>vip uninstall --yes
+# then run the sudo removal command that vip uninstall prints, if any
+uv tool uninstall posit-vip</code></pre>
         </section>
       </article>
     </div>

@@ -1,6 +1,39 @@
 # CHANGELOG
 
 
+## v0.54.6 (2026-07-17)
+
+### Bug Fixes
+
+- **report**: Let template copy failures propagate
+  ([#496](https://github.com/posit-dev/vip/pull/496),
+  [`7acf18d`](https://github.com/posit-dev/vip/commit/7acf18d4ccdd5b1bee0dd0183598077916c61d7c))
+
+### Documentation
+
+- **website**: Refresh getting started and feature matrix content
+  ([#488](https://github.com/posit-dev/vip/pull/488),
+  [`a0eef4f`](https://github.com/posit-dev/vip/commit/a0eef4fefd1720793682c2cf192c212d6345b121))
+
+
+## v0.54.5 (2026-07-17)
+
+### Bug Fixes
+
+- **report**: Render from any directory and add badge styling
+  ([#487](https://github.com/posit-dev/vip/pull/487),
+  [`d038eb9`](https://github.com/posit-dev/vip/commit/d038eb95bf85d3bbb773604aa134c7fe26f41ee3))
+
+
+## v0.54.4 (2026-07-17)
+
+### Bug Fixes
+
+- **workbench**: Make JupyterLab launch/exec resilient to SPA timing
+  ([#494](https://github.com/posit-dev/vip/pull/494),
+  [`31f2728`](https://github.com/posit-dev/vip/commit/31f27285e733a1e2739d80a4777ffa75b12fea42))
+
+
 ## v0.54.3 (2026-07-17)
 
 ### Bug Fixes

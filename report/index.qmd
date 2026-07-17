@@ -74,23 +74,27 @@ from html import escape as _esc
 from IPython.display import HTML
 
 from vip.gherkin import parse_feature_file
-from vip.reporting import load_troubleshooting
+from vip.reporting import (
+    feature_file_for_nodeid,
+    load_troubleshooting,
+    troubleshooting_path,
+)
 
-_hints = load_troubleshooting(Path("../src/vip_tests/troubleshooting.toml"))
+_tp = troubleshooting_path()
+_hints = load_troubleshooting(_tp) if _tp else {}
 _feature_cache: dict[str, dict] = {}
 _error_idx = 0
 
 
 def _get_feature(nodeid: str) -> dict | None:
-    py_file = nodeid.split("::")[0] if "::" in nodeid else nodeid
-    feature_file = py_file.rsplit(".", 1)[0] + ".feature"
-    if feature_file not in _feature_cache:
-        p = Path("..") / feature_file
-        if p.exists():
-            _feature_cache[feature_file] = parse_feature_file(p)
+    feature_file = feature_file_for_nodeid(nodeid)
+    key = str(feature_file) if feature_file else nodeid
+    if key not in _feature_cache:
+        if feature_file is not None:
+            _feature_cache[key] = parse_feature_file(feature_file)
         else:
-            _feature_cache[feature_file] = {}
-    return _feature_cache[feature_file] or None
+            _feature_cache[key] = {}
+    return _feature_cache[key] or None
 
 
 def _get_steps(item) -> list[str]:
