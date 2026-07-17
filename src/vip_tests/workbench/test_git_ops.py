@@ -3,10 +3,12 @@
 Tests cover terminal-based Git operations (clone, branch, commit, push) in
 RStudio, VS Code, and Positron sessions.
 
-Requires [workbench.git_test] in vip.toml.  Clone scenarios run with
-auth_method "https-token" (VIP_GIT_TOKEN set) or "none" (anonymous clone of a
-public repo); push scenarios require "https-token".  All scenarios auto-skip
-when the config block is absent.
+Clone scenarios run out-of-the-box against a default public repo (auth_method
+"none", no token) when [workbench.git_test] is absent from vip.toml.  Push
+scenarios require auth_method "https-token" with VIP_GIT_TOKEN set and
+auto-skip as read-only otherwise.  The config-availability gate runs before
+the login step so a read-only/config situation is reported deterministically,
+without depending on a (possibly flaky) login attempt.
 """
 
 from __future__ import annotations
@@ -210,10 +212,16 @@ def git_config_available(vip_config):
 
     cfg = vip_config.workbench.git_test
     if cfg is None:
+        # Defensive fallback: WorkbenchConfig.from_dict always populates
+        # git_test with a default (anonymous clone of a public repo) when the
+        # [workbench.git_test] block is absent, so this should rarely fire —
+        # it only guards direct construction of WorkbenchConfig (e.g. tests).
         pytest.skip(
             "Git test config is not configured. "
-            "Add a [workbench.git_test] block to vip.toml with clone_url and auth_method, "
-            "and set VIP_GIT_TOKEN in the environment (for auth_method='https-token')."
+            "Cloning a public repo needs only clone_url and auth_method='none' "
+            "in a [workbench.git_test] block of vip.toml (no token required). "
+            "Push/private-repo scenarios additionally need auth_method='https-token' "
+            "with VIP_GIT_TOKEN set in the environment."
         )
     if cfg.auth_method not in ("https-token", "none"):
         pytest.skip(
@@ -223,7 +231,8 @@ def git_config_available(vip_config):
     if not cfg.clone_url:
         pytest.skip(
             "workbench.git_test.clone_url is empty. "
-            "Set clone_url in the [workbench.git_test] block of vip.toml."
+            "Set clone_url in the [workbench.git_test] block of vip.toml — "
+            "a public repo needs only clone_url with auth_method='none' (no token)."
         )
     if _urlparse(cfg.clone_url).scheme != "https":
         pytest.skip(

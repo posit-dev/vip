@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from vip.config import (
+    DEFAULT_PUBLIC_CLONE_URL,
     AuthConfig,
     ConnectConfig,
     GitTestConfig,
@@ -670,9 +671,12 @@ class TestWorkbenchConfigGitTest:
         wc = WorkbenchConfig(url="https://workbench.example.com")
         assert wc.git_test is None
 
-    def test_git_test_absent_from_dict_when_key_missing(self):
+    def test_git_test_absent_from_dict_yields_default_public_repo(self):
         wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com"})
-        assert wc.git_test is None
+        assert wc.git_test is not None
+        assert wc.git_test.clone_url == DEFAULT_PUBLIC_CLONE_URL
+        assert wc.git_test.auth_method == "none"
+        assert wc.git_test.token == ""
 
     def test_git_test_parsed_from_dict(self):
         wc = WorkbenchConfig.from_dict(
@@ -695,10 +699,12 @@ class TestWorkbenchConfigGitTest:
         assert wc.git_test is not None
         assert wc.git_test.token == "tok123"
 
-    def test_git_test_none_when_env_not_set_and_no_block(self, monkeypatch):
-        monkeypatch.delenv("VIP_GIT_TOKEN", raising=False)
+    def test_git_test_default_ignores_env_token(self, monkeypatch):
+        """auth_method='none' forces the default's token empty even with VIP_GIT_TOKEN set."""
+        monkeypatch.setenv("VIP_GIT_TOKEN", "tok123")
         wc = WorkbenchConfig.from_dict({"url": "https://workbench.example.com"})
-        assert wc.git_test is None
+        assert wc.git_test is not None
+        assert wc.git_test.token == ""
 
 
 class TestLoadConfigGitTest:
@@ -719,7 +725,7 @@ auth_method = "https-token"
         assert cfg.workbench.git_test.clone_url == "https://github.com/org/repo.git"
         assert cfg.workbench.git_test.auth_method == "https-token"
 
-    def test_git_test_block_absent_yields_none(self, tmp_toml):
+    def test_git_test_block_absent_yields_default_public_repo(self, tmp_toml):
         path = tmp_toml(
             """
 [workbench]
@@ -727,7 +733,10 @@ url = "https://workbench.example.com"
 """
         )
         cfg = load_config(path)
-        assert cfg.workbench.git_test is None
+        assert cfg.workbench.git_test is not None
+        assert cfg.workbench.git_test.clone_url == DEFAULT_PUBLIC_CLONE_URL
+        assert cfg.workbench.git_test.auth_method == "none"
+        assert cfg.workbench.git_test.token == ""
 
     def test_git_test_token_from_env(self, tmp_toml, monkeypatch):
         monkeypatch.setenv("VIP_GIT_TOKEN", "env-token-xyz")

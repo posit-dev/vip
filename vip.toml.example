@@ -100,8 +100,12 @@ url = "https://workbench.example.com"
 
 # Git operations testing.
 # Validates that users can clone, commit, and push from Workbench sessions
-# (RStudio terminal, VS Code terminal, Positron terminal, and RStudio Git pane).
-# All Git scenarios auto-skip when this block is absent.
+# (RStudio terminal, VS Code terminal, and Positron terminal).
+#
+# This block is optional. When absent, clone/connectivity scenarios run
+# out-of-the-box against a default public repo (auth_method "none", no token
+# required); push/commit scenarios auto-skip as read-only. Add this block
+# only to (a) override the default clone repo, or (b) enable push scenarios.
 #
 # auth_method = "https-token": set VIP_GIT_TOKEN in the environment (never in
 #   this file); clone and push scenarios run.
