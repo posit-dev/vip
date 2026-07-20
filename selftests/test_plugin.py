@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from vip.plugin import _extract_exception_info, _format_concise_error
+from vip.plugin import _extract_exception_info, _format_concise_error, _outcome_color
 
 
 class TestFormatConciseError:
@@ -156,6 +156,37 @@ class TestExtractExceptionInfo:
         assert "Connect: /metrics returned 403" in exc_message
 
 
+class TestOutcomeColor:
+    """Per-line progress-indicator color derived from a single report."""
+
+    class _Rep:
+        def __init__(self, when, *, passed=False, failed=False, skipped=False, wasxfail=False):
+            self.when = when
+            self.passed = passed
+            self.failed = failed
+            self.skipped = skipped
+            if wasxfail:
+                self.wasxfail = ""
+
+    def test_passed_call_is_green(self):
+        assert _outcome_color(self._Rep("call", passed=True)) == "green"
+
+    def test_failed_call_is_red(self):
+        assert _outcome_color(self._Rep("call", failed=True)) == "red"
+
+    def test_skipped_setup_is_yellow(self):
+        assert _outcome_color(self._Rep("setup", skipped=True)) == "yellow"
+
+    def test_xfail_call_is_yellow(self):
+        assert _outcome_color(self._Rep("call", skipped=True, wasxfail=True)) == "yellow"
+
+    def test_passing_setup_phase_is_ignored(self):
+        assert _outcome_color(self._Rep("setup", passed=True)) is None
+
+    def test_teardown_phase_is_ignored(self):
+        assert _outcome_color(self._Rep("teardown", passed=True)) is None
+
+
 class TestPluginIntegration:
     """Integration tests using pytester to exercise the plugin end-to-end.
 
@@ -184,6 +215,41 @@ class TestPluginIntegration:
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
         result.assert_outcomes()
         result.stdout.fnmatch_lines(["*1 deselected*"])
+
+    def test_progress_indicator_recolored_per_line(self, selftest_pytester):
+        """After a failure, a later passing line's [x%] stays green, not red.
+
+        pytest normally colors the progress indicator with the cumulative
+        session color (red once anything fails). We recolor per-line so only
+        the failing line's indicator is red.
+        """
+        selftest_pytester.makepyfile(
+            """
+            def test_a_pass():
+                assert True
+
+            def test_b_fail():
+                assert False
+
+            def test_c_pass():
+                assert True
+            """
+        )
+        result = selftest_pytester.runpytest_subprocess(
+            "--vip-config=vip.toml", "-v", "--color=yes", "-p", "no:randomly"
+        )
+        result.assert_outcomes(passed=2, failed=1)
+        green = "\x1b[32m"
+        red = "\x1b[31m"
+        # The progress indicator inherits the color opened just before it (the
+        # fill spaces sit between the code and the digits), so match the color
+        # code + fill + percentage as a regex rather than requiring adjacency.
+        c_line = next(line for line in result.outlines if "test_c_pass" in line)
+        assert re.search(rf"{re.escape(green)} +\[100%\]", c_line)
+        assert not re.search(rf"{re.escape(red)} +\[100%\]", c_line)
+        # And the failing line's own indicator is red.
+        b_line = next(line for line in result.outlines if "test_b_fail" in line)
+        assert re.search(rf"{re.escape(red)} +\[ 66%\]", b_line)
 
     def test_pytest_bdd_removed_in10_warning_suppressed(self, selftest_pytester):
         """pytest-bdd's fixture injection emits PytestRemovedIn10Warning on

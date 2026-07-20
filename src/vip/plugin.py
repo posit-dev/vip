@@ -48,6 +48,14 @@ _version_na_key = pytest.StashKey[bool]()
 # Safe because pytester runs in a subprocess (fresh import each time).
 _active_config: pytest.Config | None = None
 
+# Color of the result line currently being rendered, set in
+# pytest_runtest_logreport (tryfirst, so it lands before the terminal reporter
+# renders the same report).  Consumed by the progress-indicator recolor wrapper
+# installed on the terminal reporter.  ``None`` means "fall back to pytest's
+# default color".  Module-level is safe: this only matters in a single,
+# non-xdist process (see _install_progress_recolor).
+_current_line_color: str | None = None
+
 # Mapping from pytest marker name to product config key.
 _PRODUCT_MARKERS = {
     "connect": "connect",
@@ -360,9 +368,86 @@ def pytest_configure_node(node) -> None:
         node.workerinput["vip_workbench_auth_error"] = auth.workbench_auth_error or ""
 
 
+def _outcome_color(report: pytest.TestReport) -> str | None:
+    """Return the pytest markup color for a single result line's outcome.
+
+    Mirrors pytest's own per-letter markup (see
+    ``TerminalReporter.pytest_runtest_logreport``): green for a plain pass,
+    yellow for xfail/xpass/skip, red for a failure or error.  Returns ``None``
+    for the setup/teardown phases and any outcome we don't recolor, so the
+    caller falls back to pytest's default (cumulative) color.
+
+    Only the ``call`` phase — plus a ``setup`` that skipped, which is how an
+    ordinary skip surfaces — carries a line the user sees, so other phases are
+    ignored to avoid recoloring a percentage that belongs to a passing test.
+    """
+    if report.when not in ("call", "setup"):
+        return None
+    if report.when == "setup" and not report.skipped:
+        return None
+    if report.failed:
+        return "red"
+    if report.skipped or hasattr(report, "wasxfail"):
+        return "yellow"
+    if report.passed:
+        return "green"
+    return None
+
+
+def _install_progress_recolor(config: pytest.Config) -> None:
+    """Color each line's trailing progress indicator by that line's outcome.
+
+    pytest colors the ``[ 42%]`` progress indicator with the session's
+    *cumulative* "main color": once any test fails, ``_get_main_color`` returns
+    red and every subsequent line's indicator is red too — making a run look far
+    more broken than it is.  We want only the failing line's indicator red.
+
+    ``_write_progress_information_filling_space`` reads the color from
+    ``self._get_main_color()``.  We wrap it to temporarily swap in the color of
+    the line just reported (captured in ``pytest_runtest_logreport``), then
+    restore the real one so the end-of-session summary still uses pytest's
+    cumulative color.
+
+    Skipped under xdist: the controller renders progress on its own
+    ``pytest_runtest_logreport`` path (the ``running_xdist`` branch), which uses
+    a fixed cyan indicator and never calls the wrapped method, so there is
+    nothing to recolor and the module-level ``_current_line_color`` would race
+    across workers besides.
+    """
+    if config.getoption("--vip-verbose", default=False):
+        return
+    if hasattr(config, "workerinput"):
+        return
+    tr = config.pluginmanager.get_plugin("terminalreporter")
+    if tr is None:
+        return
+
+    original_fill = tr._write_progress_information_filling_space
+    original_get_main_color = tr._get_main_color
+
+    def recolored_fill(*args: Any, **kwargs: Any) -> Any:
+        if _current_line_color is None:
+            return original_fill(*args, **kwargs)
+        # Swap _get_main_color to report this line's color, then restore it so
+        # nothing else (summary line, past-edge writes) is affected.
+        known = original_get_main_color()[1]
+        tr._get_main_color = lambda: (_current_line_color, known)  # type: ignore[method-assign]
+        try:
+            return original_fill(*args, **kwargs)
+        finally:
+            tr._get_main_color = original_get_main_color  # type: ignore[method-assign]
+
+    tr._write_progress_information_filling_space = recolored_fill  # type: ignore[method-assign]
+
+
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Add extension directories to sys.path so their conftest / modules
     are importable, and register them for collection."""
+    # Recolor progress indicators per-line.  Installed here (not in
+    # pytest_configure) because the builtin terminal plugin registers
+    # "terminalreporter" in its own pytest_configure, which may run after ours.
+    _install_progress_recolor(session.config)
+
     ext_dirs = session.config.stash.get(_ext_dirs_key, [])
     for d in ext_dirs:
         p = Path(d).resolve()
@@ -861,6 +946,12 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     # _active_config is a pytest.Config; xdist sets workerinput on worker configs.
     if hasattr(_active_config, "workerinput"):
         return
+
+    # Capture this line's color for the progress-indicator recolor wrapper.
+    # tryfirst ensures this runs before the terminal reporter renders the same
+    # report, so the trailing ``[ x%]`` picks up this line's own outcome.
+    global _current_line_color
+    _current_line_color = _outcome_color(report)
 
     # --- Result collection (for JSON report) ---
     if report.when == "call" or (report.when == "setup" and report.skipped):
