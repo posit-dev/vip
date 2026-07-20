@@ -43,6 +43,8 @@ from vip_tests.workbench.pages import (
     VSCodeSession,
 )
 
+pytestmark = pytest.mark.order(90)
+
 _FILENAME = Path(__file__).name
 
 

@@ -33,6 +33,8 @@ from vip_tests.workbench.conftest import (
 from vip_tests.workbench.exec import terminal_run
 from vip_tests.workbench.pages import Homepage, NewSessionDialog, VSCodeSession
 
+pytestmark = pytest.mark.order(60)
+
 _FILENAME = Path(__file__).name
 
 # Timeout for rsconnect deploy, which bundles, uploads, and deploys.

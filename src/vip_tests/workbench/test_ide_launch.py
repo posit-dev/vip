@@ -37,6 +37,8 @@ from vip_tests.workbench.pages import (
     VSCodeSession,
 )
 
+pytestmark = pytest.mark.order(20)
+
 # Get filename for session naming
 _FILENAME = Path(__file__).name
 

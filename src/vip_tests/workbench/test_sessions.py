@@ -27,6 +27,8 @@ from vip_tests.workbench.conftest import (
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
 
+pytestmark = pytest.mark.order(30)
+
 # Get filename for session naming
 _FILENAME = Path(__file__).name
 

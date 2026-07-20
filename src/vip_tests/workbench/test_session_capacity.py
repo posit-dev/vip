@@ -29,6 +29,8 @@ from vip_tests.workbench.conftest import (
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
 
+pytestmark = pytest.mark.order(40)
+
 scenarios("test_session_capacity.feature")
 
 # Unique prefix for session names. Timestamp ensures no collision with

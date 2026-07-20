@@ -34,6 +34,8 @@ from vip_tests.workbench.conftest import (
 from vip_tests.workbench.exec import rstudio_eval
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
 
+pytestmark = pytest.mark.order(45)
+
 _FILENAME = Path(__file__).name
 
 # Maximum idle_timeout_minutes that makes the test viable within CI/CD budgets.
