@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from filelock import FileLock
 
@@ -85,3 +86,77 @@ class TestSilentSsoSignin:
         monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
         ok = wb._silent_sso_signin(_FakeButton(), _FakeLogo(appears=False), "https://wb.x")
         assert ok is False
+
+
+class TestWorkbenchGroupName:
+    def test_ide_marker_wins(self):
+        assert wb._workbench_group_name({"rstudio"}, "test_ide_launch") == "workbench_ide_rstudio"
+        assert wb._workbench_group_name({"positron"}, "test_ide_launch") == "workbench_ide_positron"
+
+    def test_non_ide_groups_by_module_stripping_test_prefix(self):
+        assert wb._workbench_group_name(set(), "test_packages") == "workbench_packages"
+        assert wb._workbench_group_name(set(), "test_git_ops") == "workbench_git_ops"
+
+    def test_module_without_test_prefix_kept_verbatim(self):
+        assert wb._workbench_group_name(set(), "chronicle_probe") == "workbench_chronicle_probe"
+
+
+class _FakeMarker:
+    def __init__(self, name):
+        self.name = name
+
+
+class _FakeItem:
+    def __init__(self, path: Path, marker_names):
+        self.path = path
+        self.own_markers = [_FakeMarker("xdist_group"), _FakeMarker("workbench")]
+        self._markers = [_FakeMarker(n) for n in marker_names]
+        self.added = []
+
+    def iter_markers(self):
+        return list(self._markers)
+
+    def add_marker(self, marker):
+        # pytest.mark.xdist_group("g") -> mark object with .name and .args
+        self.added.append((marker.name, marker.args))
+
+
+class _FakeConfig:
+    def __init__(self, session):
+        self._session = session
+
+    @property
+    def stash(self):
+        cfg = self
+
+        class _Stash:
+            def get(self, key, default=None):  # noqa: ARG002
+                return cfg._session
+
+        return _Stash()
+
+
+class TestCollectionHook:
+    def _wb_dir(self):
+        return Path(wb.__file__).parent
+
+    def test_no_auth_session_is_a_noop(self):
+        item = _FakeItem(self._wb_dir() / "test_packages.py", [])
+        wb.pytest_collection_modifyitems(_FakeConfig(None), [item])
+        assert item.added == []  # untouched under password / no-auth
+
+    def test_ide_item_grouped_by_ide(self):
+        item = _FakeItem(self._wb_dir() / "test_ide_launch.py", ["workbench", "rstudio"])
+        wb.pytest_collection_modifyitems(_FakeConfig(object()), [item])
+        assert ("xdist_group", ("workbench_ide_rstudio",)) in item.added
+        assert all(m.name != "xdist_group" for m in item.own_markers)  # old group stripped
+
+    def test_non_ide_item_grouped_by_module(self):
+        item = _FakeItem(self._wb_dir() / "test_packages.py", ["workbench"])
+        wb.pytest_collection_modifyitems(_FakeConfig(object()), [item])
+        assert ("xdist_group", ("workbench_packages",)) in item.added
+
+    def test_non_workbench_item_ignored(self):
+        item = _FakeItem(Path("/somewhere/connect/test_auth.py"), ["connect"])
+        wb.pytest_collection_modifyitems(_FakeConfig(object()), [item])
+        assert item.added == []

@@ -81,23 +81,40 @@ def oidc_login_lock(workbench_url: str, *, timeout: float = _LOGIN_LOCK_TIMEOUT)
 pytestmark = [pytest.mark.workbench, pytest.mark.xdist_group("workbench")]
 
 
+_IDE_MARKERS = ("rstudio", "vscode", "jupyter", "positron")
+
+
+def _workbench_group_name(ide_markers: set[str], module_stem: str) -> str:
+    """Compute the xdist group for a Workbench test under shared auth (hybrid grouping).
+
+    IDE-launch scenarios (carrying an IDE marker) group by IDE so each IDE runs on its own
+    worker: ``workbench_ide_<ide>``. Every other Workbench test groups by feature module:
+    ``workbench_<stem>`` (a leading ``test_`` stripped).
+    """
+    for ide in _IDE_MARKERS:
+        if ide in ide_markers:
+            return f"workbench_ide_{ide}"
+    stem = module_stem[len("test_") :] if module_stem.startswith("test_") else module_stem
+    return f"workbench_{stem}"
+
+
 def pytest_collection_modifyitems(
     config: pytest.Config,
     items: list[pytest.Item],
 ) -> None:
-    """Serialize Workbench tests onto a single xdist worker when a shared auth session is active.
+    """Group Workbench tests for parallel execution when a shared auth session is active.
 
     Under --interactive-auth / --headless-auth all Workbench tests authenticate as the same
-    shared browser account.  Running them across many parallel workers triggers a
-    simultaneous-login storm against the OIDC IdP that intermittently fails to establish
-    sessions or bounces already-logged-in browsers back to the sign-in page.  Pinning all
-    Workbench tests to one xdist group forces LoadGroupScheduling to run them sequentially
-    on a single worker, eliminating the storm while leaving Connect/PM tests unaffected.
+    shared account. Rather than pin them all to one worker (the old serial workaround), we
+    group them so LoadGroupScheduling spreads them across workers: IDE-launch scenarios by
+    IDE (``workbench_ide_<ide>``), everything else by feature module (``workbench_<module>``).
+    The simultaneous-login storm this used to cause is prevented by the cross-worker login
+    lock in :func:`workbench_login` (see :func:`oidc_login_lock`), not by serialization.
 
     For password auth (no shared session) the default parallel behavior is preserved.
     """
     if config.stash.get(_auth_session_key, None) is None:
-        # No shared auth session — password auth or no auth.  Keep default parallel behavior.
+        # No shared auth session — password auth or no auth. Keep default parallel behavior.
         return
 
     workbench_dir = Path(__file__).parent
@@ -105,10 +122,11 @@ def pytest_collection_modifyitems(
         item_path = getattr(item, "path", None)
         if item_path is None or not item_path.is_relative_to(workbench_dir):
             continue
-        # Remove the default xdist_group("workbench") set by pytestmark so we can
-        # replace it with a group that serializes all workers onto one.
+        ide_markers = {m.name for m in item.iter_markers()} & set(_IDE_MARKERS)
+        group = _workbench_group_name(ide_markers, item_path.stem)
+        # Replace the default xdist_group("workbench") from pytestmark with the hybrid group.
         item.own_markers = [m for m in item.own_markers if m.name != "xdist_group"]
-        item.add_marker(pytest.mark.xdist_group("workbench_interactive_serial"))
+        item.add_marker(pytest.mark.xdist_group(group))
 
 
 # ---------------------------------------------------------------------------
