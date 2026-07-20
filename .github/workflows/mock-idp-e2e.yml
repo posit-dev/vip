@@ -224,11 +224,17 @@ jobs:
   status:
     name: Mock-IdP E2E Status
     if: always()
-    needs: [mock-idp-e2e]
+    needs: [set-matrix, mock-idp-e2e]
     runs-on: ubuntu-latest
     steps:
       - name: Check result
         run: |
+          # A failed set-matrix skips (not fails) mock-idp-e2e, which the
+          # check below would otherwise read as a clean skip.
+          if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
+            echo "Version-matrix job failed; cannot confirm E2E scope"
+            exit 1
+          fi
           if [ "${{ needs.mock-idp-e2e.result }}" = "failure" ] || [ "${{ needs.mock-idp-e2e.result }}" = "cancelled" ]; then
             echo "Mock-IdP E2E tests failed or were cancelled"
             exit 1

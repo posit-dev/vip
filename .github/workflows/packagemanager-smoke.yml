@@ -58,7 +58,9 @@ jobs:
   # runs fan out across the support window (current + 2 back). Bump the pinned
   # tags here when a new PM release ships; `ubuntu2204` (no version suffix)
   # always resolves to the latest PM build. Pinned tags are pulled directly as
-  # rstudio/rstudio-package-manager:<tag>.
+  # rstudio/rstudio-package-manager:<tag>. Pinned tags must not be substrings of
+  # one another — the resolved-version job-rename step below matches the running
+  # check by name substring.
   set-matrix:
     runs-on: ubuntu-latest
     permissions: {}
@@ -341,13 +343,19 @@ jobs:
   status:
     name: Package Manager Smoke Tests Status
     if: always()
-    needs: [changes, packagemanager-smoke]
+    needs: [changes, set-matrix, packagemanager-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Check smoke test result
         run: |
           if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
             echo "Change-detection job failed; cannot confirm smoke scope"
+            exit 1
+          fi
+          # A failed set-matrix skips (not fails) packagemanager-smoke, which
+          # would otherwise look identical to a clean no-relevant-paths skip below.
+          if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
+            echo "Version-matrix job failed; cannot confirm smoke scope"
             exit 1
           fi
           if [ "${{ needs.packagemanager-smoke.result }}" = "failure" ] || [ "${{ needs.packagemanager-smoke.result }}" = "cancelled" ]; then

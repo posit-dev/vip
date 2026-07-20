@@ -58,7 +58,10 @@ jobs:
   # fan out across the support window (current + 2 back). Bump the pinned tags
   # here when a new Connect release ships; `release` always tracks the newest
   # build. Versions >= 2026.04 resolve via with-connect to
-  # ghcr.io/posit-dev/connect:<version>.
+  # ghcr.io/posit-dev/connect:<version> (see posit-dev/with-connect main.py
+  # get_docker_tag(); re-check on any with-connect pin bump). Pinned version
+  # strings must not be substrings of one another — the resolved-version
+  # job-rename step below matches the running check by name substring.
   set-matrix:
     runs-on: ubuntu-latest
     permissions: {}
@@ -294,13 +297,19 @@ jobs:
   status:
     name: Connect Smoke Tests Status
     if: always()
-    needs: [changes, connect-smoke]
+    needs: [changes, set-matrix, connect-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Check smoke test result
         run: |
           if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
             echo "Change-detection job failed; cannot confirm smoke scope"
+            exit 1
+          fi
+          # A failed set-matrix skips (not fails) connect-smoke, which would
+          # otherwise look identical to a clean no-relevant-paths skip below.
+          if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
+            echo "Version-matrix job failed; cannot confirm smoke scope"
             exit 1
           fi
           if [ "${{ needs.connect-smoke.result }}" = "failure" ] || [ "${{ needs.connect-smoke.result }}" = "cancelled" ]; then
