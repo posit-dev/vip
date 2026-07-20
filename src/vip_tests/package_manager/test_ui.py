@@ -20,6 +20,8 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, parsers, scenarios, then, when
 
+from vip.config import VIPConfig
+from vip.version import ProductVersion
 from vip_tests.package_manager.pages import (
     Homepage,
     PackageDetailPage,
@@ -32,6 +34,17 @@ from vip_tests.package_manager.pages import (
 from vip_tests.package_manager.pages.ui import TIMEOUT_ELEMENT, TIMEOUT_PAGE_LOAD
 
 scenarios("test_ui.feature")
+
+# Package Manager 2026.06.0 shipped a redesigned homepage: the hero, the
+# repository-selection card, and the home package-search bar all use new
+# data-automation hooks that don't exist on earlier versions (which render a
+# different homepage entirely, with a repo-scoped nav search box). The version
+# matrix in packagemanager-smoke.yml runs this suite across the support window,
+# so the homepage scenario is skipped below on versions that predate the
+# redesign — its API-driven siblings still run there. This mirrors
+# @pytest.mark.min_version, which can't gate a single bulk-registered
+# scenarios() scenario here.
+_HOMEPAGE_REDESIGN_MIN_VERSION = "2026.06.0"
 
 
 # Maps the Gherkin <ecosystem> name to how we find a repo that serves it and a
@@ -121,8 +134,32 @@ def when_open_homepage(page: Page, pm_url: str):
     open_homepage(page, pm_url)
 
 
+def _skip_if_homepage_predates_redesign(vip_config: VIPConfig) -> None:
+    """Skip the homepage scenario on Package Manager versions older than the
+    2026.06.0 redesign.
+
+    A version we can't parse (or that isn't set) runs optimistically rather
+    than skipping, so a genuine homepage regression on a current deployment —
+    where the version is often left unset — isn't hidden behind a skip. Only a
+    version we can positively identify as older is gated out.
+    """
+    version = vip_config.package_manager.version
+    if not version:
+        return
+    try:
+        deployed = ProductVersion(version)
+    except ValueError:
+        return
+    if deployed < ProductVersion(_HOMEPAGE_REDESIGN_MIN_VERSION):
+        pytest.skip(
+            f"Homepage redesign requires Package Manager >= "
+            f"{_HOMEPAGE_REDESIGN_MIN_VERSION}; deployed {version}"
+        )
+
+
 @then("the homepage hero, repository selector, and package search bar are visible")
-def then_homepage_surfaces(page: Page):
+def then_homepage_surfaces(page: Page, vip_config: VIPConfig):
+    _skip_if_homepage_predates_redesign(vip_config)
     expect(page.locator(Homepage.HERO_TITLE)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
     expect(page.locator(Homepage.REPO_SELECTION_CARD)).to_be_visible(timeout=TIMEOUT_ELEMENT)
     # Presence (attached) rather than visibility is the least layout-sensitive

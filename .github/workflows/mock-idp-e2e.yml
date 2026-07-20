@@ -59,9 +59,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  mock-idp-e2e:
-    name: Mock-IdP E2E (headless-auth)
+  # Emit the Workbench version list for the E2E job. PR/push runs test only the
+  # latest release (single required check, unchanged). Scheduled/manual runs fan
+  # out across the Workbench support window (current + 2 back) — same list as
+  # workbench-smoke.yml. Connect stays pinned to its stack default here; the
+  # Connect version matrix lives in connect-smoke.yml (#441). Bump the pinned
+  # tags when a new Workbench release ships; `release` always tracks newest.
+  set-matrix:
     runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      versions: ${{ steps.pick.outputs.versions }}
+    steps:
+      - id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo 'versions=["release", "2026.06.0", "2026.05.1"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'versions=["release"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  mock-idp-e2e:
+    needs: [set-matrix]
+    # Keep the original job name on the release (PR/push) leg so the PR-time
+    # check name is unchanged; suffix only the pinned scheduled/manual legs.
+    # `!=` first so the release leg yields '' rather than tripping the falsy-`||` trap.
+    name: Mock-IdP E2E (headless-auth)${{ matrix.workbench-version != 'release' && format(' — Workbench {0}', matrix.workbench-version) || '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workbench-version: ${{ fromJSON(needs.set-matrix.outputs.versions) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -76,10 +104,15 @@ jobs:
         run: |
           echo "127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test" | sudo tee -a /etc/hosts
 
+      # RSW_VERSION is the Workbench image tag baked into the compose build
+      # (FROM rstudio/rstudio-workbench:${RSW_VERSION}). `release` maps to the
+      # `latest` tag — the stack's existing default — so the PR/newest leg is
+      # unchanged; pinned versions map to the `jammy-<version>` tags.
       - name: Start mock-IdP stack (Keycloak + Connect + Workbench)
         env:
           RSC_LICENSE: ${{ secrets.CONNECT_LICENSE }}
           RSW_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
+          RSW_VERSION: ${{ matrix.workbench-version == 'release' && 'latest' || format('jammy-{0}', matrix.workbench-version) }}
         run: docker compose -f compose.mock-idp.yml up -d --build --wait
 
       # The default `docker` driver can't export to the GHA cache backend
@@ -183,7 +216,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: mock-idp-e2e-results-headless
+          name: mock-idp-e2e-results-headless-${{ matrix.workbench-version }}
           path: mock-idp-out/
           if-no-files-found: ignore
 
@@ -194,11 +227,17 @@ jobs:
   status:
     name: Mock-IdP E2E Status
     if: always()
-    needs: [mock-idp-e2e]
+    needs: [set-matrix, mock-idp-e2e]
     runs-on: ubuntu-latest
     steps:
       - name: Check result
         run: |
+          # A failed set-matrix skips (not fails) mock-idp-e2e, which the
+          # check below would otherwise read as a clean skip.
+          if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
+            echo "Version-matrix job failed; cannot confirm E2E scope"
+            exit 1
+          fi
           if [ "${{ needs.mock-idp-e2e.result }}" = "failure" ] || [ "${{ needs.mock-idp-e2e.result }}" = "cancelled" ]; then
             echo "Mock-IdP E2E tests failed or were cancelled"
             exit 1
