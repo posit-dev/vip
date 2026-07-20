@@ -40,3 +40,48 @@ class TestOidcLoginLock:
             assert "proceeding without it" in caplog.text
         finally:
             blocker.release()
+
+
+class _FakeButton:
+    def __init__(self):
+        self.clicked = False
+
+    def click(self):
+        self.clicked = True
+
+
+class _FakeLogo:
+    def __init__(self, *, appears: bool):
+        self._appears = appears
+
+    def wait_for(self, *, state, timeout):  # noqa: ARG002 - mirrors Playwright signature
+        if not self._appears:
+            raise RuntimeError("homepage never appeared")
+
+
+class TestSilentSsoSignin:
+    def test_returns_true_and_uses_lock_when_homepage_appears(self, monkeypatch):
+        used = {"locked": False}
+
+        import contextlib
+
+        @contextlib.contextmanager
+        def _spy_lock(url):
+            used["locked"] = True
+            used["url"] = url
+            yield
+
+        monkeypatch.setattr(wb, "oidc_login_lock", _spy_lock)
+        button = _FakeButton()
+        ok = wb._silent_sso_signin(button, _FakeLogo(appears=True), "https://wb.example.com")
+        assert ok is True
+        assert button.clicked is True
+        assert used["locked"] is True
+        assert used["url"] == "https://wb.example.com"
+
+    def test_returns_false_when_homepage_never_appears(self, monkeypatch):
+        import contextlib
+
+        monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
+        ok = wb._silent_sso_signin(_FakeButton(), _FakeLogo(appears=False), "https://wb.x")
+        assert ok is False

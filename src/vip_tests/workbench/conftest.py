@@ -352,6 +352,22 @@ def wait_for_session_suspended(
 # ---------------------------------------------------------------------------
 
 
+def _silent_sso_signin(sso_button, homepage_logo, workbench_url: str) -> bool:
+    """Click the OIDC sign-in button and wait for the homepage, serialized across workers.
+
+    Wrapped in :func:`oidc_login_lock` so concurrent xdist workers don't storm the shared
+    IdP session. Returns ``True`` when the authenticated homepage appears, ``False``
+    otherwise (the caller then skips with the standard message).
+    """
+    with oidc_login_lock(workbench_url):
+        sso_button.click()
+        try:
+            homepage_logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
+            return True
+        except Exception:
+            return False
+
+
 def workbench_login(
     page: Page,
     workbench_url: str,
@@ -437,25 +453,22 @@ def workbench_login(
 
         if interactive_auth and sso_only:
             # Storage state was pre-loaded by --interactive-auth / --headless-auth.
-            # Workbench's SSO sign-in page does not auto-redirect to the IdP; it
-            # renders a "Sign in with OpenID" button.  Clicking it triggers a
-            # silent SSO round-trip using the saved IdP cookies, landing on the
-            # authenticated homepage with no credentials required.
-            sso_button.click()
-            try:
-                homepage_logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
+            # Workbench's SSO sign-in page does not auto-redirect to the IdP; it renders a
+            # "Sign in with OpenID" button. Clicking it triggers a silent SSO round-trip
+            # using the saved IdP cookies. The round-trip is serialized across xdist
+            # workers (see _silent_sso_signin / oidc_login_lock) to avoid storming the
+            # shared IdP session (#484/#467).
+            if _silent_sso_signin(sso_button, homepage_logo, workbench_url):
                 return  # Silent SSO succeeded
-            except Exception:
-                # No usable IdP session (expired, or storage state was stripped
-                # for the password-login test) — silent SSO can't complete on an
-                # OIDC deployment, so skip gracefully.
-                pytest.skip(
-                    _workbench_session_skip_message(
-                        auth_mode=auth_mode,
-                        workbench_auth_error=workbench_auth_error,
-                        landed_url=page.url,
-                    )
+            # No usable IdP session (expired, or storage state was stripped for the
+            # password-login test) — skip gracefully.
+            pytest.skip(
+                _workbench_session_skip_message(
+                    auth_mode=auth_mode,
+                    workbench_auth_error=workbench_auth_error,
+                    landed_url=page.url,
                 )
+            )
 
         if auth_provider != "password":
             pytest.skip(
