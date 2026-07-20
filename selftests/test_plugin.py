@@ -9,7 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from vip.plugin import _extract_exception_info, _format_concise_error
+from vip.plugin import (
+    _extract_exception_info,
+    _format_concise_error,
+    _shorten_location_line,
+)
 
 
 class TestFormatConciseError:
@@ -156,6 +160,32 @@ class TestExtractExceptionInfo:
         assert "Connect: /metrics returned 403" in exc_message
 
 
+class TestShortenLocationLine:
+    def test_strips_site_packages_prefix(self):
+        line = (
+            "../../../../.local/share/uv/tools/posit-vip/lib/python3.13/"
+            "site-packages/vip_tests/connect/test_auth.py::test_connect_login_ui "
+        )
+        assert _shorten_location_line(line) == "connect/test_auth.py::test_connect_login_ui "
+
+    def test_keeps_relative_suffix_and_trailing_space(self):
+        line = "vip_tests/prerequisites/test_components.py::test_reachable[Connect] "
+        assert (
+            _shorten_location_line(line)
+            == "prerequisites/test_components.py::test_reachable[Connect] "
+        )
+
+    def test_passes_through_line_without_marker(self):
+        line = "my_extension/test_health.py::test_ping "
+        assert _shorten_location_line(line) == line
+
+    def test_uses_last_marker_occurrence(self):
+        # A path that itself contains the marker earlier must not win over the
+        # real package root.
+        line = "/home/vip_tests/checkout/site-packages/vip_tests/security/test_tls.py::test_https "
+        assert _shorten_location_line(line) == "security/test_tls.py::test_https "
+
+
 class TestPluginIntegration:
     """Integration tests using pytester to exercise the plugin end-to-end.
 
@@ -184,6 +214,27 @@ class TestPluginIntegration:
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
         result.assert_outcomes()
         result.stdout.fnmatch_lines(["*1 deselected*"])
+
+    def test_location_line_shortened_in_concise_mode(self, selftest_pytester):
+        """A test collected under a vip_tests/ package shows a truncated path."""
+        pkg = selftest_pytester.mkpydir("vip_tests")
+        (pkg / "test_sample.py").write_text("def test_ok():\n    assert True\n")
+        result = selftest_pytester.runpytest_subprocess(
+            "--vip-config=vip.toml", "-v", str(pkg / "test_sample.py")
+        )
+        result.assert_outcomes(passed=1)
+        result.stdout.fnmatch_lines(["test_sample.py::test_ok*"])
+        result.stdout.no_fnmatch_line("*vip_tests/test_sample.py::test_ok*")
+
+    def test_location_line_full_path_when_verbose(self, selftest_pytester):
+        """--vip-verbose keeps the full node path so debugging is unaffected."""
+        pkg = selftest_pytester.mkpydir("vip_tests")
+        (pkg / "test_sample.py").write_text("def test_ok():\n    assert True\n")
+        result = selftest_pytester.runpytest_subprocess(
+            "--vip-config=vip.toml", "--vip-verbose", "-v", str(pkg / "test_sample.py")
+        )
+        result.assert_outcomes(passed=1)
+        result.stdout.fnmatch_lines(["*vip_tests/test_sample.py::test_ok*"])
 
     def test_pytest_bdd_removed_in10_warning_suppressed(self, selftest_pytester):
         """pytest-bdd's fixture injection emits PytestRemovedIn10Warning on

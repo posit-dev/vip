@@ -360,9 +360,67 @@ def pytest_configure_node(node) -> None:
         node.workerinput["vip_workbench_auth_error"] = auth.workbench_auth_error or ""
 
 
+# The installed test package root.  pytest node paths are "/"-normalized
+# (see _pytest.terminal._locationline), so the marker uses a forward slash on
+# every platform.
+_TEST_PKG_MARKER = "vip_tests/"
+
+
+def _shorten_location_line(line: str) -> str:
+    """Drop the install-path prefix from a pytest ``-v`` location line.
+
+    ``vip verify`` runs pytest with ``-v``, so every result line is prefixed
+    with the node's path.  When VIP is installed as a tool that path is the
+    long site-packages location, e.g.::
+
+        ../../../.local/share/uv/tools/posit-vip/lib/python3.13/site-packages/vip_tests/connect/test_auth.py::test_connect_login_ui
+
+    Keeping only the portion after the ``vip_tests/`` package root puts the
+    meaningful part first::
+
+        connect/test_auth.py::test_connect_login_ui
+
+    Lines without the marker (e.g. user extension tests collected from an
+    arbitrary directory) are returned unchanged.  Uses ``rfind`` so a marker
+    substring appearing earlier in an install path never wins over the real
+    package root.
+    """
+    idx = line.rfind(_TEST_PKG_MARKER)
+    if idx == -1:
+        return line
+    return line[idx + len(_TEST_PKG_MARKER) :]
+
+
+def _install_location_shortener(config: pytest.Config) -> None:
+    """Wrap the terminal reporter's ``_locationline`` to truncate node paths.
+
+    Only active in concise (non-``--vip-verbose``) mode.  There is no public
+    hook for the per-test location string, so we wrap the bound method on the
+    registered reporter instance.  Under xdist this runs on the controller,
+    which is where result lines are rendered, so worker output is covered too.
+    """
+    if config.getoption("--vip-verbose", default=False):
+        return
+    tr = config.pluginmanager.get_plugin("terminalreporter")
+    if tr is None:
+        return
+    original = tr._locationline
+
+    def shortened(*args: Any, **kwargs: Any) -> str:
+        return _shorten_location_line(original(*args, **kwargs))
+
+    tr._locationline = shortened  # type: ignore[method-assign]
+
+
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Add extension directories to sys.path so their conftest / modules
-    are importable, and register them for collection."""
+    are importable, register them for collection, and shorten node paths."""
+    # Wrap the terminal reporter here rather than in pytest_configure: the
+    # builtin terminal plugin registers "terminalreporter" in its own
+    # pytest_configure, which pluggy may call after ours.  By sessionstart the
+    # reporter is guaranteed to exist.
+    _install_location_shortener(session.config)
+
     ext_dirs = session.config.stash.get(_ext_dirs_key, [])
     for d in ext_dirs:
         p = Path(d).resolve()
