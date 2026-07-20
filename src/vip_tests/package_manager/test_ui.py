@@ -35,13 +35,16 @@ from vip_tests.package_manager.pages.ui import TIMEOUT_ELEMENT, TIMEOUT_PAGE_LOA
 
 scenarios("test_ui.feature")
 
-# The repository-selection card is a homepage surface introduced in Package
-# Manager 2026.06.0; earlier versions render a different repository selector.
-# The version matrix (see packagemanager-smoke.yml) runs the suite against the
-# support window, so the homepage step below asserts the card only on versions
-# that actually have it — mirroring @pytest.mark.min_version gating for a single
-# assertion, which the scenario-level marker can't express here.
-_REPO_SELECTION_CARD_MIN_VERSION = "2026.06.0"
+# Package Manager 2026.06.0 shipped a redesigned homepage: the hero, the
+# repository-selection card, and the home package-search bar all use new
+# data-automation hooks that don't exist on earlier versions (which render a
+# different homepage entirely, with a repo-scoped nav search box). The version
+# matrix in packagemanager-smoke.yml runs this suite across the support window,
+# so the homepage scenario is skipped below on versions that predate the
+# redesign — its API-driven siblings still run there. This mirrors
+# @pytest.mark.min_version, which can't gate a single bulk-registered
+# scenarios() scenario here.
+_HOMEPAGE_REDESIGN_MIN_VERSION = "2026.06.0"
 
 
 # Maps the Gherkin <ecosystem> name to how we find a repo that serves it and a
@@ -131,31 +134,37 @@ def when_open_homepage(page: Page, pm_url: str):
     open_homepage(page, pm_url)
 
 
-def _repo_selection_card_expected(vip_config: VIPConfig) -> bool:
-    """Whether the deployed PM version renders the repository-selection card.
+def _skip_if_homepage_predates_redesign(vip_config: VIPConfig) -> None:
+    """Skip the homepage scenario on Package Manager versions older than the
+    2026.06.0 redesign.
 
-    Returns ``False`` when the version is unknown or unparseable, so the card
-    assertion is skipped rather than run optimistically — the same
-    conservative stance as the ``min_version`` marker's version-unknown path.
+    A version we can't parse (or that isn't set) runs optimistically rather
+    than skipping, so a genuine homepage regression on a current deployment —
+    where the version is often left unset — isn't hidden behind a skip. Only a
+    version we can positively identify as older is gated out.
     """
     version = vip_config.package_manager.version
     if not version:
-        return False
+        return
     try:
-        return ProductVersion(version) >= ProductVersion(_REPO_SELECTION_CARD_MIN_VERSION)
+        deployed = ProductVersion(version)
     except ValueError:
-        return False
+        return
+    if deployed < ProductVersion(_HOMEPAGE_REDESIGN_MIN_VERSION):
+        pytest.skip(
+            f"Homepage redesign requires Package Manager >= "
+            f"{_HOMEPAGE_REDESIGN_MIN_VERSION}; deployed {version}"
+        )
 
 
 @then("the homepage hero, repository selector, and package search bar are visible")
 def then_homepage_surfaces(page: Page, vip_config: VIPConfig):
+    _skip_if_homepage_predates_redesign(vip_config)
     expect(page.locator(Homepage.HERO_TITLE)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+    expect(page.locator(Homepage.REPO_SELECTION_CARD)).to_be_visible(timeout=TIMEOUT_ELEMENT)
     # Presence (attached) rather than visibility is the least layout-sensitive
     # signal that the search bar rendered.
     expect(page.locator(Homepage.SEARCH_BAR)).to_be_attached(timeout=TIMEOUT_ELEMENT)
-    # Version-gated: only assert the card where it exists (see the module note).
-    if _repo_selection_card_expected(vip_config):
-        expect(page.locator(Homepage.REPO_SELECTION_CARD)).to_be_visible(timeout=TIMEOUT_ELEMENT)
 
 
 @when("I search for that package in the web UI")
