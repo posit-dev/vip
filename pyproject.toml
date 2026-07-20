@@ -175,6 +175,10 @@ markers = [
     "min_version(product, version): only run when product meets minimum version",
     "if_applicable: test is skipped when the feature is not configured",
     "api_auth: test requires only an API key, not browser credentials",
+    "rstudio: Workbench RStudio IDE-launch scenario",
+    "vscode: Workbench VS Code IDE-launch scenario",
+    "jupyter: Workbench JupyterLab IDE-launch scenario",
+    "positron: Workbench Positron IDE-launch scenario",
 ]
 
 [tool.semantic_release]

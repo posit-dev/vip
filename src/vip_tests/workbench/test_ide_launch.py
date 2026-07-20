@@ -43,21 +43,25 @@ pytestmark = pytest.mark.order(20)
 _FILENAME = Path(__file__).name
 
 
+@pytest.mark.rstudio
 @scenario("test_ide_launch.feature", "RStudio IDE session can be launched")
 def test_launch_rstudio():
     pass
 
 
+@pytest.mark.vscode
 @scenario("test_ide_launch.feature", "VS Code session can be launched")
 def test_launch_vscode():
     pass
 
 
+@pytest.mark.jupyter
 @scenario("test_ide_launch.feature", "JupyterLab session can be launched")
 def test_launch_jupyter():
     pass
 
 
+@pytest.mark.positron
 @scenario("test_ide_launch.feature", "Positron session can be launched")
 def test_launch_positron():
     pass
