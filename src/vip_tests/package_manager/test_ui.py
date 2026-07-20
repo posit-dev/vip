@@ -20,6 +20,8 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, parsers, scenarios, then, when
 
+from vip.config import VIPConfig
+from vip.version import ProductVersion
 from vip_tests.package_manager.pages import (
     Homepage,
     PackageDetailPage,
@@ -32,6 +34,14 @@ from vip_tests.package_manager.pages import (
 from vip_tests.package_manager.pages.ui import TIMEOUT_ELEMENT, TIMEOUT_PAGE_LOAD
 
 scenarios("test_ui.feature")
+
+# The repository-selection card is a homepage surface introduced in Package
+# Manager 2026.06.0; earlier versions render a different repository selector.
+# The version matrix (see packagemanager-smoke.yml) runs the suite against the
+# support window, so the homepage step below asserts the card only on versions
+# that actually have it — mirroring @pytest.mark.min_version gating for a single
+# assertion, which the scenario-level marker can't express here.
+_REPO_SELECTION_CARD_MIN_VERSION = "2026.06.0"
 
 
 # Maps the Gherkin <ecosystem> name to how we find a repo that serves it and a
@@ -121,13 +131,31 @@ def when_open_homepage(page: Page, pm_url: str):
     open_homepage(page, pm_url)
 
 
+def _repo_selection_card_expected(vip_config: VIPConfig) -> bool:
+    """Whether the deployed PM version renders the repository-selection card.
+
+    Returns ``False`` when the version is unknown or unparseable, so the card
+    assertion is skipped rather than run optimistically — the same
+    conservative stance as the ``min_version`` marker's version-unknown path.
+    """
+    version = vip_config.package_manager.version
+    if not version:
+        return False
+    try:
+        return ProductVersion(version) >= ProductVersion(_REPO_SELECTION_CARD_MIN_VERSION)
+    except ValueError:
+        return False
+
+
 @then("the homepage hero, repository selector, and package search bar are visible")
-def then_homepage_surfaces(page: Page):
+def then_homepage_surfaces(page: Page, vip_config: VIPConfig):
     expect(page.locator(Homepage.HERO_TITLE)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-    expect(page.locator(Homepage.REPO_SELECTION_CARD)).to_be_visible(timeout=TIMEOUT_ELEMENT)
     # Presence (attached) rather than visibility is the least layout-sensitive
     # signal that the search bar rendered.
     expect(page.locator(Homepage.SEARCH_BAR)).to_be_attached(timeout=TIMEOUT_ELEMENT)
+    # Version-gated: only assert the card where it exists (see the module note).
+    if _repo_selection_card_expected(vip_config):
+        expect(page.locator(Homepage.REPO_SELECTION_CARD)).to_be_visible(timeout=TIMEOUT_ELEMENT)
 
 
 @when("I search for that package in the web UI")
