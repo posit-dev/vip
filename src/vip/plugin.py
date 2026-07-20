@@ -166,6 +166,10 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "api_auth: test requires only an API key, not browser credentials",
     )
+    config.addinivalue_line("markers", "rstudio: Workbench RStudio IDE-launch scenario")
+    config.addinivalue_line("markers", "vscode: Workbench VS Code IDE-launch scenario")
+    config.addinivalue_line("markers", "jupyter: Workbench JupyterLab IDE-launch scenario")
+    config.addinivalue_line("markers", "positron: Workbench Positron IDE-launch scenario")
 
     # In concise mode, suppress the "short test summary info" section — the
     # inline concise error messages make it redundant.
