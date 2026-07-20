@@ -5,13 +5,17 @@ Page selectors are in the pages/ subpackage
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import logging
 import os
 import re
+import tempfile
 import time
 from pathlib import Path
 
 import pytest
+from filelock import FileLock, Timeout
 from playwright.sync_api import Locator, Page, expect
 from pytest_bdd import given
 
@@ -30,6 +34,49 @@ from vip.workbench_ui import (
 from vip_tests.workbench.pages import Homepage, LoginPage
 
 logger = logging.getLogger(__name__)
+
+# Cross-worker OIDC login lock (#484). Under --interactive-auth / --headless-auth every
+# xdist worker shares one IdP session; letting many workers do the silent SSO round-trip
+# simultaneously storms the IdP (the ?error=2 bounce from #467). Serializing just the
+# round-trip removes the concurrency without re-serializing the whole suite.
+_LOGIN_LOCK_TIMEOUT = float(os.environ.get("VIP_LOGIN_LOCK_TIMEOUT", "60"))
+
+
+def _login_lock_path(workbench_url: str) -> Path:
+    """Path to the cross-worker OIDC login lock for *workbench_url*.
+
+    Keyed by a hash of the URL so distinct deployments don't share a lock, and placed in
+    the system temp dir so all xdist workers on the host share the same file.
+    """
+    digest = hashlib.sha256(workbench_url.encode()).hexdigest()[:16]
+    return Path(tempfile.gettempdir()) / f"vip-wb-login-{digest}.lock"
+
+
+@contextlib.contextmanager
+def oidc_login_lock(workbench_url: str, *, timeout: float = _LOGIN_LOCK_TIMEOUT):
+    """Serialize the OIDC SSO round-trip across xdist workers.
+
+    Only one worker performs the silent SSO round-trip against the shared IdP session at a
+    time. The lock is an optimization, never a correctness dependency: if it can't be
+    acquired within *timeout*, log a warning and proceed unlocked rather than hang the run.
+    """
+    lock = FileLock(str(_login_lock_path(workbench_url)))
+    try:
+        lock.acquire(timeout=timeout)
+    except Timeout:
+        logger.warning(
+            "OIDC login lock not acquired within %.0fs for %s; proceeding without it. "
+            "Concurrent logins may briefly storm the IdP.",
+            timeout,
+            workbench_url,
+        )
+        yield
+        return
+    try:
+        yield
+    finally:
+        lock.release()
+
 
 pytestmark = [pytest.mark.workbench, pytest.mark.xdist_group("workbench")]
 
