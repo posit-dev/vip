@@ -9,6 +9,11 @@ on:
       - 'uv.lock'
       - '.github/workflows/packagemanager-smoke.yml'
   pull_request:
+  # Scheduled/manual runs fan the suite out across the Package Manager support
+  # window (see the set-matrix job). PR/push runs stay single-version.
+  schedule:
+    - cron: "30 6 * * *" # daily at 06:30 UTC (staggered from the other smoke workflows)
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -48,16 +53,40 @@ jobs:
               - 'uv.lock'
               - '.github/workflows/packagemanager-smoke.yml'
 
+  # Emit the Package Manager tag list for the product job. PR/push runs test
+  # only the latest release (single required check, unchanged). Scheduled/manual
+  # runs fan out across the support window (current + 2 back). Bump the pinned
+  # tags here when a new PM release ships; `ubuntu2204` (no version suffix)
+  # always resolves to the latest PM build. Pinned tags are pulled directly as
+  # rstudio/rstudio-package-manager:<tag>.
+  set-matrix:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      versions: ${{ steps.pick.outputs.versions }}
+    steps:
+      - id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo 'versions=["ubuntu2204", "ubuntu2204-2026.05.0", "ubuntu2204-2026.04.2"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'versions=["ubuntu2204"]' >> "$GITHUB_OUTPUT"
+          fi
+
   packagemanager-smoke:
-    needs: [changes]
-    if: needs.changes.outputs.relevant == 'true'
+    needs: [changes, set-matrix]
+    # Scheduled/manual runs always execute (no PR diff for paths-filter to
+    # score); PR/push runs still gate on the changed-paths filter.
+    if: >-
+      needs.changes.outputs.relevant == 'true'
+      || github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
     name: Smoke test against Package Manager ${{ matrix.pm-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # `ubuntu2204` (no version suffix) always resolves to the latest PM build.
-        pm-version: ["ubuntu2204"]
+        pm-version: ${{ fromJSON(needs.set-matrix.outputs.versions) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

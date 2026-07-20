@@ -9,6 +9,11 @@ on:
       - 'uv.lock'
       - '.github/workflows/connect-smoke.yml'
   pull_request:
+  # Scheduled/manual runs fan the suite out across the Connect support window
+  # (see the set-matrix job). PR/push runs stay single-version.
+  schedule:
+    - cron: "30 3 * * *" # daily at 03:30 UTC (staggered from the other smoke workflows)
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -48,16 +53,40 @@ jobs:
               - 'uv.lock'
               - '.github/workflows/connect-smoke.yml'
 
+  # Emit the Connect version list for the product job. PR/push runs test only
+  # the latest release (single required check, unchanged). Scheduled/manual runs
+  # fan out across the support window (current + 2 back). Bump the pinned tags
+  # here when a new Connect release ships; `release` always tracks the newest
+  # build. Versions >= 2026.04 resolve via with-connect to
+  # ghcr.io/posit-dev/connect:<version>.
+  set-matrix:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      versions: ${{ steps.pick.outputs.versions }}
+    steps:
+      - id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo 'versions=["release", "2026.06.0", "2026.05.1"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'versions=["release"]' >> "$GITHUB_OUTPUT"
+          fi
+
   connect-smoke:
-    needs: [changes]
-    if: needs.changes.outputs.relevant == 'true'
+    needs: [changes, set-matrix]
+    # Scheduled/manual runs always execute (no PR diff for paths-filter to
+    # score); PR/push runs still gate on the changed-paths filter.
+    if: >-
+      needs.changes.outputs.relevant == 'true'
+      || github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
     name: Smoke test against Connect ${{ matrix.connect-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # `release` (no version suffix) always resolves to the latest Connect build.
-        connect-version: ["release"]
+        connect-version: ${{ fromJSON(needs.set-matrix.outputs.versions) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
