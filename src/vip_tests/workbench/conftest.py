@@ -111,7 +111,8 @@ def pytest_collection_modifyitems(
     The simultaneous-login storm this used to cause is prevented by the cross-worker login
     lock in :func:`workbench_login` (see :func:`oidc_login_lock`), not by serialization.
 
-    For password auth (no shared session) the default parallel behavior is preserved.
+    Password / no-auth runs are left untouched (they are unaffected by the shared-auth
+    gate below and keep whatever grouping the module-level ``pytestmark`` assigns).
     """
     if config.stash.get(_auth_session_key, None) is None:
         # No shared auth session — password auth or no auth. Keep default parallel behavior.
@@ -124,7 +125,8 @@ def pytest_collection_modifyitems(
             continue
         ide_markers = {m.name for m in item.iter_markers()} & set(_IDE_MARKERS)
         group = _workbench_group_name(ide_markers, item_path.stem)
-        # Replace the default xdist_group("workbench") from pytestmark with the hybrid group.
+        # Drop any per-test xdist_group marker before adding the hybrid group (the
+        # module-level pytestmark group is overridden via get_closest_marker regardless).
         item.own_markers = [m for m in item.own_markers if m.name != "xdist_group"]
         item.add_marker(pytest.mark.xdist_group(group))
 
