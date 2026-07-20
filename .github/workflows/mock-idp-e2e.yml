@@ -81,7 +81,10 @@ jobs:
 
   mock-idp-e2e:
     needs: [set-matrix]
-    name: Mock-IdP E2E (headless-auth) — Workbench ${{ matrix.workbench-version }}
+    # Keep the original job name on the release (PR/push) leg so the PR-time
+    # check name is unchanged; suffix only the pinned scheduled/manual legs.
+    # `!=` first so the release leg yields '' rather than tripping the falsy-`||` trap.
+    name: Mock-IdP E2E (headless-auth)${{ matrix.workbench-version != 'release' && format(' — Workbench {0}', matrix.workbench-version) || '' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
