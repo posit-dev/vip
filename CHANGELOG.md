@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.55.2 (2026-07-21)
+
+### Bug Fixes
+
+- **plugin**: Recolor progress indicator per-line, not cumulatively
+  ([#508](https://github.com/posit-dev/vip/pull/508),
+  [`25ef763`](https://github.com/posit-dev/vip/commit/25ef7635f4c739ce989cc71e17f016e429602c20))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.55.1 (2026-07-21)
 
 ### Bug Fixes
