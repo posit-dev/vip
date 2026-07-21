@@ -98,3 +98,40 @@ def test_other_runtime_deps_are_capped():
         assert operators & _BOUNDING_OPERATORS, (
             f"{name} must carry an upper bound (found '{reqs[name].specifier}')"
         )
+
+
+# Optional-dependency groups that must also be capped at next major.
+CAPPED_OPTIONAL = {
+    "report": {
+        "jinja2",
+        "jupyter",
+        "ipykernel",
+        "nbformat",
+        "nbclient",
+        "nbconvert",
+        "mistune",
+        "tornado",
+        "bleach",
+        "jupyterlab",
+    },
+    "load": {"locust", "msgpack", "python-engineio", "python-socketio"},
+}
+
+
+def _optional_requirements(group: str) -> dict[str, Requirement]:
+    data = tomllib.loads(PYPROJECT.read_text())
+    return {
+        canonical(Requirement(spec).name): Requirement(spec)
+        for spec in data["project"]["optional-dependencies"][group]
+    }
+
+
+def test_report_and_load_groups_are_capped():
+    for group, names in CAPPED_OPTIONAL.items():
+        reqs = _optional_requirements(group)
+        for name in sorted(names):
+            assert name in reqs, f"{name} missing from [{group}] optional-dependencies"
+            operators = {s.operator for s in reqs[name].specifier}
+            assert operators & _BOUNDING_OPERATORS, (
+                f"{name} in [{group}] must carry an upper bound (found '{reqs[name].specifier}')"
+            )

@@ -29,8 +29,11 @@ constraints file (attached to every GitHub release as `constraints-<version>.txt
 
 ```bash
 uv tool install posit-vip \
-  -c https://github.com/posit-dev/vip/releases/download/v0.55.1/constraints-0.55.1.txt
+  -c https://github.com/posit-dev/vip/releases/download/vX.Y.Z/constraints-X.Y.Z.txt
 ```
+
+Replace `X.Y.Z` with the release you are installing (see the
+[releases page](https://github.com/posit-dev/vip/releases)).
 
 For a fully pinned, batteries-included environment, use the container image,
 which installs from the committed `uv.lock`:
