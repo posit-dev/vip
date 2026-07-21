@@ -1,6 +1,29 @@
 # CHANGELOG
 
 
+## v0.55.0 (2026-07-21)
+
+### Continuous Integration
+
+- Matrix smoke workflows over product version support windows
+  ([#506](https://github.com/posit-dev/vip/pull/506),
+  [`fec2773`](https://github.com/posit-dev/vip/commit/fec27736eeaef4f761bed76be2819e89a10c378f))
+
+### Features
+
+- **plugin**: Truncate test node paths in verify output unless verbose
+  ([#505](https://github.com/posit-dev/vip/pull/505),
+  [`7dc84ab`](https://github.com/posit-dev/vip/commit/7dc84ab0e4ca015c8851f6e50e5c69554f5cf223))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+### Testing
+
+- **workbench**: Order the suite intentionally and group git tests
+  ([#500](https://github.com/posit-dev/vip/pull/500),
+  [`35396b3`](https://github.com/posit-dev/vip/commit/35396b3d6bad1ff83bc3047d8a4a08162e901b1b))
+
+
 ## v0.54.8 (2026-07-17)
 
 ### Bug Fixes
