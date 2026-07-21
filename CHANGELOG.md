@@ -1,6 +1,21 @@
 # CHANGELOG
 
 
+## v0.56.0 (2026-07-21)
+
+### Features
+
+- Pin dependencies to a tighter range on each release (#399)
+  ([#511](https://github.com/posit-dev/vip/pull/511),
+  [`5e7281d`](https://github.com/posit-dev/vip/commit/5e7281d0d01f70d5a2673cfe4caaa38fc073646e))
+
+### Testing
+
+- **workbench**: Parallelize tests instead of forcing serial
+  ([#507](https://github.com/posit-dev/vip/pull/507),
+  [`70c9cda`](https://github.com/posit-dev/vip/commit/70c9cdace3317d0e9ef440740f35c0a311fea84d))
+
+
 ## v0.55.3 (2026-07-21)
 
 ### Bug Fixes

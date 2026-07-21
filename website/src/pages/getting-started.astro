@@ -45,6 +45,19 @@ vip install</code></pre>
             <code>vip uninstall</code>.
           </p>
           <p>
+            <code>uv tool install posit-vip</code> resolves the newest versions
+            each release allows. For a reproducible install pinned to a
+            release's tested dependency set, pass that release's constraints
+            file (attached to every GitHub release as
+            <code>constraints-&lt;version&gt;.txt</code>):
+          </p>
+          <pre><code>uv tool install posit-vip \
+  -c https://github.com/posit-dev/vip/releases/download/vX.Y.Z/constraints-X.Y.Z.txt</code></pre>
+          <p>
+            Replace <code>X.Y.Z</code> with the release you are installing (see
+            the <a href="https://github.com/posit-dev/vip/releases">releases page</a>).
+          </p>
+          <p>
             Run your first VIP test against Posit Public Package Manager:
           </p>
           <pre><code>vip verify --package-manager-url https://p3m.dev --filter 'not test_product_does_not_expose_sensitive_headers and not test_prometheus_metrics'</code></pre>

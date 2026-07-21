@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "0.55.3"
+version = "0.56.0"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -19,41 +19,41 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "filelock>=3.12",
+    "filelock>=3.12,<4",
     "httpx>=0.27,<1",
-    "playwright>=1.40",
+    "playwright==1.61.0",  # exact-pinned: shapes vip run output; see docs/development.md
     "pyotp~=2.9",
-    "pytest>=9.0.3",  # CVE-2025-71176 fix
-    "pytest-bdd>=7.0",
-    "pytest-order>=1.3",
-    "pytest-playwright>=0.5",
-    "pytest-xdist>=3.0",
-    "tomli>=2.0;python_version<'3.11'",
-    "requests>=2.33.0",  # transitive via pytest-playwright; pinned to track updates
-    "pygments>=2.20.0",  # CVE-2026-4539 fix
-    "pip>=26.1.2",  # CVE-2026-3219, PYSEC-2026-196 fix; transitive via pip-api
-    "mako>=1.3.12",  # CVE-2026-44307 fix; transitive via pytest-bdd
-    "idna>=3.15",  # CVE-2026-45409 fix; transitive via httpx/requests/anyio
+    "pytest==9.1.1",  # exact-pinned; at/above CVE-2025-71176 floor (9.0.3)
+    "pytest-bdd==8.1.0",  # exact-pinned
+    "pytest-order==1.5.0",  # exact-pinned
+    "pytest-playwright==0.8.0",  # exact-pinned
+    "pytest-xdist==3.8.0",  # exact-pinned
+    "tomli>=2.0,<3;python_version<'3.11'",
+    "requests>=2.33.0,<3",  # transitive via pytest-playwright; capped to track updates
+    "pygments>=2.20.0,<3",  # CVE-2026-4539 fix
+    "pip>=26.1.2,<27",  # CVE-2026-3219, PYSEC-2026-196 fix; transitive via pip-api
+    "mako>=1.3.12,<2",  # CVE-2026-44307 fix; transitive via pytest-bdd
+    "idna>=3.15,<4",  # CVE-2026-45409 fix; transitive via httpx/requests/anyio
 ]
 
 [project.optional-dependencies]
 report = [
-    "jinja2>=3.1",
-    "jupyter",
-    "ipykernel",
-    "nbformat>=5.7",
-    "nbclient>=0.8",
-    "nbconvert>=7.17.1",  # CVE-2026-39377, CVE-2026-39378 fix; transitive via jupyter
-    "mistune>=3.2.1",  # CVE-2026-33079 fix; transitive via nbconvert
-    "tornado>=6.5.7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f fix; transitive via jupyter
-    "bleach>=6.4.0",  # GHSA-gj48-438w-jh9v, GHSA-8rfp-98v4-mmr6 fix; transitive via nbconvert[css]
-    "jupyterlab>=4.5.9",  # GHSA-vmhf-c436-hxj4 fix; transitive via jupyter
+    "jinja2>=3.1,<4",
+    "jupyter<2",
+    "ipykernel<8",
+    "nbformat>=5.7,<6",
+    "nbclient>=0.8,<1",
+    "nbconvert>=7.17.1,<8",  # CVE-2026-39377, CVE-2026-39378 fix; transitive via jupyter
+    "mistune>=3.2.1,<4",  # CVE-2026-33079 fix; transitive via nbconvert
+    "tornado>=6.5.7,<7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f fix; transitive via jupyter
+    "bleach>=6.4.0,<7",  # GHSA-gj48-438w-jh9v, GHSA-8rfp-98v4-mmr6 fix; transitive via nbconvert[css]
+    "jupyterlab>=4.5.9,<5",  # GHSA-vmhf-c436-hxj4 fix; transitive via jupyter
 ]
 load = [
-    "locust>=2.20",
-    "msgpack>=1.2.1",  # GHSA-6v7p-g79w-8964 fix; transitive via locust
-    "python-engineio>=4.13.2",  # CVE-2026-48802, CVE-2026-48809 fix; transitive via locust
-    "python-socketio>=5.16.2",  # CVE-2026-48804 fix; transitive via locust
+    "locust>=2.20,<3",
+    "msgpack>=1.2.1,<2",  # GHSA-6v7p-g79w-8964 fix; transitive via locust
+    "python-engineio>=4.13.2,<5",  # CVE-2026-48802, CVE-2026-48809 fix; transitive via locust
+    "python-socketio>=5.16.2,<6",  # CVE-2026-48804 fix; transitive via locust
 ]
 dev = [
     "ruff>=0.15.0,<0.16",
