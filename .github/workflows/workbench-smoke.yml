@@ -9,6 +9,11 @@ on:
       - 'uv.lock'
       - '.github/workflows/workbench-smoke.yml'
   pull_request:
+  # Scheduled/manual runs fan the suite out across the Workbench support window
+  # (see the set-matrix job). PR/push runs stay single-version.
+  schedule:
+    - cron: "30 4 * * *" # daily at 04:30 UTC (staggered from the other smoke workflows)
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -48,16 +53,44 @@ jobs:
               - 'uv.lock'
               - '.github/workflows/workbench-smoke.yml'
 
+  # Emit the Workbench version list for the product job. PR/push runs test only
+  # the latest release (single required check, unchanged). Scheduled/manual runs
+  # fan out across the support window (current + 2 back). Bump the pinned tags
+  # here when a new Workbench release ships; `release` always tracks the newest
+  # build. with-workbench maps <version> to the
+  # rstudio/rstudio-workbench:jammy-<version> tag (see posit-dev/with-workbench
+  # main.py get_docker_tag(); re-check on any with-workbench pin bump). Pinned
+  # version strings must not be substrings of one another — the resolved-version
+  # job-rename step below matches the running check by name substring.
+  set-matrix:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      versions: ${{ steps.pick.outputs.versions }}
+    steps:
+      - id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo 'versions=["release", "2026.06.0", "2026.05.1"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'versions=["release"]' >> "$GITHUB_OUTPUT"
+          fi
+
   workbench-smoke:
-    needs: [changes]
-    if: needs.changes.outputs.relevant == 'true' && github.actor != 'dependabot[bot]'
+    needs: [changes, set-matrix]
+    # Scheduled/manual runs always execute (no PR diff for paths-filter to
+    # score); PR/push runs still gate on the changed-paths filter.
+    if: >-
+      (needs.changes.outputs.relevant == 'true'
+        || github.event_name == 'schedule'
+        || github.event_name == 'workflow_dispatch')
+      && github.actor != 'dependabot[bot]'
     name: Smoke test against Workbench ${{ matrix.workbench-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # `release` (no version suffix) always resolves to the latest Workbench build.
-        workbench-version: ["release"]
+        workbench-version: ${{ fromJSON(needs.set-matrix.outputs.versions) }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -281,13 +314,19 @@ jobs:
   status:
     name: Workbench Smoke Tests Status
     if: always()
-    needs: [changes, workbench-smoke]
+    needs: [changes, set-matrix, workbench-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Check smoke test result
         run: |
           if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
             echo "Change-detection job failed; cannot confirm smoke scope"
+            exit 1
+          fi
+          # A failed set-matrix skips (not fails) workbench-smoke, which would
+          # otherwise look identical to a clean no-relevant-paths skip below.
+          if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
+            echo "Version-matrix job failed; cannot confirm smoke scope"
             exit 1
           fi
           if [ "${{ needs.workbench-smoke.result }}" = "failure" ] || [ "${{ needs.workbench-smoke.result }}" = "cancelled" ]; then
