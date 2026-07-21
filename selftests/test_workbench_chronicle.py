@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from vip.gherkin import parse_feature_file
 from vip_tests.workbench.chronicle_probe import (
     TOKEN_NO_DATA,
     TOKEN_OK,
@@ -18,6 +19,7 @@ from vip_tests.workbench.chronicle_probe import (
 
 BASE = "/var/lib/rstudio-server/shared-storage/chronicle"
 _R_FILE = Path("src/vip_tests/workbench/chronicle_probe.R")
+_FEATURE_FILE = Path("src/vip_tests/workbench/test_chronicle.feature")
 
 
 class TestRawChunkProbeExpr:
@@ -75,6 +77,20 @@ class TestRawChunkProbeExpr:
     def test_custom_base_path(self):
         expr = raw_chunk_probe_expr("/mnt/chronicle", "pwb_users")
         assert 'cat(vip_chronicle_probe("/mnt/chronicle", "pwb_users"))' in expr
+
+
+class TestGuardPrecedesLogin:
+    def test_chronicle_enabled_guard_runs_before_login(self):
+        # The Chronicle-enabled guard is a cheap config check; login is an
+        # expensive browser step that emits its own auth skip message on
+        # failure. If login ran first, a deployment with Chronicle disabled
+        # would skip with the misleading auth message instead of "Chronicle
+        # verification is disabled" (issue #462). Ordering the guard first
+        # guarantees the correct skip reason.
+        steps = parse_feature_file(_FEATURE_FILE)["scenarios"][0]["steps"]
+        guard = next(i for i, s in enumerate(steps) if "Chronicle verification is enabled" in s)
+        login = next(i for i, s in enumerate(steps) if "logged in to Workbench" in s)
+        assert guard < login
 
 
 class TestTokensInSyncWithRFile:
