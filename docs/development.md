@@ -95,7 +95,7 @@ predictable (see [#399](https://github.com/posit-dev/vip/issues/399)):
 - **Next-major caps** (e.g. `requests>=2.33.0,<3`) on every other runtime
   dependency, so a breaking major release cannot land on install. The `report`
   and `load` optional groups are capped the same way; the `dev` group is left
-  loose.
+  uncapped by this policy (aside from `ruff`'s pre-existing narrow range).
 
 Bumps flow through Dependabot's `uv` job (weekly, 7-day cooldown): it raises the
 pin or cap in `pyproject.toml` and updates `uv.lock` in one PR, which CI gates

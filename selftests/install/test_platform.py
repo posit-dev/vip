@@ -13,8 +13,8 @@ def _pinned_playwright_version() -> str:
     """The playwright version declared in pyproject.toml's [project.dependencies].
 
     Handles any specifier form (``==1.61.0``, ``>=1.40``, ``>=1.40,<2``) by
-    preferring an exact ``==`` pin and otherwise falling back to the first
-    specifier's version.
+    preferring an exact ``==`` pin and otherwise falling back to the floor
+    (``>=``/``>``/``~=``) version.
     """
     try:
         import tomllib
@@ -27,7 +27,11 @@ def _pinned_playwright_version() -> str:
     pw_dep = next(d for d in pyproject["project"]["dependencies"] if d.startswith("playwright"))
     specifier = Requirement(pw_dep).specifier
     exact = next((s.version for s in specifier if s.operator == "=="), None)
-    return exact or next(s.version for s in specifier)
+    if exact is not None:
+        return exact
+    # No exact pin: return the floor version. SpecifierSet iterates an unordered
+    # set, so pick the lower-bound operator explicitly instead of "the first".
+    return next(s.version for s in specifier if s.operator in (">=", ">", "~="))
 
 
 @pytest.fixture()

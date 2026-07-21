@@ -7,13 +7,16 @@ dependencies that shape a ``vip`` run (pytest and its plugins, playwright) are
 pinned to an exact version, and every other runtime dependency is capped below
 its next major.
 
-Two invariants are enforced so the policy cannot silently erode:
+Three invariants are enforced so the policy cannot silently erode:
 
 1. Each package in ``EXACT_PINS`` is pinned with ``==`` and that pin matches the
    version resolved in ``uv.lock`` (so the published pin is always the tested
    one).
-2. Each package in ``CAPPED`` carries an upper bound so a breaking major release
-   cannot slip in on a fresh install.
+2. Each runtime dependency carries an upper bound, and every declared runtime
+   dependency is classified as either ``EXACT_PINS`` or ``CAPPED`` (a new,
+   unclassified dependency fails the suite rather than shipping uncapped).
+3. Each ``report``/``load`` optional-group dependency carries an upper bound,
+   and every declared entry in those groups is listed in ``CAPPED_OPTIONAL``.
 """
 
 from __future__ import annotations
@@ -100,6 +103,16 @@ def test_other_runtime_deps_are_capped():
         )
 
 
+def test_every_runtime_dependency_is_classified():
+    """No runtime dep may escape the policy by not being listed above."""
+    declared = set(_runtime_requirements())
+    assert declared == EXACT_PINS | CAPPED, (
+        "every [project.dependencies] entry must be listed in EXACT_PINS or "
+        f"CAPPED; unclassified: {sorted(declared - (EXACT_PINS | CAPPED))}, "
+        f"stale: {sorted((EXACT_PINS | CAPPED) - declared)}"
+    )
+
+
 # Optional-dependency groups that must also be capped at next major.
 CAPPED_OPTIONAL = {
     "report": {
@@ -129,8 +142,12 @@ def _optional_requirements(group: str) -> dict[str, Requirement]:
 def test_report_and_load_groups_are_capped():
     for group, names in CAPPED_OPTIONAL.items():
         reqs = _optional_requirements(group)
+        declared = set(reqs)
+        assert declared == names, (
+            f"every [{group}] entry must be listed in CAPPED_OPTIONAL[{group!r}]; "
+            f"unclassified: {sorted(declared - names)}, stale: {sorted(names - declared)}"
+        )
         for name in sorted(names):
-            assert name in reqs, f"{name} missing from [{group}] optional-dependencies"
             operators = {s.operator for s in reqs[name].specifier}
             assert operators & _BOUNDING_OPERATORS, (
                 f"{name} in [{group}] must carry an upper bound (found '{reqs[name].specifier}')"
