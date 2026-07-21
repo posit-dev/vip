@@ -21,6 +21,24 @@ vip install
 vip verify --connect-url https://connect.example.com --interactive-auth
 ```
 
+### Reproducible install
+
+`uv tool install posit-vip` resolves the newest versions each release allows. To
+install the exact set a release was tested against, pass that release's
+constraints file (attached to every GitHub release as `constraints-<version>.txt`):
+
+```bash
+uv tool install posit-vip \
+  -c https://github.com/posit-dev/vip/releases/download/v0.55.1/constraints-0.55.1.txt
+```
+
+For a fully pinned, batteries-included environment, use the container image,
+which installs from the committed `uv.lock`:
+
+```bash
+docker run --rm -v "$PWD/vip.toml:/app/vip.toml" ghcr.io/posit-dev/vip:latest
+```
+
 On a headless server (no display), use `--headless-auth` instead:
 
 ```bash
