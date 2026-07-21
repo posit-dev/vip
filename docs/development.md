@@ -81,6 +81,27 @@ git add uv.lock
 Because the uv version is pinned, the regenerated lockfile is identical to what
 CI and other contributors produce, so the conflict resolves cleanly.
 
+## Dependency pinning policy
+
+The wheel published to PyPI carries the version constraints declared in
+`pyproject.toml`'s `[project.dependencies]`, so `uv tool install posit-vip` and
+`pip install posit-vip` resolve against them. To keep a fresh install
+predictable (see [#399](https://github.com/posit-dev/vip/issues/399)):
+
+- **Exact `==` pins** for the dependencies that shape a `vip` run's output —
+  `pytest`, `pytest-bdd`, `pytest-order`, `pytest-playwright`, `pytest-xdist`,
+  and `playwright`. Each pin must equal the version resolved in `uv.lock`;
+  `selftests/test_dependency_pins.py` fails if they drift apart.
+- **Next-major caps** (e.g. `requests>=2.33.0,<3`) on every other runtime
+  dependency, so a breaking major release cannot land on install. The `report`
+  and `load` optional groups are capped the same way; the `dev` group is left
+  loose.
+
+Bumps flow through Dependabot's `uv` job (weekly, 7-day cooldown): it raises the
+pin or cap in `pyproject.toml` and updates `uv.lock` in one PR, which CI gates
+before merge. The next release then ships the tested set. To bump a pin by hand,
+edit the constraint and run `just relock` in the same commit.
+
 ## Design principles
 
 - **Non-destructive** — tests create, verify, and clean up their own content.
