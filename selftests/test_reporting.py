@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from vip.reporting import ProductInfo, ReportData, TestResult, load_results, load_troubleshooting
+import xml.etree.ElementTree as ET
+
+from vip.reporting import (
+    ProductInfo,
+    ReportData,
+    TestResult,
+    load_results,
+    load_troubleshooting,
+    write_junit_xml,
+)
 
 
 class TestTestResult:
@@ -325,3 +334,64 @@ class TestConciseError:
         rd = load_results(p)
         assert rd.results[0].concise_error == "test_login: Login failed"
         assert rd.results[1].concise_error is None
+
+
+class TestWriteJUnitXml:
+    def _sample(self) -> ReportData:
+        return ReportData(
+            deployment_name="Acme Team",
+            generated_at="2026-07-21T12:00:00+00:00",
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_auth.py::test_login",
+                    outcome="passed",
+                    duration=1.5,
+                    scenario_title="User can log in",
+                    feature_description="Connect authentication",
+                ),
+                TestResult(
+                    nodeid="tests/workbench/test_sessions.py::test_start",
+                    outcome="failed",
+                    duration=0.5,
+                    concise_error="test_start: TimeoutError session did not start",
+                    scenario_title="Session starts",
+                    feature_description="Workbench sessions",
+                ),
+                TestResult(
+                    nodeid="tests/connect/test_api.py::test_v1",
+                    outcome="skipped",
+                    na_version=True,
+                    scenario_title="API v1 available",
+                ),
+            ],
+        )
+
+    def test_writes_well_formed_xml_with_counts(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        write_junit_xml(self._sample(), out)
+        tree = ET.parse(out)
+        suite = tree.getroot().find("testsuite")
+        assert suite.get("tests") == "3"
+        assert suite.get("failures") == "1"
+        assert suite.get("skipped") == "1"
+
+    def test_failure_carries_concise_error(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        write_junit_xml(self._sample(), out)
+        tree = ET.parse(out)
+        cases = {c.get("name"): c for c in tree.getroot().iter("testcase")}
+        failed = cases["Session starts"]
+        failure = failed.find("failure")
+        assert failure is not None
+        assert "TimeoutError" in failure.get("message")
+        assert failed.get("classname") == "Workbench sessions"
+
+    def test_skip_uses_nodeid_when_no_scenario(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        write_junit_xml(self._sample(), out)
+        tree = ET.parse(out)
+        cases = {c.get("name"): c for c in tree.getroot().iter("testcase")}
+        assert cases["API v1 available"].find("skipped") is not None
+        # passed case has no failure/skipped child
+        assert cases["User can log in"].find("failure") is None
+        assert cases["User can log in"].find("skipped") is None

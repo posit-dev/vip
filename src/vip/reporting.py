@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -153,6 +154,49 @@ def load_results(path: str | Path) -> ReportData:
         products=products,
         results=results,
     )
+
+
+def write_junit_xml(data: ReportData, path: str | Path) -> None:
+    """Write test results as a JUnit XML file for CI test reporters."""
+    suites = ET.Element(
+        "testsuites",
+        tests=str(data.total),
+        failures=str(data.failed),
+        errors="0",
+        skipped=str(data.skipped),
+    )
+    suite = ET.SubElement(
+        suites,
+        "testsuite",
+        name="vip",
+        tests=str(data.total),
+        failures=str(data.failed),
+        errors="0",
+        skipped=str(data.skipped),
+        time=f"{sum(r.duration for r in data.results):.3f}",
+    )
+    for r in data.results:
+        case = ET.SubElement(
+            suite,
+            "testcase",
+            name=r.scenario_title or r.nodeid,
+            classname=r.feature_description or r.category,
+            time=f"{r.duration:.3f}",
+        )
+        if r.outcome == "failed":
+            failure = ET.SubElement(
+                case,
+                "failure",
+                message=r.concise_error or "test failed",
+            )
+            failure.text = r.longrepr or r.concise_error or ""
+        elif r.outcome == "skipped":
+            reason = "N/A for this product version" if r.na_version else "skipped"
+            ET.SubElement(case, "skipped", message=reason)
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    ET.ElementTree(suites).write(p, encoding="utf-8", xml_declaration=True)
 
 
 def _installed_vip_tests_dir() -> Path | None:
