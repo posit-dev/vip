@@ -47,6 +47,7 @@ EXACT_PINS = {
 # Runtime dependencies that must carry an upper bound (cap at next major). An
 # upper bound is any of `<`, `<=`, `~=`, or `==`.
 CAPPED = {
+    "filelock",
     "httpx",
     "requests",
     "pygments",

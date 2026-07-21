@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "0.55.2"
+version = "0.55.3"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
+    "filelock>=3.12,<4",
     "httpx>=0.27,<1",
     "playwright==1.61.0",  # exact-pinned: shapes vip run output; see docs/development.md
     "pyotp~=2.9",
@@ -174,6 +175,10 @@ markers = [
     "min_version(product, version): only run when product meets minimum version",
     "if_applicable: test is skipped when the feature is not configured",
     "api_auth: test requires only an API key, not browser credentials",
+    "rstudio: Workbench RStudio IDE-launch scenario",
+    "vscode: Workbench VS Code IDE-launch scenario",
+    "jupyter: Workbench JupyterLab IDE-launch scenario",
+    "positron: Workbench Positron IDE-launch scenario",
 ]
 
 [tool.semantic_release]

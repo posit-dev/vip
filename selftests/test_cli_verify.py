@@ -1181,3 +1181,73 @@ class TestReorderHelpArgs:
         # argparse exits 0 after printing help; a nonzero/None code would mean
         # it fell through to running the command instead.
         assert exc.value.code == 0
+
+
+class TestVerifyDefaultXdist:
+    """`vip verify` injects a conservative default worker count and grouping
+    dist mode so pip-installed users get parallel-by-group execution too --
+    pyproject.toml's addopts only apply from this repo's own rootdir.
+
+    2 workers is the safe default: product tests log real sessions in against
+    a shared deployment and a single shared test account, and higher default
+    concurrency intermittently storms the OIDC IdP and exceeds small
+    deployments' concurrent-session capacity. Users raise it with
+    ``-- -n N`` when their deployment can handle more.
+    """
+
+    def test_default_run_injects_n_2_and_dist_loadgroup(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg)))
+        assert "-n" in cmd
+        assert cmd[cmd.index("-n") + 1] == "2"
+        assert "--dist" in cmd
+        assert cmd[cmd.index("--dist") + 1] == "loadgroup"
+
+    def test_user_numprocesses_split_form_not_overridden(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["-n", "4"]))
+        # The vip-supplied default pair must not appear...
+        assert not any(cmd[i] == "-n" and cmd[i + 1] == "2" for i in range(len(cmd) - 1))
+        # ...while the user's own choice survives.
+        assert any(cmd[i] == "-n" and cmd[i + 1] == "4" for i in range(len(cmd) - 1))
+
+    def test_user_numprocesses_glued_form_not_overridden(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["-n4"]))
+        assert "-n4" in cmd
+        assert not any(cmd[i] == "-n" and cmd[i + 1] == "2" for i in range(len(cmd) - 1))
+
+    def test_user_numprocesses_long_glued_form_not_overridden(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--numprocesses=8"]))
+        assert "--numprocesses=8" in cmd
+        assert not any(cmd[i] == "-n" and cmd[i + 1] == "2" for i in range(len(cmd) - 1))
+
+    def test_p_no_xdist_disables_both_defaults(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["-p", "no:xdist"]))
+        assert not any(cmd[i] == "-n" and cmd[i + 1] == "2" for i in range(len(cmd) - 1))
+        assert "--dist" not in cmd
+
+    def test_user_dist_load_not_overridden(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--dist", "load"]))
+        assert not any(
+            cmd[i] == "--dist" and cmd[i + 1] == "loadgroup" for i in range(len(cmd) - 1)
+        )
+        assert any(cmd[i] == "--dist" and cmd[i + 1] == "load" for i in range(len(cmd) - 1))
+
+    def test_defaults_come_before_user_pytest_args(self, tmp_path):
+        """Injected defaults are appended before user args, so an explicit
+        later -n/--dist in pytest_args still wins in edge cases."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--tb=short"]))
+        assert cmd.index("-n") < cmd.index("--tb=short")
+        assert cmd.index("--dist") < cmd.index("--tb=short")

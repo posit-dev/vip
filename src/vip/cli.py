@@ -274,6 +274,25 @@ def _has_explicit_test_targets(pytest_args: list[str]) -> bool:
     return False
 
 
+def _user_set_xdist(pytest_args: list[str]) -> tuple[bool, bool]:
+    """Return (user_set_numprocesses, user_set_dist) from user-supplied pytest args.
+
+    Lets `vip verify` supply default ``-n``/``--dist`` without overriding an
+    explicit user choice (including ``-p no:xdist``, which disables xdist
+    entirely and so counts as the user managing both).
+    """
+    set_n = False
+    set_dist = False
+    for a in pytest_args:
+        if a in ("-n", "--numprocesses") or a.startswith(("-n", "--numprocesses=")):
+            set_n = True
+        if a.startswith("--dist") or a == "no:xdist" or a.startswith("no:xdist"):
+            set_dist = True
+    if "no:xdist" in pytest_args or any(x.startswith("no:xdist") for x in pytest_args):
+        set_n = set_dist = True
+    return set_n, set_dist
+
+
 def _generate_temp_config(args: argparse.Namespace) -> str:
     """Write a minimal vip.toml from CLI URL arguments. Returns temp file path."""
     lines = ["[general]", 'deployment_name = "Posit Team"', ""]
@@ -489,6 +508,23 @@ def run_verify(args: argparse.Namespace) -> None:
     if args.verbose:
         cmd.append("--vip-verbose")
         cmd.append("-s")
+
+    # Default to a conservative parallel-by-group run so pip-installed users
+    # get grouping too -- pyproject.toml's `addopts = "-n auto --dist
+    # loadgroup"` only applies when pytest's rootdir is this repo. 2 workers
+    # is a safe default: product tests log real sessions in against a shared
+    # deployment and a single shared test account, and higher default
+    # concurrency intermittently storms the OIDC IdP (`?error=2`) and exceeds
+    # small deployments' concurrent-session capacity. Users raise it with
+    # `-- -n N` when their deployment can handle more. Respect an explicit
+    # user choice for either flag (including `-p no:xdist`, which disables
+    # xdist and thus both).
+    _set_n, _set_dist = _user_set_xdist(args.pytest_args)
+    if not _set_n:
+        cmd.extend(["-n", "2"])
+    if not _set_dist:
+        cmd.extend(["--dist", "loadgroup"])
+
     cmd.extend(args.pytest_args)
     if args.headless_auth:
         # MFA prompting needs stdin; always append -s last so it

@@ -10,14 +10,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from _pytest.outcomes import Skipped
+
+from vip.gherkin import parse_feature_file
 from vip_tests.workbench.chronicle_probe import (
     TOKEN_NO_DATA,
     TOKEN_OK,
     raw_chunk_probe_expr,
 )
+from vip_tests.workbench.test_chronicle import chronicle_enabled_guard
 
 BASE = "/var/lib/rstudio-server/shared-storage/chronicle"
 _R_FILE = Path("src/vip_tests/workbench/chronicle_probe.R")
+# Resolve relative to this file, not the cwd, so the test passes wherever
+# pytest is invoked from.
+_FEATURE_FILE = (
+    Path(__file__).parent.parent / "src" / "vip_tests" / "workbench" / "test_chronicle.feature"
+)
 
 
 class TestRawChunkProbeExpr:
@@ -75,6 +85,36 @@ class TestRawChunkProbeExpr:
     def test_custom_base_path(self):
         expr = raw_chunk_probe_expr("/mnt/chronicle", "pwb_users")
         assert 'cat(vip_chronicle_probe("/mnt/chronicle", "pwb_users"))' in expr
+
+
+class TestGuardPrecedesLogin:
+    def test_chronicle_enabled_guard_runs_before_login(self):
+        # The Chronicle-enabled guard is a cheap config check; login is an
+        # expensive browser step that emits its own auth skip message when it
+        # can't establish a session. With login ordered first, a deployment
+        # that both disables Chronicle and fails login (e.g. --interactive-auth
+        # with no valid IdP session, as in issue #462) skips with that auth
+        # message and never reaches the guard — hiding the real reason.
+        # Ordering the guard first makes Chronicle-disabled skip with the
+        # correct reason regardless of login, and avoids a pointless login.
+        parsed = parse_feature_file(_FEATURE_FILE)
+        assert parsed["scenarios"], "expected scenarios in test_chronicle.feature"
+        for scenario in parsed["scenarios"]:
+            steps = scenario["steps"]
+            guard = next(i for i, s in enumerate(steps) if "Chronicle verification is enabled" in s)
+            login = next(i for i, s in enumerate(steps) if "logged in to Workbench" in s)
+            assert guard < login, (
+                f"scenario {scenario['title']!r}: 'Chronicle verification is enabled' "
+                "must precede login so a disabled deployment skips with the correct reason"
+            )
+
+    def test_disabled_chronicle_skips_with_config_reason(self):
+        # The point of running the guard first (issue #462) is the skip reason
+        # it emits; assert the message text so a future edit can't preserve the
+        # ordering while regressing what the user actually sees.
+        with pytest.raises(Skipped) as exc:
+            chronicle_enabled_guard(False)
+        assert "Chronicle verification is disabled" in str(exc.value)
 
 
 class TestTokensInSyncWithRFile:
