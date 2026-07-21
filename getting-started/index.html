@@ -19,6 +19,15 @@ vip install</code></pre> <p data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jf
             and the system libraries it needs. These can later be removed
             safely, along with other test artifacts, with
 <code data-astro-cid-mwd2jfe2>vip uninstall</code>.
+</p> <p data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>uv tool install posit-vip</code> resolves the newest versions
+            each release allows. For a reproducible install pinned to a
+            release's tested dependency set, pass that release's constraints
+            file (attached to every GitHub release as
+<code data-astro-cid-mwd2jfe2>constraints-&lt;version&gt;.txt</code>):
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>uv tool install posit-vip \
+  -c https://github.com/posit-dev/vip/releases/download/vX.Y.Z/constraints-X.Y.Z.txt</code></pre> <p data-astro-cid-mwd2jfe2>
+Replace <code data-astro-cid-mwd2jfe2>X.Y.Z</code> with the release you are installing (see
+            the <a href="https://github.com/posit-dev/vip/releases" data-astro-cid-mwd2jfe2>releases page</a>).
 </p> <p data-astro-cid-mwd2jfe2>
 Run your first VIP test against Posit Public Package Manager:
 </p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --package-manager-url https://p3m.dev --filter 'not test_product_does_not_expose_sensitive_headers and not test_prometheus_metrics'</code></pre> <p data-astro-cid-mwd2jfe2>The above command should finish in under a minute and show a
