@@ -88,8 +88,10 @@ vip verify --format json,junit,sarif
 # report/results.sarif   (--format sarif)  -> GitHub code scanning / secops
 ```
 
-The `--ci` preset bundles all three formats with concise output and strict
-non-interactive behavior:
+The `--ci` preset bundles all three formats with concise tracebacks (`--tb=short`)
+and overrides `--format` if both are given. Run it without `--interactive-auth`/
+`--headless-auth` -- combining them is an error, since `--ci` is meant for
+non-interactive pipelines:
 
 ```bash
 vip verify --ci

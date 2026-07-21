@@ -436,6 +436,75 @@ class TestWriteJUnitXml:
         assert b"\x1b" not in raw_bytes
         assert b"\x00" not in raw_bytes
 
+    def test_strips_full_ansi_escape_sequences(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="failed",
+                    concise_error="\x1b[31mred\x1b[0m",
+                    longrepr="\x1b[31mred\x1b[0m",
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        # Well-formed XML: ET.parse must not raise.
+        tree = ET.parse(out)
+        failure = tree.getroot().find(".//failure")
+        assert failure is not None
+        assert failure.get("message") == "red"
+        assert failure.text == "red"
+        raw_text = out.read_text()
+        assert "[31m" not in raw_text
+        assert "[0m" not in raw_text
+
+    def test_ordinary_skip_message_is_plain(self, tmp_path):
+        """A skip that is NOT na_version gets the plain 'skipped' message, not
+        the version-gate text."""
+        out = tmp_path / "junit.xml"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="skipped",
+                    na_version=False,
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        tree = ET.parse(out)
+        skipped = tree.getroot().find(".//skipped")
+        assert skipped is not None
+        assert skipped.get("message") == "skipped"
+
+    def test_failure_fallback_when_no_error_details(self, tmp_path):
+        """A failed result with neither concise_error nor longrepr falls back
+        to a generic 'test failed' message."""
+        out = tmp_path / "junit.xml"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="failed",
+                    concise_error=None,
+                    longrepr=None,
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        tree = ET.parse(out)
+        failure = tree.getroot().find(".//failure")
+        assert failure is not None
+        assert failure.get("message") == "test failed"
+
+    def test_empty_report_data_is_well_formed(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        write_junit_xml(ReportData(), out)
+        tree = ET.parse(out)
+        suite = tree.getroot().find("testsuite")
+        assert suite.get("tests") == "0"
+
 
 class TestWriteSarif:
     def _sample(self) -> ReportData:
@@ -496,3 +565,47 @@ class TestWriteSarif:
         loc = failed["locations"][0]["logicalLocations"][0]["name"]
         assert loc == "workbench / Session starts"
         assert failed["message"]["text"] == "test_start: session did not start"
+
+    def test_ordinary_skip_message_is_plain(self, tmp_path):
+        """A skip that is NOT na_version gets 'check skipped', not the
+        version-gate text."""
+        out = tmp_path / "results.sarif"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="skipped",
+                    na_version=False,
+                ),
+            ],
+        )
+        write_sarif(data, out)
+        doc = json.loads(out.read_text())
+        result = doc["runs"][0]["results"][0]
+        assert result["message"]["text"] == "check skipped"
+
+    def test_failure_fallback_when_no_error_details(self, tmp_path):
+        """A failed result with neither concise_error nor longrepr falls back
+        to a generic 'check failed' message."""
+        out = tmp_path / "results.sarif"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="failed",
+                    concise_error=None,
+                    longrepr=None,
+                ),
+            ],
+        )
+        write_sarif(data, out)
+        doc = json.loads(out.read_text())
+        result = doc["runs"][0]["results"][0]
+        assert result["message"]["text"] == "check failed"
+
+    def test_empty_report_data_is_well_formed(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        write_sarif(ReportData(), out)
+        doc = json.loads(out.read_text())
+        assert doc["runs"][0]["results"] == []
+        assert doc["version"] == "2.1.0"

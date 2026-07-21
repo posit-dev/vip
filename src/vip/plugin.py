@@ -1120,11 +1120,18 @@ def _emit_extra_formats(fmt: str, results_path: Path) -> None:
     """Emit JUnit/SARIF siblings of results_path per a comma-separated format list.
 
     ``results.json`` is always written by the caller; this only adds the extra
-    machine-readable formats. Unknown format tokens are ignored.
+    machine-readable formats. Unknown format tokens are non-fatal: known formats
+    are still emitted, and a warning is raised for each unrecognized token.
     """
-    from vip.reporting import load_results, write_junit_xml, write_sarif
+    from vip.reporting import VALID_FORMATS, load_results, write_junit_xml, write_sarif
 
     formats = {f.strip().lower() for f in fmt.split(",") if f.strip()}
+    unknown = formats - VALID_FORMATS
+    if unknown:
+        warnings.warn(
+            f"VIP: ignoring unknown --vip-format value(s): {', '.join(sorted(unknown))}",
+            stacklevel=2,
+        )
     if not (formats & {"junit", "sarif"}):
         return
     data = load_results(results_path)
@@ -1182,7 +1189,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     fmt = session.config.getoption("--vip-format", default="json")
     try:
         _emit_extra_formats(fmt, p)
-    except OSError as exc:
+    except (OSError, ValueError, KeyError) as exc:
         warnings.warn(f"VIP: could not write extra formats: {exc}", stacklevel=1)
 
     # Write failures.json alongside results.json so report rendering is idempotent.

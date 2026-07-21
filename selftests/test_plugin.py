@@ -1799,5 +1799,6 @@ class TestFormatEmission:
 
     def test_unknown_format_ignored_gracefully(self, tmp_path):
         results = self._write_results(tmp_path)
-        _emit_extra_formats("junit,bogus", results)  # bogus ignored, junit still written
+        with pytest.warns(UserWarning, match="unknown"):
+            _emit_extra_formats("junit,bogus", results)  # bogus warned, junit still written
         assert (tmp_path / "junit.xml").exists()

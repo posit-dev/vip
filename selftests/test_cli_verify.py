@@ -1286,3 +1286,41 @@ class TestFormatFlag:
                 _make_args(package_manager_url="https://pm.example.com", format="json,bogus")
             )
         assert exc_info.value.code == 2
+
+    def test_ci_overrides_explicit_format(self):
+        cmd = _capture_cmd(_make_args(ci=True, format="json"))
+        assert "--vip-format=json,junit,sarif" in cmd
+
+    def test_ci_rejects_interactive_auth(self, tmp_path, monkeypatch):
+        """--ci is a non-interactive preset; combining with --interactive-auth
+        must exit rather than silently ignoring one of the two. Calls
+        run_verify directly (real sys.exit) per the note on
+        test_unknown_format_rejected above."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import run_verify
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_verify(
+                _make_args(
+                    package_manager_url="https://pm.example.com",
+                    ci=True,
+                    interactive_auth=True,
+                )
+            )
+        assert exc_info.value.code == 1
+
+    def test_ci_rejects_headless_auth(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import run_verify
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_verify(
+                _make_args(
+                    package_manager_url="https://pm.example.com",
+                    ci=True,
+                    headless_auth=True,
+                )
+            )
+        assert exc_info.value.code == 1

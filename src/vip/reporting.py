@@ -15,6 +15,9 @@ else:
     import tomli as tomllib
 
 
+VALID_FORMATS = frozenset({"json", "junit", "sarif"})
+
+
 @dataclass
 class TestResult:
     nodeid: str
@@ -125,7 +128,7 @@ def load_results(path: str | Path) -> ReportData:
         TestResult(
             nodeid=r["nodeid"],
             outcome=r["outcome"],
-            duration=r.get("duration", 0.0),
+            duration=r.get("duration") or 0.0,
             longrepr=r.get("longrepr"),
             concise_error=r.get("concise_error"),
             markers=r.get("markers", []),
@@ -158,15 +161,17 @@ def load_results(path: str | Path) -> ReportData:
 
 
 _XML_INVALID_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+_ANSI_CSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
 def _xml_safe(text: str) -> str:
-    """Strip characters that are invalid in XML 1.0 (control chars other than tab/LF/CR)."""
-    return _XML_INVALID_CHARS.sub("", text)
+    """Strip ANSI escape sequences and XML-1.0-invalid control chars (keep tab/LF/CR)."""
+    return _XML_INVALID_CHARS.sub("", _ANSI_CSI.sub("", text))
 
 
 def write_junit_xml(data: ReportData, path: str | Path) -> None:
     """Write test results as a JUnit XML file for CI test reporters."""
+    # VIP's ReportData has no "error" outcome distinct from "failed"; always 0.
     suites = ET.Element(
         "testsuites",
         tests=str(data.total),

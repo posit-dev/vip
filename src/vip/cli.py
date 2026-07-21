@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from vip.reporting import VALID_FORMATS
 from vip.timeouts import scaled
 
 if TYPE_CHECKING:
@@ -448,6 +449,14 @@ def run_verify(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
+    if getattr(args, "ci", False) and (args.interactive_auth or args.headless_auth):
+        print(
+            "Error: --ci requires non-interactive execution and cannot be combined "
+            "with --interactive-auth/--headless-auth.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     if args.api_auth and _config_idp(config_path) == "snowflake":
         print(
             "\033[1mError: --api-auth is not supported with the Snowflake identity "
@@ -489,14 +498,13 @@ def run_verify(args: argparse.Namespace) -> None:
     if args.report:
         cmd.append(f"--vip-report={args.report}")
 
-    _VALID_FORMATS = {"json", "junit", "sarif"}
     fmt = "json,junit,sarif" if getattr(args, "ci", False) else getattr(args, "format", "json")
     requested = [f.strip().lower() for f in fmt.split(",") if f.strip()]
-    unknown = [f for f in requested if f not in _VALID_FORMATS]
+    unknown = [f for f in requested if f not in VALID_FORMATS]
     if unknown:
         print(
             f"Error: unknown --format value(s): {', '.join(unknown)}. "
-            f"Valid: {', '.join(sorted(_VALID_FORMATS))}.",
+            f"Valid: {', '.join(sorted(VALID_FORMATS))}.",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -1419,8 +1427,8 @@ def main() -> None:
         "--ci",
         action="store_true",
         default=False,
-        help="CI preset: emit json,junit,sarif, use concise tracebacks, and run"
-        " strictly non-interactively.",
+        help="CI preset: emit json,junit,sarif and use concise tracebacks (--tb=short)."
+        " Overrides --format. Not compatible with --interactive-auth/--headless-auth.",
     )
     verify_parser.add_argument(
         "--verbose",
