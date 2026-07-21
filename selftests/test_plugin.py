@@ -699,6 +699,10 @@ class TestPluginIntegration:
             ]
         )
 
+    def test_slow_marker_registered(self, selftest_pytester):
+        result = selftest_pytester.runpytest("--markers")
+        result.stdout.fnmatch_lines(["*slow: *"])
+
     def test_interactive_auth_option_registered(self, selftest_pytester):
         """--interactive-auth appears in help output."""
         result = selftest_pytester.runpytest("--help")

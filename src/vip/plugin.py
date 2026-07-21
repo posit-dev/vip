@@ -164,6 +164,10 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers",
+        "slow: detailed/long-running checks; excluded by --basic",
+    )
+    config.addinivalue_line(
+        "markers",
         "min_version(product, version): skip when product is below the specified version",
     )
     config.addinivalue_line(
