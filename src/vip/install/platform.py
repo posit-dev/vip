@@ -144,7 +144,7 @@ def debian_packages(platform_info: PlatformInfo) -> tuple[str, ...]:
 # When updating the playwright pin in pyproject.toml, review DEBIAN_PACKAGES against
 # https://github.com/microsoft/playwright/blob/main/packages/playwright-core/src/server/registry/nativeDeps.ts
 # and update this value. The selftest enforces that they match.
-LIST_REVIEWED_AGAINST_PLAYWRIGHT = "1.40"
+LIST_REVIEWED_AGAINST_PLAYWRIGHT = "1.61.0"
 
 
 # openSUSE/SLES equivalents. Names from `zypper search --provides` against
@@ -177,4 +177,4 @@ SUSE_PACKAGES: tuple[str, ...] = (
 )
 
 # Mirror of LIST_REVIEWED_AGAINST_PLAYWRIGHT for the SUSE list.
-LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE = "1.40"
+LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE = "1.61.0"

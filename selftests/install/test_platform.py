@@ -9,6 +9,31 @@ import pytest
 from vip.install import platform as plat
 
 
+def _pinned_playwright_version() -> str:
+    """The playwright version declared in pyproject.toml's [project.dependencies].
+
+    Handles any specifier form (``==1.61.0``, ``>=1.40``, ``>=1.40,<2``) by
+    preferring an exact ``==`` pin and otherwise falling back to the floor
+    (``>=``/``>``/``~=``) version.
+    """
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        import tomli as tomllib  # type: ignore[no-redef]
+
+    from packaging.requirements import Requirement
+
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+    pw_dep = next(d for d in pyproject["project"]["dependencies"] if d.startswith("playwright"))
+    specifier = Requirement(pw_dep).specifier
+    exact = next((s.version for s in specifier if s.operator == "=="), None)
+    if exact is not None:
+        return exact
+    # No exact pin: return the floor version. SpecifierSet iterates an unordered
+    # set, so pick the lower-bound operator explicitly instead of "the first".
+    return next(s.version for s in specifier if s.operator in (">=", ">", "~="))
+
+
 @pytest.fixture()
 def fake_os_release(tmp_path: Path, monkeypatch):
     def _write(content: str) -> Path:
@@ -199,17 +224,7 @@ def test_suse_packages_is_tuple_of_strings():
 
 def test_list_reviewed_against_playwright_suse_matches_pinned_version():
     """Reminds maintainer to review SUSE_PACKAGES when playwright is bumped."""
-    import sys
-
-    if sys.version_info >= (3, 11):
-        import tomllib
-    else:
-        import tomli as tomllib  # type: ignore[no-redef]
-
-    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
-    deps = pyproject["project"]["dependencies"]
-    pw_dep = next(d for d in deps if d.startswith("playwright"))
-    pinned = pw_dep.split(">=", 1)[1].split(",", 1)[0].strip()
+    pinned = _pinned_playwright_version()
     reviewed = plat.LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE
     nativedeps_url = (
         "https://github.com/microsoft/playwright/blob/main"
@@ -225,18 +240,7 @@ def test_list_reviewed_against_playwright_suse_matches_pinned_version():
 
 def test_list_reviewed_against_playwright_matches_pinned_version():
     """Reminds maintainer to review DEBIAN_PACKAGES when playwright is bumped."""
-    import sys
-
-    if sys.version_info >= (3, 11):
-        import tomllib
-    else:
-        import tomli as tomllib  # type: ignore[no-redef]
-
-    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
-    deps = pyproject["project"]["dependencies"]
-    pw_dep = next(d for d in deps if d.startswith("playwright"))
-    # Extract version specifier (e.g. "playwright>=1.50,<2.0" → "1.50,<2.0" → "1.50").
-    pinned = pw_dep.split(">=", 1)[1].split(",", 1)[0].strip()
+    pinned = _pinned_playwright_version()
     reviewed = plat.LIST_REVIEWED_AGAINST_PLAYWRIGHT
     nativedeps_url = (
         "https://github.com/microsoft/playwright/blob/main"
