@@ -16,8 +16,8 @@ Feature: Workbench Chronicle observability
   and workbench-api-admin-enabled=1 in rserver.conf (see vip.toml.example).
 
   Scenario: Chronicle has collected telemetry readable in-session
-    Given the user is logged in to Workbench
-    And Chronicle verification is enabled in vip.toml
+    Given Chronicle verification is enabled in vip.toml
+    And the user is logged in to Workbench
     When the user starts a new RStudio session
     And the session transitions to Active state
     And the RStudio IDE is displayed and functional
