@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.55.3 (2026-07-21)
+
+### Bug Fixes
+
+- **workbench**: Skip chronicle test with correct reason when disabled
+  ([#510](https://github.com/posit-dev/vip/pull/510),
+  [`ac6d9da`](https://github.com/posit-dev/vip/commit/ac6d9da5055e89b2feb92bfab4977e1abec997c4))
+
+
 ## v0.55.2 (2026-07-21)
 
 ### Bug Fixes
