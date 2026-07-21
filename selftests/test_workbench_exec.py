@@ -32,6 +32,7 @@ from vip_tests.workbench.exec import (
     _split_marker,
     _strip_r_index,
     _wrap_python_expr,
+    _wrap_python_expr_inline,
     _wrap_r_expr,
     ensure_positron_console,
     file_exists,
@@ -186,6 +187,33 @@ class TestWrapPythonExpr:
         result = _wrap_python_expr("x = 1", start, end)
         last_line = result.splitlines()[-1]
         assert _split_marker(end)[0] in last_line
+
+
+# ---------------------------------------------------------------------------
+# _wrap_python_expr_inline
+# ---------------------------------------------------------------------------
+
+
+class TestWrapPythonExprInline:
+    def test_single_line(self):
+        """Inline wrapping is one line so IPython runs it on a single Enter."""
+        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
+        result = _wrap_python_expr_inline("print(open('/tmp/x').read())", start, end)
+        assert len(result.splitlines()) == 1
+
+    def test_full_marker_not_contiguous_in_source(self):
+        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
+        result = _wrap_python_expr_inline("1 + 1", start, end)
+        assert start not in result
+        assert end not in result
+
+    def test_marker_halves_and_expression_present(self):
+        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
+        expr = "import os; print(os.path.exists('/tmp/x'))"
+        result = _wrap_python_expr_inline(expr, start, end)
+        assert expr in result
+        for half in (*_split_marker(start), *_split_marker(end)):
+            assert half in result
 
 
 # ---------------------------------------------------------------------------
@@ -454,6 +482,17 @@ class _EnsureFakeLocator:
     @property
     def first(self):
         return self
+
+    def nth(self, index):
+        return self
+
+    def text_content(self, timeout=None):
+        # Interpreter rows report an R label so ensure_positron_console's
+        # R-preference selects a row on the first grace poll (these tests
+        # exercise the start/select/render flow, not language routing).
+        if self._selector == PositronSession.INTERPRETER_QUICKPICK_ROW:
+            return "R 4.5.2" if self.count() >= 1 else ""
+        return ""
 
     def count(self):
         p = self._page
