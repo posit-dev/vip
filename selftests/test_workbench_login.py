@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import pytest
 from _pytest.outcomes import Skipped
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from vip_tests.workbench.conftest import workbench_login
 
@@ -32,7 +33,9 @@ class _AuthFakeLocator:
 
     def wait_for(self, *, state=None, timeout=None):
         if not self._visible():
-            raise RuntimeError("locator not visible")
+            # Playwright's Locator.wait_for raises PlaywrightTimeoutError on timeout;
+            # model that so the SSO-skip path exercises the same typed catch as production.
+            raise PlaywrightTimeoutError("locator not visible")
 
     def click(self, *args, **kwargs):
         if self._on_click is not None:

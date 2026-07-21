@@ -5,14 +5,21 @@ Page selectors are in the pages/ subpackage
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import logging
 import os
 import re
+import tempfile
 import time
+import warnings
 from pathlib import Path
 
 import pytest
+from filelock import FileLock, Timeout
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given
 
 from vip.clients.workbench import WorkbenchClient
@@ -31,26 +38,95 @@ from vip_tests.workbench.pages import Homepage, LoginPage
 
 logger = logging.getLogger(__name__)
 
+# Cross-worker OIDC login lock (#484). Under --interactive-auth / --headless-auth every
+# xdist worker shares one IdP session; letting many workers do the silent SSO round-trip
+# simultaneously storms the IdP (the ?error=2 bounce from #467). Serializing just the
+# round-trip removes the concurrency without re-serializing the whole suite.
+_LOGIN_LOCK_TIMEOUT = float(os.environ.get("VIP_LOGIN_LOCK_TIMEOUT", "60"))
+
+
+def _login_lock_path(workbench_url: str) -> Path:
+    """Path to the cross-worker OIDC login lock for *workbench_url*.
+
+    Keyed by a hash of the URL so distinct deployments don't share a lock, and placed in
+    the system temp dir so all xdist workers on the host share the same file.
+    """
+    digest = hashlib.sha256(workbench_url.encode()).hexdigest()[:16]
+    return Path(tempfile.gettempdir()) / f"vip-wb-login-{digest}.lock"
+
+
+@contextlib.contextmanager
+def oidc_login_lock(workbench_url: str, *, timeout: float = _LOGIN_LOCK_TIMEOUT):
+    """Serialize the OIDC SSO round-trip across xdist workers.
+
+    Only one worker performs the silent SSO round-trip against the shared IdP session at a
+    time. The lock is a best-effort optimization: falling back to unlocked proceeds
+    correctly, though it can reintroduce the very login storm this lock exists to avoid. If
+    it can't be acquired within *timeout*, surface a warning and proceed unlocked rather
+    than hang the run.
+    """
+    lock = FileLock(str(_login_lock_path(workbench_url)))
+    try:
+        lock.acquire(timeout=timeout)
+    except Timeout:
+        # Emit via both channels: warnings.warn surfaces in pytest's warnings summary
+        # regardless of pass/fail (no logging handler is attached for test runs), so the
+        # one run where storm-prevention disengaged leaves a forensic trail for later.
+        message = (
+            f"OIDC login lock not acquired within {timeout:.0f}s for {workbench_url}; "
+            "proceeding without it. Concurrent logins may briefly storm the IdP."
+        )
+        warnings.warn(message, stacklevel=2)
+        logger.warning(message)
+        yield
+        return
+    try:
+        yield
+    finally:
+        lock.release()
+
+
 pytestmark = [pytest.mark.workbench, pytest.mark.xdist_group("workbench")]
+
+
+_IDE_MARKERS = ("rstudio", "vscode", "jupyter", "positron")
+
+
+def _workbench_group_name(ide_markers: set[str], module_stem: str) -> str:
+    """Compute the xdist group for a Workbench test under shared auth (hybrid grouping).
+
+    IDE-launch scenarios (carrying an IDE marker) group by IDE so each IDE runs on its own
+    worker: ``workbench_ide_<ide>``. Every other Workbench test groups by feature module:
+    ``workbench_<stem>`` (a leading ``test_`` stripped).
+    """
+    for ide in _IDE_MARKERS:
+        if ide in ide_markers:
+            return f"workbench_ide_{ide}"
+    stem = module_stem[len("test_") :] if module_stem.startswith("test_") else module_stem
+    return f"workbench_{stem}"
 
 
 def pytest_collection_modifyitems(
     config: pytest.Config,
     items: list[pytest.Item],
 ) -> None:
-    """Serialize Workbench tests onto a single xdist worker when a shared auth session is active.
+    """Group Workbench tests for parallel execution when a shared auth session is active.
 
     Under --interactive-auth / --headless-auth all Workbench tests authenticate as the same
-    shared browser account.  Running them across many parallel workers triggers a
-    simultaneous-login storm against the OIDC IdP that intermittently fails to establish
-    sessions or bounces already-logged-in browsers back to the sign-in page.  Pinning all
-    Workbench tests to one xdist group forces LoadGroupScheduling to run them sequentially
-    on a single worker, eliminating the storm while leaving Connect/PM tests unaffected.
+    shared account. Rather than pin them all to one worker (the old serial workaround), we
+    group them so LoadGroupScheduling spreads them across workers: IDE-launch scenarios by
+    IDE (``workbench_ide_<ide>``), everything else by feature module (``workbench_<module>``).
+    The simultaneous-login storm this used to cause is prevented by the cross-worker login
+    lock in :func:`workbench_login` (see :func:`oidc_login_lock`), not by serialization.
 
-    For password auth (no shared session) the default parallel behavior is preserved.
+    Password / no-auth runs are left untouched: they hit the early return below, so their
+    Workbench items keep the default ``workbench`` group that ``plugin.py``'s
+    :func:`_assign_xdist_group` directory fallback assigns (the module-level ``pytestmark``
+    at the top of this file does not propagate to sibling test modules, so it assigns
+    nothing here).
     """
     if config.stash.get(_auth_session_key, None) is None:
-        # No shared auth session — password auth or no auth.  Keep default parallel behavior.
+        # No shared auth session — password auth or no auth. Keep default parallel behavior.
         return
 
     workbench_dir = Path(__file__).parent
@@ -58,10 +134,15 @@ def pytest_collection_modifyitems(
         item_path = getattr(item, "path", None)
         if item_path is None or not item_path.is_relative_to(workbench_dir):
             continue
-        # Remove the default xdist_group("workbench") set by pytestmark so we can
-        # replace it with a group that serializes all workers onto one.
+        ide_markers = {m.name for m in item.iter_markers()} & set(_IDE_MARKERS)
+        group = _workbench_group_name(ide_markers, item_path.stem)
+        # Strip any pre-existing xdist_group marker before adding the hybrid group. No
+        # per-test xdist_group marker exists today, so this is a defensive guard: xdist
+        # concatenates *all* xdist_group marks on an item (via iter_markers), it does not
+        # take the closest, so a leftover mark would corrupt the group name rather than be
+        # shadowed. plugin.py's _assign_xdist_group then respects the group we add here.
         item.own_markers = [m for m in item.own_markers if m.name != "xdist_group"]
-        item.add_marker(pytest.mark.xdist_group("workbench_interactive_serial"))
+        item.add_marker(pytest.mark.xdist_group(group))
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +271,31 @@ def _session_failure_message(name: str, state: str, *, expected: str = "Active")
     return f"Session {name!r} reached terminal state {state!r} instead of {expected} — {cause}"
 
 
+def _session_timeout_message(
+    session_name: str, target_state: str, timeout_s: int, worker_count: int
+) -> str:
+    """Build the message shown when a session never reaches *target_state* before timeout.
+
+    When running across multiple xdist workers (*worker_count* > 1), several sessions
+    launch at once; a capacity-limited deployment can leave some stuck in a non-terminal
+    "Starting" state. In that case, append a hint pointing at concurrent-session capacity
+    so the failure is actionable rather than opaque.
+    """
+    base = (
+        f"Session {session_name!r} did not reach {target_state} within {timeout_s}s "
+        f"(no {target_state} or terminal status detected)."
+    )
+    if worker_count > 1:
+        base += (
+            f" This run used {worker_count} parallel workers, so multiple sessions were "
+            "launching at once; if the deployment has limited concurrent-session capacity, "
+            "sessions can stay in 'Starting' until they time out. Try reducing parallelism "
+            "(e.g. a lower pytest -n) or verify the deployment/launcher can start that many "
+            "sessions concurrently."
+        )
+    return base
+
+
 def format_capacity_failure(total: int, failures: list[str], reasons: list[str]) -> str:
     """Build the aggregated failure for the session-capacity scenario.
 
@@ -269,9 +375,9 @@ def _wait_for_session_state(
     if _target_now():
         return row
     raise_if_session_failed(page, session_name, expected=target_state)
+    worker_count = int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1") or "1")
     raise AssertionError(
-        f"Session {session_name!r} did not reach {target_state} within "
-        f"{timeout // 1000}s (no {target_state} or terminal status detected)."
+        _session_timeout_message(session_name, target_state, timeout // 1000, worker_count)
     )
 
 
@@ -303,6 +409,26 @@ def wait_for_session_suspended(
 # ---------------------------------------------------------------------------
 # Login Helper
 # ---------------------------------------------------------------------------
+
+
+def _silent_sso_signin(sso_button, homepage_logo, workbench_url: str) -> bool:
+    """Click the OIDC sign-in button and wait for the homepage, serialized across workers.
+
+    Wrapped in :func:`oidc_login_lock` so concurrent xdist workers don't storm the shared
+    IdP session. Returns ``True`` when the authenticated homepage appears, ``False``
+    otherwise (the caller then skips with the standard message).
+    """
+    with oidc_login_lock(workbench_url):
+        sso_button.click()
+        try:
+            homepage_logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
+            return True
+        except (PlaywrightTimeoutError, PlaywrightError):
+            # Homepage never appeared: no usable IdP session (expired, or storage state
+            # stripped for the password-login test). Anything else (crashed page/context,
+            # a bug in this helper) is a real failure and must propagate, not masquerade
+            # as a graceful skip — matches the typed-catch convention used across this package.
+            return False
 
 
 def workbench_login(
@@ -390,25 +516,22 @@ def workbench_login(
 
         if interactive_auth and sso_only:
             # Storage state was pre-loaded by --interactive-auth / --headless-auth.
-            # Workbench's SSO sign-in page does not auto-redirect to the IdP; it
-            # renders a "Sign in with OpenID" button.  Clicking it triggers a
-            # silent SSO round-trip using the saved IdP cookies, landing on the
-            # authenticated homepage with no credentials required.
-            sso_button.click()
-            try:
-                homepage_logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
+            # Workbench's SSO sign-in page does not auto-redirect to the IdP; it renders a
+            # "Sign in with OpenID" button. Clicking it triggers a silent SSO round-trip
+            # using the saved IdP cookies. The round-trip is serialized across xdist
+            # workers (see _silent_sso_signin / oidc_login_lock) to avoid storming the
+            # shared IdP session (#484/#467).
+            if _silent_sso_signin(sso_button, homepage_logo, workbench_url):
                 return  # Silent SSO succeeded
-            except Exception:
-                # No usable IdP session (expired, or storage state was stripped
-                # for the password-login test) — silent SSO can't complete on an
-                # OIDC deployment, so skip gracefully.
-                pytest.skip(
-                    _workbench_session_skip_message(
-                        auth_mode=auth_mode,
-                        workbench_auth_error=workbench_auth_error,
-                        landed_url=page.url,
-                    )
+            # No usable IdP session (expired, or storage state was stripped for the
+            # password-login test) — skip gracefully.
+            pytest.skip(
+                _workbench_session_skip_message(
+                    auth_mode=auth_mode,
+                    workbench_auth_error=workbench_auth_error,
+                    landed_url=page.url,
                 )
+            )
 
         if auth_provider != "password":
             pytest.skip(
