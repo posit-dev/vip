@@ -554,7 +554,7 @@ git commit -m "feat(cli): add --format and --ci flags to vip verify"
 
 **Interfaces:**
 - Consumes: the `vip` console-script installed by `uv sync` (`pyproject.toml [project.scripts] vip = "vip.cli:main"`).
-- Produces: `docker run <img>` runs `vip verify`; `docker run <img> status --json` (and other subcommands) reachable; `docker run <img> --ci` runs `vip verify --ci`.
+- Produces: `docker run <img>` runs `vip verify`; `docker run <img> status --json` (and other subcommands) reachable; `docker run <img> verify --ci` runs `vip verify --ci`. Note: `docker run` args REPLACE the CMD (they don't append), so the `verify` subcommand must be named explicitly to pass verify flags — bare `docker run <img> --ci` would run `vip --ci` (invalid).
 
 - [ ] **Step 1: Change the entrypoint**
 
@@ -565,9 +565,10 @@ Replace the final two lines of `Dockerfile`:
 # Config file should be mounted at /app/vip.toml
 ENTRYPOINT ["uv", "run", "vip"]
 
-# Default args: run verify. Override to reach other subcommands, e.g.
+# Default args: run verify. Override to reach other subcommands or pass
+# verify flags (args replace this CMD, so include "verify" explicitly), e.g.
+#   docker run <img> verify --ci
 #   docker run <img> status --json
-#   docker run <img> --ci
 CMD ["verify"]
 ```
 
@@ -630,10 +631,15 @@ vip verify --ci
 ### Container
 
 An official image is published to `ghcr.io/posit-dev/vip`. The entrypoint is the
-`vip` CLI; the default subcommand is `verify`:
+`vip` CLI; the default subcommand is `verify`. Because `docker run` args replace
+the default command (they do not append to it), name the `verify` subcommand
+explicitly when passing verify flags:
 
 ```bash
-docker run --rm -v "$PWD/vip.toml:/app/vip.toml" ghcr.io/posit-dev/vip --ci
+# bare invocation runs `vip verify`:
+docker run --rm -v "$PWD/vip.toml:/app/vip.toml" ghcr.io/posit-dev/vip
+# CI preset (name the subcommand so args don't replace it):
+docker run --rm -v "$PWD/vip.toml:/app/vip.toml" ghcr.io/posit-dev/vip verify --ci
 # other subcommands are reachable too:
 docker run --rm -v "$PWD/vip.toml:/app/vip.toml" ghcr.io/posit-dev/vip status --json
 ```

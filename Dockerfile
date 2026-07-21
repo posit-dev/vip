@@ -29,7 +29,8 @@ USER ubuntu
 # Config file should be mounted at /app/vip.toml
 ENTRYPOINT ["uv", "run", "vip"]
 
-# Default args: run verify. Override to reach other subcommands, e.g.
+# Default args: run verify. Override to reach other subcommands or pass
+# verify flags (args replace this CMD, so include "verify" explicitly), e.g.
+#   docker run <img> verify --ci
 #   docker run <img> status --json
-#   docker run <img> --ci
 CMD ["verify"]

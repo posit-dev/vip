@@ -66,11 +66,12 @@ Two new pure functions consuming a `ReportData` (already the deserialized model 
 
 - `ENTRYPOINT ["uv","run","vip"]`, `CMD ["verify"]`.
 - Config still mounted at `/app/vip.toml`.
+- Because `docker run` args *replace* CMD (they do not append), the CI recipe is `docker run <img> verify --ci` (the `verify` subcommand must be named explicitly); bare `docker run <img>` runs `vip verify` via the default CMD. Other subcommands: `docker run <img> status --json`.
 - No change to `docker.yml` (GHCR build/push already correct). Verify `.dockerignore` doesn't exclude anything the CLI entrypoint needs at runtime.
 
 ### 5. Docs
 
-- `README.md`: a "CI / pipeline integration" section — `docker run -v $PWD/vip.toml:/app/vip.toml ghcr.io/posit-dev/vip --ci` recipe, output-format table, and where each artifact lands.
+- `README.md`: a "CI / pipeline integration" section — `docker run -v $PWD/vip.toml:/app/vip.toml ghcr.io/posit-dev/vip verify --ci` recipe, output-format table, and where each artifact lands.
 - `AGENTS.md`: note the new `--format`/`--ci` surface if it documents CLI options.
 - `CHANGELOG.md`: handled automatically by semantic-release via a `feat:` commit.
 - Docs website page for `vip verify` options, if one exists.
