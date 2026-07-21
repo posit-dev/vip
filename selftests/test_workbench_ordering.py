@@ -28,13 +28,17 @@ _WORKBENCH_DIR = _REPO_ROOT / "src" / "vip_tests" / "workbench"
 
 _NODEID_RE = re.compile(r"^\S+::\S+$")
 
-# Workbench feature files tagged @slow (excluded by ``vip verify --basic``).
-_SLOW_WORKBENCH_FILES = {
-    "test_ide_extensions",
-    "test_jobs",
-    "test_git_ops",
-    "test_publish_to_connect",
-}
+
+def _slow_workbench_stems() -> set[str]:
+    """Return the stems of Workbench feature files tagged ``@slow``.
+
+    Derived from the files themselves (not hardcoded) so the deselection
+    test below self-maintains as the ``@slow`` set changes. The intended
+    membership is locked separately in ``test_gherkin.py``.
+    """
+    stems = {f.stem for f in _WORKBENCH_DIR.glob("*.feature") if "@slow" in f.read_text()}
+    assert stems, "expected at least one @slow-tagged Workbench feature file"
+    return stems
 
 
 def _collect_workbench_nodeids(tmp_path: Path, marker_expr: str | None = None) -> list[str]:
@@ -145,17 +149,18 @@ def test_basic_marker_deselects_slow_workbench_features(tmp_path: Path) -> None:
     ``pytest_bdd_apply_tag`` hook) that silently stopped converting ``@slow``,
     which would turn ``--basic`` into a no-op with no other failing test.
     """
+    slow_files = _slow_workbench_stems()
     all_files = {_file_of(n) for n in _collect_workbench_nodeids(tmp_path)}
     basic_nodeids = _collect_workbench_nodeids(tmp_path, marker_expr="not slow")
     basic_files = {_file_of(n) for n in basic_nodeids}
 
     # Sanity: unfiltered, the @slow files really do collect (so a broken
     # collection can't let the deselection assertion pass vacuously).
-    assert _SLOW_WORKBENCH_FILES <= all_files, (
-        f"expected all @slow files unfiltered; missing {_SLOW_WORKBENCH_FILES - all_files}"
+    assert slow_files <= all_files, (
+        f"expected all @slow files unfiltered; missing {slow_files - all_files}"
     )
     # The filter drops every @slow file ...
-    leaked = _SLOW_WORKBENCH_FILES & basic_files
+    leaked = slow_files & basic_files
     assert not leaked, f"@slow files leaked into a `not slow` run: {leaked}"
     # ... and keeps a known basic feature (Chronicle stays in the basic run).
     assert "test_chronicle" in basic_files, (
