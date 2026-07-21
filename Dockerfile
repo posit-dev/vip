@@ -25,9 +25,11 @@ RUN uv run vip install
 # Run as the existing non-root user from the base image (ubuntu, UID 1000)
 RUN chown -R ubuntu:ubuntu /app
 USER ubuntu
-# Default entrypoint runs pytest
+# Default entrypoint is the vip CLI; default subcommand is verify.
 # Config file should be mounted at /app/vip.toml
-ENTRYPOINT ["uv", "run", "pytest"]
+ENTRYPOINT ["uv", "run", "vip"]
 
-# Default args: run all tests with short tracebacks and verbose output
-CMD ["--tb=short", "-v"]
+# Default args: run verify. Override to reach other subcommands, e.g.
+#   docker run <img> status --json
+#   docker run <img> --ci
+CMD ["verify"]
