@@ -395,3 +395,19 @@ class TestWriteJUnitXml:
         # passed case has no failure/skipped child
         assert cases["User can log in"].find("failure") is None
         assert cases["User can log in"].find("skipped") is None
+
+    def test_name_and_classname_fall_back_to_nodeid_and_category(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="passed",
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        tree = ET.parse(out)
+        case = tree.getroot().find(".//testcase")
+        assert case.get("name") == "tests/connect/test_x.py::test_y"
+        assert case.get("classname") == "connect"

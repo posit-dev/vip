@@ -187,7 +187,7 @@ def write_junit_xml(data: ReportData, path: str | Path) -> None:
             failure = ET.SubElement(
                 case,
                 "failure",
-                message=r.concise_error or "test failed",
+                message=r.concise_error or r.longrepr or "test failed",
             )
             failure.text = r.longrepr or r.concise_error or ""
         elif r.outcome == "skipped":
