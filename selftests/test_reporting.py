@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import xml.etree.ElementTree as ET
 
 from vip.reporting import (
@@ -11,6 +12,7 @@ from vip.reporting import (
     load_results,
     load_troubleshooting,
     write_junit_xml,
+    write_sarif,
 )
 
 
@@ -411,3 +413,64 @@ class TestWriteJUnitXml:
         case = tree.getroot().find(".//testcase")
         assert case.get("name") == "tests/connect/test_x.py::test_y"
         assert case.get("classname") == "connect"
+
+
+class TestWriteSarif:
+    def _sample(self) -> ReportData:
+        return ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_auth.py::test_login",
+                    outcome="passed",
+                    scenario_title="User can log in",
+                ),
+                TestResult(
+                    nodeid="tests/workbench/test_sessions.py::test_start",
+                    outcome="failed",
+                    concise_error="test_start: session did not start",
+                    scenario_title="Session starts",
+                ),
+                TestResult(
+                    nodeid="tests/connect/test_api.py::test_v1",
+                    outcome="skipped",
+                    na_version=True,
+                    scenario_title="API v1 available",
+                ),
+            ],
+        )
+
+    def test_valid_sarif_envelope(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        write_sarif(self._sample(), out)
+        doc = json.loads(out.read_text())
+        assert doc["version"] == "2.1.0"
+        assert doc["runs"][0]["tool"]["driver"]["name"] == "vip"
+        assert len(doc["runs"][0]["results"]) == 3
+
+    def test_level_mapping_per_outcome(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        write_sarif(self._sample(), out)
+        doc = json.loads(out.read_text())
+        levels = {r["ruleId"]: r["level"] for r in doc["runs"][0]["results"]}
+        assert levels["tests/connect/test_auth.py::test_login"] == "none"
+        assert levels["tests/workbench/test_sessions.py::test_start"] == "error"
+        assert levels["tests/connect/test_api.py::test_v1"] == "note"
+
+    def test_rules_deduped_and_logical_location(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        data = self._sample()
+        data.results.append(
+            TestResult(nodeid="tests/connect/test_auth.py::test_login", outcome="passed")
+        )
+        write_sarif(data, out)
+        doc = json.loads(out.read_text())
+        rule_ids = [r["id"] for r in doc["runs"][0]["tool"]["driver"]["rules"]]
+        assert rule_ids.count("tests/connect/test_auth.py::test_login") == 1
+        failed = next(
+            r
+            for r in doc["runs"][0]["results"]
+            if r["ruleId"] == "tests/workbench/test_sessions.py::test_start"
+        )
+        loc = failed["locations"][0]["logicalLocations"][0]["name"]
+        assert loc == "workbench / Session starts"
+        assert failed["message"]["text"] == "test_start: session did not start"

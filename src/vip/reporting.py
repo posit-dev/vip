@@ -199,6 +199,63 @@ def write_junit_xml(data: ReportData, path: str | Path) -> None:
     ET.ElementTree(suites).write(p, encoding="utf-8", xml_declaration=True)
 
 
+_SARIF_LEVEL = {"failed": "error", "passed": "none", "skipped": "note"}
+
+
+def write_sarif(data: ReportData, path: str | Path) -> None:
+    """Write test results as SARIF 2.1.0 for secops / code-scanning ingestion.
+
+    Every check emits a result (fail=error, pass=none, skip=note) to give a
+    full audit trail of what was validated, not only failures.
+    """
+    from vip import __version__
+
+    rules: dict[str, dict] = {}
+    results: list[dict] = []
+    for r in data.results:
+        check = r.scenario_title or r.nodeid.split("::")[-1]
+        rules.setdefault(
+            r.nodeid,
+            {"id": r.nodeid, "name": check, "shortDescription": {"text": check}},
+        )
+        if r.outcome == "failed":
+            text = r.concise_error or r.longrepr or "check failed"
+        elif r.outcome == "skipped":
+            text = "N/A for this product version" if r.na_version else "check skipped"
+        else:
+            text = check
+        results.append(
+            {
+                "ruleId": r.nodeid,
+                "level": _SARIF_LEVEL.get(r.outcome, "none"),
+                "message": {"text": text},
+                "locations": [{"logicalLocations": [{"name": f"{r.category} / {check}"}]}],
+            }
+        )
+
+    doc = {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "vip",
+                        "version": __version__,
+                        "informationUri": "https://github.com/posit-dev/vip",
+                        "rules": list(rules.values()),
+                    }
+                },
+                "results": results,
+            }
+        ],
+    }
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(doc, indent=2) + "\n")
+
+
 def _installed_vip_tests_dir() -> Path | None:
     """Return the directory of the installed ``vip_tests`` package, if any."""
     try:
