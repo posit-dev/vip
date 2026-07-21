@@ -1179,7 +1179,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         warnings.warn(f"VIP: could not write report to {report_path}: {exc}", stacklevel=1)
         return
 
-    fmt = session.config.getoption("--vip-format", "json")
+    fmt = session.config.getoption("--vip-format", default="json")
     try:
         _emit_extra_formats(fmt, p)
     except OSError as exc:

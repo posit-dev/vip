@@ -414,6 +414,28 @@ class TestWriteJUnitXml:
         assert case.get("name") == "tests/connect/test_x.py::test_y"
         assert case.get("classname") == "connect"
 
+    def test_sanitizes_xml_invalid_control_chars(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        raw = "\x1b[31mred\x1b[0m and \x00 null"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="failed",
+                    concise_error=raw,
+                    longrepr=raw,
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        # Well-formed XML: ET.parse must not raise.
+        tree = ET.parse(out)
+        failure = tree.getroot().find(".//failure")
+        assert failure is not None
+        raw_bytes = out.read_bytes()
+        assert b"\x1b" not in raw_bytes
+        assert b"\x00" not in raw_bytes
+
 
 class TestWriteSarif:
     def _sample(self) -> ReportData:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -156,6 +157,14 @@ def load_results(path: str | Path) -> ReportData:
     )
 
 
+_XML_INVALID_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _xml_safe(text: str) -> str:
+    """Strip characters that are invalid in XML 1.0 (control chars other than tab/LF/CR)."""
+    return _XML_INVALID_CHARS.sub("", text)
+
+
 def write_junit_xml(data: ReportData, path: str | Path) -> None:
     """Write test results as a JUnit XML file for CI test reporters."""
     suites = ET.Element(
@@ -179,17 +188,17 @@ def write_junit_xml(data: ReportData, path: str | Path) -> None:
         case = ET.SubElement(
             suite,
             "testcase",
-            name=r.scenario_title or r.nodeid,
-            classname=r.feature_description or r.category,
+            name=_xml_safe(r.scenario_title or r.nodeid),
+            classname=_xml_safe(r.feature_description or r.category),
             time=f"{r.duration:.3f}",
         )
         if r.outcome == "failed":
             failure = ET.SubElement(
                 case,
                 "failure",
-                message=r.concise_error or r.longrepr or "test failed",
+                message=_xml_safe(r.concise_error or r.longrepr or "test failed"),
             )
-            failure.text = r.longrepr or r.concise_error or ""
+            failure.text = _xml_safe(r.longrepr or r.concise_error or "")
         elif r.outcome == "skipped":
             reason = "N/A for this product version" if r.na_version else "skipped"
             ET.SubElement(case, "skipped", message=reason)
