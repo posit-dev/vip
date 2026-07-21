@@ -2,7 +2,8 @@
 
 Covers ``get_homepage`` (versioned page-object factory) and
 ``get_new_session_dialog_close_strategy`` (version-keyed behavior strategy
-dict), both in ``vip_tests.workbench.pages.homepage``.
+dict), both in ``vip_tests.workbench.pages.homepage``, plus the cross-build
+coverage of the ``RStudioSession`` Workbench Jobs selectors.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from vip_tests.workbench.pages.homepage import (
     get_homepage,
     get_new_session_dialog_close_strategy,
 )
+from vip_tests.workbench.pages.rstudio_session import RStudioSession
 
 
 class TestGetHomepage:
@@ -84,3 +86,36 @@ def test_resolution_is_consistent_between_factory_and_strategy(version):
     # confirm they resolve in lockstep for versions at/after it.
     assert get_homepage(version) is Homepage_2026_05
     assert get_new_session_dialog_close_strategy(version) is _close_dialog_via_escape
+
+
+class TestRStudioSessionWorkbenchJobsSelectors:
+    """Lock the Workbench Jobs selectors' cross-build coverage.
+
+    These constants OR-join current and legacy RStudio Pro IDs so the
+    ``test_workbench_job`` scenario survives the "workbench_jobs" (underscore)
+    vs "workbenchjobs" (no underscore) ID drift documented in the class. The
+    selectors are only exercised against a live IDE, so these string-level
+    assertions are the only automated guard against a "cleanup" silently
+    dropping a variant and reintroducing the false-negative skip.
+    """
+
+    def test_tab_matches_both_id_forms(self):
+        assert "#rstudio_workbench_tab_workbench_jobs" in RStudioSession.WORKBENCH_JOBS_TAB
+        assert "#rstudio_workbench_tab_workbenchjobs" in RStudioSession.WORKBENCH_JOBS_TAB
+
+    def test_panel_matches_both_id_forms(self):
+        assert "#rstudio_workbench_panel_workbench_jobs" in RStudioSession.WORKBENCH_JOBS_PANEL
+        assert "#rstudio_workbench_panel_workbenchjobs" in RStudioSession.WORKBENCH_JOBS_PANEL
+
+    def test_tab_avoids_substring_match_that_collides_with_panel(self):
+        # A substring match such as [id*='workbench_jobs'] would also match the
+        # panel id, resolving the tab locator to two elements and tripping
+        # Playwright strict mode. Keep the tab locator to exact IDs (plus the
+        # text fallback) so it targets exactly one element.
+        assert "[id*='workbench_jobs']" not in RStudioSession.WORKBENCH_JOBS_TAB
+        assert "[id*='workbenchjobs']" not in RStudioSession.WORKBENCH_JOBS_TAB
+
+    def test_new_button_and_submit_button_target_current_ids(self):
+        assert "#rstudio_tb_startworkbenchjob" in RStudioSession.WORKBENCH_JOB_NEW_BUTTON
+        assert "Start Workbench Job" in RStudioSession.WORKBENCH_JOB_NEW_BUTTON
+        assert "#rstudio_dlg_ok" in RStudioSession.WORKBENCH_JOB_SUBMIT_BUTTON
