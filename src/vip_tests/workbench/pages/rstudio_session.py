@@ -37,13 +37,24 @@ class RStudioSession:
     BACKGROUND_JOB_SCRIPT_INPUT = "input[placeholder*='script'], input[id*='script']"
     BACKGROUND_JOB_RUN_BUTTON = "button:text-is('Start'), button[id*='start']"
 
-    # Workbench Jobs pane (Launcher jobs, separate from Background Jobs)
-    WORKBENCH_JOBS_PANEL = "#rstudio_workbench_panel_workbenchjobs"
-    WORKBENCH_JOBS_TAB = "[id*='workbenchjobs'], button:text-is('Workbench Jobs')"
-    WORKBENCH_JOB_NEW_BUTTON = (
-        "button[title='Run Script as Workbench Job'], button:text-is('Run Script as Workbench Job')"
+    # Workbench Jobs pane (Launcher jobs, separate from Background Jobs).
+    # Newer RStudio Pro builds use "workbench_jobs" (with underscore) IDs;
+    # older builds used "workbenchjobs" (no underscore). Accept both.
+    WORKBENCH_JOBS_PANEL = (
+        "#rstudio_workbench_panel_workbench_jobs, #rstudio_workbench_panel_workbenchjobs"
     )
-    WORKBENCH_JOB_SUBMIT_BUTTON = "button:text-is('Submit')"
+    WORKBENCH_JOBS_TAB = (
+        "#rstudio_workbench_tab_workbench_jobs, #rstudio_workbench_tab_workbenchjobs, "
+        "[id*='workbench_jobs'], [id*='workbenchjobs'], button:text-is('Workbench Jobs')"
+    )
+    WORKBENCH_JOB_NEW_BUTTON = (
+        "#rstudio_tb_startworkbenchjob, button:text-is('Start Workbench Job'), "
+        "button[title='Run Script as Workbench Job'], "
+        "button:text-is('Run Script as Workbench Job')"
+    )
+    WORKBENCH_JOB_SUBMIT_BUTTON = (
+        "#rstudio_dlg_ok, button:text-is('Start'), button:text-is('Submit')"
+    )
 
     # Job status (shared between Background and Workbench Jobs)
     JOB_STATUS_SUCCEEDED = (
