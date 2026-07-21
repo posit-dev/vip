@@ -38,13 +38,47 @@ scenarios("test_session_capacity.feature")
 _SESSION_PREFIX = f"_vip_cap_{int(__import__('time').time())}_"
 
 
+class ResourceProfileDisabled(Exception):
+    """Raised when the target resource profile is present but disabled for the user.
+
+    Workbench renders resource profiles the authenticated user is not entitled
+    to (e.g. a group-restricted profile) as visible options with
+    ``aria-disabled='true'`` / ``data-disabled``.  Clicking one just blocks
+    until Playwright's timeout, so ``_launch_session`` raises this instead and
+    lets the caller decide whether to skip the profile or the whole scenario.
+    """
+
+    def __init__(self, profile: str) -> None:
+        super().__init__(profile)
+        self.profile = profile
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _detect_profiles(page: Page) -> list[str]:
-    """Open the New Session dialog and read available resource profiles."""
+def _option_is_disabled(option) -> bool:
+    """Return True if a ``[role='option']`` is disabled for the current user.
+
+    Radix-based selects mark unavailable options with ``aria-disabled='true'``
+    and an (empty-valued) ``data-disabled`` attribute; ``get_attribute``
+    returns ``""`` for the latter, so test for presence rather than truthiness.
+    """
+    return (
+        option.get_attribute("aria-disabled") == "true"
+        or option.get_attribute("data-disabled") is not None
+    )
+
+
+def _detect_profiles(page: Page) -> list[dict[str, object]]:
+    """Open the New Session dialog and read available resource profiles.
+
+    Returns one dict per profile with its ``name`` and whether it is
+    ``disabled`` for the authenticated user.  Disabled profiles are still
+    reported so the caller can distinguish "no profiles at all" from "all
+    profiles disabled for this user" and skip with an accurate reason.
+    """
     page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)
 
     dialog = page.locator(NewSessionDialog.DIALOG)
@@ -64,11 +98,12 @@ def _detect_profiles(page: Page) -> list[str]:
     options = page.locator("[role='option']")
     options.first.wait_for(state="visible", timeout=TIMEOUT_QUICK)
     count = options.count()
-    profiles = []
+    profiles: list[dict[str, object]] = []
     for i in range(count):
-        text = (options.nth(i).text_content() or "").strip()
+        option = options.nth(i)
+        text = (option.text_content() or "").strip()
         if text:
-            profiles.append(text)
+            profiles.append({"name": text, "disabled": _option_is_disabled(option)})
 
     # Close the dropdown, then close the dialog via Escape.
     page.keyboard.press("Escape")
@@ -109,6 +144,15 @@ def _launch_session(
                 profile_dropdown.click()
                 page.wait_for_timeout(500)
                 option = page.locator(f"[role='option']:has-text('{profile}')").first
+                option.wait_for(state="visible", timeout=TIMEOUT_QUICK)
+                if _option_is_disabled(option):
+                    # Profile is offered but disabled for this user (e.g. a
+                    # group-restricted profile). Clicking would just block
+                    # until timeout, so close the dialog and signal the caller.
+                    page.keyboard.press("Escape")
+                    page.keyboard.press("Escape")
+                    expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
+                    raise ResourceProfileDisabled(profile)
                 option.click(timeout=TIMEOUT_QUICK)
         else:
             pytest.skip(f"Resource profile dropdown not available; cannot select '{profile}'")
@@ -164,7 +208,15 @@ def launch_sessions(page: Page, vip_config):
         # Auto-detect from the dropdown.
         detected = _detect_profiles(page)
         if detected:
-            profiles_to_test = detected
+            enabled = [p["name"] for p in detected if not p["disabled"]]
+            if not enabled:
+                # Every profile is offered but disabled for this user — nothing
+                # is launchable, so there is no capacity to exercise.
+                names = ", ".join(str(p["name"]) for p in detected)
+                pytest.skip(
+                    f"All resource profiles are disabled for the authenticated user: {names}"
+                )
+            profiles_to_test = enabled
         else:
             # No profiles dropdown — launch with default.
             profiles_to_test = [None]
@@ -177,7 +229,17 @@ def launch_sessions(page: Page, vip_config):
         for i in range(session_count):
             label = profile or "default"
             name = f"{_SESSION_PREFIX}{label}_{i}"
-            _launch_session(page, name, profile)
+            try:
+                _launch_session(page, name, profile)
+            except ResourceProfileDisabled as exc:
+                # Configured profile the current user cannot launch. Treat as an
+                # environment condition (entitlement/group restriction), not a
+                # failure, so the suite still passes on a correctly-restricted
+                # test account.
+                pytest.skip(
+                    f"Resource profile '{exc.profile}' is disabled for the "
+                    "authenticated user (likely a group/entitlement restriction)"
+                )
             all_sessions.append({"name": name, "profile": profile})
 
     return all_sessions
