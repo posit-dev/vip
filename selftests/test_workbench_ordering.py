@@ -28,8 +28,16 @@ _WORKBENCH_DIR = _REPO_ROOT / "src" / "vip_tests" / "workbench"
 
 _NODEID_RE = re.compile(r"^\S+::\S+$")
 
+# Workbench feature files tagged @slow (excluded by ``vip verify --basic``).
+_SLOW_WORKBENCH_FILES = {
+    "test_ide_extensions",
+    "test_jobs",
+    "test_git_ops",
+    "test_publish_to_connect",
+}
 
-def _collect_workbench_nodeids(tmp_path: Path) -> list[str]:
+
+def _collect_workbench_nodeids(tmp_path: Path, marker_expr: str | None = None) -> list[str]:
     """Run ``pytest --collect-only`` over the Workbench suite and return node ids in order.
 
     Workbench and Connect must both be "configured" (a URL present) or every
@@ -37,6 +45,9 @@ def _collect_workbench_nodeids(tmp_path: Path) -> list[str]:
     gate (``_should_deselect_for_product``) -- ``test_publish_to_connect``
     requires both products, and an unconfigured product means "no test at
     all", not "collected but skipped".
+
+    Pass *marker_expr* to add a ``-m`` filter (e.g. ``"not slow"``, what
+    ``vip verify --basic`` applies) and observe which scenarios survive it.
     """
     config_path = tmp_path / "vip.toml"
     config_path.write_text(
@@ -44,16 +55,20 @@ def _collect_workbench_nodeids(tmp_path: Path) -> list[str]:
         '[connect]\nurl = "https://connect.example.com"\n'
     )
 
+    cmd = [
+        sys.executable,
+        "-m",
+        "pytest",
+        str(_WORKBENCH_DIR),
+        "--collect-only",
+        "-q",
+        f"--vip-config={config_path}",
+    ]
+    if marker_expr is not None:
+        cmd.extend(["-m", marker_expr])
+
     result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            str(_WORKBENCH_DIR),
-            "--collect-only",
-            "-q",
-            f"--vip-config={config_path}",
-        ],
+        cmd,
         cwd=_REPO_ROOT,
         capture_output=True,
         text=True,
@@ -117,4 +132,32 @@ def test_ide_extensions_is_last_workbench_file(tmp_path: Path) -> None:
     assert last_file == "test_ide_extensions", (
         f"test_ide_extensions must be the last Workbench test file collected, "
         f"got {last_file!r} last: {nodeids}"
+    )
+
+
+def test_basic_marker_deselects_slow_workbench_features(tmp_path: Path) -> None:
+    """End-to-end: ``-m "not slow"`` (what ``vip verify --basic`` applies) must
+    drop exactly the @slow-tagged Workbench features and keep the basic ones.
+
+    This exercises the full chain the other selftests only cover in isolation:
+    real ``.feature`` files -> pytest-bdd Gherkin-tag->pytest-marker conversion
+    -> ``-m`` deselection. It would catch a pytest-bdd change (or a stray
+    ``pytest_bdd_apply_tag`` hook) that silently stopped converting ``@slow``,
+    which would turn ``--basic`` into a no-op with no other failing test.
+    """
+    all_files = {_file_of(n) for n in _collect_workbench_nodeids(tmp_path)}
+    basic_nodeids = _collect_workbench_nodeids(tmp_path, marker_expr="not slow")
+    basic_files = {_file_of(n) for n in basic_nodeids}
+
+    # Sanity: unfiltered, the @slow files really do collect (so a broken
+    # collection can't let the deselection assertion pass vacuously).
+    assert _SLOW_WORKBENCH_FILES <= all_files, (
+        f"expected all @slow files unfiltered; missing {_SLOW_WORKBENCH_FILES - all_files}"
+    )
+    # The filter drops every @slow file ...
+    leaked = _SLOW_WORKBENCH_FILES & basic_files
+    assert not leaked, f"@slow files leaked into a `not slow` run: {leaked}"
+    # ... and keeps a known basic feature (Chronicle stays in the basic run).
+    assert "test_chronicle" in basic_files, (
+        f"test_chronicle should remain in a basic run: {sorted(basic_files)}"
     )
