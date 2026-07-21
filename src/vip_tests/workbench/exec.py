@@ -118,6 +118,25 @@ def _wrap_python_expr(expr: str, start: str, end: str) -> str:
     return f'print("{s1}" "{s2}")\n{expr}\nprint("{e1}" "{e2}")'
 
 
+def _wrap_python_expr_inline(expr: str, start: str, end: str) -> str:
+    """Wrap *expr* as a single-line, semicolon-chained Python statement.
+
+    Positron's Python console is IPython. Typing a multi-line block line by line
+    is submitted inconsistently there -- statements get glued together into a
+    ``SyntaxError`` -- so the console path submits one line that runs on a single
+    Enter, mirroring the R path. *expr* must therefore be simple statements
+    (no compound blocks like ``with``); use an expression such as
+    ``print(open(p).read())`` rather than a ``with`` block.
+
+    The markers are emitted as concatenated string literals (see
+    ``_split_marker``) so the typed source never contains the full contiguous
+    marker, only the printed output does.
+    """
+    s1, s2 = _split_marker(start)
+    e1, e2 = _split_marker(end)
+    return f'print("{s1}" "{s2}"); {expr}; print("{e1}" "{e2}")'
+
+
 def _extract_between_markers(text: str, start: str, end: str) -> str:
     """Return the text between *start* and *end*, stripped of surrounding whitespace.
 
@@ -253,6 +272,11 @@ _POSITRON_QUICKPICK_ROW = PositronSession.INTERPRETER_QUICKPICK_ROW
 # Poll cadence for the "start a console" flow. Interpreter discovery is async
 # (~10s live on a cold session), so we poll rather than assume immediacy.
 _POSITRON_POLL_MS = 1_000
+# Grace polls to wait for an R interpreter to appear in the quickpick once any
+# row is present: discovery is async and R is sometimes listed after Python, so
+# selecting immediately can miss R and fall back to the (less reliable) Python
+# console. Bounded so a genuinely R-less deployment settles quickly.
+_POSITRON_R_GRACE_POLLS = 10
 
 
 def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
@@ -302,10 +326,40 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
     if rows.count() == 0:
         return False
 
-    # Select the first interpreter; fall back to Enter. Both are best-effort so
-    # the "never raises" contract holds even if the row/keyboard is detached.
+    # Prefer an R interpreter. Its console readback uses a single-line,
+    # semicolon-chained expression that Positron runs on one Enter, whereas the
+    # Python console is IPython, whose multi-line continuation handling makes the
+    # marker-bracketed readback unreliable. Discovery is async and R can be listed
+    # after Python, so poll a short grace period for an R row before settling on
+    # the first offered interpreter.
+    def _find_r_row():
+        quickpick = page.locator(_POSITRON_QUICKPICK_ROW)
+        for i in range(quickpick.count()):
+            row = quickpick.nth(i)
+            try:
+                label = (row.text_content(timeout=_POSITRON_POLL_MS) or "").strip()
+            except Exception:
+                continue
+            if re.match(r"^R\b", label):
+                return row
+        return None
+
+    target = None
+    grace = min(remaining, _POSITRON_R_GRACE_POLLS)
+    while grace > 0:
+        target = _find_r_row()
+        if target is not None:
+            break
+        page.wait_for_timeout(_POSITRON_POLL_MS)
+        grace -= 1
+        remaining -= 1
+    if target is None:
+        target = page.locator(_POSITRON_QUICKPICK_ROW).first
+
+    # Select the interpreter; fall back to Enter. Both are best-effort so the
+    # "never raises" contract holds even if the row/keyboard is detached.
     try:
-        rows.first.click()
+        target.click()
     except Exception:
         try:
             page.keyboard.press("Enter")
@@ -336,10 +390,75 @@ def _activate_positron_console(page: Page) -> None:
             pass
 
 
-# Settle wait (ms) after the interpreter's active-line-number is visible.
-# Typing during "R 4.4.0 starting." is silently dropped; this pause lets the
-# REPL reach the interactive prompt before we type the wrapped expression.
-_POSITRON_SETTLE_MS = 3_000
+# Interactive prompt shown on the active console line once the interpreter is
+# ready for input. Typing during "R x.y.z starting." is silently dropped and
+# leaves the REPL at a "+" continuation prompt, so we wait for one of these
+# before typing (mirrors Positron's own e2e Console.waitForReady).
+_POSITRON_PROMPT_R = ">"
+_POSITRON_PROMPT_PYTHON = ">>>"
+_POSITRON_PROMPT_POLL_MS = 500
+
+
+def _wait_for_positron_console_prompt(page: Page, prompt: str, timeout: int) -> None:
+    """Block until the active Positron console shows an interactive *prompt*.
+
+    Positron opens the console while the interpreter is still starting; the
+    active line reads "R x.y.z starting." (or is blank) before it becomes the
+    interactive prompt. Keystrokes typed during startup are dropped or land at a
+    "+" continuation prompt, so the wrapped statement never executes and its end
+    marker never prints. This polls the active line number until it reads the
+    interpreter prompt exactly, re-activating the Console tab each attempt in
+    case a prior ``terminal_run`` left the Terminal focused.
+
+    Raises:
+        ExecError: the prompt did not appear within *timeout* ms.
+    """
+    deadline = time.monotonic() + timeout / 1000.0
+    active_line = page.locator(_POSITRON_CONSOLE_READY).first
+    last = ""
+    while time.monotonic() < deadline:
+        _activate_positron_console(page)
+        try:
+            last = (active_line.text_content(timeout=_POSITRON_PROMPT_POLL_MS) or "").strip()
+        except PlaywrightTimeoutError:
+            last = ""
+        if last == prompt:
+            return
+        page.wait_for_timeout(_POSITRON_PROMPT_POLL_MS)
+    raise ExecError(
+        f"Positron console did not reach an interactive {prompt!r} prompt within "
+        f"{timeout} ms (last active line: {last!r})."
+    )
+
+
+def _positron_console_language(page: Page, timeout: int) -> str:
+    """Return ``"r"`` or ``"python"`` for the started Positron console.
+
+    Positron auto-starts whichever interpreter is the session default (R or
+    Python), so a file-readback must match the console that actually started
+    rather than a language the caller assumed. Starts a console if needed, waits
+    for an interactive prompt, and maps it to a language (``">>>"`` → Python,
+    ``">"`` → R). Falls back to ``"r"`` if no prompt is readable in time.
+
+    ``timeout`` is the total budget for both phases (console start + prompt
+    detection), so callers that pass a remaining-time budget are not billed
+    twice.
+    """
+    deadline = time.monotonic() + timeout / 1000.0
+    ensure_positron_console(page, timeout=timeout)
+    active_line = page.locator(_POSITRON_CONSOLE_READY).first
+    while time.monotonic() < deadline:
+        _activate_positron_console(page)
+        try:
+            last = (active_line.text_content(timeout=_POSITRON_PROMPT_POLL_MS) or "").strip()
+        except PlaywrightTimeoutError:
+            last = ""
+        if last == _POSITRON_PROMPT_PYTHON:
+            return "python"
+        if last == _POSITRON_PROMPT_R:
+            return "r"
+        page.wait_for_timeout(_POSITRON_PROMPT_POLL_MS)
+    return "r"
 
 
 def positron_eval_r(page: Page, expr: str, timeout: int = 30_000) -> str:
@@ -370,13 +489,12 @@ def positron_eval_r(page: Page, expr: str, timeout: int = 30_000) -> str:
     active = page.locator(_POSITRON_ACTIVE_CONSOLE)
     expect(active.first).to_be_visible(timeout=timeout)
 
-    # Wait for the interpreter to be INPUT-ready before typing.
-    expect(active.locator(".active-line-number").first).to_be_visible(timeout=timeout)
-    page.wait_for_timeout(_POSITRON_SETTLE_MS)
+    # Wait for the interpreter to reach its interactive prompt before typing.
+    _wait_for_positron_console_prompt(page, _POSITRON_PROMPT_R, timeout)
 
     ci = active.locator(_POSITRON_CONSOLE_INPUT).first
     ci.click()
-    page.keyboard.type(wrapped)
+    page.keyboard.insert_text(wrapped)
     page.keyboard.press("Enter")
 
     # Poll the joined span text until the end marker appears.
@@ -397,20 +515,21 @@ def positron_eval_r(page: Page, expr: str, timeout: int = 30_000) -> str:
 def positron_eval_python(page: Page, expr: str, timeout: int = 30_000) -> str:
     """Evaluate *expr* as Python in the Positron console and return the captured output.
 
-    Uses the same active-console selectors as ``positron_eval_r``.  Submits the
-    wrapped multi-line expression line-by-line (Enter between lines) as the
-    console requires each line to be individually submitted.
+    Uses the same active-console selectors as ``positron_eval_r``. Submits a
+    single semicolon-chained line (Positron's Python console is IPython, whose
+    line-by-line multi-line input is glued together unreliably), so *expr* must
+    be simple statements, not a compound block.
 
     Args:
         page: Playwright page for an active Positron session.
-        expr: Python expression or statement.
+        expr: Python expression or simple statement(s).
         timeout: Max milliseconds to wait for output.
 
     Returns:
         Raw text between the VIP markers, stripped of whitespace.
     """
     start, end = _make_sentinels()
-    wrapped = _wrap_python_expr(expr, start, end)
+    wrapped = _wrap_python_expr_inline(expr, start, end)
 
     if not ensure_positron_console(page, timeout=timeout):
         raise ExecError(
@@ -421,16 +540,13 @@ def positron_eval_python(page: Page, expr: str, timeout: int = 30_000) -> str:
     active = page.locator(_POSITRON_ACTIVE_CONSOLE)
     expect(active.first).to_be_visible(timeout=timeout)
 
-    # Wait for the interpreter to be INPUT-ready before typing.
-    expect(active.locator(".active-line-number").first).to_be_visible(timeout=timeout)
-    page.wait_for_timeout(_POSITRON_SETTLE_MS)
+    # Wait for the interpreter to reach its interactive prompt before typing.
+    _wait_for_positron_console_prompt(page, _POSITRON_PROMPT_PYTHON, timeout)
 
     ci = active.locator(_POSITRON_CONSOLE_INPUT).first
     ci.click()
-    # Submit each line separately; Enter submits a complete statement in the Python REPL.
-    for line in wrapped.splitlines():
-        page.keyboard.type(line)
-        page.keyboard.press("Enter")
+    page.keyboard.insert_text(wrapped)
+    page.keyboard.press("Enter")
 
     # Poll the joined span text until the end marker appears.
     deadline = time.monotonic() + timeout / 1000.0
@@ -768,22 +884,34 @@ def terminal_run(
             time.sleep(poll_interval)
     else:
         # RStudio / Positron: poll via DOM console eval (read_file handles routing).
+        # A cold Positron session discovers interpreters and starts its console
+        # asynchronously, so read_file can raise (no console yet / output not
+        # captured) on early polls; treat those as "not ready" and keep polling
+        # until the deadline. Each attempt gets the remaining budget so the first
+        # cold-start console has time to come up, instead of a fixed few seconds
+        # that guarantees failure. RStudio's console is ready immediately, so its
+        # ExecError is a real failure and stays fatal (as in the VS Code branch);
+        # only the Positron cold-start ExecError is retried.
         while time.monotonic() < deadline:
+            remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
             try:
-                content = read_file(page, tmpfile, timeout=5_000, lang=readback_lang)
-                parsed = _parse_done_marker(content, done_marker)
-                if parsed is not None:
-                    output, exit_code = parsed
-                    if exit_code != 0:
-                        raise ExecError(
-                            f"terminal_run: command {cmd!r} exited with status "
-                            f"{exit_code}: {output}"
-                        )
-                    return output
+                content = read_file(page, tmpfile, timeout=remaining_ms, lang=readback_lang)
             except ExecError:
+                if ide == "positron":
+                    time.sleep(poll_interval)
+                    continue
                 raise
             except Exception:
-                pass
+                time.sleep(poll_interval)
+                continue
+            parsed = _parse_done_marker(content, done_marker)
+            if parsed is not None:
+                output, exit_code = parsed
+                if exit_code != 0:
+                    raise ExecError(
+                        f"terminal_run: command {cmd!r} exited with status {exit_code}: {output}"
+                    )
+                return output
             time.sleep(poll_interval)
 
     raise ExecError(
@@ -818,7 +946,9 @@ def file_exists(page: Page, path: str, timeout: int = 30_000, *, lang: str = "r"
     """
     ide = _detect_ide(page)
     if ide == "positron":
-        if lang.lower() == "r":
+        # Route to whichever interpreter the console actually started, not the
+        # caller's assumed language (Positron auto-starts R or Python).
+        if _positron_console_language(page, timeout) == "r":
             result = positron_eval_r(page, f'file.exists("{path}")', timeout=timeout)
             return "TRUE" in result
         result = positron_eval_python(
@@ -871,11 +1001,12 @@ def read_file(page: Page, path: str, timeout: int = 30_000, *, lang: str = "r") 
     """
     ide = _detect_ide(page)
     if ide == "positron":
-        if lang.lower() == "r":
+        # Route to whichever interpreter the console actually started, not the
+        # caller's assumed language (Positron auto-starts R or Python).
+        if _positron_console_language(page, timeout) == "r":
             return positron_eval_r(page, _read_file_r_expr(path), timeout=timeout)
-        return positron_eval_python(
-            page, f'with open("{path}") as _f: print(_f.read())', timeout=timeout
-        )
+        # Simple expression (no compound block) so it runs on one line in IPython.
+        return positron_eval_python(page, f'print(open("{path}").read())', timeout=timeout)
     if ide == "vscode":
         return read_file_via_vscode_editor(page, path, timeout=timeout)
     # RStudio (and unknown — fall back to RStudio R path)
