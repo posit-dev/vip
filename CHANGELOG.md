@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.55.1 (2026-07-21)
+
+### Bug Fixes
+
+- **workbench**: Make Positron console readback reliable on cold sessions
+  ([#509](https://github.com/posit-dev/vip/pull/509),
+  [`f59362e`](https://github.com/posit-dev/vip/commit/f59362ea1244b0a5463cac31e623bf0c29be3695))
+
+
 ## v0.55.0 (2026-07-21)
 
 ### Continuous Integration
