@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pytest
 from filelock import FileLock
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from vip_tests.workbench import conftest as wb
 
@@ -28,6 +30,17 @@ class TestOidcLoginLock:
         other.acquire(timeout=1)
         other.release()
 
+    def test_lock_released_when_body_raises(self):
+        # The lock must release even if the protected body raises, or a stale cross-worker
+        # lock file would stall every other worker for the full timeout on each login.
+        url = "https://wb.example.com/raises"
+        with pytest.raises(RuntimeError):
+            with wb.oidc_login_lock(url):
+                raise RuntimeError("boom inside the lock")
+        other = FileLock(str(wb._login_lock_path(url)))
+        other.acquire(timeout=1)  # would block/raise Timeout if the lock leaked
+        other.release()
+
     def test_lock_proceeds_on_timeout(self, caplog):
         url = "https://wb.example.com/contended"
         blocker = FileLock(str(wb._login_lock_path(url)))
@@ -35,8 +48,10 @@ class TestOidcLoginLock:
         try:
             entered = False
             with caplog.at_level(logging.WARNING):
-                with wb.oidc_login_lock(url, timeout=0.2):
-                    entered = True
+                # Surfaced as a warning too, so contention is visible in pytest's summary.
+                with pytest.warns(UserWarning, match="proceeding without it"):
+                    with wb.oidc_login_lock(url, timeout=0.2):
+                        entered = True
             assert entered  # proceeded despite not holding the lock
             assert "proceeding without it" in caplog.text
         finally:
@@ -57,7 +72,9 @@ class _FakeLogo:
 
     def wait_for(self, *, state, timeout):  # noqa: ARG002 - mirrors Playwright signature
         if not self._appears:
-            raise RuntimeError("homepage never appeared")
+            # Model the real timeout: Playwright raises PlaywrightTimeoutError, which is
+            # what _silent_sso_signin catches. A different exception type must propagate.
+            raise PlaywrightTimeoutError("homepage never appeared")
 
 
 class TestSilentSsoSignin:
@@ -86,6 +103,19 @@ class TestSilentSsoSignin:
         monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
         ok = wb._silent_sso_signin(_FakeButton(), _FakeLogo(appears=False), "https://wb.x")
         assert ok is False
+
+    def test_non_playwright_error_propagates(self, monkeypatch):
+        # A crashed page / bug in the helper must surface as a real failure, not be
+        # laundered into False (which the caller turns into a misleading graceful skip).
+        import contextlib
+
+        class _BrokenLogo:
+            def wait_for(self, *, state, timeout):  # noqa: ARG002
+                raise RuntimeError("page crashed mid-login")
+
+        monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
+        with pytest.raises(RuntimeError, match="page crashed"):
+            wb._silent_sso_signin(_FakeButton(), _BrokenLogo(), "https://wb.x")
 
 
 class TestWorkbenchGroupName:
@@ -179,3 +209,30 @@ class TestCollectionHook:
         item = _FakeItem(Path("/somewhere/connect/test_auth.py"), ["connect"])
         wb.pytest_collection_modifyitems(_FakeConfig(object()), [item])
         assert item.added == []
+
+
+class TestRealMarkerMechanics:
+    """Guard the assumption the fakes above cannot: that the hook's strip + add_marker
+    sequence is actually visible to pytest-xdist, which reads xdist_group via
+    ``get_closest_marker`` and concatenates *every* xdist_group mark it finds via
+    ``iter_markers``. Exercised on a real pytest ``Item``, not a fake."""
+
+    def test_regroup_wins_via_get_closest_marker_and_leaves_no_duplicate(self, pytester):
+        import pytest as _pytest
+
+        # Disable the vip plugin for the nested collection: its own _assign_xdist_group
+        # would inject a "general" group and obscure the mechanic under test.
+        modcol = pytester.getmodulecol("def test_x(): pass", configargs=["-p", "no:vip"])
+        (item,) = pytester.genitems([modcol])
+        # Simulate a pre-existing group, then apply exactly the hook's two operations.
+        item.add_marker(_pytest.mark.xdist_group("workbench"))
+        item.own_markers = [m for m in item.own_markers if m.name != "xdist_group"]
+        item.add_marker(_pytest.mark.xdist_group("workbench_packages"))
+
+        # get_closest_marker is the path LoadGroupScheduling reads — it must see the new group.
+        marker = item.get_closest_marker("xdist_group")
+        assert marker is not None
+        assert marker.args == ("workbench_packages",)
+        # And no leftover duplicate, or xdist would glue both names into one composite group.
+        groups = [m.args[0] for m in item.iter_markers("xdist_group")]
+        assert groups == ["workbench_packages"]

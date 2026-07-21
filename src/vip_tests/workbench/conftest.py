@@ -12,11 +12,14 @@ import os
 import re
 import tempfile
 import time
+import warnings
 from pathlib import Path
 
 import pytest
 from filelock import FileLock, Timeout
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given
 
 from vip.clients.workbench import WorkbenchClient
@@ -57,19 +60,24 @@ def oidc_login_lock(workbench_url: str, *, timeout: float = _LOGIN_LOCK_TIMEOUT)
     """Serialize the OIDC SSO round-trip across xdist workers.
 
     Only one worker performs the silent SSO round-trip against the shared IdP session at a
-    time. The lock is an optimization, never a correctness dependency: if it can't be
-    acquired within *timeout*, log a warning and proceed unlocked rather than hang the run.
+    time. The lock is a best-effort optimization: falling back to unlocked proceeds
+    correctly, though it can reintroduce the very login storm this lock exists to avoid. If
+    it can't be acquired within *timeout*, surface a warning and proceed unlocked rather
+    than hang the run.
     """
     lock = FileLock(str(_login_lock_path(workbench_url)))
     try:
         lock.acquire(timeout=timeout)
     except Timeout:
-        logger.warning(
-            "OIDC login lock not acquired within %.0fs for %s; proceeding without it. "
-            "Concurrent logins may briefly storm the IdP.",
-            timeout,
-            workbench_url,
+        # Emit via both channels: warnings.warn surfaces in pytest's warnings summary
+        # regardless of pass/fail (no logging handler is attached for test runs), so the
+        # one run where storm-prevention disengaged leaves a forensic trail for later.
+        message = (
+            f"OIDC login lock not acquired within {timeout:.0f}s for {workbench_url}; "
+            "proceeding without it. Concurrent logins may briefly storm the IdP."
         )
+        warnings.warn(message, stacklevel=2)
+        logger.warning(message)
         yield
         return
     try:
@@ -111,8 +119,11 @@ def pytest_collection_modifyitems(
     The simultaneous-login storm this used to cause is prevented by the cross-worker login
     lock in :func:`workbench_login` (see :func:`oidc_login_lock`), not by serialization.
 
-    Password / no-auth runs are left untouched (they are unaffected by the shared-auth
-    gate below and keep whatever grouping the module-level ``pytestmark`` assigns).
+    Password / no-auth runs are left untouched: they hit the early return below, so their
+    Workbench items keep the default ``workbench`` group that ``plugin.py``'s
+    :func:`_assign_xdist_group` directory fallback assigns (the module-level ``pytestmark``
+    at the top of this file does not propagate to sibling test modules, so it assigns
+    nothing here).
     """
     if config.stash.get(_auth_session_key, None) is None:
         # No shared auth session — password auth or no auth. Keep default parallel behavior.
@@ -125,8 +136,11 @@ def pytest_collection_modifyitems(
             continue
         ide_markers = {m.name for m in item.iter_markers()} & set(_IDE_MARKERS)
         group = _workbench_group_name(ide_markers, item_path.stem)
-        # Drop any per-test xdist_group marker before adding the hybrid group (the
-        # module-level pytestmark group is overridden via get_closest_marker regardless).
+        # Strip any pre-existing xdist_group marker before adding the hybrid group. No
+        # per-test xdist_group marker exists today, so this is a defensive guard: xdist
+        # concatenates *all* xdist_group marks on an item (via iter_markers), it does not
+        # take the closest, so a leftover mark would corrupt the group name rather than be
+        # shadowed. plugin.py's _assign_xdist_group then respects the group we add here.
         item.own_markers = [m for m in item.own_markers if m.name != "xdist_group"]
         item.add_marker(pytest.mark.xdist_group(group))
 
@@ -409,7 +423,11 @@ def _silent_sso_signin(sso_button, homepage_logo, workbench_url: str) -> bool:
         try:
             homepage_logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
             return True
-        except Exception:
+        except (PlaywrightTimeoutError, PlaywrightError):
+            # Homepage never appeared: no usable IdP session (expired, or storage state
+            # stripped for the password-login test). Anything else (crashed page/context,
+            # a bug in this helper) is a real failure and must propagate, not masquerade
+            # as a graceful skip — matches the typed-catch convention used across this package.
             return False
 
 
