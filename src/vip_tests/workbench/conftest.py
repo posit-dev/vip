@@ -93,6 +93,42 @@ _SESSION_POLL_INTERVAL = 500
 TERMINAL_SESSION_FAILURE_STATES = ("Failed",)
 
 # ---------------------------------------------------------------------------
+# Resource profile helpers
+# Shared between test_session_capacity.py and test_session_capacity_k8s.py,
+# both of which need to detect and skip resource profiles that Workbench
+# renders as visible-but-disabled for the authenticated user.
+# ---------------------------------------------------------------------------
+
+
+class ResourceProfileDisabled(Exception):
+    """Raised when the target resource profile is present but disabled for the user.
+
+    Workbench renders resource profiles the authenticated user is not entitled
+    to (e.g. a group-restricted profile) as visible options with
+    ``aria-disabled='true'`` / ``data-disabled``.  Clicking one just blocks
+    until Playwright's timeout, so ``_launch_session`` raises this instead and
+    lets the caller record the profile as unavailable and move on.
+    """
+
+    def __init__(self, profile: str) -> None:
+        super().__init__(profile)
+        self.profile = profile
+
+
+def _option_is_disabled(option: Locator) -> bool:
+    """Return True if a ``[role='option']`` is disabled for the current user.
+
+    Radix-based selects mark unavailable options with ``aria-disabled='true'``
+    and an (empty-valued) ``data-disabled`` attribute; ``get_attribute``
+    returns ``""`` for the latter, so test for presence rather than truthiness.
+    """
+    return (
+        option.get_attribute("aria-disabled") == "true"
+        or option.get_attribute("data-disabled") is not None
+    )
+
+
+# ---------------------------------------------------------------------------
 
 
 def unique_session_name(filename: str) -> str:
