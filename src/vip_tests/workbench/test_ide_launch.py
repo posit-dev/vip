@@ -411,6 +411,26 @@ def jupyterlab_executes_code(page: Page):
     if notebook_card.count() == 0:
         pytest.skip("No notebook kernel cards available in JupyterLab launcher")
     expect(notebook_card).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
+
+    # A leftover modal from a *previous* notebook in this session (e.g. an
+    # "Error Starting Kernel" dialog left open from an earlier run's kernel
+    # failure — deployments in this environment routinely accumulate dozens of
+    # untouched notebooks — or JupyterLab's "Build Recommended" prompt) can
+    # still be open at this point and would intercept the click below. Clear
+    # it with Escape (reject) rather than accept: unlike the kernel dialogs we
+    # deliberately accept once *our own* notebook is involved (below), blindly
+    # accepting an unrelated leftover dialog here could trigger an unrelated
+    # action instead of just getting out of the way. Not reproduced directly
+    # at this point during investigation of issue #484, but kept as a cheap,
+    # idempotent no-op guard: pressing Escape when no dialog is open is a
+    # harmless no-op. Best-effort — never raises.
+    if page.locator(JupyterLabSession.DIALOG).count() > 0:
+        try:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(500)
+        except (PlaywrightTimeoutError, PlaywrightError):
+            pass
+
     notebook_card.click()
 
     # Clicking the card opens a notebook as the active dock tab.  Several hidden
@@ -428,6 +448,18 @@ def jupyterlab_executes_code(page: Page):
     # Click into the first code cell input of the active notebook and type.
     cell_input = notebook_panel.locator(JupyterLabSession.CELL_INPUT).first
     expect(cell_input).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
+
+    # The kernel can still be connecting once the cell becomes visible.  Under
+    # load, kernel start-up can fail with a transient gateway error (observed:
+    # a reverse-proxy 502), which pops a modal "Error Starting Kernel" dialog
+    # with a single "Ok" (jp-mod-accept) button that intercepts the click
+    # below and hangs it for the full click timeout (issue #484). Poll and
+    # dismiss it the same way as the "Select Kernel" dialog above (accept the
+    # default/only action) so that, if the kernel genuinely failed to start,
+    # the cell-output assertion further down can fail gracefully with its own
+    # skip message instead of an opaque "intercepts pointer events" timeout.
+    _accept_open_dialogs(page)
+
     cell_input.click()
     cell_input.type("1 + 1")
 
