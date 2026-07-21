@@ -257,6 +257,31 @@ def _session_failure_message(name: str, state: str, *, expected: str = "Active")
     return f"Session {name!r} reached terminal state {state!r} instead of {expected} — {cause}"
 
 
+def _session_timeout_message(
+    session_name: str, target_state: str, timeout_s: int, worker_count: int
+) -> str:
+    """Build the message shown when a session never reaches *target_state* before timeout.
+
+    When running across multiple xdist workers (*worker_count* > 1), several sessions
+    launch at once; a capacity-limited deployment can leave some stuck in a non-terminal
+    "Starting" state. In that case, append a hint pointing at concurrent-session capacity
+    so the failure is actionable rather than opaque.
+    """
+    base = (
+        f"Session {session_name!r} did not reach {target_state} within {timeout_s}s "
+        f"(no {target_state} or terminal status detected)."
+    )
+    if worker_count > 1:
+        base += (
+            f" This run used {worker_count} parallel workers, so multiple sessions were "
+            "launching at once; if the deployment has limited concurrent-session capacity, "
+            "sessions can stay in 'Starting' until they time out. Try reducing parallelism "
+            "(e.g. a lower pytest -n) or verify the deployment/launcher can start that many "
+            "sessions concurrently."
+        )
+    return base
+
+
 def format_capacity_failure(total: int, failures: list[str], reasons: list[str]) -> str:
     """Build the aggregated failure for the session-capacity scenario.
 
@@ -336,9 +361,9 @@ def _wait_for_session_state(
     if _target_now():
         return row
     raise_if_session_failed(page, session_name, expected=target_state)
+    worker_count = int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1") or "1")
     raise AssertionError(
-        f"Session {session_name!r} did not reach {target_state} within "
-        f"{timeout // 1000}s (no {target_state} or terminal status detected)."
+        _session_timeout_message(session_name, target_state, timeout // 1000, worker_count)
     )
 
 

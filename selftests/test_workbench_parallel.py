@@ -136,6 +136,25 @@ class _FakeConfig:
         return _Stash()
 
 
+class TestSessionTimeoutMessage:
+    def _base(self, session_name, target_state, timeout_s):
+        return (
+            f"Session {session_name!r} did not reach {target_state} within {timeout_s}s "
+            f"(no {target_state} or terminal status detected)."
+        )
+
+    def test_single_worker_is_just_the_base_message(self):
+        msg = wb._session_timeout_message("VIP rstudio", "Active", 90, 1)
+        assert msg == self._base("VIP rstudio", "Active", 90)
+        assert "parallel workers" not in msg
+
+    def test_multiple_workers_appends_capacity_hint(self):
+        msg = wb._session_timeout_message("VIP rstudio", "Active", 90, 4)
+        assert self._base("VIP rstudio", "Active", 90) in msg
+        assert "parallel workers" in msg
+        assert "reducing parallelism" in msg
+
+
 class TestCollectionHook:
     def _wb_dir(self):
         return Path(wb.__file__).parent
