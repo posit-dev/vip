@@ -109,3 +109,15 @@ class TestParseFeatureFile:
         assert len(result["scenarios"]) == 1
         assert result["scenarios"][0]["title"] == "Deploy <type> content"
         assert len(result["scenarios"][0]["steps"]) == 3
+
+
+def test_slow_membership_matches_decision():
+    from pathlib import Path
+
+    wb = Path(__file__).parent.parent / "src" / "vip_tests" / "workbench"
+    slow = ["test_ide_extensions", "test_jobs", "test_git_ops", "test_publish_to_connect"]
+    for name in slow:
+        text = (wb / f"{name}.feature").read_text()
+        assert "@slow" in text, f"{name}.feature should be tagged @slow"
+    # Chronicle is deliberately kept in the basic run.
+    assert "@slow" not in (wb / "test_chronicle.feature").read_text()

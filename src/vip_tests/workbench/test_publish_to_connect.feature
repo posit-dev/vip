@@ -1,4 +1,4 @@
-@workbench @connect
+@workbench @connect @slow
 Feature: Publish from Workbench to Connect
   As a Posit Team administrator
   I want to verify that a user can deploy content from a Workbench session to Connect

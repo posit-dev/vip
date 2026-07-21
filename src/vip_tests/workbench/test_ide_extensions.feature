@@ -1,4 +1,4 @@
-@workbench
+@workbench @slow
 Feature: Workbench IDE extensions
   As a Posit Team administrator
   I want to verify that required extensions are installed in each IDE

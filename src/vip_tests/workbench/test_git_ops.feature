@@ -1,4 +1,4 @@
-@workbench
+@workbench @slow
 Feature: Git operations from Workbench sessions
   Validate that users inside a Workbench session can clone, commit, and push
   to a Git repository through IDE terminals (RStudio, VS Code, Positron).
