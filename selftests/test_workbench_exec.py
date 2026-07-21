@@ -598,6 +598,8 @@ class TestFileExistsRouting:
     def test_positron_r_calls_positron_eval_r(self, monkeypatch):
         page = MagicMock()
         monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "positron")
+        # Positron routes by the started console's language, not the lang arg.
+        monkeypatch.setattr(exec_mod, "_positron_console_language", lambda p, t: "r")
         mock_rstudio_eval = MagicMock()
         mock_positron_eval_r = MagicMock(return_value="TRUE")
         mock_positron_eval_python = MagicMock()
@@ -607,7 +609,7 @@ class TestFileExistsRouting:
         monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
         monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
 
-        result = file_exists(page, "/tmp/foo.txt", lang="r")
+        result = file_exists(page, "/tmp/foo.txt")
 
         assert result is True
         mock_positron_eval_r.assert_called_once()
@@ -618,6 +620,8 @@ class TestFileExistsRouting:
     def test_positron_python_calls_positron_eval_python(self, monkeypatch):
         page = MagicMock()
         monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "positron")
+        # Positron routes by the started console's language, not the lang arg.
+        monkeypatch.setattr(exec_mod, "_positron_console_language", lambda p, t: "python")
         mock_rstudio_eval = MagicMock()
         mock_positron_eval_r = MagicMock()
         mock_positron_eval_python = MagicMock(return_value="True")
@@ -627,7 +631,7 @@ class TestFileExistsRouting:
         monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
         monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
 
-        result = file_exists(page, "/tmp/foo.txt", lang="python")
+        result = file_exists(page, "/tmp/foo.txt")
 
         assert result is True
         mock_positron_eval_python.assert_called_once()
@@ -704,6 +708,8 @@ class TestReadFileRouting:
     def test_positron_r_calls_positron_eval_r(self, monkeypatch):
         page = MagicMock()
         monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "positron")
+        # Positron routes by the started console's language, not the lang arg.
+        monkeypatch.setattr(exec_mod, "_positron_console_language", lambda p, t: "r")
         mock_rstudio_eval = MagicMock()
         # cat()'d output is raw -- no "[1]" index, no quoting.
         mock_positron_eval_r = MagicMock(return_value="file contents")
@@ -714,7 +720,7 @@ class TestReadFileRouting:
         monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
         monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
 
-        result = read_file(page, "/tmp/foo.txt", lang="r")
+        result = read_file(page, "/tmp/foo.txt")
 
         assert result == "file contents"
         positron_expr = mock_positron_eval_r.call_args[0][1]
@@ -727,6 +733,8 @@ class TestReadFileRouting:
     def test_positron_python_calls_positron_eval_python(self, monkeypatch):
         page = MagicMock()
         monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: "positron")
+        # Positron routes by the started console's language, not the lang arg.
+        monkeypatch.setattr(exec_mod, "_positron_console_language", lambda p, t: "python")
         mock_rstudio_eval = MagicMock()
         mock_positron_eval_r = MagicMock()
         mock_positron_eval_python = MagicMock(return_value="python file contents")
@@ -736,7 +744,7 @@ class TestReadFileRouting:
         monkeypatch.setattr(exec_mod, "positron_eval_python", mock_positron_eval_python)
         monkeypatch.setattr(exec_mod, "read_file_via_vscode_editor", mock_editor_read)
 
-        result = read_file(page, "/tmp/foo.txt", lang="python")
+        result = read_file(page, "/tmp/foo.txt")
 
         assert result == "python file contents"
         mock_positron_eval_python.assert_called_once()
