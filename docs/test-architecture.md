@@ -245,6 +245,18 @@ Deliberately **not** scaled:
 Values < 1.0 are valid and useful for speeding up CI smoke checks
 (`VIP_TIMEOUT_SCALE=0.5`).
 
+## Fast confidence checks with `--basic`
+
+`vip verify --basic` runs only the core subset of tests, excluding detailed or
+long-running checks tagged `@slow`. Today the `@slow` set covers the heavier
+Workbench checks — IDE extension installation, job execution, Git operations,
+and publishing to Connect — so a `--basic` run still exercises auth, IDE launch,
+sessions, runtime versions, packages, data sources, and Chronicle.
+
+`--basic` composes with `--categories`: `vip verify --categories workbench --basic`
+runs the Workbench category minus its `@slow` scenarios. The mechanism is
+product-agnostic — tag any feature `@slow` to exclude it from basic runs.
+
 ## Adding a New Test: Layer-by-Layer Checklist
 
 1. **Layer 1 -- Feature file**: Write the Gherkin scenario with a `@product` tag. Focus on business intent, not implementation.
