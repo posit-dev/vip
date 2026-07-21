@@ -842,6 +842,64 @@ def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
         report.vip_na_version = na_version  # type: ignore[attr-defined]
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_logstart(
+    nodeid: str,  # noqa: ARG001
+    location: tuple[str, int | None, str],  # noqa: ARG001
+) -> Generator[None, None, None]:
+    """Suppress the built-in terminal reporter's pre-test location line under xdist.
+
+    Under real xdist parallelism, the controller relays each worker's
+    ``pytest_runtest_logstart`` event (via ``dsession.worker_logstart``) the
+    moment that worker *starts* a test, independent of when any other
+    worker's test *finishes*. pytest's built-in ``TerminalReporter`` assumes
+    a single serial stream: at ``-v`` it writes the location at logstart and
+    later appends the outcome to that *same* line at logreport (matched via
+    a shared ``currentfspath`` attribute). With several workers running
+    concurrently, multiple tests' logstart events land before any of their
+    logreport events, so ``currentfspath`` gets overwritten by other tests'
+    locations before the original one's outcome arrives -- producing a
+    location-only line up front and a disconnected result line later.
+
+    We already delete ``report.node`` below so ``pytest_runtest_logreport``
+    takes its non-xdist branch and writes location + outcome together, in
+    one line, in a single call (see that hook's docstring). That only
+    produces one line if nothing has already claimed the location line
+    first. So here, only when the xdist controller is actually distributing
+    (``dsession`` registered, and this isn't a worker), we suppress the
+    logstart write for the duration of the wrapped call.
+
+    The built-in reporter gates that write on ``showlongtestinfo``, which
+    reads the fine-grained ``verbosity_test_cases`` *ini* value rather than
+    the plain ``-v`` count whenever that ini value isn't ``"auto"`` -- and
+    ``pytest_configure`` above already pins it (via ``config._inicache``) to
+    force skip reasons to print in full. So bumping ``config.option.verbose``
+    here would have no effect; we instead override that same ini-cache entry
+    to ``"0"``, restoring it immediately after so the later
+    ``pytest_runtest_logreport`` call (which reads the same cached value to
+    decide whether to show the outcome line at all) is unaffected. Nothing
+    else runs in between, since hookwrapper dispatch is synchronous.
+    """
+    config = _active_config
+    if (
+        config is None
+        or hasattr(config, "workerinput")
+        or not config.pluginmanager.hasplugin("dsession")
+    ):
+        yield
+        return
+
+    original = config._inicache.get("verbosity_test_cases")
+    config._inicache["verbosity_test_cases"] = "0"
+    try:
+        yield
+    finally:
+        if original is None:
+            config._inicache.pop("verbosity_test_cases", None)
+        else:
+            config._inicache["verbosity_test_cases"] = original
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     """Collect results for JSON report and apply concise terminal display.
@@ -853,8 +911,11 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     guard skips processing on workers so results are collected exactly once.
     """
     # Strip the xdist worker attribute so pytest's built-in TerminalReporter
-    # does not prefix each verbose line with ``[gw<N>]``.  Runs before the
-    # terminal reporter thanks to ``tryfirst=True``.
+    # does not prefix each verbose line with ``[gw<N>]`` and instead writes
+    # the location and outcome together in one line (see
+    # ``pytest_runtest_logstart`` above for why that requires suppressing
+    # the pre-test location line too).  Runs before the terminal reporter
+    # thanks to ``tryfirst=True``.
     if hasattr(report, "node"):
         del report.node
 

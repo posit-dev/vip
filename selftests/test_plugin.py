@@ -1040,6 +1040,64 @@ class TestXdistCompatibility:
         assert "scenario_title" in r
         assert "feature_description" in r
 
+    def test_verbose_xdist_output_is_one_line_per_test(self, selftest_pytester):
+        """Under real parallel timing (-n 2 -v), each test gets one contiguous line.
+
+        Sleeps force genuine overlap between workers so their events actually
+        interleave on the controller (a fast no-op suite may finish one
+        worker's test before the other's even starts, masking the bug).
+        With the built-in TerminalReporter's non-xdist code path (entered
+        because we delete ``report.node`` to hide ``[gw<N>]``), a test's
+        location is written by ``pytest_runtest_logstart`` and its outcome by
+        ``pytest_runtest_logreport`` as two separate writes. Those hooks fire
+        from whichever worker event the controller processes next, so with
+        real workers running concurrently the location line for one test can
+        land, then another worker's events interleave, before that test's
+        outcome line finally appears -- producing a location-only line with
+        no PASSED/FAILED and a later, disconnected result line.
+        """
+        selftest_pytester.makepyfile(
+            """
+            import time
+
+            def test_one():
+                time.sleep(0.3)
+                assert True
+
+            def test_two():
+                time.sleep(0.3)
+                assert True
+
+            def test_three():
+                time.sleep(0.1)
+                assert True
+
+            def test_four():
+                time.sleep(0.1)
+                assert True
+            """
+        )
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            "-n",
+            "2",
+            "--dist",
+            "loadgroup",
+            "-v",
+        )
+        result.assert_outcomes(passed=4)
+
+        test_line_pattern = re.compile(r"test_(one|two|three|four)")
+        outcome_pattern = re.compile(r"PASSED|FAILED|ERROR|SKIPPED")
+        bad_lines = [
+            line
+            for line in result.stdout.lines
+            if test_line_pattern.search(line) and not outcome_pattern.search(line)
+        ]
+        assert not bad_lines, (
+            f"Found location-only line(s) with no outcome on the same line: {bad_lines!r}"
+        )
+
 
 class TestHeadlessAuthOption:
     def test_headless_auth_option_registered(self, pytester):
