@@ -37,6 +37,8 @@ def _make_args(**overrides) -> argparse.Namespace:
         "performance_tests": False,
         "insecure": False,
         "ca_bundle": None,
+        "format": "json",
+        "ci": False,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -1251,3 +1253,36 @@ class TestVerifyDefaultXdist:
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--tb=short"]))
         assert cmd.index("-n") < cmd.index("--tb=short")
         assert cmd.index("--dist") < cmd.index("--tb=short")
+
+
+class TestFormatFlag:
+    """--format / --ci control the --vip-format value forwarded to pytest."""
+
+    def test_format_forwarded(self):
+        cmd = _capture_cmd(_make_args(format="json,junit,sarif"))
+        assert "--vip-format=json,junit,sarif" in cmd
+
+    def test_default_format_is_json(self):
+        cmd = _capture_cmd(_make_args())
+        assert "--vip-format=json" in cmd
+
+    def test_ci_flag_bundles_formats_and_tb_short(self):
+        cmd = _capture_cmd(_make_args(ci=True))
+        assert "--vip-format=json,junit,sarif" in cmd
+        assert "--tb=short" in cmd
+
+    def test_unknown_format_rejected(self, tmp_path, monkeypatch):
+        """Must use a real (unmocked) sys.exit check: _capture_cmd/_capture_call
+        patch ``vip.cli.sys.exit`` to a no-op so run_verify falls through to
+        subprocess.run for the "happy path" tests above. An exit-path test has
+        to call run_verify directly, like every other SystemExit assertion in
+        this file (see TestVerifyLocalCredentialCheck._run_and_expect_exit)."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import run_verify
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_verify(
+                _make_args(package_manager_url="https://pm.example.com", format="json,bogus")
+            )
+        assert exc_info.value.code == 2

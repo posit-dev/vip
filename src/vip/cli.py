@@ -488,6 +488,19 @@ def run_verify(args: argparse.Namespace) -> None:
         cmd.append(f"--vip-config={config_path}")
     if args.report:
         cmd.append(f"--vip-report={args.report}")
+
+    _VALID_FORMATS = {"json", "junit", "sarif"}
+    fmt = "json,junit,sarif" if getattr(args, "ci", False) else getattr(args, "format", "json")
+    requested = [f.strip().lower() for f in fmt.split(",") if f.strip()]
+    unknown = [f for f in requested if f not in _VALID_FORMATS]
+    if unknown:
+        print(
+            f"Error: unknown --format value(s): {', '.join(unknown)}. "
+            f"Valid: {', '.join(sorted(_VALID_FORMATS))}.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    cmd.append(f"--vip-format={','.join(requested)}")
     if args.interactive_auth:
         cmd.append("--interactive-auth")
     if args.headless_auth:
@@ -524,6 +537,9 @@ def run_verify(args: argparse.Namespace) -> None:
         cmd.extend(["-n", "2"])
     if not _set_dist:
         cmd.extend(["--dist", "loadgroup"])
+
+    if getattr(args, "ci", False):
+        cmd.append("--tb=short")
 
     cmd.extend(args.pytest_args)
     if args.headless_auth:
@@ -1392,6 +1408,19 @@ def main() -> None:
         default="report/results.json",
         help="Write JSON results to this path for Quarto report generation"
         " (default: report/results.json)",
+    )
+    verify_parser.add_argument(
+        "--format",
+        default="json",
+        help="Comma-separated output formats: json,junit,sarif. json (results.json)"
+        " is always written; junit/sarif land beside --report. (default: json)",
+    )
+    verify_parser.add_argument(
+        "--ci",
+        action="store_true",
+        default=False,
+        help="CI preset: emit json,junit,sarif, use concise tracebacks, and run"
+        " strictly non-interactively.",
     )
     verify_parser.add_argument(
         "--verbose",
