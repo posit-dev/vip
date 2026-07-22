@@ -26,7 +26,7 @@ jobs:
           name: dist
           path: dist/
 
-  constraints:
+  release:
     name: Attach locked constraints to release
     runs-on: ubuntu-latest
     permissions:
@@ -35,6 +35,8 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          # Need history back to the previous tag to build the compare link.
+          fetch-depth: 0
 
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
@@ -50,24 +52,54 @@ jobs:
           uv export --frozen --no-emit-project --no-hashes --format requirements.txt \
             -o "constraints-${VERSION}.txt"
 
-      # Runs independently of the PyPI publish so a transient release-API delay
-      # (semantic-release pushes the tag just before creating the release) can
-      # never block publishing. Retry tolerates that race; --clobber is idempotent.
-      - name: Attach constraints file to the release
+      # Reproduces the body semantic-release attached via --vcs-release: the
+      # CHANGELOG.md section for this version (including its "## vX.Y.Z (date)"
+      # heading), plus a compare-link footer. The heading is matched literally
+      # (index/==) so version numbers are never treated as regex patterns.
+      - name: Build release notes from changelog
+        run: |
+          awk -v tag="v${VERSION}" '
+            index($0, "## " tag " ") == 1 || $0 == "## " tag {found=1; print; next}
+            found && /^## v/ {exit}
+            found {print}
+            END {if (!found) exit 1}
+          ' CHANGELOG.md > release-notes.md
+          # An empty file means the heading was not found (e.g. changelog format
+          # drift); fail loudly rather than publish a blank-body release.
+          if [ ! -s release-notes.md ]; then
+            echo "::error::No CHANGELOG.md section found for ${GITHUB_REF_NAME}; check heading format"
+            exit 1
+          fi
+          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          if [ -n "$prev" ]; then
+            printf '\n---\n\n**Detailed Changes**: [%s...%s](https://github.com/%s/compare/%s...%s)\n' \
+              "$prev" "${GITHUB_REF_NAME}" "${GITHUB_REPOSITORY}" "$prev" "${GITHUB_REF_NAME}" \
+              >> release-notes.md
+          fi
+
+      # Immutable releases lock their assets at publish time, so the constraints
+      # file must be attached while the release is still a draft, then published.
+      # semantic-release no longer creates the release (--no-vcs-release in
+      # release.yml); this job owns it end to end. The create step is idempotent
+      # so a re-run after a partial failure refreshes the draft's asset instead
+      # of erroring on an already-existing release, and the asset is verified
+      # present before the release is published and locked.
+      - name: Publish release with constraints attached
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          tag="${GITHUB_REF_NAME}"
           file="constraints-${VERSION}.txt"
-          for attempt in 1 2 3 4 5; do
-            if gh release upload "${GITHUB_REF_NAME}" "$file" --clobber; then
-              echo "Attached $file to ${GITHUB_REF_NAME}"
-              exit 0
-            fi
-            echo "Release ${GITHUB_REF_NAME} not ready (attempt $attempt/5); waiting 15s..."
-            sleep 15
-          done
-          echo "::error::Failed to attach $file to ${GITHUB_REF_NAME} after 5 attempts"
-          exit 1
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$file" --clobber
+          else
+            gh release create "$tag" "$file" \
+              --draft \
+              --title "$tag" \
+              --notes-file release-notes.md
+          fi
+          gh release view "$tag" --json assets --jq '.assets[].name' | grep -qxF "$file"
+          gh release edit "$tag" --draft=false
 
   publish:
     name: Publish to PyPI
