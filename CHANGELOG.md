@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.58.0 (2026-07-22)
+
+### Bug Fixes
+
+- **workbench**: Match current RStudio Pro Workbench Jobs selectors
+  ([#513](https://github.com/posit-dev/vip/pull/513),
+  [`2bf8ac4`](https://github.com/posit-dev/vip/commit/2bf8ac45b4490c7aafd177a000fd86e2423a7846))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+### Continuous Integration
+
+- Attach constraints via draft-then-publish under immutable releases
+  ([#519](https://github.com/posit-dev/vip/pull/519),
+  [`54905c4`](https://github.com/posit-dev/vip/commit/54905c4b0dc64bc5675ff7750c95e2bf08a870f9))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+### Features
+
+- Add verify --basic flag to run a fast test subset
+  ([#518](https://github.com/posit-dev/vip/pull/518),
+  [`77a3c10`](https://github.com/posit-dev/vip/commit/77a3c10e6e6cb22e9a423f9667c0288a9eef9a19))
+
+
 ## v0.57.1 (2026-07-22)
 
 ### Bug Fixes
