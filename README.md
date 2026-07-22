@@ -61,6 +61,12 @@ cp vip.toml.example vip.toml     # edit with your deployment details
 vip verify --config vip.toml
 ```
 
+Fast confidence check — skip the detailed/long-running checks:
+
+```bash
+vip verify --config vip.toml --basic
+```
+
 ## Uninstalling
 
 To reverse what `vip install` (or `just setup`) did:

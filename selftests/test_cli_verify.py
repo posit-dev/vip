@@ -35,6 +35,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "headless_auth": False,
         "idp": None,
         "performance_tests": False,
+        "basic": False,
         "insecure": False,
         "ca_bundle": None,
         "format": "json",
@@ -70,6 +71,18 @@ def _capture_cmd(args: argparse.Namespace) -> list[str]:
     """Run run_verify with mocked subprocess and return the command."""
     cmd, _kwargs = _capture_call(args)
     return cmd
+
+
+def _marker_expr(cmd: list[str]) -> str:
+    """Return the value passed to pytest's -m in the assembled command.
+
+    ``cmd[0:2]`` is always ``[sys.executable, "-m"]`` (invoking pytest as a
+    module), so the marker expression is the value after the *second*
+    ``-m`` occurrence.
+    """
+    first = cmd.index("-m")
+    second = cmd.index("-m", first + 1)
+    return cmd[second + 1]
 
 
 def _vip_tests_path() -> str:
@@ -601,6 +614,41 @@ class TestPerformanceOptIn:
             _make_args(config=str(cfg), categories="connect", performance_tests=True)
         )
         assert self._marker_expr(cmd) == "connect"
+
+
+class TestBasicFlag:
+    """--basic appends 'not slow' to the pytest marker expression."""
+
+    def test_basic_adds_not_slow(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        cmd = _capture_cmd(
+            _make_args(workbench_url="https://wb.example.com", no_auth=True, basic=True)
+        )
+        assert "not slow" in _marker_expr(cmd)
+
+    def test_no_basic_has_no_not_slow(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        cmd = _capture_cmd(
+            _make_args(workbench_url="https://wb.example.com", no_auth=True, basic=False)
+        )
+        assert "not slow" not in _marker_expr(cmd)
+
+    def test_basic_composes_with_categories(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        cmd = _capture_cmd(
+            _make_args(
+                workbench_url="https://wb.example.com",
+                no_auth=True,
+                categories="workbench",
+                basic=True,
+            )
+        )
+        expr = _marker_expr(cmd)
+        assert "workbench" in expr
+        assert "not slow" in expr
 
 
 class TestExtraKeepFromArgs:

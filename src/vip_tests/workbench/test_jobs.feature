@@ -1,4 +1,4 @@
-@workbench
+@workbench @slow
 Feature: Workbench job execution
 
   Scenario: Background Job runs and completes

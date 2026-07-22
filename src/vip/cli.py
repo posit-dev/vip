@@ -520,9 +520,12 @@ def run_verify(args: argparse.Namespace) -> None:
     for ext in args.extensions or []:
         cmd.append(f"--vip-extensions={ext}")
     if args.categories:
-        cmd.extend(["-m", _normalize_categories(args.categories)])
+        marker_expr = _normalize_categories(args.categories)
     else:
-        cmd.extend(["-m", _default_marker_expr(_extra_keep_from_args(args))])
+        marker_expr = _default_marker_expr(_extra_keep_from_args(args))
+    if getattr(args, "basic", False):
+        marker_expr = f"({marker_expr}) and not slow" if marker_expr else "not slow"
+    cmd.extend(["-m", marker_expr])
     if args.filter_expr:
         cmd.extend(["-k", args.filter_expr])
 
@@ -1402,6 +1405,14 @@ def main() -> None:
         default=False,
         help="Include performance tests in the default selection (excluded otherwise). "
         "Has no effect when --categories is also specified.",
+    )
+    verify_parser.add_argument(
+        "--basic",
+        action="store_true",
+        default=False,
+        help="Run only the basic subset; exclude detailed/long-running checks "
+        "tagged @slow (IDE extensions, jobs, git ops, publish to Connect). "
+        "Composes with --categories.",
     )
     verify_parser.add_argument(
         "-f",

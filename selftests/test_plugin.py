@@ -248,6 +248,19 @@ class TestPluginIntegration:
         result.assert_outcomes()
         result.stdout.fnmatch_lines(["*1 deselected*"])
 
+    def test_slow_deselected_by_not_slow(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.slow
+            def test_a_slow_check():
+                assert True
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-m", "not slow", "-v")
+        result.stdout.fnmatch_lines(["*1 deselected*"])
+
     def test_progress_indicator_recolored_per_line(self, selftest_pytester):
         """After a failure, a later passing line's [x%] stays green, not red.
 
@@ -699,6 +712,10 @@ class TestPluginIntegration:
                 "*min_version*",
             ]
         )
+
+    def test_slow_marker_registered(self, selftest_pytester):
+        result = selftest_pytester.runpytest("--markers")
+        result.stdout.fnmatch_lines(["*slow: *"])
 
     def test_interactive_auth_option_registered(self, selftest_pytester):
         """--interactive-auth appears in help output."""
