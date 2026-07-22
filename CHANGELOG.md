@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.57.0 (2026-07-22)
+
+### Features
+
+- Ci pipeline integration (JUnit/SARIF output, --ci flag, container entrypoint)
+  ([#520](https://github.com/posit-dev/vip/pull/520),
+  [`67e77eb`](https://github.com/posit-dev/vip/commit/67e77eb0f931b676b90b1f0a6a12fa5e4f5c81de))
+
+
 ## v0.56.0 (2026-07-21)
 
 ### Features
