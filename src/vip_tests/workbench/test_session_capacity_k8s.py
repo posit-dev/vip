@@ -26,6 +26,8 @@ from vip.clients.kubernetes import KubernetesClient
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
+    ResourceProfileDisabled,
+    _option_is_disabled,
     _quit_vip_sessions_via_cookies,
     wait_for_session_active,
 )
@@ -46,7 +48,11 @@ _NODE_SCALE_TIMEOUT_SECONDS = 300  # 5 minutes for a node to appear
 
 
 def _launch_session(page: Page, session_name: str, profile: str | None = None) -> None:
-    """Open the New Session dialog and launch with an optional resource profile."""
+    """Open the New Session dialog and launch with an optional resource profile.
+
+    Raises ``ResourceProfileDisabled`` if the selected profile is disabled for
+    the authenticated user.
+    """
     page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)
 
     dialog = page.locator(NewSessionDialog.DIALOG)
@@ -68,6 +74,15 @@ def _launch_session(page: Page, session_name: str, profile: str | None = None) -
                 profile_dropdown.click()
                 page.wait_for_timeout(500)
                 option = page.locator(f"[role='option']:has-text('{profile}')").first
+                option.wait_for(state="visible", timeout=TIMEOUT_QUICK)
+                if _option_is_disabled(option):
+                    # Profile is offered but disabled for this user (e.g. a
+                    # group-restricted profile). Clicking would just block
+                    # until timeout, so close the dialog and signal the caller.
+                    page.keyboard.press("Escape")
+                    page.keyboard.press("Escape")
+                    expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
+                    raise ResourceProfileDisabled(profile)
                 option.click(timeout=TIMEOUT_QUICK)
         else:
             pytest.skip(f"Resource profile dropdown not available; cannot select '{profile}'")
@@ -233,7 +248,13 @@ def launch_profiled_session(page: Page, vip_config) -> list[dict]:
     profile_map = vip_config.workbench.kubernetes.node_pool_profiles
     profile = next(iter(profile_map.values()))
     name = f"{_SESSION_PREFIX}prof_0"
-    _launch_session(page, name, profile=profile)
+    try:
+        _launch_session(page, name, profile=profile)
+    except ResourceProfileDisabled as exc:
+        pytest.skip(
+            f"Resource profile '{exc.profile}' is disabled for the "
+            "authenticated user (likely a group/entitlement restriction)"
+        )
     return [{"name": name, "profile": profile}]
 
 
@@ -248,7 +269,13 @@ def launch_limited_session(page: Page, vip_config) -> list[dict]:
     )
     profile = profiles[0] if profiles else None
     name = f"{_SESSION_PREFIX}lim_0"
-    _launch_session(page, name, profile=profile)
+    try:
+        _launch_session(page, name, profile=profile)
+    except ResourceProfileDisabled as exc:
+        pytest.skip(
+            f"Resource profile '{exc.profile}' is disabled for the "
+            "authenticated user (likely a group/entitlement restriction)"
+        )
     return [{"name": name, "profile": profile}]
 
 
