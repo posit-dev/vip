@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.57.1 (2026-07-22)
+
+### Bug Fixes
+
+- **workbench**: Skip disabled resource profiles in capacity test
+  ([#515](https://github.com/posit-dev/vip/pull/515),
+  [`6f6ea03`](https://github.com/posit-dev/vip/commit/6f6ea03858f0cabec7846604fa27f1f03bd46376))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.57.0 (2026-07-22)
 
 ### Features
