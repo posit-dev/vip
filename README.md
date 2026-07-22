@@ -95,6 +95,45 @@ content from Connect.
 
 Run `vip --help` or `vip <command> --help` for full usage details.
 
+## CI / pipeline integration
+
+VIP emits machine-readable output for security-ops and CI/CD pipelines.
+
+`vip verify` always writes `report/results.json` (and `report/failures.json` on
+failures). Add JUnit XML and/or SARIF with `--format`:
+
+```bash
+vip verify --format json,junit,sarif
+# report/results.json   (always)
+# report/junit.xml       (--format junit)  -> CI test dashboards
+# report/results.sarif   (--format sarif)  -> GitHub code scanning / secops
+```
+
+The `--ci` preset bundles all three formats with concise tracebacks (`--tb=short`)
+and overrides `--format` if both are given. Run it without `--interactive-auth`/
+`--headless-auth` -- combining them is an error, since `--ci` is meant for
+non-interactive pipelines:
+
+```bash
+vip verify --ci
+```
+
+### Container
+
+An official image is published to `ghcr.io/posit-dev/vip`. The entrypoint is the
+`vip` CLI; the default subcommand is `verify`. Because `docker run` args replace
+the default command (they do not append to it), name the `verify` subcommand
+explicitly when passing verify flags:
+
+```bash
+# bare invocation runs `vip verify`:
+docker run --rm -v "$PWD/vip.toml:/app/vip.toml" ghcr.io/posit-dev/vip
+# CI preset (name the subcommand so args don't replace it):
+docker run --rm -v "$PWD/vip.toml:/app/vip.toml" ghcr.io/posit-dev/vip verify --ci
+# other subcommands are reachable too:
+docker run --rm -v "$PWD/vip.toml:/app/vip.toml" ghcr.io/posit-dev/vip status --json
+```
+
 ## Development
 
 See [docs/development.md](docs/development.md) for dev setup, linting, and formatting.

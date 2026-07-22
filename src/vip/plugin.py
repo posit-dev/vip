@@ -88,6 +88,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         " Set to empty string to disable. (default: report/results.json)",
     )
     group.addoption(
+        "--vip-format",
+        default="json",
+        help="Comma-separated output formats: json,junit,sarif. json (results.json)"
+        " is always written; junit/sarif are added as siblings. (default: json)",
+    )
+    group.addoption(
         "--interactive-auth",
         action="store_true",
         default=False,
@@ -1110,6 +1116,31 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     report.longrepr = _format_concise_error(report.nodeid, exc_type, exc_message.replace("\n", " "))
 
 
+def _emit_extra_formats(fmt: str, results_path: Path) -> None:
+    """Emit JUnit/SARIF siblings of results_path per a comma-separated format list.
+
+    ``results.json`` is always written by the caller; this only adds the extra
+    machine-readable formats. Unknown format tokens are non-fatal: known formats
+    are still emitted, and a warning is raised for each unrecognized token.
+    """
+    from vip.reporting import VALID_FORMATS, load_results, write_junit_xml, write_sarif
+
+    formats = {f.strip().lower() for f in fmt.split(",") if f.strip()}
+    unknown = formats - VALID_FORMATS
+    if unknown:
+        warnings.warn(
+            f"VIP: ignoring unknown --vip-format value(s): {', '.join(sorted(unknown))}",
+            stacklevel=2,
+        )
+    if not (formats & {"junit", "sarif"}):
+        return
+    data = load_results(results_path)
+    if "junit" in formats:
+        write_junit_xml(data, results_path.parent / "junit.xml")
+    if "sarif" in formats:
+        write_sarif(data, results_path.parent / "results.sarif")
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     # xdist workers skip all session-end cleanup (controller handles it).
     is_worker = hasattr(session.config, "workerinput")
@@ -1154,6 +1185,12 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     except OSError as exc:
         warnings.warn(f"VIP: could not write report to {report_path}: {exc}", stacklevel=1)
         return
+
+    fmt = session.config.getoption("--vip-format", default="json")
+    try:
+        _emit_extra_formats(fmt, p)
+    except (OSError, ValueError, KeyError) as exc:
+        warnings.warn(f"VIP: could not write extra formats: {exc}", stacklevel=1)
 
     # Write failures.json alongside results.json so report rendering is idempotent.
     failures = [r for r in results if r.get("outcome") == "failed"]

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -11,6 +13,9 @@ if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
+
+
+VALID_FORMATS = frozenset({"json", "junit", "sarif"})
 
 
 @dataclass
@@ -123,7 +128,7 @@ def load_results(path: str | Path) -> ReportData:
         TestResult(
             nodeid=r["nodeid"],
             outcome=r["outcome"],
-            duration=r.get("duration", 0.0),
+            duration=r.get("duration") or 0.0,
             longrepr=r.get("longrepr"),
             concise_error=r.get("concise_error"),
             markers=r.get("markers", []),
@@ -153,6 +158,116 @@ def load_results(path: str | Path) -> ReportData:
         products=products,
         results=results,
     )
+
+
+_XML_INVALID_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+_ANSI_CSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _xml_safe(text: str) -> str:
+    """Strip ANSI escape sequences and XML-1.0-invalid control chars (keep tab/LF/CR)."""
+    return _XML_INVALID_CHARS.sub("", _ANSI_CSI.sub("", text))
+
+
+def write_junit_xml(data: ReportData, path: str | Path) -> None:
+    """Write test results as a JUnit XML file for CI test reporters."""
+    # VIP's ReportData has no "error" outcome distinct from "failed"; always 0.
+    suites = ET.Element(
+        "testsuites",
+        tests=str(data.total),
+        failures=str(data.failed),
+        errors="0",
+        skipped=str(data.skipped),
+    )
+    suite = ET.SubElement(
+        suites,
+        "testsuite",
+        name="vip",
+        tests=str(data.total),
+        failures=str(data.failed),
+        errors="0",
+        skipped=str(data.skipped),
+        time=f"{sum(r.duration for r in data.results):.3f}",
+    )
+    for r in data.results:
+        case = ET.SubElement(
+            suite,
+            "testcase",
+            name=_xml_safe(r.scenario_title or r.nodeid),
+            classname=_xml_safe(r.feature_description or r.category),
+            time=f"{r.duration:.3f}",
+        )
+        if r.outcome == "failed":
+            failure = ET.SubElement(
+                case,
+                "failure",
+                message=_xml_safe(r.concise_error or r.longrepr or "test failed"),
+            )
+            failure.text = _xml_safe(r.longrepr or r.concise_error or "")
+        elif r.outcome == "skipped":
+            reason = "N/A for this product version" if r.na_version else "skipped"
+            ET.SubElement(case, "skipped", message=reason)
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    ET.ElementTree(suites).write(p, encoding="utf-8", xml_declaration=True)
+
+
+_SARIF_LEVEL = {"failed": "error", "passed": "none", "skipped": "note"}
+
+
+def write_sarif(data: ReportData, path: str | Path) -> None:
+    """Write test results as SARIF 2.1.0 for secops / code-scanning ingestion.
+
+    Every check emits a result (fail=error, pass=none, skip=note) to give a
+    full audit trail of what was validated, not only failures.
+    """
+    from vip import __version__
+
+    rules: dict[str, dict] = {}
+    results: list[dict] = []
+    for r in data.results:
+        check = r.scenario_title or r.nodeid.split("::")[-1]
+        rules.setdefault(
+            r.nodeid,
+            {"id": r.nodeid, "name": check, "shortDescription": {"text": check}},
+        )
+        if r.outcome == "failed":
+            text = r.concise_error or r.longrepr or "check failed"
+        elif r.outcome == "skipped":
+            text = "N/A for this product version" if r.na_version else "check skipped"
+        else:
+            text = check
+        results.append(
+            {
+                "ruleId": r.nodeid,
+                "level": _SARIF_LEVEL.get(r.outcome, "none"),
+                "message": {"text": text},
+                "locations": [{"logicalLocations": [{"name": f"{r.category} / {check}"}]}],
+            }
+        )
+
+    doc = {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "vip",
+                        "version": __version__,
+                        "informationUri": "https://github.com/posit-dev/vip",
+                        "rules": list(rules.values()),
+                    }
+                },
+                "results": results,
+            }
+        ],
+    }
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(doc, indent=2) + "\n")
 
 
 def _installed_vip_tests_dir() -> Path | None:

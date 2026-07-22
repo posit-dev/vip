@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
-from vip.reporting import ProductInfo, ReportData, TestResult, load_results, load_troubleshooting
+import json
+import xml.etree.ElementTree as ET
+
+from vip.reporting import (
+    ProductInfo,
+    ReportData,
+    TestResult,
+    load_results,
+    load_troubleshooting,
+    write_junit_xml,
+    write_sarif,
+)
 
 
 class TestTestResult:
@@ -325,3 +336,276 @@ class TestConciseError:
         rd = load_results(p)
         assert rd.results[0].concise_error == "test_login: Login failed"
         assert rd.results[1].concise_error is None
+
+
+class TestWriteJUnitXml:
+    def _sample(self) -> ReportData:
+        return ReportData(
+            deployment_name="Acme Team",
+            generated_at="2026-07-21T12:00:00+00:00",
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_auth.py::test_login",
+                    outcome="passed",
+                    duration=1.5,
+                    scenario_title="User can log in",
+                    feature_description="Connect authentication",
+                ),
+                TestResult(
+                    nodeid="tests/workbench/test_sessions.py::test_start",
+                    outcome="failed",
+                    duration=0.5,
+                    concise_error="test_start: TimeoutError session did not start",
+                    scenario_title="Session starts",
+                    feature_description="Workbench sessions",
+                ),
+                TestResult(
+                    nodeid="tests/connect/test_api.py::test_v1",
+                    outcome="skipped",
+                    na_version=True,
+                    scenario_title="API v1 available",
+                ),
+            ],
+        )
+
+    def test_writes_well_formed_xml_with_counts(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        write_junit_xml(self._sample(), out)
+        tree = ET.parse(out)
+        suite = tree.getroot().find("testsuite")
+        assert suite.get("tests") == "3"
+        assert suite.get("failures") == "1"
+        assert suite.get("skipped") == "1"
+
+    def test_failure_carries_concise_error(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        write_junit_xml(self._sample(), out)
+        tree = ET.parse(out)
+        cases = {c.get("name"): c for c in tree.getroot().iter("testcase")}
+        failed = cases["Session starts"]
+        failure = failed.find("failure")
+        assert failure is not None
+        assert "TimeoutError" in failure.get("message")
+        assert failed.get("classname") == "Workbench sessions"
+
+    def test_skip_uses_nodeid_when_no_scenario(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        write_junit_xml(self._sample(), out)
+        tree = ET.parse(out)
+        cases = {c.get("name"): c for c in tree.getroot().iter("testcase")}
+        assert cases["API v1 available"].find("skipped") is not None
+        # passed case has no failure/skipped child
+        assert cases["User can log in"].find("failure") is None
+        assert cases["User can log in"].find("skipped") is None
+
+    def test_name_and_classname_fall_back_to_nodeid_and_category(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="passed",
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        tree = ET.parse(out)
+        case = tree.getroot().find(".//testcase")
+        assert case.get("name") == "tests/connect/test_x.py::test_y"
+        assert case.get("classname") == "connect"
+
+    def test_sanitizes_xml_invalid_control_chars(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        raw = "\x1b[31mred\x1b[0m and \x00 null"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="failed",
+                    concise_error=raw,
+                    longrepr=raw,
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        # Well-formed XML: ET.parse must not raise.
+        tree = ET.parse(out)
+        failure = tree.getroot().find(".//failure")
+        assert failure is not None
+        raw_bytes = out.read_bytes()
+        assert b"\x1b" not in raw_bytes
+        assert b"\x00" not in raw_bytes
+
+    def test_strips_full_ansi_escape_sequences(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="failed",
+                    concise_error="\x1b[31mred\x1b[0m",
+                    longrepr="\x1b[31mred\x1b[0m",
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        # Well-formed XML: ET.parse must not raise.
+        tree = ET.parse(out)
+        failure = tree.getroot().find(".//failure")
+        assert failure is not None
+        assert failure.get("message") == "red"
+        assert failure.text == "red"
+        raw_text = out.read_text()
+        assert "[31m" not in raw_text
+        assert "[0m" not in raw_text
+
+    def test_ordinary_skip_message_is_plain(self, tmp_path):
+        """A skip that is NOT na_version gets the plain 'skipped' message, not
+        the version-gate text."""
+        out = tmp_path / "junit.xml"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="skipped",
+                    na_version=False,
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        tree = ET.parse(out)
+        skipped = tree.getroot().find(".//skipped")
+        assert skipped is not None
+        assert skipped.get("message") == "skipped"
+
+    def test_failure_fallback_when_no_error_details(self, tmp_path):
+        """A failed result with neither concise_error nor longrepr falls back
+        to a generic 'test failed' message."""
+        out = tmp_path / "junit.xml"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="failed",
+                    concise_error=None,
+                    longrepr=None,
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        tree = ET.parse(out)
+        failure = tree.getroot().find(".//failure")
+        assert failure is not None
+        assert failure.get("message") == "test failed"
+
+    def test_empty_report_data_is_well_formed(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        write_junit_xml(ReportData(), out)
+        tree = ET.parse(out)
+        suite = tree.getroot().find("testsuite")
+        assert suite.get("tests") == "0"
+
+
+class TestWriteSarif:
+    def _sample(self) -> ReportData:
+        return ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_auth.py::test_login",
+                    outcome="passed",
+                    scenario_title="User can log in",
+                ),
+                TestResult(
+                    nodeid="tests/workbench/test_sessions.py::test_start",
+                    outcome="failed",
+                    concise_error="test_start: session did not start",
+                    scenario_title="Session starts",
+                ),
+                TestResult(
+                    nodeid="tests/connect/test_api.py::test_v1",
+                    outcome="skipped",
+                    na_version=True,
+                    scenario_title="API v1 available",
+                ),
+            ],
+        )
+
+    def test_valid_sarif_envelope(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        write_sarif(self._sample(), out)
+        doc = json.loads(out.read_text())
+        assert doc["version"] == "2.1.0"
+        assert doc["runs"][0]["tool"]["driver"]["name"] == "vip"
+        assert len(doc["runs"][0]["results"]) == 3
+
+    def test_level_mapping_per_outcome(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        write_sarif(self._sample(), out)
+        doc = json.loads(out.read_text())
+        levels = {r["ruleId"]: r["level"] for r in doc["runs"][0]["results"]}
+        assert levels["tests/connect/test_auth.py::test_login"] == "none"
+        assert levels["tests/workbench/test_sessions.py::test_start"] == "error"
+        assert levels["tests/connect/test_api.py::test_v1"] == "note"
+
+    def test_rules_deduped_and_logical_location(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        data = self._sample()
+        data.results.append(
+            TestResult(nodeid="tests/connect/test_auth.py::test_login", outcome="passed")
+        )
+        write_sarif(data, out)
+        doc = json.loads(out.read_text())
+        rule_ids = [r["id"] for r in doc["runs"][0]["tool"]["driver"]["rules"]]
+        assert rule_ids.count("tests/connect/test_auth.py::test_login") == 1
+        failed = next(
+            r
+            for r in doc["runs"][0]["results"]
+            if r["ruleId"] == "tests/workbench/test_sessions.py::test_start"
+        )
+        loc = failed["locations"][0]["logicalLocations"][0]["name"]
+        assert loc == "workbench / Session starts"
+        assert failed["message"]["text"] == "test_start: session did not start"
+
+    def test_ordinary_skip_message_is_plain(self, tmp_path):
+        """A skip that is NOT na_version gets 'check skipped', not the
+        version-gate text."""
+        out = tmp_path / "results.sarif"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="skipped",
+                    na_version=False,
+                ),
+            ],
+        )
+        write_sarif(data, out)
+        doc = json.loads(out.read_text())
+        result = doc["runs"][0]["results"][0]
+        assert result["message"]["text"] == "check skipped"
+
+    def test_failure_fallback_when_no_error_details(self, tmp_path):
+        """A failed result with neither concise_error nor longrepr falls back
+        to a generic 'check failed' message."""
+        out = tmp_path / "results.sarif"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_x.py::test_y",
+                    outcome="failed",
+                    concise_error=None,
+                    longrepr=None,
+                ),
+            ],
+        )
+        write_sarif(data, out)
+        doc = json.loads(out.read_text())
+        result = doc["runs"][0]["results"][0]
+        assert result["message"]["text"] == "check failed"
+
+    def test_empty_report_data_is_well_formed(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        write_sarif(ReportData(), out)
+        doc = json.loads(out.read_text())
+        assert doc["runs"][0]["results"] == []
+        assert doc["version"] == "2.1.0"

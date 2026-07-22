@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from vip.plugin import (
+    _emit_extra_formats,
     _extract_exception_info,
     _format_concise_error,
     _outcome_color,
@@ -1772,3 +1773,32 @@ def test_markers_in_sync():
         f"  Only in pyproject.toml: {pyproject_markers - plugin_markers}\n"
         f"  Only in plugin.py:      {plugin_markers - pyproject_markers}"
     )
+
+
+class TestFormatEmission:
+    def _write_results(self, tmp_path: Path) -> Path:
+        results = tmp_path / "results.json"
+        results.write_text(
+            '{"deployment_name": "T", "results": ['
+            '{"nodeid": "tests/connect/test_a.py::test_x", "outcome": "failed",'
+            ' "concise_error": "boom", "scenario_title": "X"}]}'
+        )
+        return results
+
+    def test_json_only_writes_nothing_extra(self, tmp_path):
+        results = self._write_results(tmp_path)
+        _emit_extra_formats("json", results)
+        assert not (tmp_path / "junit.xml").exists()
+        assert not (tmp_path / "results.sarif").exists()
+
+    def test_junit_and_sarif_written_as_siblings(self, tmp_path):
+        results = self._write_results(tmp_path)
+        _emit_extra_formats("json,junit,sarif", results)
+        assert (tmp_path / "junit.xml").exists()
+        assert (tmp_path / "results.sarif").exists()
+
+    def test_unknown_format_ignored_gracefully(self, tmp_path):
+        results = self._write_results(tmp_path)
+        with pytest.warns(UserWarning, match="unknown"):
+            _emit_extra_formats("junit,bogus", results)  # bogus warned, junit still written
+        assert (tmp_path / "junit.xml").exists()
