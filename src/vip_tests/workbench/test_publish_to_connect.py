@@ -13,6 +13,7 @@ excludes the tests when either product is absent.
 from __future__ import annotations
 
 import re
+import uuid
 import warnings
 from pathlib import Path
 
@@ -30,7 +31,7 @@ from vip_tests.workbench.conftest import (
     wait_for_session_active,
     workbench_login,
 )
-from vip_tests.workbench.exec import terminal_run
+from vip_tests.workbench.exec import ExecError, terminal_run
 from vip_tests.workbench.pages import Homepage, NewSessionDialog, VSCodeSession
 
 pytestmark = pytest.mark.order(60)
@@ -39,6 +40,10 @@ _FILENAME = Path(__file__).name
 
 # Timeout for rsconnect deploy, which bundles, uploads, and deploys.
 _DEPLOY_TIMEOUT_MS = 180_000
+
+# Timeout for the short venv-management commands (create, pip install, cleanup).
+_VENV_SETUP_TIMEOUT_MS = 120_000
+_VENV_QUICK_TIMEOUT_MS = 30_000
 
 
 @scenario(
@@ -182,25 +187,78 @@ def deploy_python_shiny_via_terminal(
     connect_client,
     _connect_created_guids: list,
 ):
-    """Run ``rsconnect deploy shiny`` in the VS Code terminal and register the GUID."""
+    """Run ``rsconnect deploy shiny`` in the VS Code terminal and register the GUID.
+
+    ``rsconnect-python`` is not assumed to be on PATH.  We create a throwaway
+    venv from whatever ``python3`` the session provides, install
+    ``rsconnect-python`` into it, deploy with that venv's ``rsconnect``, and
+    tear the venv down afterwards.  A missing ``python3`` fails the preflight.
+    """
     # Open the integrated terminal.
     page.keyboard.press("Control+`")
     terminal_input = page.locator(VSCodeSession.TERMINAL_INPUT)
     expect(terminal_input).to_be_visible(timeout=TIMEOUT_SESSION_START)
 
-    title = f"vip_test_shiny_{unique_session_name(_FILENAME)}"
+    # Preflight: a Python interpreter must be on PATH to build the venv.
+    # Prefer ``python3`` but accept ``python`` so sessions without the
+    # ``python3`` symlink still qualify.
+    try:
+        python_bin = terminal_run(
+            page,
+            "command -v python3 || command -v python",
+            timeout=_VENV_QUICK_TIMEOUT_MS,
+            readback_lang="python",
+        ).strip()
+    except ExecError as exc:
+        raise AssertionError(
+            "Neither python3 nor python is on PATH in the Workbench session; "
+            "cannot create a venv to install rsconnect-python for deployment."
+        ) from exc
 
-    output = terminal_run(
-        page,
-        (
-            f"rsconnect deploy shiny {python_shiny_bundle_path} "
-            f"--server {connect_url} "
-            f"--api-key {vip_config.connect.api_key} "
-            f"--title {title}"
-        ),
-        timeout=_DEPLOY_TIMEOUT_MS,
-        readback_lang="python",
-    )
+    title = f"vip_test_shiny_{unique_session_name(_FILENAME)}"
+    venv_dir = f"/tmp/vip_rsconnect_venv_{uuid.uuid4().hex}"
+    rsconnect_bin = f"{venv_dir}/bin/rsconnect"
+
+    try:
+        # Create the venv and install rsconnect-python into it.
+        terminal_run(
+            page,
+            f"{python_bin} -m venv {venv_dir}",
+            timeout=_VENV_SETUP_TIMEOUT_MS,
+            readback_lang="python",
+        )
+        terminal_run(
+            page,
+            f"{venv_dir}/bin/pip install --quiet --upgrade rsconnect-python",
+            timeout=_VENV_SETUP_TIMEOUT_MS,
+            readback_lang="python",
+        )
+
+        output = terminal_run(
+            page,
+            (
+                f"{rsconnect_bin} deploy shiny {python_shiny_bundle_path} "
+                f"--server {connect_url} "
+                f"--api-key {vip_config.connect.api_key} "
+                f"--title {title}"
+            ),
+            timeout=_DEPLOY_TIMEOUT_MS,
+            readback_lang="python",
+        )
+    finally:
+        # Tear down the throwaway venv regardless of deploy outcome.
+        try:
+            terminal_run(
+                page,
+                f"rm -rf {venv_dir}",
+                timeout=_VENV_QUICK_TIMEOUT_MS,
+                readback_lang="python",
+            )
+        except ExecError:
+            warnings.warn(
+                f"Failed to remove temporary venv at {venv_dir}; manual cleanup may be required.",
+                stacklevel=2,
+            )
 
     # Primary: stable API title lookup (version-independent).
     content = connect_client._find_content_by_name(title)
