@@ -222,11 +222,42 @@ def _run_console_command(page: Page, r_cmd: str) -> None:
 
 @when("the user writes a test R script file via the console")
 def write_test_script(page: Page):
-    """Write the test R script to a file using writeLines() in the R console."""
+    """Write the test R script to a file using writeLines() and confirm it landed.
+
+    The console is an Ace editor driven by real keystrokes, which can be dropped
+    if the console has not fully settled after the IDE loads. A dropped
+    ``writeLines()`` leaves no file, and the Workbench Job file chooser then
+    silently rejects Open (the file must exist), so the readonly script field
+    stays empty and the failure only surfaces later as an opaque empty-field
+    error. Verify ``file.exists()`` right here so a dropped write fails loudly at
+    its source with the path, rather than masquerading as a chooser regression.
+    """
     escaped = _JOB_SCRIPT_CONTENT.replace('"', '\\"')
     # writeLines tilde-expands the path, so the file lands in the session home
     # directory — the same location the file chooser and cleanup step target.
     _run_console_command(page, f'writeLines("{escaped}", "{_JOB_SCRIPT_PATH}")')
+    _assert_script_file_exists(page)
+
+
+def _assert_script_file_exists(page: Page) -> None:
+    """Fail loudly if the test script is not on disk after the write step.
+
+    Emits a unique sentinel alongside ``file.exists()`` and reads it back from
+    the console output, so a dropped ``writeLines()`` (or a write to an
+    unexpected directory) is caught at the write step — before the file chooser
+    turns it into an empty-script-field mystery.
+    """
+    marker = "VIP_JOB_SCRIPT_CHECK"
+    _run_console_command(page, f'cat("{marker}:", file.exists("{_JOB_SCRIPT_PATH}"), "\\n")')
+    output = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT)
+    expect(
+        output,
+        (
+            f"Test R script {_JOB_SCRIPT_PATH!r} was not created by the console write step — "
+            f"the writeLines() keystrokes may have been dropped before the console settled, or "
+            f"the file landed outside the session home directory"
+        ),
+    ).to_contain_text(f"{marker}: TRUE", timeout=TIMEOUT_CODE_EXEC)
 
 
 @when("the user runs the script as a Background Job")
@@ -289,7 +320,7 @@ def run_as_workbench_job(page: Page, job_context: dict):
         new_btn.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
     except PlaywrightTimeoutError:
         pytest.skip("Run Script as Workbench Job button not found")
-    new_btn.click()
+    _open_workbench_job_dialog(page, new_btn)
 
     # Select the script via the file chooser. Unlike the Background Job dialog,
     # the Workbench Job dialog's script field (#rstudio_tbb_text_pro_job_script)
@@ -304,6 +335,49 @@ def run_as_workbench_job(page: Page, job_context: dict):
     submit_btn = page.locator(RStudioSession.WORKBENCH_JOB_SUBMIT_BUTTON)
     expect(submit_btn).to_be_visible(timeout=TIMEOUT_QUICK)
     submit_btn.click()
+
+
+def _open_workbench_job_dialog(page: Page, new_btn) -> None:
+    """Click the "Start Workbench Job" toolbar button until its dialog opens.
+
+    The button is a GWT toolbar widget whose first click does not always open
+    the "Run Script as Workbench Job" dialog — the click can land before the
+    handler is armed, leaving the dialog closed and the later Browse-button
+    wait to skip as if the feature were absent. Re-click a few times, checking
+    for the Browse button (the dialog's first interactive control) between
+    attempts, so a dropped first click self-heals instead of masquerading as a
+    capability gap. Verified live over CDP against Workbench 2026.07.0.
+    """
+    browse_btn = page.locator(RStudioSession.WORKBENCH_JOB_SCRIPT_BROWSE_BUTTON).first
+    for _ in range(3):
+        new_btn.click()
+        try:
+            browse_btn.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
+            return
+        except PlaywrightTimeoutError:
+            continue
+    # Final attempt surfaces the real state to _select_workbench_job_script,
+    # which skips with a precise message if the Browse button never appears.
+    new_btn.click()
+
+
+def _fill_until_stable(locator, value: str, attempts: int = 5) -> None:
+    """Fill *locator* with *value*, re-filling until the value stays put.
+
+    The Workbench Job file chooser clears its name field ~1s after it first
+    appears (GWT finishes initializing it), silently wiping an early fill(). Fill
+    the field, wait past that reset window, and re-fill if it was cleared, so the
+    value survives into the Open click regardless of when the reset lands.
+    """
+    for _ in range(attempts):
+        locator.fill(value)
+        # Wait out the chooser's post-init reset, then check the value held.
+        locator.page.wait_for_timeout(TIMEOUT_QUICK // 4)
+        if locator.input_value() == value:
+            return
+    # One last fill; the caller's downstream check reports an empty script field
+    # with a precise message if the value still refuses to stick.
+    locator.fill(value)
 
 
 def _select_workbench_job_script(page: Page, script_filename: str) -> None:
@@ -330,7 +404,13 @@ def _select_workbench_job_script(page: Page, script_filename: str) -> None:
         name_input.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
     except PlaywrightTimeoutError:
         pytest.skip("Workbench Job file chooser did not open")
-    name_input.fill(script_filename)
+
+    # The chooser clears the name field ~1s after it first appears, as GWT
+    # finishes initializing it. A fill() that lands before that reset is wiped,
+    # so Open then submits an empty name and the readonly script field stays
+    # empty. Fill, then re-fill through the reset until the value sticks, before
+    # clicking Open. Verified live over CDP against Workbench 2026.07.0.
+    _fill_until_stable(name_input, script_filename)
 
     open_btn = page.locator(RStudioSession.FILE_CHOOSER_OPEN_BUTTON).first
     expect(open_btn).to_be_visible(timeout=TIMEOUT_QUICK)

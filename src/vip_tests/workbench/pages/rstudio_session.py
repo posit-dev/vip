@@ -89,8 +89,20 @@ class RStudioSession:
         "#rstudio_dlg_ok, button:text-is('Start'), button:text-is('Submit')"
     )
 
-    # Job status (shared between Background and Workbench Jobs)
+    # Job status (shared between Background and Workbench Jobs).
+    #
+    # On the Workbench Jobs (Launcher) panel the completed status renders as a
+    # single leaf DIV whose text fuses the word and a timestamp, e.g.
+    # "Succeeded 4:25 PM", inside a GWT-obfuscated class (not "job-status").
+    # An exact-match (:text-is('Succeeded')) or span-only selector therefore
+    # never matches, so job completion polling timed out at the full job
+    # timeout even though the job succeeded. ``:text('Succeeded')`` selects the
+    # smallest element *containing* the substring on any tag, matching that
+    # fused leaf. Verified live over CDP against Workbench 2026.07.0. The prior
+    # exact/span selectors are kept as fallbacks for the Background Jobs panel
+    # and older builds.
     JOB_STATUS_SUCCEEDED = (
+        "*:text('Succeeded'), *:text('Completed'), "
         "span:text-is('Succeeded'), span:text-is('Completed'), "
         "[class*='job-status']:text-is('Succeeded')"
     )
