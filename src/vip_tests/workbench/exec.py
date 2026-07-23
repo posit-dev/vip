@@ -277,6 +277,10 @@ _POSITRON_POLL_MS = 1_000
 # selecting immediately can miss R and fall back to the (less reliable) Python
 # console. Bounded so a genuinely R-less deployment settles quickly.
 _POSITRON_R_GRACE_POLLS = 10
+# Polls to let .positron-console re-render after activating the Console tab. A
+# console hidden behind the Terminal is removed from the DOM on some Positron
+# builds, so we activate + briefly poll before concluding no console exists.
+_POSITRON_REACTIVATE_POLLS = 3
 
 
 def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
@@ -302,8 +306,24 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
     Returns:
         ``True`` if a console is running, ``False`` otherwise.
     """
-    if page.locator(PositronSession.CONSOLE_PANEL).count() > 0:
-        return True
+    # One poll budget is shared across every phase below so the total wait is
+    # bounded by *timeout* rather than a multiple of it.
+    remaining = max(1, timeout // _POSITRON_POLL_MS)
+
+    # A console started earlier may be hidden behind the Terminal tab (a prior
+    # terminal_run selects it), which removes .positron-console from the DOM on
+    # some Positron builds. Activate the Console tab first and give the panel a
+    # moment to re-render, so an existing console is detected instead of being
+    # missed -- once a session exists its "Start New Console Session" button is
+    # gone, so a missed console would otherwise look like "no console" and fail.
+    _activate_positron_console(page)
+    reactivate = min(remaining, _POSITRON_REACTIVATE_POLLS)
+    while reactivate > 0:
+        if page.locator(PositronSession.CONSOLE_PANEL).count() > 0:
+            return True
+        page.wait_for_timeout(_POSITRON_POLL_MS)
+        reactivate -= 1
+        remaining -= 1
 
     start = page.locator(_POSITRON_START_BUTTON)
     if start.count() == 0:
@@ -312,10 +332,6 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
         start.first.click()
     except Exception:
         return False
-
-    # A single poll budget is shared across both phases below so the total wait
-    # is bounded by *timeout* rather than ~2x it.
-    remaining = max(1, timeout // _POSITRON_POLL_MS)
 
     # Phase 1: poll the interpreter quickpick — discovery lags the click on a
     # cold session (~10s live).
