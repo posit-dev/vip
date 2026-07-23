@@ -190,30 +190,33 @@ def rstudio_ide_loaded(page: Page):
     expect(page.locator(ConsolePaneSelectors.INPUT)).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
 
 
-@when("the user writes a test R script file via the console")
-def write_test_script(page: Page):
-    """Write the test R script to a file using writeLines() in the R console."""
+def _run_console_command(page: Page, r_cmd: str) -> None:
+    """Type a single-line R expression into the console and submit it.
+
+    The console input is an Ace editor <div>, not a real <input>/<textarea>,
+    so Locator.fill() raises "Element is not an <input>...". Select-all +
+    delete clears any leftover text, then real keystrokes are typed into the
+    focused hidden Ace textarea (matches test_packages.py). ControlOrMeta maps
+    select-all to Cmd+A on macOS, where Ctrl+A is "go to line start" and would
+    not clear the input.
+    """
     console_input = page.locator(ConsolePaneSelectors.INPUT)
     expect(console_input).to_be_visible(timeout=TIMEOUT_DIALOG)
     console_input.click()
-
-    # Build the writeLines() call as a single-line R expression.
-    escaped = _JOB_SCRIPT_CONTENT.replace('"', '\\"')
-    r_cmd = f'writeLines("{escaped}", "{_JOB_SCRIPT_FILENAME}")'
-    # The console input is an Ace editor <div>, not a real <input>/<textarea>,
-    # so Locator.fill() raises "Element is not an <input>...". Select-all +
-    # delete to clear any leftover text, then type real keystrokes into the
-    # focused hidden Ace textarea (matches test_packages.py). Use ControlOrMeta
-    # so select-all maps to Cmd+A on macOS, where Ctrl+A is "go to line start"
-    # and would not clear the input.
     page.keyboard.press("ControlOrMeta+a")
     page.keyboard.press("Backspace")
     console_input.type(r_cmd)
     console_input.press("Enter")
-
     # Wait for the prompt to return (console is ready for next command).
     time.sleep(1)
     expect(console_input).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
+
+
+@when("the user writes a test R script file via the console")
+def write_test_script(page: Page):
+    """Write the test R script to a file using writeLines() in the R console."""
+    escaped = _JOB_SCRIPT_CONTENT.replace('"', '\\"')
+    _run_console_command(page, f'writeLines("{escaped}", "{_JOB_SCRIPT_FILENAME}")')
 
 
 @when("the user runs the script as a Background Job")
@@ -278,18 +281,60 @@ def run_as_workbench_job(page: Page, job_context: dict):
         pytest.skip("Run Script as Workbench Job button not found")
     new_btn.click()
 
-    # Fill in the script path in the submission dialog.
-    script_input = page.locator(RStudioSession.BACKGROUND_JOB_SCRIPT_INPUT)
-    try:
-        script_input.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
-    except PlaywrightTimeoutError:
-        pytest.skip("Workbench Job script input not found")
-    script_input.fill(_JOB_SCRIPT_FILENAME)
+    # Select the script via the file chooser. Unlike the Background Job dialog,
+    # the Workbench Job dialog's script field (#rstudio_tbb_text_pro_job_script)
+    # is a readonly FileChooserTextBox on Launcher deployments -- calling
+    # fill() on it times out with "element is not editable". Instead click its
+    # "Browse..." button, type the filename into the Choose File dialog, and
+    # click Open, which populates the readonly field. (Verified live over CDP
+    # against Workbench 2026.07.0.)
+    _select_workbench_job_script(page, _JOB_SCRIPT_FILENAME)
 
     # Submit.
     submit_btn = page.locator(RStudioSession.WORKBENCH_JOB_SUBMIT_BUTTON)
     expect(submit_btn).to_be_visible(timeout=TIMEOUT_QUICK)
     submit_btn.click()
+
+
+def _select_workbench_job_script(page: Page, script_filename: str) -> None:
+    """Choose *script_filename* in the Workbench Job dialog via its file chooser.
+
+    The script-path field is a readonly picker, so the path is set by driving
+    the "Browse..." button → "Choose File" dialog → type name → Open, mirroring
+    the RStudio Pro UI's only supported interaction. Skips gracefully if the
+    dialog's controls are not present (an unexpected build variant) rather than
+    hanging on an opaque timeout.
+    """
+    browse_btn = page.locator(RStudioSession.WORKBENCH_JOB_SCRIPT_BROWSE_BUTTON).first
+    try:
+        browse_btn.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
+    except PlaywrightTimeoutError:
+        pytest.skip("Workbench Job script Browse button not found in the submission dialog")
+    browse_btn.click()
+
+    # The Choose File dialog's name field IS editable -- type the filename there.
+    name_input = page.locator(RStudioSession.FILE_CHOOSER_NAME_INPUT)
+    try:
+        name_input.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
+    except PlaywrightTimeoutError:
+        pytest.skip("Workbench Job file chooser did not open")
+    name_input.fill(script_filename)
+
+    open_btn = page.locator(RStudioSession.FILE_CHOOSER_OPEN_BUTTON).first
+    expect(open_btn).to_be_visible(timeout=TIMEOUT_QUICK)
+    open_btn.click()
+
+    # Confirm the readonly script field was populated before submitting -- if
+    # the chosen file was rejected (e.g. it does not exist), the field stays
+    # empty and submitting would fail with a less actionable error.
+    script_field = page.locator(RStudioSession.WORKBENCH_JOB_SCRIPT_INPUT)
+    try:
+        expect(script_field).not_to_have_value("", timeout=TIMEOUT_DIALOG)
+    except AssertionError:
+        pytest.skip(
+            f"Workbench Job script field was not populated after choosing "
+            f"{script_filename!r} — the file may not exist in the session home directory"
+        )
 
 
 def _wait_for_job_completion(page: Page, job_timeout_s: int) -> None:
@@ -335,6 +380,23 @@ def workbench_job_completed(page: Page, vip_config: VIPConfig):
             f"Expected job output {_JOB_EXPECTED_OUTPUT!r} not found in job output: "
             f"{output_text[:200]!r}"
         )
+
+
+@then("the test script file is removed")
+def remove_test_script(page: Page):
+    """Delete the test R script from the session home directory via the console.
+
+    The job test writes ``test_job_vip.R`` into the session's working directory
+    (persistent shared storage on Workbench). Quitting the session does not
+    remove it, so without this step the file accumulates across runs. Runs
+    before the session-quit step while the console is still available.
+    Best-effort: file cleanup must never fail the job result, so any error
+    (console gone, command not accepted) is swallowed.
+    """
+    try:
+        _run_console_command(page, f'suppressWarnings(file.remove("{_JOB_SCRIPT_FILENAME}"))')
+    except Exception:
+        pass
 
 
 @then("the job test session is cleaned up")
