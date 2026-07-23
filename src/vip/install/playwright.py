@@ -113,8 +113,14 @@ def install_chromium() -> None:
     vip-attributed summary line.
     """
     try:
+        # Invoke via `python -m playwright` using the interpreter vip is running
+        # under, not a bare `playwright` executable on PATH. When vip is installed
+        # with `uv tool install posit-vip` it lives in an isolated venv and only
+        # vip's own entry point is exposed on PATH -- playwright's console script
+        # is not -- so a bare `playwright` lookup fails with ENOENT. Playwright is
+        # a dependency in that same venv, so `sys.executable -m playwright` finds it.
         proc = subprocess.Popen(
-            ["playwright", "install", "chromium"],
+            [sys.executable, "-m", "playwright", "install", "chromium"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

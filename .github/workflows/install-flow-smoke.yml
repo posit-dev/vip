@@ -1,0 +1,108 @@
+name: Install Flow Smoke
+
+# Reproduces the documented default install flow from README.md:
+#
+#   uv tool install posit-vip
+#   vip install
+#
+# `uv tool install` puts vip in an isolated venv and only exposes vip's own
+# entry point on PATH -- playwright's console script is NOT on PATH. Every other
+# install test runs `uv run vip install` from inside the project venv, where the
+# whole venv bin/ is on PATH, so this topology went untested and a bare
+# `playwright` lookup in `vip install` broke real users. This smoke installs vip
+# the way users do (from the local checkout, so it tests this branch) and runs
+# the bare `vip install`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/vip/install/**'
+      - 'src/vip/cli.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/install-flow-smoke.yml'
+  pull_request:
+    paths:
+      - 'src/vip/install/**'
+      - 'src/vip/cli.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/install-flow-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# In a container GitHub defaults `run:` steps to sh (dash), not bash, so any
+# bashism silently changes behavior (and `set -o pipefail` errors outright).
+# Force bash everywhere for consistent behavior across both jobs; GitHub's bash
+# default also runs with `-eo pipefail`.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ubuntu:
+    name: ubuntu-24.04 (uv tool, root)
+    runs-on: ubuntu-latest
+    # Bare ubuntu:24.04 as root faithfully replays the reported scenario: a full
+    # `vip install` that apt-installs the Chromium system libs itself and then
+    # runs the Playwright step. It is also the only CI job that exercises vip's
+    # own `apt install` path (src/vip/install/runner.py) as root.
+    container:
+      image: ubuntu:24.04
+    steps:
+      # git for actions/checkout; ca-certificates for setup-uv's HTTPS download.
+      - name: Install base tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.11.28"
+          enable-cache: true
+
+      - name: Install vip as a uv tool (isolated venv, only vip on PATH)
+        run: |
+          uv tool install .
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: vip install (default flow, as root)
+        run: vip install
+
+      - name: Assert Chromium was cached
+        run: |
+          ls -d "$HOME/.cache/ms-playwright/chromium-"*
+          echo "Chromium cache present."
+
+  macos:
+    name: macos-latest (uv tool)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.11.28"
+          enable-cache: true
+
+      - name: Install vip as a uv tool (isolated venv, only vip on PATH)
+        run: |
+          uv tool install .
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: vip install (default flow)
+        run: vip install
+
+      - name: Assert Chromium was cached
+        run: |
+          ls -d "$HOME/Library/Caches/ms-playwright/chromium-"*
+          echo "Chromium cache present."
