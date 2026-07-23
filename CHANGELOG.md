@@ -1,6 +1,23 @@
 # CHANGELOG
 
 
+## v0.58.2 (2026-07-23)
+
+### Bug Fixes
+
+- **workbench**: Drive file chooser for Workbench Job script selection
+  ([#527](https://github.com/posit-dev/vip/pull/527),
+  [`ae7a56f`](https://github.com/posit-dev/vip/commit/ae7a56fae1616821d6adb105ff58db873c883511))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+- **workbench**: Provision rsconnect via venv in publish-to-connect test
+  ([#524](https://github.com/posit-dev/vip/pull/524),
+  [`833f25c`](https://github.com/posit-dev/vip/commit/833f25cf84ec7028da611998107f85a6d540ddbf))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+
 ## v0.58.1 (2026-07-23)
 
 ### Bug Fixes
