@@ -18,12 +18,14 @@ on:
     branches: [main]
     paths:
       - 'src/vip/install/**'
+      - 'src/vip/cli.py'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/install-flow-smoke.yml'
   pull_request:
     paths:
       - 'src/vip/install/**'
+      - 'src/vip/cli.py'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/install-flow-smoke.yml'
@@ -31,6 +33,14 @@ on:
 
 permissions:
   contents: read
+
+# In a container GitHub defaults `run:` steps to sh (dash), not bash, so any
+# bashism silently changes behavior (and `set -o pipefail` errors outright).
+# Force bash everywhere for consistent behavior across both jobs; GitHub's bash
+# default also runs with `-eo pipefail`.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   ubuntu:
@@ -43,29 +53,31 @@ jobs:
     container:
       image: ubuntu:24.04
     steps:
+      # git for actions/checkout; ca-certificates for setup-uv's HTTPS download.
       - name: Install base tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git curl ca-certificates
+          apt-get install -y --no-install-recommends git ca-certificates
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
-      - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/0.11.28/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.11.28"
+          enable-cache: true
 
       - name: Install vip as a uv tool (isolated venv, only vip on PATH)
-        run: uv tool install .
+        run: |
+          uv tool install .
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: vip install (default flow, as root)
         run: vip install
 
       - name: Assert Chromium was cached
         run: |
-          set -euo pipefail
           ls -d "$HOME/.cache/ms-playwright/chromium-"*
           echo "Chromium cache present."
 
@@ -79,6 +91,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
+          version: "0.11.28"
           enable-cache: true
 
       - name: Install vip as a uv tool (isolated venv, only vip on PATH)
@@ -91,6 +104,5 @@ jobs:
 
       - name: Assert Chromium was cached
         run: |
-          set -euo pipefail
           ls -d "$HOME/Library/Caches/ms-playwright/chromium-"*
           echo "Chromium cache present."
