@@ -38,6 +38,14 @@ pytestmark = pytest.mark.order(60)
 # R script that the job runs — output used for verification.
 _JOB_SCRIPT_CONTENT = 'Sys.sleep(2)\ncat("hello from job\\n")'
 _JOB_SCRIPT_FILENAME = "test_job_vip.R"
+# Absolute, home-anchored path used for every file operation on the script.
+# The R console writes and removes it, the Background Job dialog fills it, and
+# the Workbench Job file chooser selects it. Anchoring to ~ (rather than a bare
+# relative name resolved against the session's getwd()) guarantees the write
+# step, the file chooser, and the cleanup step all reference the SAME file
+# regardless of the working directory. R (writeLines/file.remove) and the
+# RStudio file chooser both tilde-expand this path.
+_JOB_SCRIPT_PATH = f"~/{_JOB_SCRIPT_FILENAME}"
 _JOB_EXPECTED_OUTPUT = "hello from job"
 
 _FILENAME = Path(__file__).name
@@ -216,7 +224,9 @@ def _run_console_command(page: Page, r_cmd: str) -> None:
 def write_test_script(page: Page):
     """Write the test R script to a file using writeLines() in the R console."""
     escaped = _JOB_SCRIPT_CONTENT.replace('"', '\\"')
-    _run_console_command(page, f'writeLines("{escaped}", "{_JOB_SCRIPT_FILENAME}")')
+    # writeLines tilde-expands the path, so the file lands in the session home
+    # directory — the same location the file chooser and cleanup step target.
+    _run_console_command(page, f'writeLines("{escaped}", "{_JOB_SCRIPT_PATH}")')
 
 
 @when("the user runs the script as a Background Job")
@@ -249,7 +259,7 @@ def run_as_background_job(page: Page, job_context: dict):
         script_input.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
     except PlaywrightTimeoutError:
         pytest.skip("Background Job script input not found")
-    script_input.fill(_JOB_SCRIPT_FILENAME)
+    script_input.fill(_JOB_SCRIPT_PATH)
 
     # Submit the job.
     run_btn = page.locator(RStudioSession.BACKGROUND_JOB_RUN_BUTTON)
@@ -288,7 +298,7 @@ def run_as_workbench_job(page: Page, job_context: dict):
     # "Browse..." button, type the filename into the Choose File dialog, and
     # click Open, which populates the readonly field. (Verified live over CDP
     # against Workbench 2026.07.0.)
-    _select_workbench_job_script(page, _JOB_SCRIPT_FILENAME)
+    _select_workbench_job_script(page, _JOB_SCRIPT_PATH)
 
     # Submit.
     submit_btn = page.locator(RStudioSession.WORKBENCH_JOB_SUBMIT_BUTTON)
@@ -303,7 +313,9 @@ def _select_workbench_job_script(page: Page, script_filename: str) -> None:
     the "Browse..." button → "Choose File" dialog → type name → Open, mirroring
     the RStudio Pro UI's only supported interaction. Skips gracefully if the
     dialog's controls are not present (an unexpected build variant) rather than
-    hanging on an opaque timeout.
+    hanging on an opaque timeout. Once the dialog IS open and Open is clicked,
+    an empty script field is a real defect (not a capability gap), so it fails
+    rather than skips.
     """
     browse_btn = page.locator(RStudioSession.WORKBENCH_JOB_SCRIPT_BROWSE_BUTTON).first
     try:
@@ -324,17 +336,20 @@ def _select_workbench_job_script(page: Page, script_filename: str) -> None:
     expect(open_btn).to_be_visible(timeout=TIMEOUT_QUICK)
     open_btn.click()
 
-    # Confirm the readonly script field was populated before submitting -- if
-    # the chosen file was rejected (e.g. it does not exist), the field stays
-    # empty and submitting would fail with a less actionable error.
+    # Confirm the readonly script field was populated before submitting. By this
+    # point the dialog opened and Open was clicked, so Workbench Jobs IS
+    # available on this deployment -- an empty field is a genuine regression
+    # (rejected file, changed chooser contract), not a capability gap. Fail
+    # loudly with the chosen path rather than skipping and masking the defect.
     script_field = page.locator(RStudioSession.WORKBENCH_JOB_SCRIPT_INPUT)
-    try:
-        expect(script_field).not_to_have_value("", timeout=TIMEOUT_DIALOG)
-    except AssertionError:
-        pytest.skip(
-            f"Workbench Job script field was not populated after choosing "
-            f"{script_filename!r} — the file may not exist in the session home directory"
-        )
+    expect(
+        script_field,
+        (
+            f"Workbench Job script field stayed empty after choosing {script_filename!r} via "
+            f"the file chooser — the file may not exist at that path, or the chooser contract "
+            f"changed"
+        ),
+    ).not_to_have_value("", timeout=TIMEOUT_DIALOG)
 
 
 def _wait_for_job_completion(page: Page, job_timeout_s: int) -> None:
@@ -386,15 +401,16 @@ def workbench_job_completed(page: Page, vip_config: VIPConfig):
 def remove_test_script(page: Page):
     """Delete the test R script from the session home directory via the console.
 
-    The job test writes ``test_job_vip.R`` into the session's working directory
+    The job test writes ``test_job_vip.R`` into the session home directory
     (persistent shared storage on Workbench). Quitting the session does not
-    remove it, so without this step the file accumulates across runs. Runs
-    before the session-quit step while the console is still available.
-    Best-effort: file cleanup must never fail the job result, so any error
-    (console gone, command not accepted) is swallowed.
+    remove it, so without this step the file accumulates across runs. Removes
+    the same home-anchored path the write step created. Runs before the
+    session-quit step while the console is still available. Best-effort: file
+    cleanup must never fail the job result, so any error (console gone, command
+    not accepted) is swallowed.
     """
     try:
-        _run_console_command(page, f'suppressWarnings(file.remove("{_JOB_SCRIPT_FILENAME}"))')
+        _run_console_command(page, f'suppressWarnings(file.remove("{_JOB_SCRIPT_PATH}"))')
     except Exception:
         pass
 
