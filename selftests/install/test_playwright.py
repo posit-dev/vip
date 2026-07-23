@@ -125,6 +125,16 @@ def _popen_factory(**kwargs):
 
 
 def test_install_chromium_invokes_subprocess(monkeypatch):
+    """Playwright must be invoked via ``python -m playwright`` using the current
+    interpreter, not a bare ``playwright`` executable on PATH.
+
+    When vip is installed with ``uv tool install posit-vip`` it lives in an
+    isolated venv and only vip's own entry point (``vip``) is exposed on PATH;
+    playwright's console script never lands in ``~/.local/bin``. A bare
+    ``playwright`` lookup then fails with ``[Errno 2] No such file or
+    directory``. Going through ``sys.executable -m playwright`` uses the same
+    interpreter vip is running under, where playwright is importable.
+    """
     calls = []
 
     def fake_popen(args, **kwargs):
@@ -133,7 +143,7 @@ def test_install_chromium_invokes_subprocess(monkeypatch):
 
     monkeypatch.setattr(pw.subprocess, "Popen", fake_popen)
     pw.install_chromium()
-    assert calls == [("playwright", "install", "chromium")]
+    assert calls == [(pw.sys.executable, "-m", "playwright", "install", "chromium")]
 
 
 def test_install_chromium_raises_on_failure(monkeypatch):
