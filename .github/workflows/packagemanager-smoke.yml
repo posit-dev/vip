@@ -358,8 +358,12 @@ jobs:
             echo "Version-matrix job failed; cannot confirm smoke scope"
             exit 1
           fi
+          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.packagemanager-smoke.result }}" != "success" ]; then
+            echo "Package Manager smoke was in scope but did not succeed (result=${{ needs.packagemanager-smoke.result }}); is RSPM_LICENSE configured?"
+            exit 1
+          fi
           if [ "${{ needs.packagemanager-smoke.result }}" = "failure" ] || [ "${{ needs.packagemanager-smoke.result }}" = "cancelled" ]; then
             echo "Package Manager smoke tests failed or were cancelled"
             exit 1
           fi
-          echo "Package Manager smoke tests passed or were skipped"
+          echo "Package Manager smoke tests passed or were legitimately out of scope"
