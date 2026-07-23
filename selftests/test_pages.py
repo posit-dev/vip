@@ -119,3 +119,21 @@ class TestRStudioSessionWorkbenchJobsSelectors:
         assert "#rstudio_tb_startworkbenchjob" in RStudioSession.WORKBENCH_JOB_NEW_BUTTON
         assert "Start Workbench Job" in RStudioSession.WORKBENCH_JOB_NEW_BUTTON
         assert "#rstudio_dlg_ok" in RStudioSession.WORKBENCH_JOB_SUBMIT_BUTTON
+
+    def test_script_field_targets_the_readonly_picker_by_id(self):
+        # The Workbench Job script field is a readonly FileChooserTextBox; the
+        # step must never fill() it. Guard the exact id so a future selector
+        # broadening does not accidentally reintroduce the .fill() timeout bug.
+        assert RStudioSession.WORKBENCH_JOB_SCRIPT_INPUT == "#rstudio_tbb_text_pro_job_script"
+
+    def test_script_browse_button_targets_current_id(self):
+        # Browse... button that opens the Choose File dialog (verified live CDP).
+        assert (
+            "#rstudio_tbb_button_pro_job_script"
+            in RStudioSession.WORKBENCH_JOB_SCRIPT_BROWSE_BUTTON
+        )
+
+    def test_file_chooser_selectors_target_current_ids(self):
+        assert "#file_dialog_name_prompt" in RStudioSession.FILE_CHOOSER_NAME_INPUT
+        assert "#rstudio_file_accept_open" in RStudioSession.FILE_CHOOSER_OPEN_BUTTON
+        assert "Open" in RStudioSession.FILE_CHOOSER_OPEN_BUTTON

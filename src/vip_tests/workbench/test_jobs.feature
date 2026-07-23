@@ -10,6 +10,7 @@ Feature: Workbench job execution
     And the user writes a test R script file via the console
     And the user runs the script as a Background Job
     Then the Background Job completes with expected output
+    And the test script file is removed
     And the job test session is cleaned up
 
   Scenario: Workbench Job runs and completes
@@ -21,4 +22,5 @@ Feature: Workbench job execution
     And the user writes a test R script file via the console
     And the user runs the script as a Workbench Job
     Then the Workbench Job completes with expected output
+    And the test script file is removed
     And the job test session is cleaned up

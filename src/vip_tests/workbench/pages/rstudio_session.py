@@ -63,6 +63,26 @@ class RStudioSession:
         "#rstudio_tb_startworkbenchjob, button:text-is('Start Workbench Job'), "
         "button:text-is('Run Script as Workbench Job')"
     )
+    # The "Run Script as Workbench Job" dialog's script-path field
+    # (#rstudio_tbb_text_pro_job_script) is a readonly FileChooserTextBox on
+    # Launcher deployments -- it CANNOT be typed into. The script is chosen via
+    # its adjacent "Browse..." button (#rstudio_tbb_button_pro_job_script),
+    # which opens a "Choose File" dialog. Verified live over CDP against
+    # Workbench 2026.07.0, and in rstudio-pro source (FileChooserTextBox is
+    # constructed readOnly=true unless browseButtonDisabled, which is only true
+    # for local-launcher sessions without path mapping -- readonly since 2021).
+    WORKBENCH_JOB_SCRIPT_INPUT = "#rstudio_tbb_text_pro_job_script"
+    WORKBENCH_JOB_SCRIPT_BROWSE_BUTTON = (
+        "#rstudio_tbb_button_pro_job_script, "
+        "#rstudio_tbb_text_pro_job_script ~ button:has-text('Browse')"
+    )
+    # The "Choose File" dialog opened by the Browse button. Its name field is a
+    # real editable input; typing a filename + clicking Open populates the
+    # readonly script box above. The file must already exist or Open is rejected.
+    FILE_CHOOSER_NAME_INPUT = "#file_dialog_name_prompt"
+    FILE_CHOOSER_OPEN_BUTTON = "#rstudio_file_accept_open, button:text-is('Open')"
+    FILE_CHOOSER_CANCEL_BUTTON = "#rstudio_file_cancel_open, button:text-is('Cancel')"
+
     # The submission dialog's OK button (#rstudio_dlg_ok) is captioned "Start"
     # ("Submit" kept as a text fallback for older builds).
     WORKBENCH_JOB_SUBMIT_BUTTON = (
