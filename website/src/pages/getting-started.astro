@@ -148,6 +148,22 @@ vip verify --connect-url https://connect.example.com --api-auth</code></pre>
             This is useful in CI pipelines or environments where interactive
             login is not possible and no test user credentials are available.
           </p>
+          <p>
+            <strong>Workbench under <code>--api-auth</code>.</strong> Workbench
+            runs only the IDE-launch checks (RStudio, VS Code, JupyterLab,
+            Positron) over the Workbench Admin API — the browser-only Workbench
+            tests (capacity, sessions, jobs, runtime versions, extensions, git)
+            are skipped. This path requires a <strong>super-admin</strong> token
+            (admin tokens cannot launch sessions) on an Enhanced or Advanced
+            deployment with <code>workbench-api-super-admin-enabled=1</code> in
+            <code>rserver.conf</code>. Generate one with
+            <code>rstudio-server generate-api-token super-admin 'vip' &lt;owner&gt;</code>.
+            The checks launch sessions on behalf of <code>VIP_TEST_USERNAME</code>,
+            so set that (no password is needed) alongside the token:
+          </p>
+          <pre><code>export VIP_WORKBENCH_API_KEY="your-super-admin-token"
+export VIP_TEST_USERNAME="test-user"
+vip verify --workbench-url https://workbench.example.com --api-auth</code></pre>
 
           <h3>Credential-based auth</h3>
           <p>

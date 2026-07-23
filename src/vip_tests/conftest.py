@@ -101,6 +101,11 @@ def workbench_client(
     client = WorkbenchClient(
         vip_config.workbench.url,
         api_key=vip_config.workbench.api_key,
+        # The Workbench Admin API (IDE-launch under --api-auth) requires an
+        # ``Authorization: Bearer <token>`` header. The UI-facing /api/sessions
+        # cleanup path authenticates via cookies, so this scheme is only
+        # consumed by the Admin API methods.
+        auth_scheme="Bearer",
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
         auth=auth,

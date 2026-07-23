@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,34 @@ logger = logging.getLogger(__name__)
 
 _VIP_SESSION_PREFIXES = ("VIP ", "_vip_")
 
+# Workbench Admin API session activity_state values (docs-verified against
+# docs.posit.co/ide/server-pro/admin/workbench_api). "running" is the ready
+# state; "failed"/"killed" are terminal so a waiter can fail fast instead of
+# waiting out the whole timeout.
+SESSION_ACTIVE_STATE = "running"
+SESSION_TERMINAL_FAILURE_STATES = ("failed", "killed")
+
+# IDE display name -> the exact `workbench` param value accepted by
+# launch_session. Case- and space-sensitive per the docs; do not "normalize".
+WORKBENCH_IDE_VALUES = {
+    "RStudio": "RStudio",
+    "VS Code": "VS Code",
+    "JupyterLab": "JupyterLab",
+    "Jupyter Notebook": "Jupyter Notebook",
+    "Positron": "Positron",
+}
+
+
+class WorkbenchSessionError(Exception):
+    """A launched session never reached the active state.
+
+    Raised by :meth:`WorkbenchClient.wait_for_active` when a session reaches a
+    terminal failure state or never becomes active before the timeout, so the
+    step layer can tell a deployment-side launch failure apart from an
+    HTTP/privilege error (which surfaces as ``httpx.HTTPStatusError``).
+    Parallels ``ResourceProfileDisabled`` in the workbench conftest.
+    """
+
 
 def is_vip_session(label: str) -> bool:
     """Return True if *label* matches a VIP-created session naming pattern.
@@ -29,6 +58,32 @@ def is_vip_session(label: str) -> bool:
     return any(label.startswith(prefix) for prefix in _VIP_SESSION_PREFIXES)
 
 
+def _session_activity_state(result: Any) -> str | None:
+    """Extract a single session's ``activity_state`` from a ``get_session`` result.
+
+    The Admin API's ``get_session`` result can take a few shapes depending on
+    the deployment/version: a single session dict carrying ``activity_state``
+    directly, a list of such dicts, or a dict keyed by session id.  This
+    normalizes those into the first ``activity_state`` string it finds, or
+    ``None`` when the payload has no recognizable session (a transient shape
+    the poll loop simply retries).
+    """
+    if isinstance(result, dict):
+        state = result.get("activity_state")
+        if isinstance(state, str):
+            return state
+        # dict keyed by session id -> session dict
+        for value in result.values():
+            if isinstance(value, dict) and isinstance(value.get("activity_state"), str):
+                return value["activity_state"]
+        return None
+    if isinstance(result, list):
+        for value in result:
+            if isinstance(value, dict) and isinstance(value.get("activity_state"), str):
+                return value["activity_state"]
+    return None
+
+
 class WorkbenchClient(BaseClient):
     """Minimal Workbench HTTP wrapper."""
 
@@ -37,15 +92,22 @@ class WorkbenchClient(BaseClient):
         base_url: str,
         api_key: str = "",
         *,
+        auth_scheme: str = "Key",
         timeout: float | None = None,
         insecure: bool = False,
         ca_bundle: Path | None = None,
         auth: httpx.Auth | None = None,
         cookies: httpx.Cookies | None = None,
     ) -> None:
+        # ``auth_scheme`` selects the ``Authorization`` header prefix. Default
+        # ``"Key"`` preserves the pre-existing UI-cleanup behavior; the root
+        # conftest passes ``"Bearer"`` for the Admin API (launch/get/stop),
+        # which is docs-verified to require ``Authorization: Bearer <token>``.
+        # The UI ``/api/sessions`` cleanup authenticates via cookies (see
+        # :meth:`set_cookies`), so the header scheme does not affect it.
         super().__init__(
             base_url,
-            auth_header_value=f"Key {api_key}" if api_key else "",
+            auth_header_value=f"{auth_scheme} {api_key}" if api_key else "",
             timeout=timeout,
             insecure=insecure,
             ca_bundle=ca_bundle,
@@ -69,6 +131,165 @@ class WorkbenchClient(BaseClient):
         resp = self._client.get("/api/server/settings")
         resp.raise_for_status()
         return resp.json()
+
+    def get_version(self) -> dict[str, Any]:
+        """Return the Workbench Admin API version payload.
+
+        ``GET /api/version`` → ``{"result": {"version": {...}, "features": ...}}``.
+        Used by the API-auth readiness guard to confirm the Admin API is
+        reachable and the Bearer token is accepted before any launch.  Raises
+        ``httpx.HTTPStatusError`` on a non-2xx (the guard maps 401/403 to a
+        skip and re-raises anything else).
+        """
+        resp = self._client.get("/api/version")
+        resp.raise_for_status()
+        return resp.json()
+
+    # -- Admin API (session launch/inspect/stop) ----------------------------
+
+    def launch_session(
+        self,
+        workbench: str,
+        *,
+        username: str | None = None,
+        name: str | None = None,
+        launch_parameters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Launch a session via the Admin API and return the ``result`` dict.
+
+        ``POST /api/launch_session`` with ``{"method": "launch_session",
+        "kwparams": {...}}``.  The IDE is selected by the ``workbench`` field
+        (one of :data:`WORKBENCH_IDE_VALUES`), *not* ``editor``.  A
+        super-admin token may pass ``username`` to launch on behalf of that
+        user.  ``name`` sets the session label (VIP passes a ``"VIP ..."`` name
+        so :func:`is_vip_session` matches it for cleanup).  ``launch_parameters``
+        is only required when Launcher-backed sessions are enabled; on Local
+        Launcher it is omitted rather than fabricated.
+
+        Raises ``httpx.HTTPStatusError`` on a non-2xx so the step layer can
+        decide skip-vs-fail from the status code.  Returns the ``result``
+        payload (``{"id", "url", "project_id"}``).
+        """
+        kwparams: dict[str, Any] = {"workbench": workbench}
+        if username is not None:
+            kwparams["username"] = username
+        if name is not None:
+            kwparams["name"] = name
+        if launch_parameters is not None:
+            kwparams["launch_parameters"] = launch_parameters
+        resp = self._client.post(
+            "/api/launch_session",
+            json={"method": "launch_session", "kwparams": kwparams},
+        )
+        resp.raise_for_status()
+        return resp.json()["result"]
+
+    def get_session(
+        self,
+        session_id: str | None = None,
+        *,
+        username: str | None = None,
+        fields: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Return the Admin API ``result`` for one or more sessions.
+
+        ``POST /api/get_session``.  Note the field is ``session_id``
+        (**singular**, comma-joined for multiple ids) — this differs from
+        :meth:`stop_session`'s plural ``session_ids``; the API is inconsistent
+        here.  The optional user filter is sent as ``user`` (from *username*).
+        Raises ``httpx.HTTPStatusError`` on a non-2xx.
+        """
+        kwparams: dict[str, Any] = {}
+        if session_id is not None:
+            kwparams["session_id"] = session_id
+        if username is not None:
+            kwparams["user"] = username
+        if fields is not None:
+            kwparams["fields"] = fields
+        resp = self._client.post(
+            "/api/get_session",
+            json={"method": "get_session", "kwparams": kwparams},
+        )
+        resp.raise_for_status()
+        return resp.json()["result"]
+
+    def stop_session(
+        self,
+        session_ids: str | Iterable[str],
+        *,
+        force_quit: bool = False,
+        suspend: bool = False,
+    ) -> bool:
+        """Best-effort stop of one or more sessions via the Admin API.
+
+        ``POST /api/stop_session`` with ``kwparams["session_ids"]``
+        (**plural**, comma-joined — differs from :meth:`get_session`'s singular
+        ``session_id``).  Like :meth:`quit_session`, this never raises: teardown
+        must not mask the test result.  Returns ``True`` when the call returned
+        a status below 400.
+        """
+        if isinstance(session_ids, str):
+            ids = session_ids
+        else:
+            ids = ",".join(str(sid) for sid in session_ids)
+        kwparams: dict[str, Any] = {"session_ids": ids}
+        if force_quit:
+            kwparams["force_quit"] = True
+        if suspend:
+            kwparams["suspend"] = True
+        try:
+            resp = self._client.post(
+                "/api/stop_session",
+                json={"method": "stop_session", "kwparams": kwparams},
+            )
+            return resp.status_code < 400
+        except Exception:
+            return False
+
+    def wait_for_active(
+        self,
+        session_id: str,
+        *,
+        username: str | None = None,
+        timeout: float,
+        poll_interval: float = 2.0,
+    ) -> str:
+        """Poll ``get_session`` until the session is active; return its state.
+
+        Returns ``"running"`` (:data:`SESSION_ACTIVE_STATE`) once the session
+        reaches it.  Fails fast by raising :class:`WorkbenchSessionError` if the
+        session hits a terminal failure state
+        (:data:`SESSION_TERMINAL_FAILURE_STATES`) so a dead session does not
+        wait out the full *timeout*, and raises :class:`WorkbenchSessionError`
+        on timeout naming the last-observed state.
+
+        The docs recommend the ``timestamp`` long-poll on ``get_session``; a
+        simple bounded poll (``time.monotonic`` deadline + ``time.sleep``) is
+        sufficient here and matches the repo's UI-poll style.
+        """
+        deadline = time.monotonic() + timeout
+        last_state = "unknown"
+        while True:
+            result = self.get_session(
+                session_id, username=username, fields=["id", "activity_state", "running"]
+            )
+            last_state = _session_activity_state(result) or last_state
+            if last_state == SESSION_ACTIVE_STATE:
+                return last_state
+            if last_state in SESSION_TERMINAL_FAILURE_STATES:
+                raise WorkbenchSessionError(
+                    f"Workbench session {session_id!r} reached terminal state "
+                    f"{last_state!r} instead of {SESSION_ACTIVE_STATE!r}. The "
+                    "deployment could not launch the session — verify the launcher, "
+                    "the session image, and available CPU/memory/quota."
+                )
+            if time.monotonic() >= deadline:
+                raise WorkbenchSessionError(
+                    f"Workbench session {session_id!r} did not reach "
+                    f"{SESSION_ACTIVE_STATE!r} within {timeout:.0f}s "
+                    f"(last observed state: {last_state!r})."
+                )
+            time.sleep(poll_interval)
 
     # -- Sessions -----------------------------------------------------------
 

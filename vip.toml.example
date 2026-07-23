@@ -43,6 +43,13 @@ url = "https://workbench.example.com"
 
 # API key for a Workbench admin user.
 # Prefer setting the VIP_WORKBENCH_API_KEY environment variable.
+#
+# For `vip verify --api-auth` (browser-less IDE-launch checks), this must be a
+# SUPER-ADMIN token — admin tokens cannot launch sessions. Requires the
+# Enhanced or Advanced tier with `workbench-api-super-admin-enabled=1` in
+# rserver.conf. Generate with:
+#   rstudio-server generate-api-token super-admin 'vip' <token-owner-username>
+# The IDE-launch tests launch on behalf of [auth] username / VIP_TEST_USERNAME.
 # api_key = "..."
 #
 # Session capacity testing (requires --interactive-auth).

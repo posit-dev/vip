@@ -473,6 +473,42 @@ class TestPluginIntegration:
         # which may contain "deselected" in the tmpdir path).
         assert "deselected" not in result.stdout.lines[-1]
 
+    def test_workbench_api_auth_retained_under_api_auth(self, selftest_pytester):
+        """Under --api-auth, a @workbench @api_auth test is retained while a
+        plain @workbench (browser) test is deselected.
+
+        This is the plumbing that lets the Workbench Admin-API IDE-launch
+        scenarios (#504) run under --api-auth without any plugin.py change:
+        _is_api_auth_only keeps auth-requiring tests that carry @api_auth.
+        Workbench must be *configured* (a URL) so the tests are not deselected
+        for product, which would mask the auth logic under test.
+        """
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[workbench]\nurl = "https://wb.example.com"\n'
+            ),
+        )
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.workbench
+            @pytest.mark.api_auth
+            def test_api_ok():
+                assert True
+
+            @pytest.mark.workbench
+            def test_needs_browser():
+                assert True
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "--api-auth", "-v")
+        # The api_auth test runs; the browser-only Workbench test is deselected.
+        result.assert_outcomes(passed=1)
+        result.stdout.fnmatch_lines(["*1 deselected*"])
+
     def test_bdd_parameterized_unconfigured_deselected(self, selftest_pytester):
         """A parameterized '<product> is configured' step should deselect
         when the product is not configured."""
