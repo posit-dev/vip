@@ -143,7 +143,15 @@ def test_install_chromium_invokes_subprocess(monkeypatch):
 
     monkeypatch.setattr(pw.subprocess, "Popen", fake_popen)
     pw.install_chromium()
-    assert calls == [(pw.sys.executable, "-m", "playwright", "install", "chromium")]
+    assert len(calls) == 1
+    command = calls[0]
+    # Shape guard: the install path must never shell out to a bare tool name on
+    # PATH (which breaks under `uv tool install`); it must invoke the module with
+    # the current interpreter. Asserted as a shape, not just the exact tuple, so
+    # a newly-added bare-executable subprocess call is also caught.
+    assert command[0] == pw.sys.executable
+    assert command[1] == "-m"
+    assert command == (pw.sys.executable, "-m", "playwright", "install", "chromium")
 
 
 def test_install_chromium_raises_on_failure(monkeypatch):
