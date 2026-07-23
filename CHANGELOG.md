@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.58.3 (2026-07-23)
+
+### Bug Fixes
+
+- **workbench**: Reactivate Positron console tab before concluding no console
+  ([#521](https://github.com/posit-dev/vip/pull/521),
+  [`6862078`](https://github.com/posit-dev/vip/commit/6862078cca832ee599c903ab2c2575ddfd6bf9b5))
+
+
 ## v0.58.2 (2026-07-23)
 
 ### Bug Fixes
