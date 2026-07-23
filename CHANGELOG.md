@@ -1,6 +1,33 @@
 # CHANGELOG
 
 
+## v0.58.1 (2026-07-23)
+
+### Bug Fixes
+
+- **install**: Invoke playwright via python -m for uv tool installs
+  ([#525](https://github.com/posit-dev/vip/pull/525),
+  [`f571b93`](https://github.com/posit-dev/vip/commit/f571b93b9ad755ffdec680cb3c1b944bf411507c))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 2 updates
+  ([#523](https://github.com/posit-dev/vip/pull/523),
+  [`744c3d5`](https://github.com/posit-dev/vip/commit/744c3d5d7eab59ea59db4f6a77b78eb9de4b7c1d))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump the python-dependencies group with 2 updates
+  ([#522](https://github.com/posit-dev/vip/pull/522),
+  [`2aa4c76`](https://github.com/posit-dev/vip/commit/2aa4c76c0050687c9f56b6926bbb2c23796b6d85))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+
 ## v0.58.0 (2026-07-22)
 
 ### Bug Fixes
