@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.58.7 (2026-07-24)
+
+### Bug Fixes
+
+- **workbench**: Harden Workbench Job console write (newline escape + deterministic waits)
+  ([#531](https://github.com/posit-dev/vip/pull/531),
+  [`10fb025`](https://github.com/posit-dev/vip/commit/10fb0256702a99dce427b421cda377555681f21e))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+
 ## v0.58.6 (2026-07-24)
 
 ### Bug Fixes
