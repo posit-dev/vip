@@ -38,6 +38,9 @@ jobs:
 
   release:
     name: Attach locked constraints to release
+    # Gate on build so the tag/version-alignment assertion also protects the
+    # GitHub release: a mistagged tag fails build and never publishes a release.
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
