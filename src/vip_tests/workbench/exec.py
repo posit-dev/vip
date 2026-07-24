@@ -16,7 +16,9 @@ by selftests/test_workbench_exec.py.
 
 from __future__ import annotations
 
+import base64
 import re
+import shlex
 import time
 import uuid
 
@@ -942,6 +944,84 @@ def terminal_run(
     raise ExecError(
         f"terminal_run timed out after {timeout}ms waiting for done marker in {tmpfile!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Server-side file materialization
+# ---------------------------------------------------------------------------
+
+
+def _b64_write_cmd(path: str, content: str) -> str:
+    """Build a shell command that writes *content* to *path* on the server.
+
+    The content is base64-encoded on the client and decoded on the server, so
+    arbitrary bytes (newlines, quotes, ``$``, backticks) survive the terminal
+    typing path intact -- a heredoc or ``echo`` would be mangled by the shell's
+    own interpretation of the characters ``terminal_run`` types verbatim.
+
+    ``base64 -d`` is coreutils/BusyBox-portable; the payload is a single token
+    (base64 emits no shell metacharacters) piped into ``base64 -d > path``.
+    """
+    payload = base64.b64encode(content.encode("utf-8")).decode("ascii")
+    return f"printf %s {payload} | base64 -d > {shlex.quote(path)}"
+
+
+def write_bundle(
+    page: Page,
+    bundle_dir: str,
+    files: dict[str, str],
+    *,
+    timeout: int = 30_000,
+    readback_lang: str = "r",
+) -> str:
+    """Materialize *files* under *bundle_dir* on the Workbench server.
+
+    Writes each ``{filename: content}`` entry into *bundle_dir* using the IDE
+    session terminal (via :func:`terminal_run`), so the bundle exists on the
+    machine where subsequent terminal commands run -- not on the host running
+    pytest.  This decouples the test from where VIP is invoked: the bundle is
+    always local to the ``rsconnect`` process that consumes it.
+
+    Filenames may include subdirectories (e.g. ``www/index.html``); the parent
+    directory is created before each file is written.
+
+    Args:
+        page: Playwright page for an active IDE session.
+        bundle_dir: Absolute server-side directory to create and populate.
+        files: Mapping of relative filename to file content.
+        timeout: Max milliseconds for each underlying terminal command.
+        readback_lang: Readback language for :func:`terminal_run` (``"python"``
+            for pure VS Code sessions without an R console).
+
+    Returns:
+        *bundle_dir*, for convenient chaining into a deploy command.
+
+    Raises:
+        ExecError: A directory creation or file write command failed.
+    """
+    terminal_run(
+        page,
+        f"mkdir -p {shlex.quote(bundle_dir)}",
+        timeout=timeout,
+        readback_lang=readback_lang,
+    )
+    for filename, content in files.items():
+        dest = f"{bundle_dir}/{filename}"
+        parent = dest.rsplit("/", 1)[0]
+        if parent and parent != bundle_dir:
+            terminal_run(
+                page,
+                f"mkdir -p {shlex.quote(parent)}",
+                timeout=timeout,
+                readback_lang=readback_lang,
+            )
+        terminal_run(
+            page,
+            _b64_write_cmd(dest, content),
+            timeout=timeout,
+            readback_lang=readback_lang,
+        )
+    return bundle_dir
 
 
 # ---------------------------------------------------------------------------

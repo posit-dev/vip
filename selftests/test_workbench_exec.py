@@ -16,6 +16,7 @@ No live Workbench deployment or Playwright browser is required.
 
 from __future__ import annotations
 
+import base64
 import re
 from unittest.mock import MagicMock
 
@@ -24,6 +25,7 @@ import pytest
 import vip_tests.workbench.exec as exec_mod
 from vip_tests.workbench.exec import (
     ExecError,
+    _b64_write_cmd,
     _detect_ide,
     _extract_between_markers,
     _make_sentinels,
@@ -37,6 +39,7 @@ from vip_tests.workbench.exec import (
     ensure_positron_console,
     file_exists,
     read_file,
+    write_bundle,
 )
 from vip_tests.workbench.pages import PositronSession, RStudioSession, VSCodeSession
 
@@ -954,3 +957,82 @@ class TestTerminalRun:
 
         assert error_output in str(excinfo.value)
         mock_read.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _b64_write_cmd
+# ---------------------------------------------------------------------------
+
+
+class TestB64WriteCmd:
+    """The server-side file-write command must round-trip arbitrary content."""
+
+    def test_payload_decodes_back_to_content(self):
+        content = 'x = 1\nprint("hi $USER `date`")\n'
+        cmd = _b64_write_cmd("/tmp/app.py", content)
+        # Extract the base64 token between "printf %s " and " | base64 -d".
+        token = cmd.split("printf %s ", 1)[1].split(" | ", 1)[0]
+        assert base64.b64decode(token).decode("utf-8") == content
+
+    def test_path_is_shell_quoted(self):
+        cmd = _b64_write_cmd("/tmp/dir with space/app.py", "data")
+        assert "> '/tmp/dir with space/app.py'" in cmd
+
+    def test_no_raw_content_metacharacters_leak(self):
+        """Shell metacharacters in content must not appear unencoded in the cmd."""
+        cmd = _b64_write_cmd("/tmp/f", "rm -rf /; $(evil) `boom`")
+        assert "rm -rf /" not in cmd
+        assert "$(evil)" not in cmd
+        assert "`boom`" not in cmd
+
+
+# ---------------------------------------------------------------------------
+# write_bundle
+# ---------------------------------------------------------------------------
+
+
+class TestWriteBundle:
+    def test_creates_dir_and_writes_each_file(self, monkeypatch):
+        calls: list[str] = []
+        monkeypatch.setattr(exec_mod, "terminal_run", lambda page, cmd, **kw: calls.append(cmd))
+        page = MagicMock()
+
+        result = write_bundle(
+            page,
+            "/tmp/bundle",
+            {"app.py": "APP", "requirements.txt": "shiny\n"},
+            readback_lang="python",
+        )
+
+        assert result == "/tmp/bundle"
+        # First command must create the bundle dir.
+        assert calls[0] == "mkdir -p /tmp/bundle"
+        # Each file is written via a base64 pipe to its dest path.
+        assert any("base64 -d > /tmp/bundle/app.py" in c for c in calls)
+        assert any("base64 -d > /tmp/bundle/requirements.txt" in c for c in calls)
+        # The app.py payload round-trips.
+        app_cmd = next(c for c in calls if "/tmp/bundle/app.py" in c)
+        token = app_cmd.split("printf %s ", 1)[1].split(" | ", 1)[0]
+        assert base64.b64decode(token).decode("utf-8") == "APP"
+
+    def test_creates_parent_dir_for_nested_file(self, monkeypatch):
+        calls: list[str] = []
+        monkeypatch.setattr(exec_mod, "terminal_run", lambda page, cmd, **kw: calls.append(cmd))
+        page = MagicMock()
+
+        write_bundle(page, "/tmp/bundle", {"www/index.html": "<html>"})
+
+        # The nested file's parent must be created before the write.
+        assert "mkdir -p /tmp/bundle/www" in calls
+        parent_idx = calls.index("mkdir -p /tmp/bundle/www")
+        write_idx = next(i for i, c in enumerate(calls) if "/tmp/bundle/www/index.html" in c)
+        assert parent_idx < write_idx
+
+    def test_propagates_terminal_run_failure(self, monkeypatch):
+        def boom(page, cmd, **kw):
+            raise ExecError("write failed")
+
+        monkeypatch.setattr(exec_mod, "terminal_run", boom)
+
+        with pytest.raises(ExecError, match="write failed"):
+            write_bundle(MagicMock(), "/tmp/bundle", {"app.py": "APP"})

@@ -31,7 +31,7 @@ from vip_tests.workbench.conftest import (
     wait_for_session_active,
     workbench_login,
 )
-from vip_tests.workbench.exec import ExecError, terminal_run
+from vip_tests.workbench.exec import ExecError, terminal_run, write_bundle
 from vip_tests.workbench.pages import Homepage, NewSessionDialog, VSCodeSession
 
 pytestmark = pytest.mark.order(60)
@@ -181,7 +181,7 @@ def open_vscode_session(page: Page, publish_context: dict):
 def deploy_python_shiny_via_terminal(
     page: Page,
     publish_context: dict,
-    python_shiny_bundle_path: Path,
+    python_shiny_bundle_files: dict,
     connect_url: str,
     vip_config,
     connect_client,
@@ -189,10 +189,13 @@ def deploy_python_shiny_via_terminal(
 ):
     """Run ``rsconnect deploy shiny`` in the VS Code terminal and register the GUID.
 
-    ``rsconnect-python`` is not assumed to be on PATH.  We create a throwaway
-    venv from whatever ``python3`` the session provides, install
-    ``rsconnect-python`` into it, deploy with that venv's ``rsconnect``, and
-    tear the venv down afterwards.  A missing ``python3`` fails the preflight.
+    The Shiny bundle is written into the Workbench session's own filesystem via
+    the IDE terminal (``write_bundle``), so ``rsconnect`` finds it locally no
+    matter where pytest runs -- the bundle is never assumed to exist on the
+    pytest host.  ``rsconnect-python`` is not assumed to be on PATH either: we
+    create a throwaway venv from whatever ``python3`` the session provides,
+    install ``rsconnect-python`` into it, deploy with that venv's ``rsconnect``,
+    and tear the venv and bundle down afterwards.  A missing ``python3`` skips.
     """
     # Open the integrated terminal.
     page.keyboard.press("Control+`")
@@ -230,9 +233,20 @@ def deploy_python_shiny_via_terminal(
 
     title = f"vip_test_shiny_{unique_session_name(_FILENAME)}"
     venv_dir = f"/tmp/vip_rsconnect_venv_{uuid.uuid4().hex}"
+    bundle_dir = f"/tmp/vip_shiny_bundle_{uuid.uuid4().hex}"
     rsconnect_bin = f"{venv_dir}/bin/rsconnect"
 
     try:
+        # Materialize the bundle in the session's own filesystem so rsconnect
+        # finds it locally (the pytest host's /tmp is not visible here).
+        write_bundle(
+            page,
+            bundle_dir,
+            python_shiny_bundle_files,
+            timeout=_VENV_QUICK_TIMEOUT_MS,
+            readback_lang="python",
+        )
+
         # Create the venv and install rsconnect-python into it.
         terminal_run(
             page,
@@ -250,7 +264,7 @@ def deploy_python_shiny_via_terminal(
         output = terminal_run(
             page,
             (
-                f"{rsconnect_bin} deploy shiny {python_shiny_bundle_path} "
+                f"{rsconnect_bin} deploy shiny {bundle_dir} "
                 f"--server {connect_url} "
                 f"--api-key {vip_config.connect.api_key} "
                 f"--title {title}"
@@ -259,19 +273,21 @@ def deploy_python_shiny_via_terminal(
             readback_lang="python",
         )
     finally:
-        # Tear down the throwaway venv regardless of deploy outcome.
-        try:
-            terminal_run(
-                page,
-                f"rm -rf {venv_dir}",
-                timeout=_VENV_QUICK_TIMEOUT_MS,
-                readback_lang="python",
-            )
-        except ExecError:
-            warnings.warn(
-                f"Failed to remove temporary venv at {venv_dir}; manual cleanup may be required.",
-                stacklevel=2,
-            )
+        # Tear down the throwaway venv and bundle regardless of deploy outcome.
+        for path, label in ((venv_dir, "venv"), (bundle_dir, "bundle")):
+            try:
+                terminal_run(
+                    page,
+                    f"rm -rf {path}",
+                    timeout=_VENV_QUICK_TIMEOUT_MS,
+                    readback_lang="python",
+                )
+            except ExecError:
+                warnings.warn(
+                    f"Failed to remove temporary {label} at {path}; "
+                    "manual cleanup may be required.",
+                    stacklevel=2,
+                )
 
     # Primary: stable API title lookup (version-independent).
     content = connect_client._find_content_by_name(title)

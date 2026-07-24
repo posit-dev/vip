@@ -5,8 +5,8 @@ Verifies that ``_connect_created_guids``, ``_connect_content_cleanup``, and
 ``src/vip_tests/conftest.py`` (and therefore visible to all test packages)
 and are no longer duplicated in ``src/vip_tests/connect/conftest.py``.
 
-Also verifies the ``python_shiny_bundle_path`` fixture produces a directory
-with the expected files.
+Also verifies the ``python_shiny_bundle_files`` fixture produces the expected
+bundle contents (materialized server-side by the deploy step, not on disk).
 """
 
 from __future__ import annotations
@@ -101,12 +101,29 @@ class TestCleanupFixturesPromotedToRoot:
 
 class TestPythonShinyBundlePath:
     def test_fixture_defined_in_workbench_conftest(self):
-        """python_shiny_bundle_path fixture must be in workbench conftest."""
+        """python_shiny_bundle_files fixture must be in workbench conftest."""
         source = _WORKBENCH_CONFTEST.read_text()
         names = _fixture_names_in(source)
-        assert "python_shiny_bundle_path" in names, (
-            f"Expected fixture 'python_shiny_bundle_path' in {_WORKBENCH_CONFTEST}"
+        assert "python_shiny_bundle_files" in names, (
+            f"Expected fixture 'python_shiny_bundle_files' in {_WORKBENCH_CONFTEST}"
         )
+
+    def test_bundle_files_mapping_has_expected_entries(self):
+        """The content-only bundle mapping must carry app.py + requirements.txt."""
+        from vip_tests.workbench.conftest import _python_shiny_bundle_files
+
+        files = _python_shiny_bundle_files()
+        assert set(files) == {"app.py", "requirements.txt"}
+        assert "shiny" in files["requirements.txt"]
+
+    def test_bundle_files_app_py_is_valid_python(self):
+        """app.py content must parse as valid Python."""
+        from vip_tests.workbench.conftest import _python_shiny_bundle_files
+
+        try:
+            ast.parse(_python_shiny_bundle_files()["app.py"])
+        except SyntaxError as exc:
+            raise AssertionError(f"app.py contains invalid Python: {exc}") from exc
 
     def test_bundle_creates_app_py(self, tmp_path):
         """The fixture must create app.py in the returned directory."""

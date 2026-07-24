@@ -934,6 +934,17 @@ app = App(app_ui, server)
 '''
 
 
+def _python_shiny_bundle_files() -> dict[str, str]:
+    """Return the Python Shiny bundle as a ``{filename: content}`` mapping.
+
+    The bundle is content-only (no filesystem location) so it can be
+    materialized wherever the deploy runs -- in the tests, written into the
+    Workbench session's own filesystem via the IDE terminal so ``rsconnect``
+    finds it locally regardless of where pytest is invoked.
+    """
+    return {"app.py": _PYTHON_SHINY_APP, "requirements.txt": "shiny\n"}
+
+
 def _write_python_shiny_bundle(bundle_dir: Path) -> Path:
     """Write a minimal Python Shiny bundle (app.py + requirements.txt) into bundle_dir.
 
@@ -941,20 +952,20 @@ def _write_python_shiny_bundle(bundle_dir: Path) -> Path:
 
         path = _write_python_shiny_bundle(some_dir)
     """
-    (bundle_dir / "app.py").write_text(_PYTHON_SHINY_APP)
-    (bundle_dir / "requirements.txt").write_text("shiny\n")
+    for name, content in _python_shiny_bundle_files().items():
+        (bundle_dir / name).write_text(content)
     return bundle_dir
 
 
 @pytest.fixture(scope="session")
-def python_shiny_bundle_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Create a session-scoped Python Shiny test bundle in a temp directory.
+def python_shiny_bundle_files() -> dict[str, str]:
+    """Session-scoped Python Shiny bundle as a ``{filename: content}`` mapping.
 
-    Writes a minimal ``app.py`` and ``requirements.txt`` to a fresh temp
-    directory and returns the path.  The bundle is suitable for
-    ``rsconnect deploy shiny <path>``.  Using ``tmp_path_factory`` means the
-    files are created at test-run time on the machine running VIP (which must
-    be the Workbench server, or a host whose /tmp is reachable from the
-    Workbench session terminal).
+    Returns the bundle contents rather than a path: the deploy step writes them
+    into the Workbench session's filesystem via the IDE terminal (see
+    ``exec.write_bundle``), so the bundle is always local to the ``rsconnect``
+    process that consumes it -- the test no longer requires pytest to run on the
+    Workbench server (previously the bundle was created on the pytest host, so a
+    remote runner produced a path ``rsconnect`` could not see).
     """
-    return _write_python_shiny_bundle(tmp_path_factory.mktemp("python_shiny_bundle"))
+    return _python_shiny_bundle_files()
