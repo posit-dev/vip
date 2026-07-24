@@ -207,7 +207,18 @@ def _run_console_command(page: Page, r_cmd: str) -> None:
     focused hidden Ace textarea (matches test_packages.py). ControlOrMeta maps
     select-all to Cmd+A on macOS, where Ctrl+A is "go to line start" and would
     not clear the input.
+
+    Playwright's ``type()`` sends a real Enter keypress for any embedded
+    ``\\n``/``\\r`` (they're aliased to the Enter key in its US keyboard
+    layout), which would submit *r_cmd* early and mid-statement. Assert there
+    isn't one rather than silently mistyping it, since a caller building a
+    multi-line R string must already escape it into the string literal (e.g.
+    ``\\n``) before it reaches here.
     """
+    assert "\n" not in r_cmd and "\r" not in r_cmd, (
+        f"r_cmd contains a raw newline, which Playwright's type() would submit as "
+        f"a premature Enter keypress: {r_cmd!r}"
+    )
     console_input = page.locator(ConsolePaneSelectors.INPUT)
     expect(console_input).to_be_visible(timeout=TIMEOUT_DIALOG)
     console_input.click()
@@ -218,6 +229,17 @@ def _run_console_command(page: Page, r_cmd: str) -> None:
     # Wait for the prompt to return (console is ready for next command).
     time.sleep(1)
     expect(console_input).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
+
+
+def _escape_for_r_string_literal(content: str) -> str:
+    """Escape *content* to embed inside a double-quoted R string literal on one line.
+
+    Quotes and real newlines both need escaping: a raw newline typed into the
+    console would be sent as an Enter keypress (Playwright's type() aliases
+    embedded "\\n"/"\\r" to the Enter key), submitting the command early and
+    splitting it into two invalid R statements.
+    """
+    return content.replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
 
 
 @when("the user writes a test R script file via the console")
@@ -232,7 +254,7 @@ def write_test_script(page: Page):
     error. Verify ``file.exists()`` right here so a dropped write fails loudly at
     its source with the path, rather than masquerading as a chooser regression.
     """
-    escaped = _JOB_SCRIPT_CONTENT.replace('"', '\\"')
+    escaped = _escape_for_r_string_literal(_JOB_SCRIPT_CONTENT)
     # writeLines tilde-expands the path, so the file lands in the session home
     # directory — the same location the file chooser and cleanup step target.
     _run_console_command(page, f'writeLines("{escaped}", "{_JOB_SCRIPT_PATH}")')
