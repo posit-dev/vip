@@ -9,7 +9,6 @@ The job timeout is configurable via ``[workbench] job_timeout`` in vip.toml
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 import pytest
@@ -30,6 +29,7 @@ from vip_tests.workbench.conftest import (
     wait_for_session_active,
     workbench_login,
 )
+from vip_tests.workbench.exec import rstudio_eval
 from vip_tests.workbench.pages import Homepage, NewSessionDialog, RStudioSession
 from vip_tests.workbench.pages.console_pane import ConsolePaneSelectors
 
@@ -198,26 +198,18 @@ def rstudio_ide_loaded(page: Page):
     expect(page.locator(ConsolePaneSelectors.INPUT)).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
 
 
-def _run_console_command(page: Page, r_cmd: str) -> None:
-    """Type a single-line R expression into the console and submit it.
+def _run_console_command(page: Page, r_cmd: str) -> str:
+    """Run a single-line R expression in the console and return its captured output.
 
-    The console input is an Ace editor <div>, not a real <input>/<textarea>,
-    so Locator.fill() raises "Element is not an <input>...". Select-all +
-    delete clears any leftover text, then real keystrokes are typed into the
-    focused hidden Ace textarea (matches test_packages.py). ControlOrMeta maps
-    select-all to Cmd+A on macOS, where Ctrl+A is "go to line start" and would
-    not clear the input.
+    Delegates to ``exec.py::rstudio_eval``, which brackets the command with a
+    unique start/end marker, types it, and waits (via Playwright auto-waiting) for
+    the *end marker* to appear in the console output before returning. That is a
+    deterministic completion signal — the marker prints only once ``r_cmd`` has
+    finished executing — so there is no fixed ``sleep`` to race a slow server or
+    waste time on a fast one. The marker is split so the console's echo of the
+    typed input never satisfies the wait prematurely (see ``exec._split_marker``).
     """
-    console_input = page.locator(ConsolePaneSelectors.INPUT)
-    expect(console_input).to_be_visible(timeout=TIMEOUT_DIALOG)
-    console_input.click()
-    page.keyboard.press("ControlOrMeta+a")
-    page.keyboard.press("Backspace")
-    console_input.type(r_cmd)
-    console_input.press("Enter")
-    # Wait for the prompt to return (console is ready for next command).
-    time.sleep(1)
-    expect(console_input).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
+    return rstudio_eval(page, r_cmd, timeout=TIMEOUT_CODE_EXEC)
 
 
 @when("the user writes a test R script file via the console")
@@ -250,22 +242,18 @@ def write_test_script(page: Page):
 def _assert_script_file_exists(page: Page) -> None:
     """Fail loudly if the test script is not on disk after the write step.
 
-    Emits a unique sentinel alongside ``file.exists()`` and reads it back from
-    the console output, so a dropped ``writeLines()`` (or a write to an
-    unexpected directory) is caught at the write step — before the file chooser
-    turns it into an empty-script-field mystery.
+    Runs ``file.exists()`` and inspects the captured console output, so a dropped
+    ``writeLines()`` (or a write to an unexpected directory) is caught at the
+    write step — before the file chooser turns it into an empty-script-field
+    mystery.
     """
     marker = "VIP_JOB_SCRIPT_CHECK"
-    _run_console_command(page, f'cat("{marker}:", file.exists("{_JOB_SCRIPT_PATH}"), "\\n")')
-    output = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT)
-    expect(
-        output,
-        (
-            f"Test R script {_JOB_SCRIPT_PATH!r} was not created by the console write step — "
-            f"the writeLines() keystrokes may have been dropped before the console settled, or "
-            f"the file landed outside the session home directory"
-        ),
-    ).to_contain_text(f"{marker}: TRUE", timeout=TIMEOUT_CODE_EXEC)
+    output = _run_console_command(page, f'cat("{marker}:", file.exists("{_JOB_SCRIPT_PATH}"))')
+    assert f"{marker}: TRUE" in output, (
+        f"Test R script {_JOB_SCRIPT_PATH!r} was not created by the console write step — "
+        f"the writeLines() keystrokes may have been dropped before the console settled, or "
+        f"the file landed outside the session home directory (console output: {output!r})"
+    )
 
 
 @when("the user runs the script as a Background Job")
@@ -441,18 +429,21 @@ def _select_workbench_job_script(page: Page, script_filename: str) -> None:
 
 
 def _wait_for_job_completion(page: Page, job_timeout_s: int) -> None:
-    """Poll until the job shows a Succeeded/Completed status or the timeout expires."""
-    status_locator = page.locator(RStudioSession.JOB_STATUS_SUCCEEDED)
-    deadline = time.time() + job_timeout_s
-    while time.time() < deadline:
-        if status_locator.count() > 0 and status_locator.first.is_visible():
-            return
-        page.wait_for_timeout(1000)
+    """Wait until the job shows a Succeeded/Completed status.
 
-    raise AssertionError(
-        f"Job did not reach Succeeded/Completed status within {job_timeout_s}s — "
-        "verify Launcher is operational and the Workbench deployment can execute jobs"
-    )
+    Uses Playwright's auto-waiting ``expect`` rather than a hand-rolled poll
+    loop: it retries the locator internally until it is visible or the timeout
+    expires, without a fixed per-iteration cadence. ``job_timeout_s`` is in
+    seconds; ``expect`` takes milliseconds.
+    """
+    status_locator = page.locator(RStudioSession.JOB_STATUS_SUCCEEDED).first
+    try:
+        expect(status_locator).to_be_visible(timeout=job_timeout_s * 1000)
+    except AssertionError as exc:
+        raise AssertionError(
+            f"Job did not reach Succeeded/Completed status within {job_timeout_s}s — "
+            "verify Launcher is operational and the Workbench deployment can execute jobs"
+        ) from exc
 
 
 @then("the Background Job completes with expected output")
