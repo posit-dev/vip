@@ -29,6 +29,57 @@ def is_vip_session(label: str) -> bool:
     return any(label.startswith(prefix) for prefix in _VIP_SESSION_PREFIXES)
 
 
+def jupyterlab_app_base(page_url: str) -> str:
+    """Return the JupyterLab app-root URL from a session page URL.
+
+    A Workbench JupyterLab session is served under a per-session proxy prefix,
+    e.g. ``https://wb.example.com/s/abc123/lab/tree/Untitled.ipynb``.  The
+    JupyterLab server (and its ``/api/contents`` REST surface) is mounted at the
+    segment ending in ``/lab`` — everything *before* ``/lab`` is the app base
+    (``https://wb.example.com/s/abc123``).  The returned value has no trailing
+    slash.  If the URL has no ``/lab`` segment (unexpected), the input is
+    returned with any query/fragment and trailing slash stripped, so callers
+    still get a usable base rather than raising mid-teardown.
+    """
+    # Drop query string and fragment first — the contents API path is built
+    # fresh, so anything after ``?``/``#`` is irrelevant and would corrupt the base.
+    core = page_url.split("?", 1)[0].split("#", 1)[0]
+    marker = "/lab"
+    idx = core.find(marker)
+    if idx != -1:
+        return core[:idx].rstrip("/")
+    return core.rstrip("/")
+
+
+def jupyterlab_contents_delete_url(page_url: str, notebook_name: str) -> str:
+    """Build the ``DELETE /api/contents/<notebook>`` URL for a JupyterLab session.
+
+    *page_url* is the current session page URL (see :func:`jupyterlab_app_base`);
+    *notebook_name* is the notebook's filename as shown on its dock tab (e.g.
+    ``"Untitled.ipynb"``).  The name is URL-quoted so spaces/special characters
+    in a renamed notebook do not break the path.  Any leading slashes on the
+    name are stripped so the result is always ``<app_base>/api/contents/<name>``.
+    """
+    from urllib.parse import quote
+
+    base = jupyterlab_app_base(page_url)
+    clean = notebook_name.strip().lstrip("/")
+    return f"{base}/api/contents/{quote(clean)}"
+
+
+def jupyterlab_xsrf_headers(cookies: dict[str, str]) -> dict[str, str]:
+    """Return the XSRF header JupyterLab requires for mutating contents-API calls.
+
+    JupyterLab protects non-GET ``/api`` requests with a double-submit token:
+    the ``_xsrf`` cookie value must be echoed back in the ``X-XSRFToken`` header.
+    Returns ``{"X-XSRFToken": <value>}`` when the cookie is present, or an empty
+    dict when it is absent (older/token-auth deployments) so the caller can still
+    attempt the request without sending a bogus header.
+    """
+    token = cookies.get("_xsrf")
+    return {"X-XSRFToken": token} if token else {}
+
+
 class WorkbenchClient(BaseClient):
     """Minimal Workbench HTTP wrapper."""
 
@@ -75,6 +126,39 @@ class WorkbenchClient(BaseClient):
     def set_cookies(self, cookies: dict[str, str]) -> None:
         """Set cookies on the client instance for authenticated requests."""
         self._client.cookies.update(cookies)
+
+    def delete_jupyter_notebook(
+        self, page_url: str, notebook_name: str, cookies: dict[str, str]
+    ) -> bool:
+        """Delete a notebook file from a live JupyterLab session's contents API.
+
+        Sends ``DELETE <app_base>/api/contents/<notebook_name>`` authenticated
+        with the browser session *cookies* and the ``X-XSRFToken`` header
+        JupyterLab requires for mutating calls (see
+        :func:`jupyterlab_contents_delete_url` / :func:`jupyterlab_xsrf_headers`).
+
+        This exists so a test that creates a notebook can remove it *before the
+        session is quit* — the contents API only exists while the session is
+        alive — so JupyterLab's layout-restorer stops reopening stale
+        ``Untitled*.ipynb`` tabs (and eagerly starting their kernels) on every
+        subsequent session launch, which widens the launch/exec interaction race.
+
+        Returns True when the server accepts the delete (HTTP < 400, including
+        the ``204`` success and a ``404`` for an already-absent file), False on
+        any other status or transport error.  Never raises — teardown cleanup is
+        a best-effort safety net, not an assertion.
+        """
+        url = jupyterlab_contents_delete_url(page_url, notebook_name)
+        headers = jupyterlab_xsrf_headers(cookies)
+        try:
+            # Set cookies on the client instance (per-request cookies= is
+            # deprecated in httpx and its persistence semantics are ambiguous).
+            self._client.cookies.update(cookies)
+            resp = self._client.request("DELETE", url, headers=headers)
+        except Exception:
+            return False
+        # 404 → already gone, treat as success (idempotent teardown).
+        return resp.status_code < 400 or resp.status_code == 404
 
     def list_sessions(self) -> list[dict[str, Any]]:
         """List active sessions for the authenticated user."""

@@ -26,6 +26,19 @@ class JupyterLabSession:
     DIALOG = ".jp-Dialog"
     DIALOG_ACCEPT = ".jp-Dialog .jp-Dialog-button.jp-mod-accept"
 
+    # Kernel execution-status indicator on the notebook toolbar. JupyterLab sets
+    # its ``data-status`` to "idle" once the kernel is connected and ready, and
+    # "busy" while a cell is running. Gating the first cell run on "idle" avoids
+    # typing/running before the kernel has finished connecting, which drops the
+    # input and produces the spurious "kernel did not produce output" timeout.
+    KERNEL_STATUS = ".jp-Notebook-ExecutionIndicator"
+    KERNEL_STATUS_IDLE = ".jp-Notebook-ExecutionIndicator[data-status='idle']"
+
+    # Current (active) notebook tab in the dock area. Its label text is the
+    # notebook's filename (e.g. "Untitled.ipynb"), used to build the contents-API
+    # path for teardown deletion.
+    CURRENT_TAB_LABEL = ".lm-DockPanel-tabBar .lm-TabBar-tab.jp-mod-current .lm-TabBar-tabLabel"
+
     # Sidebar
     FILE_BROWSER = ".jp-FileBrowser"
     SIDEBAR_LEFT = ".jp-SideBar.jp-mod-left"
