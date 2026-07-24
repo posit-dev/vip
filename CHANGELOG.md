@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.58.6 (2026-07-24)
+
+### Bug Fixes
+
+- **workbench**: Bound JupyterLab cell-run retry timeout
+  ([#534](https://github.com/posit-dev/vip/pull/534),
+  [`ec22572`](https://github.com/posit-dev/vip/commit/ec2257249d9563b51cb2ab112dac2ea2c5702159))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+
 ## v0.58.5 (2026-07-24)
 
 ### Bug Fixes
