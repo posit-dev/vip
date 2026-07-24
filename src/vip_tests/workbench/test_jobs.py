@@ -201,14 +201,28 @@ def rstudio_ide_loaded(page: Page):
 def _run_console_command(page: Page, r_cmd: str) -> str:
     """Run a single-line R expression in the console and return its captured output.
 
-    Delegates to ``exec.py::rstudio_eval``, which brackets the command with a
-    unique start/end marker, types it, and waits (via Playwright auto-waiting) for
-    the *end marker* to appear in the console output before returning. That is a
-    deterministic completion signal — the marker prints only once ``r_cmd`` has
-    finished executing — so there is no fixed ``sleep`` to race a slow server or
-    waste time on a fast one. The marker is split so the console's echo of the
-    typed input never satisfies the wait prematurely (see ``exec._split_marker``).
+    Clears the console input first, then delegates to ``exec.py::rstudio_eval`` for
+    the actual type + deterministic wait.
+
+    The clear step is essential when several commands run back to back (as the job
+    flow does: writeLines, then file.exists). ``rstudio_eval`` assumes a pristine
+    prompt and does not clear the input; without the clear, leftover Ace editor
+    state from the previous command corrupts the next one — the keystrokes land as
+    garbage and open the console Find bar, so the command never runs and its end
+    marker never appears. Select-all + Backspace resets the input to empty first.
+    ControlOrMeta maps select-all to Cmd+A on macOS, where Ctrl+A is "go to line
+    start" and would not clear the input.
+
+    ``rstudio_eval`` then brackets the command with a unique split start/end marker,
+    types it, and waits (Playwright auto-waiting) for the *end marker* to appear in
+    the output — a deterministic "command finished" signal, so there is no fixed
+    ``sleep`` to race a slow server or waste time on a fast one.
     """
+    console_input = page.locator(ConsolePaneSelectors.INPUT)
+    expect(console_input).to_be_visible(timeout=TIMEOUT_DIALOG)
+    console_input.click()
+    page.keyboard.press("ControlOrMeta+a")
+    page.keyboard.press("Backspace")
     return rstudio_eval(page, r_cmd, timeout=TIMEOUT_CODE_EXEC)
 
 
