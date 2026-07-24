@@ -116,7 +116,11 @@ jobs:
 
   publish:
     name: Publish to PyPI
-    needs: build
+    # Also gate on release: PyPI publishes are irreversible, so never publish a
+    # version when the GitHub release / constraints step failed — fix and re-run
+    # (the release job is idempotent) rather than strand a version on PyPI
+    # without its matching release assets.
+    needs: [build, release]
     runs-on: ubuntu-latest
     environment:
       name: pypi
