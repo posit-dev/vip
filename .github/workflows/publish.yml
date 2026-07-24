@@ -18,6 +18,16 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Assert tag matches pyproject version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          proj_version="$(uv version --short)"
+          if [ "$tag_version" != "$proj_version" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} (=$tag_version) does not match pyproject version $proj_version"
+            exit 1
+          fi
+          echo "Tag and pyproject version agree: $proj_version"
+
       - name: Build wheel and sdist
         run: uv build
 
@@ -28,6 +38,9 @@ jobs:
 
   release:
     name: Attach locked constraints to release
+    # Gate on build so the tag/version-alignment assertion also protects the
+    # GitHub release: a mistagged tag fails build and never publishes a release.
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -103,7 +116,11 @@ jobs:
 
   publish:
     name: Publish to PyPI
-    needs: build
+    # Also gate on release: PyPI publishes are irreversible, so never publish a
+    # version when the GitHub release / constraints step failed — fix and re-run
+    # (the release job is idempotent) rather than strand a version on PyPI
+    # without its matching release assets.
+    needs: [build, release]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -117,3 +134,38 @@ jobs:
           path: dist/
 
       - uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        with:
+          attestations: true
+
+  smoke-published:
+    name: Smoke-test published package
+    needs: publish
+    runs-on: ubuntu-latest
+    # Installs from public PyPI and runs the CLI — needs no GITHUB_TOKEN scopes.
+    permissions: {}
+    steps:
+      - name: Resolve release version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      # PyPI needs a moment to index a fresh release; retry install before asserting.
+      - name: Install the published package
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if pip install "posit-vip==${VERSION}"; then
+              echo "Installed posit-vip==${VERSION}"
+              exit 0
+            fi
+            echo "posit-vip==${VERSION} not indexed yet (attempt $attempt/6); waiting 20s"
+            sleep 20
+          done
+          echo "::error::posit-vip==${VERSION} never became installable from PyPI"
+          exit 1
+
+      - name: Verify the CLI runs
+        run: |
+          vip --version
+          vip --version | grep -qF "${VERSION}"
