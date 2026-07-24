@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.58.4 (2026-07-24)
+
+### Bug Fixes
+
+- **workbench**: Harden Workbench Job flow against write/chooser races
+  ([#528](https://github.com/posit-dev/vip/pull/528),
+  [`36a20b8`](https://github.com/posit-dev/vip/commit/36a20b8761aa3891fdf3ead73fc2b0c50a19e382))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+
 ## v0.58.3 (2026-07-23)
 
 ### Bug Fixes
