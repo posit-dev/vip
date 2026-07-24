@@ -22,6 +22,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
+from vip.clients.connect import _VIP_CONTENT_TAG
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_IDE_LOAD,
@@ -359,6 +360,11 @@ def deploy_python_shiny_via_terminal(
         _connect_created_guids.append(guid)
         publish_context["content_guid"] = guid
         publish_context["content_url"] = content_url
+        # rsconnect deploy does not go through connect_client.create_content, so
+        # the content is not auto-tagged. Tag it with _vip_test explicitly so
+        # `vip cleanup` (and the end-of-run sweep) can find and remove it even if
+        # this test's own teardown below is skipped or fails. Best-effort.
+        connect_client._tag_content(guid, _VIP_CONTENT_TAG)
     else:
         warnings.warn(
             f"Could not determine GUID for deployed content '{title}'; "
@@ -394,3 +400,19 @@ def app_reachable_on_connect(publish_context: dict, connect_client):
         assert resp.status_code < 400, (
             f"Deployed content at {url!r} returned HTTP {resp.status_code}"
         )
+
+
+@then("the deployed app is removed from Connect")
+def deployed_app_removed_from_connect(publish_context: dict, connect_client):
+    """Delete the deployed content and verify it is gone.
+
+    This test creates the content, so cleaning it up is part of the scenario --
+    the run must not leave the app behind. The item is also _vip_test-tagged and
+    registered in _connect_created_guids, so `vip cleanup` and the end-of-run
+    sweep remove it as a backstop if this step is skipped.
+    """
+    guid = publish_context.get("content_guid")
+    assert guid, "No content GUID was recorded by the deploy step"
+
+    removed = connect_client._delete_content_verified(guid)
+    assert removed, f"Deployed content {guid} was not removed from Connect"

@@ -9,6 +9,7 @@ Feature: Publish from Workbench to Connect
     And the user opens a VS Code session
     When the user deploys the Python Shiny app via the terminal
     Then the app is reachable on Connect
+    And the deployed app is removed from Connect
 
   Scenario: User deploys via Posit Publisher extension
     Given the user is logged in to Workbench

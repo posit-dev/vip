@@ -894,7 +894,11 @@ def terminal_run(
 
     _ensure_terminal_open(page, timeout=timeout)
     terminal_input = _visible_terminal_input(page)
-    terminal_input.click()
+    # Focus rather than click: the xterm textarea only needs keyboard focus to
+    # receive input, and a pointer click is intercepted by the terminal panel's
+    # "Terminal actions" toolbar overlay (which sits over the textarea), timing
+    # out the click. focus() is not subject to pointer-event interception.
+    terminal_input.focus()
     terminal_input.type(shell_cmd)
     terminal_input.press("Enter")
 
