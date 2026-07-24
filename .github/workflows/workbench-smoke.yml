@@ -329,8 +329,12 @@ jobs:
             echo "Version-matrix job failed; cannot confirm smoke scope"
             exit 1
           fi
+          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.workbench-smoke.result }}" != "success" ]; then
+            echo "Workbench smoke was in scope for this PR but did not succeed (result=${{ needs.workbench-smoke.result }})"
+            exit 1
+          fi
           if [ "${{ needs.workbench-smoke.result }}" = "failure" ] || [ "${{ needs.workbench-smoke.result }}" = "cancelled" ]; then
             echo "Workbench smoke tests failed or were cancelled"
             exit 1
           fi
-          echo "Workbench smoke tests passed or were skipped"
+          echo "Workbench smoke tests passed or were legitimately out of scope"

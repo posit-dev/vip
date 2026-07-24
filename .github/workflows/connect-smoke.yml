@@ -312,8 +312,16 @@ jobs:
             echo "Version-matrix job failed; cannot confirm smoke scope"
             exit 1
           fi
+          # If Connect smoke was in scope for this PR (paths matched) it MUST
+          # have succeeded — a skip here means it was gated out (missing license,
+          # excluded actor, or self-skip) rather than legitimately not relevant,
+          # so treat "in scope but not success" as a hard gate failure.
+          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.connect-smoke.result }}" != "success" ]; then
+            echo "Connect smoke was in scope for this PR but did not succeed (result=${{ needs.connect-smoke.result }})"
+            exit 1
+          fi
           if [ "${{ needs.connect-smoke.result }}" = "failure" ] || [ "${{ needs.connect-smoke.result }}" = "cancelled" ]; then
             echo "Connect smoke tests failed or were cancelled"
             exit 1
           fi
-          echo "Connect smoke tests passed or were skipped"
+          echo "Connect smoke tests passed or were legitimately out of scope"

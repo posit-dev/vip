@@ -94,16 +94,19 @@ jobs:
         with:
           persist-credentials: false
 
-      # Skip the entire job if the license secret is not configured
+      # The job only runs when PM smoke is in scope (changed paths) or on a
+      # scheduled/manual run -- all cases where the suite is meant to execute.
+      # A missing license secret therefore means the required gate cannot be
+      # satisfied, so fail loudly instead of silently skipping every test step
+      # (which would otherwise report a green required check with zero coverage).
       - name: Check for RSPM_LICENSE
         id: license
         run: |
           if [ -z "${{ secrets.RSPM_LICENSE }}" ]; then
-            echo "RSPM_LICENSE secret not configured — skipping PM smoke tests"
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "::error::RSPM_LICENSE secret is not configured; Package Manager smoke cannot run. Set the RSPM_LICENSE repository secret."
+            exit 1
           fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       # Start Package Manager in Docker
       - name: Start Package Manager
@@ -358,8 +361,12 @@ jobs:
             echo "Version-matrix job failed; cannot confirm smoke scope"
             exit 1
           fi
+          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.packagemanager-smoke.result }}" != "success" ]; then
+            echo "Package Manager smoke was in scope but did not succeed (result=${{ needs.packagemanager-smoke.result }}); is RSPM_LICENSE configured?"
+            exit 1
+          fi
           if [ "${{ needs.packagemanager-smoke.result }}" = "failure" ] || [ "${{ needs.packagemanager-smoke.result }}" = "cancelled" ]; then
             echo "Package Manager smoke tests failed or were cancelled"
             exit 1
           fi
-          echo "Package Manager smoke tests passed or were skipped"
+          echo "Package Manager smoke tests passed or were legitimately out of scope"
