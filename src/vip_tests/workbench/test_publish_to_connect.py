@@ -208,9 +208,13 @@ def deploy_python_shiny_via_terminal(
     ``rsconnect-python`` into it, deploy with that venv's ``rsconnect``, and tear
     the venv and bundle down afterwards.  A missing ``python3`` skips.
     """
-    # Open the integrated terminal.
+    # Open the integrated terminal. Filter to the visible input: a VS Code
+    # session can end up with more than one terminal (e.g. the Python extension
+    # spawns one to activate a venv), and a bare ``.xterm-helper-textarea``
+    # locator then trips Playwright's strict mode. terminal_run re-ensures the
+    # terminal itself, so this just confirms an input is present.
     page.keyboard.press("Control+`")
-    terminal_input = page.locator(VSCodeSession.TERMINAL_INPUT)
+    terminal_input = page.locator(f"{VSCodeSession.TERMINAL_INPUT}:visible").last
     expect(terminal_input).to_be_visible(timeout=TIMEOUT_SESSION_START)
 
     # Preflight: a Python interpreter must be on PATH to build the venv.

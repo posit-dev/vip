@@ -372,10 +372,12 @@ def vscode_terminal_accessible(page: Page):
     """
     expect(page.locator(VSCodeSession.WORKBENCH)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
 
-    # Open the integrated terminal with the standard VS Code shortcut
+    # Open the integrated terminal with the standard VS Code shortcut. Filter to
+    # the visible input so a session with more than one terminal does not trip
+    # Playwright's strict mode on the bare ``.xterm-helper-textarea`` locator.
     page.keyboard.press("Control+`")
 
-    terminal_input = page.locator(VSCodeSession.TERMINAL_INPUT)
+    terminal_input = page.locator(f"{VSCodeSession.TERMINAL_INPUT}:visible").last
     expect(terminal_input).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
 
 

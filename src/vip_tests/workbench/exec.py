@@ -783,6 +783,22 @@ def _detect_ide(page: Page) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _visible_terminal_input(page: Page):
+    """The active integrated-terminal input, as a single-element locator.
+
+    A session can accumulate more than one terminal — notably, VS Code's Python
+    extension spawns a second terminal to auto-activate a newly created venv — so
+    the bare ``.xterm-helper-textarea`` selector matches multiple elements and
+    Playwright's strict mode rejects ``.click()`` / ``.type()`` on it. Only the
+    active terminal is visible, so filter to ``:visible``; ``.last`` breaks a
+    transient tie while VS Code is mid-switch between terminals. Every keystroke
+    goes to the active terminal anyway, and each ``terminal_run`` is
+    self-contained (absolute tmpfile paths + marker readback), so which terminal
+    receives it does not matter as long as it is a live shell.
+    """
+    return page.locator(f"{VSCodeSession.TERMINAL_INPUT}:visible").last
+
+
 def _ensure_terminal_open(page: Page, timeout: int = 30_000) -> None:
     """Make the IDE's integrated terminal input visible before use.
 
@@ -793,8 +809,7 @@ def _ensure_terminal_open(page: Page, timeout: int = 30_000) -> None:
     ``.xterm-helper-textarea`` is already present. This helper is idempotent —
     it returns immediately when a terminal input is already visible.
     """
-    terminal_input = page.locator(VSCodeSession.TERMINAL_INPUT)
-    if terminal_input.count() > 0 and terminal_input.first.is_visible():
+    if page.locator(f"{VSCodeSession.TERMINAL_INPUT}:visible").count() > 0:
         return
 
     if page.locator(RStudioSession.CONTAINER).count() > 0:
@@ -808,7 +823,7 @@ def _ensure_terminal_open(page: Page, timeout: int = 30_000) -> None:
     elif page.locator(VSCodeSession.WORKBENCH).count() > 0:
         # VS Code / Positron: open the integrated terminal (creates one if none).
         page.keyboard.press("Control+`")
-    expect(terminal_input).to_be_visible(timeout=timeout)
+    expect(_visible_terminal_input(page)).to_be_visible(timeout=timeout)
 
 
 def terminal_run(
@@ -878,7 +893,7 @@ def terminal_run(
     ide = _detect_ide(page)
 
     _ensure_terminal_open(page, timeout=timeout)
-    terminal_input = page.locator(VSCodeSession.TERMINAL_INPUT)
+    terminal_input = _visible_terminal_input(page)
     terminal_input.click()
     terminal_input.type(shell_cmd)
     terminal_input.press("Enter")

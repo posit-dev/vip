@@ -834,6 +834,30 @@ class TestReadFileRouting:
 
 
 # ---------------------------------------------------------------------------
+# _visible_terminal_input
+# ---------------------------------------------------------------------------
+
+
+class TestVisibleTerminalInput:
+    """A session may hold more than one terminal (VS Code's Python extension
+    spawns one to activate a venv), so the input must be resolved by the
+    ``:visible`` filter + ``.last`` -- a bare ``.xterm-helper-textarea`` locator
+    matches multiple elements and trips Playwright strict mode on click/type."""
+
+    def test_filters_to_visible_and_last(self):
+        from vip_tests.workbench.exec import _visible_terminal_input
+        from vip_tests.workbench.pages import VSCodeSession
+
+        page = MagicMock()
+        _visible_terminal_input(page)
+
+        selector = page.locator.call_args[0][0]
+        assert selector == f"{VSCodeSession.TERMINAL_INPUT}:visible"
+        # ``.last`` is what disambiguates a transient two-terminal tie.
+        assert page.locator.return_value.last is _visible_terminal_input(page)
+
+
+# ---------------------------------------------------------------------------
 # terminal_run
 # ---------------------------------------------------------------------------
 
@@ -851,6 +875,16 @@ class TestTerminalRun:
         monkeypatch.setattr(exec_mod, "_ensure_terminal_open", lambda p, timeout=30_000: None)
         monkeypatch.setattr(exec_mod.uuid, "uuid4", lambda: _FixedUUID())
 
+    @staticmethod
+    def _typed_cmd(page):
+        """The command string terminal_run typed into the (visible) terminal.
+
+        terminal_run resolves the input via ``_visible_terminal_input``, which
+        returns ``page.locator(...).last``, so the ``.type()`` call lands on the
+        ``.last`` child mock rather than ``page.locator.return_value``.
+        """
+        return page.locator.return_value.last.type.call_args[0][0]
+
     def test_writes_done_marker_unconditionally(self, monkeypatch):
         """The marker must be appended with ``;`` so it is written even when
         *cmd* fails -- ``&&`` silently drops it on non-zero exit (#439)."""
@@ -862,7 +896,7 @@ class TestTerminalRun:
 
         exec_mod.terminal_run(page, "false", timeout=1_000)
 
-        typed_cmd = page.locator.return_value.type.call_args[0][0]
+        typed_cmd = self._typed_cmd(page)
         assert "&&" not in typed_cmd
         assert 'echo "VIP_DONE_deadbeef:$?"' in typed_cmd
 
@@ -893,7 +927,7 @@ class TestTerminalRun:
 
         exec_mod.terminal_run(page, "command -v python3 || command -v python", timeout=1_000)
 
-        typed_cmd = page.locator.return_value.type.call_args[0][0]
+        typed_cmd = self._typed_cmd(page)
         assert typed_cmd.startswith("( command -v python3 || command -v python ) > ")
         assert " > /tmp/vip_term_deadbeef.txt 2>&1;" in typed_cmd
 
