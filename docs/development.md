@@ -102,6 +102,39 @@ pin or cap in `pyproject.toml` and updates `uv.lock` in one PR, which CI gates
 before merge. The next release then ships the tested set. To bump a pin by hand,
 edit the constraint and run `just relock` in the same commit.
 
+## Releasing
+
+Releases are automated. On every push to `main` that isn't itself a release
+commit, `release.yml` runs `python-semantic-release`
+(`semantic-release version --push --tag --changelog --no-vcs-release`): it reads
+the conventional-commit history, bumps the version in `pyproject.toml` and
+`src/vip/__init__.py`, updates `CHANGELOG.md`, and pushes a `vX.Y.Z` tag.
+
+The tag push triggers two workflows:
+
+- `publish.yml` -- builds the wheel/sdist, asserts the tag matches the
+  `pyproject.toml` version, attaches the locked constraints file to the GitHub
+  release via draft-then-publish (so the asset lands before immutable releases
+  lock it), publishes to PyPI with PEP 740 attestations, then smoke-tests the
+  published package by installing `posit-vip==<version>` from PyPI and running
+  `vip --version`.
+- `docker.yml` -- builds and pushes the container image to
+  `ghcr.io/posit-dev/vip`, then pulls the pushed tag back and runs `vip version`
+  as a sanity check.
+
+### Versioning and the 1.0 cutover
+
+`[tool.semantic_release]` sets `major_on_zero = false` on purpose: while the
+project is on `0.x`, a breaking change bumps the **minor** version rather than
+jumping to `1.0.0`. This keeps the automated pipeline from ever cutting 1.0 on
+its own.
+
+Shipping 1.0 is a **deliberate, manual act**. When the project is ready, open a
+dedicated, reviewed PR that either sets `major_on_zero = true` (so the next
+breaking change bumps to `1.0.0`) or hand-sets `version = "1.0.0"` in
+`pyproject.toml` and tags `v1.0.0`. Automating the 0.x->1.0 transition is
+intentionally out of scope.
+
 ## Design principles
 
 - **Non-destructive** — tests create, verify, and clean up their own content.
