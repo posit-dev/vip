@@ -129,3 +129,36 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
         with:
           attestations: true
+
+  smoke-published:
+    name: Smoke-test published package
+    needs: publish
+    runs-on: ubuntu-latest
+    # Installs from public PyPI and runs the CLI — needs no GITHUB_TOKEN scopes.
+    permissions: {}
+    steps:
+      - name: Resolve release version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      # PyPI needs a moment to index a fresh release; retry install before asserting.
+      - name: Install the published package
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if pip install "posit-vip==${VERSION}"; then
+              echo "Installed posit-vip==${VERSION}"
+              exit 0
+            fi
+            echo "posit-vip==${VERSION} not indexed yet (attempt $attempt/6); waiting 20s"
+            sleep 20
+          done
+          echo "::error::posit-vip==${VERSION} never became installable from PyPI"
+          exit 1
+
+      - name: Verify the CLI runs
+        run: |
+          vip --version
+          vip --version | grep -qF "${VERSION}"
