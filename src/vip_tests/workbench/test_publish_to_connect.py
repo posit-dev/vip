@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import time
 import uuid
 import warnings
 from pathlib import Path
@@ -46,6 +47,11 @@ _DEPLOY_TIMEOUT_MS = 180_000
 # Timeout for the short venv-management commands (create, pip install, cleanup).
 _VENV_SETUP_TIMEOUT_MS = 120_000
 _VENV_QUICK_TIMEOUT_MS = 30_000
+
+# Post-deploy reachability polling (deploy runs --no-verify, so the Shiny
+# process may still be booting when the deploy command returns).
+_REACHABILITY_TIMEOUT_S = 60
+_REACHABILITY_POLL_S = 3
 
 
 @scenario(
@@ -317,13 +323,19 @@ def deploy_python_shiny_via_terminal(
         # (unique_session_name → "VIP <file> - <worker>-<ns>"), which the shell
         # would otherwise split into extra args ("Got unexpected extra
         # arguments"); the api-key and URL are quoted defensively too.
+        # --no-verify: skip rsconnect's own post-deploy content probe, which
+        # blocks for minutes waiting for the Shiny process to boot and pushes the
+        # step past its timeout / the 5-minute suite budget. The "Then the app is
+        # reachable on Connect" step verifies reachability with a bounded retry
+        # instead. The bundle still builds server-side; we only skip the wait.
         output = terminal_run(
             page,
             (
                 f"{rsconnect_bin} deploy manifest {shlex.quote(manifest_path)} "
                 f"--server {shlex.quote(connect_url)} "
                 f"--api-key {shlex.quote(vip_config.connect.api_key)} "
-                f"--title {shlex.quote(title)}"
+                f"--title {shlex.quote(title)} "
+                f"--no-verify"
             ),
             timeout=_DEPLOY_TIMEOUT_MS,
             readback_lang="python",
@@ -389,17 +401,36 @@ def deploy_via_publisher_ui(page: Page):
 
 @then("the app is reachable on Connect")
 def app_reachable_on_connect(publish_context: dict, connect_client):
-    """Verify the deployed content is accessible via HTTP."""
+    """Verify the deployed content is accessible via HTTP.
+
+    Deploy runs with ``--no-verify``, so the Shiny process may still be booting.
+    Poll the content URL with a bounded budget rather than assuming it is up the
+    instant the deploy command returns.
+    """
     guid = publish_context.get("content_guid")
     assert guid, "No content GUID was recorded by the deploy step"
 
     content = connect_client.get_content(guid)
     url = publish_context.get("content_url") or content.get("content_url", "")
-    if url:
-        resp = connect_client.fetch_content(url)
-        assert resp.status_code < 400, (
-            f"Deployed content at {url!r} returned HTTP {resp.status_code}"
-        )
+    if not url:
+        return
+
+    deadline = time.monotonic() + _REACHABILITY_TIMEOUT_S
+    last_status = None
+    while time.monotonic() < deadline:
+        try:
+            resp = connect_client.fetch_content(url)
+            last_status = resp.status_code
+            if resp.status_code < 400:
+                return
+        except Exception as exc:  # transient during first-boot
+            last_status = repr(exc)
+        time.sleep(_REACHABILITY_POLL_S)
+
+    raise AssertionError(
+        f"Deployed content at {url!r} was not reachable within "
+        f"{_REACHABILITY_TIMEOUT_S}s (last result: {last_status})"
+    )
 
 
 @then("the deployed app is removed from Connect")

@@ -709,9 +709,26 @@ def _open_file_in_vscode_editor(page: Page, abspath: str, timeout: int = 30_000)
 
 
 def _read_vscode_editor_text(page: Page, timeout: int = 30_000) -> str:
-    """Return the inner text of the active Monaco editor view-lines."""
+    """Return the inner text of the active Monaco editor view-lines.
+
+    Monaco *virtualizes* ``.view-lines``: only the lines in the current viewport
+    are in the DOM. terminal_run appends its done marker to the LAST line of the
+    output file, so on a long log (e.g. an rsconnect deploy transcript) the
+    marker is scrolled out of view and never appears in ``.view-lines`` --
+    terminal_run then polls until timeout despite the command having finished.
+    Jump to the end of the file first so the final lines (with the marker) are
+    the ones rendered.
+    """
     loc = page.locator(".editor-instance .view-lines").first
     expect(loc).to_be_visible(timeout=timeout)
+    # Ctrl+End moves the cursor to the file's end, scrolling the last lines into
+    # the rendered viewport. Meta+End covers the macOS keybinding.
+    try:
+        page.keyboard.press("Control+End")
+        page.keyboard.press("Meta+End")
+    except Exception:
+        pass
+    page.wait_for_timeout(150)
     return loc.inner_text()
 
 
