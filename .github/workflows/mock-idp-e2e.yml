@@ -30,23 +30,6 @@ on:
       - 'Dockerfile'
       - '.github/workflows/mock-idp-e2e.yml'
   pull_request:
-    paths:
-      - 'src/vip/auth.py'
-      - 'src/vip/idp.py'
-      - 'src/vip/totp.py'
-      - 'src/vip/cli.py'
-      - 'src/vip_tests/conftest.py'
-      - 'src/vip_tests/connect/test_auth.py'
-      - 'src/vip_tests/connect/test_auth.feature'
-      - 'src/vip_tests/workbench/test_auth.py'
-      - 'src/vip_tests/workbench/test_auth.feature'
-      - 'docker/keycloak/**'
-      - 'docker/connect/**'
-      - 'docker/workbench/**'
-      - 'docker/tls/**'
-      - 'compose.mock-idp.yml'
-      - 'Dockerfile'
-      - '.github/workflows/mock-idp-e2e.yml'
   schedule:
     - cron: "30 5 * * *" # daily at 5:30am UTC
   workflow_dispatch:
@@ -59,6 +42,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - 'src/vip/auth.py'
+              - 'src/vip/idp.py'
+              - 'src/vip/totp.py'
+              - 'src/vip/cli.py'
+              - 'src/vip_tests/conftest.py'
+              - 'src/vip_tests/connect/test_auth.py'
+              - 'src/vip_tests/connect/test_auth.feature'
+              - 'src/vip_tests/workbench/test_auth.py'
+              - 'src/vip_tests/workbench/test_auth.feature'
+              - 'docker/keycloak/**'
+              - 'docker/connect/**'
+              - 'docker/workbench/**'
+              - 'docker/tls/**'
+              - 'compose.mock-idp.yml'
+              - 'Dockerfile'
+              - '.github/workflows/mock-idp-e2e.yml'
+
   # Emit the Workbench version list for the E2E job. PR/push runs test only the
   # latest release (single required check, unchanged). Scheduled/manual runs fan
   # out across the Workbench support window (current + 2 back) — same list as
@@ -80,7 +96,11 @@ jobs:
           fi
 
   mock-idp-e2e:
-    needs: [set-matrix]
+    needs: [set-matrix, changes]
+    if: >-
+      needs.changes.outputs.relevant == 'true'
+      || github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
     # Keep the original job name on the release (PR/push) leg so the PR-time
     # check name is unchanged; suffix only the pinned scheduled/manual legs.
     # `!=` first so the release leg yields '' rather than tripping the falsy-`||` trap.
@@ -227,19 +247,29 @@ jobs:
   status:
     name: Mock-IdP E2E Status
     if: always()
-    needs: [set-matrix, mock-idp-e2e]
+    needs: [changes, set-matrix, mock-idp-e2e]
     runs-on: ubuntu-latest
     steps:
       - name: Check result
         run: |
+          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
+            echo "Change-detection job failed; cannot confirm E2E scope"
+            exit 1
+          fi
           # A failed set-matrix skips (not fails) mock-idp-e2e, which the
           # check below would otherwise read as a clean skip.
           if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
             echo "Version-matrix job failed; cannot confirm E2E scope"
             exit 1
           fi
+          # If auth paths changed, the E2E suite was in scope and MUST have
+          # succeeded — a skip means it was gated out, not legitimately absent.
+          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.mock-idp-e2e.result }}" != "success" ]; then
+            echo "Mock-IdP E2E was in scope but did not succeed (result=${{ needs.mock-idp-e2e.result }})"
+            exit 1
+          fi
           if [ "${{ needs.mock-idp-e2e.result }}" = "failure" ] || [ "${{ needs.mock-idp-e2e.result }}" = "cancelled" ]; then
             echo "Mock-IdP E2E tests failed or were cancelled"
             exit 1
           fi
-          echo "Mock-IdP E2E tests passed or were skipped"
+          echo "Mock-IdP E2E tests passed or were legitimately out of scope"
