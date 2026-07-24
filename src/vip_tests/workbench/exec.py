@@ -825,10 +825,13 @@ def terminal_run(
     Strategy:
     1. Ensure the IDE terminal is open (activate the RStudio Terminal tab or
        create a VS Code/Positron terminal) so its input is present.
-    2. Type ``{cmd} > {tmpfile} 2>&1; echo "{done_marker}:$?" >> {tmpfile}`` in the
-       terminal input (``.xterm-helper-textarea``).  The marker is appended
-       with ``;`` rather than ``&&`` so it is always written, even when *cmd*
-       fails -- see issue #439.
+    2. Type ``( {cmd} ) > {tmpfile} 2>&1; echo "{done_marker}:$?" >> {tmpfile}``
+       in the terminal input (``.xterm-helper-textarea``).  *cmd* is wrapped in
+       a subshell so the redirect captures its whole output even when *cmd*
+       contains ``||`` / ``&&`` (shell precedence would otherwise bind the
+       redirect to the last operand only).  The marker is appended with ``;``
+       rather than ``&&`` so it is always written, even when *cmd* fails -- see
+       issue #439.
     3. Press Enter to execute.
     4. Poll for the done marker:
        - RStudio/Positron: call ``read_file`` (console eval, fresh each call).
@@ -862,7 +865,13 @@ def terminal_run(
     """
     done_marker = f"VIP_DONE_{uuid.uuid4().hex}"
     tmpfile = f"/tmp/vip_term_{uuid.uuid4().hex}.txt"
-    shell_cmd = f'{cmd} > {tmpfile} 2>&1; echo "{done_marker}:$?" >> {tmpfile}'
+    # Wrap *cmd* in a subshell so the ``> {tmpfile}`` redirect captures the
+    # entire command's stdout/stderr regardless of any ``||`` / ``&&`` / ``;``
+    # inside *cmd*. Without the group, shell precedence binds the redirect to
+    # only the last operand -- e.g. ``command -v python3 || command -v python``
+    # sends the ``python3`` hit to the visible terminal, not the file, so
+    # terminal_run returns "" with exit 0 (which then runs ``'' -m venv``).
+    shell_cmd = f'( {cmd} ) > {tmpfile} 2>&1; echo "{done_marker}:$?" >> {tmpfile}'
 
     ide = _detect_ide(page)
 

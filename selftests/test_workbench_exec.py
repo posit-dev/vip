@@ -874,6 +874,26 @@ class TestTerminalRun:
 
         assert result == "hello"
 
+    def test_wraps_cmd_in_subshell_before_redirect(self, monkeypatch):
+        """*cmd* must be grouped in ``( ... )`` before the ``> tmpfile`` redirect.
+
+        Regression guard: an ``||``/``&&`` inside *cmd* would otherwise bind the
+        redirect to only its last operand, so a short-circuited command (e.g.
+        ``command -v python3 || command -v python``) sends its output to the
+        visible terminal instead of the capture file -- terminal_run then returns
+        "" with exit 0 and the caller builds an empty ``'' -m venv`` invocation."""
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(
+            exec_mod, "read_file", MagicMock(return_value="/usr/bin/python3\nVIP_DONE_deadbeef:0")
+        )
+        page = MagicMock()
+
+        exec_mod.terminal_run(page, "command -v python3 || command -v python", timeout=1_000)
+
+        typed_cmd = page.locator.return_value.type.call_args[0][0]
+        assert typed_cmd.startswith("( command -v python3 || command -v python ) > ")
+        assert " > /tmp/vip_term_deadbeef.txt 2>&1;" in typed_cmd
+
     def test_raises_exec_error_immediately_on_nonzero_exit(self, monkeypatch):
         """Fast failure must surface as an immediate ExecError with the real
         output, not a 120s timeout with the output discarded."""

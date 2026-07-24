@@ -201,7 +201,9 @@ def deploy_python_shiny_via_terminal(
 
     # Preflight: a Python interpreter must be on PATH to build the venv.
     # Prefer ``python3`` but accept ``python`` so sessions without the
-    # ``python3`` symlink still qualify.
+    # ``python3`` symlink still qualify. Absence of Python is an environment
+    # precondition, not a publishing defect, so skip rather than fail here --
+    # only a genuine deploy failure below should FAIL the check.
     try:
         python_bin = terminal_run(
             page,
@@ -209,11 +211,22 @@ def deploy_python_shiny_via_terminal(
             timeout=_VENV_QUICK_TIMEOUT_MS,
             readback_lang="python",
         ).strip()
-    except ExecError as exc:
-        raise AssertionError(
+    except ExecError:
+        pytest.skip(
             "Neither python3 nor python is on PATH in the Workbench session; "
             "cannot create a venv to install rsconnect-python for deployment."
-        ) from exc
+        )
+
+    # A blank result means the readback captured no interpreter path (e.g. the
+    # command's stdout escaped the redirect). Skip rather than build an empty
+    # ``python_bin`` that would run as ``'' -m venv`` (exit 127, "-m: command
+    # not found").
+    if not python_bin:
+        pytest.skip(
+            "Could not resolve a python3/python interpreter path in the Workbench "
+            "session; the preflight returned no output, so a venv for "
+            "rsconnect-python cannot be created."
+        )
 
     title = f"vip_test_shiny_{unique_session_name(_FILENAME)}"
     venv_dir = f"/tmp/vip_rsconnect_venv_{uuid.uuid4().hex}"
