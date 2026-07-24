@@ -224,15 +224,23 @@ def _run_console_command(page: Page, r_cmd: str) -> None:
 def write_test_script(page: Page):
     """Write the test R script to a file using writeLines() and confirm it landed.
 
-    The console is an Ace editor driven by real keystrokes, which can be dropped
-    if the console has not fully settled after the IDE loads. A dropped
-    ``writeLines()`` leaves no file, and the Workbench Job file chooser then
-    silently rejects Open (the file must exist), so the readonly script field
-    stays empty and the failure only surfaces later as an opaque empty-field
-    error. Verify ``file.exists()`` right here so a dropped write fails loudly at
-    its source with the path, rather than masquerading as a chooser regression.
+    The script is a two-line R program, but it must be typed as a single-line
+    ``writeLines()`` call: the console is driven by Playwright .type(), which
+    sends any real newline as an Enter keypress and would split the command in
+    two. If the write is dropped or split, no file is created, the Workbench Job
+    file chooser then silently rejects Open (the file must exist), and the
+    readonly script field stays empty — surfacing later as an opaque empty-field
+    error. Verify ``file.exists()`` right here so a bad write fails loudly at its
+    source with the path, rather than masquerading as a chooser regression.
     """
-    escaped = _JOB_SCRIPT_CONTENT.replace('"', '\\"')
+    # _run_console_command types the command with Playwright .type(), which
+    # sends a real newline (LF) as an Enter keypress. _JOB_SCRIPT_CONTENT holds a
+    # two-line script separated by a literal LF, so the whole writeLines(...) call
+    # must be escaped onto ONE physical line or Enter tears it in two — the first
+    # fragment (writeLines("Sys.sleep(2)")) auto-closes and runs alone, the
+    # remainder is a syntax error, and no file is written. Escape backslashes
+    # first (so R sees single backslashes), then quotes, then the separator LF.
+    escaped = _JOB_SCRIPT_CONTENT.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
     # writeLines tilde-expands the path, so the file lands in the session home
     # directory — the same location the file chooser and cleanup step target.
     _run_console_command(page, f'writeLines("{escaped}", "{_JOB_SCRIPT_PATH}")')
