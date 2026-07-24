@@ -448,9 +448,16 @@ def _run_jupyter_cell_and_get_output(
 
     Returns True once the output area shows ``2``; False if all *attempts* are
     exhausted without output (the caller decides whether that is a skip).
+
+    The first attempt gets the full ``TIMEOUT_CODE_EXEC`` budget (a healthy but
+    cold kernel can be slow to produce its first result in Docker CI).  Retries
+    exist only to recover a *lost* keystroke against an already-live kernel,
+    which resolves in seconds, so they use the shorter ``TIMEOUT_DIALOG`` budget
+    — keeping the worst-case failure path bounded instead of ``attempts ×`` the
+    full timeout.
     """
     cell_output = notebook_panel.locator(JupyterLabSession.CELL_OUTPUT).first
-    for _attempt in range(attempts):
+    for attempt in range(attempts):
         # A leftover kernel dialog can reappear between attempts; clear it first.
         _accept_open_dialogs(page)
 
@@ -467,8 +474,9 @@ def _run_jupyter_cell_and_get_output(
             continue
 
         cell_input.press("Shift+Enter")
+        output_timeout = TIMEOUT_CODE_EXEC if attempt == 0 else TIMEOUT_DIALOG
         try:
-            expect(cell_output).to_contain_text("2", timeout=TIMEOUT_CODE_EXEC)
+            expect(cell_output).to_contain_text("2", timeout=output_timeout)
             return True
         except AssertionError:
             # No output yet — loop and re-issue the run.
