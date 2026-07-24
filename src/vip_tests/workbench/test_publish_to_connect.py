@@ -13,6 +13,7 @@ excludes the tests when either product is absent.
 from __future__ import annotations
 
 import re
+import shlex
 import uuid
 import warnings
 from pathlib import Path
@@ -311,13 +312,17 @@ def deploy_python_shiny_via_terminal(
             readback_lang="python",
         )
 
+        # shlex.quote every interpolated value: the title contains spaces
+        # (unique_session_name → "VIP <file> - <worker>-<ns>"), which the shell
+        # would otherwise split into extra args ("Got unexpected extra
+        # arguments"); the api-key and URL are quoted defensively too.
         output = terminal_run(
             page,
             (
-                f"{rsconnect_bin} deploy manifest {manifest_path} "
-                f"--server {connect_url} "
-                f"--api-key {vip_config.connect.api_key} "
-                f"--title {title}"
+                f"{rsconnect_bin} deploy manifest {shlex.quote(manifest_path)} "
+                f"--server {shlex.quote(connect_url)} "
+                f"--api-key {shlex.quote(vip_config.connect.api_key)} "
+                f"--title {shlex.quote(title)}"
             ),
             timeout=_DEPLOY_TIMEOUT_MS,
             readback_lang="python",
