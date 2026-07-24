@@ -181,21 +181,26 @@ def open_vscode_session(page: Page, publish_context: dict):
 def deploy_python_shiny_via_terminal(
     page: Page,
     publish_context: dict,
-    python_shiny_bundle_files: dict,
+    shiny_bundle_files: dict,
     connect_url: str,
     vip_config,
     connect_client,
     _connect_created_guids: list,
 ):
-    """Run ``rsconnect deploy shiny`` in the VS Code terminal and register the GUID.
+    """Run ``rsconnect deploy manifest`` in the VS Code terminal and register the GUID.
 
-    The Shiny bundle is written into the Workbench session's own filesystem via
+    Deploys the *same* Shiny bundle as the Connect deploy test (shared
+    ``connect.bundles.build_shiny_bundle_files``): a minimal R ``app.R`` plus
+    the reference ``shiny_manifest.json``.  ``deploy manifest`` -- unlike
+    ``deploy shiny``, which is Python-only -- deploys any content type from a
+    prepared manifest and builds it server-side, so the session needs no local
+    R.  The bundle is written into the Workbench session's own filesystem via
     the IDE terminal (``write_bundle``), so ``rsconnect`` finds it locally no
-    matter where pytest runs -- the bundle is never assumed to exist on the
-    pytest host.  ``rsconnect-python`` is not assumed to be on PATH either: we
-    create a throwaway venv from whatever ``python3`` the session provides,
-    install ``rsconnect-python`` into it, deploy with that venv's ``rsconnect``,
-    and tear the venv and bundle down afterwards.  A missing ``python3`` skips.
+    matter where pytest runs.  ``rsconnect-python`` is not assumed to be on
+    PATH: we create a throwaway venv from whatever ``python3`` the session
+    provides, install ``rsconnect-python`` into it, deploy with that venv's
+    ``rsconnect``, and tear the venv and bundle down afterwards.  A missing
+    ``python3`` skips.
     """
     # Open the integrated terminal.
     page.keyboard.press("Control+`")
@@ -242,7 +247,7 @@ def deploy_python_shiny_via_terminal(
         write_bundle(
             page,
             bundle_dir,
-            python_shiny_bundle_files,
+            shiny_bundle_files,
             timeout=_VENV_QUICK_TIMEOUT_MS,
             readback_lang="python",
         )
@@ -264,7 +269,7 @@ def deploy_python_shiny_via_terminal(
         output = terminal_run(
             page,
             (
-                f"{rsconnect_bin} deploy shiny {bundle_dir} "
+                f"{rsconnect_bin} deploy manifest {bundle_dir}/manifest.json "
                 f"--server {connect_url} "
                 f"--api-key {vip_config.connect.api_key} "
                 f"--title {title}"

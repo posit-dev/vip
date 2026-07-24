@@ -34,6 +34,7 @@ from vip.workbench_ui import (
 from vip.workbench_ui import (
     vip_names_from_select_labels as _vip_names_from_select_labels,  # noqa: F401
 )
+from vip_tests.connect.bundles import build_shiny_bundle_files
 from vip_tests.workbench.pages import Homepage, LoginPage
 
 logger = logging.getLogger(__name__)
@@ -912,60 +913,33 @@ def workbench_accessible_and_logged_in(
 
 
 # ---------------------------------------------------------------------------
-# Bundle path fixtures
+# Bundle fixtures
 # ---------------------------------------------------------------------------
-
-_PYTHON_SHINY_APP = '''\
-"""Minimal Python Shiny VIP test application."""
-
-from shiny import App, ui
-
-app_ui = ui.page_fixed(
-    ui.h1("VIP Python Shiny Test"),
-    ui.p("Deployed by VIP from a Workbench session."),
-)
-
-
-def server(input, output, session):
-    pass
-
-
-app = App(app_ui, server)
-'''
-
-
-def _python_shiny_bundle_files() -> dict[str, str]:
-    """Return the Python Shiny bundle as a ``{filename: content}`` mapping.
-
-    The bundle is content-only (no filesystem location) so it can be
-    materialized wherever the deploy runs -- in the tests, written into the
-    Workbench session's own filesystem via the IDE terminal so ``rsconnect``
-    finds it locally regardless of where pytest is invoked.
-    """
-    return {"app.py": _PYTHON_SHINY_APP, "requirements.txt": "shiny\n"}
-
-
-def _write_python_shiny_bundle(bundle_dir: Path) -> Path:
-    """Write a minimal Python Shiny bundle (app.py + requirements.txt) into bundle_dir.
-
-    Returns *bundle_dir* for convenience so callers can write::
-
-        path = _write_python_shiny_bundle(some_dir)
-    """
-    for name, content in _python_shiny_bundle_files().items():
-        (bundle_dir / name).write_text(content)
-    return bundle_dir
 
 
 @pytest.fixture(scope="session")
-def python_shiny_bundle_files() -> dict[str, str]:
-    """Session-scoped Python Shiny bundle as a ``{filename: content}`` mapping.
+def shiny_bundle_files(connect_client) -> dict[str, str]:
+    """Session-scoped R Shiny bundle as a ``{filename: content}`` mapping.
 
-    Returns the bundle contents rather than a path: the deploy step writes them
-    into the Workbench session's filesystem via the IDE terminal (see
-    ``exec.write_bundle``), so the bundle is always local to the ``rsconnect``
-    process that consumes it -- the test no longer requires pytest to run on the
-    Workbench server (previously the bundle was created on the pytest host, so a
-    remote runner produced a path ``rsconnect`` could not see).
+    Returns the *exact* bundle the Connect deploy test uses -- built by the
+    shared ``connect.bundles.build_shiny_bundle_files`` so the two suites can
+    never drift -- consisting of the minimal ``app.R`` (``fluidPage("VIP test")``
+    with an empty server) plus the reference ``shiny_manifest.json`` with its
+    ``platform`` patched to the newest R installed on Connect.
+
+    The deploy step writes these files into the Workbench session's filesystem
+    via the IDE terminal (see ``exec.write_bundle``) and deploys them with
+    ``rsconnect deploy manifest``, which -- unlike ``deploy shiny`` -- deploys
+    any content type (including R) from a prepared manifest and builds it
+    server-side, so no local R is required.  Returning contents (not a path)
+    means the test no longer requires pytest to run on the Workbench server.
+
+    Skips when Connect is unavailable or has no R installed, since the manifest
+    ``platform`` must match a real server R version.
     """
-    return _python_shiny_bundle_files()
+    if connect_client is None:
+        pytest.skip("Connect is not configured — cannot build the shared Shiny bundle")
+    r_versions = connect_client.r_versions()
+    if not r_versions:
+        pytest.skip("No R versions available on Connect — cannot build the Shiny bundle")
+    return build_shiny_bundle_files(r_versions)
