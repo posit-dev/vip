@@ -73,15 +73,26 @@ def test_launch_positron():
 
 
 @pytest.fixture
-def session_context(page: Page, workbench_url: str):
+def session_context(page: Page, workbench_url: str, workbench_client):
     """Holds session name across steps, with best-effort cleanup on skip/fail.
 
     If a session was started (``name`` is set) and the test aborted before the
     "session is cleaned up" step ran, this finalizer navigates back to the
     homepage and quits the session to prevent resource leaks.
+
+    For JupyterLab, if the test recorded a created notebook
+    (``jupyter_notebook``), it is deleted via the session's contents API
+    **while the session is still alive** (the API vanishes once the session is
+    quit) so JupyterLab's layout-restorer stops reopening stale ``Untitled*``
+    notebooks — and pre-starting their kernels — on the next launch.
     """
-    ctx: dict = {"name": None, "ide_type": None, "cleaned_up": False}
+    ctx: dict = {"name": None, "ide_type": None, "cleaned_up": False, "jupyter_notebook": None}
     yield ctx
+
+    # Delete the JupyterLab notebook first, before any navigation away from the
+    # live session (the contents API is only reachable in-session). Best-effort.
+    _delete_jupyter_notebook_if_any(page, workbench_client, ctx)
+
     if not ctx.get("name") or ctx.get("cleaned_up"):
         return
     try:
@@ -95,6 +106,24 @@ def session_context(page: Page, workbench_url: str):
                 quit_btn.click()
     except Exception:
         # Best-effort cleanup — don't mask the original failure/skip.
+        pass
+
+
+def _delete_jupyter_notebook_if_any(page: Page, workbench_client, ctx: dict) -> None:
+    """Delete the JupyterLab notebook recorded in *ctx* via the contents API.
+
+    Runs while the session page is still live so the per-session contents API is
+    reachable.  Uses the browser's own session cookies (captured from the page
+    context) so it authenticates as the same user.  Best-effort — swallows every
+    error so teardown never masks the original test outcome.
+    """
+    notebook = ctx.get("jupyter_notebook")
+    if not notebook or workbench_client is None:
+        return
+    try:
+        cookies = {c["name"]: c["value"] for c in page.context.cookies()}
+        workbench_client.delete_jupyter_notebook(page.url, notebook, cookies)
+    except Exception:
         pass
 
 
@@ -369,13 +398,98 @@ def _accept_open_dialogs(page: Page, *, attempts: int = 20) -> None:
         page.wait_for_timeout(1000)
 
 
+def _wait_for_jupyter_kernel_idle(page: Page, *, timeout: int) -> None:
+    """Wait (best-effort) for the notebook kernel status to read ``idle``.
+
+    JupyterLab's execution indicator carries ``data-status='idle'`` once the
+    kernel is connected and ready.  Running a cell before then can drop the
+    typed input or queue behind kernel startup, which surfaces as the spurious
+    "kernel did not produce output" timeout.  Best-effort: if the indicator
+    never reports idle (older JupyterLab without the attribute, or a slow
+    connect), we fall through and let the output assertion be the source of
+    truth.  Never raises.
+    """
+    try:
+        page.locator(JupyterLabSession.KERNEL_STATUS_IDLE).first.wait_for(
+            state="visible", timeout=timeout
+        )
+    except (PlaywrightTimeoutError, PlaywrightError):
+        pass
+
+
+def _current_notebook_name(page: Page) -> str | None:
+    """Return the active notebook tab's filename (e.g. ``Untitled.ipynb``).
+
+    Reads the label of the current dock tab so teardown can delete exactly the
+    notebook this test created.  Returns ``None`` if the label cannot be read.
+    """
+    try:
+        label = page.locator(JupyterLabSession.CURRENT_TAB_LABEL).first
+        if label.count() == 0:
+            return None
+        text = (label.text_content(timeout=TIMEOUT_QUICK) or "").strip()
+        return text or None
+    except (PlaywrightTimeoutError, PlaywrightError):
+        return None
+
+
+def _run_jupyter_cell_and_get_output(
+    page: Page, notebook_panel, cell_input, *, attempts: int = 3
+) -> bool:
+    """Type ``1 + 1`` into *cell_input*, run it, and return whether ``2`` appears.
+
+    Guards against the two observed race modes (issue #478 / #484):
+
+    - **Dropped input:** asserts the editor actually contains ``1 + 1`` before
+      running.  If the click landed before CodeMirror was ready, the text is
+      re-typed on the next attempt.
+    - **Lost run keystroke:** re-issues ``Shift+Enter`` each attempt if no output
+      has appeared yet.
+
+    Returns True once the output area shows ``2``; False if all *attempts* are
+    exhausted without output (the caller decides whether that is a skip).
+    """
+    cell_output = notebook_panel.locator(JupyterLabSession.CELL_OUTPUT).first
+    for _attempt in range(attempts):
+        # A leftover kernel dialog can reappear between attempts; clear it first.
+        _accept_open_dialogs(page)
+
+        cell_input.click()
+        # Assert the editor received the text before running, rather than
+        # firing Shift+Enter blind at an editor that may have dropped the input.
+        if "1 + 1" not in (cell_input.text_content() or ""):
+            cell_input.type("1 + 1")
+
+        try:
+            expect(cell_input).to_contain_text("1 + 1", timeout=TIMEOUT_QUICK)
+        except AssertionError:
+            # Input still not registered — retry the whole type step.
+            continue
+
+        cell_input.press("Shift+Enter")
+        try:
+            expect(cell_output).to_contain_text("2", timeout=TIMEOUT_CODE_EXEC)
+            return True
+        except AssertionError:
+            # No output yet — loop and re-issue the run.
+            continue
+    return False
+
+
 @then("JupyterLab can execute code in a notebook")
-def jupyterlab_executes_code(page: Page):
+def jupyterlab_executes_code(page: Page, session_context: dict):
     """Open a new notebook from the launcher and execute ``1 + 1``.
 
     Clicks the first available notebook kernel card in the JupyterLab launcher,
-    waits for the notebook to open, types an expression into the first code
-    cell, runs it, and asserts that ``2`` appears in the cell output area.
+    waits for the notebook to open and the kernel to reach idle, asserts the
+    code cell received ``1 + 1`` before running it (retrying the run), and
+    asserts that ``2`` appears in the cell output area.
+
+    Records the created notebook's filename on ``session_context`` so the
+    ``session_context`` finalizer can delete it via the contents API *before*
+    the session is quit — leftover ``Untitled*.ipynb`` files are otherwise
+    reopened (with eagerly-started kernels) by JupyterLab's layout-restorer on
+    every subsequent launch, widening the launch/exec interaction race.
 
     Skips gracefully if no notebook kernel cards are available (e.g., when
     the Docker image lacks a working kernel).
@@ -445,6 +559,11 @@ def jupyterlab_executes_code(page: Page):
     # once — accepting the default makes the cell interactive (issue #478).
     _accept_open_dialogs(page)
 
+    # Record the notebook filename now so teardown can delete it even if the
+    # execution below fails/skips (a leftover notebook is exactly what we want
+    # gone). The launcher creates "Untitled.ipynb"; the tab label is the source.
+    session_context["jupyter_notebook"] = _current_notebook_name(page)
+
     # Click into the first code cell input of the active notebook and type.
     cell_input = notebook_panel.locator(JupyterLabSession.CELL_INPUT).first
     expect(cell_input).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
@@ -460,21 +579,19 @@ def jupyterlab_executes_code(page: Page):
     # skip message instead of an opaque "intercepts pointer events" timeout.
     _accept_open_dialogs(page)
 
-    cell_input.click()
-    cell_input.type("1 + 1")
+    # Gate on the kernel reaching idle before typing/running. Running while the
+    # kernel is still connecting drops the input and produces the spurious
+    # "kernel did not produce output" timeout that this step used to misreport
+    # as kernel death.
+    _wait_for_jupyter_kernel_idle(page, timeout=TIMEOUT_CODE_EXEC)
 
-    # Run the cell with Shift+Enter
-    cell_input.press("Shift+Enter")
-
-    # Assert the output area shows 2.  The kernel may be slow to start in
-    # Docker CI, so allow a generous timeout before skipping.
-    cell_output = notebook_panel.locator(JupyterLabSession.CELL_OUTPUT).first
-    try:
-        expect(cell_output).to_contain_text("2", timeout=TIMEOUT_CODE_EXEC)
-    except AssertionError:
+    # Type-and-run with input verification and run retries. Returns False only
+    # after exhausting retries with no output.
+    if not _run_jupyter_cell_and_get_output(page, notebook_panel, cell_input):
         pytest.skip(
-            "JupyterLab kernel did not produce output within timeout — "
-            "kernel may not be fully functional in this environment"
+            "JupyterLab notebook UI did not surface cell output within timeout — "
+            "the cell run raced session hydration (kernel reachability is verified "
+            "separately; this is a UI-interaction timeout, not kernel death)"
         )
 
 
