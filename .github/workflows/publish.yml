@@ -18,6 +18,16 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Assert tag matches pyproject version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          proj_version="$(uv version --short)"
+          if [ "$tag_version" != "$proj_version" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} (=$tag_version) does not match pyproject version $proj_version"
+            exit 1
+          fi
+          echo "Tag and pyproject version agree: $proj_version"
+
       - name: Build wheel and sdist
         run: uv build
 
