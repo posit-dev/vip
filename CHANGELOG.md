@@ -1,6 +1,17 @@
 # CHANGELOG
 
 
+## v0.58.5 (2026-07-24)
+
+### Bug Fixes
+
+- **workbench**: Keep JupyterLab sessions fresh to stop launch/exec skip
+  ([#532](https://github.com/posit-dev/vip/pull/532),
+  [`dcd037f`](https://github.com/posit-dev/vip/commit/dcd037f43a82987432da3386146bf042d78740a5))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+
 ## v0.58.4 (2026-07-24)
 
 ### Bug Fixes
