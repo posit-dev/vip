@@ -181,7 +181,7 @@ def open_vscode_session(page: Page, publish_context: dict):
 def deploy_python_shiny_via_terminal(
     page: Page,
     publish_context: dict,
-    shiny_bundle_files: dict,
+    shiny_bundle_spec: dict,
     connect_url: str,
     vip_config,
     connect_client,
@@ -189,18 +189,24 @@ def deploy_python_shiny_via_terminal(
 ):
     """Run ``rsconnect deploy manifest`` in the VS Code terminal and register the GUID.
 
-    Deploys the *same* Shiny bundle as the Connect deploy test (shared
-    ``connect.bundles.build_shiny_bundle_files``): a minimal R ``app.R`` plus
-    the reference ``shiny_manifest.json``.  ``deploy manifest`` -- unlike
-    ``deploy shiny``, which is Python-only -- deploys any content type from a
-    prepared manifest and builds it server-side, so the session needs no local
-    R.  The bundle is written into the Workbench session's own filesystem via
-    the IDE terminal (``write_bundle``), so ``rsconnect`` finds it locally no
-    matter where pytest runs.  ``rsconnect-python`` is not assumed to be on
-    PATH: we create a throwaway venv from whatever ``python3`` the session
-    provides, install ``rsconnect-python`` into it, deploy with that venv's
-    ``rsconnect``, and tear the venv and bundle down afterwards.  A missing
-    ``python3`` skips.
+    Deploys the *same* Shiny bundle as the Connect deploy test: the minimal R
+    ``app.R`` plus the reference ``shiny_manifest.json``.  ``deploy manifest`` --
+    unlike ``deploy shiny``, which is Python-only -- deploys any content type
+    from a prepared manifest and builds it server-side, so the session needs no
+    local R.
+
+    The bundle is assembled inside the Workbench session's own filesystem so
+    ``rsconnect`` finds it locally no matter where pytest runs: the tiny
+    ``app.R`` is typed via the terminal, while the ~80 KB ``manifest.json`` (the
+    full package closure -- far too large to type reliably) is downloaded from
+    the public repo with ``curl`` and its ``platform`` patched to the server's R.
+    A download blocked by a firewall skips (an environment constraint, not a
+    publishing defect).
+
+    ``rsconnect-python`` is not assumed to be on PATH: we create a throwaway
+    venv from whatever ``python3`` the session provides, install
+    ``rsconnect-python`` into it, deploy with that venv's ``rsconnect``, and tear
+    the venv and bundle down afterwards.  A missing ``python3`` skips.
     """
     # Open the integrated terminal.
     page.keyboard.press("Control+`")
@@ -241,13 +247,48 @@ def deploy_python_shiny_via_terminal(
     bundle_dir = f"/tmp/vip_shiny_bundle_{uuid.uuid4().hex}"
     rsconnect_bin = f"{venv_dir}/bin/rsconnect"
 
+    manifest_path = f"{bundle_dir}/manifest.json"
     try:
-        # Materialize the bundle in the session's own filesystem so rsconnect
-        # finds it locally (the pytest host's /tmp is not visible here).
+        # Assemble the bundle in the session's own filesystem so rsconnect finds
+        # it locally (the pytest host's /tmp is not visible here). app.R is tiny
+        # and typed directly; the ~80 KB manifest is fetched over HTTPS.
         write_bundle(
             page,
             bundle_dir,
-            shiny_bundle_files,
+            {"app.R": shiny_bundle_spec["app_r"]},
+            timeout=_VENV_QUICK_TIMEOUT_MS,
+            readback_lang="python",
+        )
+
+        # Download the reference manifest into the session. A firewalled session
+        # cannot reach the public repo -- treat that as an environment skip, not
+        # a deploy failure. curl -fsS makes HTTP errors non-zero so ExecError
+        # fires instead of silently writing an error page.
+        manifest_url = shiny_bundle_spec["manifest_url"]
+        try:
+            terminal_run(
+                page,
+                f"curl -fsS -o {manifest_path} {manifest_url}",
+                timeout=_VENV_QUICK_TIMEOUT_MS,
+                readback_lang="python",
+            )
+        except ExecError as exc:
+            pytest.skip(
+                f"Could not download the Shiny manifest from {manifest_url} in the "
+                f"Workbench session (network/firewall constraint): {exc}"
+            )
+
+        # Patch the manifest platform to the server's newest R, matching what the
+        # Connect deploy test does, so both suites deploy an identical bundle.
+        platform = shiny_bundle_spec["platform"]
+        terminal_run(
+            page,
+            (
+                f"{python_bin} -c "
+                f""""import json; p='{manifest_path}'; """
+                f"m=json.load(open(p)); m['platform']='{platform}'; "
+                f'''json.dump(m,open(p,'w'))"'''
+            ),
             timeout=_VENV_QUICK_TIMEOUT_MS,
             readback_lang="python",
         )
@@ -269,7 +310,7 @@ def deploy_python_shiny_via_terminal(
         output = terminal_run(
             page,
             (
-                f"{rsconnect_bin} deploy manifest {bundle_dir}/manifest.json "
+                f"{rsconnect_bin} deploy manifest {manifest_path} "
                 f"--server {connect_url} "
                 f"--api-key {vip_config.connect.api_key} "
                 f"--title {title}"

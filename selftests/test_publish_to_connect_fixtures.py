@@ -105,11 +105,30 @@ class TestSharedShinyBundle:
     _R_VERSIONS = ["4.3.1", "4.6.0", "4.4.2"]
 
     def test_workbench_fixture_defined_in_conftest(self):
-        """The Workbench shiny_bundle_files fixture must exist in conftest."""
+        """The Workbench shiny_bundle_spec fixture must exist in conftest."""
         source = _WORKBENCH_CONFTEST.read_text()
         names = _fixture_names_in(source)
-        assert "shiny_bundle_files" in names, (
-            f"Expected fixture 'shiny_bundle_files' in {_WORKBENCH_CONFTEST}"
+        assert "shiny_bundle_spec" in names, (
+            f"Expected fixture 'shiny_bundle_spec' in {_WORKBENCH_CONFTEST}"
+        )
+
+    def test_manifest_raw_url_points_at_public_repo_at_ref(self):
+        """The manifest download URL must be the public raw URL pinned to a ref."""
+        from vip_tests.connect.bundles import MANIFEST_REPO_PATH, manifest_raw_url
+
+        url = manifest_raw_url("v9.9.9")
+        assert url == (
+            "https://raw.githubusercontent.com/posit-dev/vip/v9.9.9/" + MANIFEST_REPO_PATH
+        )
+
+    def test_manifest_url_ref_matches_installed_version(self):
+        """The Workbench fixture pins the download to the installed VIP tag, so a
+        released manifest always matches the app.R checksum shipped with it."""
+        from vip import __version__
+        from vip_tests.connect.bundles import manifest_raw_url
+
+        assert manifest_raw_url(f"v{__version__}").endswith(
+            f"/v{__version__}/src/vip_tests/connect/shiny_manifest.json"
         )
 
     def test_bundle_has_appR_and_manifest(self):

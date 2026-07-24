@@ -24,6 +24,25 @@ _SHINY_APP_R = (
     "shinyApp(ui, server)\n"
 )
 
+# Location of the reference manifest in the public repo.  The Workbench publish
+# test cannot read the pytest host's filesystem from inside the session, so it
+# downloads this manifest into the session over HTTPS instead of typing its
+# ~80 KB through the terminal.  Kept next to the manifest itself so both stay in
+# sync.
+MANIFEST_REPO = "posit-dev/vip"
+MANIFEST_REPO_PATH = "src/vip_tests/connect/shiny_manifest.json"
+
+
+def manifest_raw_url(ref: str) -> str:
+    """Return the raw GitHub URL for ``shiny_manifest.json`` at *ref*.
+
+    *ref* is any git ref the public repo exposes (a release tag like
+    ``v0.58.7``, a branch, or a commit SHA).  Pinning to the installed version's
+    tag keeps the downloaded manifest in lockstep with the ``_SHINY_APP_R``
+    checksum shipped in the same release.
+    """
+    return f"https://raw.githubusercontent.com/{MANIFEST_REPO}/{ref}/{MANIFEST_REPO_PATH}"
+
 
 def _latest_version(versions: list[str]) -> str:
     """Return the highest version string by numeric component.

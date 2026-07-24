@@ -34,7 +34,7 @@ from vip.workbench_ui import (
 from vip.workbench_ui import (
     vip_names_from_select_labels as _vip_names_from_select_labels,  # noqa: F401
 )
-from vip_tests.connect.bundles import build_shiny_bundle_files
+from vip_tests.connect.bundles import _SHINY_APP_R, _latest_version, manifest_raw_url
 from vip_tests.workbench.pages import Homepage, LoginPage
 
 logger = logging.getLogger(__name__)
@@ -918,28 +918,38 @@ def workbench_accessible_and_logged_in(
 
 
 @pytest.fixture(scope="session")
-def shiny_bundle_files(connect_client) -> dict[str, str]:
-    """Session-scoped R Shiny bundle as a ``{filename: content}`` mapping.
+def shiny_bundle_spec(connect_client) -> dict[str, str]:
+    """Coordinates for materializing the shared R Shiny bundle in a session.
 
-    Returns the *exact* bundle the Connect deploy test uses -- built by the
-    shared ``connect.bundles.build_shiny_bundle_files`` so the two suites can
-    never drift -- consisting of the minimal ``app.R`` (``fluidPage("VIP test")``
-    with an empty server) plus the reference ``shiny_manifest.json`` with its
-    ``platform`` patched to the newest R installed on Connect.
+    Returns the pieces the deploy step needs to reconstruct -- inside the
+    Workbench session's own filesystem -- the *same* bundle the Connect deploy
+    test uses:
 
-    The deploy step writes these files into the Workbench session's filesystem
-    via the IDE terminal (see ``exec.write_bundle``) and deploys them with
-    ``rsconnect deploy manifest``, which -- unlike ``deploy shiny`` -- deploys
-    any content type (including R) from a prepared manifest and builds it
-    server-side, so no local R is required.  Returning contents (not a path)
-    means the test no longer requires pytest to run on the Workbench server.
+    - ``app_r``: the minimal ``app.R`` (``fluidPage("VIP test")`` + empty
+      server), small enough to type into the terminal.  Its MD5 is the checksum
+      baked into ``shiny_manifest.json``.
+    - ``manifest_url``: raw URL of the reference ``shiny_manifest.json`` in the
+      public repo, pinned to the installed VIP version's tag.  The manifest
+      carries the full 30-package dependency closure (~80 KB), far too large to
+      type reliably through the terminal, so the session downloads it directly.
+    - ``platform``: the newest R installed on Connect, patched into the
+      downloaded manifest exactly as ``build_shiny_bundle_files`` does, so the
+      Workbench and Connect bundles stay identical.
 
-    Skips when Connect is unavailable or has no R installed, since the manifest
-    ``platform`` must match a real server R version.
+    Skips when Connect is unavailable or has no R installed (the manifest
+    ``platform`` must match a real server R version).  The download itself may
+    also fail at deploy time (firewalled session) -- that is handled in the step
+    as a skip, since it is an environment constraint, not a publishing defect.
     """
+    from vip import __version__
+
     if connect_client is None:
         pytest.skip("Connect is not configured — cannot build the shared Shiny bundle")
     r_versions = connect_client.r_versions()
     if not r_versions:
         pytest.skip("No R versions available on Connect — cannot build the Shiny bundle")
-    return build_shiny_bundle_files(r_versions)
+    return {
+        "app_r": _SHINY_APP_R,
+        "manifest_url": manifest_raw_url(f"v{__version__}"),
+        "platform": _latest_version(r_versions),
+    }
