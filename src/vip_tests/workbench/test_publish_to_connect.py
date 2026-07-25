@@ -12,6 +12,7 @@ excludes the tests when either product is absent.
 
 from __future__ import annotations
 
+import base64
 import re
 import shlex
 import time
@@ -34,24 +35,106 @@ from vip_tests.workbench.conftest import (
     wait_for_session_active,
     workbench_login,
 )
-from vip_tests.workbench.exec import ExecError, terminal_run, write_bundle
+from vip_tests.workbench.exec import ExecError, terminal_run
 from vip_tests.workbench.pages import Homepage, NewSessionDialog, VSCodeSession
 
 pytestmark = pytest.mark.order(60)
 
 _FILENAME = Path(__file__).name
 
-# Timeout for rsconnect deploy, which bundles, uploads, and deploys.
-_DEPLOY_TIMEOUT_MS = 180_000
+# Timeout for the combined setup+deploy command. With uv the venv+install take
+# ~1s and --no-verify skips rsconnect's multi-minute boot wait, so the whole
+# command finishes well under a minute; the ceiling is bounded so a hang cannot
+# consume the 5-minute suite budget.
+_DEPLOY_TIMEOUT_MS = 120_000
 
-# Timeout for the short venv-management commands (create, pip install, cleanup).
-_VENV_SETUP_TIMEOUT_MS = 120_000
+# Timeout for the short cleanup commands (rm -rf).
 _VENV_QUICK_TIMEOUT_MS = 30_000
 
 # Post-deploy reachability polling (deploy runs --no-verify, so the Shiny
 # process may still be booting when the deploy command returns).
 _REACHABILITY_TIMEOUT_S = 60
 _REACHABILITY_POLL_S = 3
+
+
+def _log(message: str) -> None:
+    """Emit a timestamped progress line so a long deploy step is not mistaken
+    for a hang. Visible under ``pytest -s`` / ``--verbose``."""
+    print(f"    [{time.strftime('%H:%M:%S')}] vip-publish: {message}", flush=True)
+
+
+def _build_deploy_script(
+    *,
+    bundle_dir: str,
+    manifest_path: str,
+    venv_dir: str,
+    app_r: str,
+    manifest_url: str,
+    platform: str,
+    connect_url: str,
+    api_key: str,
+    title: str,
+) -> str:
+    """Return a single shell command that assembles the bundle and deploys it.
+
+    Collapsing setup+deploy into one command is deliberate: every keystroke is
+    typed before anything runs, so the venv-activation terminal VS Code spawns
+    cannot hijack a later command (the multi-terminal race). The script:
+
+    1. writes ``app.R`` (base64-decoded so content survives the terminal),
+    2. downloads the reference manifest (``curl -fsS``; tags VIP_DL_FAIL on
+       network failure) and patches its ``platform`` with whatever python is
+       available,
+    3. provisions ``rsconnect`` — ``uv`` (venv+install in ~1s) when present,
+       else ``python -m venv`` + ``pip`` — tagging VIP_NO_PY if no interpreter,
+    4. runs ``rsconnect deploy manifest ... --no-verify``.
+
+    Failure tags (VIP_NO_PY / VIP_DL_FAIL) let the caller map environment
+    problems to skips while real deploy errors stay failures. Values are
+    shlex.quote'd; the title contains spaces (unique_session_name).
+    """
+    app_r_b64 = base64.b64encode(app_r.encode()).decode("ascii")
+    q_bundle = shlex.quote(bundle_dir)
+    q_manifest = shlex.quote(manifest_path)
+    q_venv = shlex.quote(venv_dir)
+    q_url = shlex.quote(manifest_url)
+    q_platform = shlex.quote(platform)
+    q_server = shlex.quote(connect_url)
+    q_key = shlex.quote(api_key)
+    q_title = shlex.quote(title)
+    # Patch platform with a python one-liner; PYBIN is resolved below. The
+    # manifest path and platform are passed as argv (shell-quoted) so Python
+    # receives the platform as a string -- interpolating it into the Python
+    # source would emit ``m['platform']=4.6.1`` (a SyntaxError), since the
+    # version is not a valid Python literal.
+    patch = (
+        '"$PYBIN" -c '
+        "'import json,sys; p=sys.argv[1]; m=json.load(open(p)); "
+        'm["platform"]=sys.argv[2]; json.dump(m,open(p,"w"))\' '
+        f"{q_manifest} {q_platform}"
+    )
+    return (
+        f"set -e; "
+        f"mkdir -p {q_bundle}; "
+        f"printf %s {app_r_b64} | base64 -d > {q_bundle}/app.R; "
+        # Resolve a python interpreter for the manifest patch (uv provides one too).
+        f'PYBIN="$(command -v python3 || command -v python || true)"; '
+        # Download the manifest (network/firewall -> VIP_DL_FAIL).
+        f"curl -fsS -o {q_manifest} {q_url} || {{ echo VIP_DL_FAIL; exit 21; }}; "
+        # Patch platform if we have a python; harmless to skip if not.
+        f'if [ -n "$PYBIN" ]; then {patch}; fi; '
+        # Provision rsconnect: prefer uv (fast), else python venv + pip.
+        f"if command -v uv >/dev/null 2>&1; then "
+        f"  uv venv {q_venv} >/dev/null && "
+        f"  uv pip install --python {q_venv}/bin/python --quiet rsconnect-python >/dev/null; "
+        f'elif [ -n "$PYBIN" ]; then '
+        f'  "$PYBIN" -m venv {q_venv} && '
+        f"  {q_venv}/bin/pip install --quiet --upgrade rsconnect-python; "
+        f"else echo VIP_NO_PY; exit 22; fi; "
+        # Deploy (--no-verify: skip rsconnect's multi-minute boot probe).
+        f"{q_venv}/bin/rsconnect deploy manifest {q_manifest} "
+        f"--server {q_server} --api-key {q_key} --title {q_title} --no-verify"
+    )
 
 
 @scenario(
@@ -225,121 +308,53 @@ def deploy_python_shiny_via_terminal(
     terminal_input = page.locator(f"{VSCodeSession.TERMINAL_INPUT}:visible").last
     expect(terminal_input).to_be_visible(timeout=TIMEOUT_SESSION_START)
 
-    # Preflight: a Python interpreter must be on PATH to build the venv.
-    # Prefer ``python3`` but accept ``python`` so sessions without the
-    # ``python3`` symlink still qualify. Absence of Python is an environment
-    # precondition, not a publishing defect, so skip rather than fail here --
-    # only a genuine deploy failure below should FAIL the check.
-    try:
-        python_bin = terminal_run(
-            page,
-            "command -v python3 || command -v python",
-            timeout=_VENV_QUICK_TIMEOUT_MS,
-            readback_lang="python",
-        ).strip()
-    except ExecError:
-        pytest.skip(
-            "Neither python3 nor python is on PATH in the Workbench session; "
-            "cannot create a venv to install rsconnect-python for deployment."
-        )
-
-    # A blank result means the readback captured no interpreter path (e.g. the
-    # command's stdout escaped the redirect). Skip rather than build an empty
-    # ``python_bin`` that would run as ``'' -m venv`` (exit 127, "-m: command
-    # not found").
-    if not python_bin:
-        pytest.skip(
-            "Could not resolve a python3/python interpreter path in the Workbench "
-            "session; the preflight returned no output, so a venv for "
-            "rsconnect-python cannot be created."
-        )
-
     title = f"vip_test_shiny_{unique_session_name(_FILENAME)}"
     venv_dir = f"/tmp/vip_rsconnect_venv_{uuid.uuid4().hex}"
     bundle_dir = f"/tmp/vip_shiny_bundle_{uuid.uuid4().hex}"
-    rsconnect_bin = f"{venv_dir}/bin/rsconnect"
-
     manifest_path = f"{bundle_dir}/manifest.json"
-    try:
-        # Assemble the bundle in the session's own filesystem so rsconnect finds
-        # it locally (the pytest host's /tmp is not visible here). app.R is tiny
-        # and typed directly; the ~80 KB manifest is fetched over HTTPS.
-        write_bundle(
-            page,
-            bundle_dir,
-            {"app.R": shiny_bundle_spec["app_r"]},
-            timeout=_VENV_QUICK_TIMEOUT_MS,
-            readback_lang="python",
-        )
 
-        # Download the reference manifest into the session. A firewalled session
-        # cannot reach the public repo -- treat that as an environment skip, not
-        # a deploy failure. curl -fsS makes HTTP errors non-zero so ExecError
-        # fires instead of silently writing an error page.
-        manifest_url = shiny_bundle_spec["manifest_url"]
+    _log("assembling bundle + provisioning rsconnect (single command)")
+    try:
+        # Run the entire setup+deploy as ONE shell command. Doing it in a single
+        # terminal_run (rather than ~6) is what makes this reliable: every
+        # keystroke is typed before any command runs, so the venv-activation
+        # terminal that VS Code's Python extension spawns cannot steal a later
+        # command (the multi-terminal race that hung earlier). It is also far
+        # faster -- uv creates the venv and installs rsconnect in ~1s vs ~40s for
+        # python -m venv + pip -- and keeps output short so the Monaco-editor
+        # readback never has to scroll past a virtualized long log.
+        setup_script = _build_deploy_script(
+            bundle_dir=bundle_dir,
+            manifest_path=manifest_path,
+            venv_dir=venv_dir,
+            app_r=shiny_bundle_spec["app_r"],
+            manifest_url=shiny_bundle_spec["manifest_url"],
+            platform=shiny_bundle_spec["platform"],
+            connect_url=connect_url,
+            api_key=vip_config.connect.api_key,
+            title=title,
+        )
         try:
-            terminal_run(
+            output = terminal_run(
                 page,
-                f"curl -fsS -o {manifest_path} {manifest_url}",
-                timeout=_VENV_QUICK_TIMEOUT_MS,
+                setup_script,
+                timeout=_DEPLOY_TIMEOUT_MS,
                 readback_lang="python",
             )
         except ExecError as exc:
-            pytest.skip(
-                f"Could not download the Shiny manifest from {manifest_url} in the "
-                f"Workbench session (network/firewall constraint): {exc}"
-            )
-
-        # Patch the manifest platform to the server's newest R, matching what the
-        # Connect deploy test does, so both suites deploy an identical bundle.
-        platform = shiny_bundle_spec["platform"]
-        terminal_run(
-            page,
-            (
-                f"{python_bin} -c "
-                f""""import json; p='{manifest_path}'; """
-                f"m=json.load(open(p)); m['platform']='{platform}'; "
-                f'''json.dump(m,open(p,'w'))"'''
-            ),
-            timeout=_VENV_QUICK_TIMEOUT_MS,
-            readback_lang="python",
-        )
-
-        # Create the venv and install rsconnect-python into it.
-        terminal_run(
-            page,
-            f"{python_bin} -m venv {venv_dir}",
-            timeout=_VENV_SETUP_TIMEOUT_MS,
-            readback_lang="python",
-        )
-        terminal_run(
-            page,
-            f"{venv_dir}/bin/pip install --quiet --upgrade rsconnect-python",
-            timeout=_VENV_SETUP_TIMEOUT_MS,
-            readback_lang="python",
-        )
-
-        # shlex.quote every interpolated value: the title contains spaces
-        # (unique_session_name → "VIP <file> - <worker>-<ns>"), which the shell
-        # would otherwise split into extra args ("Got unexpected extra
-        # arguments"); the api-key and URL are quoted defensively too.
-        # --no-verify: skip rsconnect's own post-deploy content probe, which
-        # blocks for minutes waiting for the Shiny process to boot and pushes the
-        # step past its timeout / the 5-minute suite budget. The "Then the app is
-        # reachable on Connect" step verifies reachability with a bounded retry
-        # instead. The bundle still builds server-side; we only skip the wait.
-        output = terminal_run(
-            page,
-            (
-                f"{rsconnect_bin} deploy manifest {shlex.quote(manifest_path)} "
-                f"--server {shlex.quote(connect_url)} "
-                f"--api-key {shlex.quote(vip_config.connect.api_key)} "
-                f"--title {shlex.quote(title)} "
-                f"--no-verify"
-            ),
-            timeout=_DEPLOY_TIMEOUT_MS,
-            readback_lang="python",
-        )
+            # The combined script tags its own failure modes so we can map an
+            # environment problem (no python/uv, unreachable repo) to a skip
+            # while a genuine rsconnect failure stays a hard failure.
+            msg = str(exc)
+            if "VIP_NO_PY" in msg:
+                pytest.skip("Neither uv nor python3/python is available in the Workbench session")
+            if "VIP_DL_FAIL" in msg:
+                pytest.skip(
+                    f"Could not download the Shiny manifest from "
+                    f"{shiny_bundle_spec['manifest_url']} (network/firewall constraint)"
+                )
+            raise
+        _log("deploy command returned")
     finally:
         # Tear down the throwaway venv and bundle regardless of deploy outcome.
         for path, label in ((venv_dir, "venv"), (bundle_dir, "bundle")):
@@ -369,6 +384,7 @@ def deploy_python_shiny_via_terminal(
         content_url = ""
 
     if guid:
+        _log(f"deployed content guid={guid}")
         _connect_created_guids.append(guid)
         publish_context["content_guid"] = guid
         publish_context["content_url"] = content_url
@@ -401,11 +417,12 @@ def deploy_via_publisher_ui(page: Page):
 
 @then("the app is reachable on Connect")
 def app_reachable_on_connect(publish_context: dict, connect_client):
-    """Verify the deployed content is accessible via HTTP.
+    """Verify the deployed content serves a live page via the Connect API.
 
     Deploy runs with ``--no-verify``, so the Shiny process may still be booting.
-    Poll the content URL with a bounded budget rather than assuming it is up the
-    instant the deploy command returns.
+    Using the Connect API key, poll the content URL with a bounded budget until
+    it returns a live page (HTTP < 400 whose body carries the app's "VIP test"
+    marker), rather than assuming it is up the instant the deploy returns.
     """
     guid = publish_context.get("content_guid")
     assert guid, "No content GUID was recorded by the deploy step"
@@ -415,20 +432,26 @@ def app_reachable_on_connect(publish_context: dict, connect_client):
     if not url:
         return
 
+    _log(f"verifying live app via Connect API at {url}")
     deadline = time.monotonic() + _REACHABILITY_TIMEOUT_S
     last_status = None
     while time.monotonic() < deadline:
         try:
             resp = connect_client.fetch_content(url)
             last_status = resp.status_code
-            if resp.status_code < 400:
+            # A booted Shiny app returns its HTML shell containing the UI text.
+            if resp.status_code < 400 and "vip test" in resp.text.lower():
+                _log(f"live app confirmed (HTTP {resp.status_code}, 'VIP test' rendered)")
                 return
+            # Page reachable but content not yet rendered — keep polling.
+            if resp.status_code < 400:
+                last_status = f"{resp.status_code} (marker not yet present)"
         except Exception as exc:  # transient during first-boot
             last_status = repr(exc)
         time.sleep(_REACHABILITY_POLL_S)
 
     raise AssertionError(
-        f"Deployed content at {url!r} was not reachable within "
+        f"Deployed content at {url!r} was not confirmed live within "
         f"{_REACHABILITY_TIMEOUT_S}s (last result: {last_status})"
     )
 
@@ -445,5 +468,7 @@ def deployed_app_removed_from_connect(publish_context: dict, connect_client):
     guid = publish_context.get("content_guid")
     assert guid, "No content GUID was recorded by the deploy step"
 
+    _log(f"removing deployed content guid={guid}")
     removed = connect_client._delete_content_verified(guid)
     assert removed, f"Deployed content {guid} was not removed from Connect"
+    _log("deployed content removed")
