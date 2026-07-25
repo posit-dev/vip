@@ -898,7 +898,12 @@ class TestTerminalRun:
 
         typed_cmd = self._typed_cmd(page)
         assert "&&" not in typed_cmd
-        assert 'echo "VIP_DONE_deadbeef:$?"' in typed_cmd
+        # rc is captured once ($?) then written to both the output file and the
+        # one-line sentinel file, so the marker is always recorded even on
+        # failure (the #439 guarantee).
+        assert "rc=$?" in typed_cmd
+        assert 'echo "VIP_DONE_deadbeef:$rc" >> ' in typed_cmd
+        assert 'echo "VIP_DONE_deadbeef:$rc" > ' in typed_cmd
 
     def test_returns_output_on_success(self, monkeypatch):
         self._patch_common(monkeypatch)
@@ -968,6 +973,22 @@ class TestTerminalRun:
         monkeypatch.setattr(exec_mod, "_read_vscode_editor_text", mock_read)
         return mock_read
 
+    def test_writes_marker_to_sentinel_file(self, monkeypatch):
+        """The marker is written to BOTH the output file and a one-line sentinel
+        file. VS Code polls the sentinel to dodge Monaco's viewport
+        virtualization (which can hide the marker on a long output file)."""
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(
+            exec_mod, "read_file", MagicMock(return_value="ok\nVIP_DONE_deadbeef:0")
+        )
+        page = MagicMock()
+
+        exec_mod.terminal_run(page, "echo ok", timeout=1_000)
+
+        typed_cmd = self._typed_cmd(page)
+        assert "/tmp/vip_term_" in typed_cmd  # output file
+        assert "/tmp/vip_done_" in typed_cmd  # one-line sentinel file
+
     def test_vscode_returns_output_on_success(self, monkeypatch):
         """The VS Code editor-open polling path has its own copy of the
         marker-parsing logic and must be covered independently of the
@@ -990,7 +1011,10 @@ class TestTerminalRun:
             exec_mod.terminal_run(page, "git clone ...", timeout=1_000)
 
         assert error_output in str(excinfo.value)
-        mock_read.assert_called_once()
+        # A single poll suffices: the sentinel (donefile) read detects the
+        # marker, then one more read fetches the output for the error message.
+        # Two reads, not a timeout loop.
+        assert mock_read.call_count == 2
 
 
 # ---------------------------------------------------------------------------

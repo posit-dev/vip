@@ -898,14 +898,27 @@ def terminal_run(
         during live validation.
     """
     done_marker = f"VIP_DONE_{uuid.uuid4().hex}"
-    tmpfile = f"/tmp/vip_term_{uuid.uuid4().hex}.txt"
+    uid = uuid.uuid4().hex
+    tmpfile = f"/tmp/vip_term_{uid}.txt"
+    # Separate one-line sentinel file holding only the done marker + exit code.
+    # The VS Code readback opens files in the Monaco editor, which *virtualizes*
+    # long content (only the viewport renders), so on a long log the marker --
+    # always the last line -- can be scrolled out of view and never detected,
+    # timing out a command that actually finished. Polling a dedicated one-line
+    # file sidesteps virtualization entirely; the full output is read from
+    # tmpfile once the marker appears.
+    donefile = f"/tmp/vip_done_{uid}.txt"
     # Wrap *cmd* in a subshell so the ``> {tmpfile}`` redirect captures the
     # entire command's stdout/stderr regardless of any ``||`` / ``&&`` / ``;``
     # inside *cmd*. Without the group, shell precedence binds the redirect to
     # only the last operand -- e.g. ``command -v python3 || command -v python``
     # sends the ``python3`` hit to the visible terminal, not the file, so
     # terminal_run returns "" with exit 0 (which then runs ``'' -m venv``).
-    shell_cmd = f'( {cmd} ) > {tmpfile} 2>&1; echo "{done_marker}:$?" >> {tmpfile}'
+    shell_cmd = (
+        f"( {cmd} ) > {tmpfile} 2>&1; rc=$?; "
+        f'echo "{done_marker}:$rc" >> {tmpfile}; '
+        f'echo "{done_marker}:$rc" > {donefile}'
+    )
 
     ide = _detect_ide(page)
 
@@ -923,27 +936,37 @@ def terminal_run(
     poll_interval = 1.0
 
     if ide == "vscode":
-        # VS Code: poll by opening the file in the Monaco editor, reading
-        # .view-lines, and closing+re-opening to force a disk re-read each poll.
-        # NOTE: This path is UNVALIDATED pending a live git_ops run.
+        # VS Code: poll the one-line sentinel file (donefile) in the Monaco
+        # editor. It is a single line, so Monaco's viewport virtualization
+        # cannot hide it (the failure mode when polling the full, possibly long,
+        # output file). Once the marker appears, read the full output from
+        # tmpfile once for the return value.
         while time.monotonic() < deadline:
             try:
-                _open_file_in_vscode_editor(page, tmpfile, timeout=5_000)
-                content = _read_vscode_editor_text(page, timeout=5_000)
+                _open_file_in_vscode_editor(page, donefile, timeout=5_000)
+                marker_text = _read_vscode_editor_text(page, timeout=5_000)
                 _close_active_editor(page)
-                parsed = _parse_done_marker(content, done_marker)
-                if parsed is not None:
-                    output, exit_code = parsed
-                    if exit_code != 0:
-                        raise ExecError(
-                            f"terminal_run: command {cmd!r} exited with status "
-                            f"{exit_code}: {output}"
-                        )
-                    return output
-            except ExecError:
-                raise
             except Exception:
-                pass
+                marker_text = ""
+            parsed = _parse_done_marker(marker_text, done_marker)
+            if parsed is not None:
+                _, exit_code = parsed
+                # Read the actual command output (best-effort; the marker already
+                # gave us the exit status, so a flaky output read is non-fatal).
+                output = ""
+                try:
+                    _open_file_in_vscode_editor(page, tmpfile, timeout=5_000)
+                    full = _read_vscode_editor_text(page, timeout=5_000)
+                    _close_active_editor(page)
+                    out_parsed = _parse_done_marker(full, done_marker)
+                    output = out_parsed[0] if out_parsed is not None else full
+                except Exception:
+                    pass
+                if exit_code != 0:
+                    raise ExecError(
+                        f"terminal_run: command {cmd!r} exited with status {exit_code}: {output}"
+                    )
+                return output
             time.sleep(poll_interval)
     else:
         # RStudio / Positron: poll via DOM console eval (read_file handles routing).
