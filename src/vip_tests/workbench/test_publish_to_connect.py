@@ -372,16 +372,20 @@ def deploy_python_shiny_via_terminal(
                     stacklevel=2,
                 )
 
-    # Primary: stable API title lookup (version-independent).
-    content = connect_client._find_content_by_name(title)
-    if content:
-        guid = content["guid"]
-        content_url = content.get("content_url", "")
+    # Primary: parse the GUID from rsconnect's success output. rsconnect sets
+    # the Connect content *name* to a slug derived from the bundle, not our
+    # --title, so a name lookup does not find it; the deploy output is the
+    # authoritative source. It prints both a dashboard URL (/connect/#/apps/GUID)
+    # and a direct URL (/content/GUID/), so match either path form.
+    m = re.search(r"/(?:apps|content)/([0-9a-f-]{36})", output)
+    if m:
+        guid = m.group(1)
+        content_url = f"{connect_url.rstrip('/')}/content/{guid}/"
     else:
-        # Fallback: parse the rsconnect output URL.
-        m = re.search(r"/apps/([0-9a-f-]{36})", output)
-        guid = m.group(1) if m else None
-        content_url = ""
+        # Fallback: title lookup (older Connect set name == title on some paths).
+        content = connect_client._find_content_by_name(title)
+        guid = content["guid"] if content else None
+        content_url = content.get("content_url", "") if content else ""
 
     if guid:
         _log(f"deployed content guid={guid}")
