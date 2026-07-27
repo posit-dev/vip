@@ -294,10 +294,12 @@ def deploy_python_shiny_via_terminal(
     A download blocked by a firewall skips (an environment constraint, not a
     publishing defect).
 
-    ``rsconnect-python`` is not assumed to be on PATH: we create a throwaway
-    venv from whatever ``python3`` the session provides, install
-    ``rsconnect-python`` into it, deploy with that venv's ``rsconnect``, and tear
-    the venv and bundle down afterwards.  A missing ``python3`` skips.
+    ``rsconnect-python`` is not assumed to be on PATH: the whole setup+deploy
+    runs as a single shell command (see ``_build_deploy_script``) that
+    provisions a throwaway venv -- preferring ``uv`` (venv + install in ~1s),
+    falling back to ``python -m venv`` + ``pip`` -- deploys with that venv's
+    ``rsconnect``, and the venv and bundle are torn down afterwards.  When no
+    interpreter is available the script tags ``VIP_NO_PY`` and the step skips.
     """
     # Open the integrated terminal. Filter to the visible input: a VS Code
     # session can end up with more than one terminal (e.g. the Python extension
