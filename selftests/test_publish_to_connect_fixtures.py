@@ -14,6 +14,17 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+# Imported at collection time, on purpose. ``test_content_deploy`` is a
+# pytest-bdd module whose module-level ``@scenario`` decorators read
+# ``pytest_bdd.utils.CONFIG_STACK[-1]``. pytest-bdd pushes the session config in
+# a ``trylast`` ``pytest_configure`` but pops it unconditionally in
+# ``pytest_unconfigure``, so an in-process ``pytester`` run (see
+# ``selftests/test_plugin.py``) can pop the outer session's entry and leave the
+# stack empty. Importing this module from inside a test body then raises
+# ``IndexError: list index out of range`` whenever a pytester test happens to
+# run earlier on the same xdist worker. Collection runs before any of that.
+from vip_tests.connect import bundles, test_content_deploy
+
 # Paths to the conftest files under test
 _ROOT_CONFTEST = Path(__file__).parent.parent / "src" / "vip_tests" / "conftest.py"
 _CONNECT_CONFTEST = Path(__file__).parent.parent / "src" / "vip_tests" / "connect" / "conftest.py"
@@ -165,7 +176,6 @@ class TestSharedShinyBundle:
     def test_connect_and_workbench_use_identical_bundle(self):
         """The Connect deploy test and Workbench publish test must ship the
         byte-identical bundle -- both route through build_shiny_bundle_files."""
-        from vip_tests.connect import bundles, test_content_deploy
 
         # Connect's _get_bundle for the shiny item delegates to the shared builder.
         class _FakeConnect:
