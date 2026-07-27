@@ -42,17 +42,24 @@ pytestmark = pytest.mark.order(60)
 
 _FILENAME = Path(__file__).name
 
-# Timeout for the combined setup+deploy command. With uv the venv+install take
-# ~1s and --no-verify skips rsconnect's multi-minute boot wait, so the whole
-# command finishes well under a minute; the ceiling is bounded so a hang cannot
-# consume the 5-minute suite budget.
-_DEPLOY_TIMEOUT_MS = 120_000
+# Timeout for the combined setup+deploy command. `--no-verify` skips ONLY
+# rsconnect's client-side post-deploy app-boot probe; it does NOT skip the
+# server-side deployment task -- rsconnect's emit_task_log()/wait_for_task()
+# runs unconditionally and blocks until Connect finishes restoring the manifest's
+# full package closure. On a cold Connect package cache that restore compiles the
+# ~30-package R closure from source and routinely runs many minutes, so the
+# ceiling must be generous (a tight bound would fail a healthy-but-slow build).
+# Bounded so a genuine hang still cannot run unbounded; this test is @slow-tagged
+# and excluded from `verify --basic`.
+_DEPLOY_TIMEOUT_MS = 900_000  # 15 min
 
 # Timeout for the short cleanup commands (rm -rf).
 _VENV_QUICK_TIMEOUT_MS = 30_000
 
-# Post-deploy reachability polling (deploy runs --no-verify, so the Shiny
-# process may still be booting when the deploy command returns).
+# Post-deploy reachability polling. rsconnect exit 0 already means the server-side
+# build finished (see above), but deploy runs with --no-verify so the Shiny
+# worker process may still be booting when the command returns; poll the content
+# URL for a bounded window until it serves.
 _REACHABILITY_TIMEOUT_S = 60
 _REACHABILITY_POLL_S = 3
 
@@ -70,6 +77,7 @@ def _build_deploy_script(
     venv_dir: str,
     app_r: str,
     manifest_url: str,
+    manifest_url_fallback: str,
     platform: str,
     connect_url: str,
     api_key: str,
@@ -82,22 +90,38 @@ def _build_deploy_script(
     cannot hijack a later command (the multi-terminal race). The script:
 
     1. writes ``app.R`` (base64-decoded so content survives the terminal),
-    2. downloads the reference manifest (``curl -fsS``; tags VIP_DL_FAIL on
-       network failure) and patches its ``platform`` with whatever python is
-       available,
-    3. provisions ``rsconnect`` — ``uv`` (venv+install in ~1s) when present,
-       else ``python -m venv`` + ``pip`` — tagging VIP_NO_PY if no interpreter,
-    4. runs ``rsconnect deploy manifest ... --no-verify``.
+    2. preflights Connect *from inside the session* — ``curl`` the server URL and
+       map each transport failure to a distinct tag: DNS (VIP_CONNECT_DNS),
+       connect/timeout (VIP_CONNECT_UNREACHABLE), TLS trust (VIP_CONNECT_UNTRUSTED).
+       The URL the pytest host reaches is not necessarily reachable from the
+       Workbench server (split-horizon DNS, egress firewall, internal CA),
+    3. downloads the reference manifest, trying the pinned release tag first and
+       falling back to ``main`` (so an unreleased/dev version whose tag 404s still
+       works); tags VIP_DL_FAIL only if *both* fail, then patches its ``platform``
+       with whatever python is available,
+    4. provisions ``rsconnect`` — ``uv`` (venv+install in ~1s) when present,
+       else ``python -m venv`` + ``pip`` — tagging VIP_NO_PY if no interpreter and
+       VIP_NO_RSCONNECT if the install itself fails (air-gapped / no PyPI mirror),
+    5. runs ``rsconnect deploy manifest ... --no-verify``.
 
-    Failure tags (VIP_NO_PY / VIP_DL_FAIL) let the caller map environment
-    problems to skips while real deploy errors stay failures. Values are
-    shlex.quote'd; the title contains spaces (unique_session_name).
+    Failure tags let the caller map environment problems to skips while real
+    deploy errors stay failures:
+
+    - VIP_CONNECT_DNS / VIP_CONNECT_UNREACHABLE / VIP_CONNECT_UNTRUSTED — the
+      session cannot resolve / reach / trust the Connect URL,
+    - VIP_DL_FAIL — reference manifest unreachable at both the tag and ``main``,
+    - VIP_NO_PY — no python interpreter and no uv,
+    - VIP_NO_RSCONNECT — an interpreter exists but rsconnect-python could not be
+      installed (no PyPI or internal mirror reachable).
+
+    Values are shlex.quote'd; the title contains spaces (unique_session_name).
     """
     app_r_b64 = base64.b64encode(app_r.encode()).decode("ascii")
     q_bundle = shlex.quote(bundle_dir)
     q_manifest = shlex.quote(manifest_path)
     q_venv = shlex.quote(venv_dir)
     q_url = shlex.quote(manifest_url)
+    q_url_fallback = shlex.quote(manifest_url_fallback)
     q_platform = shlex.quote(platform)
     q_server = shlex.quote(connect_url)
     q_key = shlex.quote(api_key)
@@ -119,19 +143,52 @@ def _build_deploy_script(
         f"printf %s {app_r_b64} | base64 -d > {q_bundle}/app.R; "
         # Resolve a python interpreter for the manifest patch (uv provides one too).
         f'PYBIN="$(command -v python3 || command -v python || true)"; '
-        # Download the manifest (network/firewall -> VIP_DL_FAIL).
-        f"curl -fsS -o {q_manifest} {q_url} || {{ echo VIP_DL_FAIL; exit 21; }}; "
+        # -- Preflight: can THIS session resolve / reach / trust Connect? --------
+        # The URL the pytest host uses is not necessarily reachable from the
+        # Workbench server. curl's exit code separates the failure classes so the
+        # caller can skip with a message that names the actual constraint:
+        #   6  -> DNS resolution failed         (VIP_CONNECT_DNS)
+        #   60/77/35/58/59/83 -> TLS trust/cert (VIP_CONNECT_UNTRUSTED)
+        #   7/28/other        -> connect/timeout(VIP_CONNECT_UNREACHABLE)
+        # --head keeps it cheap; --max-time bounds a black-hole firewall.
+        # Capture the rc INLINE (`|| CURL_RC=$?`): a bare `curl; CURL_RC=$?` would
+        # trip `set -e` on a failing curl and abort before the rc is read.
+        # No -f here: an HTTP 404/redirect at the Connect root is fine -- we are
+        # testing transport + TLS trust, not the root page's status. -f is kept on
+        # the manifest download below, where a 4xx genuinely means "not found".
+        f"CURL_RC=0; curl -sS --head --max-time 20 -o /dev/null {q_server} || CURL_RC=$?; "
+        f'if [ "$CURL_RC" != 0 ]; then '
+        f'  if [ "$CURL_RC" = 6 ]; then echo VIP_CONNECT_DNS; exit 23; '
+        f'  elif [ "$CURL_RC" = 60 ] || [ "$CURL_RC" = 77 ] || [ "$CURL_RC" = 35 ] '
+        f'    || [ "$CURL_RC" = 58 ] || [ "$CURL_RC" = 59 ] || [ "$CURL_RC" = 83 ]; then '
+        f"    echo VIP_CONNECT_UNTRUSTED; exit 24; "
+        f"  else echo VIP_CONNECT_UNREACHABLE; exit 25; fi; "
+        f"fi; "
+        # Download the manifest: pinned release tag first, then main; only if BOTH
+        # fail is it a real environment/network problem (VIP_DL_FAIL). A dev
+        # checkout whose tag is not yet pushed 404s on the tag but resolves on main.
+        f"curl -fsS -o {q_manifest} {q_url} "
+        f"|| curl -fsS -o {q_manifest} {q_url_fallback} "
+        f"|| {{ echo VIP_DL_FAIL; exit 21; }}; "
         # Patch platform if we have a python; harmless to skip if not.
         f'if [ -n "$PYBIN" ]; then {patch}; fi; '
-        # Provision rsconnect: prefer uv (fast), else python venv + pip.
+        # Provision rsconnect: prefer uv (fast), else python venv + pip. A failed
+        # install (no PyPI / internal mirror reachable, i.e. air-gapped) is an
+        # environment constraint, not a publishing defect -> VIP_NO_RSCONNECT.
+        # Each step guards itself with `|| { echo TAG; exit N; }` (separate
+        # statements, not nested brace groups) so `set -e` cannot abort before the
+        # tag is emitted -- that untagged abort is exactly the pre-fix failure.
         f"if command -v uv >/dev/null 2>&1; then "
-        f"  uv venv {q_venv} >/dev/null && "
-        f"  uv pip install --python {q_venv}/bin/python --quiet rsconnect-python >/dev/null; "
+        f"  uv venv {q_venv} >/dev/null || {{ echo VIP_NO_RSCONNECT; exit 26; }}; "
+        f"  uv pip install --python {q_venv}/bin/python --quiet rsconnect-python >/dev/null "
+        f"    || {{ echo VIP_NO_RSCONNECT; exit 26; }}; "
         f'elif [ -n "$PYBIN" ]; then '
-        f'  "$PYBIN" -m venv {q_venv} && '
-        f"  {q_venv}/bin/pip install --quiet --upgrade rsconnect-python; "
+        f'  "$PYBIN" -m venv {q_venv} || {{ echo VIP_NO_RSCONNECT; exit 26; }}; '
+        f"  {q_venv}/bin/pip install --quiet --upgrade rsconnect-python "
+        f"    || {{ echo VIP_NO_RSCONNECT; exit 26; }}; "
         f"else echo VIP_NO_PY; exit 22; fi; "
-        # Deploy (--no-verify: skip rsconnect's multi-minute boot probe).
+        # Deploy. --no-verify skips only rsconnect's client-side app-boot probe;
+        # the command still blocks until Connect's server-side build finishes.
         f"{q_venv}/bin/rsconnect deploy manifest {q_manifest} "
         f"--server {q_server} --api-key {q_key} --title {q_title} --no-verify"
     )
@@ -290,16 +347,24 @@ def deploy_python_shiny_via_terminal(
     ``rsconnect`` finds it locally no matter where pytest runs: the tiny
     ``app.R`` is typed via the terminal, while the ~80 KB ``manifest.json`` (the
     full package closure -- far too large to type reliably) is downloaded from
-    the public repo with ``curl`` and its ``platform`` patched to the server's R.
-    A download blocked by a firewall skips (an environment constraint, not a
-    publishing defect).
+    the public repo with ``curl`` (pinned tag, falling back to ``main``) and its
+    ``platform`` patched to the server's R.
 
     ``rsconnect-python`` is not assumed to be on PATH: the whole setup+deploy
     runs as a single shell command (see ``_build_deploy_script``) that
     provisions a throwaway venv -- preferring ``uv`` (venv + install in ~1s),
     falling back to ``python -m venv`` + ``pip`` -- deploys with that venv's
-    ``rsconnect``, and the venv and bundle are torn down afterwards.  When no
-    interpreter is available the script tags ``VIP_NO_PY`` and the step skips.
+    ``rsconnect``, and the venv and bundle are torn down afterwards.
+
+    Because the deploy runs *inside the Workbench session* (not the pytest host),
+    the script preflights and tags every environment constraint on the
+    session→Connect and session→PyPI axes so each maps to an actionable skip
+    rather than an opaque failure: ``VIP_CONNECT_DNS`` /
+    ``VIP_CONNECT_UNREACHABLE`` / ``VIP_CONNECT_UNTRUSTED`` (session cannot
+    resolve/reach/trust Connect), ``VIP_DL_FAIL`` (manifest unreachable at both
+    the tag and ``main``), ``VIP_NO_PY`` (no interpreter), and
+    ``VIP_NO_RSCONNECT`` (interpreter present but rsconnect-python uninstallable,
+    e.g. air-gapped).  A genuine ``rsconnect deploy`` failure stays a hard failure.
     """
     # Open the integrated terminal. Filter to the visible input: a VS Code
     # session can end up with more than one terminal (e.g. the Python extension
@@ -331,6 +396,7 @@ def deploy_python_shiny_via_terminal(
             venv_dir=venv_dir,
             app_r=shiny_bundle_spec["app_r"],
             manifest_url=shiny_bundle_spec["manifest_url"],
+            manifest_url_fallback=shiny_bundle_spec["manifest_url_fallback"],
             platform=shiny_bundle_spec["platform"],
             connect_url=connect_url,
             api_key=vip_config.connect.api_key,
@@ -345,15 +411,41 @@ def deploy_python_shiny_via_terminal(
             )
         except ExecError as exc:
             # The combined script tags its own failure modes so we can map an
-            # environment problem (no python/uv, unreachable repo) to a skip
-            # while a genuine rsconnect failure stays a hard failure.
+            # environment problem (Connect unreachable from the session, no
+            # python/uv, no PyPI mirror, unreachable repo) to a skip while a
+            # genuine rsconnect deploy failure stays a hard failure.
             msg = str(exc)
+            if "VIP_CONNECT_DNS" in msg:
+                pytest.skip(
+                    f"The Workbench session cannot resolve the Connect host "
+                    f"{connect_url!r} (DNS failure — the URL the test host uses may "
+                    "differ from what the session can resolve, e.g. split-horizon DNS)"
+                )
+            if "VIP_CONNECT_UNTRUSTED" in msg:
+                pytest.skip(
+                    f"The Workbench session does not trust the Connect TLS certificate "
+                    f"at {connect_url!r} (self-signed / internal CA not in the session's "
+                    "trust store); rsconnect would reject the connection"
+                )
+            if "VIP_CONNECT_UNREACHABLE" in msg:
+                pytest.skip(
+                    f"The Workbench session cannot reach Connect at {connect_url!r} "
+                    "(connection refused/timeout — egress firewall or internal-only "
+                    "Connect hostname unreachable from the session)"
+                )
             if "VIP_NO_PY" in msg:
                 pytest.skip("Neither uv nor python3/python is available in the Workbench session")
+            if "VIP_NO_RSCONNECT" in msg:
+                pytest.skip(
+                    "rsconnect-python could not be installed in the Workbench session "
+                    "(no PyPI or internal package mirror reachable — likely air-gapped)"
+                )
             if "VIP_DL_FAIL" in msg:
                 pytest.skip(
                     f"Could not download the Shiny manifest from "
-                    f"{shiny_bundle_spec['manifest_url']} (network/firewall constraint)"
+                    f"{shiny_bundle_spec['manifest_url']} or its main-branch fallback "
+                    f"{shiny_bundle_spec['manifest_url_fallback']} "
+                    "(network/firewall constraint, or the ref does not exist)"
                 )
             raise
         _log("deploy command returned")
@@ -421,44 +513,106 @@ def deploy_via_publisher_ui(page: Page):
     )
 
 
+# HTTP status classification for a freshly-deployed Connect content URL,
+# confirmed against posit-dev/connect serving source:
+#   200            -> worker booted and is proxying (for a static-UI Shiny app,
+#                     Connect only proxies AFTER the worker accepts a connection,
+#                     so this is not a pre-boot loading shell); marker must render.
+#   503            -> env restore / worker boot still in progress -> keep polling.
+#   502            -> proxy round-trip failed (worker not yet listening or dropped);
+#                     usually transient in the first seconds -> keep polling.
+#   500            -> StartupError ("startup took too long" / launcher error): the
+#                     app tried to boot and Connect gave up -> runtime DEFECT (fail).
+#   401/403/404    -> unauthenticated / locked / API key lacks view permission
+#                     (Connect returns 404, not 403, to avoid leaking existence):
+#                     an auth/permission ENVIRONMENT problem, not a publish defect.
+_CONNECT_BOOTING_STATUSES = frozenset({502, 503})
+_CONNECT_AUTH_STATUSES = frozenset({401, 403, 404})
+
+
 @then("the app is reachable on Connect")
 def app_reachable_on_connect(publish_context: dict, connect_client):
     """Verify the deployed content serves a live page via the Connect API.
 
-    Deploy runs with ``--no-verify``, so the Shiny process may still be booting.
-    Using the Connect API key, poll the content URL with a bounded budget until
-    it returns a live page (HTTP < 400 whose body carries the app's "VIP test"
-    marker), rather than assuming it is up the instant the deploy returns.
+    Deploy runs with ``--no-verify``, so the Shiny worker may still be booting
+    when the deploy command returns (the server-side build itself is already
+    done — rsconnect blocks on it regardless of ``--no-verify``). Using the
+    Connect API key, poll the content URL until it returns a live page (HTTP 200
+    whose body carries the app's static "VIP test" marker).
+
+    Each status is classified rather than treated as pass/keep-polling only
+    (see ``_CONNECT_*`` tables): a 500 StartupError is a runtime defect and
+    fails; a 401/403/404 is an auth/permission environment problem and skips; a
+    502/503 is still-booting and keeps polling. The URL is always determined
+    (constructed from the GUID as a last resort) so the check can never silently
+    pass without actually fetching the app.
     """
     guid = publish_context.get("content_guid")
     assert guid, "No content GUID was recorded by the deploy step"
 
-    content = connect_client.get_content(guid)
+    # get_content raise_for_status()es; a transient 404/5xx immediately after
+    # deploy must not crash the check, so fall back to the recorded/derived URL.
+    try:
+        content = connect_client.get_content(guid)
+    except Exception:
+        content = {}
+
+    # Determine the content URL, never leaving it empty: recorded value first,
+    # then the API's content_url, then constructed from the base URL + GUID.
+    # A silent "no URL -> return" would let this step pass without a single fetch.
     url = publish_context.get("content_url") or content.get("content_url", "")
     if not url:
-        return
+        base = getattr(connect_client, "base_url", "") or ""
+        assert base, (
+            f"Could not determine a content URL for {guid} and the Connect client "
+            "exposes no base_url — cannot verify reachability"
+        )
+        url = f"{base.rstrip('/')}/content/{guid}/"
 
     _log(f"verifying live app via Connect API at {url}")
     deadline = time.monotonic() + _REACHABILITY_TIMEOUT_S
     last_status = None
+    saw_startup_error = False
     while time.monotonic() < deadline:
         try:
             resp = connect_client.fetch_content(url)
-            last_status = resp.status_code
-            # A booted Shiny app returns its HTML shell containing the UI text.
-            if resp.status_code < 400 and "vip test" in resp.text.lower():
-                _log(f"live app confirmed (HTTP {resp.status_code}, 'VIP test' rendered)")
+            status = resp.status_code
+            # 200 + rendered static marker == the app actually booted and served.
+            if status == 200 and "vip test" in resp.text.lower():
+                _log("live app confirmed (HTTP 200, 'VIP test' rendered)")
                 return
-            # Page reachable but content not yet rendered — keep polling.
-            if resp.status_code < 400:
-                last_status = f"{resp.status_code} (marker not yet present)"
-        except Exception as exc:  # transient during first-boot
+            if status == 200:
+                last_status = "200 (marker not yet rendered)"
+            elif status == 500:
+                # StartupError: a real runtime failure. Keep polling in case a
+                # later request re-triggers a launch, but remember it so the final
+                # message names the defect rather than a generic timeout.
+                saw_startup_error = True
+                last_status = "500 (Connect StartupError — app failed to boot)"
+            elif status in _CONNECT_AUTH_STATUSES:
+                pytest.skip(
+                    f"Connect returned HTTP {status} for {url!r}: the API key cannot "
+                    "view the deployed content (unauthenticated / locked / lacks "
+                    "view permission). This is an auth/permission environment "
+                    "constraint, not a publishing defect."
+                )
+            elif status in _CONNECT_BOOTING_STATUSES:
+                last_status = f"{status} (worker still booting)"
+            else:
+                last_status = str(status)
+        except Exception as exc:  # transient during first-boot (conn reset, etc.)
             last_status = repr(exc)
         time.sleep(_REACHABILITY_POLL_S)
 
+    detail = (
+        "the app reported a Connect StartupError (HTTP 500) and never served the "
+        "'VIP test' marker — a runtime failure, not a slow boot"
+        if saw_startup_error
+        else f"last result: {last_status}"
+    )
     raise AssertionError(
         f"Deployed content at {url!r} was not confirmed live within "
-        f"{_REACHABILITY_TIMEOUT_S}s (last result: {last_status})"
+        f"{_REACHABILITY_TIMEOUT_S}s ({detail})"
     )
 
 

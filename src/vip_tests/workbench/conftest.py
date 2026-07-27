@@ -932,6 +932,9 @@ def shiny_bundle_spec(connect_client) -> dict[str, str]:
       public repo, pinned to the installed VIP version's tag.  The manifest
       carries the full 30-package dependency closure (~80 KB), far too large to
       type reliably through the terminal, so the session downloads it directly.
+    - ``manifest_url_fallback``: the same raw URL at ``main``.  A dev/unreleased
+      checkout (version bumped, tag not yet pushed) 404s on the tag; the deploy
+      script falls back to this before concluding the manifest is unreachable.
     - ``platform``: the newest R installed on Connect, patched into the
       downloaded manifest exactly as ``build_shiny_bundle_files`` does, so the
       Workbench and Connect bundles stay identical.
@@ -951,5 +954,6 @@ def shiny_bundle_spec(connect_client) -> dict[str, str]:
     return {
         "app_r": _SHINY_APP_R,
         "manifest_url": manifest_raw_url(f"v{__version__}"),
+        "manifest_url_fallback": manifest_raw_url("main"),
         "platform": _latest_version(r_versions),
     }
