@@ -1,6 +1,29 @@
 # CHANGELOG
 
 
+## v0.58.8 (2026-07-27)
+
+### Bug Fixes
+
+- **workbench**: Reliable Workbench→Connect terminal publish with actionable skips
+  ([#538](https://github.com/posit-dev/vip/pull/538),
+  [`1553d40`](https://github.com/posit-dev/vip/commit/1553d406b4128ca332011aeaca5f6f2ec409541f))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+### Continuous Integration
+
+- Harden release/publish for 1.0 (attestations, published-artifact smoke, version guard)
+  ([#533](https://github.com/posit-dev/vip/pull/533),
+  [`992c609`](https://github.com/posit-dev/vip/commit/992c609a141a1719cabf09b14e6244b61b0f3441))
+
+- Make smoke gates fail when in-scope suites are skipped
+  ([#530](https://github.com/posit-dev/vip/pull/530),
+  [`b993267`](https://github.com/posit-dev/vip/commit/b99326762c24303ceb4e059fe88fa8e027e252db))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+
 ## v0.58.7 (2026-07-24)
 
 ### Bug Fixes
