@@ -15,6 +15,7 @@ import httpx
 import pytest
 from pytest_bdd import scenario, then, when
 
+from vip_tests.connect.bundles import _latest_version, build_shiny_bundle_files
 from vip_tests.connect.conftest import _make_tar_gz
 
 _GIT_REPO_URL = "https://github.com/posit-dev/connect-extensions"
@@ -89,26 +90,6 @@ def deploy_state():
 # ---------------------------------------------------------------------------
 
 
-def _latest_version(versions: list[str]) -> str:
-    """Return the highest version string by numeric component.
-
-    Connect's server_settings list installations in install order, not by
-    version, so picking [0] can return the oldest R/Python.  Choosing the
-    newest matches the regenerated manifests, which target current packages.
-    """
-
-    def key(v: str) -> tuple:
-        parts = []
-        for p in v.split("."):
-            try:
-                parts.append((0, int(p)))
-            except ValueError:
-                parts.append((1, p))
-        return tuple(parts)
-
-    return max(versions, key=key)
-
-
 def _get_bundle(name: str, connect_client) -> dict[str, str]:
     """Return the bundle files for *name*, building manifests dynamically.
 
@@ -155,17 +136,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         r_versions = connect_client.r_versions()
         if not r_versions:
             pytest.skip("No R versions available on Connect — cannot deploy Shiny")
-        manifest = json.loads((pathlib.Path(__file__).parent / "shiny_manifest.json").read_text())
-        manifest["platform"] = _latest_version(r_versions)
-        return {
-            "app.R": (
-                "library(shiny)\n"
-                'ui <- fluidPage("VIP test")\n'
-                "server <- function(input, output, session) {}\n"
-                "shinyApp(ui, server)\n"
-            ),
-            "manifest.json": json.dumps(manifest),
-        }
+        return build_shiny_bundle_files(r_versions)
 
     if name == "vip-dash-test":
         py_versions = connect_client.python_versions()

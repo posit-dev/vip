@@ -16,6 +16,7 @@ No live Workbench deployment or Playwright browser is required.
 
 from __future__ import annotations
 
+import base64
 import re
 from unittest.mock import MagicMock
 
@@ -24,6 +25,7 @@ import pytest
 import vip_tests.workbench.exec as exec_mod
 from vip_tests.workbench.exec import (
     ExecError,
+    _b64_write_cmd,
     _detect_ide,
     _extract_between_markers,
     _make_sentinels,
@@ -37,6 +39,7 @@ from vip_tests.workbench.exec import (
     ensure_positron_console,
     file_exists,
     read_file,
+    write_bundle,
 )
 from vip_tests.workbench.pages import PositronSession, RStudioSession, VSCodeSession
 
@@ -831,6 +834,30 @@ class TestReadFileRouting:
 
 
 # ---------------------------------------------------------------------------
+# _visible_terminal_input
+# ---------------------------------------------------------------------------
+
+
+class TestVisibleTerminalInput:
+    """A session may hold more than one terminal (VS Code's Python extension
+    spawns one to activate a venv), so the input must be resolved by the
+    ``:visible`` filter + ``.last`` -- a bare ``.xterm-helper-textarea`` locator
+    matches multiple elements and trips Playwright strict mode on click/type."""
+
+    def test_filters_to_visible_and_last(self):
+        from vip_tests.workbench.exec import _visible_terminal_input
+        from vip_tests.workbench.pages import VSCodeSession
+
+        page = MagicMock()
+        _visible_terminal_input(page)
+
+        selector = page.locator.call_args[0][0]
+        assert selector == f"{VSCodeSession.TERMINAL_INPUT}:visible"
+        # ``.last`` is what disambiguates a transient two-terminal tie.
+        assert page.locator.return_value.last is _visible_terminal_input(page)
+
+
+# ---------------------------------------------------------------------------
 # terminal_run
 # ---------------------------------------------------------------------------
 
@@ -848,6 +875,16 @@ class TestTerminalRun:
         monkeypatch.setattr(exec_mod, "_ensure_terminal_open", lambda p, timeout=30_000: None)
         monkeypatch.setattr(exec_mod.uuid, "uuid4", lambda: _FixedUUID())
 
+    @staticmethod
+    def _typed_cmd(page):
+        """The command string terminal_run typed into the (visible) terminal.
+
+        terminal_run resolves the input via ``_visible_terminal_input``, which
+        returns ``page.locator(...).last``, so the ``.type()`` call lands on the
+        ``.last`` child mock rather than ``page.locator.return_value``.
+        """
+        return page.locator.return_value.last.type.call_args[0][0]
+
     def test_writes_done_marker_unconditionally(self, monkeypatch):
         """The marker must be appended with ``;`` so it is written even when
         *cmd* fails -- ``&&`` silently drops it on non-zero exit (#439)."""
@@ -859,9 +896,14 @@ class TestTerminalRun:
 
         exec_mod.terminal_run(page, "false", timeout=1_000)
 
-        typed_cmd = page.locator.return_value.type.call_args[0][0]
+        typed_cmd = self._typed_cmd(page)
         assert "&&" not in typed_cmd
-        assert 'echo "VIP_DONE_deadbeef:$?"' in typed_cmd
+        # rc is captured once ($?) then written to both the output file and the
+        # one-line sentinel file, so the marker is always recorded even on
+        # failure (the #439 guarantee).
+        assert "rc=$?" in typed_cmd
+        assert 'echo "VIP_DONE_deadbeef:$rc" >> ' in typed_cmd
+        assert 'echo "VIP_DONE_deadbeef:$rc" > ' in typed_cmd
 
     def test_returns_output_on_success(self, monkeypatch):
         self._patch_common(monkeypatch)
@@ -873,6 +915,26 @@ class TestTerminalRun:
         result = exec_mod.terminal_run(page, "echo hello", timeout=1_000)
 
         assert result == "hello"
+
+    def test_wraps_cmd_in_subshell_before_redirect(self, monkeypatch):
+        """*cmd* must be grouped in ``( ... )`` before the ``> tmpfile`` redirect.
+
+        Regression guard: an ``||``/``&&`` inside *cmd* would otherwise bind the
+        redirect to only its last operand, so a short-circuited command (e.g.
+        ``command -v python3 || command -v python``) sends its output to the
+        visible terminal instead of the capture file -- terminal_run then returns
+        "" with exit 0 and the caller builds an empty ``'' -m venv`` invocation."""
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(
+            exec_mod, "read_file", MagicMock(return_value="/usr/bin/python3\nVIP_DONE_deadbeef:0")
+        )
+        page = MagicMock()
+
+        exec_mod.terminal_run(page, "command -v python3 || command -v python", timeout=1_000)
+
+        typed_cmd = self._typed_cmd(page)
+        assert typed_cmd.startswith("( command -v python3 || command -v python ) > ")
+        assert " > /tmp/vip_term_deadbeef.txt 2>&1;" in typed_cmd
 
     def test_raises_exec_error_immediately_on_nonzero_exit(self, monkeypatch):
         """Fast failure must surface as an immediate ExecError with the real
@@ -911,6 +973,22 @@ class TestTerminalRun:
         monkeypatch.setattr(exec_mod, "_read_vscode_editor_text", mock_read)
         return mock_read
 
+    def test_writes_marker_to_sentinel_file(self, monkeypatch):
+        """The marker is written to BOTH the output file and a one-line sentinel
+        file. VS Code polls the sentinel to dodge Monaco's viewport
+        virtualization (which can hide the marker on a long output file)."""
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(
+            exec_mod, "read_file", MagicMock(return_value="ok\nVIP_DONE_deadbeef:0")
+        )
+        page = MagicMock()
+
+        exec_mod.terminal_run(page, "echo ok", timeout=1_000)
+
+        typed_cmd = self._typed_cmd(page)
+        assert "/tmp/vip_term_" in typed_cmd  # output file
+        assert "/tmp/vip_done_" in typed_cmd  # one-line sentinel file
+
     def test_vscode_returns_output_on_success(self, monkeypatch):
         """The VS Code editor-open polling path has its own copy of the
         marker-parsing logic and must be covered independently of the
@@ -933,4 +1011,86 @@ class TestTerminalRun:
             exec_mod.terminal_run(page, "git clone ...", timeout=1_000)
 
         assert error_output in str(excinfo.value)
-        mock_read.assert_called_once()
+        # A single poll suffices: the sentinel (donefile) read detects the
+        # marker, then one more read fetches the output for the error message.
+        # Two reads, not a timeout loop.
+        assert mock_read.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# _b64_write_cmd
+# ---------------------------------------------------------------------------
+
+
+class TestB64WriteCmd:
+    """The server-side file-write command must round-trip arbitrary content."""
+
+    def test_payload_decodes_back_to_content(self):
+        content = 'x = 1\nprint("hi $USER `date`")\n'
+        cmd = _b64_write_cmd("/tmp/app.py", content)
+        # Extract the base64 token between "printf %s " and " | base64 -d".
+        token = cmd.split("printf %s ", 1)[1].split(" | ", 1)[0]
+        assert base64.b64decode(token).decode("utf-8") == content
+
+    def test_path_is_shell_quoted(self):
+        cmd = _b64_write_cmd("/tmp/dir with space/app.py", "data")
+        assert "> '/tmp/dir with space/app.py'" in cmd
+
+    def test_no_raw_content_metacharacters_leak(self):
+        """Shell metacharacters in content must not appear unencoded in the cmd."""
+        cmd = _b64_write_cmd("/tmp/f", "rm -rf /; $(evil) `boom`")
+        assert "rm -rf /" not in cmd
+        assert "$(evil)" not in cmd
+        assert "`boom`" not in cmd
+
+
+# ---------------------------------------------------------------------------
+# write_bundle
+# ---------------------------------------------------------------------------
+
+
+class TestWriteBundle:
+    def test_creates_dir_and_writes_each_file(self, monkeypatch):
+        calls: list[str] = []
+        monkeypatch.setattr(exec_mod, "terminal_run", lambda page, cmd, **kw: calls.append(cmd))
+        page = MagicMock()
+
+        result = write_bundle(
+            page,
+            "/tmp/bundle",
+            {"app.py": "APP", "requirements.txt": "shiny\n"},
+            readback_lang="python",
+        )
+
+        assert result == "/tmp/bundle"
+        # First command must create the bundle dir.
+        assert calls[0] == "mkdir -p /tmp/bundle"
+        # Each file is written via a base64 pipe to its dest path.
+        assert any("base64 -d > /tmp/bundle/app.py" in c for c in calls)
+        assert any("base64 -d > /tmp/bundle/requirements.txt" in c for c in calls)
+        # The app.py payload round-trips.
+        app_cmd = next(c for c in calls if "/tmp/bundle/app.py" in c)
+        token = app_cmd.split("printf %s ", 1)[1].split(" | ", 1)[0]
+        assert base64.b64decode(token).decode("utf-8") == "APP"
+
+    def test_creates_parent_dir_for_nested_file(self, monkeypatch):
+        calls: list[str] = []
+        monkeypatch.setattr(exec_mod, "terminal_run", lambda page, cmd, **kw: calls.append(cmd))
+        page = MagicMock()
+
+        write_bundle(page, "/tmp/bundle", {"www/index.html": "<html>"})
+
+        # The nested file's parent must be created before the write.
+        assert "mkdir -p /tmp/bundle/www" in calls
+        parent_idx = calls.index("mkdir -p /tmp/bundle/www")
+        write_idx = next(i for i, c in enumerate(calls) if "/tmp/bundle/www/index.html" in c)
+        assert parent_idx < write_idx
+
+    def test_propagates_terminal_run_failure(self, monkeypatch):
+        def boom(page, cmd, **kw):
+            raise ExecError("write failed")
+
+        monkeypatch.setattr(exec_mod, "terminal_run", boom)
+
+        with pytest.raises(ExecError, match="write failed"):
+            write_bundle(MagicMock(), "/tmp/bundle", {"app.py": "APP"})

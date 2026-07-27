@@ -5,8 +5,8 @@ Verifies that ``_connect_created_guids``, ``_connect_content_cleanup``, and
 ``src/vip_tests/conftest.py`` (and therefore visible to all test packages)
 and are no longer duplicated in ``src/vip_tests/connect/conftest.py``.
 
-Also verifies the ``python_shiny_bundle_path`` fixture produces a directory
-with the expected files.
+Also verifies the ``python_shiny_bundle_files`` fixture produces the expected
+bundle contents (materialized server-side by the deploy step, not on disk).
 """
 
 from __future__ import annotations
@@ -95,55 +95,86 @@ class TestCleanupFixturesPromotedToRoot:
 
 
 # ---------------------------------------------------------------------------
-# Tests — python_shiny_bundle_path fixture
+# Tests — shared Shiny bundle (Connect + Workbench use the SAME bundle)
 # ---------------------------------------------------------------------------
 
+import json  # noqa: E402
 
-class TestPythonShinyBundlePath:
-    def test_fixture_defined_in_workbench_conftest(self):
-        """python_shiny_bundle_path fixture must be in workbench conftest."""
+
+class TestSharedShinyBundle:
+    _R_VERSIONS = ["4.3.1", "4.6.0", "4.4.2"]
+
+    def test_workbench_fixture_defined_in_conftest(self):
+        """The Workbench shiny_bundle_spec fixture must exist in conftest."""
         source = _WORKBENCH_CONFTEST.read_text()
         names = _fixture_names_in(source)
-        assert "python_shiny_bundle_path" in names, (
-            f"Expected fixture 'python_shiny_bundle_path' in {_WORKBENCH_CONFTEST}"
+        assert "shiny_bundle_spec" in names, (
+            f"Expected fixture 'shiny_bundle_spec' in {_WORKBENCH_CONFTEST}"
         )
 
-    def test_bundle_creates_app_py(self, tmp_path):
-        """The fixture must create app.py in the returned directory."""
-        from vip_tests.workbench.conftest import _write_python_shiny_bundle
+    def test_manifest_raw_url_points_at_public_repo_at_ref(self):
+        """The manifest download URL must be the public raw URL pinned to a ref."""
+        from vip_tests.connect.bundles import MANIFEST_REPO_PATH, manifest_raw_url
 
-        bundle_dir = _write_python_shiny_bundle(tmp_path)
-        app_py = bundle_dir / "app.py"
-        assert app_py.exists(), f"app.py not found in bundle directory {bundle_dir}"
+        url = manifest_raw_url("v9.9.9")
+        assert url == (
+            "https://raw.githubusercontent.com/posit-dev/vip/v9.9.9/" + MANIFEST_REPO_PATH
+        )
 
-    def test_bundle_creates_requirements_txt(self, tmp_path):
-        """The fixture must create requirements.txt in the returned directory."""
-        from vip_tests.workbench.conftest import _write_python_shiny_bundle
+    def test_manifest_url_ref_matches_installed_version(self):
+        """The Workbench fixture pins the download to the installed VIP tag, so a
+        released manifest always matches the app.R checksum shipped with it."""
+        from vip import __version__
+        from vip_tests.connect.bundles import manifest_raw_url
 
-        bundle_dir = _write_python_shiny_bundle(tmp_path)
-        req_txt = bundle_dir / "requirements.txt"
-        assert req_txt.exists(), f"requirements.txt not found in {bundle_dir}"
-        assert "shiny" in req_txt.read_text()
+        assert manifest_raw_url(f"v{__version__}").endswith(
+            f"/v{__version__}/src/vip_tests/connect/shiny_manifest.json"
+        )
 
-    def test_app_py_is_valid_python(self, tmp_path):
-        """app.py must parse as valid Python."""
-        from vip_tests.workbench.conftest import _write_python_shiny_bundle
+    def test_bundle_has_appR_and_manifest(self):
+        """The shared builder returns an R app.R + manifest.json (not Python)."""
+        from vip_tests.connect.bundles import build_shiny_bundle_files
 
-        bundle_dir = _write_python_shiny_bundle(tmp_path)
-        source = (bundle_dir / "app.py").read_text()
-        try:
-            ast.parse(source)
-        except SyntaxError as exc:
-            raise AssertionError(f"app.py contains invalid Python: {exc}") from exc
+        files = build_shiny_bundle_files(self._R_VERSIONS)
+        assert set(files) == {"app.R", "manifest.json"}
+        assert "shinyApp(" in files["app.R"]
+        assert 'fluidPage("VIP test")' in files["app.R"]
 
-    def test_app_py_contains_shiny_app(self, tmp_path):
-        """app.py must define a Shiny App object."""
-        from vip_tests.workbench.conftest import _write_python_shiny_bundle
+    def test_manifest_is_shiny_appmode_with_newest_r(self):
+        """Manifest platform is patched to the newest installed R; appmode=shiny."""
+        from vip_tests.connect.bundles import build_shiny_bundle_files
 
-        bundle_dir = _write_python_shiny_bundle(tmp_path)
-        source = (bundle_dir / "app.py").read_text()
-        assert "App(" in source, "app.py must contain a Shiny App(...) call"
-        assert "app_ui" in source, "app.py must define app_ui"
+        files = build_shiny_bundle_files(self._R_VERSIONS)
+        manifest = json.loads(files["manifest.json"])
+        assert manifest["metadata"]["appmode"] == "shiny"
+        assert manifest["platform"] == "4.6.0"  # newest of _R_VERSIONS
+
+    def test_manifest_checksum_matches_appR(self):
+        """The manifest's app.R checksum must match the app.R bytes we ship,
+        or ``rsconnect deploy manifest`` rejects the bundle."""
+        import hashlib
+
+        from vip_tests.connect.bundles import build_shiny_bundle_files
+
+        files = build_shiny_bundle_files(self._R_VERSIONS)
+        manifest = json.loads(files["manifest.json"])
+        expected = manifest["files"]["app.R"]["checksum"]
+        actual = hashlib.md5(files["app.R"].encode(), usedforsecurity=False).hexdigest()
+        assert actual == expected, "app.R content drifted from its manifest checksum"
+
+    def test_connect_and_workbench_use_identical_bundle(self):
+        """The Connect deploy test and Workbench publish test must ship the
+        byte-identical bundle -- both route through build_shiny_bundle_files."""
+        from vip_tests.connect import bundles, test_content_deploy
+
+        # Connect's _get_bundle for the shiny item delegates to the shared builder.
+        class _FakeConnect:
+            def r_versions(self):
+                return TestSharedShinyBundle._R_VERSIONS
+
+        connect_bundle = test_content_deploy._get_bundle("vip-shiny-test", _FakeConnect())
+        shared_bundle = bundles.build_shiny_bundle_files(self._R_VERSIONS)
+        assert connect_bundle == shared_bundle
 
 
 # ---------------------------------------------------------------------------

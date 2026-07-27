@@ -34,6 +34,7 @@ from vip.workbench_ui import (
 from vip.workbench_ui import (
     vip_names_from_select_labels as _vip_names_from_select_labels,  # noqa: F401
 )
+from vip_tests.connect.bundles import _SHINY_APP_R, _latest_version, manifest_raw_url
 from vip_tests.workbench.pages import Homepage, LoginPage
 
 logger = logging.getLogger(__name__)
@@ -912,49 +913,47 @@ def workbench_accessible_and_logged_in(
 
 
 # ---------------------------------------------------------------------------
-# Bundle path fixtures
+# Bundle fixtures
 # ---------------------------------------------------------------------------
-
-_PYTHON_SHINY_APP = '''\
-"""Minimal Python Shiny VIP test application."""
-
-from shiny import App, ui
-
-app_ui = ui.page_fixed(
-    ui.h1("VIP Python Shiny Test"),
-    ui.p("Deployed by VIP from a Workbench session."),
-)
-
-
-def server(input, output, session):
-    pass
-
-
-app = App(app_ui, server)
-'''
-
-
-def _write_python_shiny_bundle(bundle_dir: Path) -> Path:
-    """Write a minimal Python Shiny bundle (app.py + requirements.txt) into bundle_dir.
-
-    Returns *bundle_dir* for convenience so callers can write::
-
-        path = _write_python_shiny_bundle(some_dir)
-    """
-    (bundle_dir / "app.py").write_text(_PYTHON_SHINY_APP)
-    (bundle_dir / "requirements.txt").write_text("shiny\n")
-    return bundle_dir
 
 
 @pytest.fixture(scope="session")
-def python_shiny_bundle_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Create a session-scoped Python Shiny test bundle in a temp directory.
+def shiny_bundle_spec(connect_client) -> dict[str, str]:
+    """Coordinates for materializing the shared R Shiny bundle in a session.
 
-    Writes a minimal ``app.py`` and ``requirements.txt`` to a fresh temp
-    directory and returns the path.  The bundle is suitable for
-    ``rsconnect deploy shiny <path>``.  Using ``tmp_path_factory`` means the
-    files are created at test-run time on the machine running VIP (which must
-    be the Workbench server, or a host whose /tmp is reachable from the
-    Workbench session terminal).
+    Returns the pieces the deploy step needs to reconstruct -- inside the
+    Workbench session's own filesystem -- the *same* bundle the Connect deploy
+    test uses:
+
+    - ``app_r``: the minimal ``app.R`` (``fluidPage("VIP test")`` + empty
+      server), small enough to type into the terminal.  Its MD5 is the checksum
+      baked into ``shiny_manifest.json``.
+    - ``manifest_url``: raw URL of the reference ``shiny_manifest.json`` in the
+      public repo, pinned to the installed VIP version's tag.  The manifest
+      carries the full 30-package dependency closure (~80 KB), far too large to
+      type reliably through the terminal, so the session downloads it directly.
+    - ``manifest_url_fallback``: the same raw URL at ``main``.  A dev/unreleased
+      checkout (version bumped, tag not yet pushed) 404s on the tag; the deploy
+      script falls back to this before concluding the manifest is unreachable.
+    - ``platform``: the newest R installed on Connect, patched into the
+      downloaded manifest exactly as ``build_shiny_bundle_files`` does, so the
+      Workbench and Connect bundles stay identical.
+
+    Skips when Connect is unavailable or has no R installed (the manifest
+    ``platform`` must match a real server R version).  The download itself may
+    also fail at deploy time (firewalled session) -- that is handled in the step
+    as a skip, since it is an environment constraint, not a publishing defect.
     """
-    return _write_python_shiny_bundle(tmp_path_factory.mktemp("python_shiny_bundle"))
+    from vip import __version__
+
+    if connect_client is None:
+        pytest.skip("Connect is not configured — cannot build the shared Shiny bundle")
+    r_versions = connect_client.r_versions()
+    if not r_versions:
+        pytest.skip("No R versions available on Connect — cannot build the Shiny bundle")
+    return {
+        "app_r": _SHINY_APP_R,
+        "manifest_url": manifest_raw_url(f"v{__version__}"),
+        "manifest_url_fallback": manifest_raw_url("main"),
+        "platform": _latest_version(r_versions),
+    }

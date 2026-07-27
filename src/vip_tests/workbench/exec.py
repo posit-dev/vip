@@ -16,7 +16,9 @@ by selftests/test_workbench_exec.py.
 
 from __future__ import annotations
 
+import base64
 import re
+import shlex
 import time
 import uuid
 
@@ -707,9 +709,26 @@ def _open_file_in_vscode_editor(page: Page, abspath: str, timeout: int = 30_000)
 
 
 def _read_vscode_editor_text(page: Page, timeout: int = 30_000) -> str:
-    """Return the inner text of the active Monaco editor view-lines."""
+    """Return the inner text of the active Monaco editor view-lines.
+
+    Monaco *virtualizes* ``.view-lines``: only the lines in the current viewport
+    are in the DOM. terminal_run appends its done marker to the LAST line of the
+    output file, so on a long log (e.g. an rsconnect deploy transcript) the
+    marker is scrolled out of view and never appears in ``.view-lines`` --
+    terminal_run then polls until timeout despite the command having finished.
+    Jump to the end of the file first so the final lines (with the marker) are
+    the ones rendered.
+    """
     loc = page.locator(".editor-instance .view-lines").first
     expect(loc).to_be_visible(timeout=timeout)
+    # Ctrl+End moves the cursor to the file's end, scrolling the last lines into
+    # the rendered viewport. Meta+End covers the macOS keybinding.
+    try:
+        page.keyboard.press("Control+End")
+        page.keyboard.press("Meta+End")
+    except Exception:
+        pass
+    page.wait_for_timeout(150)
     return loc.inner_text()
 
 
@@ -781,6 +800,22 @@ def _detect_ide(page: Page) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _visible_terminal_input(page: Page):
+    """The active integrated-terminal input, as a single-element locator.
+
+    A session can accumulate more than one terminal — notably, VS Code's Python
+    extension spawns a second terminal to auto-activate a newly created venv — so
+    the bare ``.xterm-helper-textarea`` selector matches multiple elements and
+    Playwright's strict mode rejects ``.click()`` / ``.type()`` on it. Only the
+    active terminal is visible, so filter to ``:visible``; ``.last`` breaks a
+    transient tie while VS Code is mid-switch between terminals. Every keystroke
+    goes to the active terminal anyway, and each ``terminal_run`` is
+    self-contained (absolute tmpfile paths + marker readback), so which terminal
+    receives it does not matter as long as it is a live shell.
+    """
+    return page.locator(f"{VSCodeSession.TERMINAL_INPUT}:visible").last
+
+
 def _ensure_terminal_open(page: Page, timeout: int = 30_000) -> None:
     """Make the IDE's integrated terminal input visible before use.
 
@@ -791,8 +826,7 @@ def _ensure_terminal_open(page: Page, timeout: int = 30_000) -> None:
     ``.xterm-helper-textarea`` is already present. This helper is idempotent —
     it returns immediately when a terminal input is already visible.
     """
-    terminal_input = page.locator(VSCodeSession.TERMINAL_INPUT)
-    if terminal_input.count() > 0 and terminal_input.first.is_visible():
+    if page.locator(f"{VSCodeSession.TERMINAL_INPUT}:visible").count() > 0:
         return
 
     if page.locator(RStudioSession.CONTAINER).count() > 0:
@@ -806,7 +840,7 @@ def _ensure_terminal_open(page: Page, timeout: int = 30_000) -> None:
     elif page.locator(VSCodeSession.WORKBENCH).count() > 0:
         # VS Code / Positron: open the integrated terminal (creates one if none).
         page.keyboard.press("Control+`")
-    expect(terminal_input).to_be_visible(timeout=timeout)
+    expect(_visible_terminal_input(page)).to_be_visible(timeout=timeout)
 
 
 def terminal_run(
@@ -825,10 +859,13 @@ def terminal_run(
     Strategy:
     1. Ensure the IDE terminal is open (activate the RStudio Terminal tab or
        create a VS Code/Positron terminal) so its input is present.
-    2. Type ``{cmd} > {tmpfile} 2>&1; echo "{done_marker}:$?" >> {tmpfile}`` in the
-       terminal input (``.xterm-helper-textarea``).  The marker is appended
-       with ``;`` rather than ``&&`` so it is always written, even when *cmd*
-       fails -- see issue #439.
+    2. Type ``( {cmd} ) > {tmpfile} 2>&1; echo "{done_marker}:$?" >> {tmpfile}``
+       in the terminal input (``.xterm-helper-textarea``).  *cmd* is wrapped in
+       a subshell so the redirect captures its whole output even when *cmd*
+       contains ``||`` / ``&&`` (shell precedence would otherwise bind the
+       redirect to the last operand only).  The marker is appended with ``;``
+       rather than ``&&`` so it is always written, even when *cmd* fails -- see
+       issue #439.
     3. Press Enter to execute.
     4. Poll for the done marker:
        - RStudio/Positron: call ``read_file`` (console eval, fresh each call).
@@ -861,14 +898,37 @@ def terminal_run(
         during live validation.
     """
     done_marker = f"VIP_DONE_{uuid.uuid4().hex}"
-    tmpfile = f"/tmp/vip_term_{uuid.uuid4().hex}.txt"
-    shell_cmd = f'{cmd} > {tmpfile} 2>&1; echo "{done_marker}:$?" >> {tmpfile}'
+    uid = uuid.uuid4().hex
+    tmpfile = f"/tmp/vip_term_{uid}.txt"
+    # Separate one-line sentinel file holding only the done marker + exit code.
+    # The VS Code readback opens files in the Monaco editor, which *virtualizes*
+    # long content (only the viewport renders), so on a long log the marker --
+    # always the last line -- can be scrolled out of view and never detected,
+    # timing out a command that actually finished. Polling a dedicated one-line
+    # file sidesteps virtualization entirely; the full output is read from
+    # tmpfile once the marker appears.
+    donefile = f"/tmp/vip_done_{uid}.txt"
+    # Wrap *cmd* in a subshell so the ``> {tmpfile}`` redirect captures the
+    # entire command's stdout/stderr regardless of any ``||`` / ``&&`` / ``;``
+    # inside *cmd*. Without the group, shell precedence binds the redirect to
+    # only the last operand -- e.g. ``command -v python3 || command -v python``
+    # sends the ``python3`` hit to the visible terminal, not the file, so
+    # terminal_run returns "" with exit 0 (which then runs ``'' -m venv``).
+    shell_cmd = (
+        f"( {cmd} ) > {tmpfile} 2>&1; rc=$?; "
+        f'echo "{done_marker}:$rc" >> {tmpfile}; '
+        f'echo "{done_marker}:$rc" > {donefile}'
+    )
 
     ide = _detect_ide(page)
 
     _ensure_terminal_open(page, timeout=timeout)
-    terminal_input = page.locator(VSCodeSession.TERMINAL_INPUT)
-    terminal_input.click()
+    terminal_input = _visible_terminal_input(page)
+    # Focus rather than click: the xterm textarea only needs keyboard focus to
+    # receive input, and a pointer click is intercepted by the terminal panel's
+    # "Terminal actions" toolbar overlay (which sits over the textarea), timing
+    # out the click. focus() is not subject to pointer-event interception.
+    terminal_input.focus()
     terminal_input.type(shell_cmd)
     terminal_input.press("Enter")
 
@@ -876,27 +936,37 @@ def terminal_run(
     poll_interval = 1.0
 
     if ide == "vscode":
-        # VS Code: poll by opening the file in the Monaco editor, reading
-        # .view-lines, and closing+re-opening to force a disk re-read each poll.
-        # NOTE: This path is UNVALIDATED pending a live git_ops run.
+        # VS Code: poll the one-line sentinel file (donefile) in the Monaco
+        # editor. It is a single line, so Monaco's viewport virtualization
+        # cannot hide it (the failure mode when polling the full, possibly long,
+        # output file). Once the marker appears, read the full output from
+        # tmpfile once for the return value.
         while time.monotonic() < deadline:
             try:
-                _open_file_in_vscode_editor(page, tmpfile, timeout=5_000)
-                content = _read_vscode_editor_text(page, timeout=5_000)
+                _open_file_in_vscode_editor(page, donefile, timeout=5_000)
+                marker_text = _read_vscode_editor_text(page, timeout=5_000)
                 _close_active_editor(page)
-                parsed = _parse_done_marker(content, done_marker)
-                if parsed is not None:
-                    output, exit_code = parsed
-                    if exit_code != 0:
-                        raise ExecError(
-                            f"terminal_run: command {cmd!r} exited with status "
-                            f"{exit_code}: {output}"
-                        )
-                    return output
-            except ExecError:
-                raise
             except Exception:
-                pass
+                marker_text = ""
+            parsed = _parse_done_marker(marker_text, done_marker)
+            if parsed is not None:
+                _, exit_code = parsed
+                # Read the actual command output (best-effort; the marker already
+                # gave us the exit status, so a flaky output read is non-fatal).
+                output = ""
+                try:
+                    _open_file_in_vscode_editor(page, tmpfile, timeout=5_000)
+                    full = _read_vscode_editor_text(page, timeout=5_000)
+                    _close_active_editor(page)
+                    out_parsed = _parse_done_marker(full, done_marker)
+                    output = out_parsed[0] if out_parsed is not None else full
+                except Exception:
+                    pass
+                if exit_code != 0:
+                    raise ExecError(
+                        f"terminal_run: command {cmd!r} exited with status {exit_code}: {output}"
+                    )
+                return output
             time.sleep(poll_interval)
     else:
         # RStudio / Positron: poll via DOM console eval (read_file handles routing).
@@ -933,6 +1003,84 @@ def terminal_run(
     raise ExecError(
         f"terminal_run timed out after {timeout}ms waiting for done marker in {tmpfile!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Server-side file materialization
+# ---------------------------------------------------------------------------
+
+
+def _b64_write_cmd(path: str, content: str) -> str:
+    """Build a shell command that writes *content* to *path* on the server.
+
+    The content is base64-encoded on the client and decoded on the server, so
+    arbitrary bytes (newlines, quotes, ``$``, backticks) survive the terminal
+    typing path intact -- a heredoc or ``echo`` would be mangled by the shell's
+    own interpretation of the characters ``terminal_run`` types verbatim.
+
+    ``base64 -d`` is coreutils/BusyBox-portable; the payload is a single token
+    (base64 emits no shell metacharacters) piped into ``base64 -d > path``.
+    """
+    payload = base64.b64encode(content.encode("utf-8")).decode("ascii")
+    return f"printf %s {payload} | base64 -d > {shlex.quote(path)}"
+
+
+def write_bundle(
+    page: Page,
+    bundle_dir: str,
+    files: dict[str, str],
+    *,
+    timeout: int = 30_000,
+    readback_lang: str = "r",
+) -> str:
+    """Materialize *files* under *bundle_dir* on the Workbench server.
+
+    Writes each ``{filename: content}`` entry into *bundle_dir* using the IDE
+    session terminal (via :func:`terminal_run`), so the bundle exists on the
+    machine where subsequent terminal commands run -- not on the host running
+    pytest.  This decouples the test from where VIP is invoked: the bundle is
+    always local to the ``rsconnect`` process that consumes it.
+
+    Filenames may include subdirectories (e.g. ``www/index.html``); the parent
+    directory is created before each file is written.
+
+    Args:
+        page: Playwright page for an active IDE session.
+        bundle_dir: Absolute server-side directory to create and populate.
+        files: Mapping of relative filename to file content.
+        timeout: Max milliseconds for each underlying terminal command.
+        readback_lang: Readback language for :func:`terminal_run` (``"python"``
+            for pure VS Code sessions without an R console).
+
+    Returns:
+        *bundle_dir*, for convenient chaining into a deploy command.
+
+    Raises:
+        ExecError: A directory creation or file write command failed.
+    """
+    terminal_run(
+        page,
+        f"mkdir -p {shlex.quote(bundle_dir)}",
+        timeout=timeout,
+        readback_lang=readback_lang,
+    )
+    for filename, content in files.items():
+        dest = f"{bundle_dir}/{filename}"
+        parent = dest.rsplit("/", 1)[0]
+        if parent and parent != bundle_dir:
+            terminal_run(
+                page,
+                f"mkdir -p {shlex.quote(parent)}",
+                timeout=timeout,
+                readback_lang=readback_lang,
+            )
+        terminal_run(
+            page,
+            _b64_write_cmd(dest, content),
+            timeout=timeout,
+            readback_lang=readback_lang,
+        )
+    return bundle_dir
 
 
 # ---------------------------------------------------------------------------
