@@ -415,32 +415,42 @@ def deploy_python_shiny_via_terminal(
             # python/uv, no PyPI mirror, unreachable repo) to a skip while a
             # genuine rsconnect deploy failure stays a hard failure.
             msg = str(exc)
-            if "VIP_CONNECT_DNS" in msg:
+            # Dispatch on the script's EXIT CODE, not on the tag string. The
+            # ExecError message embeds the whole command (``command {cmd!r} ...``),
+            # and the command text literally contains every ``echo VIP_*`` tag, so
+            # ``"VIP_CONNECT_DNS" in msg`` is true for *any* failure -- it would
+            # mislabel a TLS/unreachable/install failure as a DNS failure. Each
+            # tag has a unique exit code, which appears exactly once, so matching
+            # ``exited with status <code>`` is unambiguous. The tag is still echoed
+            # (visible in the captured output) for a human reading the transcript.
+            code_m = re.search(r"exited with status (\d+)", msg)
+            code = int(code_m.group(1)) if code_m else None
+            if code == 23:
                 pytest.skip(
                     f"The Workbench session cannot resolve the Connect host "
                     f"{connect_url!r} (DNS failure — the URL the test host uses may "
                     "differ from what the session can resolve, e.g. split-horizon DNS)"
                 )
-            if "VIP_CONNECT_UNTRUSTED" in msg:
+            if code == 24:
                 pytest.skip(
                     f"The Workbench session does not trust the Connect TLS certificate "
                     f"at {connect_url!r} (self-signed / internal CA not in the session's "
                     "trust store); rsconnect would reject the connection"
                 )
-            if "VIP_CONNECT_UNREACHABLE" in msg:
+            if code == 25:
                 pytest.skip(
                     f"The Workbench session cannot reach Connect at {connect_url!r} "
                     "(connection refused/timeout — egress firewall or internal-only "
                     "Connect hostname unreachable from the session)"
                 )
-            if "VIP_NO_PY" in msg:
+            if code == 22:
                 pytest.skip("Neither uv nor python3/python is available in the Workbench session")
-            if "VIP_NO_RSCONNECT" in msg:
+            if code == 26:
                 pytest.skip(
                     "rsconnect-python could not be installed in the Workbench session "
                     "(no PyPI or internal package mirror reachable — likely air-gapped)"
                 )
-            if "VIP_DL_FAIL" in msg:
+            if code == 21:
                 pytest.skip(
                     f"Could not download the Shiny manifest from "
                     f"{shiny_bundle_spec['manifest_url']} or its main-branch fallback "
