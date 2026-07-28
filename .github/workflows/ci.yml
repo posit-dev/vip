@@ -243,3 +243,40 @@ jobs:
             exit 1
           fi
           echo "uv.lock guard passed: no stray lockfile change detected."
+
+  # Always-run required check covering the four path-gated CI jobs. None of them
+  # can be a required check on its own: each is conditional on `changes`, so a
+  # failed change-detection job would skip all of them and report a green gate
+  # with nothing having run. Same pattern as "Selftests Status" above.
+  #
+  # A job that was legitimately skipped (docs-only PR, or the Lockfile Guard on a
+  # push/Dependabot PR) counts as passing; only failure or cancellation is fatal.
+  ci-status:
+    name: CI Status
+    if: always()
+    needs: [changes, typecheck, actions-lint, audit, lockfile-guard]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CI job results
+        run: |
+          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
+            echo "Change-detection job failed; cannot confirm CI scope"
+            exit 1
+          fi
+          failed=0
+          for entry in \
+            "Type Check=${{ needs.typecheck.result }}" \
+            "Actions Lint=${{ needs.actions-lint.result }}" \
+            "Dependency Audit=${{ needs.audit.result }}" \
+            "Lockfile Guard=${{ needs.lockfile-guard.result }}"; do
+            job="${entry%%=*}"
+            result="${entry##*=}"
+            case "$result" in
+              success | skipped) echo "${job}: ${result}" ;;
+              *)
+                echo "::error::${job} did not succeed (result=${result})"
+                failed=1
+                ;;
+            esac
+          done
+          exit "$failed"

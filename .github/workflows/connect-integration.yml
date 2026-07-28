@@ -8,6 +8,14 @@ name: Connect Integration Tests
 # `vip verify --api-auth --categories connect` selects every API-key scenario
 # and auto-skips features the bare server doesn't have (email, data sources,
 # additional runtimes). See posit-dev/connect#40047.
+#
+# Deliberately NOT a required check, and deliberately no `pull_request` trigger
+# (decided in #421). The matrix includes `preview`, the Connect nightly build:
+# gating on it would hand merge-blocking power over every VIP PR to an
+# unreleased upstream build we do not control. The Connect path is already gated
+# on PRs by connect-smoke.yml, whose `Connect Smoke Tests Status` job is a
+# required check. This workflow is a drift detector — it runs post-merge and
+# nightly, and reports failures to Slack rather than blocking anyone.
 
 on:
   push:
