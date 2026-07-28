@@ -56,6 +56,18 @@ CAPPED = {
     "pip",
     "tomli",
     "pyotp",
+    # Report/Jupyter stack: moved from the [report] extra into base deps so a
+    # bare install renders (issue #554). Still capped at next major.
+    "jinja2",
+    "jupyter",
+    "ipykernel",
+    "nbformat",
+    "nbclient",
+    "nbconvert",
+    "mistune",
+    "tornado",
+    "bleach",
+    "jupyterlab",
 }
 
 _BOUNDING_OPERATORS = {"<", "<=", "~=", "=="}
@@ -114,20 +126,11 @@ def test_every_runtime_dependency_is_classified():
     )
 
 
-# Optional-dependency groups that must also be capped at next major.
+# Optional-dependency groups that must also be capped at next major. The
+# ``report`` group is now an empty back-compat alias -- its packages moved into
+# base [project.dependencies] (issue #554), where CAPPED enforces their bounds.
 CAPPED_OPTIONAL = {
-    "report": {
-        "jinja2",
-        "jupyter",
-        "ipykernel",
-        "nbformat",
-        "nbclient",
-        "nbconvert",
-        "mistune",
-        "tornado",
-        "bleach",
-        "jupyterlab",
-    },
+    "report": set(),
     "load": {"locust", "msgpack", "python-engineio", "python-socketio"},
 }
 

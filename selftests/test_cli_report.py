@@ -205,6 +205,38 @@ class TestRunReportFromArbitraryDir:
         assert (report_dir / "_output" / "index.html").is_file()
         assert "Report generated" in capsys.readouterr().out
 
+    def test_pins_quarto_python_to_current_interpreter(self, tmp_path, monkeypatch):
+        """run_report forces Quarto's kernel to sys.executable (issue #554).
+
+        Quarto otherwise picks Python from the ambient VIRTUAL_ENV or
+        /usr/bin/python3, neither guaranteed to have posit-vip + the Jupyter
+        stack the report cells import.
+        """
+        from vip import cli
+
+        monkeypatch.chdir(tmp_path)
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        (report_dir / "results.json").write_text('{"results": []}')
+
+        captured: dict = {}
+
+        def _capture(cmd, cwd=None, env=None, **kwargs):
+            captured["env"] = env
+            out = Path(cwd) / "_output"
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "index.html").write_text("<html>report</html>")
+            return types.SimpleNamespace(returncode=0)
+
+        # A hostile VIRTUAL_ENV must not win over the explicit pin.
+        monkeypatch.setenv("VIRTUAL_ENV", "/some/other/venv")
+        monkeypatch.setattr(cli.subprocess, "run", _capture)
+
+        cli.run_report(_make_args())
+
+        assert captured["env"] is not None, "env must be passed to quarto render"
+        assert captured["env"]["QUARTO_PYTHON"] == sys.executable
+
     def test_errors_when_render_produces_no_output(self, tmp_path, monkeypatch, capsys):
         from vip import cli
 

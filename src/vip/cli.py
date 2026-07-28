@@ -689,8 +689,15 @@ def run_report(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
+    # Pin Quarto's Jupyter kernel to the interpreter running `vip`. Quarto
+    # otherwise discovers Python via the ambient VIRTUAL_ENV (set by `uv run`
+    # or an activated venv) or falls back to /usr/bin/python3 -- neither of
+    # which is guaranteed to have posit-vip (for the report/*.qmd cells that
+    # import vip.gherkin / vip.reporting) or the Jupyter stack. sys.executable
+    # is the vip install itself, which always has both. See issue #554.
+    env = {**os.environ, "QUARTO_PYTHON": sys.executable}
     try:
-        result = subprocess.run(["quarto", "render"], cwd=str(report_dir))
+        result = subprocess.run(["quarto", "render"], cwd=str(report_dir), env=env)
     except FileNotFoundError:
         print(
             "Error: quarto was not found on PATH. Install Quarto "
@@ -705,8 +712,8 @@ def run_report(args: argparse.Namespace) -> None:
     output = report_dir / "_output" / "index.html"
     if not output.exists():
         print(
-            "Error: no report was produced. Ensure Quarto is installed and the "
-            "report extra is available (pip install 'posit-vip[report]').",
+            "Error: no report was produced. Ensure Quarto is installed "
+            "(https://quarto.org/docs/get-started/) and re-run.",
             file=sys.stderr,
         )
         sys.exit(1)
