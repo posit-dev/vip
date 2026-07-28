@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: 'gate = hermetic, no external network; full = adds the cross-product suite (what the nightly runs)'
+        description: 'gate = PR/push suite subset; full = adds the cross-product suite (what the nightly runs)'
         type: choice
         default: gate
         options: [gate, full]
