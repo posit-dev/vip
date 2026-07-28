@@ -271,6 +271,8 @@ jobs:
             src/vip_tests/package_manager/test_authenticated_repos.py \
             src/vip_tests/package_manager/test_private_repos.py \
             src/vip_tests/package_manager/test_ui.py \
+            src/vip_tests/cross_product/test_resources.py \
+            src/vip_tests/config_hygiene/test_secrets.py \
             -v \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
