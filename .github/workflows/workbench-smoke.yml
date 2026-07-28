@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: 'gate = the PR-gated subset; full = every candidate Workbench file (#539 measurement)'
+        description: 'gate = the PR-gated subset; full = every Workbench file (what the nightly runs)'
         type: choice
         default: gate
         options: [gate, full]
@@ -253,20 +253,28 @@ jobs:
         # collected exactly the same tests while silently deselecting any
         # cross-cutting suite whose name lacks the word "workbench".
         #
-        # `-rs` reports skip reasons. This suite auto-skips heavily (IDE not
-        # present, feature not configured), and a silent skip looks identical to
-        # a pass in the summary counts.
+        # `-rs` asks for skip reasons. Note they do not currently reach the log —
+        # VIP's plugin owns the terminal reporter and suppresses the short
+        # summary — so read skip reasons from the uploaded smoke-results.xml
+        # (`<skipped message=...>`) instead.
         #
-        # suite=full adds every remaining Workbench file. It exists to measure
-        # what actually passes, skips and how long it takes against a bare
-        # container (#539) before deciding what belongs on the PR gate. Not
-        # reachable from a PR: `inputs` is only populated on workflow_dispatch,
-        # so every other trigger falls back to the gated subset.
+        # Two tiers, split on measured evidence from a suite=full run on three
+        # Workbench versions (#539):
+        #   gate — PR/push. Everything here either passes or skips for a reason
+        #          that a Docker Workbench can never satisfy. 195s of test time.
+        #   full — schedule/dispatch. Adds the 9 remaining Workbench files, worth
+        #          8 more real passes but 523s more test time, so it is not worth
+        #          a PR gate. test_ide_extensions was promoted to the gate out of
+        #          this set: 3/3 pass for 83s.
+        #
+        # Excluded from both: test_session_capacity_k8s.py needs a real
+        # Kubernetes launcher, which a container cannot provide.
         run: |
           files="
             src/vip_tests/prerequisites/test_components.py
             src/vip_tests/workbench/test_auth.py
             src/vip_tests/workbench/test_ide_launch.py
+            src/vip_tests/workbench/test_ide_extensions.py
             src/vip_tests/workbench/test_packages.py
             src/vip_tests/workbench/test_data_sources.py
             src/vip_tests/security/test_auth_policy.py
@@ -274,16 +282,24 @@ jobs:
             src/vip_tests/config_hygiene/test_secrets.py
           "
           if [ "${SUITE}" = "full" ]; then
-            echo "::notice::Running the FULL candidate suite (#539 measurement), not the PR gate set."
-            # test_session_capacity_k8s.py is deliberately absent: it needs a real
-            # Kubernetes launcher, which a Docker container cannot provide.
+            echo "::notice::Running the full Workbench suite, not the PR gate set."
+            # Measured outcomes against a bare container, per file:
+            #   test_git_ops         3/6 — clones pass; pushes skip, the test repo
+            #                        is anonymous read-only (git_test.auth_method=none)
+            #   test_session_capacity 1/1
+            #   test_jobs            1/2 — no Background Jobs tab in the container
+            #   test_runtime_versions 0/3 — skips on unset [runtimes]; populating it
+            #                        from the container would make these real
+            #   test_session_idle    0/2 — needs idle_timeout_minutes, then waits it out
+            #   test_chronicle       0/1 — needs [chronicle] enabled
+            #   test_sessions        0/1 — container does not support suspend/resume
+            #   test_publish_to_connect — deselected, Connect is disabled here
             files="${files}
               src/vip_tests/workbench/test_sessions.py
               src/vip_tests/workbench/test_session_idle.py
               src/vip_tests/workbench/test_session_capacity.py
               src/vip_tests/workbench/test_jobs.py
               src/vip_tests/workbench/test_git_ops.py
-              src/vip_tests/workbench/test_ide_extensions.py
               src/vip_tests/workbench/test_runtime_versions.py
               src/vip_tests/workbench/test_chronicle.py
               src/vip_tests/workbench/test_publish_to_connect.py
@@ -295,7 +311,9 @@ jobs:
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
         env:
-          SUITE: ${{ inputs.suite || 'gate' }}
+          # PR/push get the gate set. The nightly schedule runs everything, so the
+          # slow suites are still exercised daily without taxing the merge path.
+          SUITE: ${{ inputs.suite || (github.event_name == 'schedule' && 'full' || 'gate') }}
           VIP_TEST_PASSWORD: ${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}
 
       # Upload test results for debugging failures
