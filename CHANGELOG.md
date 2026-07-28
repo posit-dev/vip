@@ -1,6 +1,41 @@
 # CHANGELOG
 
 
+## v0.58.9 (2026-07-28)
+
+### Bug Fixes
+
+- **workbench**: Clarify password-login skip on SSO deployments
+  ([#548](https://github.com/posit-dev/vip/pull/548),
+  [`d39039f`](https://github.com/posit-dev/vip/commit/d39039f957b413db1bccac233843c3ecd8ddd1b0))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+### Continuous Integration
+
+- Add CI Status aggregator and document the integration gate
+  ([#544](https://github.com/posit-dev/vip/pull/544),
+  [`55099cd`](https://github.com/posit-dev/vip/commit/55099cdcc9b72c8ee5d1c95ec7697e6751a7d72b))
+
+- **publish**: Attest release artifacts with build provenance
+  ([#541](https://github.com/posit-dev/vip/pull/541),
+  [`6eb196c`](https://github.com/posit-dev/vip/commit/6eb196c394318f6d5a755ebfef9eac2d7c78866a))
+
+### Testing
+
+- Fix flaky IndexError in the shared shiny-bundle selftest
+  ([#542](https://github.com/posit-dev/vip/pull/542),
+  [`f01c4e3`](https://github.com/posit-dev/vip/commit/f01c4e3949100d4fd2f7853d286ec9017d0bfc9c))
+
+- Remove duplicative monitoring health-check test
+  ([#543](https://github.com/posit-dev/vip/pull/543),
+  [`7078aa1`](https://github.com/posit-dev/vip/commit/7078aa15b9955fbbd8b3388c1a762bbb0a93f451))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+
 ## v0.58.8 (2026-07-27)
 
 ### Bug Fixes
