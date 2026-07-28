@@ -330,3 +330,132 @@ jobs:
             exit 1
           fi
           echo "Connect smoke tests passed or were legitimately out of scope"
+
+  # SPIKE for #546 (throwaway branch only, never for merge).
+  tls:
+    name: TLS suites behind a self-signed proxy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Start Connect
+        id: connect
+        uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
+        with:
+          version: release
+          license: ${{ secrets.CONNECT_LICENSE }}
+
+      - name: Issue a CA and a server certificate for localhost
+        run: |
+          mkdir -p "${RUNNER_TEMP}/tls"
+          cd "${RUNNER_TEMP}/tls"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+            -keyout ca.key -out ca.crt \
+            -subj "/CN=VIP CI Test CA" \
+            -addext "basicConstraints=critical,CA:TRUE"
+          openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr \
+            -subj "/CN=localhost"
+          printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth\n' > ext.cnf
+          openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+            -out server.crt -days 365 -extfile ext.cnf
+          cat server.crt ca.crt > fullchain.crt
+          chmod 644 ca.crt server.crt server.key fullchain.crt
+          openssl x509 -in server.crt -noout -subject -issuer -dates -ext subjectAltName
+
+      - name: Front Connect with nginx on 443, redirecting 80
+        run: |
+          CONNECT_PORT=$(echo "${{ steps.connect.outputs.CONNECT_SERVER }}" | sed -E 's#.*:([0-9]+).*#\1#')
+          echo "Connect is on port ${CONNECT_PORT}"
+          cat > "${RUNNER_TEMP}/tls/nginx.conf" << NGINX
+          events {}
+          http {
+            server {
+              listen 80;
+              server_name localhost;
+              return 301 https://\$host\$request_uri;
+            }
+            server {
+              listen 443 ssl;
+              server_name localhost;
+              ssl_certificate     /etc/nginx/tls/fullchain.crt;
+              ssl_certificate_key /etc/nginx/tls/server.key;
+              # TLS 1.2+ only, so the "TLS 1.0/1.1 are rejected" scenario is real.
+              ssl_protocols TLSv1.2 TLSv1.3;
+              location / {
+                proxy_pass http://127.0.0.1:${CONNECT_PORT};
+                proxy_set_header Host \$host;
+                proxy_set_header X-Forwarded-Proto https;
+                proxy_set_header X-Forwarded-Host \$host;
+              }
+            }
+          }
+          NGINX
+          docker run -d --name tlsproxy --network host \
+            -v "${RUNNER_TEMP}/tls/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "${RUNNER_TEMP}/tls:/etc/nginx/tls:ro" \
+            nginx:1.29-alpine
+          for i in $(seq 1 30); do
+            if curl -sf --cacert "${RUNNER_TEMP}/tls/ca.crt" https://localhost/__api__/server_settings -o /dev/null; then
+              echo "proxy up after ${i} attempt(s)"; break
+            fi
+            sleep 2
+          done
+          echo "--- redirect check ---"
+          curl -si http://localhost/ | head -3
+          echo "--- verification check (must succeed with the CA, fail without) ---"
+          curl -s --cacert "${RUNNER_TEMP}/tls/ca.crt" -o /dev/null -w 'with CA: %{http_code}\n' https://localhost/
+          curl -s -o /dev/null -w 'without CA: exit %{exitcode}\n' https://localhost/ || echo "without CA: rejected (expected)"
+
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Configure VIP against the HTTPS endpoint
+        run: |
+          cat > vip.toml << EOF
+          [general]
+          deployment_name = "CI Connect over TLS"
+
+          [connect]
+          enabled = true
+          url = "https://localhost"
+
+          [auth]
+          provider = "password"
+          username = "__bootstrap_admin__"
+
+          # httpx path (test_https). Deliberately NOT insecure = true: that would
+          # make test_ssl skip its certificate check entirely (test_ssl.py:45).
+          [tls]
+          ca_bundle = "${RUNNER_TEMP}/tls/ca.crt"
+          EOF
+          cat vip.toml
+
+      - name: Run the TLS suites
+        run: |
+          # SSL_CERT_FILE covers ssl.create_default_context() in test_ssl, which
+          # does not consult [tls] ca_bundle.
+          uv run pytest \
+            src/vip_tests/security/test_https.py \
+            src/vip_tests/cross_product/test_ssl.py \
+            -v -rs -n 0 \
+            --vip-config=vip.toml \
+            --junitxml=tls-results.xml
+        env:
+          SSL_CERT_FILE: ${{ runner.temp }}/tls/ca.crt
+          VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
+
+      - name: Proxy logs
+        if: always()
+        run: docker logs tlsproxy 2>&1 | tail -30
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: tls-results
+          path: tls-results.xml
