@@ -222,6 +222,31 @@ jobs:
       # config_hygiene/test_secrets.
       - name: Configure VIP for CI Workbench
         run: |
+          # [runtimes] is derived from the container rather than pinned, which is
+          # what workbench/test_runtime_versions needs to run at all -- it skips
+          # outright on "No expected R versions specified in vip.toml [runtimes]"
+          # (#550). /opt/R and /opt/python also hold non-version entries ("default"
+          # symlink, "jupyter"), so keep only things that start like a version or
+          # they get written as expected runtimes and the tests fail on them.
+          CID="${{ steps.workbench.outputs.CONTAINER_ID }}"
+          list_versions() {
+            docker exec "$CID" ls -1 "$1" 2>/dev/null \
+              | grep -E '^[0-9]+\.[0-9]+' \
+              | jq -R . | jq -sc .
+          }
+          R_VERSIONS=$(list_versions /opt/R)
+          PY_VERSIONS=$(list_versions /opt/python)
+          : "${R_VERSIONS:=[]}"
+          : "${PY_VERSIONS:=[]}"
+          echo "Detected R: ${R_VERSIONS}"
+          echo "Detected Python: ${PY_VERSIONS}"
+          # An empty list means the image layout changed and the runtime tests
+          # would silently go back to skipping; fail loudly instead.
+          if [ "${R_VERSIONS}" = "[]" ] || [ "${PY_VERSIONS}" = "[]" ]; then
+            echo "::error::Could not enumerate runtimes under /opt/R or /opt/python; the image layout may have changed."
+            exit 1
+          fi
+
           cat > vip.toml << EOF
           [general]
           deployment_name = "CI Workbench"
@@ -234,13 +259,40 @@ jobs:
           url = "${{ steps.workbench.outputs.WORKBENCH_URL }}"
           version = "${{ steps.version.outputs.resolved }}"
 
-          [package_manager]
-          enabled = false
+          [runtimes]
+          r_versions = ${R_VERSIONS}
+          python_versions = ${PY_VERSIONS}
 
           [auth]
           provider = "password"
           username = "${{ steps.workbench.outputs.WORKBENCH_USER }}"
           EOF
+
+          # workbench/test_packages checks that the R session's repositories
+          # include the configured Package Manager URL. The image's repos.conf
+          # already points sessions at public PPM:
+          #   RSPM=https://packagemanager.posit.co/cran/__linux__/jammy/latest
+          # so declaring that URL makes the assertion real with no PM container
+          # (#551). Full tier only: declaring package_manager also pulls PPM into
+          # the prerequisites and cross_product health checks, and the gate should
+          # not depend on a service outside this repo's control.
+          if [ "${SUITE}" = "full" ]; then
+            cat >> vip.toml << EOF
+
+          [package_manager]
+          enabled = true
+          url = "https://packagemanager.posit.co"
+          EOF
+          else
+            cat >> vip.toml << EOF
+
+          [package_manager]
+          enabled = false
+          EOF
+          fi
+          echo "--- generated vip.toml ---"; cat vip.toml
+        env:
+          SUITE: ${{ inputs.suite || (github.event_name == 'schedule' && 'full' || 'gate') }}
 
       # Run the subset of tests that work against Docker Workbench
       - name: Run Workbench smoke tests
@@ -275,7 +327,6 @@ jobs:
             src/vip_tests/workbench/test_auth.py
             src/vip_tests/workbench/test_ide_launch.py
             src/vip_tests/workbench/test_ide_extensions.py
-            src/vip_tests/workbench/test_packages.py
             src/vip_tests/workbench/test_data_sources.py
             src/vip_tests/security/test_auth_policy.py
             src/vip_tests/cross_product/test_resources.py
@@ -288,8 +339,12 @@ jobs:
             #                        is anonymous read-only (git_test.auth_method=none)
             #   test_session_capacity 1/1
             #   test_jobs            1/2 — no Background Jobs tab in the container
-            #   test_runtime_versions 0/3 — skips on unset [runtimes]; populating it
-            #                        from the container would make these real
+            #   test_runtime_versions 3/3 expected — [runtimes] is now populated
+            #                        from the container by the config step (#550)
+            #   test_packages        moved here from the gate (#551): it needs the
+            #                        [package_manager] URL, which is full-tier
+            #                        only, and on the gate it spent 29s launching
+            #                        a session then skipped at its @then
             #   test_session_idle    0/2 — needs idle_timeout_minutes, then waits it out
             #   test_chronicle       0/1 — needs [chronicle] enabled
             #   test_sessions        0/1 — container does not support suspend/resume
@@ -300,6 +355,7 @@ jobs:
               src/vip_tests/workbench/test_session_capacity.py
               src/vip_tests/workbench/test_jobs.py
               src/vip_tests/workbench/test_git_ops.py
+              src/vip_tests/workbench/test_packages.py
               src/vip_tests/workbench/test_runtime_versions.py
               src/vip_tests/workbench/test_chronicle.py
               src/vip_tests/workbench/test_publish_to_connect.py
