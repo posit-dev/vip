@@ -585,9 +585,10 @@ def workbench_login(
         # is unavailable there, so skip rather than fail the retry loop.
         if sso_only:
             pytest.skip(
-                "Workbench is configured for SSO/OIDC (no password login form); "
-                "the password-login scenario does not apply. Pass --interactive-auth "
-                "or --headless-auth to exercise authenticated Workbench tests."
+                "This scenario requires a Workbench password-login form, but the "
+                "deployment presents an SSO/OIDC sign-in page instead (no username/"
+                "password fields). Password login cannot be exercised on an SSO "
+                "deployment, so this scenario is skipped."
             )
         # Password auth - proceed with form login below
     else:
