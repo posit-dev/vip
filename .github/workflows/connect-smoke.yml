@@ -372,6 +372,13 @@ jobs:
           cat > "${RUNNER_TEMP}/tls/nginx.conf" << NGINX
           events {}
           http {
+            # The proxy must not introduce security findings of its own, or the
+            # suite measures the harness instead of the product:
+            # security/test_https.py:136 fails any Server/X-Powered-By header
+            # containing a version number, and nginx advertises nginx/1.29.x by
+            # default. Verified: without this, test_product_does_not_expose_
+            # sensitive_headers fails on the proxy, not on Connect.
+            server_tokens off;
             server {
               listen 80;
               server_name localhost;
