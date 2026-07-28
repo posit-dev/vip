@@ -14,6 +14,12 @@ on:
   schedule:
     - cron: "30 3 * * *" # daily at 03:30 UTC (staggered from the other smoke workflows)
   workflow_dispatch:
+    inputs:
+      suite:
+        description: 'gate = PR/push suite subset; full = adds the cross-product suite (what the nightly runs)'
+        type: choice
+        default: gate
+        options: [gate, full]
 
 permissions:
   contents: read
@@ -212,29 +218,63 @@ jobs:
           username = "__bootstrap_admin__"
           EOF
 
-      # Run the full Connect API test suite against Docker Connect (excluding the UI login scenario)
+          # cross_product/test_integration asserts that Connect's deploy log names
+          # the Package Manager URL as its package source. The Connect images
+          # default their R repository at public PPM, so pointing the config there
+          # makes the assertion real with no PM container. It is confined to the
+          # full tier on purpose: declaring package_manager also pulls PPM into the
+          # prerequisites and cross_product health checks, and the PR gate must not
+          # depend on a service outside this repo's control.
+          if [ "${SUITE}" = "full" ]; then
+            cat >> vip.toml << EOF
+
+          [package_manager]
+          enabled = true
+          url = "https://packagemanager.posit.co"
+          EOF
+          fi
+        env:
+          SUITE: ${{ inputs.suite || (github.event_name == 'schedule' && 'full' || 'gate') }}
+
+      # Run the full Connect API test suite against Docker Connect (excluding the
+      # UI login scenario). Two tiers, matching workbench-smoke.yml:
+      #   gate — PR/push. Hermetic: everything runs against the local container.
+      #   full — schedule/dispatch. Adds the cross-product suite, which needs the
+      #          [package_manager] URL written by the config step above and so
+      #          reaches out to public PPM. Kept off the gate deliberately; a PPM
+      #          outage should page the nightly, not block every merge.
       - name: Run Connect smoke tests
         run: |
-          uv run pytest \
-            src/vip_tests/prerequisites/test_components.py \
-            src/vip_tests/connect/test_auth.py \
-            src/vip_tests/connect/test_users.py \
-            src/vip_tests/connect/test_runtime_versions.py \
-            src/vip_tests/connect/test_system_checks.py \
-            src/vip_tests/connect/test_content_deploy.py \
-            src/vip_tests/connect/test_packages.py \
-            src/vip_tests/connect/test_email.py \
-            src/vip_tests/connect/test_data_sources.py \
-            src/vip_tests/connect/test_chronicle.py \
-            src/vip_tests/security/test_error_handling.py \
-            src/vip_tests/security/test_auth_policy.py \
-            src/vip_tests/cross_product/test_resources.py \
-            src/vip_tests/config_hygiene/test_secrets.py \
+          files="
+            src/vip_tests/prerequisites/test_components.py
+            src/vip_tests/connect/test_auth.py
+            src/vip_tests/connect/test_users.py
+            src/vip_tests/connect/test_runtime_versions.py
+            src/vip_tests/connect/test_system_checks.py
+            src/vip_tests/connect/test_content_deploy.py
+            src/vip_tests/connect/test_packages.py
+            src/vip_tests/connect/test_email.py
+            src/vip_tests/connect/test_data_sources.py
+            src/vip_tests/connect/test_chronicle.py
+            src/vip_tests/security/test_error_handling.py
+            src/vip_tests/security/test_auth_policy.py
+            src/vip_tests/cross_product/test_resources.py
+            src/vip_tests/config_hygiene/test_secrets.py
+          "
+          if [ "${SUITE}" = "full" ]; then
+            echo "::notice::Including the cross-product suite; this tier depends on public PPM."
+            files="${files}
+              src/vip_tests/cross_product/test_integration.py
+            "
+          fi
+          # shellcheck disable=SC2086 # word splitting is how the file list is passed
+          uv run pytest $files \
             -v \
             -k "not connect_login_ui" \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
         env:
+          SUITE: ${{ inputs.suite || (github.event_name == 'schedule' && 'full' || 'gate') }}
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
 
       # Upload test results for debugging failures
