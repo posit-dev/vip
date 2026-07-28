@@ -14,6 +14,12 @@ on:
   schedule:
     - cron: "30 4 * * *" # daily at 04:30 UTC (staggered from the other smoke workflows)
   workflow_dispatch:
+    inputs:
+      suite:
+        description: 'gate = the PR-gated subset; full = every candidate Workbench file (#539 measurement)'
+        type: choice
+        default: gate
+        options: [gate, full]
 
 permissions:
   contents: read
@@ -246,20 +252,50 @@ jobs:
         # that are not enabled in vip.toml, so the previous `-k "workbench"`
         # collected exactly the same tests while silently deselecting any
         # cross-cutting suite whose name lacks the word "workbench".
+        #
+        # `-rs` reports skip reasons. This suite auto-skips heavily (IDE not
+        # present, feature not configured), and a silent skip looks identical to
+        # a pass in the summary counts.
+        #
+        # suite=full adds every remaining Workbench file. It exists to measure
+        # what actually passes, skips and how long it takes against a bare
+        # container (#539) before deciding what belongs on the PR gate. Not
+        # reachable from a PR: `inputs` is only populated on workflow_dispatch,
+        # so every other trigger falls back to the gated subset.
         run: |
-          uv run pytest \
-            src/vip_tests/prerequisites/test_components.py \
-            src/vip_tests/workbench/test_auth.py \
-            src/vip_tests/workbench/test_ide_launch.py \
-            src/vip_tests/workbench/test_packages.py \
-            src/vip_tests/workbench/test_data_sources.py \
-            src/vip_tests/security/test_auth_policy.py \
-            src/vip_tests/cross_product/test_resources.py \
-            src/vip_tests/config_hygiene/test_secrets.py \
-            -v -n 0 \
+          files="
+            src/vip_tests/prerequisites/test_components.py
+            src/vip_tests/workbench/test_auth.py
+            src/vip_tests/workbench/test_ide_launch.py
+            src/vip_tests/workbench/test_packages.py
+            src/vip_tests/workbench/test_data_sources.py
+            src/vip_tests/security/test_auth_policy.py
+            src/vip_tests/cross_product/test_resources.py
+            src/vip_tests/config_hygiene/test_secrets.py
+          "
+          if [ "${SUITE}" = "full" ]; then
+            echo "::notice::Running the FULL candidate suite (#539 measurement), not the PR gate set."
+            # test_session_capacity_k8s.py is deliberately absent: it needs a real
+            # Kubernetes launcher, which a Docker container cannot provide.
+            files="${files}
+              src/vip_tests/workbench/test_sessions.py
+              src/vip_tests/workbench/test_session_idle.py
+              src/vip_tests/workbench/test_session_capacity.py
+              src/vip_tests/workbench/test_jobs.py
+              src/vip_tests/workbench/test_git_ops.py
+              src/vip_tests/workbench/test_ide_extensions.py
+              src/vip_tests/workbench/test_runtime_versions.py
+              src/vip_tests/workbench/test_chronicle.py
+              src/vip_tests/workbench/test_publish_to_connect.py
+            "
+          fi
+          # shellcheck disable=SC2086 # word splitting is how the file list is passed
+          uv run pytest $files \
+            -v -rs -n 0 \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
         env:
+          SUITE: ${{ inputs.suite || 'gate' }}
           VIP_TEST_PASSWORD: ${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}
 
       # Upload test results for debugging failures
