@@ -192,7 +192,10 @@ jobs:
       - name: Install Playwright browsers
         run: uv run vip install --skip-system
 
-      # Generate vip.toml from with-connect outputs
+      # Generate vip.toml from with-connect outputs. The API key is deliberately
+      # NOT written here — it is passed to pytest as VIP_CONNECT_API_KEY, which
+      # config.py:89 reads as the fallback. Writing it into the file would put a
+      # live credential on the runner disk and fail config_hygiene/test_secrets.
       - name: Configure VIP for CI Connect
         run: |
           cat > vip.toml << EOF
@@ -202,7 +205,6 @@ jobs:
           [connect]
           enabled = true
           url = "${{ steps.connect.outputs.CONNECT_SERVER }}"
-          api_key = "${{ steps.connect.outputs.CONNECT_API_KEY }}"
           version = "${{ steps.version.outputs.resolved }}"
 
           [auth]
@@ -225,6 +227,9 @@ jobs:
             src/vip_tests/connect/test_data_sources.py \
             src/vip_tests/connect/test_chronicle.py \
             src/vip_tests/security/test_error_handling.py \
+            src/vip_tests/security/test_auth_policy.py \
+            src/vip_tests/cross_product/test_resources.py \
+            src/vip_tests/config_hygiene/test_secrets.py \
             -v \
             -k "not connect_login_ui" \
             --vip-config=vip.toml \

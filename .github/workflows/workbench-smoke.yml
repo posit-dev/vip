@@ -210,6 +210,10 @@ jobs:
         run: uv run vip install --skip-system
 
       # Generate vip.toml from with-workbench outputs
+      # The password is deliberately NOT written here — it is passed to pytest as
+      # VIP_TEST_PASSWORD, which config.py:354 reads as the fallback. Writing it
+      # into the file would put a live credential on the runner disk and fail
+      # config_hygiene/test_secrets.
       - name: Configure VIP for CI Workbench
         run: |
           cat > vip.toml << EOF
@@ -230,7 +234,6 @@ jobs:
           [auth]
           provider = "password"
           username = "${{ steps.workbench.outputs.WORKBENCH_USER }}"
-          password = "${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}"
           EOF
 
       # Run the subset of tests that work against Docker Workbench
@@ -238,6 +241,11 @@ jobs:
         # -n 0 disables xdist (overriding -n auto from pyproject.toml) because
         # the Docker Workbench returns "Temporary server error" when multiple
         # workers attempt concurrent logins.
+        #
+        # No `-k` filter: the plugin already deselects scenarios for products
+        # that are not enabled in vip.toml, so the previous `-k "workbench"`
+        # collected exactly the same tests while silently deselecting any
+        # cross-cutting suite whose name lacks the word "workbench".
         run: |
           uv run pytest \
             src/vip_tests/prerequisites/test_components.py \
@@ -245,9 +253,14 @@ jobs:
             src/vip_tests/workbench/test_ide_launch.py \
             src/vip_tests/workbench/test_packages.py \
             src/vip_tests/workbench/test_data_sources.py \
-            -v -k "workbench" -n 0 \
+            src/vip_tests/security/test_auth_policy.py \
+            src/vip_tests/cross_product/test_resources.py \
+            src/vip_tests/config_hygiene/test_secrets.py \
+            -v -n 0 \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
+        env:
+          VIP_TEST_PASSWORD: ${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}
 
       # Upload test results for debugging failures
       - name: Upload test results
