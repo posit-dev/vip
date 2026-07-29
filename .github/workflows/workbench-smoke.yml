@@ -228,10 +228,14 @@ jobs:
           # (#550). /opt/R and /opt/python also hold non-version entries ("default"
           # symlink, "jupyter"), so keep only things that start like a version or
           # they get written as expected runtimes and the tests fail on them.
+          # The || true groups matter: this step runs under bash -eo pipefail, so a
+          # missing directory (docker exec exits 2) or a listing with no version
+          # entries (grep exits 1) would abort the step here and never reach the
+          # explicit ::error:: below. Absorb both into an empty list instead.
           CID="${{ steps.workbench.outputs.CONTAINER_ID }}"
           list_versions() {
-            docker exec "$CID" ls -1 "$1" 2>/dev/null \
-              | grep -E '^[0-9]+\.[0-9]+' \
+            { docker exec "$CID" ls -1 "$1" 2>/dev/null || true; } \
+              | { grep -E '^[0-9]+\.[0-9]+' || true; } \
               | jq -R . | jq -sc .
           }
           R_VERSIONS=$(list_versions /opt/R)
