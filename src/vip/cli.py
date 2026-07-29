@@ -723,28 +723,6 @@ def run_report(args: argparse.Namespace) -> None:
         webbrowser.open(output.resolve().as_uri())
 
 
-def _resolved_url(
-    pc: ProductConfig, *, insecure: bool = False, ca_bundle: Path | None = None
-) -> str:
-    """Resolve *pc*'s URL via ``resolve_url_scheme`` when its scheme was inferred.
-
-    Config loading only infers a scheme (``vip.config._normalize_url`` stays
-    network-free); this is the network-touching half, called right before
-    something in this module first talks to the server -- mirrors
-    ``src/vip_tests/conftest.py``'s fixture-level helper of the same name and
-    purpose. A URL with an explicit scheme (``url_scheme_inferred`` False) is
-    returned unchanged, no network call. Mutates ``pc.url`` in place so a
-    caller that reads ``pc.url`` again downstream (e.g. for a printed
-    message) sees the resolved value; ``resolve_url_scheme`` itself caches by
-    URL, so calling this more than once for the same product costs one probe.
-    """
-    if pc.url_scheme_inferred:
-        from vip.auth import resolve_url_scheme
-
-        pc.url = resolve_url_scheme(pc.url, insecure=insecure, ca_bundle=ca_bundle)
-    return pc.url
-
-
 def _collect_status(config: VIPConfig) -> dict:
     """Run health checks and return structured status data.
 
@@ -778,7 +756,9 @@ def _collect_status(config: VIPConfig) -> dict:
             products[name] = {"configured": False, "state": "skip", "detail": "not configured"}
             continue
         try:
-            _resolved_url(pc, insecure=config.insecure, ca_bundle=config.ca_bundle)
+            from vip.auth import resolve_url_scheme
+
+            resolve_url_scheme(pc, insecure=config.insecure, ca_bundle=config.ca_bundle)
             if name == "connect":
                 client: ConnectClient | WorkbenchClient | PackageManagerClient = ConnectClient(
                     pc.url,
@@ -958,6 +938,25 @@ def run_uninstall(args: argparse.Namespace) -> None:
         if cfg and cfg.connect and cfg.connect.url:
             connect_pc = cfg.connect
 
+    insecure = cfg.insecure if cfg else False
+    ca_bundle = cfg.ca_bundle if cfg else None
+    yes = bool(getattr(args, "yes", False))
+
+    # Resolve now, before the plan is built (and therefore before it's
+    # printed) -- but only when --yes was passed. execute_uninstall_plan
+    # prints format_uninstall_plan(plan) unconditionally, *before* its own
+    # --yes gate; resolving lazily inside cleanup_callable (the previous
+    # approach) meant the printed plan could announce
+    # "run vip cleanup against https://host" and then actually clean up
+    # against "http://host" once resolve_url_scheme downgraded it -- exactly
+    # the kind of scheme mismatch this whole feature exists to prevent.
+    # Gating on --yes preserves the dry-run guarantee: a plan preview must
+    # never probe the network.
+    if yes and connect_pc is not None:
+        from vip.auth import resolve_url_scheme
+
+        resolve_url_scheme(connect_pc, insecure=insecure, ca_bundle=ca_bundle)
+
     plan = build_uninstall_plan(
         manifest=manifest,
         connect_url=connect_pc.url if connect_pc else None,
@@ -966,26 +965,27 @@ def run_uninstall(args: argparse.Namespace) -> None:
     cleanup_callable = None
     if connect_pc is not None:
         api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
-        insecure = cfg.insecure if cfg else False
-        ca_bundle = cfg.ca_bundle if cfg else None
 
         def cleanup_callable(_url: str) -> None:  # noqa: F811
+            from vip.auth import resolve_url_scheme
             from vip.clients.connect import ConnectClient
 
-            # ``_url`` (== plan.chained_cleanup) is connect_pc.url before
-            # resolution; resolve via connect_pc itself instead so the
-            # inferred-scheme fallback (unavailable on a bare string) applies
-            # here too. This only ever runs when execute_uninstall_plan
-            # actually executes (--yes was passed) -- never during a dry-run
-            # plan preview.
-            resolved = _resolved_url(connect_pc, insecure=insecure, ca_bundle=ca_bundle)
+            # connect_pc.url was already resolved above -- this callable only
+            # ever runs when execute_uninstall_plan actually executes
+            # (--yes was passed), which is the same condition that already
+            # triggered the resolve above, so the printed plan and the URL
+            # used here are guaranteed to match. resolve_url_scheme is
+            # idempotent (it resets url_scheme_inferred once resolved), so
+            # calling it again here is a plain attribute read -- kept as a
+            # belt-and-suspenders safety net rather than trusted by omission.
+            resolved = resolve_url_scheme(connect_pc, insecure=insecure, ca_bundle=ca_bundle)
             with ConnectClient(resolved, api_key) as client:
                 client.cleanup_vip_content()
 
     rc = execute_uninstall_plan(
         plan,
         manifest_path=manifest_path,
-        yes=bool(getattr(args, "yes", False)),
+        yes=yes,
         cleanup_callable=cleanup_callable,
     )
     sys.exit(rc)
@@ -1227,8 +1227,11 @@ def run_cleanup(args: argparse.Namespace) -> None:
     # previously a scheme-less --connect-url was handed to ConnectClient
     # completely unnormalized (a bug in its own right -- httpx requires an
     # absolute URL) and never got the probe-and-fallback treatment below.
-    # config.connect/config.workbench are already ProductConfig instances
-    # (normalized by load_config), so the vip.toml path needs no wrapping.
+    # config.connect/config.workbench are already normalized ProductConfig
+    # instances -- every ProductConfig runs _normalize_url in its own
+    # __post_init__ regardless of how it was constructed, including the bare
+    # VIPConfig() that _load_cleanup_config() returns when no vip.toml exists
+    # -- so the vip.toml path needs no wrapping here.
     connect_pc: ProductConfig = ProductConfig(url=connect_arg) if connect_arg else config.connect
     workbench_pc: ProductConfig = (
         ProductConfig(url=workbench_arg) if workbench_arg else config.workbench
@@ -1243,9 +1246,10 @@ def run_cleanup(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     if connect_pc.url:
+        from vip.auth import resolve_url_scheme
         from vip.clients.connect import ConnectClient
 
-        connect_url = _resolved_url(
+        connect_url = resolve_url_scheme(
             connect_pc, insecure=config.insecure, ca_bundle=config.ca_bundle
         )
         print(f"Cleaning up VIP test content on Connect at {connect_url}")
@@ -1254,7 +1258,9 @@ def run_cleanup(args: argparse.Namespace) -> None:
         print(f"Deleted {deleted} VIP test content item(s)")
 
     if workbench_pc.url:
-        workbench_url = _resolved_url(
+        from vip.auth import resolve_url_scheme
+
+        workbench_url = resolve_url_scheme(
             workbench_pc, insecure=config.insecure, ca_bundle=config.ca_bundle
         )
         _cleanup_workbench_sessions(workbench_url, args, config)

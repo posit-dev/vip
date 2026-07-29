@@ -37,8 +37,9 @@ def _make_config(
     # Every URL passed to _make_config is a hardcoded explicit https:// in
     # this file, not scheme-less input -- pin the flag rather than leave it
     # as MagicMock's default (truthy) auto-attribute, which would make
-    # _collect_status's _resolved_url() think the scheme was inferred and
-    # attempt a real network probe against these fake example.com hosts.
+    # _collect_status's resolve_url_scheme() call think the scheme was
+    # inferred and attempt a real network probe against these fake
+    # example.com hosts.
     connect.url_scheme_inferred = False
     config.connect = connect
 

@@ -1,84 +1,104 @@
-"""Tests for vip_tests.conftest._resolved_url.
+"""Tests for the scheme-resolution wiring in vip_tests/conftest.py.
 
 ``connect_client``/``workbench_client``/``pm_client`` (and their companion
 ``connect_url``/``workbench_url``/``pm_url`` fixtures) are the seam that talks
 to the server for the ``--api-auth``/``--no-auth`` paths, where no browser
 auth flow runs to resolve a scheme-less URL first (see ``vip.auth.
-resolve_url_scheme`` and issue #537). ``_resolved_url`` is the shared helper
-those fixtures call.
+resolve_url_scheme`` and issue #537).
+
+A type-design review on #562 pointed out that ``resolve_url_scheme`` used to
+take a bare ``url: str`` and trust the caller to have checked
+``ProductConfig.url_scheme_inferred`` first. It now takes the whole
+``ProductConfig`` and checks provenance itself (see ``TestResolveUrlScheme``
+in ``test_auth.py`` for the full behavior matrix), which means there is no
+longer a separate conftest.py helper with its own logic to test in
+isolation -- these fixtures are now a single direct call. What is still
+worth pinning down here is that each fixture passes the *right*
+``ProductConfig`` (connect's, not workbench's or package_manager's) and the
+right TLS settings through to ``resolve_url_scheme``.
+
+The ``connect_url``/``workbench_url``/``pm_url`` fixtures are called via
+``.__wrapped__`` to invoke the underlying function directly, bypassing
+pytest's "fixtures cannot be called directly" guard -- they take only
+``vip_config`` as a parameter, so this needs no ``request``/stash setup.
 """
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from vip.config import ConnectConfig, VIPConfig
-from vip_tests.conftest import _resolved_url
+import httpx
+
+from vip.config import ConnectConfig, PackageManagerConfig, VIPConfig, WorkbenchConfig
+from vip_tests import conftest
 
 
-class TestResolvedUrl:
+class TestUrlFixturesResolveTheRightProductConfig:
     def setup_method(self):
         import vip.auth
 
         vip.auth._scheme_resolution_cache.clear()
 
-    def test_explicit_scheme_never_probes(self):
-        pc = ConnectConfig(url="https://connect.example.com")
-        vip_config = VIPConfig()
+    def test_connect_url_resolves_connect_config(self):
+        vip_config = VIPConfig(connect=ConnectConfig(url="connect.example.com"))
+
+        with patch("httpx.get", return_value=MagicMock(status_code=200)):
+            url = conftest.connect_url.__wrapped__(vip_config)
+
+        assert url == "https://connect.example.com"
+
+    def test_connect_url_falls_back_when_unreachable(self):
+        vip_config = VIPConfig(connect=ConnectConfig(url="connect.example.com"))
+
+        with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
+            url = conftest.connect_url.__wrapped__(vip_config)
+
+        assert url == "http://connect.example.com"
+        assert vip_config.connect.url == "http://connect.example.com"
+
+    def test_connect_url_with_explicit_scheme_never_probes(self):
+        vip_config = VIPConfig(connect=ConnectConfig(url="https://connect.example.com"))
 
         with patch("httpx.get") as mock_get:
-            url = _resolved_url(pc, vip_config)
+            url = conftest.connect_url.__wrapped__(vip_config)
 
         assert url == "https://connect.example.com"
         mock_get.assert_not_called()
 
-    def test_inferred_scheme_kept_when_https_answers(self):
-        pc = ConnectConfig(url="connect.example.com")
-        assert pc.url_scheme_inferred is True
-        vip_config = VIPConfig()
-
-        with patch("httpx.get", return_value=MagicMock(status_code=200)):
-            url = _resolved_url(pc, vip_config)
-
-        assert url == "https://connect.example.com"
-        assert pc.url == "https://connect.example.com"
-
-    def test_inferred_scheme_falls_back_and_mutates_config_in_place(self):
-        """The fixture's whole point is that pc.url is corrected in place so
-        every other fixture that reads it afterward sees the same value."""
-        import httpx
-
-        pc = ConnectConfig(url="connect.example.com")
-        vip_config = VIPConfig()
+    def test_workbench_url_resolves_workbench_config_not_connect(self):
+        """Regression guard: passing the wrong ProductConfig (e.g. connect's
+        instead of workbench's) would silently resolve/mutate the wrong
+        product's URL."""
+        vip_config = VIPConfig(
+            connect=ConnectConfig(url="https://connect.example.com"),
+            workbench=WorkbenchConfig(url="workbench.example.com"),
+        )
 
         with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
-            url = _resolved_url(pc, vip_config)
+            url = conftest.workbench_url.__wrapped__(vip_config)
 
-        assert url == "http://connect.example.com"
-        assert pc.url == "http://connect.example.com"
+        assert url == "http://workbench.example.com"
+        assert vip_config.workbench.url == "http://workbench.example.com"
+        # The unrelated Connect config must be untouched.
+        assert vip_config.connect.url == "https://connect.example.com"
 
-    def test_second_call_does_not_probe_again(self):
-        """resolve_url_scheme's cache means calling this from more than one
-        fixture (connect_client, then connect_url) for the same product
-        probes the network only once."""
-        import httpx
+    def test_pm_url_resolves_package_manager_config(self):
+        vip_config = VIPConfig(package_manager=PackageManagerConfig(url="pm.example.com"))
 
-        pc = ConnectConfig(url="connect.example.com")
-        vip_config = VIPConfig()
+        with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
+            url = conftest.pm_url.__wrapped__(vip_config)
 
-        with patch("httpx.get", side_effect=httpx.ConnectError("nope")) as mock_get:
-            first = _resolved_url(pc, vip_config)
-            second = _resolved_url(pc, vip_config)
-
-        assert first == second == "http://connect.example.com"
-        mock_get.assert_called_once()
+        assert url == "http://pm.example.com"
 
     def test_insecure_and_ca_bundle_are_forwarded(self, tmp_path):
         ca = tmp_path / "ca.pem"
-        pc = ConnectConfig(url="connect.example.com")
-        vip_config = VIPConfig(ca_bundle=ca)
+        vip_config = VIPConfig(
+            connect=ConnectConfig(url="connect.example.com"),
+            insecure=False,
+            ca_bundle=ca,
+        )
 
         with patch("httpx.get", return_value=MagicMock(status_code=200)) as mock_get:
-            _resolved_url(pc, vip_config)
+            conftest.connect_url.__wrapped__(vip_config)
 
         assert mock_get.call_args.kwargs["verify"] == str(ca)

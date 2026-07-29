@@ -235,3 +235,58 @@ def test_mint_follows_http_to_https_redirect(connect_http_redirect_server: str):
         insecure=True,  # the https side of the redirect uses a self-signed cert
     )
     assert api_key == _API_KEY
+
+
+# ---------------------------------------------------------------------------
+# resolve_url_scheme: real listener, real closed port (issue #562 security fix)
+# ---------------------------------------------------------------------------
+#
+# _tls_listener_present decides whether a transport failure means "nothing is
+# listening" (safe to downgrade to http://) or "a real TLS listener is here
+# but this client doesn't trust its certificate" (must NOT downgrade -- that
+# would send the caller's credentials to a real server in the clear). The
+# unit tests in test_auth.py mock that decision directly; these two prove it
+# against a real socket in each state, since the whole point of deciding via
+# a raw TCP connect (rather than exception introspection) is that it must
+# work regardless of what real, uncontrived cause makes the TLS handshake
+# fail.
+
+
+def test_resolve_url_scheme_does_not_downgrade_against_untrusted_real_cert(
+    connect_tls_server: str,
+):
+    """A real self-signed listener: httpx.get(verify=True) fails with a
+    genuine CERTIFICATE_VERIFY_FAILED, but a raw TCP connect to the same
+    host:port succeeds -- resolve_url_scheme must keep https://, not
+    downgrade to plaintext http://."""
+    import vip.auth
+    from vip.config import ConnectConfig
+
+    vip.auth._scheme_resolution_cache.clear()
+    host = connect_tls_server.removeprefix("https://")
+    pc = ConnectConfig(url=host)  # scheme-less -> inferred https://<host>
+    assert pc.url == connect_tls_server
+    assert pc.url_scheme_inferred is True
+
+    result = vip.auth.resolve_url_scheme(pc)
+
+    assert result == connect_tls_server
+    assert pc.url == connect_tls_server
+    assert pc.url_scheme_inferred is False  # settled as https, not re-probed again
+
+
+def test_resolve_url_scheme_downgrades_when_nothing_listens():
+    """A real closed port: neither httpx.get nor a raw TCP connect succeeds --
+    resolve_url_scheme must still downgrade to http://, exactly as before
+    this fix. Uses 127.0.0.1:1 (a low port nothing binds to in this sandbox)
+    rather than a mock, so the TCP-level check is exercised for real too."""
+    import vip.auth
+    from vip.config import ConnectConfig
+
+    vip.auth._scheme_resolution_cache.clear()
+    pc = ConnectConfig(url="127.0.0.1:1")
+
+    result = vip.auth.resolve_url_scheme(pc)
+
+    assert result == "http://127.0.0.1:1"
+    assert pc.url == "http://127.0.0.1:1"

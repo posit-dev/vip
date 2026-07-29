@@ -1588,6 +1588,88 @@ class TestAuthModeStash:
         )
 
 
+class TestWorkbenchUrlSyncAfterAuth:
+    """``pytest_configure`` must sync a resolved Workbench URL back into
+    ``vip_cfg`` the same way it already does for Connect (issue #562
+    comment-accuracy review).
+
+    Before this fix, only ``vip_cfg.connect.url`` was updated from
+    ``session._connect_url``; ``session._workbench_url`` was populated by
+    ``start_interactive_auth``/``start_headless_auth`` but never written
+    back. The resolved Workbench scheme still reached the rest of a real run
+    -- but only because ``conftest.py``'s fixtures call ``resolve_url_scheme``
+    again and hit a cache entry keyed on the URL string, an unstated
+    side-channel rather than an actual sync. This exercises the real
+    plugin-to-fixture path (a pytester run reading ``vip_cfg`` straight out
+    of the stash) rather than unit-testing the sync condition in isolation.
+    """
+
+    _FAKE_AUTH_CONFTEST_DOWNGRADED_WORKBENCH = """
+        import vip.auth
+        from pathlib import Path
+        from vip.auth import InteractiveAuthSession
+
+        def _fake_session(*args, **kwargs):
+            return InteractiveAuthSession(
+                storage_state_path=Path("/dev/null"),
+                api_key="fake-key",
+                _connect_url=kwargs.get("connect_url") or "",
+                # Simulates resolve_url_scheme downgrading an inferred
+                # Workbench https:// to http:// inside start_interactive_auth/
+                # start_headless_auth.
+                _workbench_url="http://wb.example.com",
+            )
+
+        vip.auth.start_interactive_auth = _fake_session
+        vip.auth.start_headless_auth = _fake_session
+        """
+
+    def test_interactive_auth_syncs_resolved_workbench_url(self, pytester):
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[workbench]\nurl = "https://wb.example.com"\n'
+            ),
+        )
+        pytester.makeconftest(self._FAKE_AUTH_CONFTEST_DOWNGRADED_WORKBENCH)
+        pytester.makepyfile(
+            """
+            from vip.plugin import _vip_config_key
+
+            def test_workbench_url_synced(request):
+                vip_cfg = request.config.stash[_vip_config_key]
+                assert vip_cfg.workbench.url == "http://wb.example.com"
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "--interactive-auth", "-v")
+        result.assert_outcomes(passed=1)
+
+    def test_headless_auth_syncs_resolved_workbench_url(self, pytester, monkeypatch):
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[workbench]\nurl = "https://wb.example.com"\n'
+                '[auth]\nprovider = "password"\n'
+            ),
+        )
+        pytester.makeconftest(self._FAKE_AUTH_CONFTEST_DOWNGRADED_WORKBENCH)
+        pytester.makepyfile(
+            """
+            from vip.plugin import _vip_config_key
+
+            def test_workbench_url_synced(request):
+                vip_cfg = request.config.stash[_vip_config_key]
+                assert vip_cfg.workbench.url == "http://wb.example.com"
+            """
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "--headless-auth", "-v")
+        result.assert_outcomes(passed=1)
+
+
 class TestRestoreWorkerAuth:
     """``_restore_worker_auth`` recreates the controller's auth state on each
     xdist worker.  When the controller rewrote ``connect.url`` (split sub-path

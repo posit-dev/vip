@@ -84,12 +84,18 @@ class ProductConfig:
     url: str = ""
     version: str | None = None
     # True when ``url`` was given without a scheme and ``https://`` was
-    # inferred by ``_normalize_url``. Read by ``vip.auth.resolve_url_scheme``
-    # to decide whether an unreachable https:// may fall back to http://; an
-    # explicit scheme (this flag False) is never second-guessed. Not part of
-    # the config's public identity -- excluded from repr/equality like the
-    # dataclass-generated repr already is for the subclasses below, which
-    # override ``__repr__`` entirely.
+    # inferred by ``_normalize_url``. ``vip.auth.resolve_url_scheme`` consults
+    # this to decide whether an unreachable https:// may fall back to
+    # http://, and resets it to False once resolved -- it tracks a transient
+    # "has this URL been vetted yet" state, not a value the caller chose, so
+    # it is excluded from equality/repr for the same reason a cache-hit flag
+    # would be: two configs that are otherwise identical but differ only in
+    # whether resolution has already run should compare equal, even though a
+    # network probe happening on one and not the other is a real (if
+    # temporary) behavioral difference this exclusion accepts as out of scope
+    # for `==`. Nothing in this codebase compares ProductConfig with `==`
+    # today, so the tradeoff is currently inert -- but it is intentional
+    # should that change, not an oversight.
     url_scheme_inferred: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:

@@ -11,7 +11,7 @@ from vip.clients.connect import ConnectClient
 from vip.clients.kubernetes import KubernetesClient
 from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
-from vip.config import PerformanceConfig, ProductConfig, VIPConfig
+from vip.config import PerformanceConfig, VIPConfig
 from vip.plugin import (
     _auth_mode_key,
     _auth_session_key,
@@ -46,26 +46,6 @@ def vip_verbose(request: pytest.FixtureRequest) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _resolved_url(pc: ProductConfig, vip_config: VIPConfig) -> str:
-    """Return *pc*'s URL, falling back to http:// if an inferred https:// scheme
-    doesn't answer.
-
-    ``--interactive-auth``/``--headless-auth`` already resolve this in
-    ``vip.plugin`` before any browser touches the URL. This covers the
-    ``--api-auth``/``--no-auth`` paths, where no auth flow runs and these
-    fixtures are the first thing to talk to the server. Mutates ``pc.url``
-    in place on first call so every fixture that reads it afterward --
-    whichever one a test asks for first -- converges on the same value;
-    ``resolve_url_scheme`` itself caches by URL, so calling this from more
-    than one fixture for the same product only probes the network once.
-    """
-    if pc.url_scheme_inferred:
-        pc.url = resolve_url_scheme(
-            pc.url, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
-        )
-    return pc.url
-
-
 @pytest.fixture(scope="session")
 def connect_client(request: pytest.FixtureRequest, vip_config: VIPConfig) -> ConnectClient | None:
     if not vip_config.connect.is_configured:
@@ -75,7 +55,18 @@ def connect_client(request: pytest.FixtureRequest, vip_config: VIPConfig) -> Con
         # ``return`` here would raise "connect_client did not yield a value".
         yield None
         return
-    url = _resolved_url(vip_config.connect, vip_config)
+    # --interactive-auth/--headless-auth already resolve this in vip.plugin
+    # before any browser touches the URL; resolve_url_scheme no-ops (and
+    # doesn't touch the network) if that already happened -- this call is
+    # what covers --api-auth/--no-auth, where no auth flow runs and this
+    # fixture is the first thing to talk to the server. resolve_url_scheme
+    # mutates vip_config.connect.url in place, so every fixture that reads it
+    # afterward -- whichever one a test asks for first -- converges on the
+    # same value, and its own cache means asking from more than one fixture
+    # for the same product only probes the network once.
+    url = resolve_url_scheme(
+        vip_config.connect, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+    )
     # A registered client-auth provider (e.g. Snowflake JWT) authenticates the
     # request itself, so a Connect API key is not required in that case.
     auth = build_client_auth(vip_config, "connect", url)
@@ -102,7 +93,9 @@ def connect_client(request: pytest.FixtureRequest, vip_config: VIPConfig) -> Con
 
 @pytest.fixture(scope="session")
 def connect_url(vip_config: VIPConfig) -> str:
-    return _resolved_url(vip_config.connect, vip_config)
+    return resolve_url_scheme(
+        vip_config.connect, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+    )
 
 
 @pytest.fixture(scope="session")
@@ -115,7 +108,9 @@ def workbench_client(
         # "fixture did not yield a value" from a bare return.
         yield None
         return
-    url = _resolved_url(vip_config.workbench, vip_config)
+    url = resolve_url_scheme(
+        vip_config.workbench, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+    )
     auth = build_client_auth(vip_config, "workbench", url)
     # Same gateway-cookie injection as connect_client: the identical OIDC proxy
     # that fronts Connect also fronts Workbench on these deployments.
@@ -135,7 +130,9 @@ def workbench_client(
 
 @pytest.fixture(scope="session")
 def workbench_url(vip_config: VIPConfig) -> str:
-    return _resolved_url(vip_config.workbench, vip_config)
+    return resolve_url_scheme(
+        vip_config.workbench, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+    )
 
 
 @pytest.fixture(scope="session")
@@ -154,7 +151,9 @@ def kubernetes_client(vip_config: VIPConfig) -> KubernetesClient | None:
 def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
     if not vip_config.package_manager.is_configured:
         return None
-    url = _resolved_url(vip_config.package_manager, vip_config)
+    url = resolve_url_scheme(
+        vip_config.package_manager, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+    )
     auth = build_client_auth(vip_config, "package_manager", url)
     client = PackageManagerClient(
         url,
@@ -169,7 +168,9 @@ def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
 
 @pytest.fixture(scope="session")
 def pm_url(vip_config: VIPConfig) -> str:
-    return _resolved_url(vip_config.package_manager, vip_config)
+    return resolve_url_scheme(
+        vip_config.package_manager, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+    )
 
 
 # ---------------------------------------------------------------------------

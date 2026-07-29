@@ -1,12 +1,20 @@
 """Tests for the scheme-inference fallback wiring in vip.cli (issue #537).
 
-``_resolved_url`` and its call sites in ``_collect_status`` (``vip status``),
-``run_cleanup`` (``vip cleanup``), and ``run_uninstall``'s chained-cleanup
-callable all need the same probe-and-fallback treatment as ``vip verify``:
-a scheme-less URL defaults to https:// (``vip.config._normalize_url``) and
-falls back to http:// only when https genuinely doesn't answer
-(``vip.auth.resolve_url_scheme``), never for a URL the caller gave an
-explicit scheme for.
+``_collect_status`` (``vip status``), ``run_cleanup`` (``vip cleanup``), and
+``run_uninstall``'s chained-cleanup callable all need the same probe-and-
+fallback treatment as ``vip verify``: a scheme-less URL defaults to https://
+(``vip.config._normalize_url``) and falls back to http:// only when https
+genuinely doesn't answer (``vip.auth.resolve_url_scheme``), never for a URL
+the caller gave an explicit scheme for.
+
+``resolve_url_scheme`` itself (the shared function all three call directly --
+cli.py has no wrapper of its own, see #562) is tested exhaustively in
+``TestResolveUrlScheme`` in ``test_auth.py``; the tests below exercise the
+real ``_collect_status``/``run_cleanup``/``run_uninstall`` entry points end to
+end, mocking only ``httpx.get`` (the network boundary) and the product
+clients, so a wiring mistake at these specific call sites -- e.g. passing the
+wrong ProductConfig, or resolving eagerly where laziness is required -- would
+fail here even though the underlying function is already covered.
 """
 
 from __future__ import annotations
@@ -18,60 +26,6 @@ import httpx
 import pytest
 
 from vip.config import ConnectConfig
-
-
-class TestResolvedUrlCli:
-    """``vip.cli._resolved_url`` mirrors conftest.py's fixture-level helper."""
-
-    def setup_method(self):
-        import vip.auth
-
-        vip.auth._scheme_resolution_cache.clear()
-
-    def test_explicit_scheme_never_probes(self):
-        from vip.cli import _resolved_url
-
-        pc = ConnectConfig(url="https://connect.example.com")
-
-        with patch("httpx.get") as mock_get:
-            url = _resolved_url(pc)
-
-        assert url == "https://connect.example.com"
-        mock_get.assert_not_called()
-
-    def test_inferred_scheme_kept_when_https_answers(self):
-        from vip.cli import _resolved_url
-
-        pc = ConnectConfig(url="connect.example.com")
-        assert pc.url_scheme_inferred is True
-
-        with patch("httpx.get", return_value=MagicMock(status_code=200)):
-            url = _resolved_url(pc)
-
-        assert url == "https://connect.example.com"
-        assert pc.url == "https://connect.example.com"
-
-    def test_inferred_scheme_falls_back_and_mutates_in_place(self):
-        pc = ConnectConfig(url="connect.example.com")
-
-        from vip.cli import _resolved_url
-
-        with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
-            url = _resolved_url(pc)
-
-        assert url == "http://connect.example.com"
-        assert pc.url == "http://connect.example.com"
-
-    def test_insecure_and_ca_bundle_forwarded(self, tmp_path):
-        from vip.cli import _resolved_url
-
-        ca = tmp_path / "ca.pem"
-        pc = ConnectConfig(url="connect.example.com")
-
-        with patch("httpx.get", return_value=MagicMock(status_code=200)) as mock_get:
-            _resolved_url(pc, insecure=True, ca_bundle=ca)
-
-        assert mock_get.call_args.kwargs["verify"] is False
 
 
 class TestCollectStatusSchemeResolution:
@@ -289,6 +243,76 @@ class TestRunUninstallSchemeResolution:
 
         assert exc.value.code == 0
         assert constructed == ["http://connect.example.com"]
+
+    def test_printed_plan_matches_the_url_actually_used(self, tmp_path, monkeypatch, capsys):
+        """format_uninstall_plan prints ``run vip cleanup against {url}``
+        before execute_uninstall_plan's own --yes gate. Resolving lazily
+        inside cleanup_callable (the previous approach) meant a --yes run
+        could print https:// and then use http:// -- the exact scheme
+        mismatch this feature exists to prevent. The printed URL must match
+        what ConnectClient actually receives."""
+        import vip.cli as cli
+        import vip.clients.connect as connect_mod
+
+        _write_manifest(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+
+        constructed: list[str] = []
+
+        class _FakeConnectClient:
+            def __init__(self, url, *a, **k):
+                constructed.append(url)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def cleanup_vip_content(self):
+                return 0
+
+        monkeypatch.setattr(connect_mod, "ConnectClient", _FakeConnectClient)
+
+        args = argparse.Namespace(
+            connect_url="connect.example.com", api_key=None, force_host=False, yes=True
+        )
+        with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
+            with pytest.raises(SystemExit) as exc:
+                cli.run_uninstall(args)
+
+        assert exc.value.code == 0
+        printed = capsys.readouterr().out
+        # The resolve_url_scheme downgrade warning legitimately mentions the
+        # original https:// URL as part of explaining what it tried; the
+        # thing under test is specifically the printed *plan* line.
+        assert "run vip cleanup against http://connect.example.com" in printed
+        assert "run vip cleanup against https://connect.example.com" not in printed
+        assert constructed == ["http://connect.example.com"]
+
+    def test_dry_run_prints_unresolved_url_and_never_probes(self, tmp_path, monkeypatch, capsys):
+        """A dry-run preview (no --yes) must not probe the network at all, so
+        it necessarily prints the unresolved (inferred https://) URL --
+        nothing is actually cleaned up in a dry run, so there is no scheme
+        mismatch to create."""
+        import vip.cli as cli
+
+        _write_manifest(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+
+        args = argparse.Namespace(
+            connect_url="connect.example.com", api_key=None, force_host=False, yes=False
+        )
+        with patch("httpx.get") as mock_get:
+            with pytest.raises(SystemExit) as exc:
+                cli.run_uninstall(args)
+
+        assert exc.value.code == 0
+        mock_get.assert_not_called()
+        printed = capsys.readouterr().out
+        assert "run vip cleanup against https://connect.example.com" in printed
 
     def test_explicit_scheme_never_probes(self, tmp_path, monkeypatch):
         import vip.cli as cli
