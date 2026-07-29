@@ -444,7 +444,8 @@ def wait_for_deploy(connect_client, deploy_state, vip_config):
         deploy_state["task_result"] = task
 
         if not task.get("finished"):
-            output = "\n".join(task.get("output", []))
+            output_lines = task.get("output", []) or []
+            output = "\n".join(output_lines)
             pytest.fail(
                 f"Deployment did not complete within {timeout} seconds\n\n"
                 f"--- Task output ---\n{output}"
