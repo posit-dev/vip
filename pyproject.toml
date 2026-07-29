@@ -34,21 +34,26 @@ dependencies = [
     "pip>=26.1.2,<27",  # CVE-2026-3219, PYSEC-2026-196 fix; transitive via pip-api
     "mako>=1.3.12,<2",  # CVE-2026-44307 fix; transitive via pytest-bdd
     "idna>=3.15,<4",  # CVE-2026-45409 fix; transitive via httpx/requests/anyio
-]
-
-[project.optional-dependencies]
-report = [
-    "jinja2>=3.1,<4",
-    "jupyter<2",
+    # Report rendering (`vip report` shells out to quarto, which starts a
+    # Jupyter kernel to execute report/*.qmd). Folded into base deps (was the
+    # [report] extra) so a bare `uv tool install posit-vip` can render without
+    # a second `--force ...[report]` install. See issue #554. Only the kernel
+    # itself is needed here -- Quarto does its own HTML conversion, so the
+    # heavier `jupyter`/`jupyterlab` metapackages (notebook, nbconvert,
+    # jupyter-console, ...) were pure bloat and have been dropped.
+    "pyyaml>=6.0,<7",  # imported directly by Quarto's own kernel-launch script
+    "jupyter-client>=8.0,<9",  # imported directly by Quarto's own kernel-launch script
     "ipykernel<8",
     "nbformat>=5.7,<6",
     "nbclient>=0.8,<1",
-    "nbconvert>=7.17.1,<8",  # CVE-2026-39377, CVE-2026-39378 fix; transitive via jupyter
-    "mistune>=3.2.1,<4",  # CVE-2026-33079 fix; transitive via nbconvert
-    "tornado>=6.5.7,<7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f fix; transitive via jupyter
-    "bleach>=6.4.0,<7",  # GHSA-gj48-438w-jh9v, GHSA-8rfp-98v4-mmr6 fix; transitive via nbconvert[css]
-    "jupyterlab>=4.5.9,<5",  # GHSA-vmhf-c436-hxj4 fix; transitive via jupyter
+    "tornado>=6.5.7,<7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f fix; transitive via ipykernel
 ]
+
+[project.optional-dependencies]
+# Back-compat alias: the report/jupyter stack moved into [project.dependencies]
+# (issue #554) so a bare install renders. `posit-vip[report]` still resolves --
+# it now just pulls the base deps, which already include everything it named.
+report = []
 load = [
     "locust>=2.20,<3",
     "msgpack>=1.2.1,<2",  # GHSA-6v7p-g79w-8964 fix; transitive via locust
