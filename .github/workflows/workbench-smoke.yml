@@ -228,10 +228,11 @@ jobs:
           # (#550). /opt/R and /opt/python also hold non-version entries ("default"
           # symlink, "jupyter"), so keep only things that start like a version or
           # they get written as expected runtimes and the tests fail on them.
-          # The || true groups matter: this step runs under bash -eo pipefail, so a
-          # missing directory (docker exec exits 2) or a listing with no version
-          # entries (grep exits 1) would abort the step here and never reach the
-          # explicit ::error:: below. Absorb both into an empty list instead.
+          # The || true groups are defensive, not load-bearing today: GitHub's
+          # implicit shell is `bash -e {0}` with no pipefail, so grep's no-match
+          # exit is already masked by jq's success. They keep the explicit
+          # emptiness check below authoritative if this step ever gains an
+          # explicit `shell: bash`, which does add -o pipefail.
           CID="${{ steps.workbench.outputs.CONTAINER_ID }}"
           list_versions() {
             { docker exec "$CID" ls -1 "$1" 2>/dev/null || true; } \
