@@ -505,7 +505,10 @@ def wait_for_deploy(connect_client, deploy_state, vip_config, record_property):
         if task.get("code") == 0:
             return
 
-        output = "\n".join(task.get("output", []))
+        # ``output`` can come back as null, not just absent, so coerce falsy
+        # values before joining -- matching test_packages.py and
+        # cross_product/test_integration.py, and the timeout branch above.
+        output = "\n".join(task.get("output", []) or [])
         matched = _matched_transient_signature(output)
         retry = (
             attempt < _MAX_DEPLOY_ATTEMPTS - 1
