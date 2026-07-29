@@ -68,6 +68,7 @@ CAPPED = {
     "tornado",
     "bleach",
     "jupyterlab",
+    "soupsieve",
 }
 
 _BOUNDING_OPERATORS = {"<", "<=", "~=", "=="}

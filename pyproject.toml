@@ -47,7 +47,8 @@ dependencies = [
     "mistune>=3.2.1,<4",  # CVE-2026-33079 fix; transitive via nbconvert
     "tornado>=6.5.7,<7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f fix; transitive via jupyter
     "bleach>=6.4.0,<7",  # GHSA-gj48-438w-jh9v, GHSA-8rfp-98v4-mmr6 fix; transitive via nbconvert[css]
-    "jupyterlab>=4.5.9,<5",  # GHSA-vmhf-c436-hxj4 fix; transitive via jupyter
+    "jupyterlab>=4.6.2,<5",  # GHSA-vmhf-c436-hxj4 + GHSA-h5v5/-whvh/-gx64/-pppj/-89vp fixes; via jupyter
+    "soupsieve>=2.8.4,<3",  # PYSEC-2026-3071, PYSEC-2026-3072 fix; transitive via nbconvert -> beautifulsoup4
 ]
 
 [project.optional-dependencies]
