@@ -24,6 +24,57 @@ _GIT_REPO_URL = "https://github.com/posit-dev/connect-extensions"
 _GIT_BRANCH = "main"
 _GIT_DIRECTORY = "extensions/quarto-document"
 
+# ---------------------------------------------------------------------------
+# Transient packrat/CDN failure detection (vip#553)
+# ---------------------------------------------------------------------------
+#
+# Connect resolves R packages over the public internet on every deploy.
+# `rspm-sync.rstudio.com` occasionally resets a connection or loops a 307
+# mid-restore; packrat itself already retries the download once (visible in
+# the task log as a failed curl call immediately followed by a second,
+# successful one for the same URL) and only gives up -- aborting the whole
+# restore -- if that single internal retry also fails. That inner retry is
+# Connect's, not ours: VIP has no hook into it and cannot make it try harder.
+# All VIP can do is redeploy the same bundle from scratch and hope the CDN
+# behaves on the next attempt.
+#
+# This match is deliberately narrow. It requires a curl connection-level
+# failure code AND a known PPM/CDN host AND packrat's own "unable to
+# restore" text, all three -- not any one alone -- so a genuine deployment
+# regression (bad manifest, wrong entrypoint, app crash, a real Connect bug)
+# still fails immediately with no retry. It is also just pattern-matching a
+# live product's log wording, not a documented API contract: if a future
+# Connect release rewords this message, the predicate simply stops matching
+# and every failure reverts to today's non-retried behavior -- it fails
+# closed, never silently.
+#
+# Filed as insurance, not a fix for chronic pain: at the time this was
+# written, 74/74 non-dispatch connect-smoke.yml runs (pull_request, push,
+# schedule) had been green, and this signature had fired exactly once, on a
+# workflow_dispatch run that was never on the merge-gating path. Do not
+# widen this match on the assumption it is covering something that happens
+# often -- it isn't, and a broader match trades away the "must still fail
+# for other reasons" guarantee for no evidenced benefit.
+_TRANSIENT_CURL_CODES = ("curl: (35)", "curl: (7)", "curl: (28)", "curl: (56)")
+_KNOWN_PPM_CDN_HOSTS = (
+    "rspm-sync.rstudio.com",
+    "packagemanager.posit.co",
+    "p3m.dev",
+)
+_PACKRAT_RESTORE_FAILURE_TEXT = "Unable to fully restore the R packages"
+
+# One retry beyond the original attempt.
+_MAX_DEPLOY_ATTEMPTS = 2
+
+
+def _is_transient_packrat_cdn_failure(output: str) -> bool:
+    """Return True only for a packrat restore that failed via a connection-level
+    curl error against a known PPM/CDN host -- see the module comment above."""
+    has_curl_failure = any(code in output for code in _TRANSIENT_CURL_CODES)
+    has_known_host = any(host in output for host in _KNOWN_PPM_CDN_HOSTS)
+    has_restore_failure = _PACKRAT_RESTORE_FAILURE_TEXT in output
+    return has_curl_failure and has_known_host and has_restore_failure
+
 
 def _md5(text: str) -> str:
     """Return the MD5 hex digest of *text*.
@@ -341,7 +392,12 @@ def upload_and_deploy(connect_client, deploy_state):
     archive = _make_tar_gz(bundle_files)
     bundle = connect_client.upload_bundle(deploy_state["guid"], archive)
     deploy_state["bundle_id"] = bundle["id"]
-    result = connect_client.deploy_bundle(deploy_state["guid"], bundle["id"])
+    guid = deploy_state["guid"]
+    bundle_id = bundle["id"]
+    # Captured so wait_for_deploy can redeploy the same already-uploaded bundle
+    # from scratch on a transient packrat/CDN failure (see the module comment).
+    deploy_state["redeploy"] = lambda: connect_client.deploy_bundle(guid, bundle_id)
+    result = deploy_state["redeploy"]()
     deploy_state["task_id"] = result["task_id"]
 
 
@@ -364,25 +420,57 @@ def link_git_repository(connect_client, deploy_state):
 
 @when("I trigger a git-backed deployment")
 def trigger_git_deploy(connect_client, deploy_state):
-    result = connect_client.deploy_from_repository(deploy_state["guid"])
+    guid = deploy_state["guid"]
+    deploy_state["redeploy"] = lambda: connect_client.deploy_from_repository(guid)
+    result = deploy_state["redeploy"]()
     deploy_state["task_id"] = result["task_id"]
 
 
 @when("I wait for the deployment to complete")
 def wait_for_deploy(connect_client, deploy_state, vip_config):
-    task_id = deploy_state["task_id"]
+    """Wait for the deploy task, retrying once on a narrow transient failure.
+
+    See the module comment above ``_is_transient_packrat_cdn_failure`` for why
+    this retry exists and why it is scoped the way it is. Any failure that
+    does not match that exact signature -- including a second attempt that
+    fails again -- fails immediately, identically to before this retry
+    existed.
+    """
     timeout = vip_config.connect.deploy_timeout
-    task = connect_client.wait_for_task(task_id, timeout=timeout)
-    deploy_state["task_result"] = task
-    if not task.get("finished"):
+    task_id = deploy_state["task_id"]
+
+    for attempt in range(_MAX_DEPLOY_ATTEMPTS):
+        task = connect_client.wait_for_task(task_id, timeout=timeout)
+        deploy_state["task_result"] = task
+
+        if not task.get("finished"):
+            output = "\n".join(task.get("output", []))
+            pytest.fail(
+                f"Deployment did not complete within {timeout} seconds\n\n"
+                f"--- Task output ---\n{output}"
+            )
+
+        if task.get("code") == 0:
+            return
+
         output = "\n".join(task.get("output", []))
-        pytest.fail(
-            f"Deployment did not complete within {timeout} seconds\n\n--- Task output ---\n{output}"
+        retry = (
+            attempt < _MAX_DEPLOY_ATTEMPTS - 1
+            and "redeploy" in deploy_state
+            and _is_transient_packrat_cdn_failure(output)
         )
-    if task.get("code") != 0:
-        output = "\n".join(task.get("output", []))
-        error = task.get("error", "unknown error")
-        pytest.fail(f"Deployment failed: {error}\n\n--- Task output ---\n{output}")
+        if not retry:
+            error = task.get("error", "unknown error")
+            pytest.fail(f"Deployment failed: {error}\n\n--- Task output ---\n{output}")
+
+        print(
+            f">>> {deploy_state.get('name', 'deploy')}: packrat restore hit a transient "
+            "connection failure against a known PPM/CDN host; retrying the deploy once "
+            "before failing the suite (vip#553)."
+        )
+        result = deploy_state["redeploy"]()
+        task_id = result["task_id"]
+        deploy_state["task_id"] = task_id
 
 
 @then("the content is accessible via HTTP")
