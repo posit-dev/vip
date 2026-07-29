@@ -62,9 +62,20 @@ def make_http_request(product_url, vip_config):
             "location": resp.headers.get("location", ""),
             "refused": False,
         }
-    except httpx.ConnectError:
-        return {"status": None, "location": "", "refused": True}
-    except Exception:
+    except httpx.HTTPError:
+        # httpx.HTTPError's subtree covers what "no usable plain-HTTP
+        # endpoint" actually means: connection refused (ConnectError), a
+        # timeout, or a protocol violation from a plaintext request hitting
+        # a TLS-only port (ProtocolError/RemoteProtocolError). Deliberately
+        # NOT a bare ``except Exception`` (which this used to be, pre-#457):
+        # an unrelated bug -- a malformed configured URL raising
+        # httpx.InvalidURL, or a future edit introducing a NameError/
+        # AttributeError here -- must keep propagating as a real failure,
+        # not get reported as "port closed, that's fine". A silent "refused"
+        # on any exception is exactly the vacuous-check failure mode #555
+        # exists to remove.
+        # src/vip_tests/cross_product/test_ssl.py::request_http classifies
+        # its sibling check the same narrow way -- keep the two in sync.
         return {"status": None, "location": "", "refused": True}
 
 

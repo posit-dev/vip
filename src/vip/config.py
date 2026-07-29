@@ -458,6 +458,7 @@ class VIPConfig:
 
     insecure: bool = False
     ca_bundle: Path | None = None
+    cert_expiry_warning_days: int = 30
 
     @property
     def verify(self) -> bool | str:
@@ -565,4 +566,5 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         security_policy_checks_enabled=security_raw.get("policy_checks_enabled", False),
         insecure=tls_raw.get("insecure", False),
         ca_bundle=_resolve_ca_bundle(tls_raw.get("ca_bundle")),
+        cert_expiry_warning_days=tls_raw.get("cert_expiry_warning_days", 30),
     )
