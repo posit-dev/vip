@@ -57,18 +57,15 @@ CAPPED = {
     "tomli",
     "pyotp",
     # Report/Jupyter stack: moved from the [report] extra into base deps so a
-    # bare install renders (issue #554). Still capped at next major.
-    "jinja2",
-    "jupyter",
+    # bare install renders (issue #554), then trimmed to just the kernel
+    # Quarto's execution engine actually needs -- no `jupyter`/`jupyterlab`
+    # metapackages. Still capped at next major.
+    "pyyaml",
+    "jupyter-client",
     "ipykernel",
     "nbformat",
     "nbclient",
-    "nbconvert",
-    "mistune",
     "tornado",
-    "bleach",
-    "jupyterlab",
-    "soupsieve",
 }
 
 _BOUNDING_OPERATORS = {"<", "<=", "~=", "=="}

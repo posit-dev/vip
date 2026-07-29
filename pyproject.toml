@@ -37,18 +37,16 @@ dependencies = [
     # Report rendering (`vip report` shells out to quarto, which starts a
     # Jupyter kernel to execute report/*.qmd). Folded into base deps (was the
     # [report] extra) so a bare `uv tool install posit-vip` can render without
-    # a second `--force ...[report]` install. See issue #554.
-    "jinja2>=3.1,<4",
-    "jupyter<2",
+    # a second `--force ...[report]` install. See issue #554. Only the kernel
+    # itself is needed here -- Quarto does its own HTML conversion, so the
+    # heavier `jupyter`/`jupyterlab` metapackages (notebook, nbconvert,
+    # jupyter-console, ...) were pure bloat and have been dropped.
+    "pyyaml>=6.0,<7",  # imported directly by Quarto's own kernel-launch script
+    "jupyter-client>=8.0,<9",  # imported directly by Quarto's own kernel-launch script
     "ipykernel<8",
     "nbformat>=5.7,<6",
     "nbclient>=0.8,<1",
-    "nbconvert>=7.17.1,<8",  # CVE-2026-39377, CVE-2026-39378 fix; transitive via jupyter
-    "mistune>=3.2.1,<4",  # CVE-2026-33079 fix; transitive via nbconvert
-    "tornado>=6.5.7,<7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f fix; transitive via jupyter
-    "bleach>=6.4.0,<7",  # GHSA-gj48-438w-jh9v, GHSA-8rfp-98v4-mmr6 fix; transitive via nbconvert[css]
-    "jupyterlab>=4.6.2,<5",  # GHSA-vmhf-c436-hxj4 + GHSA-h5v5/-whvh/-gx64/-pppj/-89vp fixes; via jupyter
-    "soupsieve>=2.8.4,<3",  # PYSEC-2026-3071, PYSEC-2026-3072 fix; transitive via nbconvert -> beautifulsoup4
+    "tornado>=6.5.7,<7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f fix; transitive via ipykernel
 ]
 
 [project.optional-dependencies]
