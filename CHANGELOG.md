@@ -1,6 +1,39 @@
 # CHANGELOG
 
 
+## v0.58.10 (2026-07-29)
+
+### Bug Fixes
+
+- **report**: Render after bare install without the jupyter metapackage
+  ([#556](https://github.com/posit-dev/vip/pull/556),
+  [`20841f2`](https://github.com/posit-dev/vip/commit/20841f22b5740faa90852c7a459d4701b0dea421))
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+Co-authored-by: Ian Flores Siaca <18703558+ian-flores@users.noreply.github.com>
+
+### Continuous Integration
+
+- **connect**: Run the cross-product suite in a nightly tier
+  ([#552](https://github.com/posit-dev/vip/pull/552),
+  [`12dbc6e`](https://github.com/posit-dev/vip/commit/12dbc6ed7191db5d01c41b8d7b04f7c3610cf0f9))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+- **smoke**: Run cross-cutting suites and stop writing secrets to disk
+  ([#545](https://github.com/posit-dev/vip/pull/545),
+  [`849d6e7`](https://github.com/posit-dev/vip/commit/849d6e793a97ade38687ca3e9efa3816f6da801b))
+
+- **workbench**: Derive [runtimes] and make test_packages real
+  ([#557](https://github.com/posit-dev/vip/pull/557),
+  [`860ba21`](https://github.com/posit-dev/vip/commit/860ba21a97ae1d6ab34668f671482393103d03e0))
+
+- **workbench**: Split the Workbench suite into gate and nightly tiers
+  ([#549](https://github.com/posit-dev/vip/pull/549),
+  [`f81eb40`](https://github.com/posit-dev/vip/commit/f81eb400abad9e9ac76eff3c4ae70ffec84e40c1))
+
+
 ## v0.58.9 (2026-07-28)
 
 ### Bug Fixes
