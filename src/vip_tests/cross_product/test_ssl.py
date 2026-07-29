@@ -48,29 +48,67 @@ def check_ssl_cert(product, vip_config):
     hostname = parsed.hostname
     port = parsed.port or 443
 
+    try:
+        sock = socket.create_connection((hostname, port), timeout=10)
+    except OSError as exc:
+        # DNS failure, connection refused, or a timed-out connect -- the
+        # host is unreachable, which is not a certificate finding. Same
+        # connect-vs-handshake split as ``_attempt_tls``/``_ConnectError``
+        # below: only the TCP connect stage is skip-worthy. #555.
+        pytest.skip(f"Could not connect to {hostname}:{port}: {exc}")
+
     ctx = ssl.create_default_context()
     try:
-        with socket.create_connection((hostname, port), timeout=10) as sock:
+        with sock:
             with ctx.wrap_socket(sock, server_hostname=hostname) as ssock:
                 cert = ssock.getpeercert()
                 return {"cert": cert, "error": None, "hostname": hostname}
     except ssl.SSLCertVerificationError as exc:
         return {"cert": None, "error": str(exc), "hostname": hostname}
-    except Exception as exc:
-        pytest.skip(f"Could not connect to {hostname}:{port}: {exc}")
+    # Deliberately no broader ``except Exception`` here: a handshake failure
+    # for any other reason (a non-cert ssl.SSLError, a mid-handshake drop)
+    # must propagate and fail loudly, not get silently reported as "not
+    # applicable" -- that would gate this file's main new value, the
+    # expiry-margin assertion in ``cert_valid``, behind a broad catch-all.
+
+
+_MONTH_ABBREVIATIONS = {
+    "Jan": 1,
+    "Feb": 2,
+    "Mar": 3,
+    "Apr": 4,
+    "May": 5,
+    "Jun": 6,
+    "Jul": 7,
+    "Aug": 8,
+    "Sep": 9,
+    "Oct": 10,
+    "Nov": 11,
+    "Dec": 12,
+}
 
 
 def _cert_expires_at(cert: dict) -> datetime:
     """Parse the ``notAfter`` field from ``ssl.SSLSocket.getpeercert()``.
 
-    The format is fixed by OpenSSL (e.g. ``"Jun  1 12:00:00 2030 GMT"``) and
-    is always UTC, so the ``GMT`` token is matched literally rather than
-    interpreted as a real timezone abbreviation.
+    The format is fixed by OpenSSL (e.g. ``"Jun  1 12:00:00 2030 GMT"``,
+    always UTC) but is parsed with an explicit month-abbreviation lookup
+    rather than ``strptime``: ``%b`` reads from the process's ``LC_TIME``
+    month table, so on a non-English runner (e.g. ``LC_TIME=de_DE``)
+    ``strptime`` would raise on this exact, unchanging string. VIP is
+    customer-run software and does not control the runner's locale. #560.
     """
     not_after = cert.get("notAfter")
     if not not_after:
         raise ValueError("Certificate has no notAfter field")
-    return datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
+
+    # split() collapses the extra space OpenSSL uses to pad a single-digit
+    # day instead of zero-padding it (e.g. "Jun  1 ..."), so this handles
+    # both single- and double-digit days without special-casing either.
+    month_abbr, day, time_str, year, _tz = not_after.split()
+    month = _MONTH_ABBREVIATIONS[month_abbr]
+    hour, minute, second = (int(part) for part in time_str.split(":"))
+    return datetime(int(year), month, int(day), hour, minute, second, tzinfo=timezone.utc)
 
 
 @then("the certificate is valid and not expired")
@@ -123,17 +161,29 @@ def request_http(product, vip_config):
         http_url = f"http://{parsed.hostname}"
     try:
         resp_no_follow = httpx.get(http_url, follow_redirects=False, timeout=10)
-    except httpx.HTTPError as exc:
-        # httpx.HTTPError's subtree covers what "no usable plain-HTTP
-        # endpoint" actually means: connection refused (ConnectError), a
-        # timeout, or a protocol violation from sending plaintext HTTP at a
-        # TLS-only port (ProtocolError/RemoteProtocolError). Deliberately
-        # NOT a bare ``except Exception``: an unrelated bug (a malformed
-        # configured URL raising httpx.InvalidURL, or a future edit
-        # introducing a NameError/AttributeError here) must keep propagating
-        # as a real failure, not get reported as "port closed, that's fine"
-        # -- that would silently recreate the exact vacuous-check problem
-        # this file's steps were just fixed for. See #457, #555.
+    except (httpx.NetworkError, httpx.ProtocolError) as exc:
+        # NetworkError (ConnectError/ReadError/WriteError/CloseError) is a
+        # refused, reset, or closed TCP connection; ProtocolError (its
+        # subclass RemoteProtocolError in particular) is what a plaintext
+        # HTTP request gets back from a TLS-only port. Both mean "no usable
+        # plain-HTTP endpoint" for the checks below. In practice, hitting a
+        # TLS-only port with plaintext HTTP has been observed to raise
+        # EITHER RemoteProtocolError (server replies with a garbled TLS
+        # byte httpx tries to parse as HTTP) OR ReadError/"Connection reset
+        # by peer" (server just resets on non-TLS bytes) depending on the
+        # server and OS -- confirmed against a live self-signed server,
+        # not assumed -- so NetworkError, not just ConnectError, is needed.
+        #
+        # Deliberately NOT ``httpx.HTTPError`` (too wide) or a bare
+        # ``except Exception`` (wider still): a timeout means the host is
+        # filtered or hung, which is a materially different, reportable
+        # state -- not "closed" -- so it must fall through and fail loudly.
+        # An unrelated bug (httpx.InvalidURL from a malformed configured
+        # URL, or a future edit introducing a NameError/AttributeError
+        # here) must propagate as a real failure too, not get reported as
+        # "port closed, that's fine" -- that would silently recreate the
+        # exact vacuous-check problem this file's steps were just fixed
+        # for. See #457, #555.
         # src/vip_tests/security/test_https.py::make_http_request classifies
         # its sibling check the same narrow way -- keep the two in sync.
         return {
@@ -197,7 +247,15 @@ def http_port_no_content(http_response):
     if http_response["error"] == "port_closed":
         return
     status = http_response["status"]
-    assert status is None or not (200 <= status < 300), (
+    # Nothing legitimate reaches here with status=None: the only producer of
+    # None is the port_closed branch above, which already returned. Assert
+    # that explicitly rather than writing `status is None or ...`, which
+    # would silently treat a future None-producing bug as "fine, no content".
+    assert status is not None, (
+        f"Expected an HTTP status since the port answered, got None "
+        f"(error={http_response['error']!r})."
+    )
+    assert not (200 <= status < 300), (
         f"Plain HTTP served content directly (status {status}) instead of "
         "redirecting to HTTPS or refusing the connection."
     )

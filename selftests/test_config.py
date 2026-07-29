@@ -554,6 +554,18 @@ class TestLoadConfigTLS:
         cfg = load_config(path)
         assert cfg.cert_expiry_warning_days == 7
 
+    def test_cert_expiry_warning_days_zero_disables_check(self, tmp_toml):
+        path = tmp_toml("[tls]\ncert_expiry_warning_days = 0\n")
+        cfg = load_config(path)
+        assert cfg.cert_expiry_warning_days == 0
+
+    def test_cert_expiry_warning_days_negative_raises_valueerror(self, tmp_toml):
+        """A negative threshold would silently pass for a cert already
+        inside any expiry window -- fail fast on the config typo instead."""
+        path = tmp_toml("[tls]\ncert_expiry_warning_days = -1\n")
+        with pytest.raises(ValueError, match="cert_expiry_warning_days must be >= 0"):
+            load_config(path)
+
     def test_insecure_from_toml(self, tmp_toml):
         path = tmp_toml("[tls]\ninsecure = true\n")
         cfg = load_config(path)

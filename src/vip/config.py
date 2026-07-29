@@ -501,6 +501,25 @@ def _resolve_ca_bundle(raw: str | None) -> Path | None:
     return p
 
 
+def _validate_cert_expiry_warning_days(value: int) -> int:
+    """Reject a negative threshold.
+
+    ``0`` disables the expiry-margin check (documented behavior). A negative
+    value would silently pass for a certificate already inside any expiry
+    window, defeating the check -- fail fast on a config typo instead.
+
+    Deliberate exception to this file's dominant convention: other plain
+    numeric fields (``job_timeout``, ``deploy_timeout``, etc.) are
+    unvalidated, and only ``ca_bundle``/``git_test.auth_method`` validate
+    today. This one gets a validator anyway because, unlike a bad timeout,
+    a negative threshold doesn't fail loudly on first use -- it silently
+    turns off a security check the field exists to enforce.
+    """
+    if value < 0:
+        raise ValueError(f"[tls] cert_expiry_warning_days must be >= 0, got {value}")
+    return value
+
+
 def load_config(path: str | Path | None = None) -> VIPConfig:
     """Load VIP configuration from a TOML file.
 
@@ -566,5 +585,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         security_policy_checks_enabled=security_raw.get("policy_checks_enabled", False),
         insecure=tls_raw.get("insecure", False),
         ca_bundle=_resolve_ca_bundle(tls_raw.get("ca_bundle")),
-        cert_expiry_warning_days=tls_raw.get("cert_expiry_warning_days", 30),
+        cert_expiry_warning_days=_validate_cert_expiry_warning_days(
+            tls_raw.get("cert_expiry_warning_days", 30)
+        ),
     )

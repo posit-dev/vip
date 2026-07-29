@@ -3,7 +3,8 @@
 
 Mirrors ``selftests/test_ssl_helper.py``'s coverage of the sibling
 ``request_http`` -- both classify "no usable plain-HTTP endpoint" the same
-narrow way (``httpx.HTTPError`` only), so an unrelated exception (a
+narrow way (``httpx.NetworkError``/``httpx.ProtocolError`` only, NOT the
+wider ``httpx.HTTPError``), so a timeout or an unrelated exception (a
 malformed URL, a code bug) still propagates instead of being reported as an
 acceptable "port closed" outcome. See #457, #555.
 """
@@ -44,6 +45,25 @@ def test_make_http_request_classifies_protocol_error_as_refused(monkeypatch):
     assert result["refused"] is True
 
 
+def test_make_http_request_classifies_read_error_as_refused(monkeypatch):
+    """Confirmed against a live self-signed server (not assumed): hitting a
+    TLS-only port with plaintext HTTP can also surface as
+    ``httpx.ReadError``/"Connection reset by peer" rather than
+    ``RemoteProtocolError``, depending on the server and OS. ``ReadError``
+    is an ``httpx.NetworkError``, NOT an ``httpx.ConnectError`` or
+    ``httpx.ProtocolError``, which is why the except clause must catch
+    ``NetworkError`` rather than just ``ConnectError``. #457."""
+
+    def fake_get(url, follow_redirects=False, timeout=10, **kwargs):
+        raise httpx.ReadError("[Errno 54] Connection reset by peer")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = make_http_request("https://connect.example.com", VIPConfig())
+
+    assert result["refused"] is True
+
+
 def test_make_http_request_does_not_swallow_unrelated_exceptions(monkeypatch):
     """Regression guard: classifying every exception as "refused" would let
     ``https_enforced`` pass silently on a malformed URL or a code bug, not
@@ -67,4 +87,32 @@ def test_make_http_request_does_not_swallow_programming_errors(monkeypatch):
     monkeypatch.setattr(httpx, "get", fake_get)
 
     with pytest.raises(RuntimeError, match="boom"):
+        make_http_request("https://connect.example.com", VIPConfig())
+
+
+def test_make_http_request_does_not_classify_connect_timeout_as_refused(monkeypatch):
+    """A timeout means the host is filtered or hung, not "no plain-HTTP
+    listener" -- ``httpx.ConnectTimeout`` is a ``TimeoutException``, NOT an
+    ``httpx.NetworkError``/``ProtocolError``, so it must propagate. #457.
+    """
+
+    def fake_get(url, follow_redirects=False, timeout=10, **kwargs):
+        raise httpx.ConnectTimeout("timed out")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with pytest.raises(httpx.ConnectTimeout):
+        make_http_request("https://connect.example.com", VIPConfig())
+
+
+def test_make_http_request_does_not_classify_read_timeout_as_refused(monkeypatch):
+    """A ``ReadTimeout`` means the port accepted the connection and never
+    answered -- a hung listener, a real bug, not "port closed". #457."""
+
+    def fake_get(url, follow_redirects=False, timeout=10, **kwargs):
+        raise httpx.ReadTimeout("timed out")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with pytest.raises(httpx.ReadTimeout):
         make_http_request("https://connect.example.com", VIPConfig())
