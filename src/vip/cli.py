@@ -17,7 +17,7 @@ from vip.reporting import VALID_FORMATS
 from vip.timeouts import scaled
 
 if TYPE_CHECKING:
-    from vip.config import VIPConfig
+    from vip.config import ProductConfig, VIPConfig
 
 # Default for ``vip verify --test-timeout``.  Generous enough for a full
 # Connect suite with several content deployments (each can take 3-5 minutes
@@ -723,6 +723,28 @@ def run_report(args: argparse.Namespace) -> None:
         webbrowser.open(output.resolve().as_uri())
 
 
+def _resolved_url(
+    pc: ProductConfig, *, insecure: bool = False, ca_bundle: Path | None = None
+) -> str:
+    """Resolve *pc*'s URL via ``resolve_url_scheme`` when its scheme was inferred.
+
+    Config loading only infers a scheme (``vip.config._normalize_url`` stays
+    network-free); this is the network-touching half, called right before
+    something in this module first talks to the server -- mirrors
+    ``src/vip_tests/conftest.py``'s fixture-level helper of the same name and
+    purpose. A URL with an explicit scheme (``url_scheme_inferred`` False) is
+    returned unchanged, no network call. Mutates ``pc.url`` in place so a
+    caller that reads ``pc.url`` again downstream (e.g. for a printed
+    message) sees the resolved value; ``resolve_url_scheme`` itself caches by
+    URL, so calling this more than once for the same product costs one probe.
+    """
+    if pc.url_scheme_inferred:
+        from vip.auth import resolve_url_scheme
+
+        pc.url = resolve_url_scheme(pc.url, insecure=insecure, ca_bundle=ca_bundle)
+    return pc.url
+
+
 def _collect_status(config: VIPConfig) -> dict:
     """Run health checks and return structured status data.
 
@@ -756,6 +778,7 @@ def _collect_status(config: VIPConfig) -> dict:
             products[name] = {"configured": False, "state": "skip", "detail": "not configured"}
             continue
         try:
+            _resolved_url(pc, insecure=config.insecure, ca_bundle=config.ca_bundle)
             if name == "connect":
                 client: ConnectClient | WorkbenchClient | PackageManagerClient = ConnectClient(
                     pc.url,
@@ -904,15 +927,24 @@ def run_uninstall(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    # Resolve Connect URL for chained cleanup.
-    connect_url = getattr(args, "connect_url", None)
-    if not connect_url:
+    # Resolve Connect URL for chained cleanup. A CLI flag wins over vip.toml;
+    # wrapping it in ProductConfig routes a scheme-less --connect-url through
+    # the same _normalize_url every other entry point uses (it was previously
+    # handed to ConnectClient completely unnormalized). cfg carries the TLS
+    # settings (insecure/ca_bundle) for the probe-and-fallback below when the
+    # URL came from vip.toml; a CLI-flag-only invocation has no cfg to draw
+    # those from, so it probes with defaults (verify=True).
+    from vip.config import ProductConfig
+
+    connect_arg = getattr(args, "connect_url", None)
+    connect_pc: ProductConfig | None = ProductConfig(url=connect_arg) if connect_arg else None
+    cfg = None
+    if connect_pc is None:
         if sys.version_info >= (3, 11):
             import tomllib as _tomllib
         else:
             import tomli as _tomllib  # type: ignore[no-redef]
 
-        cfg = None
         try:
             from vip.config import load_config
 
@@ -924,21 +956,30 @@ def run_uninstall(args: argparse.Namespace) -> None:
                 file=sys.stderr,
             )
         if cfg and cfg.connect and cfg.connect.url:
-            connect_url = cfg.connect.url
+            connect_pc = cfg.connect
 
     plan = build_uninstall_plan(
         manifest=manifest,
-        connect_url=connect_url,
+        connect_url=connect_pc.url if connect_pc else None,
     )
 
     cleanup_callable = None
-    if connect_url:
+    if connect_pc is not None:
         api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
+        insecure = cfg.insecure if cfg else False
+        ca_bundle = cfg.ca_bundle if cfg else None
 
-        def cleanup_callable(url: str) -> None:  # noqa: F811
+        def cleanup_callable(_url: str) -> None:  # noqa: F811
             from vip.clients.connect import ConnectClient
 
-            with ConnectClient(url, api_key) as client:
+            # ``_url`` (== plan.chained_cleanup) is connect_pc.url before
+            # resolution; resolve via connect_pc itself instead so the
+            # inferred-scheme fallback (unavailable on a bare string) applies
+            # here too. This only ever runs when execute_uninstall_plan
+            # actually executes (--yes was passed) -- never during a dry-run
+            # plan preview.
+            resolved = _resolved_url(connect_pc, insecure=insecure, ca_bundle=ca_bundle)
+            with ConnectClient(resolved, api_key) as client:
                 client.cleanup_vip_content()
 
     rc = execute_uninstall_plan(
@@ -1162,24 +1203,38 @@ def run_cleanup(args: argparse.Namespace) -> None:
     persist despite the API reporting success. The Connect/Workbench URLs
     come from ``--connect-url``/``--workbench-url`` or, if omitted, from
     ``[connect] url``/``[workbench] url`` in ``vip.toml``. At least one of
-    the two must resolve.
+    the two must resolve. A scheme-less URL defaults to ``https://`` and
+    falls back to ``http://`` if https doesn't answer (see
+    ``vip.config._normalize_url`` / ``vip.auth.resolve_url_scheme``).
     """
     _ensure_cli_logging()
-    connect_url = getattr(args, "connect_url", None)
+
+    from vip.config import ProductConfig
+
+    connect_arg = getattr(args, "connect_url", None)
     api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
-    workbench_url = getattr(args, "workbench_url", None)
+    workbench_arg = getattr(args, "workbench_url", None)
 
     # Load vip.toml when present to fill in any URL not passed on the CLI, and
     # to supply TLS/auth settings for the Workbench path. Loaded quietly: an
     # explicit `vip cleanup --connect-url ...` with no vip.toml must not emit a
     # "Config file not found" warning (env-based credentials still apply).
     config = _load_cleanup_config()
-    if not connect_url and config.connect and config.connect.url:
-        connect_url = config.connect.url
-    if not workbench_url and config.workbench and config.workbench.url:
-        workbench_url = config.workbench.url
 
-    if not connect_url and not workbench_url:
+    # A CLI flag wins over vip.toml, as before. Wrapping the CLI arg in
+    # ProductConfig routes it through the same _normalize_url a bare
+    # hostname gets from every other entry point (vip verify, vip status):
+    # previously a scheme-less --connect-url was handed to ConnectClient
+    # completely unnormalized (a bug in its own right -- httpx requires an
+    # absolute URL) and never got the probe-and-fallback treatment below.
+    # config.connect/config.workbench are already ProductConfig instances
+    # (normalized by load_config), so the vip.toml path needs no wrapping.
+    connect_pc: ProductConfig = ProductConfig(url=connect_arg) if connect_arg else config.connect
+    workbench_pc: ProductConfig = (
+        ProductConfig(url=workbench_arg) if workbench_arg else config.workbench
+    )
+
+    if not connect_pc.url and not workbench_pc.url:
         print(
             "Error: no Connect or Workbench URL found. Pass --connect-url / "
             "--workbench-url, or set [connect] url / [workbench] url in vip.toml.",
@@ -1187,15 +1242,21 @@ def run_cleanup(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    if connect_url:
+    if connect_pc.url:
         from vip.clients.connect import ConnectClient
 
+        connect_url = _resolved_url(
+            connect_pc, insecure=config.insecure, ca_bundle=config.ca_bundle
+        )
         print(f"Cleaning up VIP test content on Connect at {connect_url}")
         with ConnectClient(connect_url, api_key) as client:
             deleted = client.cleanup_vip_content()
         print(f"Deleted {deleted} VIP test content item(s)")
 
-    if workbench_url:
+    if workbench_pc.url:
+        workbench_url = _resolved_url(
+            workbench_pc, insecure=config.insecure, ca_bundle=config.ca_bundle
+        )
         _cleanup_workbench_sessions(workbench_url, args, config)
 
     print("Cleanup completed successfully")

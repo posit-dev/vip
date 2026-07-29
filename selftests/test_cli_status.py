@@ -34,18 +34,26 @@ def _make_config(
     connect.is_configured = connect_configured
     connect.url = connect_url
     connect.api_key = "test-key"
+    # Every URL passed to _make_config is a hardcoded explicit https:// in
+    # this file, not scheme-less input -- pin the flag rather than leave it
+    # as MagicMock's default (truthy) auto-attribute, which would make
+    # _collect_status's _resolved_url() think the scheme was inferred and
+    # attempt a real network probe against these fake example.com hosts.
+    connect.url_scheme_inferred = False
     config.connect = connect
 
     workbench = MagicMock()
     workbench.is_configured = workbench_configured
     workbench.url = workbench_url
     workbench.api_key = "test-key"
+    workbench.url_scheme_inferred = False
     config.workbench = workbench
 
     pm = MagicMock()
     pm.is_configured = pm_configured
     pm.url = pm_url
     pm.token = "test-token"
+    pm.url_scheme_inferred = False
     config.package_manager = pm
 
     return config

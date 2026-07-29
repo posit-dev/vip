@@ -490,6 +490,157 @@ class TestStartInteractiveAuthPollLoop:
             auth_mod.start_interactive_auth(workbench_url="https://wb.example.com")
 
 
+class TestStartInteractiveAuthSchemeResolutionWiring:
+    """*_scheme_inferred flags gate calls to resolve_url_scheme (issue #537):
+    an explicit scheme must never be second-guessed, and an inferred one
+    must be resolved before Playwright or the mint client touch the URL."""
+
+    @staticmethod
+    def _playwright_stub(logged_in_url: str) -> MagicMock:
+        """Stub sync_playwright() whose page is immediately "logged in" at
+        *logged_in_url* (must match the resolved primary_url + no /__login__)."""
+
+        class _PageStub:
+            url = logged_in_url
+
+            def goto(self, *_a, **_kw) -> None:
+                return None
+
+            def wait_for_timeout(self, *_a, **_kw) -> None:
+                return None
+
+        pw = MagicMock()
+        browser = pw.start.return_value.chromium.launch.return_value
+        browser.new_context.return_value.new_page.return_value = _PageStub()
+        return pw
+
+    def test_inferred_scheme_is_resolved_before_use(self, monkeypatch):
+        """A downgrade must reach both the browser (page.goto) and the mint
+        client -- not just one of the two."""
+        from vip.auth import start_interactive_auth
+
+        monkeypatch.setattr(
+            "vip.auth.sync_playwright",
+            lambda: self._playwright_stub("http://connect.example.com/"),
+        )
+        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
+        mint = MagicMock(return_value="FAKE_KEY")
+        monkeypatch.setattr("vip.auth._create_api_key_via_session", mint)
+        resolve = MagicMock(return_value="http://connect.example.com")
+        monkeypatch.setattr("vip.auth.resolve_url_scheme", resolve)
+
+        session = start_interactive_auth(
+            connect_url="https://connect.example.com",
+            connect_url_scheme_inferred=True,
+        )
+
+        resolve.assert_called_once_with(
+            "https://connect.example.com", insecure=False, ca_bundle=None
+        )
+        assert session._connect_url == "http://connect.example.com"
+        # The mint client must have been called with the resolved URL, not
+        # the original https:// one.
+        assert mint.call_args.args[1] == "http://connect.example.com"
+
+    def test_explicit_scheme_never_calls_resolve(self, monkeypatch):
+        """A user-supplied scheme is authoritative -- no probe, ever."""
+        from vip.auth import start_interactive_auth
+
+        monkeypatch.setattr(
+            "vip.auth.sync_playwright",
+            lambda: self._playwright_stub("https://connect.example.com/"),
+        )
+        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr("vip.auth._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY")
+        resolve = MagicMock()
+        monkeypatch.setattr("vip.auth.resolve_url_scheme", resolve)
+
+        session = start_interactive_auth(
+            connect_url="https://connect.example.com",
+            connect_url_scheme_inferred=False,
+        )
+
+        resolve.assert_not_called()
+        assert session._connect_url == "https://connect.example.com"
+
+    def test_default_is_not_inferred(self, monkeypatch):
+        """The *_scheme_inferred parameters default to False so a caller that
+        doesn't pass them (e.g. an older test or script) keeps today's
+        behaviour: no probing."""
+        from vip.auth import start_interactive_auth
+
+        monkeypatch.setattr(
+            "vip.auth.sync_playwright",
+            lambda: self._playwright_stub("https://connect.example.com/"),
+        )
+        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr("vip.auth._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY")
+        resolve = MagicMock()
+        monkeypatch.setattr("vip.auth.resolve_url_scheme", resolve)
+
+        start_interactive_auth(connect_url="https://connect.example.com")
+
+        resolve.assert_not_called()
+
+
+class TestStartHeadlessAuthSchemeResolutionWiring:
+    """Headless counterpart to TestStartInteractiveAuthSchemeResolutionWiring."""
+
+    def _stub_headless_playwright(self, monkeypatch) -> None:
+        pw = MagicMock()
+        browser = pw.start.return_value.chromium.launch.return_value
+        page = browser.new_context.return_value.new_page.return_value
+        # ``_sanitize_url(page.url)`` is called unconditionally (its result
+        # is only *printed* conditionally) and expects a real string.
+        page.url = "https://connect.example.com/"
+        monkeypatch.setattr("vip.auth.sync_playwright", lambda: pw)
+        monkeypatch.setattr("vip.auth._fill_product_login", lambda *a, **kw: None)
+        monkeypatch.setattr("vip.auth._wait_for_product_redirect", lambda *a, **kw: None)
+        return page
+
+    def test_inferred_scheme_is_resolved_before_use(self, monkeypatch):
+        from vip.auth import start_headless_auth
+
+        self._stub_headless_playwright(monkeypatch)
+        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
+        mint = MagicMock(return_value="FAKE_KEY")
+        monkeypatch.setattr("vip.auth._create_api_key_via_session", mint)
+        resolve = MagicMock(return_value="http://connect.example.com")
+        monkeypatch.setattr("vip.auth.resolve_url_scheme", resolve)
+
+        session = start_headless_auth(
+            connect_url="https://connect.example.com",
+            username="user",
+            password="pass",
+            connect_url_scheme_inferred=True,
+        )
+
+        resolve.assert_called_once_with(
+            "https://connect.example.com", insecure=False, ca_bundle=None
+        )
+        assert session._connect_url == "http://connect.example.com"
+        assert mint.call_args.args[1] == "http://connect.example.com"
+
+    def test_explicit_scheme_never_calls_resolve(self, monkeypatch):
+        from vip.auth import start_headless_auth
+
+        self._stub_headless_playwright(monkeypatch)
+        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr("vip.auth._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY")
+        resolve = MagicMock()
+        monkeypatch.setattr("vip.auth.resolve_url_scheme", resolve)
+
+        session = start_headless_auth(
+            connect_url="https://connect.example.com",
+            username="user",
+            password="pass",
+            connect_url_scheme_inferred=False,
+        )
+
+        resolve.assert_not_called()
+        assert session._connect_url == "https://connect.example.com"
+
+
 class TestAuthenticateWorkbench:
     """_authenticate_workbench establishes the Workbench SSO session after
     Connect auth has already succeeded.  Network failures here must NOT
@@ -903,6 +1054,125 @@ class TestHttpxVerify:
         assert _httpx_verify(True, ca) is False
 
 
+class TestResolveUrlScheme:
+    """resolve_url_scheme falls an inferred https:// URL back to http:// only
+    when https genuinely doesn't answer (issue #537).
+
+    Every test clears the module-level cache first so results from one test
+    don't leak into the next -- the whole point of the cache is to survive
+    across calls *within* a run, not across independent test cases.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        import vip.auth
+
+        vip.auth._scheme_resolution_cache.clear()
+        yield
+        vip.auth._scheme_resolution_cache.clear()
+
+    def test_non_https_url_returned_unchanged_without_probing(self):
+        """An explicit (or already-resolved) http:// URL is never probed --
+        this function trusts its caller to have checked url_scheme_inferred."""
+        from vip.auth import resolve_url_scheme
+
+        with patch("httpx.get") as mock_get:
+            result = resolve_url_scheme("http://connect.example.com")
+
+        assert result == "http://connect.example.com"
+        mock_get.assert_not_called()
+
+    def test_https_that_answers_is_kept(self):
+        """https:// responds (any status) -- kept as-is, nothing downgraded."""
+        from vip.auth import resolve_url_scheme
+
+        with patch("httpx.get", return_value=MagicMock(status_code=200)):
+            result = resolve_url_scheme("https://connect.example.com")
+
+        assert result == "https://connect.example.com"
+
+    def test_https_5xx_is_not_a_fallback_trigger(self):
+        """A 500 means the server answered -- do not fall back to http://."""
+        from vip.auth import resolve_url_scheme
+
+        with patch("httpx.get", return_value=MagicMock(status_code=500)):
+            result = resolve_url_scheme("https://connect.example.com")
+
+        assert result == "https://connect.example.com"
+
+    def test_connection_failure_falls_back_to_http(self):
+        """A connection-level failure (refused, DNS, TLS, timeout) -- the
+        server genuinely doesn't answer -- triggers the http:// fallback."""
+        import httpx
+
+        from vip.auth import resolve_url_scheme
+
+        with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
+            result = resolve_url_scheme("https://connect.example.com")
+
+        assert result == "http://connect.example.com"
+
+    def test_timeout_falls_back_to_http(self):
+        """ConnectTimeout is also a TransportError -- same fallback."""
+        import httpx
+
+        from vip.auth import resolve_url_scheme
+
+        with patch("httpx.get", side_effect=httpx.ConnectTimeout("timed out")):
+            result = resolve_url_scheme("https://connect.example.com")
+
+        assert result == "http://connect.example.com"
+
+    def test_fallback_is_logged_loudly(self, capsys):
+        """A user who meant https must see that they got plaintext instead."""
+        import httpx
+
+        from vip.auth import resolve_url_scheme
+
+        with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
+            resolve_url_scheme("https://connect.example.com")
+
+        out = capsys.readouterr().out
+        assert "connect.example.com" in out
+        assert "http://connect.example.com" in out
+
+    def test_success_is_not_logged(self, capsys):
+        """Keeping https (the common case) must not print a warning."""
+        from vip.auth import resolve_url_scheme
+
+        with patch("httpx.get", return_value=MagicMock(status_code=200)):
+            resolve_url_scheme("https://connect.example.com")
+
+        assert capsys.readouterr().out == ""
+
+    def test_result_is_cached_across_calls(self):
+        """A second call for the same URL must not probe the network again --
+        the auth flow and a client fixture can both ask for the same URL in
+        one run."""
+        import httpx
+
+        from vip.auth import resolve_url_scheme
+
+        with patch("httpx.get", side_effect=httpx.ConnectError("nope")) as mock_get:
+            first = resolve_url_scheme("https://connect.example.com")
+            second = resolve_url_scheme("https://connect.example.com")
+
+        assert first == second == "http://connect.example.com"
+        mock_get.assert_called_once()
+
+    def test_probe_uses_follow_redirects_and_verify(self, tmp_path):
+        """The probe itself must honour insecure/ca_bundle and follow
+        redirects, matching every other httpx call site in this module."""
+        from vip.auth import resolve_url_scheme
+
+        ca = tmp_path / "ca.pem"
+        with patch("httpx.get", return_value=MagicMock(status_code=200)) as mock_get:
+            resolve_url_scheme("https://connect.example.com", ca_bundle=ca)
+
+        assert mock_get.call_args.kwargs["follow_redirects"] is True
+        assert mock_get.call_args.kwargs["verify"] == str(ca)
+
+
 class TestResolveConnectApiBase:
     """_resolve_connect_api_base handles split layouts where the Connect
     dashboard sits on a sub-path (``/connect/``) but the API stays at the
@@ -1178,6 +1448,29 @@ class TestCreateApiKeyViaSession:
 
         assert result == "K" * 30
         assert client_cls.call_args.kwargs["verify"] is False
+
+    def test_follows_redirects(self):
+        """follow_redirects=True must be set so an http->https (or trailing-
+        slash) redirect isn't treated as a mint failure (issue #537).
+        Matches _resolve_connect_api_base's probes, which already do this."""
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(json_data=[])
+        created = self._httpx_response(json_data={"id": "1", "key": "K" * 30})
+
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
+
+        patcher, client_cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=created,
+        )
+        with patcher:
+            _create_api_key_via_session(page, "https://c.example.com", "k")
+
+        assert client_cls.call_args.kwargs["follow_redirects"] is True
 
     def test_ca_bundle_sets_verify_path(self, tmp_path):
         """When ca_bundle is set, httpx.Client must receive verify=str(ca_bundle)."""

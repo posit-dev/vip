@@ -112,6 +112,57 @@ def connect_tls_server(tmp_path_factory):
     server.server_close()
 
 
+def _start_http_redirect_server(https_base: str) -> tuple[ThreadingHTTPServer, str]:
+    """Start a plaintext HTTP server that 307-redirects every request to
+    the same path under *https_base*.
+
+    Mirrors a deployment that terminates TLS at a reverse proxy and redirects
+    plain HTTP to HTTPS -- the scenario from issue #537. Every request (GET
+    and POST) is redirected, not just the first: ``httpx.Client.
+    follow_redirects`` applies per request, and the mint flow issues three
+    calls (GET /v1/user, GET .../keys, POST .../keys) against the same
+    ``base_url``, each of which needs its own redirect to succeed.
+
+    307 (not 301/302) is deliberate: it's the status code that preserves the
+    method and body across the redirect, which is what a proxy has to use to
+    avoid silently turning the mint flow's ``POST .../keys`` into a bodyless
+    ``GET`` -- httpx (like every browser) downgrades POST to GET on 301/302
+    for legacy compatibility. A proxy correctly configured for an API
+    (as opposed to a browser-only redirect) uses 307/308 for exactly this
+    reason.
+    """
+
+    class _RedirectHandler(BaseHTTPRequestHandler):
+        def log_message(self, *args, **kwargs):  # noqa
+            pass
+
+        def _redirect(self) -> None:
+            self.send_response(307)
+            self.send_header("Location", f"{https_base}{self.path}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def do_GET(self) -> None:  # noqa: N802
+            self._redirect()
+
+        def do_POST(self) -> None:  # noqa: N802
+            self._redirect()
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _RedirectHandler)
+    httpd.daemon_threads = True
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd, f"http://127.0.0.1:{port}"
+
+
+@pytest.fixture(scope="module")
+def connect_http_redirect_server(connect_tls_server: str):
+    httpd, url = _start_http_redirect_server(connect_tls_server)
+    yield url
+    httpd.shutdown()
+    httpd.server_close()
+
+
 def _stub_page() -> MagicMock:
     """Return a Playwright Page stub with a usable session cookie jar."""
     page = MagicMock()
@@ -161,3 +212,26 @@ def test_mint_returns_none_against_self_signed_when_strict(connect_tls_server):
         insecure=False,
     )
     assert api_key is None
+
+
+def test_mint_follows_http_to_https_redirect(connect_http_redirect_server: str):
+    """Reproduces issue #537 end-to-end: a Connect URL that resolves to a
+    plaintext-HTTP endpoint which 307-redirects every request to HTTPS must
+    still mint an API key.
+
+    Before the fix, ``_create_api_key_via_session``'s ``httpx.Client`` left
+    ``follow_redirects`` at its default (``False``), so the first
+    ``GET /__api__/v1/user`` hit the redirect and was reported as a mint
+    failure (returns ``None``) even though the server was healthy and
+    reachable at the HTTPS location the redirect pointed to.
+    """
+    from vip.auth import _create_api_key_via_session
+
+    page = _stub_page()
+    api_key = _create_api_key_via_session(
+        page,
+        connect_http_redirect_server,
+        "test_vip_key",
+        insecure=True,  # the https side of the redirect uses a self-signed cert
+    )
+    assert api_key == _API_KEY

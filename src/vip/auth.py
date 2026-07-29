@@ -431,6 +431,8 @@ def start_interactive_auth(
     cache_path: Path | None = None,
     insecure: bool = False,
     ca_bundle: Path | None = None,
+    connect_url_scheme_inferred: bool = False,
+    workbench_url_scheme_inferred: bool = False,
 ) -> InteractiveAuthSession:
     """Launch a headed browser, authenticate via OIDC, and optionally
     mint a Connect API key through the UI.
@@ -453,6 +455,12 @@ def start_interactive_auth(
     When *ca_bundle* is set, the path is exported as ``NODE_EXTRA_CA_CERTS``
     before launching Chromium so it trusts a custom CA (Chromium-level trust
     only; this does not update the OS certificate store).
+
+    *connect_url_scheme_inferred* / *workbench_url_scheme_inferred* mark a URL
+    whose ``https://`` scheme was inferred by ``vip.config._normalize_url``
+    rather than given explicitly (``ProductConfig.url_scheme_inferred``).
+    When set, :func:`resolve_url_scheme` probes the URL and falls back to
+    ``http://`` if https doesn't answer, before it's used for anything.
     """
     if not connect_url and not workbench_url:
         raise ValueError(
@@ -464,6 +472,11 @@ def start_interactive_auth(
         cached = _load_cached_auth(cache_path, connect_url, workbench_url)
         if cached is not None:
             return cached
+
+    if connect_url and connect_url_scheme_inferred:
+        connect_url = resolve_url_scheme(connect_url, insecure=insecure, ca_bundle=ca_bundle)
+    if workbench_url and workbench_url_scheme_inferred:
+        workbench_url = resolve_url_scheme(workbench_url, insecure=insecure, ca_bundle=ca_bundle)
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
@@ -605,6 +618,8 @@ def start_headless_auth(
     verbose: bool = False,
     insecure: bool = False,
     ca_bundle: Path | None = None,
+    connect_url_scheme_inferred: bool = False,
+    workbench_url_scheme_inferred: bool = False,
 ) -> InteractiveAuthSession:
     """Launch a headless browser, automate OIDC login, and optionally
     mint a Connect API key through the UI.
@@ -622,6 +637,9 @@ def start_headless_auth(
     When *ca_bundle* is set, the path is exported as ``NODE_EXTRA_CA_CERTS``
     before launching Chromium so it trusts a custom CA (Chromium-level trust
     only; this does not update the OS certificate store).
+
+    *connect_url_scheme_inferred* / *workbench_url_scheme_inferred*: see
+    ``start_interactive_auth``.
     """
     import vip.idp as _idp_mod
 
@@ -668,6 +686,14 @@ def start_headless_auth(
             )
 
         fill_login = get_idp_strategy(idp)
+
+    # Resolve inferred https:// schemes now, after every fail-fast validation
+    # above and right before anything (Playwright or httpx) actually talks to
+    # the URLs, so a config error never pays for a network probe it doesn't need.
+    if connect_url and connect_url_scheme_inferred:
+        connect_url = resolve_url_scheme(connect_url, insecure=insecure, ca_bundle=ca_bundle)
+    if workbench_url and workbench_url_scheme_inferred:
+        workbench_url = resolve_url_scheme(workbench_url, insecure=insecure, ca_bundle=ca_bundle)
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
@@ -1301,6 +1327,65 @@ def _body_snippet(resp, limit: int = 200) -> str:
     return text[:limit] if text else "<empty body>"
 
 
+# Cache of resolved schemes, keyed by the https:// URL that was probed. A
+# single `vip verify` run can reach ``resolve_url_scheme`` from more than one
+# place -- the interactive/headless auth flow, then again from a client
+# fixture reading the same config value -- so the second and later calls for
+# the same URL are a dict lookup instead of a second live probe.
+_scheme_resolution_cache: dict[str, str] = {}
+
+
+def resolve_url_scheme(
+    url: str,
+    *,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
+) -> str:
+    """Fall an *inferred* ``https://`` URL back to ``http://`` if https doesn't answer.
+
+    ``vip.config._normalize_url`` defaults a scheme-less host to ``https://``
+    but cannot verify reachability without a network call, which would break
+    config loading's purity (it must stay network-free so, e.g., CI's
+    ``--collect-only`` dry runs never dial out). This is the network-touching
+    counterpart: call it once, from the first place that is actually about to
+    talk to *url* (an auth flow or a client constructor) for a URL whose
+    scheme ``vip.config`` marked as inferred. Never call this for a URL whose
+    scheme the user gave explicitly -- an explicit scheme is authoritative
+    and must never be second-guessed, so this function does not take an
+    ``inferred`` flag itself; callers are expected to check
+    ``ProductConfig.url_scheme_inferred`` before calling.
+
+    A connection-level failure (refused connection, DNS failure, TLS
+    handshake failure, timeout -- ``httpx.TransportError``) is treated as
+    "https doesn't answer" and triggers the http:// fallback, logged loudly
+    so a user who meant https notices they got plaintext instead. Any actual
+    HTTP response -- including a 5xx -- counts as "https answered" and is
+    kept as-is; only a connection that never completes justifies downgrading.
+
+    Results are cached per URL for the life of the process (see
+    ``_scheme_resolution_cache``) so repeated calls for the same URL probe
+    the network only once.
+    """
+    if not url.startswith("https://"):
+        return url
+    if url in _scheme_resolution_cache:
+        return _scheme_resolution_cache[url]
+
+    verify = _httpx_verify(insecure, ca_bundle)
+    resolved = url
+    try:
+        httpx.get(url, timeout=scaled(10.0), verify=verify, follow_redirects=True)
+    except httpx.TransportError as exc:
+        resolved = "http://" + url.removeprefix("https://")
+        print(
+            f">>> Warning: {url} did not answer ({exc}); falling back to plaintext "
+            f"HTTP at {resolved}. Pass an explicit http:// or https:// scheme on the "
+            f"URL to silence this."
+        )
+    _scheme_resolution_cache[url] = resolved
+    return resolved
+
+
 def _resolve_connect_api_base(
     connect_url: str,
     *,
@@ -1399,6 +1484,11 @@ def _create_api_key_via_session(
     cannot accept a custom CA bundle, which caused ``CERTIFICATE_VERIFY_FAILED``
     errors when ``--insecure`` was set (issue #239).
 
+    The client is constructed with ``follow_redirects=True`` to match
+    ``_resolve_connect_api_base``'s probes: a deployment that redirects
+    HTTP -> HTTPS (or drops/adds a trailing slash) would otherwise turn a
+    301/302 into a treated-as-failure response here (issue #537).
+
     The XSRF token is still read from the browser's cookie jar via
     :func:`_xsrf_from_page` and sent as the ``X-Rsc-Xsrf`` request header —
     Connect's double-submit CSRF check requires the header and the cookie to
@@ -1450,6 +1540,7 @@ def _create_api_key_via_session(
             cookies=cookies,
             timeout=scaled(10.0),
             verify=verify,
+            follow_redirects=True,
         ) as client:
             me_resp = client.get("/v1/user")
             if not me_resp.is_success:
