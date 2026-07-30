@@ -10,7 +10,9 @@ markers (epic #480 / issues #481, #482):
 - Session launch is foundational: it must collect before both the IDE
   extensions checks and Git operations, which depend on a launched session.
 - IDE extensions is the last in-session feature to validate, so it must be
-  the last Workbench test file in collection order.
+  the last Workbench file whose scenarios need a live session.
+- Sign-out collects dead last, after everything: it ends the shared auth
+  session every other scenario depends on, so nothing may follow it.
 
 We only assert these invariants (not the full brittle sequence) so future
 insertions between the documented rank gaps don't churn this test.
@@ -130,13 +132,46 @@ def test_ide_launch_collects_before_git_ops(tmp_path: Path) -> None:
     )
 
 
-def test_ide_extensions_is_last_workbench_file(tmp_path: Path) -> None:
+def test_ide_extensions_is_the_last_in_session_workbench_file(tmp_path: Path) -> None:
+    """Extensions stays last among scenarios that need a live session.
+
+    Sign-out now collects after it (see
+    :func:`test_signout_collects_dead_last`), so this asserts "last of the
+    in-session files" rather than "last overall". Sign-out is not an in-session
+    feature check -- it tears the session down.
+    """
     nodeids = _collect_workbench_nodeids(tmp_path)
-    last_file = _file_of(nodeids[-1])
+    in_session = [n for n in nodeids if not n.endswith("test_workbench_signout[chromium]")]
+    last_file = _file_of(in_session[-1])
     assert last_file == "test_ide_extensions", (
-        f"test_ide_extensions must be the last Workbench test file collected, "
-        f"got {last_file!r} last: {nodeids}"
+        f"test_ide_extensions must be the last in-session Workbench test file collected, "
+        f"got {last_file!r} last: {in_session}"
     )
+
+
+def test_signout_collects_dead_last(tmp_path: Path) -> None:
+    """Nothing may collect after sign-out.
+
+    Under --interactive-auth / --headless-auth every Workbench scenario shares
+    one account, so signing out ends the session the rest of them are using.
+    Anything ordered after it inherits a signed-out browser.
+    """
+    nodeids = _collect_workbench_nodeids(tmp_path)
+    assert nodeids[-1].endswith("test_workbench_signout[chromium]"), (
+        f"test_workbench_signout must collect last, got {nodeids[-1]!r}: {nodeids}"
+    )
+
+
+def test_login_collects_before_signout(tmp_path: Path) -> None:
+    """The login scenario keeps its own logged-out context and stays early."""
+    nodeids = _collect_workbench_nodeids(tmp_path)
+    login_idx = next(
+        i for i, n in enumerate(nodeids) if n.endswith("test_workbench_login[chromium]")
+    )
+    signout_idx = next(
+        i for i, n in enumerate(nodeids) if n.endswith("test_workbench_signout[chromium]")
+    )
+    assert login_idx < signout_idx, f"login must collect before sign-out: {nodeids}"
 
 
 def test_basic_marker_deselects_slow_workbench_features(tmp_path: Path) -> None:
