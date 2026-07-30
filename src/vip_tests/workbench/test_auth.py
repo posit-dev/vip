@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-import logging
 import re
 
 import pytest
 from playwright.sync_api import Browser, Page, expect
-from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given, scenario, then, when
 
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_PAGE_LOAD,
-    _silent_sso_signin,
     assert_homepage_loaded,
+    restore_shared_session,
     workbench_login,
 )
 from vip_tests.workbench.pages import Homepage, LoginPage
@@ -32,10 +29,8 @@ _LOGIN_ORDER = 10
 # session on disk) are using. Inheriting the module's order(10) -- the earliest
 # mark in the whole Workbench suite -- ran it before nearly everything else,
 # while sibling xdist workers were mid-test. Order it last instead, and have it
-# put the session back afterwards (see _restore_shared_session).
+# put the session back afterwards (see restore_shared_session in conftest).
 _SIGNOUT_ORDER = 95
-
-logger = logging.getLogger(__name__)
 
 
 @pytest.mark.order(_LOGIN_ORDER)
@@ -50,46 +45,11 @@ def test_workbench_signout():
     pass
 
 
-def _restore_shared_session(page: Page, workbench_url: str) -> bool:
-    """Sign back in after the sign-out scenario, returning whether it worked.
-
-    The scenario deliberately ends the session every other scenario shares, so
-    it has to hand one back. Navigating to Workbench and completing the silent
-    SSO round-trip mints a fresh session in this browser context.
-
-    Returns False -- and warns -- when the round-trip cannot complete, e.g. the
-    IdP applied single-logout and cleared its own cookies too. That is not
-    something this fixture can repair, but it must be visible: silently leaving
-    the suite signed out is how a sign-out turns into a cascade of unrelated
-    auth failures in later scenarios.
-    """
-    logo = page.locator(Homepage.POSIT_LOGO)
-    try:
-        page.goto(workbench_url)
-        page.wait_for_load_state("load")
-        if logo.is_visible():
-            return True
-        sso_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE)).first
-        if sso_button.is_visible() and _silent_sso_signin(sso_button, logo, workbench_url):
-            return True
-    except (PlaywrightTimeoutError, PlaywrightError) as exc:
-        logger.warning("Could not sign back in after the sign-out scenario: %s", exc)
-        return False
-    logger.warning(
-        "Could not sign back in after the sign-out scenario at %s: the silent SSO round-trip "
-        "did not reach an authenticated homepage (the identity provider may have applied "
-        "single-logout). Later scenarios and the cached auth session are now signed out; "
-        "rerun with --interactive-auth to re-establish one.",
-        workbench_url,
-    )
-    return False
-
-
 @pytest.fixture
 def _restore_session_after_signout(page: Page, workbench_url: str):
     """Put the shared Workbench session back after the sign-out scenario."""
     yield
-    _restore_shared_session(page, workbench_url)
+    restore_shared_session(page, workbench_url)
 
 
 @pytest.fixture

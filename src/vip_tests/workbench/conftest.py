@@ -468,6 +468,41 @@ def _silent_sso_signin(sso_button, homepage_logo, workbench_url: str) -> bool:
             return False
 
 
+def restore_shared_session(page: Page, workbench_url: str) -> bool:
+    """Sign back in after the sign-out scenario, returning whether it worked.
+
+    The scenario deliberately ends the session every other scenario shares, so
+    it has to hand one back. Navigating to Workbench and completing the silent
+    SSO round-trip mints a fresh session in this browser context.
+
+    Returns False -- and warns -- when the round-trip cannot complete, e.g. the
+    IdP applied single-logout and cleared its own cookies too. That is not
+    something this fixture can repair, but it must be visible: silently leaving
+    the suite signed out is how a sign-out turns into a cascade of unrelated
+    auth failures in later scenarios.
+    """
+    logo = page.locator(Homepage.POSIT_LOGO)
+    try:
+        page.goto(workbench_url)
+        page.wait_for_load_state("load")
+        if logo.is_visible():
+            return True
+        sso_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE)).first
+        if sso_button.is_visible() and _silent_sso_signin(sso_button, logo, workbench_url):
+            return True
+    except (PlaywrightTimeoutError, PlaywrightError) as exc:
+        logger.warning("Could not sign back in after the sign-out scenario: %s", exc)
+        return False
+    logger.warning(
+        "Could not sign back in after the sign-out scenario at %s: the silent SSO round-trip "
+        "did not reach an authenticated homepage (the identity provider may have applied "
+        "single-logout). Later scenarios and the cached auth session are now signed out; "
+        "rerun with --interactive-auth to re-establish one.",
+        workbench_url,
+    )
+    return False
+
+
 def workbench_login(
     page: Page,
     workbench_url: str,
