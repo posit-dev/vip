@@ -16,7 +16,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import httpx
 from playwright.sync_api import (
@@ -260,20 +260,147 @@ def authenticated_page(
                 os.environ["NODE_EXTRA_CA_CERTS"] = _prev_node_ca
 
 
+AUTH_CACHE_FILENAME = ".vip-auth-cache.json"
+
+
+def auth_cache_path() -> Path:
+    """Path to the auth-session cache for the current invocation directory.
+
+    Single source of truth for both call sites: ``plugin.py`` (``vip verify``)
+    and ``cli.py`` (``vip cleanup --workbench-url``).  They must agree, or
+    ``cleanup`` cannot find the session ``verify`` just cached.
+
+    Keyed on the *invocation* directory rather than pytest's ``config.rootpath``.
+    For a repo checkout the two are the same, but for an installed VIP (``uv tool
+    install posit-vip``) pytest derives rootdir from the common ancestor of the
+    invocation directory and the ``site-packages`` test paths — which lands in
+    ``$HOME``.  That put the cache nowhere near the user's ``vip.toml`` and made
+    the two call sites read different files.
+    """
+    return Path.cwd() / AUTH_CACHE_FILENAME
+
+
+def _cookies_from_storage_state(storage_state_path: Path) -> httpx.Cookies:
+    """Load cookies from a Playwright storage-state file, preserving their scope.
+
+    Returns an ``httpx.Cookies`` jar with each cookie's ``domain`` and ``path``
+    intact, so httpx applies ordinary cookie-matching rules when the probe fires
+    and we don't hand-roll host matching.
+
+    Scope has to survive the round trip.  ``context.storage_state()`` captures a
+    whole browser context, and the auth flow deliberately visits the IdP and
+    Connect as well as Workbench — so this file holds their cookies too.
+    Flattening it to ``name -> value`` would fire all of them at the Workbench
+    host, leaking the IdP's session cookie somewhere a browser would never send
+    it, and would let two hosts using the same cookie name overwrite each other.
+    That second case is the dangerous one: sending the IdP's value for a name
+    Workbench also uses makes a *live* session read as dead and forces a
+    pointless re-auth.
+
+    A malformed or truncated cache yields an empty jar rather than raising: the
+    probe then reads as inconclusive and the cache is reused, which is exactly
+    the pre-probe behaviour.
+    """
+    import json
+
+    cookies = httpx.Cookies()
+    try:
+        state = json.loads(Path(storage_state_path).read_text())
+    except (OSError, ValueError):
+        return cookies
+    if not isinstance(state, dict):
+        return cookies
+
+    for cookie in state.get("cookies") or []:
+        if not isinstance(cookie, dict):
+            continue
+        name = cookie.get("name")
+        if not name:
+            continue
+        cookies.set(
+            str(name),
+            str(cookie.get("value", "")),
+            domain=str(cookie.get("domain") or ""),
+            path=str(cookie.get("path") or "/"),
+        )
+    return cookies
+
+
+class _ProbeResult(NamedTuple):
+    """A liveness verdict plus the evidence behind it.
+
+    ``detail`` is quoted in the cache-miss message.  A sign-in redirect and a
+    bare 401 point at different causes — an expired session versus something
+    stripping cookies in front of Workbench — so the message has to say which
+    one was seen rather than assume the redirect.
+    """
+
+    is_live: bool | None
+    detail: str = ""
+
+
+def _cached_workbench_session_is_live(
+    workbench_url: str,
+    cookies: httpx.Cookies,
+    *,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
+    transport: httpx.BaseTransport | None = None,
+) -> _ProbeResult:
+    """Report whether *cookies* still authenticate Workbench at *workbench_url*.
+
+    ``is_live`` is ``True`` when the session lands on the dashboard, ``False`` on
+    positive evidence that it is dead (a redirect to the sign-in page, or a bare
+    401/403 from configs that do not redirect), and ``None`` when the probe could
+    not reach a verdict.
+
+    ``None`` is deliberately distinct from ``False``.  An unreachable deployment
+    is not a dead session: treating a transport error as dead would discard a
+    perfectly good cache, trigger an interactive re-auth that cannot succeed
+    either, and bury the real reachability error behind an auth-shaped one.
+    """
+    verify = _httpx_verify(insecure, ca_bundle)
+    try:
+        with httpx.Client(
+            timeout=scaled(10.0),
+            verify=verify,
+            follow_redirects=True,
+            cookies=cookies,
+            transport=transport,
+        ) as client:
+            response = client.get(workbench_url)
+    except httpx.HTTPError as exc:
+        return _ProbeResult(None, f"could not reach Workbench: {exc}")
+
+    if response.status_code in (401, 403):
+        return _ProbeResult(False, f"Workbench answered {response.status_code}")
+    if _on_login_page(str(response.url)):
+        return _ProbeResult(False, f"the request landed on the sign-in page at {response.url}")
+    return _ProbeResult(True)
+
+
 def _load_cached_auth(
     cache_path: Path,
     requested_connect_url: str | None = None,
     requested_workbench_url: str | None = None,
+    *,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
 ) -> InteractiveAuthSession | None:
-    """Load a cached auth session if the storage state file exists and is recent.
+    """Load a cached auth session if it exists, is recent, and still works.
 
-    The cache lives at ``Path(config.rootpath) / .vip-auth-cache.json`` —
-    one slot per checkout directory, not per site.  If the caller is now
-    targeting a different Connect or Workbench URL than the one the cache
-    was minted against, reusing the saved storage state would silently
-    send the wrong session cookies (and the wrong API key) to the new
-    site.  We treat any URL mismatch as a cache miss so the next run
-    re-authenticates cleanly.
+    The cache lives at :func:`auth_cache_path` — one slot per invocation
+    directory, not per site.  If the caller is now targeting a different Connect
+    or Workbench URL than the one the cache was minted against, reusing the saved
+    storage state would silently send the wrong session cookies (and the wrong
+    API key) to the new site.  We treat any URL mismatch as a cache miss so the
+    next run re-authenticates cleanly.
+
+    The four-hour TTL alone is not enough: the saved IdP session can die well
+    inside it (expiry, an admin revoking it, a password change).  Nothing on this
+    path ran :func:`_authenticate_workbench`, so ``workbench_auth_error`` stayed
+    ``None`` and every Workbench test skipped with a message that named no cause.
+    So when Workbench is requested we probe it before trusting the cache.
     """
     if not cache_path.exists():
         return None
@@ -326,6 +453,23 @@ def _load_cached_auth(
             f"workbench={requested_workbench_url or '∅'})."
         )
         return None
+
+    # Liveness probe: only when Workbench is actually requested, so Connect-only
+    # runs pay nothing for it.
+    if requested_workbench_url:
+        probe = _cached_workbench_session_is_live(
+            requested_workbench_url,
+            _cookies_from_storage_state(cache_path),
+            insecure=insecure,
+            ca_bundle=ca_bundle,
+        )
+        if probe.is_live is False:
+            print(
+                ">>> Ignoring cached auth session: the saved browser session no longer "
+                f"authenticates Workbench at {requested_workbench_url} "
+                f"({probe.detail}). Re-authenticating."
+            )
+            return None
 
     print(f">>> Reusing cached auth session from {cache_path}")
     return InteractiveAuthSession(
@@ -509,7 +653,9 @@ def start_interactive_auth(
 
     # Check for a valid cached session.
     if cache_path:
-        cached = _load_cached_auth(cache_path, connect_url, workbench_url)
+        cached = _load_cached_auth(
+            cache_path, connect_url, workbench_url, insecure=insecure, ca_bundle=ca_bundle
+        )
         if cached is not None:
             return cached
 
@@ -695,7 +841,9 @@ def start_headless_auth(
     # Check for a valid cached session before validating credentials/idp,
     # so a warm cache works even when env vars are not set.
     if cache_path:
-        cached = _load_cached_auth(cache_path, connect_url, workbench_url)
+        cached = _load_cached_auth(
+            cache_path, connect_url, workbench_url, insecure=insecure, ca_bundle=ca_bundle
+        )
         if cached is not None:
             return cached
 

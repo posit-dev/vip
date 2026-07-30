@@ -147,7 +147,7 @@ Key principles:
 |------------------------------------|------------------------------------|
 | `src/vip/cli.py` | CLI entry point: version, verify (including `--basic` to skip `@slow`-tagged scenarios), cleanup (Connect content + orphaned Workbench sessions via `--workbench-url`), install, uninstall, auth, scaffold commands; `--version` flag |
 | `src/vip/config.py` | TOML config loader and dataclasses |
-| `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers; `authenticated_page` opens a headless page from a cached auth session for `vip cleanup --workbench-url` |
+| `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers; `authenticated_page` opens a headless page from a cached auth session for `vip cleanup --workbench-url`; `auth_cache_path()` is the single source of truth for the `.vip-auth-cache.json` location (both `plugin.py` and `cli.py` must use it), and `_load_cached_auth` probes Workbench before trusting a cached session |
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
 | `src/vip/plugin.py` | pytest plugin: markers (including `slow`, used by `verify --basic`), auto-skip, JSON report output |
 | `src/vip/version.py` | `ProductVersion` parsing/comparison for `min_version` gating; `MINIMUM_SUPPORTED_POSIT_TEAM` support floor (powers `vip version`) |

@@ -2497,3 +2497,538 @@ class TestAuthenticatedPage:
 
         assert captured == [str(ca_file)]
         assert os.environ.get("NODE_EXTRA_CA_CERTS") is None
+
+
+def _jar(**cookies):
+    """Build an httpx cookie jar for probe tests that don't care about scoping.
+
+    The probe takes a jar rather than a flat dict so cookie domain/path survive;
+    scoping itself is covered by TestProbeCookieScoping.
+    """
+    import httpx
+
+    jar = httpx.Cookies()
+    for name, value in cookies.items():
+        jar.set(name, value, domain="w.example.com")
+    return jar
+
+
+class TestCookiesFromStorageState:
+    """Playwright storage state is the only record of the cached browser
+    session, so the liveness probe has to read cookies straight out of it."""
+
+    @staticmethod
+    def _write(tmp_path, payload):
+        import json
+        from pathlib import Path as _Path
+
+        state = _Path(tmp_path) / ".vip-auth-cache.json"
+        state.write_text(json.dumps(payload))
+        return state
+
+    def test_extracts_name_value_pairs(self, tmp_path):
+        from vip.auth import _cookies_from_storage_state
+
+        state = self._write(
+            tmp_path,
+            {
+                "cookies": [
+                    {"name": "rstudio-rs-csrf-token", "value": "abc", "domain": "w.example.com"},
+                    {"name": "user-id", "value": "sam", "domain": "w.example.com"},
+                ]
+            },
+        )
+
+        jar = _cookies_from_storage_state(state)
+
+        assert dict(jar) == {"rstudio-rs-csrf-token": "abc", "user-id": "sam"}
+        # Scope must survive, or the probe cannot apply cookie matching.
+        assert {c.domain for c in jar.jar} == {"w.example.com"}
+
+    def test_returns_empty_for_state_without_cookies(self, tmp_path):
+        from vip.auth import _cookies_from_storage_state
+
+        assert len(_cookies_from_storage_state(self._write(tmp_path, {"origins": []})).jar) == 0
+
+    def test_returns_empty_for_malformed_state(self, tmp_path):
+        """A truncated cache file must not crash the run before any test executes."""
+        from pathlib import Path as _Path
+
+        from vip.auth import _cookies_from_storage_state
+
+        state = _Path(tmp_path) / ".vip-auth-cache.json"
+        state.write_text("{not json")
+
+        assert len(_cookies_from_storage_state(state).jar) == 0
+
+    def test_skips_cookies_missing_a_name(self, tmp_path):
+        from vip.auth import _cookies_from_storage_state
+
+        payload = {"cookies": [{"value": "orphan"}, {"name": "k", "value": "v"}]}
+        state = self._write(tmp_path, payload)
+
+        assert dict(_cookies_from_storage_state(state)) == {"k": "v"}
+
+
+class TestCachedWorkbenchSessionIsLive:
+    """The cached storage state can go stale long before the 4-hour TTL
+    expires (the IdP session dies, or an admin invalidates it).  Without a
+    liveness probe every Workbench test skips with a message that names no
+    cause, because ``workbench_auth_error`` is only set on the fresh-auth
+    path.  See issue: samcofer's 106-skip run."""
+
+    def test_live_session_is_reported_live(self, tmp_path):
+        import httpx
+
+        from vip.auth import _cached_workbench_session_is_live
+
+        def handler(request):
+            return httpx.Response(200, text="<html>dashboard</html>")
+
+        transport = httpx.MockTransport(handler)
+        assert (
+            _cached_workbench_session_is_live(
+                "https://w.example.com", _jar(), transport=transport
+            ).is_live
+            is True
+        )
+
+    def test_redirect_to_sign_in_is_reported_dead(self, tmp_path):
+        import httpx
+
+        from vip.auth import _cached_workbench_session_is_live
+
+        def handler(request):
+            if "auth-sign-in" in str(request.url):
+                return httpx.Response(200, text="<html>sign in</html>")
+            return httpx.Response(302, headers={"Location": "/auth-sign-in?appUri=%2F"})
+
+        transport = httpx.MockTransport(handler)
+        assert (
+            _cached_workbench_session_is_live(
+                "https://w.example.com", _jar(), transport=transport
+            ).is_live
+            is False
+        )
+
+    @pytest.mark.parametrize("status", [401, 403])
+    def test_unauthorized_without_redirect_is_reported_dead(self, status):
+        """Some Workbench configs answer an expired session with a bare 401/403
+        instead of redirecting, so the URL check alone would miss it."""
+        import httpx
+
+        from vip.auth import _cached_workbench_session_is_live
+
+        transport = httpx.MockTransport(lambda request: httpx.Response(status))
+        assert (
+            _cached_workbench_session_is_live(
+                "https://w.example.com", _jar(), transport=transport
+            ).is_live
+            is False
+        )
+
+    def test_transport_error_is_inconclusive_not_dead(self):
+        """An unreachable deployment is not a dead session.  Failing closed here
+        would force an interactive browser re-auth that cannot succeed either,
+        and would bury the real reachability error.  Fail open and let the
+        tests report the outage with their own message."""
+        import httpx
+
+        from vip.auth import _cached_workbench_session_is_live
+
+        def boom(request):
+            raise httpx.ConnectError("connection refused")
+
+        transport = httpx.MockTransport(boom)
+        assert (
+            _cached_workbench_session_is_live(
+                "https://w.example.com", _jar(), transport=transport
+            ).is_live
+            is None
+        )
+
+
+class TestLoadCachedAuthProbesWorkbench:
+    @staticmethod
+    def _write_cache(tmp_path, *, workbench_url: str, connect_url: str = ""):
+        import json
+        from pathlib import Path as _Path
+
+        cache = _Path(tmp_path) / ".vip-auth-cache.json"
+        cache.write_text('{"cookies": [{"name": "user-id", "value": "sam"}]}')
+        cache.with_suffix(".meta.json").write_text(
+            json.dumps(
+                {
+                    "api_key": "CACHED",
+                    "key_name": "_vip_interactive_1",
+                    "connect_url": connect_url,
+                    "requested_connect_url": connect_url,
+                    "workbench_url": workbench_url,
+                }
+            )
+        )
+        return cache
+
+    def test_dead_workbench_session_is_a_cache_miss(self, tmp_path, capsys, monkeypatch):
+        from vip import auth as auth_mod
+
+        cache = self._write_cache(tmp_path, workbench_url="https://w.example.com")
+        monkeypatch.setattr(
+            auth_mod,
+            "_cached_workbench_session_is_live",
+            lambda *a, **kw: auth_mod._ProbeResult(False, "Workbench answered 401"),
+        )
+
+        session = auth_mod._load_cached_auth(
+            cache,
+            requested_connect_url=None,
+            requested_workbench_url="https://w.example.com",
+        )
+
+        assert session is None
+        out = capsys.readouterr().out
+        assert "Ignoring cached auth session" in out
+        assert "no longer authenticates Workbench" in out
+
+    def test_live_workbench_session_is_reused(self, tmp_path, monkeypatch):
+        from vip import auth as auth_mod
+
+        cache = self._write_cache(tmp_path, workbench_url="https://w.example.com")
+        monkeypatch.setattr(
+            auth_mod,
+            "_cached_workbench_session_is_live",
+            lambda *a, **kw: auth_mod._ProbeResult(True),
+        )
+
+        session = auth_mod._load_cached_auth(
+            cache,
+            requested_connect_url=None,
+            requested_workbench_url="https://w.example.com",
+        )
+
+        assert session is not None
+        assert session.api_key == "CACHED"
+
+    def test_inconclusive_probe_reuses_the_cache(self, tmp_path, monkeypatch):
+        from vip import auth as auth_mod
+
+        cache = self._write_cache(tmp_path, workbench_url="https://w.example.com")
+        monkeypatch.setattr(
+            auth_mod,
+            "_cached_workbench_session_is_live",
+            lambda *a, **kw: auth_mod._ProbeResult(None, "could not reach Workbench"),
+        )
+
+        session = auth_mod._load_cached_auth(
+            cache,
+            requested_connect_url=None,
+            requested_workbench_url="https://w.example.com",
+        )
+
+        assert session is not None
+
+    def test_no_workbench_requested_skips_the_probe(self, tmp_path, monkeypatch):
+        """Connect-only runs must not pay for a Workbench round-trip."""
+        from vip import auth as auth_mod
+
+        cache = self._write_cache(tmp_path, workbench_url="", connect_url="https://c.example.com")
+
+        def boom(*a, **kw):
+            raise AssertionError("probed Workbench on a Connect-only run")
+
+        monkeypatch.setattr(auth_mod, "_cached_workbench_session_is_live", boom)
+
+        session = auth_mod._load_cached_auth(
+            cache,
+            requested_connect_url="https://c.example.com",
+            requested_workbench_url=None,
+        )
+
+        assert session is not None
+
+    def test_probe_receives_tls_settings(self, tmp_path, monkeypatch):
+        """``--insecure`` / ``--ca-bundle`` deployments must not fail the probe on
+        TLS and get sent through a pointless re-auth."""
+        from vip import auth as auth_mod
+
+        cache = self._write_cache(tmp_path, workbench_url="https://w.example.com")
+        seen = {}
+
+        def record(url, cookies, *, insecure=False, ca_bundle=None, transport=None):
+            seen["insecure"] = insecure
+            seen["ca_bundle"] = ca_bundle
+            return auth_mod._ProbeResult(True)
+
+        monkeypatch.setattr(auth_mod, "_cached_workbench_session_is_live", record)
+
+        auth_mod._load_cached_auth(
+            cache,
+            requested_connect_url=None,
+            requested_workbench_url="https://w.example.com",
+            insecure=True,
+            ca_bundle=None,
+        )
+
+        assert seen == {"insecure": True, "ca_bundle": None}
+
+
+class TestAuthCachePath:
+    """``vip verify`` (plugin) and ``vip cleanup`` (CLI) must resolve the same
+    cache file.  plugin.py used ``Path(config.rootpath)`` while cli.py used
+    ``Path.cwd()``; for a uv-tool install pytest's rootdir is the common
+    ancestor of cwd and site-packages, which lands in ``$HOME`` — so the two
+    silently disagreed and ``vip cleanup`` looked in the wrong place."""
+
+    def test_resolves_relative_to_the_invocation_directory(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        monkeypatch.chdir(tmp_path)
+        assert auth_cache_path() == tmp_path / ".vip-auth-cache.json"
+
+    def test_call_sites_do_not_build_the_path_inline(self):
+        """Invariant: the filename literal lives in one place.  A second inline
+        copy is how the two call sites drifted apart in the first place."""
+        from pathlib import Path as _Path
+
+        import vip.auth
+        import vip.cli
+        import vip.plugin
+
+        for module in (vip.cli, vip.plugin):
+            source = _Path(module.__file__).read_text()
+            assert ".vip-auth-cache.json" not in source, (
+                f"{module.__name__} builds the auth cache path inline; "
+                "call vip.auth.auth_cache_path() instead"
+            )
+
+        assert ".vip-auth-cache.json" in _Path(vip.auth.__file__).read_text()
+
+
+class TestStaleCacheTriggersReauth:
+    """End-to-end wiring: a dead cached session must fall through to the real
+    auth flow, not be handed to the tests.  The helper-level tests above prove
+    the probe verdict; this proves ``start_interactive_auth`` acts on it."""
+
+    @staticmethod
+    def _write_cache(tmp_path):
+        import json
+        from pathlib import Path as _Path
+
+        cache = _Path(tmp_path) / ".vip-auth-cache.json"
+        cache.write_text('{"cookies": [{"name": "user-id", "value": "sam"}]}')
+        cache.with_suffix(".meta.json").write_text(
+            json.dumps(
+                {
+                    "api_key": None,
+                    "key_name": "",
+                    "connect_url": "",
+                    "requested_connect_url": "",
+                    "workbench_url": "https://w.example.com",
+                }
+            )
+        )
+        return cache
+
+    def test_dead_cache_falls_through_to_the_browser_flow(self, tmp_path, monkeypatch):
+        from vip import auth as auth_mod
+
+        cache = self._write_cache(tmp_path)
+        monkeypatch.setattr(
+            auth_mod,
+            "_cached_workbench_session_is_live",
+            lambda *a, **kw: auth_mod._ProbeResult(False, "Workbench answered 401"),
+        )
+
+        reached = []
+
+        def sentinel(*args, **kwargs):
+            reached.append(True)
+            raise RuntimeError("browser flow reached")
+
+        monkeypatch.setattr(auth_mod, "sync_playwright", sentinel)
+
+        with pytest.raises(RuntimeError, match="browser flow reached"):
+            auth_mod.start_interactive_auth(workbench_url="https://w.example.com", cache_path=cache)
+
+        assert reached, "stale cache was reused instead of re-authenticating"
+
+    def test_live_cache_short_circuits_the_browser_flow(self, tmp_path, monkeypatch):
+        from vip import auth as auth_mod
+
+        cache = self._write_cache(tmp_path)
+        monkeypatch.setattr(
+            auth_mod,
+            "_cached_workbench_session_is_live",
+            lambda *a, **kw: auth_mod._ProbeResult(True),
+        )
+
+        def boom(*args, **kwargs):
+            raise AssertionError("launched a browser despite a live cached session")
+
+        monkeypatch.setattr(auth_mod, "sync_playwright", boom)
+
+        session = auth_mod.start_interactive_auth(
+            workbench_url="https://w.example.com", cache_path=cache
+        )
+
+        assert session.storage_state_path == cache
+
+
+class TestProbeCookieScoping:
+    """The storage state is a whole browser context: the auth flow visits the
+    IdP and Connect as well as Workbench, so the file holds cookies for all of
+    them.  The probe must apply normal cookie scoping rather than firing every
+    cookie at the Workbench host."""
+
+    @staticmethod
+    def _state(tmp_path, cookies):
+        import json
+        from pathlib import Path as _Path
+
+        state = _Path(tmp_path) / ".vip-auth-cache.json"
+        state.write_text(json.dumps({"cookies": cookies}))
+        return state
+
+    def _probe_and_capture(self, state, url):
+        """Run the probe against *url* and return the Cookie header it sent."""
+        import httpx
+
+        from vip.auth import _cached_workbench_session_is_live, _cookies_from_storage_state
+
+        sent = {}
+
+        def handler(request):
+            sent["cookie"] = request.headers.get("cookie", "")
+            return httpx.Response(200, text="dashboard")
+
+        _cached_workbench_session_is_live(
+            url,
+            _cookies_from_storage_state(state),
+            transport=httpx.MockTransport(handler),
+        )
+        return sent["cookie"]
+
+    def test_idp_cookies_are_not_sent_to_workbench(self, tmp_path):
+        """Sending the IdP's session cookie to the Workbench host is unintended
+        cross-host leakage; a browser would never do it."""
+        state = self._state(
+            tmp_path,
+            [
+                {"name": "wb-session", "value": "wb", "domain": "w.example.com", "path": "/"},
+                {"name": "okta-sid", "value": "secret", "domain": "posit.okta.com", "path": "/"},
+            ],
+        )
+
+        header = self._probe_and_capture(state, "https://w.example.com")
+
+        assert "wb-session=wb" in header
+        assert "okta-sid" not in header
+        assert "secret" not in header
+
+    def test_same_cookie_name_on_two_hosts_sends_the_workbench_value(self, tmp_path):
+        """A flat name->value dict silently overwrites one host's cookie with
+        another's.  Sending the IdP's value for a name Workbench also uses would
+        make a *live* session read as dead and force a pointless re-auth."""
+        state = self._state(
+            tmp_path,
+            [
+                {"name": "session", "value": "workbench-value", "domain": "w.example.com"},
+                {"name": "session", "value": "idp-value", "domain": "posit.okta.com"},
+            ],
+        )
+
+        header = self._probe_and_capture(state, "https://w.example.com")
+
+        assert "session=workbench-value" in header
+        assert "idp-value" not in header
+
+    def test_parent_domain_cookie_reaches_a_subdomain_host(self, tmp_path):
+        """Leading-dot domains are host-suffix cookies and must still be sent,
+        or a deployment sharing a parent domain would read as signed out."""
+        state = self._state(
+            tmp_path,
+            [{"name": "shared", "value": "yes", "domain": ".example.com", "path": "/"}],
+        )
+
+        header = self._probe_and_capture(state, "https://w.example.com")
+
+        assert "shared=yes" in header
+
+    def test_path_scoping_is_respected(self, tmp_path):
+        """A cookie scoped to an unrelated sub-path must not be sent to the root."""
+        state = self._state(
+            tmp_path,
+            [
+                {"name": "root", "value": "r", "domain": "w.example.com", "path": "/"},
+                {"name": "deep", "value": "d", "domain": "w.example.com", "path": "/somewhere"},
+            ],
+        )
+
+        header = self._probe_and_capture(state, "https://w.example.com/")
+
+        assert "root=r" in header
+        assert "deep" not in header
+
+
+class TestProbeDetailNamesTheEvidence:
+    """The cache-miss message quoted "sent back to the sign-in page" for every
+    dead verdict, including bare 401/403 where no redirect happened.  A 401 and
+    an expiry redirect point at different causes (a proxy stripping cookies vs a
+    dead session), so the message has to name what was actually seen."""
+
+    def test_sign_in_redirect_detail(self):
+        import httpx
+
+        from vip.auth import _cached_workbench_session_is_live
+
+        def handler(request):
+            if "auth-sign-in" in str(request.url):
+                return httpx.Response(200, text="sign in")
+            return httpx.Response(302, headers={"Location": "/auth-sign-in"})
+
+        result = _cached_workbench_session_is_live(
+            "https://w.example.com", httpx.Cookies(), transport=httpx.MockTransport(handler)
+        )
+
+        assert result.is_live is False
+        assert "sign-in page" in result.detail
+
+    @pytest.mark.parametrize("status", [401, 403])
+    def test_unauthorized_detail_does_not_claim_a_redirect(self, status):
+        import httpx
+
+        from vip.auth import _cached_workbench_session_is_live
+
+        result = _cached_workbench_session_is_live(
+            "https://w.example.com",
+            httpx.Cookies(),
+            transport=httpx.MockTransport(lambda request: httpx.Response(status)),
+        )
+
+        assert result.is_live is False
+        assert str(status) in result.detail
+        assert "sign-in page" not in result.detail
+
+    def test_cache_miss_message_quotes_the_detail(self, tmp_path, capsys, monkeypatch):
+        import json
+
+        from vip import auth as auth_mod
+
+        cache = tmp_path / ".vip-auth-cache.json"
+        cache.write_text('{"cookies": []}')
+        cache.with_suffix(".meta.json").write_text(
+            json.dumps({"api_key": None, "workbench_url": "https://w.example.com"})
+        )
+        monkeypatch.setattr(
+            auth_mod,
+            "_cached_workbench_session_is_live",
+            lambda *a, **kw: auth_mod._ProbeResult(False, "Workbench answered 401 Unauthorized"),
+        )
+
+        auth_mod._load_cached_auth(
+            cache, requested_connect_url=None, requested_workbench_url="https://w.example.com"
+        )
+
+        out = capsys.readouterr().out
+        assert "Workbench answered 401 Unauthorized" in out
+        assert "sent back to the sign-in page" not in out
