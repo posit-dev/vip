@@ -14,6 +14,7 @@ import tempfile
 import time
 import warnings
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 from filelock import FileLock, Timeout
@@ -277,11 +278,65 @@ def _on_login_page(url: str) -> bool:
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
 
 
+def _external_idp_host(page_url: str, workbench_url: str) -> str | None:
+    """Return the IdP host if sign-in has left the Workbench origin.
+
+    Some deployments do not render a Workbench sign-in page at all: an
+    unauthenticated request redirects straight out to the identity provider
+    (e.g. ``https://posit.okta.com/oauth2/v1/authorize?...``).  That page has
+    neither Workbench's ``#username`` field nor a "Sign in with ..." button --
+    Okta's identifier-first submit is named "Next" -- so button/field probing
+    alone reads it as a password deployment and grinds the retry loop into
+    "Login failed after 3 attempts".  Comparing the landed host against the
+    configured Workbench host settles it without depending on any one IdP's
+    markup.  Returns ``None`` when still on the Workbench origin (or when
+    either URL cannot be parsed).
+    """
+    try:
+        landed = urlparse(page_url)
+        configured = urlparse(workbench_url)
+    except ValueError:
+        return None
+    current = _normalised_netloc(landed)
+    expected = _normalised_netloc(configured)
+    if current and expected and current != expected:
+        return landed.netloc
+    return None
+
+
+# Ports that carry no information because they are implied by the scheme.
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _normalised_netloc(parsed) -> str:
+    """Return *parsed*'s host:port with a scheme-default port dropped, lowercased.
+
+    ``https://wb.example.com`` and ``https://wb.example.com:443`` are the same
+    origin, but their raw ``netloc`` strings differ.  Comparing raw values makes
+    a Workbench URL configured with an explicit default port look like a
+    redirect away from itself, which would skip every password-login scenario on
+    a deployment that is not federated at all.
+    """
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return ""
+    try:
+        port = parsed.port
+    except ValueError:
+        # A malformed port ("https://host:notaport") -- keep the raw form rather
+        # than silently treating it as the default.
+        return parsed.netloc.lower()
+    if port is None or port == _DEFAULT_PORTS.get(parsed.scheme.lower()):
+        return host
+    return f"{host}:{port}"
+
+
 def _workbench_session_skip_message(
     *,
     auth_mode: str,
     workbench_auth_error: str | None,
     landed_url: str,
+    idp_host: str | None = None,
 ) -> str:
     """Build the skip text shown when storage state did not log Workbench in.
 
@@ -294,6 +349,11 @@ def _workbench_session_skip_message(
     When *auth_mode* is unknown (a caller forgot to thread the fixture
     through), the message names both ``--interactive-auth`` and
     ``--headless-auth`` so the reader isn't pointed at the wrong flag.
+
+    *idp_host* names the identity provider when the deployment redirected
+    sign-in off the Workbench origin entirely, so the reader knows the session
+    expired at the IdP rather than looking for a Workbench sign-in page that
+    was never rendered.
     """
     if auth_mode == "headless":
         flag = "--headless-auth"
@@ -301,7 +361,8 @@ def _workbench_session_skip_message(
         flag = "--interactive-auth"
     else:
         flag = "--interactive-auth / --headless-auth"
-    lines = [f"Workbench session not established by {flag} (landed on login page: {landed_url})."]
+    where = f"redirected to the {idp_host} sign-in page" if idp_host else "landed on login page"
+    lines = [f"Workbench session not established by {flag} ({where}: {landed_url})."]
     if workbench_auth_error:
         lines.append(f"Pre-test auth reported: {workbench_auth_error}")
     lines.append(
@@ -625,7 +686,15 @@ def workbench_login(
         # button, so the *absence* of the username field is what distinguishes a
         # true SSO-only page from a password form.
         sso_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE)).first
-        sso_only = sso_button.is_visible() and not page.locator(LoginPage.USERNAME).is_visible()
+        sso_button_present = sso_button.is_visible()
+        # A deployment can also skip its own sign-in page entirely and redirect
+        # straight to the IdP, whose markup matches neither probe above (see
+        # _external_idp_host). Landing off the Workbench origin is conclusive on
+        # its own: no Workbench password form is reachable from there.
+        idp_host = _external_idp_host(page.url, workbench_url)
+        sso_only = idp_host is not None or (
+            sso_button_present and not page.locator(LoginPage.USERNAME).is_visible()
+        )
 
         if interactive_auth and sso_only:
             # Storage state was pre-loaded by --interactive-auth / --headless-auth.
@@ -633,16 +702,22 @@ def workbench_login(
             # "Sign in with OpenID" button. Clicking it triggers a silent SSO round-trip
             # using the saved IdP cookies. The round-trip is serialized across xdist
             # workers (see _silent_sso_signin / oidc_login_lock) to avoid storming the
-            # shared IdP session (#484/#467).
-            if _silent_sso_signin(sso_button, homepage_logo, workbench_url):
+            # shared IdP session (#484/#467).  When the deployment redirected us
+            # off-origin instead there is no such button to click, so go straight
+            # to the skip -- clicking a locator that resolves to nothing would
+            # raise a Playwright error in place of an actionable skip.
+            if sso_button_present and _silent_sso_signin(sso_button, homepage_logo, workbench_url):
                 return  # Silent SSO succeeded
             # No usable IdP session (expired, or storage state was stripped for the
-            # password-login test) — skip gracefully.
+            # password-login test) — skip gracefully.  Recompute the IdP host: the
+            # click above can navigate off-origin before timing out, so where we
+            # ended up is only knowable now, not before the attempt.
             pytest.skip(
                 _workbench_session_skip_message(
                     auth_mode=auth_mode,
                     workbench_auth_error=workbench_auth_error,
                     landed_url=page.url,
+                    idp_host=_external_idp_host(page.url, workbench_url),
                 )
             )
 
@@ -652,6 +727,7 @@ def workbench_login(
                     auth_mode=auth_mode,
                     workbench_auth_error=workbench_auth_error,
                     landed_url=page.url,
+                    idp_host=_external_idp_host(page.url, workbench_url),
                 )
             )
         # Even when auth_provider is reported as "password", the deployment may
@@ -660,10 +736,14 @@ def workbench_login(
         # a config-less run against an OIDC deployment.  The password login form
         # is unavailable there, so skip rather than fail the retry loop.
         if sso_only:
+            where = (
+                f"redirects sign-in to the identity provider at {idp_host}"
+                if idp_host
+                else "presents an SSO/OIDC sign-in page instead (no username/password fields)"
+            )
             pytest.skip(
                 "This scenario requires a Workbench password-login form, but the "
-                "deployment presents an SSO/OIDC sign-in page instead (no username/"
-                "password fields). Password login cannot be exercised on an SSO "
+                f"deployment {where}. Password login cannot be exercised on an SSO "
                 "deployment, so this scenario is skipped."
             )
         # Password auth - proceed with form login below
