@@ -1,6 +1,44 @@
 # CHANGELOG
 
 
+## v0.58.12 (2026-07-30)
+
+### Bug Fixes
+
+- **auth**: Validate cached auth sessions and unify the cache path
+  ([#570](https://github.com/posit-dev/vip/pull/570),
+  [`ce6a7a2`](https://github.com/posit-dev/vip/commit/ce6a7a23700af7dbfc4bd12f883f3725e1aa1f6c))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group across 1 directory with 7 updates
+  ([#569](https://github.com/posit-dev/vip/pull/569),
+  [`7a1c2de`](https://github.com/posit-dev/vip/commit/7a1c2de6dbb4b067bc4ed783b47e142a237d6a9e))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+- **deps**: Bump the python-dependencies group across 1 directory with 3 updates
+  ([#564](https://github.com/posit-dev/vip/pull/564),
+  [`668e3e4`](https://github.com/posit-dev/vip/commit/668e3e48bf00c7f31249a3685a8d37bf0b837e07))
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+
+### Continuous Integration
+
+- Relock uv.lock as part of the release commit ([#568](https://github.com/posit-dev/vip/pull/568),
+  [`a2f3b21`](https://github.com/posit-dev/vip/commit/a2f3b21ac6b3ceb0486b22e3aed4c02e797dc1bf))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+- **workbench**: Let Dependabot run the Workbench smoke suite
+  ([#567](https://github.com/posit-dev/vip/pull/567),
+  [`5f3de9c`](https://github.com/posit-dev/vip/commit/5f3de9c6de7db5a4311a200fd3124ea64a18a0be))
+
+
 ## v0.58.11 (2026-07-30)
 
 ### Bug Fixes
