@@ -29,6 +29,8 @@ from vip_tests.workbench.conftest import (
     ResourceProfileDisabled,
     _option_is_disabled,
     _quit_vip_sessions_via_cookies,
+    current_worker_id,
+    k8s_session_prefix,
     wait_for_session_active,
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
@@ -36,8 +38,6 @@ from vip_tests.workbench.pages import Homepage, NewSessionDialog
 pytestmark = pytest.mark.order(40)
 
 scenarios("test_session_capacity_k8s.feature")
-
-_SESSION_PREFIX = f"_vip_k8s_{int(time.time())}_"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -105,7 +105,11 @@ def _cleanup_sessions(page: Page, workbench_base_url: str, *, insecure: bool, ca
     if not cookies:
         return
     _quit_vip_sessions_via_cookies(
-        workbench_base_url, cookies, insecure=insecure, ca_bundle=ca_bundle
+        workbench_base_url,
+        cookies,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        owner=current_worker_id(),
     )
 
 
@@ -193,9 +197,10 @@ def record_node_count(k8s_client: KubernetesClient) -> int:
 )
 def launch_to_fill_capacity(page: Page, vip_config, k8s_client: KubernetesClient) -> list[dict]:
     session_count = vip_config.workbench.session_count
+    prefix = k8s_session_prefix()
     sessions = []
     for i in range(session_count):
-        name = f"{_SESSION_PREFIX}fill_{i}"
+        name = f"{prefix}fill_{i}"
         _launch_session(page, name)
         sessions.append({"name": name, "profile": None})
     return sessions
@@ -207,9 +212,10 @@ def launch_to_fill_capacity(page: Page, vip_config, k8s_client: KubernetesClient
 )
 def launch_quick_succession(page: Page, vip_config) -> list[dict]:
     count = max(vip_config.workbench.session_count, 3)
+    prefix = k8s_session_prefix()
     sessions = []
     for i in range(count):
-        name = f"{_SESSION_PREFIX}quick_{i}"
+        name = f"{prefix}quick_{i}"
         _launch_session(page, name)
         sessions.append({"name": name, "profile": None})
     return sessions
@@ -221,9 +227,10 @@ def launch_quick_succession(page: Page, vip_config) -> list[dict]:
 )
 def launch_up_to_max(page: Page, vip_config) -> list[dict]:
     max_sessions = vip_config.workbench.kubernetes.max_sessions
+    prefix = k8s_session_prefix()
     sessions = []
     for i in range(max_sessions):
-        name = f"{_SESSION_PREFIX}max_{i}"
+        name = f"{prefix}max_{i}"
         _launch_session(page, name)
         sessions.append({"name": name, "profile": None})
     return sessions
@@ -232,9 +239,10 @@ def launch_up_to_max(page: Page, vip_config) -> list[dict]:
 @when("I launch multiple sessions concurrently", target_fixture="launched_sessions")
 def launch_concurrently(page: Page, vip_config) -> list[dict]:
     count = vip_config.workbench.session_count
+    prefix = k8s_session_prefix()
     sessions = []
     for i in range(count):
-        name = f"{_SESSION_PREFIX}conc_{i}"
+        name = f"{prefix}conc_{i}"
         _launch_session(page, name)
         sessions.append({"name": name, "profile": None})
     return sessions
@@ -247,7 +255,7 @@ def launch_concurrently(page: Page, vip_config) -> list[dict]:
 def launch_profiled_session(page: Page, vip_config) -> list[dict]:
     profile_map = vip_config.workbench.kubernetes.node_pool_profiles
     profile = next(iter(profile_map.values()))
-    name = f"{_SESSION_PREFIX}prof_0"
+    name = f"{k8s_session_prefix()}prof_0"
     try:
         _launch_session(page, name, profile=profile)
     except ResourceProfileDisabled as exc:
@@ -268,7 +276,7 @@ def launch_limited_session(page: Page, vip_config) -> list[dict]:
         k8s_cfg.profile_memory_limit_gib.keys()
     )
     profile = profiles[0] if profiles else None
-    name = f"{_SESSION_PREFIX}lim_0"
+    name = f"{k8s_session_prefix()}lim_0"
     try:
         _launch_session(page, name, profile=profile)
     except ResourceProfileDisabled as exc:

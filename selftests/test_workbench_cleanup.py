@@ -1008,3 +1008,47 @@ def test_capacity_session_prefix_carries_the_worker_id(monkeypatch):
     monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw3")
 
     assert session_owner(f"{capacity_session_prefix()}Small_0") == "gw3"
+
+
+@pytest.mark.parametrize(
+    "label, expected",
+    [
+        # Every `_vip_<kind>_` scheme must be attributable, not just capacity.
+        ("_vip_cap_gw1_1785380282_Small_0", "gw1"),
+        ("_vip_k8s_gw2_1785380282_fill_0", "gw2"),
+        ("_vip_k8s_main_1785380282_conc_3", "main"),
+        # Legacy names (no worker segment) stay unattributable.
+        ("_vip_k8s_1700000000_fill_0", None),
+    ],
+)
+def test_session_owner_handles_every_vip_prefix_scheme(label, expected):
+    from vip.clients.workbench import session_owner
+
+    assert session_owner(label) == expected
+
+
+def test_k8s_session_prefix_carries_the_worker_id(monkeypatch):
+    from vip.clients.workbench import session_owner
+    from vip_tests.workbench.conftest import k8s_session_prefix
+
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw2")
+
+    assert session_owner(f"{k8s_session_prefix()}fill_0") == "gw2"
+
+
+def test_k8s_capacity_cleanup_is_worker_scoped(monkeypatch):
+    """The k8s capacity test's own cleanup must not sweep sibling workers."""
+    from vip_tests.workbench import test_session_capacity_k8s as k8s
+
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw1")
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(
+        k8s,
+        "_quit_vip_sessions_via_cookies",
+        lambda *a, **k: seen.setdefault("owner", k.get("owner")),
+    )
+
+    page = _fake_page([{"name": "a", "value": "b"}])
+    k8s._cleanup_sessions(page, "https://wb.example.com", insecure=False, ca_bundle=None)
+
+    assert seen["owner"] == "gw1"

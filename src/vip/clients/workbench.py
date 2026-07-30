@@ -20,14 +20,21 @@ logger = logging.getLogger(__name__)
 
 _VIP_SESSION_PREFIXES = ("VIP ", "_vip_")
 
-# Both VIP session-naming schemes embed the xdist worker that created the
-# session, so a sweep can tell its own sessions apart from a sibling worker's:
+# VIP session names embed the xdist worker that created the session, so a sweep
+# can tell its own sessions apart from a sibling worker's:
 #   "VIP test_git_ops.py - gw1-1785380284140718000"  (unique_session_name)
 #   "_vip_cap_gw1_1785380282_Small_0"                (capacity scenarios)
+#   "_vip_k8s_gw2_1785380282_fill_0"                 (k8s capacity scenarios)
 # Serial runs use the literal worker id "main".
+#
+# The second pattern is deliberately generic over the ``<kind>`` segment rather
+# than listing "cap" and "k8s": a new `_vip_<kind>_` scheme then stays
+# attributable by construction. A scheme that forgets the worker segment is
+# unowned, and unowned means no in-run sweep will ever clean it up -- which is
+# how `_vip_k8s_` sessions started leaking when worker scoping first landed.
 _VIP_OWNER_PATTERNS = (
     re.compile(r"^VIP .+ - (?P<owner>main|gw\d+)-\d+$"),
-    re.compile(r"^_vip_cap_(?P<owner>main|gw\d+)_"),
+    re.compile(r"^_vip_[a-z0-9]+_(?P<owner>main|gw\d+)_"),
 )
 
 

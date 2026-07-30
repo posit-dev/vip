@@ -222,19 +222,33 @@ def current_worker_id() -> str:
     return os.environ.get("PYTEST_XDIST_WORKER", "main")
 
 
-def capacity_session_prefix() -> str:
-    """Prefix for this worker's capacity-scenario session names.
+def vip_session_prefix(kind: str) -> str:
+    """Build a ``_vip_<kind>_<worker>_<ts>_`` session-name prefix.
 
-    Capacity sessions are named outside :func:`unique_session_name` (they carry
-    a profile and an index rather than a source file), so they need their own
-    generator -- but the same contract: the worker id comes first so cleanup can
-    attribute the session back to the worker that made it (see
+    Some scenarios name sessions outside :func:`unique_session_name` (they carry
+    a profile or an index rather than a source file), but the contract is the
+    same: the worker id must be in the name so cleanup can attribute the session
+    back to the worker that made it (see
     :func:`~vip.clients.workbench.session_owner`) and not quit a sibling
-    worker's live capacity sessions.  The timestamp keeps names clear of
-    leftovers from previous runs.  Computed per call, not at import time, so the
-    worker id is read after xdist has set it.
+    worker's live sessions.  The timestamp keeps names clear of leftovers from
+    previous runs.
+
+    Route every such scheme through this one helper.  A prefix built by hand
+    that omits the worker segment is unowned, and unowned means no in-run sweep
+    will clean it up -- the session leaks for the rest of the run.  Computed per
+    call, not at import time, so the worker id is read after xdist has set it.
     """
-    return f"_vip_cap_{current_worker_id()}_{int(time.time())}_"
+    return f"_vip_{kind}_{current_worker_id()}_{int(time.time())}_"
+
+
+def capacity_session_prefix() -> str:
+    """Prefix for this worker's resource-profile capacity session names."""
+    return vip_session_prefix("cap")
+
+
+def k8s_session_prefix() -> str:
+    """Prefix for this worker's Kubernetes capacity session names."""
+    return vip_session_prefix("k8s")
 
 
 def unique_session_name(filename: str) -> str:
