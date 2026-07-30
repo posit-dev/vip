@@ -194,6 +194,12 @@ major_on_zero = false
 branch = "main"
 commit_message = "chore(release): {version}"
 tag_format = "v{version}"
+# Relock before committing so uv.lock's own posit-vip entry never lags behind
+# the version this commit just stamped into pyproject.toml. Runs `just relock`
+# rather than a bare `uv lock` so the pinned uv version in the justfile stays
+# the single source of truth. See issue #559.
+build_command = "just relock"
+assets = ["uv.lock"]
 
 [tool.semantic_release.remote]
 ignore_token_for_push = true

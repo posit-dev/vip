@@ -27,6 +27,15 @@ jobs:
       - name: Install python-semantic-release
         run: pip install python-semantic-release==9.21.0
 
+      # Needed by build_command ("just relock") in pyproject.toml's
+      # [tool.semantic_release], which regenerates uv.lock's own posit-vip
+      # version entry before semantic-release commits the release. `just
+      # relock` fetches its own pinned uv via `uvx`, so this step's uv version
+      # doesn't need to match -- only uv itself needs to be on PATH for uvx.
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
       # --no-vcs-release: the GitHub release is created by publish.yml (on the
       # tag push) so the locked constraints file can be attached before the
       # release is published and locked by immutable releases.
