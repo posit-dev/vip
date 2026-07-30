@@ -3032,3 +3032,84 @@ class TestProbeDetailNamesTheEvidence:
         out = capsys.readouterr().out
         assert "Workbench answered 401 Unauthorized" in out
         assert "sent back to the sign-in page" not in out
+
+
+class TestRefreshAuthCacheFromStorageState:
+    """A signed-out cache must be refreshable from a live browser context.
+
+    ``test_workbench_signout`` ends the shared session, and
+    ``restore_shared_session`` mints a fresh one *in the browser context* --
+    but the on-disk cache still holds the cookies sign-out killed. Every
+    subsequent ``vip verify`` then rejects the cache and re-authenticates
+    interactively, popping a browser at the user. Refreshing the cache from
+    the restored context closes that gap.
+    """
+
+    def _existing_cache(self, tmp_path):
+        import os
+
+        cache = tmp_path / ".vip-auth-cache.json"
+        cache.write_text('{"cookies": [{"name": "dead", "value": "old"}], "origins": []}')
+        os.chmod(cache, 0o600)
+        meta = cache.with_suffix(".meta.json")
+        meta.write_text('{"api_key": null, "workbench_url": "https://wb.example.com"}')
+        os.chmod(meta, 0o600)
+        return cache, meta
+
+    def test_rewrites_an_existing_cache_with_the_live_state(self, tmp_path):
+        import json
+
+        from vip.auth import refresh_auth_cache_from_storage_state
+
+        cache, meta = self._existing_cache(tmp_path)
+        meta_before = meta.read_text()
+        live = {"cookies": [{"name": "fresh", "value": "new"}], "origins": []}
+
+        assert refresh_auth_cache_from_storage_state(live, cache) is True
+        assert json.loads(cache.read_text()) == live
+        # The companion metadata (api key, URLs) is unrelated to session
+        # liveness and must survive untouched.
+        assert meta.read_text() == meta_before
+
+    def test_keeps_owner_only_permissions(self, tmp_path):
+        import stat
+
+        from vip.auth import refresh_auth_cache_from_storage_state
+
+        cache, _ = self._existing_cache(tmp_path)
+
+        refresh_auth_cache_from_storage_state({"cookies": [], "origins": []}, cache)
+
+        mode = stat.S_IMODE(cache.stat().st_mode)
+        assert mode == 0o600, f"session cookies must stay owner-only, got {oct(mode)}"
+
+    def test_does_not_create_a_cache_that_did_not_exist(self, tmp_path):
+        """No cache means no `--interactive-auth` run to refresh; stay out of it."""
+        from vip.auth import refresh_auth_cache_from_storage_state
+
+        cache = tmp_path / ".vip-auth-cache.json"
+
+        assert refresh_auth_cache_from_storage_state({"cookies": []}, cache) is False
+        assert not cache.exists()
+
+    def test_leaves_no_temp_file_behind(self, tmp_path):
+        from vip.auth import refresh_auth_cache_from_storage_state
+
+        cache, _ = self._existing_cache(tmp_path)
+
+        refresh_auth_cache_from_storage_state({"cookies": [], "origins": []}, cache)
+
+        assert sorted(p.name for p in tmp_path.iterdir()) == [
+            ".vip-auth-cache.json",
+            ".vip-auth-cache.meta.json",
+        ]
+
+    def test_never_raises_when_the_state_is_not_serialisable(self, tmp_path):
+        """Cleanup-path helper: a bad value must not blow up a passing test."""
+        from vip.auth import refresh_auth_cache_from_storage_state
+
+        cache, _ = self._existing_cache(tmp_path)
+        before = cache.read_text()
+
+        assert refresh_auth_cache_from_storage_state({"cookies": object()}, cache) is False
+        assert cache.read_text() == before, "a failed refresh must leave the cache intact"

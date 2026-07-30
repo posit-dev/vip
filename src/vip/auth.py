@@ -8,6 +8,8 @@ closes the browser before tests start.
 
 from __future__ import annotations
 
+import contextlib
+import logging
 import os
 import shutil
 import tempfile
@@ -31,6 +33,8 @@ from playwright.sync_api import (
 )
 
 from vip.timeouts import scaled
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from vip.config import ProductConfig
@@ -529,6 +533,57 @@ def _cached_urls_match(
     return _normalize_url(cached_connect) == _normalize_url(requested_connect) and (
         _normalize_url(cached_workbench) == _normalize_url(requested_workbench)
     )
+
+
+def refresh_auth_cache_from_storage_state(
+    storage_state: dict, cache_path: Path | None = None
+) -> bool:
+    """Rewrite the cached storage state from a live browser context.
+
+    A scenario that ends the shared Workbench session (``test_workbench_signout``)
+    can mint a fresh one in its browser context, but the cache on disk still
+    holds the cookies the sign-out killed.  The next ``vip verify`` then probes
+    that cache, finds it dead, and drops into an interactive re-auth -- opening a
+    browser at the user on every run.  Writing the restored context's state back
+    keeps the cache usable.
+
+    Only refreshes a cache that already exists.  Absent means no
+    ``--interactive-auth`` run put one there (a password deployment, say), and
+    creating one here would leave a storage state with no companion
+    ``.meta.json`` for :func:`_load_cached_auth` to match URLs against.
+
+    The write is atomic (temp file in the same directory, then rename) so a
+    concurrent xdist worker reading the cache never sees a half-written file,
+    and the replacement carries the same owner-only permissions as the original
+    -- it holds live session cookies.
+
+    Returns True when the cache was refreshed.  Never raises: this runs on a
+    cleanup path, where failing loudly would mask the test's own result.
+    """
+    import json
+
+    path = cache_path if cache_path is not None else auth_cache_path()
+    if not path.exists():
+        return False
+
+    tmp: Path | None = None
+    try:
+        payload = json.dumps(storage_state)
+        # Same directory so the rename stays on one filesystem (and therefore
+        # atomic); mkstemp creates it 0600 already.
+        fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".vip-auth-cache-")
+        tmp = Path(tmp_name)
+        with os.fdopen(fd, "w") as handle:
+            handle.write(payload)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+        return True
+    except Exception as exc:
+        logger.debug("Could not refresh the auth cache at %s: %s", path, exc)
+        if tmp is not None and tmp.exists():
+            with contextlib.suppress(OSError):
+                tmp.unlink()
+        return False
 
 
 def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
