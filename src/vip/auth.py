@@ -16,7 +16,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import httpx
 from playwright.sync_api import (
@@ -280,45 +280,76 @@ def auth_cache_path() -> Path:
     return Path.cwd() / AUTH_CACHE_FILENAME
 
 
-def _cookies_from_storage_state(storage_state_path: Path) -> dict[str, str]:
-    """Extract ``name -> value`` cookies from a Playwright storage-state file.
+def _cookies_from_storage_state(storage_state_path: Path) -> httpx.Cookies:
+    """Load cookies from a Playwright storage-state file, preserving their scope.
 
-    Lets the liveness probe below reuse the cached browser session over plain
-    httpx, with no Playwright launch.  A malformed or truncated cache yields an
-    empty dict rather than raising: the probe then reads as inconclusive and the
-    cache is reused, which is exactly the pre-probe behaviour.
+    Returns an ``httpx.Cookies`` jar with each cookie's ``domain`` and ``path``
+    intact, so httpx applies ordinary cookie-matching rules when the probe fires
+    and we don't hand-roll host matching.
+
+    Scope has to survive the round trip.  ``context.storage_state()`` captures a
+    whole browser context, and the auth flow deliberately visits the IdP and
+    Connect as well as Workbench — so this file holds their cookies too.
+    Flattening it to ``name -> value`` would fire all of them at the Workbench
+    host, leaking the IdP's session cookie somewhere a browser would never send
+    it, and would let two hosts using the same cookie name overwrite each other.
+    That second case is the dangerous one: sending the IdP's value for a name
+    Workbench also uses makes a *live* session read as dead and forces a
+    pointless re-auth.
+
+    A malformed or truncated cache yields an empty jar rather than raising: the
+    probe then reads as inconclusive and the cache is reused, which is exactly
+    the pre-probe behaviour.
     """
     import json
 
+    cookies = httpx.Cookies()
     try:
         state = json.loads(Path(storage_state_path).read_text())
     except (OSError, ValueError):
-        return {}
+        return cookies
     if not isinstance(state, dict):
-        return {}
+        return cookies
 
-    cookies: dict[str, str] = {}
     for cookie in state.get("cookies") or []:
         if not isinstance(cookie, dict):
             continue
         name = cookie.get("name")
         if not name:
             continue
-        cookies[str(name)] = str(cookie.get("value", ""))
+        cookies.set(
+            str(name),
+            str(cookie.get("value", "")),
+            domain=str(cookie.get("domain") or ""),
+            path=str(cookie.get("path") or "/"),
+        )
     return cookies
+
+
+class _ProbeResult(NamedTuple):
+    """A liveness verdict plus the evidence behind it.
+
+    ``detail`` is quoted in the cache-miss message.  A sign-in redirect and a
+    bare 401 point at different causes — an expired session versus something
+    stripping cookies in front of Workbench — so the message has to say which
+    one was seen rather than assume the redirect.
+    """
+
+    is_live: bool | None
+    detail: str = ""
 
 
 def _cached_workbench_session_is_live(
     workbench_url: str,
-    cookies: dict[str, str],
+    cookies: httpx.Cookies,
     *,
     insecure: bool = False,
     ca_bundle: Path | None = None,
     transport: httpx.BaseTransport | None = None,
-) -> bool | None:
+) -> _ProbeResult:
     """Report whether *cookies* still authenticate Workbench at *workbench_url*.
 
-    Returns ``True`` when the session lands on the dashboard, ``False`` on
+    ``is_live`` is ``True`` when the session lands on the dashboard, ``False`` on
     positive evidence that it is dead (a redirect to the sign-in page, or a bare
     401/403 from configs that do not redirect), and ``None`` when the probe could
     not reach a verdict.
@@ -338,12 +369,14 @@ def _cached_workbench_session_is_live(
             transport=transport,
         ) as client:
             response = client.get(workbench_url)
-    except httpx.HTTPError:
-        return None
+    except httpx.HTTPError as exc:
+        return _ProbeResult(None, f"could not reach Workbench: {exc}")
 
     if response.status_code in (401, 403):
-        return False
-    return not _on_login_page(str(response.url))
+        return _ProbeResult(False, f"Workbench answered {response.status_code}")
+    if _on_login_page(str(response.url)):
+        return _ProbeResult(False, f"the request landed on the sign-in page at {response.url}")
+    return _ProbeResult(True)
 
 
 def _load_cached_auth(
@@ -424,17 +457,17 @@ def _load_cached_auth(
     # Liveness probe: only when Workbench is actually requested, so Connect-only
     # runs pay nothing for it.
     if requested_workbench_url:
-        is_live = _cached_workbench_session_is_live(
+        probe = _cached_workbench_session_is_live(
             requested_workbench_url,
             _cookies_from_storage_state(cache_path),
             insecure=insecure,
             ca_bundle=ca_bundle,
         )
-        if is_live is False:
+        if probe.is_live is False:
             print(
                 ">>> Ignoring cached auth session: the saved browser session no longer "
                 f"authenticates Workbench at {requested_workbench_url} "
-                "(it was sent back to the sign-in page). Re-authenticating."
+                f"({probe.detail}). Re-authenticating."
             )
             return None
 
