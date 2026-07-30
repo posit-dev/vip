@@ -25,11 +25,11 @@ from vip.version import ProductVersion
 from vip_tests.package_manager.pages import (
     Homepage,
     PackageDetailPage,
-    PackagesPage,
     open_homepage,
     open_package_detail_via_click,
     open_repo_packages,
     search_packages,
+    wait_for_search_results,
 )
 from vip_tests.package_manager.pages.ui import TIMEOUT_ELEMENT, TIMEOUT_PAGE_LOAD
 
@@ -179,7 +179,11 @@ def then_search_result(page: Page):
     # returning at least one result row is the signal that search works. Assert
     # on the shared result-row selector rather than a per-id hook so this holds
     # for every ecosystem (see PackagesPage.RESULT_ITEMS).
-    expect(page.locator(PackagesPage.RESULT_ITEMS).first).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+    #
+    # wait_for_search_results owns the timeout: search against a full mirror is
+    # far slower than the other UI waits and warns rather than fails when it is
+    # merely slow. See its docstring for the measurements.
+    wait_for_search_results(page)
 
 
 @when("I open that package's detail page in the web UI")

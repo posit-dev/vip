@@ -32,6 +32,38 @@ def test_repo_exists():
 
 
 # ---------------------------------------------------------------------------
+# Repository selection
+# ---------------------------------------------------------------------------
+
+
+def _first_repo_serving(pm_client, *, ecosystem, matches, available, package, noun="package"):
+    """Return the first repo matching *ecosystem* that actually serves *package*.
+
+    A deployment routinely hosts several repos per ecosystem -- a full mirror
+    alongside curated or vulnerability-blocked subsets. Probing only the first
+    match made the result depend on the order the server happens to list them
+    in: ``curated-pypi`` sorts ahead of ``pypi`` and by design carries only a
+    handful of approved packages, so the PyPI scenario skipped as "not
+    available -- repo may not be synced yet" while the full mirror beside it
+    served the package fine. Walk every candidate before concluding anything.
+
+    Skips (never fails) in two distinguishable states: no repo of this
+    ecosystem is configured at all, or one is configured but none serves the
+    package. Those are different deployment problems and the reason says which.
+    """
+    candidates = [r.get("name", "") for r in pm_client.list_repos() if matches(r)]
+    if not candidates:
+        pytest.skip(f"No {ecosystem} repository configured in Package Manager")
+    for repo_name in candidates:
+        if available(repo_name, package):
+            return repo_name
+    pytest.skip(
+        f"{ecosystem} {noun} {package!r} not available in any of {candidates} — "
+        "repo may not be synced yet"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
 
@@ -48,19 +80,13 @@ def pm_running(pm_client):
     target_fixture="package_found",
 )
 def query_cran(pm_client):
-    repos = pm_client.list_repos()
-    cran_repos = [
-        r for r in repos if r.get("type") == "cran" or "cran" in r.get("name", "").lower()
-    ]
-    if not cran_repos:
-        pytest.skip("No CRAN repository configured in Package Manager")
-    repo_name = cran_repos[0]["name"]
-    found = pm_client.cran_package_available(repo_name, "Matrix")
-    if not found:
-        pytest.skip(
-            f"CRAN package 'Matrix' not available in repo {repo_name!r} — "
-            "repo may not be synced yet"
-        )
+    _first_repo_serving(
+        pm_client,
+        ecosystem="CRAN",
+        matches=lambda r: r.get("type") == "cran" or "cran" in r.get("name", "").lower(),
+        available=pm_client.cran_package_available,
+        package="Matrix",
+    )
     return True
 
 
@@ -69,19 +95,13 @@ def query_cran(pm_client):
     target_fixture="package_found",
 )
 def query_pypi(pm_client):
-    repos = pm_client.list_repos()
-    pypi_repos = [
-        r for r in repos if r.get("type") == "pypi" or "pypi" in r.get("name", "").lower()
-    ]
-    if not pypi_repos:
-        pytest.skip("No PyPI repository configured in Package Manager")
-    repo_name = pypi_repos[0]["name"]
-    found = pm_client.pypi_package_available(repo_name, "requests")
-    if not found:
-        pytest.skip(
-            f"PyPI package 'requests' not available in repo {repo_name!r} — "
-            "repo may not be synced yet"
-        )
+    _first_repo_serving(
+        pm_client,
+        ecosystem="PyPI",
+        matches=lambda r: r.get("type") == "pypi" or "pypi" in r.get("name", "").lower(),
+        available=pm_client.pypi_package_available,
+        package="requests",
+    )
     return True
 
 
@@ -90,19 +110,13 @@ def query_pypi(pm_client):
     target_fixture="package_found",
 )
 def query_bioconductor(pm_client):
-    repos = pm_client.list_repos()
-    bioc_repos = [
-        r for r in repos if r.get("type") == "bioconductor" or "bioc" in r.get("name", "").lower()
-    ]
-    if not bioc_repos:
-        pytest.skip("No Bioconductor repository configured in Package Manager")
-    repo_name = bioc_repos[0]["name"]
-    found = pm_client.bioconductor_package_available(repo_name, "BiocGenerics")
-    if not found:
-        pytest.skip(
-            f"Bioconductor package 'BiocGenerics' not available in repo {repo_name!r} — "
-            "repo may not be synced yet"
-        )
+    _first_repo_serving(
+        pm_client,
+        ecosystem="Bioconductor",
+        matches=lambda r: r.get("type") == "bioconductor" or "bioc" in r.get("name", "").lower(),
+        available=pm_client.bioconductor_package_available,
+        package="BiocGenerics",
+    )
     return True
 
 
@@ -111,27 +125,15 @@ def query_bioconductor(pm_client):
     target_fixture="package_found",
 )
 def query_openvsx(pm_client):
-    repos = pm_client.list_repos()
-
-    def is_vsx(r):
-        return r.get("type", "").upper() == "VSX" or "vsx" in r.get("name", "").lower()
-
-    vsx_repos = [r for r in repos if is_vsx(r)]
-    if not vsx_repos:
-        pytest.skip("No OpenVSX repository configured in Package Manager")
-    # A deployment can host several VSX repos (e.g. a full openvsx mirror
-    # alongside a curated subset). Check each until the extension is found,
-    # rather than assuming the first repo carries it.
-    tried = []
-    for repo in vsx_repos:
-        repo_name = repo["name"]
-        tried.append(repo_name)
-        if pm_client.openvsx_extension_available(repo_name, "golang.Go"):
-            return True
-    pytest.skip(
-        f"OpenVSX extension 'golang.Go' not available in any VSX repo {tried} — "
-        "repo may not be synced yet"
+    _first_repo_serving(
+        pm_client,
+        ecosystem="OpenVSX",
+        matches=lambda r: r.get("type", "").upper() == "VSX" or "vsx" in r.get("name", "").lower(),
+        available=pm_client.openvsx_extension_available,
+        package="golang.Go",
+        noun="extension",
     )
+    return True
 
 
 @when("I list all repositories", target_fixture="repo_list")

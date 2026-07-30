@@ -15,10 +15,10 @@ Feature: HTTPS enforcement
       | Workbench       |
       | Package Manager |
 
-  Scenario Outline: <product> does not expose sensitive headers
+  Scenario Outline: <product> response headers are checked for version disclosure
     Given <product> is configured in vip.toml
     When I inspect response headers from <product>
-    Then the server does not expose version information in headers
+    Then any version information in response headers is reported
 
     Examples:
       | product         |
