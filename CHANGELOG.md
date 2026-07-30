@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.58.17 (2026-07-30)
+
+### Bug Fixes
+
+- **workbench**: Detect sign-in redirected to an external IdP
+  ([#573](https://github.com/posit-dev/vip/pull/573),
+  [`8a5a5da`](https://github.com/posit-dev/vip/commit/8a5a5daedde28abc8b239ed596169f5a35e8eca6))
+
+
 ## v0.58.16 (2026-07-30)
 
 ### Bug Fixes
