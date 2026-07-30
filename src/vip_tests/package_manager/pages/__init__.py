@@ -8,6 +8,7 @@ from .ui import (
     open_package_detail_via_click,
     open_repo_packages,
     search_packages,
+    wait_for_search_results,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "open_package_detail_via_click",
     "open_repo_packages",
     "search_packages",
+    "wait_for_search_results",
 ]

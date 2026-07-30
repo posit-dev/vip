@@ -270,3 +270,63 @@ def test_skip_names_the_idp_when_silent_sso_lands_there():
     assert "redirected to the posit.okta.com sign-in page" in str(exc.value), (
         f"the skip must name where sign-in actually ended up: {exc.value}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Sign-out must not leave the shared session signed out (issue #467 / #263)
+# ---------------------------------------------------------------------------
+
+
+def test_restore_shared_session_reports_failure_to_reauthenticate(caplog):
+    """When silent SSO cannot get back in, say so loudly rather than silently.
+
+    A failed restore leaves every later scenario -- and the cached auth session
+    on disk -- pointing at a signed-out server session, so it must not be
+    swallowed.
+    """
+    import logging
+
+    from vip_tests.workbench.conftest import restore_shared_session
+
+    class _DeadPage:
+        url = "https://wb.example.com/auth-sign-in"
+
+        def goto(self, *a, **k):
+            pass
+
+        def wait_for_load_state(self, *a, **k):
+            pass
+
+        def locator(self, selector):
+            return _AuthFakeLocator(visible=lambda: False)
+
+        def get_by_role(self, role, name=None):
+            return _AuthFakeLocator(visible=lambda: False)
+
+    with caplog.at_level(logging.WARNING):
+        assert restore_shared_session(_DeadPage(), "https://wb.example.com") is False
+    assert any("sign" in r.message.lower() for r in caplog.records), caplog.records
+
+
+def test_restore_shared_session_returns_true_when_homepage_comes_back():
+    from vip_tests.workbench.conftest import restore_shared_session
+
+    class _RecoveredPage:
+        url = "https://wb.example.com/"
+
+        def goto(self, *a, **k):
+            pass
+
+        def wait_for_load_state(self, *a, **k):
+            pass
+
+        def locator(self, selector):
+            from vip_tests.workbench.pages import Homepage
+
+            visible = selector == Homepage.POSIT_LOGO
+            return _AuthFakeLocator(visible=lambda: visible)
+
+        def get_by_role(self, role, name=None):
+            return _AuthFakeLocator(visible=lambda: True)
+
+    assert restore_shared_session(_RecoveredPage(), "https://wb.example.com") is True

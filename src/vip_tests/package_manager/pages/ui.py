@@ -10,6 +10,9 @@ full page load.
 
 from __future__ import annotations
 
+import time
+import warnings
+
 from playwright.sync_api import Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
@@ -18,6 +21,29 @@ from vip.timeouts import timeout_scale
 # Scaled the same way the Workbench UI tests scale theirs, via VIP_TIMEOUT_SCALE.
 TIMEOUT_PAGE_LOAD = int(15_000 * timeout_scale())
 TIMEOUT_ELEMENT = int(10_000 * timeout_scale())
+
+# Package search gets its own, much longer ceiling. Searching a full PyPI or
+# CRAN mirror is not comparable to the other waits in this module: the repo
+# packages page fires an unfiltered first-page listing and a popular-packages
+# query alongside the debounced search, and on a large repo those pile up.
+#
+# Measured, not guessed. Across 12 runs against a real deployment, the first
+# result row on the ``pypi`` repo rendered in ~4s eleven times and took 53.8s
+# once -- on the first search of the session, so the tail reads as a cold
+# cache rather than steady-state load. (The same wait on ``cran`` was ~1s
+# throughout, which is why only the large mirrors are affected.) A 15s ceiling
+# sits right inside that tail, so the PyPI search and detail scenarios failed
+# intermittently on a perfectly healthy deployment. 90s clears the observed
+# worst case with room to spare; anything genuinely broken still fails, just
+# later.
+TIMEOUT_SEARCH = int(90_000 * timeout_scale())
+
+# A search slower than this is reported but not failed: it is a real complaint
+# about the deployment (nobody waits 15s for a package search) without being
+# evidence that search is broken. Deliberately the same value as
+# TIMEOUT_PAGE_LOAD, so every wait that previously failed now surfaces as a
+# warning instead of vanishing.
+SLOW_SEARCH_MS = TIMEOUT_PAGE_LOAD
 
 
 def _settle_network(page: Page) -> None:
@@ -115,6 +141,44 @@ def search_packages(page: Page, package: str) -> None:
     )
 
 
+def wait_for_search_results(page: Page) -> float:
+    """Wait for the first search-result row; warn when the wait was long.
+
+    Returns the elapsed seconds. Raises ``AssertionError`` (not a raw
+    Playwright timeout) when no row appears within TIMEOUT_SEARCH, so a genuine
+    search outage reports as a readable failure rather than "an unexpected
+    error occurred: Locator.wait_for: Timeout exceeded".
+
+    The warning above SLOW_SEARCH_MS is the point of this helper: raising the
+    ceiling alone would silently absorb a deployment whose package search takes
+    a minute, which is worth telling an administrator about even though it is
+    not a broken deployment.
+    """
+    started = time.monotonic()
+    try:
+        page.locator(PackagesPage.RESULT_ITEMS).first.wait_for(
+            state="visible", timeout=TIMEOUT_SEARCH
+        )
+    except PlaywrightTimeoutError:
+        raise AssertionError(
+            f"No package search result rendered within {TIMEOUT_SEARCH / 1000:g}s. "
+            "The package was confirmed to exist over the API before the browser "
+            "was driven, so either the search UI is broken or the deployment is "
+            "far slower than the timeout allows (raise it with VIP_TIMEOUT_SCALE)."
+        ) from None
+
+    elapsed = time.monotonic() - started
+    if elapsed * 1000 > SLOW_SEARCH_MS:
+        warnings.warn(
+            f"VIP: package search took {elapsed:.1f}s to render its first result "
+            f"(over the {SLOW_SEARCH_MS / 1000:g}s expected). Search works, but "
+            "this is slow enough for users to notice — check Package Manager's "
+            "database and the size of the repo being searched.",
+            stacklevel=2,
+        )
+    return elapsed
+
+
 def open_package_detail_via_click(page: Page) -> None:
     """Click the first search-result row and wait for its detail page.
 
@@ -127,7 +191,6 @@ def open_package_detail_via_click(page: Page) -> None:
     Assumes a search has already been run so at least one result row is present;
     clicks the first result and waits for the detail hero.
     """
-    result = page.locator(PackagesPage.RESULT_ITEMS).first
-    result.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
-    result.click()
+    wait_for_search_results(page)
+    page.locator(PackagesPage.RESULT_ITEMS).first.click()
     expect(page.locator(PackageDetailPage.TITLE)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)

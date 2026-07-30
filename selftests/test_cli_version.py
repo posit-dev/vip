@@ -52,6 +52,9 @@ class TestVersionSubcommand:
     """``vip version`` prints the vip version and the support floor."""
 
     def test_prints_version_and_floor(self, capsys, monkeypatch):
+        # Asserted as an exact string, not substrings: both numbers are
+        # calendar-versioned but unrelated, so each line must stay labeled or a
+        # reader will mistake VIP's version for the Posit Team release it targets.
         from vip import __version__
         from vip.cli import main
         from vip.version import MINIMUM_SUPPORTED_POSIT_TEAM
@@ -59,6 +62,7 @@ class TestVersionSubcommand:
         monkeypatch.setattr(sys, "argv", ["vip", "version"])
         main()  # a subcommand returns normally; no SystemExit
         out = capsys.readouterr().out
-        assert f"vip {__version__}" in out
-        assert MINIMUM_SUPPORTED_POSIT_TEAM in out
-        assert "minimum supported posit team version" in out.lower()
+        assert out.strip() == (
+            f"VIP version: {__version__}\n"
+            f"Supported Posit Team versions: {MINIMUM_SUPPORTED_POSIT_TEAM} and newer"
+        )

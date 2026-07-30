@@ -214,6 +214,44 @@ def _option_is_disabled(option: Locator) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def current_worker_id() -> str:
+    """Return this process's xdist worker id (``"main"`` when running serially).
+
+    Session names embed this so cleanup can tell a worker's own sessions from a
+    sibling worker's (see :func:`~vip.clients.workbench.session_owner`).
+    """
+    return os.environ.get("PYTEST_XDIST_WORKER", "main")
+
+
+def vip_session_prefix(kind: str) -> str:
+    """Build a ``_vip_<kind>_<worker>_<ts>_`` session-name prefix.
+
+    Some scenarios name sessions outside :func:`unique_session_name` (they carry
+    a profile or an index rather than a source file), but the contract is the
+    same: the worker id must be in the name so cleanup can attribute the session
+    back to the worker that made it (see
+    :func:`~vip.clients.workbench.session_owner`) and not quit a sibling
+    worker's live sessions.  The timestamp keeps names clear of leftovers from
+    previous runs.
+
+    Route every such scheme through this one helper.  A prefix built by hand
+    that omits the worker segment is unowned, and unowned means no in-run sweep
+    will clean it up -- the session leaks for the rest of the run.  Computed per
+    call, not at import time, so the worker id is read after xdist has set it.
+    """
+    return f"_vip_{kind}_{current_worker_id()}_{int(time.time())}_"
+
+
+def capacity_session_prefix() -> str:
+    """Prefix for this worker's resource-profile capacity session names."""
+    return vip_session_prefix("cap")
+
+
+def k8s_session_prefix() -> str:
+    """Prefix for this worker's Kubernetes capacity session names."""
+    return vip_session_prefix("k8s")
+
+
 def unique_session_name(filename: str) -> str:
     """Generate a Workbench session name unique across xdist workers.
 
@@ -222,9 +260,12 @@ def unique_session_name(filename: str) -> str:
     second, producing strict-mode failures once locators were tightened
     to ends-with matches. Worker id + nanosecond timestamp guarantees
     uniqueness for any practical parallelism.
+
+    The worker id is not just for uniqueness: cleanup parses it back out to
+    scope its sweeps, so the format must stay parseable by
+    :func:`~vip.clients.workbench.session_owner`.
     """
-    worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
-    return f"VIP {filename} - {worker}-{time.time_ns()}"
+    return f"VIP {filename} - {current_worker_id()}-{time.time_ns()}"
 
 
 # Keywords indicating the URL is a login/auth page (used for OIDC detection)
@@ -529,6 +570,41 @@ def _silent_sso_signin(sso_button, homepage_logo, workbench_url: str) -> bool:
             return False
 
 
+def restore_shared_session(page: Page, workbench_url: str) -> bool:
+    """Sign back in after the sign-out scenario, returning whether it worked.
+
+    The scenario deliberately ends the session every other scenario shares, so
+    it has to hand one back. Navigating to Workbench and completing the silent
+    SSO round-trip mints a fresh session in this browser context.
+
+    Returns False -- and warns -- when the round-trip cannot complete, e.g. the
+    IdP applied single-logout and cleared its own cookies too. That is not
+    something this fixture can repair, but it must be visible: silently leaving
+    the suite signed out is how a sign-out turns into a cascade of unrelated
+    auth failures in later scenarios.
+    """
+    logo = page.locator(Homepage.POSIT_LOGO)
+    try:
+        page.goto(workbench_url)
+        page.wait_for_load_state("load")
+        if logo.is_visible():
+            return True
+        sso_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE)).first
+        if sso_button.is_visible() and _silent_sso_signin(sso_button, logo, workbench_url):
+            return True
+    except (PlaywrightTimeoutError, PlaywrightError) as exc:
+        logger.warning("Could not sign back in after the sign-out scenario: %s", exc)
+        return False
+    logger.warning(
+        "Could not sign back in after the sign-out scenario at %s: the silent SSO round-trip "
+        "did not reach an authenticated homepage (the identity provider may have applied "
+        "single-logout). Later scenarios and the cached auth session are now signed out; "
+        "rerun with --interactive-auth to re-establish one.",
+        workbench_url,
+    )
+    return False
+
+
 def workbench_login(
     page: Page,
     workbench_url: str,
@@ -742,18 +818,20 @@ def _quit_vip_sessions_via_cookies(
     *,
     insecure: bool,
     ca_bundle,
+    owner: str | None = None,
 ) -> int:
     """Quit VIP-named sessions using a scratch cookie-authenticated client.
 
     A scratch ``WorkbenchClient`` is used so the session-scoped
     ``workbench_client`` fixture's cookie jar is never mutated.  TLS config
     (``--insecure`` / ``--ca-bundle``) is honoured via *insecure*/*ca_bundle*.
+    *owner* scopes the sweep to one xdist worker's own sessions.
     """
     try:
         scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
         try:
             scratch.set_cookies(cookies)
-            return scratch.quit_vip_sessions()
+            return scratch.quit_vip_sessions(owner=owner)
         finally:
             scratch.close()
     except Exception:
@@ -790,6 +868,7 @@ def _vip_session_count_via_cookies(
     *,
     insecure: bool,
     ca_bundle,
+    owner: str | None = None,
 ) -> int:
     """Count VIP-named sessions still listed for a cookie-authenticated client.
 
@@ -805,7 +884,7 @@ def _vip_session_count_via_cookies(
         scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
         try:
             scratch.set_cookies(cookies)
-            return scratch.count_vip_sessions()
+            return scratch.count_vip_sessions(owner=owner)
         finally:
             scratch.close()
     except Exception:
@@ -825,6 +904,11 @@ def _wb_cleanup_state(vip_config, workbench_client):
     yield state
     if workbench_client is None:
         return
+    # Still worker-scoped: under xdist each worker tears down at the end of its
+    # *own* session, which can be while a sibling worker is mid-test.  A truly
+    # global sweep belongs to `vip cleanup --workbench-url`, which runs when no
+    # worker is left to disturb.
+    owner = current_worker_id()
     cookies = state["cookies"]
     if cookies:
         _quit_vip_sessions_via_cookies(
@@ -832,6 +916,7 @@ def _wb_cleanup_state(vip_config, workbench_client):
             cookies,  # type: ignore[arg-type]
             insecure=vip_config.insecure,
             ca_bundle=vip_config.ca_bundle,
+            owner=owner,
         )
     # Belt-and-suspenders: when an API key is configured, also sweep with it.
     # Run this even if cookies were captured, because cookies may have expired
@@ -839,7 +924,7 @@ def _wb_cleanup_state(vip_config, workbench_client):
     # quit_vip_sessions is idempotent, so this is a no-op when nothing remains.
     if vip_config.workbench.api_key:
         try:
-            workbench_client.quit_vip_sessions()
+            workbench_client.quit_vip_sessions(owner=owner)
         except Exception:
             pass
 
@@ -877,11 +962,17 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
     # Remember the latest good cookies for the end-of-run sweep.
     state["cookies"] = cookies
     state["base_url"] = workbench_client.base_url
+    # Scope every sweep to this worker's own sessions.  A bare VIP-prefix match
+    # here quits sessions a sibling xdist worker is still driving mid-test,
+    # which shows up as a vanished session row, an "Abnormal exits" toast, or a
+    # "Session status: Quit" banner inside a live IDE.
+    owner = current_worker_id()
     _quit_vip_sessions_via_cookies(
         workbench_client.base_url,
         cookies,
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
+        owner=owner,
     )
     # Detect API reachability once per session (cached on state).
     if state["api_reachable"] is None:
@@ -902,9 +993,10 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
         cookies,
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
+        owner=owner,
     )
     if not api_reachable or remaining != 0:
-        _quit_vip_sessions_via_ui(page, workbench_client.base_url)
+        _quit_vip_sessions_via_ui(page, workbench_client.base_url, owner=owner)
         # Best-effort post-escalation check, for logging only -- never blocks
         # or fails the test.
         still_remaining = _vip_session_count_via_cookies(
@@ -912,6 +1004,7 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
             cookies,
             insecure=vip_config.insecure,
             ca_bundle=vip_config.ca_bundle,
+            owner=owner,
         )
         if still_remaining > 0:
             logger.warning(
@@ -920,6 +1013,37 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
                 still_remaining,
                 workbench_client.base_url,
             )
+
+
+def quit_owned_sessions_via_page(
+    page, workbench_base_url: str, *, insecure: bool, ca_bundle
+) -> None:
+    """Quit this worker's VIP sessions using the browser page's own cookies.
+
+    Shared by the capacity scenarios, which name sessions outside
+    :func:`unique_session_name` and so clean up outside the autouse
+    ``_cleanup_sessions`` fixture.  Always worker-scoped (see
+    :func:`~vip.clients.workbench.is_vip_session_for_owner`) so a sibling xdist
+    worker's live capacity sessions are left alone.  TLS config is threaded
+    through so cleanup works against self-signed / custom-CA deployments.
+
+    Lives here rather than in a step module so it stays importable from
+    selftests: importing a pytest-bdd module inside a test trips ``@scenario``'s
+    frame inspection and fails under pytest-randomly.  Best-effort, never raises.
+    """
+    try:
+        cookies = {c["name"]: c["value"] for c in page.context.cookies()}
+    except Exception:
+        return
+    if not cookies:
+        return
+    _quit_vip_sessions_via_cookies(
+        workbench_base_url,
+        cookies,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        owner=current_worker_id(),
+    )
 
 
 @pytest.fixture(autouse=True)

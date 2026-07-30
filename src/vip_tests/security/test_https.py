@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import ssl
+import warnings
 
 import httpx
 import pytest
@@ -146,17 +147,47 @@ def inspect_headers(product, vip_config):
     return dict(resp.headers)
 
 
-@then("the server does not expose version information in headers")
+@then("any version information in response headers is reported")
 def no_version_headers(response_headers):
-    # Check for common headers that leak server version info.
-    risky_headers = ["x-powered-by", "server"]
-    for header in risky_headers:
-        value = response_headers.get(header, "")
-        # Having the header is OK, but it shouldn't contain version numbers.
-        if value:
-            version_pattern = re.compile(r"\d+\.\d+")
-            if version_pattern.search(value):
-                pytest.fail(
-                    f"Header '{header}: {value}' exposes version info. "
-                    "Configure the server to suppress version details."
-                )
+    """Report version disclosure in response headers; fail only where it is
+    fixable at the source.
+
+    Both headers below leak a version, but they are not the same finding:
+
+    ``server`` is the product identifying itself -- Package Manager sends
+    ``Posit Package Manager v2026.06.0`` and offers no setting to suppress it,
+    so the only remediation is stripping it at the reverse proxy in front. A
+    check that fails on every stock Posit deployment, with advice the product
+    can't satisfy, is noise: it turns the whole security category red by
+    default and teaches people to skim past it. Warn instead, so the exposure
+    is still on the record for a hardening baseline that forbids it.
+
+    ``x-powered-by`` is a real finding. No Posit product sets it, so its
+    presence means a reverse proxy or app server in front is disclosing its
+    own version -- and that is configurable exactly where it originates. This
+    stays fatal, which is also what keeps this check from being vacuous: a
+    warning-only check can never fail, and a check that can never fail is not
+    a check (#555).
+    """
+    version_pattern = re.compile(r"\d+\.\d+")
+
+    server = response_headers.get("server", "")
+    if server and version_pattern.search(server):
+        warnings.warn(
+            f"VIP: response header 'server: {server}' discloses a version number. "
+            "Posit products emit this themselves and have no setting to suppress it — "
+            "strip or rewrite the header at the reverse proxy in front of the "
+            "deployment (nginx: `proxy_hide_header Server`) if your hardening "
+            "baseline forbids version disclosure.",
+            stacklevel=2,
+        )
+
+    powered_by = response_headers.get("x-powered-by", "")
+    if powered_by and version_pattern.search(powered_by):
+        pytest.fail(
+            f"Header 'x-powered-by: {powered_by}' exposes version info. No Posit "
+            "product sets this header, so it comes from a reverse proxy or "
+            "application server in front of the deployment. Suppress it there "
+            "(nginx: `proxy_hide_header X-Powered-By`; Express: "
+            "`app.disable('x-powered-by')`)."
+        )

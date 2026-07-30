@@ -151,10 +151,10 @@ Key principles:
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
 | `src/vip/plugin.py` | pytest plugin: markers (including `slow`, used by `verify --basic`), auto-skip, JSON report output |
 | `src/vip/version.py` | `ProductVersion` parsing/comparison for `min_version` gating; `MINIMUM_SUPPORTED_POSIT_TEAM` support floor (powers `vip version`) |
-| `src/vip/workbench_ui.py` | Browser-driven Workbench session-cleanup sweep (`quit_vip_sessions_via_ui`), shared by the per-test cleanup fixture and `vip cleanup --workbench-url` |
+| `src/vip/workbench_ui.py` | Browser-driven Workbench session-cleanup sweep (`quit_vip_sessions_via_ui`), shared by the per-test cleanup fixture and `vip cleanup --workbench-url`; takes an `owner` so a per-test sweep only quits its own xdist worker's sessions |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
 | `src/vip/clients/connect.py` | httpx client for Connect API |
-| `src/vip/clients/workbench.py` | httpx client for Workbench API; `quit_vip_sessions` warns loudly (not silently) when a VIP session persists after all retries |
+| `src/vip/clients/workbench.py` | httpx client for Workbench API; `quit_vip_sessions` warns loudly (not silently) when a VIP session persists after all retries. `session_owner` / `is_vip_session_for_owner` decide whether a VIP session belongs to the sweeping worker — see "Session ownership" below |
 | `src/vip/clients/packagemanager.py` | httpx client for Package Manager API |
 | `src/vip/install/platform.py` | Distro detection (rhel/debian/macos) + canonical Chromium package lists |
 | `src/vip/install/manifest.py` | `.vip-install.json` read/write (atomic), schema gate, pending-package helpers |
@@ -219,6 +219,26 @@ Configuration is in `vip.toml` (see `vip.toml.example` for the template). Secret
 -   `VIP_TEST_TOTP_SECRET` — optional base32 TOTP seed used by `--headless-auth` to auto-fill MFA codes for a dedicated test service account. **Equivalent to bypassing 2FA — never use a personal account's seed.**
 
 The plugin loads config via `--vip-config` or defaults to `./vip.toml`. If no config file exists, all product tests are skipped.
+
+## Workbench session ownership (parallel safety)
+
+Every Workbench session VIP creates encodes the xdist worker that created it, and cleanup uses that to decide what it may quit. This is not cosmetic: a sweep that matches on the bare `VIP ` prefix quits sessions a *sibling worker is still driving*, which surfaces as a vanished session row, an "Abnormal exits" toast, a `Session status: Quit` banner inside a live IDE, or `jsonrpc error 1 (Unable to connect to service)` in an RStudio console — all of them looking like deployment faults rather than a test-suite bug.
+
+The naming contract:
+
+| Generator | Format | Example |
+|---|---|---|
+| `unique_session_name(filename)` | `VIP <file> - <worker>-<ns>` | `VIP test_git_ops.py - gw1-1785380284140718000` |
+| `vip_session_prefix(kind)` | `_vip_<kind>_<worker>_<ts>_` | `_vip_cap_gw1_1785380282_Small_0` |
+
+All of them live in `src/vip_tests/workbench/conftest.py` next to `current_worker_id()`, and `vip.clients.workbench.session_owner` parses the worker back out.
+
+**Name every session through one of those two helpers.** Scenarios that don't fit `unique_session_name` (capacity, k8s capacity) take a thin wrapper over `vip_session_prefix` — `capacity_session_prefix()`, `k8s_session_prefix()` — rather than formatting a prefix by hand. `_VIP_OWNER_PATTERNS` is generic over `<kind>`, so a new scheme routed through the helper is attributable for free; a hand-rolled one that omits the worker segment is treated as unowned, and unowned means **no in-run sweep will ever clean it up**. That is exactly how `_vip_k8s_` sessions started leaking when worker scoping first landed. If you change either format, update `_VIP_OWNER_PATTERNS` in `src/vip/clients/workbench.py` in the same commit.
+
+Rules for cleanup code:
+
+- Anything running *during* a test run (the autouse `_cleanup_sessions` fixture, the per-worker end-of-run sweep) must pass `owner=current_worker_id()`.
+- Only `vip cleanup --workbench-url` sweeps globally (`owner=None`), because it runs when no worker is left to disturb. That is also what clears orphans a crashed worker left behind, and orphans from an older VIP whose names carry no worker segment.
 
 ## Quarto report
 
@@ -303,8 +323,11 @@ Register warning filters in `src/vip/plugin.py::pytest_configure` (via `config.a
 -   Changing ruff version locally without updating the pinned version in `ci.yml`.
 -   Adding product SDK imports (use httpx directly).
 -   Writing tests that modify or delete existing customer content.
+-   Adding a Workbench scenario that ends the shared auth session (sign-out, session revocation, password change) without ordering it last *and* restoring the session afterwards. Under `--interactive-auth` / `--headless-auth` every Workbench scenario shares one account, so ending that session breaks every scenario still running on other xdist workers, plus the cached auth session on disk. `test_workbench_signout` is the worked example.
 -   Creating `.py` step files without a matching `.feature` file (or vice versa).
 -   Forgetting the `@connect`/`@workbench`/`@package_manager` tag in feature files (breaks auto-skip).
 -   Using non-conventional PR titles (must be `type: description`).
 -   Relying on multi-line formatting to shorten lines -- `ruff format` will collapse list comprehensions back to one line if they fit within 100 chars. Extract a helper function instead.
+-   Importing a pytest-bdd step module (anything under `src/vip_tests/**` that calls `@scenario` / `scenarios()`) from inside a selftest. `@scenario` inspects the caller's frame at import time, so importing it mid-test raises `IndexError: list index out of range` — and only under some orderings, so it passes locally and fails in CI under `pytest-randomly`. Put the helper you want to test in `conftest.py` and import it from there, or assert via `--collect-only` in a subprocess the way `selftests/test_workbench_ordering.py` does.
+-   Running selftests with `-p no:randomly`. CI runs them randomized; disabling the plugin hides exactly the order-dependent failures it exists to catch.
 -   Bypassing `vip install` with raw `uv run playwright install --with-deps chromium` (or `playwright install chromium`) in setup recipes, Dockerfiles, CI workflows, or docs. The whole `vip uninstall` reversibility relies on the `.vip-install.json` manifest that only `vip install` writes -- a raw `playwright install` leaves no record. The only acceptable alternative is `uv run vip install --skip-system` (used by CI workflows where the runner already has system libs), which still records the Playwright cache.

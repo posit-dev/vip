@@ -130,6 +130,23 @@ def user_authenticated(page, connect_url):
 
 Then steps verify the outcome. Importantly, they should verify **actual system state**, not just the action's return value. Make a separate call to fetch current state when possible.
 
+### Fail, warn, or skip
+
+A Then step has three outcomes, and picking the wrong one is how a suite loses its signal:
+
+| Outcome | Use when | Example |
+|---|---|---|
+| **Fail** | The deployment is wrong *and* an administrator can fix it | `x-powered-by` leaks a proxy's version — suppress it at the proxy |
+| **Warn** (`warnings.warn`) | The finding is real and worth recording, but nothing in the deployment's control can change it | Package Manager's own `server` header carries its version and has no setting to suppress it |
+| **Skip** | The thing under test isn't present or configured, so there was nothing to verify | No OpenVSX repository is configured |
+
+Two failure modes to watch for, both of which have bitten this suite:
+
+- **A check that always fails.** Advice the product cannot satisfy turns a whole category red on every stock deployment and trains people to skim past it. Warn instead — the exposure stays on the record for a hardening baseline that cares.
+- **A check that can never fail.** If every branch of a Then step warns or skips, it is not a check. Whenever you downgrade one branch to a warning, confirm some other branch can still fail (see `no_version_headers` in `security/test_https.py`).
+
+Skips carry the same burden of accuracy as failures. A skip reason states *why* there was nothing to verify, so it must be true: `test_repos.py` used to report "package not available — repo may not be synced yet" after probing only the first repo whose name matched, when a synced mirror sitting beside it served the package fine. Probe every candidate before concluding anything, and name all of them in the reason.
+
 ### Fixtures as glue
 
 Pytest fixtures (`conftest.py`) are the glue between layers. They provide:

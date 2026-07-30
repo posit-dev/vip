@@ -31,7 +31,7 @@ import re
 
 from playwright.sync_api import Page
 
-from vip.clients.workbench import is_vip_session
+from vip.clients.workbench import is_vip_session_for_owner
 from vip.timeouts import timeout_scale
 from vip_tests.workbench.pages import Homepage, LoginPage
 
@@ -52,20 +52,21 @@ TIMEOUT_DIALOG_PROBE = int(1_000 * timeout_scale())
 _SELECT_PREFIX = "select "
 
 
-def vip_names_from_select_labels(labels: list[str]) -> list[str]:
+def vip_names_from_select_labels(labels: list[str], owner: str | None = None) -> list[str]:
     """Extract VIP-named session names from session-row checkbox aria-labels.
 
     Each homepage session row exposes a checkbox whose aria-label is
     ``"select <session name>"``.  Returns the names (without the ``"select "``
-    prefix) that match :func:`is_vip_session`, so a real user's sessions are
-    never selected for quitting.  Input order is preserved.
+    prefix) that match :func:`is_vip_session_for_owner`, so a real user's
+    sessions -- and, when *owner* is set, a sibling xdist worker's live
+    sessions -- are never selected for quitting.  Input order is preserved.
     """
     names: list[str] = []
     for label in labels:
         if not label.startswith(_SELECT_PREFIX):
             continue
         name = label[len(_SELECT_PREFIX) :]
-        if is_vip_session(name):
+        if is_vip_session_for_owner(name, owner):
             names.append(name)
     return names
 
@@ -155,15 +156,18 @@ def _wait_for_session_list(page: Page) -> None:
             pass
 
 
-def quit_vip_sessions_via_ui(page: Page, base_url: str, *, max_iterations: int = 10) -> int:
+def quit_vip_sessions_via_ui(
+    page: Page, base_url: str, *, max_iterations: int = 10, owner: str | None = None
+) -> int:
     """Quit orphaned VIP-named sessions through the homepage UI.
 
     Fallback for deployments whose session API is unreachable (see
     :meth:`~vip.clients.workbench.WorkbenchClient.sessions_api_reachable`) or
     where the cookie/API sweep is a no-op (the DELETE call "succeeds" without
-    actually terminating the session -- issue #467).  Navigates to the
-    homepage, selects only VIP-named session rows (validated via
-    :func:`is_vip_session`), clicks Quit, and dismisses any
+    actually terminating the session -- issue #467).  *owner* scopes the sweep
+    to one xdist worker's own sessions; leave it ``None`` for a global sweep.
+    Navigates to the homepage, selects only VIP-named session rows (validated
+    via :func:`is_vip_session_for_owner`), clicks Quit, and dismisses any
     confirmation/force-quit dialogs, repeating until no VIP rows remain or
     *max_iterations* is hit.  Never uses "Quit All".  Best-effort: all
     Playwright errors are swallowed and it never raises.  Returns the number
@@ -194,7 +198,7 @@ def quit_vip_sessions_via_ui(page: Page, base_url: str, *, max_iterations: int =
                 checkboxes.nth(i).get_attribute("aria-label") or ""
                 for i in range(checkboxes.count())
             ]
-            vip_names = vip_names_from_select_labels(labels)
+            vip_names = vip_names_from_select_labels(labels, owner)
             # Record the state on the first pass so the closing summary can
             # report what the sweep actually saw (and whether it cleared it).
             if first_rows is None:

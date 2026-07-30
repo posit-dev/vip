@@ -12,21 +12,44 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_PAGE_LOAD,
     assert_homepage_loaded,
+    restore_shared_session,
     workbench_login,
 )
 from vip_tests.workbench.pages import Homepage, LoginPage
 
-pytestmark = pytest.mark.order(10)
+# Both scenarios carry their own order mark rather than sharing a module-level
+# one: they must run at opposite ends of the suite, and stacking a per-function
+# mark on top of a module-level `pytestmark` leaves which one wins up to
+# pytest-order's mark resolution. Explicit beats inherited here.
+_LOGIN_ORDER = 10
+
+# Sign-out is the one Workbench scenario that destroys shared state: under
+# --interactive-auth / --headless-auth every scenario authenticates as the same
+# account, so signing out ends the session all of them (and the cached auth
+# session on disk) are using. Inheriting the module's order(10) -- the earliest
+# mark in the whole Workbench suite -- ran it before nearly everything else,
+# while sibling xdist workers were mid-test. Order it last instead, and have it
+# put the session back afterwards (see restore_shared_session in conftest).
+_SIGNOUT_ORDER = 95
 
 
+@pytest.mark.order(_LOGIN_ORDER)
 @scenario("test_auth.feature", "User can log in to Workbench via the web UI")
 def test_workbench_login():
     pass
 
 
+@pytest.mark.order(_SIGNOUT_ORDER)
 @scenario("test_auth.feature", "User can sign out of Workbench")
 def test_workbench_signout():
     pass
+
+
+@pytest.fixture
+def _restore_session_after_signout(page: Page, workbench_url: str):
+    """Put the shared Workbench session back after the sign-out scenario."""
+    yield
+    restore_shared_session(page, workbench_url)
 
 
 @pytest.fixture
@@ -100,7 +123,7 @@ def current_user_displayed(page: Page):
 
 
 @when("I sign out of Workbench")
-def sign_out(page: Page):
+def sign_out(page: Page, _restore_session_after_signout):
     """Click the sign-out button on the Workbench homepage.
 
     Tries the legacy ``#signOutBtn`` first; on newer Workbench versions the

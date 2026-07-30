@@ -7,6 +7,7 @@ APIs than Connect, so many checks are done via the web UI with Playwright.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -19,14 +20,62 @@ logger = logging.getLogger(__name__)
 
 _VIP_SESSION_PREFIXES = ("VIP ", "_vip_")
 
+# VIP session names embed the xdist worker that created the session, so a sweep
+# can tell its own sessions apart from a sibling worker's:
+#   "VIP test_git_ops.py - gw1-1785380284140718000"  (unique_session_name)
+#   "_vip_cap_gw1_1785380282_Small_0"                (capacity scenarios)
+#   "_vip_k8s_gw2_1785380282_fill_0"                 (k8s capacity scenarios)
+# Serial runs use the literal worker id "main".
+#
+# The second pattern is deliberately generic over the ``<kind>`` segment rather
+# than listing "cap" and "k8s": a new `_vip_<kind>_` scheme then stays
+# attributable by construction. A scheme that forgets the worker segment is
+# unowned, and unowned means no in-run sweep will ever clean it up -- which is
+# how `_vip_k8s_` sessions started leaking when worker scoping first landed.
+_VIP_OWNER_PATTERNS = (
+    re.compile(r"^VIP .+ - (?P<owner>main|gw\d+)-\d+$"),
+    re.compile(r"^_vip_[a-z0-9]+_(?P<owner>main|gw\d+)_"),
+)
+
 
 def is_vip_session(label: str) -> bool:
     """Return True if *label* matches a VIP-created session naming pattern.
 
     VIP names sessions either ``"VIP <file> - <worker>-<ns>"`` (most tests,
-    via ``unique_session_name``) or ``"_vip_cap_<ts>_..."`` (capacity tests).
+    via ``unique_session_name``) or ``"_vip_cap_<worker>_<ts>_..."`` (capacity
+    tests).
     """
     return any(label.startswith(prefix) for prefix in _VIP_SESSION_PREFIXES)
+
+
+def session_owner(label: str) -> str | None:
+    """Return the xdist worker id encoded in *label*, or ``None``.
+
+    ``None`` means "not attributable": a real user's session, or a VIP session
+    named by an older VIP release whose scheme carried no worker segment.
+    Callers must treat an unattributable session as *not theirs* during a run,
+    or they reintroduce the cross-worker kill this exists to prevent.
+    """
+    for pattern in _VIP_OWNER_PATTERNS:
+        match = pattern.match(label)
+        if match:
+            return match.group("owner")
+    return None
+
+
+def is_vip_session_for_owner(label: str, owner: str | None) -> bool:
+    """Return True if *label* is a VIP session this caller may quit.
+
+    With *owner* ``None`` (``vip cleanup``, or the end-of-run safety net) every
+    VIP-named session matches -- there is no concurrent worker left to protect.
+    With an *owner* set, only that worker's own sessions match, so a per-test
+    sweep cannot quit a session another xdist worker is still driving.
+    """
+    if not is_vip_session(label):
+        return False
+    if owner is None:
+        return True
+    return session_owner(label) == owner
 
 
 def jupyterlab_app_base(page_url: str) -> str:
@@ -167,10 +216,26 @@ class WorkbenchClient(BaseClient):
             return resp.json()
         return []
 
-    def count_vip_sessions(self) -> int:
+    @staticmethod
+    def _is_target(session: Any, owner: str | None) -> bool:
+        """Return True if *session* is a VIP session this caller may act on.
+
+        Shared by the count and quit paths so both agree on what "mine" means
+        (see :func:`is_vip_session_for_owner`).  Coerces the label to ``str`` so
+        a null or non-string label never raises.
+        """
+        if not isinstance(session, dict):
+            return False
+        return is_vip_session_for_owner(str(session.get("label") or ""), owner)
+
+    def count_vip_sessions(self, *, owner: str | None = None) -> int:
         """Count VIP-named sessions currently listed, or ``-1`` if undeterminable.
 
-        Returns the number of sessions matching :func:`is_vip_session`
+        With *owner* set, counts only that xdist worker's own sessions, so a
+        per-test cleanup does not read a sibling worker's live session as
+        "leftovers" and escalate to a sweep that would quit it.
+
+        Returns the number of sessions matching :func:`is_vip_session_for_owner`
         (``0`` when the list genuinely holds none), or ``-1`` when the count
         cannot be determined — a transport error, a non-200, or a body that is
         not a JSON ``list`` (e.g. a ``200`` HTML/SPA fallback or an error
@@ -188,9 +253,7 @@ class WorkbenchClient(BaseClient):
             return -1
         if not isinstance(sessions, list):
             return -1
-        return sum(
-            1 for s in sessions if isinstance(s, dict) and is_vip_session(str(s.get("label") or ""))
-        )
+        return sum(1 for s in sessions if self._is_target(s, owner))
 
     def sessions_api_reachable(self) -> bool:
         """Return True only if ``/api/sessions`` returns a usable session list.
@@ -226,10 +289,17 @@ class WorkbenchClient(BaseClient):
                 continue
         return False
 
-    def quit_vip_sessions(self, *, retries: int = 2, settle_seconds: float = 0.5) -> int:
-        """Force-quit every VIP-named session reachable by this client.
+    def quit_vip_sessions(
+        self, *, retries: int = 2, settle_seconds: float = 0.5, owner: str | None = None
+    ) -> int:
+        """Force-quit VIP-named sessions reachable by this client.
 
-        Lists sessions and quits only those matching :func:`is_vip_session`
+        *owner* scopes the sweep to one xdist worker's own sessions.  Leave it
+        ``None`` for a global sweep (``vip cleanup``, or the end-of-run safety
+        net); pass the current worker id from a per-test cleanup, or the sweep
+        will quit sessions a sibling worker is still driving mid-test.
+
+        Lists sessions and quits only those matching :func:`is_vip_session_for_owner`
         (via :meth:`quit_session`: DELETE, falling back to suspend), then
         re-lists and repeats the quit-and-verify cycle up to *retries* times
         while VIP sessions remain.  A failed *list* call (non-200 or a thrown
@@ -262,12 +332,7 @@ class WorkbenchClient(BaseClient):
                 break
             if not isinstance(sessions, list):
                 break
-            # Coerce label to str so a null/non-string label never raises.
-            targets = [
-                s
-                for s in sessions
-                if isinstance(s, dict) and is_vip_session(str(s.get("label") or ""))
-            ]
+            targets = [s for s in sessions if self._is_target(s, owner)]
             if not targets:
                 break
             for session in targets:
@@ -278,10 +343,10 @@ class WorkbenchClient(BaseClient):
                 time.sleep(settle_seconds)
             exhausted_with_targets = attempt == retries - 1
         if exhausted_with_targets:
-            self._warn_if_vip_sessions_remain()
+            self._warn_if_vip_sessions_remain(owner)
         return len(quit_ids)
 
-    def _warn_if_vip_sessions_remain(self) -> None:
+    def _warn_if_vip_sessions_remain(self, owner: str | None = None) -> None:
         """Log a WARNING naming any VIP session still listed right now.
 
         Called after :meth:`quit_vip_sessions` exhausts its retries with VIP
@@ -297,9 +362,7 @@ class WorkbenchClient(BaseClient):
             return
         if not isinstance(sessions, list):
             return
-        remaining = [
-            s for s in sessions if isinstance(s, dict) and is_vip_session(str(s.get("label") or ""))
-        ]
+        remaining = [s for s in sessions if self._is_target(s, owner)]
         if not remaining:
             return
         details = ", ".join(
