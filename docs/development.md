@@ -104,11 +104,12 @@ edit the constraint and run `just relock` in the same commit.
 
 ## Releasing
 
-Releases are automated. On every push to `main` that isn't itself a release
-commit, `release.yml` runs `python-semantic-release`
-(`semantic-release version --push --tag --changelog --no-vcs-release`): it reads
-the conventional-commit history, bumps the version in `pyproject.toml` and
-`src/vip/__init__.py`, updates `CHANGELOG.md`, and pushes a `vX.Y.Z` tag.
+Releases run on a weekly train, not on every merge. `release.yml` runs on a
+`schedule` (Thursday evenings) and on `workflow_dispatch` for out-of-band
+releases. It computes the next version, exits cleanly if there are no commits
+since the last release, bumps the version in `pyproject.toml` and
+`src/vip/__init__.py`, relocks `uv.lock`, updates `CHANGELOG.md`, and pushes a
+single `chore(release): <version>` commit plus a `vX.Y.Z` tag.
 
 The tag push triggers two workflows:
 
@@ -122,18 +123,41 @@ The tag push triggers two workflows:
   `ghcr.io/posit-dev/vip`, then pulls the pushed tag back and runs `vip version`
   as a sanity check.
 
-### Versioning and the 1.0 cutover
+### Versioning and the release cadence
 
-`[tool.semantic_release]` sets `major_on_zero = false` on purpose: while the
-project is on `0.x`, a breaking change bumps the **minor** version rather than
-jumping to `1.0.0`. This keeps the automated pipeline from ever cutting 1.0 on
-its own.
+VIP's version is calendar-based (`YYYY.M.PATCH`), matching the product train
+it validates rather than semver. `scripts/next_version.py` implements the
+one rule this reduces to: **the first release of a calendar month is
+`YYYY.M.0`; every later release that month bumps the patch instead.** The
+first Thursday of a month is always the first release of that month, so this
+single rule covers both the monthly and the weekly cadence without any
+day-of-month or nth-weekday logic. A version like `2026.7.3` says "the fourth
+VIP release cut in July 2026" -- it is not a promise that this build targets
+Posit Team `2026.07.x` specifically, and it makes no statement about which
+product versions VIP supports (see `MINIMUM_SUPPORTED_POSIT_TEAM` in
+`src/vip/version.py` for that).
 
-Shipping 1.0 is a **deliberate, manual act**. When the project is ready, open a
-dedicated, reviewed PR that either sets `major_on_zero = true` (so the next
-breaking change bumps to `1.0.0`) or hand-sets `version = "1.0.0"` in
-`pyproject.toml` and tags `v1.0.0`. Automating the 0.x->1.0 transition is
-intentionally out of scope.
+Conventional commit types (`feat`, `fix`, `chore`, ...) still group entries in
+`CHANGELOG.md` and are still enforced by `pr-title.yml`, but they no longer
+influence the version number. The release gate is simply whether any commit
+landed since the last tag -- a week of nothing but `chore(deps)` bumps still
+ships, rather than being silently skipped the way semantic-release would.
+
+`git-cliff` (configured in `cliff.toml`) replaced `python-semantic-release`'s
+changelog generation. It is invoked as `git-cliff --tag v<version>
+--unreleased --prepend CHANGELOG.md`, which sets the tag for a version that
+does not exist yet, so the changelog entry lands *inside* the release commit,
+before the tag is created -- semantic-release's changelog step could not do
+this, since its changelog is tag-driven and can only write an entry for a tag
+that already exists.
+
+`workflow_dispatch`'s optional `version` input is the escape hatch for an
+urgent out-of-band release. Leaving it blank behaves exactly like a scheduled
+run, including the no-commits gate -- it's a "release now" button, not an
+override. Supplying an explicit version bypasses that gate (supplying a
+version is a deliberate act) but the workflow still refuses a version that is
+not strictly greater than the last release tag, since a PyPI publish cannot
+be undone.
 
 ## Design principles
 
