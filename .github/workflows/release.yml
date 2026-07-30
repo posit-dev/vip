@@ -1,13 +1,30 @@
 name: Release
 
+# Calendar-versioned, weekly release train -- see docs/development.md
+# ("Versioning and the release cadence") for the full rationale. Cuts
+# Thursday evenings, plus on demand via workflow_dispatch. There is no
+# `push` trigger: a merge to main no longer cuts a release by itself.
 on:
-  push:
-    branches: [main]
+  schedule:
+    # 22:17 UTC = 6:17pm US Eastern in summer (drifts to 5:17pm in winter;
+    # GitHub cron has no DST handling and that drift is accepted). The
+    # off-the-hour minute avoids GitHub's heaviest scheduled-run delays at :00.
+    - cron: "17 22 * * THU"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >
+          Explicit version to release (e.g. 2026.7.1). Bypasses the
+          no-commits-since-last-release gate, since supplying a version is a
+          deliberate act -- but the version must still be strictly greater
+          than the last release. Leave blank to release exactly like a
+          scheduled run (computed version, same no-commits gate).
+        required: false
+        type: string
 
 jobs:
   release:
-    name: Semantic Release
-    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    name: Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -20,26 +37,126 @@ jobs:
           fetch-depth: 0
           ssh-key: ${{ secrets.DEPLOY_KEY }}
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
-
-      - name: Install python-semantic-release
-        run: pip install python-semantic-release==9.21.0
-
-      # Needed by build_command ("just relock") in pyproject.toml's
-      # [tool.semantic_release], which regenerates uv.lock's own posit-vip
-      # version entry before semantic-release commits the release. `just
-      # relock` fetches its own pinned uv via `uvx`, so this step's uv version
-      # doesn't need to match -- only `uvx` needs to be on PATH (provided by setup-uv).
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
 
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
 
-      # --no-vcs-release: the GitHub release is created by publish.yml (on the
-      # tag push) so the locked constraints file can be attached before the
-      # release is published and locked by immutable releases.
-      - name: Run semantic-release
+      - name: Determine last release tag
+        id: last-tag
+        run: |
+          tag=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$tag" ]; then
+            echo "::error::No existing v* release tag found in this checkout"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # INPUT_VERSION and LAST_TAG are passed via env rather than interpolated
+      # directly into the script body, same as SUITE in workbench-smoke.yml --
+      # a workflow_dispatch input is user-controlled text and should never be
+      # substituted straight into a shell.
+      - name: Compute release version
+        id: version
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: semantic-release version --push --tag --changelog --no-vcs-release
+          INPUT_VERSION: ${{ inputs.version }}
+          LAST_TAG: ${{ steps.last-tag.outputs.tag }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            version="$INPUT_VERSION"
+          else
+            version=$(uv run python scripts/next_version.py --last-tag "$LAST_TAG")
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Checked for BOTH paths -- an explicit dispatch version and a computed
+      # one -- because the computed path can also go backwards. The rule keys
+      # off today's calendar month, so if any tag ever lands in a future month
+      # (an over-eager dispatch, a hand-cut tag), every scheduled run until the
+      # calendar catches up computes a LOWER version than the highest tag and
+      # would happily tag and push it. That is not a one-off: a stray
+      # v2026.12.0 in July poisons August, September, October and November in
+      # turn. pip resolvers would never treat those as latest, and a PyPI
+      # version cannot be reused once published, so each one is unrecoverable.
+      #
+      # Validating the resolved version instead of just the dispatch input is
+      # what makes this one check cover both paths.
+      - name: Verify the version moves forward
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          LAST_TAG: ${{ steps.last-tag.outputs.tag }}
+        run: uv run python scripts/next_version.py --verify "$VERSION" --last-tag "$LAST_TAG"
+
+      # A dispatch run with no version input behaves exactly like a scheduled
+      # run, including this gate -- it's a "release now" button, not an
+      # override. Only an explicit version bypasses it.
+      #
+      # The `github.event_name` clause is not redundant. On a `schedule` event
+      # the `inputs` context is null, so a bare `inputs.version == ''` would
+      # rely on GitHub coercing null to '' in the comparison. Testing the event
+      # first short-circuits, so `inputs.version` is only ever compared on the
+      # one event that populates it.
+      - name: Check for commits since the last release
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.version == '' }}
+        id: gate
+        env:
+          LAST_TAG: ${{ steps.last-tag.outputs.tag }}
+        run: |
+          count=$(git rev-list "$LAST_TAG"..HEAD --count)
+          echo "$count commit(s) since $LAST_TAG"
+          if [ "$count" -eq 0 ]; then
+            echo "No commits since the last release; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set version in pyproject.toml
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: uv version "$VERSION" --frozen
+
+      - name: Stamp src/vip/__init__.py
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          sed -i "s/^__version__ = .*/__version__ = \"${VERSION}\"/" src/vip/__init__.py
+
+      # Regenerates uv.lock's own posit-vip entry so it never lags behind the
+      # version just stamped above. Runs the pinned uv version rather than a
+      # bare `uv lock` so the justfile's UV_VERSION stays the single source
+      # of truth. This -- plus committing uv.lock below -- is the fix for
+      # issue #559; both steps must happen for that fix to hold.
+      - name: Relock uv.lock
+        if: steps.gate.outputs.skip != 'true'
+        run: just relock
+
+      # Sets the tag for a version that does not exist yet, generating its
+      # changelog entry before the commit that carries it (and before the tag
+      # itself) exists -- see docs/development.md for why this ordering
+      # matters. Pinned like zizmor in ci.yml.
+      - name: Update CHANGELOG.md
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          uvx git-cliff==2.13.1 --tag "v${VERSION}" --unreleased --prepend CHANGELOG.md
+
+      - name: Commit, tag, and push
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml src/vip/__init__.py uv.lock CHANGELOG.md
+          git commit -m "chore(release): ${VERSION}"
+          git tag "v${VERSION}"
+          # --atomic is load-bearing, not a nicety. Without it git updates each
+          # ref independently, so if a merge lands on main during this run the
+          # branch push is rejected while the TAG still lands -- and publish.yml
+          # triggers on tag push, publishing to PyPI a release commit that is not
+          # on main. A PyPI version cannot be re-used once published, so that
+          # state is unrecoverable. --atomic makes it both refs or neither.
+          git push --atomic origin HEAD:main "v${VERSION}"

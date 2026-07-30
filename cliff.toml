@@ -1,0 +1,105 @@
+# git-cliff configuration -- https://git-cliff.org/docs/configuration
+#
+# Reproduces the CHANGELOG.md layout python-semantic-release used to produce:
+# "## v<version> (<date>)" headers, "### <Group>" sections in a fixed order,
+# bold scopes, and a PR + commit link per entry. Invoked by
+# .github/workflows/release.yml as `git-cliff --tag v<V> --unreleased
+# --prepend CHANGELOG.md` -- see docs/development.md ("Versioning and the
+# release cadence") for the release flow this is part of.
+#
+# A few things below exist only to work around gaps in git-cliff's Tera
+# environment (2.13.1), not because they're the "natural" way to write this:
+#
+# - Group order: `commits | group_by(attribute="group")` does not preserve
+#   any particular order, so groups carry a throwaway "<letter>-" prefix
+#   purely to fix iteration order into the fixed alphabetical order the old
+#   entries use, split back off in the template (there is no `regex_replace`
+#   filter in this build, so the prefix is stripped via
+#   `split(pat="-") | slice(start=1) | join(sep="-")` rather than a regex).
+# - Entry order: PSR listed unscoped entries first, then scoped entries
+#   sorted by scope and then by description -- but Tera's
+#   `sort(attribute=...)` errors on a `null` scope, so unscoped and scoped
+#   commits are rendered in two separate passes (`filter(attribute="scope")`
+#   drops the null-scope commits for the second pass) rather than one
+#   combined sort.
+# - PR number: rather than querying the GitHub API for the PR associated
+#   with each commit (`[remote.github]`, needing a token and network access
+#   in CI), the PR number is read straight out of the commit subject's
+#   trailing "(#123)" that GitHub's squash-merge always appends -- see
+#   CLAUDE.md's "PR titles" section. `filter_unconventional = true` plus
+#   `pr-title.yml` are what guarantee that suffix is always present.
+#
+# Known deviation from the PSR-generated history: entries here are not
+# line-wrapped at ~100 columns the way old entries are (PSR ran its output
+# through a Markdown formatter that did this). Soft-wrapping is a rendering
+# nicety with no effect on the rendered Markdown, and there is no `wordwrap`
+# filter in this git-cliff build to reproduce it, so entries are one line.
+
+[changelog]
+# Must byte-for-byte match the top of CHANGELOG.md (title + the calver
+# consumer note) -- `--prepend` detects this exact text at the top of the
+# file and inserts new release sections after it rather than duplicating it.
+# If this note's wording ever changes, update both places together.
+header = """# CHANGELOG
+
+> Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
+
+
+"""
+body = """## {{ version }} ({{ timestamp | date(format="%Y-%m-%d") }})
+{%- for group, commits in commits | group_by(attribute="group") %}
+
+### {{ group | split(pat="-") | slice(start=1) | join(sep="-") }}
+{%- set unscoped = commits | sort(attribute="message") -%}
+{%- for commit in unscoped %}
+{%- if not commit.scope %}
+{%- set pr = "" -%}
+{%- if commit.message is containing(" (#") -%}
+{%- set pr = commit.message | split(pat=" (#") | last | trim_end_matches(pat=")") -%}
+{%- endif -%}
+{%- set desc = commit.message | trim_end_matches(pat=" (#" ~ pr ~ ")") %}
+
+- {{ desc | upper_first }}{% if pr %} ([#{{ pr }}](https://github.com/posit-dev/vip/pull/{{ pr }}), [`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/posit-dev/vip/commit/{{ commit.id }})){% else %} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/posit-dev/vip/commit/{{ commit.id }})){% endif -%}
+{%- endif -%}
+{%- endfor -%}
+{%- set scoped = commits | filter(attribute="scope") | sort(attribute="message") | sort(attribute="scope") -%}
+{%- for commit in scoped %}
+{%- set pr = "" -%}
+{%- if commit.message is containing(" (#") -%}
+{%- set pr = commit.message | split(pat=" (#") | last | trim_end_matches(pat=")") -%}
+{%- endif -%}
+{%- set desc = commit.message | trim_end_matches(pat=" (#" ~ pr ~ ")") %}
+
+- **{{ commit.scope }}**: {{ desc | upper_first }}{% if pr %} ([#{{ pr }}](https://github.com/posit-dev/vip/pull/{{ pr }}), [`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/posit-dev/vip/commit/{{ commit.id }})){% else %} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/posit-dev/vip/commit/{{ commit.id }})){% endif -%}
+{%- endfor -%}
+{%- endfor %}
+
+
+
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+# The release commit never exists yet when this runs -- git-cliff generates
+# the entry for a tag before it's created (see docs/development.md) -- but
+# this still guards a from-scratch regeneration of the full history.
+commit_parsers = [
+  { message = "^chore\\(release\\):", skip = true },
+  { message = "^fix", group = "A-Bug Fixes" },
+  { message = "^build", group = "B-Build System" },
+  { message = "^chore", group = "C-Chores" },
+  { message = "^ci", group = "D-Continuous Integration" },
+  { message = "^docs", group = "E-Documentation" },
+  { message = "^feat", group = "F-Features" },
+  { message = "^perf", group = "G-Performance Improvements" },
+  { message = "^refactor", group = "H-Refactoring" },
+  { message = "^revert", group = "I-Reverts" },
+  { message = "^style", group = "J-Style" },
+  { message = "^test", group = "K-Testing" },
+]
+filter_commits = true
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+sort_commits = "oldest"
