@@ -160,15 +160,14 @@ class WorkbenchClient(BaseClient):
         resp = self._client.get("/health-check")
         return resp.status_code
 
-    def server_settings(self) -> dict[str, Any]:
-        """Return server settings including version information.
-
-        Returns the parsed JSON from ``/api/server/settings``.  Raises
-        ``httpx.HTTPStatusError`` if the endpoint is not reachable.
-        """
-        resp = self._client.get("/api/server/settings")
-        resp.raise_for_status()
-        return resp.json()
+    # Note: Workbench has no unauthenticated server-info/version endpoint. The
+    # deployed version is read from the authenticated homepage footer instead
+    # (see ``vip_tests/workbench/test_version.py`` and
+    # ``pages/homepage.parse_workbench_version``). The documented REST API's
+    # ``/api/version`` is tier-gated (Enhanced/Advanced), disabled by default,
+    # and requires an API token this client does not carry — so there is no
+    # ``server_settings()`` method here (the old one hit a nonexistent
+    # ``/api/server/settings`` and always 404'd).
 
     # -- Sessions -----------------------------------------------------------
 

@@ -12,6 +12,7 @@ from .homepage import (
     NewSessionDialog,
     get_homepage,
     get_new_session_dialog_close_strategy,
+    parse_workbench_version,
 )
 from .ide_base import IDEBase
 from .jupyterlab_session import JupyterLabSession
@@ -33,4 +34,5 @@ __all__ = [
     "VSCodeSession",
     "get_homepage",
     "get_new_session_dialog_close_strategy",
+    "parse_workbench_version",
 ]

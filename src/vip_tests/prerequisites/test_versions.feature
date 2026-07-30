@@ -9,10 +9,10 @@ Feature: Product versions match configuration
     When I fetch the Connect server version
     Then the Connect version matches the configured value
 
-  Scenario: Workbench version matches configuration
-    Given Workbench is configured in vip.toml with a version expectation
-    When I fetch the Workbench server version
-    Then the Workbench version matches the configured value
+  # Workbench version is verified separately in the @workbench browser suite
+  # (workbench/test_version.feature): Workbench exposes no unauthenticated
+  # version endpoint, so the running version is read from the authenticated
+  # homepage footer rather than an API call.
 
   Scenario: Package Manager version matches configuration
     Given Package Manager is configured in vip.toml with a version expectation

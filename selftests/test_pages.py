@@ -18,6 +18,7 @@ from vip_tests.workbench.pages.homepage import (
     _close_dialog_via_escape,
     get_homepage,
     get_new_session_dialog_close_strategy,
+    parse_workbench_version,
 )
 from vip_tests.workbench.pages.rstudio_session import RStudioSession
 
@@ -52,6 +53,67 @@ class TestGetHomepage:
         assert Homepage_2026_05.SESSION_DETAILS_DIALOG != Homepage.SESSION_DETAILS_DIALOG
         assert Homepage_2026_05.POSIT_LOGO == Homepage.POSIT_LOGO
         assert Homepage_2026_05.NEW_SESSION_BUTTON == Homepage.NEW_SESSION_BUTTON
+
+
+class TestParseWorkbenchVersion:
+    """Cover ``parse_workbench_version`` against real homepage footer strings.
+
+    The three "real" cases below are the exact footer text captured from live
+    Workbench deployments (2026.01, 2026.06, 2026.07), so the regex is anchored
+    to formats that actually ship, not an invented shape.
+    """
+
+    # (footer_text, expected_version_substring)
+    REAL_FOOTERS = [
+        ('Posit Workbench 2026.01.0+392.pro5, "Apple Blossom" (7534b903).', "2026.01.0+392.pro5"),
+        ('Posit Workbench 2026.06.0+242.pro13, "Blue Plumbago" (e0e0c3b7).', "2026.06.0+242.pro13"),
+        (
+            'Posit Workbench 2026.07.0+139.pro9, "Pacific Dogwood" (f028a7ae).',
+            "2026.07.0+139.pro9",
+        ),
+    ]
+
+    @pytest.mark.parametrize("footer,expected", REAL_FOOTERS)
+    def test_extracts_version_from_real_footers(self, footer, expected):
+        assert parse_workbench_version(footer) == expected
+
+    @pytest.mark.parametrize("footer,expected", REAL_FOOTERS)
+    def test_parsed_output_feeds_product_version(self, footer, expected):
+        # The whole point of the substring shape: it must parse with
+        # ProductVersion (which then ignores the +build metadata for ordering).
+        parsed = parse_workbench_version(footer)
+        assert parsed is not None
+        pv = ProductVersion(parsed)
+        assert (pv.year, pv.month, pv.patch) == (
+            int(expected[:4]),
+            int(expected[5:7]),
+            int(expected.split("+")[0].rsplit(".", 1)[1]),
+        )
+
+    def test_build_metadata_ignored_in_comparison(self):
+        # Config carries the plain "2026.07.0"; the footer carries build metadata.
+        # ProductVersion must treat them as equal.
+        running = parse_workbench_version(self.REAL_FOOTERS[2][0])
+        assert ProductVersion(running) == ProductVersion("2026.07.0")
+
+    def test_plain_version_without_build_metadata(self):
+        assert parse_workbench_version("Posit Workbench 2025.09.1, foo") == "2025.09.1"
+
+    def test_prerelease_suffix_is_captured(self):
+        assert (
+            parse_workbench_version("Posit Workbench 2026.08.0-daily.20260801+9.pro1, x")
+            == "2026.08.0-daily.20260801+9.pro1"
+        )
+
+    def test_returns_none_when_no_version_present(self):
+        assert parse_workbench_version("Posit Workbench, welcome back") is None
+
+    def test_returns_none_for_empty_string(self):
+        assert parse_workbench_version("") is None
+
+    def test_returns_none_when_prefix_missing(self):
+        # A bare version with no "Posit Workbench" prefix is not our footer.
+        assert parse_workbench_version("Some other product 2026.07.0") is None
 
 
 class TestGetNewSessionDialogCloseStrategy:

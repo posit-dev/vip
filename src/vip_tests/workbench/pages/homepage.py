@@ -5,6 +5,7 @@ Mirrors: rstudio-pro/e2e/pages/homepage.page.ts
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import TypeVar
 
@@ -13,6 +14,32 @@ from playwright.sync_api import Page
 from vip.version import ProductVersion
 
 _T = TypeVar("_T")
+
+# Matches the calendar version (with optional pre-release and +build metadata)
+# embedded in the homepage footer string, e.g. the "2026.07.0+139.pro9" inside
+#   Posit Workbench 2026.07.0+139.pro9, "Pacific Dogwood" (f028a7ae).
+# Kept in sync with the shape ``vip.version.ProductVersion`` accepts, so the
+# captured substring feeds straight into it. Build metadata is preserved here
+# (ProductVersion ignores it for comparison but keeps it for display).
+_FOOTER_VERSION_RE = re.compile(
+    r"Posit Workbench\s+"
+    r"(?P<version>\d{4}\.\d{2}\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)"
+)
+
+
+def parse_workbench_version(footer_text: str) -> str | None:
+    """Extract the Workbench version string from the homepage footer text.
+
+    *footer_text* is the rendered footer, e.g.
+    ``'Posit Workbench 2026.07.0+139.pro9, "Pacific Dogwood" (f028a7ae).'``.
+    Returns the version substring (``'2026.07.0+139.pro9'``) — including any
+    ``+build`` metadata — or ``None`` when the text carries no recognizable
+    version (a redesign moved/renamed the string, or an unexpected page).
+    The returned value is shaped to parse directly with
+    :class:`vip.version.ProductVersion`.
+    """
+    match = _FOOTER_VERSION_RE.search(footer_text)
+    return match.group("version") if match else None
 
 
 class NewSessionDialog:
@@ -143,6 +170,17 @@ class Homepage:
 
     # Footer
     FOOTER_POSIT_LINK = "a:text-is('Posit Workbench')"
+    # The footer bar renders the running product version in a bare <div> with no
+    # id/class, e.g.:
+    #   Posit Workbench 2026.07.0+139.pro9, "Pacific Dogwood" (f028a7ae).
+    # Match it by its stable "Posit Workbench <YYYY.MM" text prefix rather than
+    # structural position (the surrounding flex layout has changed across the
+    # 2026.05 redesign). The ``text=`` engine (not ``:has-text``) resolves to the
+    # *smallest* element containing the text — the version <div> itself — so it
+    # won't also match the ancestor layout divs and trip strict mode. Workbench
+    # exposes no unauthenticated version endpoint, so this footer string is how
+    # VIP reads the deployed version; parse it with :func:`parse_workbench_version`.
+    VERSION_FOOTER = r"text=/Posit Workbench 20\d\d/"
 
     @staticmethod
     def session_link(name: str) -> str:

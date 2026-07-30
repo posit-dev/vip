@@ -53,7 +53,9 @@ def load_test_workbench(users, vip_config, performance_config):
     _check_user_count(users, performance_config)
     if not vip_config.workbench.api_key:
         pytest.skip("Workbench API key is not configured")
-    url = f"{vip_config.workbench.url}/api/server/settings"
+    # Workbench has no /api/server/settings endpoint (that path 404s). Load-test
+    # a real authenticated endpoint the client actually uses instead.
+    url = f"{vip_config.workbench.url}/api/sessions"
     headers = {"Authorization": f"Key {vip_config.workbench.api_key}"}
     return run_load_test(url, headers, users, performance_config)
 
