@@ -27,8 +27,9 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_QUICK,
     ResourceProfileDisabled,
     _option_is_disabled,
-    _quit_vip_sessions_via_cookies,
+    capacity_session_prefix,
     format_capacity_failure,
+    quit_owned_sessions_via_page,
     wait_for_session_active,
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
@@ -36,10 +37,6 @@ from vip_tests.workbench.pages import Homepage, NewSessionDialog
 pytestmark = pytest.mark.order(40)
 
 scenarios("test_session_capacity.feature")
-
-# Unique prefix for session names. Timestamp ensures no collision with
-# leftover sessions from previous runs.
-_SESSION_PREFIX = f"_vip_cap_{int(__import__('time').time())}_"
 
 
 @dataclass(frozen=True)
@@ -162,26 +159,6 @@ def _launch_session(
     expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
 
 
-def _cleanup_sessions_via_api(
-    page: Page, workbench_base_url: str, *, insecure: bool, ca_bundle
-) -> None:
-    """Quit the VIP capacity sessions created by this test run.
-
-    Delegates to the shared cookie-based cleanup helper, which targets all
-    VIP-named sessions (``_vip_cap_`` prefix included).  TLS config is threaded
-    through so cleanup works against self-signed / custom-CA deployments.
-    """
-    try:
-        cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-    except Exception:
-        return
-    if not cookies:
-        return
-    _quit_vip_sessions_via_cookies(
-        workbench_base_url, cookies, insecure=insecure, ca_bundle=ca_bundle
-    )
-
-
 # ---------------------------------------------------------------------------
 # When
 # ---------------------------------------------------------------------------
@@ -217,11 +194,12 @@ def launch_sessions(page: Page, vip_config):
 
     all_sessions: list[dict[str, str | None]] = []
     disabled_profiles: list[str] = []
+    prefix = capacity_session_prefix()
     for profile in profiles_to_test:
         profile_disabled = False
         for i in range(session_count):
             label = profile or "default"
-            name = f"{_SESSION_PREFIX}{label}_{i}"
+            name = f"{prefix}{label}_{i}"
             try:
                 _launch_session(page, name, profile)
             except ResourceProfileDisabled as exc:
@@ -281,7 +259,7 @@ def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Pa
 def cleanup_sessions(
     launched_sessions: list[dict[str, str | None]], page: Page, workbench_url: str, vip_config
 ):
-    _cleanup_sessions_via_api(
+    quit_owned_sessions_via_page(
         page, workbench_url, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
     )
 
