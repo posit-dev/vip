@@ -303,6 +303,7 @@ Register warning filters in `src/vip/plugin.py::pytest_configure` (via `config.a
 -   Changing ruff version locally without updating the pinned version in `ci.yml`.
 -   Adding product SDK imports (use httpx directly).
 -   Writing tests that modify or delete existing customer content.
+-   Adding a Workbench scenario that ends the shared auth session (sign-out, session revocation, password change) without ordering it last *and* restoring the session afterwards. Under `--interactive-auth` / `--headless-auth` every Workbench scenario shares one account, so ending that session breaks every scenario still running on other xdist workers, plus the cached auth session on disk. `test_workbench_signout` is the worked example.
 -   Creating `.py` step files without a matching `.feature` file (or vice versa).
 -   Forgetting the `@connect`/`@workbench`/`@package_manager` tag in feature files (breaks auto-skip).
 -   Using non-conventional PR titles (must be `type: description`).
