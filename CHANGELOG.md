@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.58.16 (2026-07-30)
+
+### Bug Fixes
+
+- **workbench**: Scope session cleanup to the creating xdist worker
+  ([#572](https://github.com/posit-dev/vip/pull/572),
+  [`3e5789f`](https://github.com/posit-dev/vip/commit/3e5789fdf3ef1c66865901d4ee02b7c7b89c5e9c))
+
+
 ## v0.58.15 (2026-07-30)
 
 ### Bug Fixes
