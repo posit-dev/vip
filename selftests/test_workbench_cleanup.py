@@ -1036,19 +1036,24 @@ def test_k8s_session_prefix_carries_the_worker_id(monkeypatch):
     assert session_owner(f"{k8s_session_prefix()}fill_0") == "gw2"
 
 
-def test_k8s_capacity_cleanup_is_worker_scoped(monkeypatch):
-    """The k8s capacity test's own cleanup must not sweep sibling workers."""
-    from vip_tests.workbench import test_session_capacity_k8s as k8s
+def test_capacity_page_cleanup_is_worker_scoped(monkeypatch):
+    """The capacity suites' own cleanup must not sweep sibling workers.
+
+    Imported from ``conftest``, not from a step module: importing a pytest-bdd
+    module inside a test trips ``@scenario``'s frame inspection and fails under
+    pytest-randomly.
+    """
+    from vip_tests.workbench import conftest as wb
 
     monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw1")
     seen: dict[str, object] = {}
     monkeypatch.setattr(
-        k8s,
+        wb,
         "_quit_vip_sessions_via_cookies",
         lambda *a, **k: seen.setdefault("owner", k.get("owner")),
     )
 
     page = _fake_page([{"name": "a", "value": "b"}])
-    k8s._cleanup_sessions(page, "https://wb.example.com", insecure=False, ca_bundle=None)
+    wb.quit_owned_sessions_via_page(page, "https://wb.example.com", insecure=False, ca_bundle=None)
 
     assert seen["owner"] == "gw1"

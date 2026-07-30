@@ -900,6 +900,37 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
             )
 
 
+def quit_owned_sessions_via_page(
+    page, workbench_base_url: str, *, insecure: bool, ca_bundle
+) -> None:
+    """Quit this worker's VIP sessions using the browser page's own cookies.
+
+    Shared by the capacity scenarios, which name sessions outside
+    :func:`unique_session_name` and so clean up outside the autouse
+    ``_cleanup_sessions`` fixture.  Always worker-scoped (see
+    :func:`~vip.clients.workbench.is_vip_session_for_owner`) so a sibling xdist
+    worker's live capacity sessions are left alone.  TLS config is threaded
+    through so cleanup works against self-signed / custom-CA deployments.
+
+    Lives here rather than in a step module so it stays importable from
+    selftests: importing a pytest-bdd module inside a test trips ``@scenario``'s
+    frame inspection and fails under pytest-randomly.  Best-effort, never raises.
+    """
+    try:
+        cookies = {c["name"]: c["value"] for c in page.context.cookies()}
+    except Exception:
+        return
+    if not cookies:
+        return
+    _quit_vip_sessions_via_cookies(
+        workbench_base_url,
+        cookies,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        owner=current_worker_id(),
+    )
+
+
 @pytest.fixture(autouse=True)
 def _cleanup_sessions(page, workbench_client, vip_config, _wb_cleanup_state):
     """Quit any VIP-named Workbench sessions created during the test."""

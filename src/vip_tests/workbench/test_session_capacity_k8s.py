@@ -28,9 +28,8 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_QUICK,
     ResourceProfileDisabled,
     _option_is_disabled,
-    _quit_vip_sessions_via_cookies,
-    current_worker_id,
     k8s_session_prefix,
+    quit_owned_sessions_via_page,
     wait_for_session_active,
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
@@ -95,22 +94,6 @@ def _launch_session(page: Page, session_name: str, profile: str | None = None) -
 
     page.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=TIMEOUT_QUICK)
     expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
-
-
-def _cleanup_sessions(page: Page, workbench_base_url: str, *, insecure: bool, ca_bundle) -> None:
-    try:
-        cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-    except Exception:
-        return
-    if not cookies:
-        return
-    _quit_vip_sessions_via_cookies(
-        workbench_base_url,
-        cookies,
-        insecure=insecure,
-        ca_bundle=ca_bundle,
-        owner=current_worker_id(),
-    )
 
 
 def _find_session_pod(k8s: KubernetesClient, session_name: str) -> dict | None:
@@ -371,7 +354,7 @@ def pod_has_expected_limits(
 
 @then("I clean up all launched sessions")
 def cleanup_k8s_sessions(launched_sessions: list[dict], page: Page, workbench_url: str, vip_config):
-    _cleanup_sessions(
+    quit_owned_sessions_via_page(
         page, workbench_url, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
     )
     for session in launched_sessions:
