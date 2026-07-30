@@ -151,10 +151,10 @@ Key principles:
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
 | `src/vip/plugin.py` | pytest plugin: markers (including `slow`, used by `verify --basic`), auto-skip, JSON report output |
 | `src/vip/version.py` | `ProductVersion` parsing/comparison for `min_version` gating; `MINIMUM_SUPPORTED_POSIT_TEAM` support floor (powers `vip version`) |
-| `src/vip/workbench_ui.py` | Browser-driven Workbench session-cleanup sweep (`quit_vip_sessions_via_ui`), shared by the per-test cleanup fixture and `vip cleanup --workbench-url` |
+| `src/vip/workbench_ui.py` | Browser-driven Workbench session-cleanup sweep (`quit_vip_sessions_via_ui`), shared by the per-test cleanup fixture and `vip cleanup --workbench-url`; takes an `owner` so a per-test sweep only quits its own xdist worker's sessions |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
 | `src/vip/clients/connect.py` | httpx client for Connect API |
-| `src/vip/clients/workbench.py` | httpx client for Workbench API; `quit_vip_sessions` warns loudly (not silently) when a VIP session persists after all retries |
+| `src/vip/clients/workbench.py` | httpx client for Workbench API; `quit_vip_sessions` warns loudly (not silently) when a VIP session persists after all retries. `session_owner` / `is_vip_session_for_owner` decide whether a VIP session belongs to the sweeping worker — see "Session ownership" below |
 | `src/vip/clients/packagemanager.py` | httpx client for Package Manager API |
 | `src/vip/install/platform.py` | Distro detection (rhel/debian/macos) + canonical Chromium package lists |
 | `src/vip/install/manifest.py` | `.vip-install.json` read/write (atomic), schema gate, pending-package helpers |
@@ -219,6 +219,24 @@ Configuration is in `vip.toml` (see `vip.toml.example` for the template). Secret
 -   `VIP_TEST_TOTP_SECRET` — optional base32 TOTP seed used by `--headless-auth` to auto-fill MFA codes for a dedicated test service account. **Equivalent to bypassing 2FA — never use a personal account's seed.**
 
 The plugin loads config via `--vip-config` or defaults to `./vip.toml`. If no config file exists, all product tests are skipped.
+
+## Workbench session ownership (parallel safety)
+
+Every Workbench session VIP creates encodes the xdist worker that created it, and cleanup uses that to decide what it may quit. This is not cosmetic: a sweep that matches on the bare `VIP ` prefix quits sessions a *sibling worker is still driving*, which surfaces as a vanished session row, an "Abnormal exits" toast, a `Session status: Quit` banner inside a live IDE, or `jsonrpc error 1 (Unable to connect to service)` in an RStudio console — all of them looking like deployment faults rather than a test-suite bug.
+
+The naming contract:
+
+| Generator | Format | Example |
+|---|---|---|
+| `unique_session_name(filename)` | `VIP <file> - <worker>-<ns>` | `VIP test_git_ops.py - gw1-1785380284140718000` |
+| `capacity_session_prefix()` | `_vip_cap_<worker>_<ts>_` | `_vip_cap_gw1_1785380282_Small_0` |
+
+Both live in `src/vip_tests/workbench/conftest.py` next to `current_worker_id()`, and `vip.clients.workbench.session_owner` parses the worker back out. **If you change either format, update `_VIP_OWNER_PATTERNS` in `src/vip/clients/workbench.py` in the same commit** — a name the pattern cannot parse is treated as unowned, which silently disables that session's cleanup.
+
+Rules for cleanup code:
+
+- Anything running *during* a test run (the autouse `_cleanup_sessions` fixture, the per-worker end-of-run sweep) must pass `owner=current_worker_id()`.
+- Only `vip cleanup --workbench-url` sweeps globally (`owner=None`), because it runs when no worker is left to disturb. That is also what clears orphans a crashed worker left behind, and orphans from an older VIP whose names carry no worker segment.
 
 ## Quarto report
 

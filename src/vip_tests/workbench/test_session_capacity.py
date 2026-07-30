@@ -28,6 +28,8 @@ from vip_tests.workbench.conftest import (
     ResourceProfileDisabled,
     _option_is_disabled,
     _quit_vip_sessions_via_cookies,
+    capacity_session_prefix,
+    current_worker_id,
     format_capacity_failure,
     wait_for_session_active,
 )
@@ -36,10 +38,6 @@ from vip_tests.workbench.pages import Homepage, NewSessionDialog
 pytestmark = pytest.mark.order(40)
 
 scenarios("test_session_capacity.feature")
-
-# Unique prefix for session names. Timestamp ensures no collision with
-# leftover sessions from previous runs.
-_SESSION_PREFIX = f"_vip_cap_{int(__import__('time').time())}_"
 
 
 @dataclass(frozen=True)
@@ -168,8 +166,9 @@ def _cleanup_sessions_via_api(
     """Quit the VIP capacity sessions created by this test run.
 
     Delegates to the shared cookie-based cleanup helper, which targets all
-    VIP-named sessions (``_vip_cap_`` prefix included).  TLS config is threaded
-    through so cleanup works against self-signed / custom-CA deployments.
+    VIP-named sessions (``_vip_cap_`` prefix included), scoped to this worker so
+    a sibling worker's live capacity sessions are left alone.  TLS config is
+    threaded through so cleanup works against self-signed / custom-CA deployments.
     """
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
@@ -178,7 +177,11 @@ def _cleanup_sessions_via_api(
     if not cookies:
         return
     _quit_vip_sessions_via_cookies(
-        workbench_base_url, cookies, insecure=insecure, ca_bundle=ca_bundle
+        workbench_base_url,
+        cookies,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        owner=current_worker_id(),
     )
 
 
@@ -217,11 +220,12 @@ def launch_sessions(page: Page, vip_config):
 
     all_sessions: list[dict[str, str | None]] = []
     disabled_profiles: list[str] = []
+    prefix = capacity_session_prefix()
     for profile in profiles_to_test:
         profile_disabled = False
         for i in range(session_count):
             label = profile or "default"
-            name = f"{_SESSION_PREFIX}{label}_{i}"
+            name = f"{prefix}{label}_{i}"
             try:
                 _launch_session(page, name, profile)
             except ResourceProfileDisabled as exc:

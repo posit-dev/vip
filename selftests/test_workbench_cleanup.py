@@ -852,3 +852,159 @@ def test_run_session_cleanup_returns_early_when_workbench_client_is_none(monkeyp
     state = _fresh_state()
 
     wb._run_session_cleanup(page, None, _fake_vip_config(), state)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Worker-scoped cleanup (cross-worker session kills)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "label, expected",
+    [
+        ("VIP test_git_ops.py - gw1-1785380284140718000", "gw1"),
+        ("VIP test_ide_launch.py - gw0-123", "gw0"),
+        ("VIP test_sessions.py - main-123", "main"),
+        ("_vip_cap_gw1_1785380282_Small_0", "gw1"),
+        ("_vip_cap_main_1785380282_Large_2", "main"),
+        # Legacy capacity names (no worker segment) and foreign sessions.
+        ("_vip_cap_1700000000_default_0", None),
+        ("My real work", None),
+        ("", None),
+    ],
+)
+def test_session_owner_extracts_the_creating_worker(label, expected):
+    from vip.clients.workbench import session_owner
+
+    assert session_owner(label) == expected
+
+
+def test_quit_vip_sessions_with_owner_spares_other_workers_sessions():
+    """The #467 sweep must not quit a session another xdist worker is using."""
+    calls: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/api/sessions":
+            return httpx.Response(
+                200,
+                json=[
+                    {"id": "mine", "label": "VIP test_jobs.py - gw0-1"},
+                    {"id": "theirs", "label": "VIP test_git_ops.py - gw1-2"},
+                    {"id": "mycap", "label": "_vip_cap_gw0_1_Small_0"},
+                    {"id": "theircap", "label": "_vip_cap_gw1_1_Small_0"},
+                    {"id": "human", "label": "My real work"},
+                ],
+            )
+        return httpx.Response(200)
+
+    wc = _client_with_handler(handler)
+    quit_count = wc.quit_vip_sessions(retries=1, owner="gw0")
+
+    assert quit_count == 2
+    assert ("DELETE", "/api/sessions/mine") in calls
+    assert ("DELETE", "/api/sessions/mycap") in calls
+    assert ("DELETE", "/api/sessions/theirs") not in calls
+    assert ("DELETE", "/api/sessions/theircap") not in calls
+    assert ("DELETE", "/api/sessions/human") not in calls
+
+
+def test_quit_vip_sessions_without_owner_still_sweeps_everything():
+    """``vip cleanup`` has no worker context and must stay a global sweep."""
+    calls: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/api/sessions":
+            return httpx.Response(
+                200,
+                json=[
+                    {"id": "a", "label": "VIP test_jobs.py - gw0-1"},
+                    {"id": "b", "label": "VIP test_git_ops.py - gw1-2"},
+                    {"id": "c", "label": "_vip_cap_1700000000_default_0"},
+                ],
+            )
+        return httpx.Response(200)
+
+    wc = _client_with_handler(handler)
+
+    assert wc.quit_vip_sessions(retries=1) == 3
+
+
+def test_count_vip_sessions_with_owner_counts_only_that_worker():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=[
+                {"id": "a", "label": "VIP test_jobs.py - gw0-1"},
+                {"id": "b", "label": "VIP test_git_ops.py - gw1-2"},
+                {"id": "c", "label": "My real work"},
+            ],
+        )
+
+    wc = _client_with_handler(handler)
+
+    assert wc.count_vip_sessions(owner="gw0") == 1
+    assert wc.count_vip_sessions() == 2
+
+
+def test_vip_names_from_select_labels_filters_by_owner():
+    from vip_tests.workbench.conftest import _vip_names_from_select_labels
+
+    labels = [
+        "select VIP test_jobs.py - gw0-1",
+        "select VIP test_git_ops.py - gw1-2",
+        "select _vip_cap_gw0_1_Small_0",
+        "select My real work",
+    ]
+
+    assert _vip_names_from_select_labels(labels, owner="gw0") == [
+        "VIP test_jobs.py - gw0-1",
+        "_vip_cap_gw0_1_Small_0",
+    ]
+
+
+def test_run_session_cleanup_scopes_every_sweep_to_this_worker(monkeypatch):
+    """The per-test cleanup must pass its own worker id to all three sweeps."""
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import conftest as wb
+
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        wb,
+        "_quit_vip_sessions_via_cookies",
+        lambda *a, **k: seen.setdefault("quit", k.get("owner")),
+    )
+    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: True)
+    monkeypatch.setattr(
+        wb,
+        "_vip_session_count_via_cookies",
+        lambda *a, **k: (seen.setdefault("count", k.get("owner")), 1)[1],
+    )
+    monkeypatch.setattr(
+        wb,
+        "_quit_vip_sessions_via_ui",
+        lambda *a, **k: (seen.setdefault("ui", k.get("owner")), 0)[1],
+    )
+
+    page = _fake_page([{"name": "a", "value": "b"}])
+    workbench_client = SimpleNamespace(base_url="https://wb.example.com")
+
+    wb._run_session_cleanup(page, workbench_client, _fake_vip_config(), _fresh_state())
+
+    assert seen["quit"] == "gw0"
+    assert seen["count"] == "gw0"
+    assert seen["ui"] == "gw0"
+
+
+def test_capacity_session_prefix_carries_the_worker_id(monkeypatch):
+    """Capacity session names must be attributable to their creating worker."""
+    from vip.clients.workbench import session_owner
+    from vip_tests.workbench.conftest import capacity_session_prefix
+
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw3")
+
+    assert session_owner(f"{capacity_session_prefix()}Small_0") == "gw3"

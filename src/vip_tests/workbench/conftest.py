@@ -213,6 +213,30 @@ def _option_is_disabled(option: Locator) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def current_worker_id() -> str:
+    """Return this process's xdist worker id (``"main"`` when running serially).
+
+    Session names embed this so cleanup can tell a worker's own sessions from a
+    sibling worker's (see :func:`~vip.clients.workbench.session_owner`).
+    """
+    return os.environ.get("PYTEST_XDIST_WORKER", "main")
+
+
+def capacity_session_prefix() -> str:
+    """Prefix for this worker's capacity-scenario session names.
+
+    Capacity sessions are named outside :func:`unique_session_name` (they carry
+    a profile and an index rather than a source file), so they need their own
+    generator -- but the same contract: the worker id comes first so cleanup can
+    attribute the session back to the worker that made it (see
+    :func:`~vip.clients.workbench.session_owner`) and not quit a sibling
+    worker's live capacity sessions.  The timestamp keeps names clear of
+    leftovers from previous runs.  Computed per call, not at import time, so the
+    worker id is read after xdist has set it.
+    """
+    return f"_vip_cap_{current_worker_id()}_{int(time.time())}_"
+
+
 def unique_session_name(filename: str) -> str:
     """Generate a Workbench session name unique across xdist workers.
 
@@ -221,9 +245,12 @@ def unique_session_name(filename: str) -> str:
     second, producing strict-mode failures once locators were tightened
     to ends-with matches. Worker id + nanosecond timestamp guarantees
     uniqueness for any practical parallelism.
+
+    The worker id is not just for uniqueness: cleanup parses it back out to
+    scope its sweeps, so the format must stay parseable by
+    :func:`~vip.clients.workbench.session_owner`.
     """
-    worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
-    return f"VIP {filename} - {worker}-{time.time_ns()}"
+    return f"VIP {filename} - {current_worker_id()}-{time.time_ns()}"
 
 
 # Keywords indicating the URL is a login/auth page (used for OIDC detection)
@@ -662,18 +689,20 @@ def _quit_vip_sessions_via_cookies(
     *,
     insecure: bool,
     ca_bundle,
+    owner: str | None = None,
 ) -> int:
     """Quit VIP-named sessions using a scratch cookie-authenticated client.
 
     A scratch ``WorkbenchClient`` is used so the session-scoped
     ``workbench_client`` fixture's cookie jar is never mutated.  TLS config
     (``--insecure`` / ``--ca-bundle``) is honoured via *insecure*/*ca_bundle*.
+    *owner* scopes the sweep to one xdist worker's own sessions.
     """
     try:
         scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
         try:
             scratch.set_cookies(cookies)
-            return scratch.quit_vip_sessions()
+            return scratch.quit_vip_sessions(owner=owner)
         finally:
             scratch.close()
     except Exception:
@@ -710,6 +739,7 @@ def _vip_session_count_via_cookies(
     *,
     insecure: bool,
     ca_bundle,
+    owner: str | None = None,
 ) -> int:
     """Count VIP-named sessions still listed for a cookie-authenticated client.
 
@@ -725,7 +755,7 @@ def _vip_session_count_via_cookies(
         scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
         try:
             scratch.set_cookies(cookies)
-            return scratch.count_vip_sessions()
+            return scratch.count_vip_sessions(owner=owner)
         finally:
             scratch.close()
     except Exception:
@@ -745,6 +775,11 @@ def _wb_cleanup_state(vip_config, workbench_client):
     yield state
     if workbench_client is None:
         return
+    # Still worker-scoped: under xdist each worker tears down at the end of its
+    # *own* session, which can be while a sibling worker is mid-test.  A truly
+    # global sweep belongs to `vip cleanup --workbench-url`, which runs when no
+    # worker is left to disturb.
+    owner = current_worker_id()
     cookies = state["cookies"]
     if cookies:
         _quit_vip_sessions_via_cookies(
@@ -752,6 +787,7 @@ def _wb_cleanup_state(vip_config, workbench_client):
             cookies,  # type: ignore[arg-type]
             insecure=vip_config.insecure,
             ca_bundle=vip_config.ca_bundle,
+            owner=owner,
         )
     # Belt-and-suspenders: when an API key is configured, also sweep with it.
     # Run this even if cookies were captured, because cookies may have expired
@@ -759,7 +795,7 @@ def _wb_cleanup_state(vip_config, workbench_client):
     # quit_vip_sessions is idempotent, so this is a no-op when nothing remains.
     if vip_config.workbench.api_key:
         try:
-            workbench_client.quit_vip_sessions()
+            workbench_client.quit_vip_sessions(owner=owner)
         except Exception:
             pass
 
@@ -797,11 +833,17 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
     # Remember the latest good cookies for the end-of-run sweep.
     state["cookies"] = cookies
     state["base_url"] = workbench_client.base_url
+    # Scope every sweep to this worker's own sessions.  A bare VIP-prefix match
+    # here quits sessions a sibling xdist worker is still driving mid-test,
+    # which shows up as a vanished session row, an "Abnormal exits" toast, or a
+    # "Session status: Quit" banner inside a live IDE.
+    owner = current_worker_id()
     _quit_vip_sessions_via_cookies(
         workbench_client.base_url,
         cookies,
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
+        owner=owner,
     )
     # Detect API reachability once per session (cached on state).
     if state["api_reachable"] is None:
@@ -822,9 +864,10 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
         cookies,
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
+        owner=owner,
     )
     if not api_reachable or remaining != 0:
-        _quit_vip_sessions_via_ui(page, workbench_client.base_url)
+        _quit_vip_sessions_via_ui(page, workbench_client.base_url, owner=owner)
         # Best-effort post-escalation check, for logging only -- never blocks
         # or fails the test.
         still_remaining = _vip_session_count_via_cookies(
@@ -832,6 +875,7 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
             cookies,
             insecure=vip_config.insecure,
             ca_bundle=vip_config.ca_bundle,
+            owner=owner,
         )
         if still_remaining > 0:
             logger.warning(
