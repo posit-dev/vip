@@ -58,8 +58,13 @@ jobs:
       # into the script, same as SUITE in workbench-smoke.yml -- a
       # workflow_dispatch input is user-controlled text and should never be
       # substituted straight into a shell/script body.
+      # The `github.event_name` clause is not redundant. On a `schedule` event
+      # the `inputs` context is null, and `inputs.version != ''` would then rely
+      # on GitHub coercing null to '' in the comparison. Testing the event first
+      # short-circuits, so `inputs.version` is only ever compared on the one
+      # event that populates it -- the scheduled path never depends on coercion.
       - name: Validate explicit version input
-        if: inputs.version != ''
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.version != '' }}
         env:
           INPUT_VERSION: ${{ inputs.version }}
           LAST_TAG: ${{ steps.last-tag.outputs.tag }}
@@ -92,8 +97,11 @@ jobs:
       # A dispatch run with no version input behaves exactly like a scheduled
       # run, including this gate -- it's a "release now" button, not an
       # override. Only an explicit --version bypasses it.
+      # Inverse of the validate step's condition, spelled out for the same
+      # reason: on `schedule` the first clause is true and short-circuits, so
+      # a null `inputs.version` is never compared against ''.
       - name: Check for commits since the last release
-        if: inputs.version == ''
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.version == '' }}
         id: gate
         env:
           LAST_TAG: ${{ steps.last-tag.outputs.tag }}
