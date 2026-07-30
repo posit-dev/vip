@@ -330,3 +330,74 @@ def test_restore_shared_session_returns_true_when_homepage_comes_back():
             return _AuthFakeLocator(visible=lambda: True)
 
     assert restore_shared_session(_RecoveredPage(), "https://wb.example.com") is True
+
+
+# ---------------------------------------------------------------------------
+# A restored session must also refresh the cache on disk
+# ---------------------------------------------------------------------------
+
+
+class _RestorablePage:
+    """A page whose SSO click gets back in, exposing a context storage state."""
+
+    STATE = {"cookies": [{"name": "fresh", "value": "new"}], "origins": []}
+
+    def __init__(self, *, recovers: bool = True):
+        self.url = "https://wb.example.com/auth-sign-in"
+        self._logged_in = False
+        self._recovers = recovers
+
+        class _Context:
+            def storage_state(self):
+                return _RestorablePage.STATE
+
+        self.context = _Context()
+
+    def goto(self, *a, **k):
+        pass
+
+    def wait_for_load_state(self, *a, **k):
+        pass
+
+    def locator(self, selector):
+        from vip_tests.workbench.pages import Homepage
+
+        if selector == Homepage.POSIT_LOGO:
+            return _AuthFakeLocator(visible=lambda: self._logged_in)
+        return _AuthFakeLocator(visible=lambda: False)
+
+    def get_by_role(self, role, name=None):
+        def _click():
+            if self._recovers:
+                self._logged_in = True
+
+        return _AuthFakeLocator(visible=lambda: True, on_click=_click)
+
+
+def test_successful_restore_refreshes_the_cached_auth_session(monkeypatch):
+    """Otherwise the next run finds a signed-out cache and re-auths interactively."""
+    from vip_tests.workbench import conftest as wb
+
+    saved: list[dict] = []
+    monkeypatch.setattr(
+        wb, "refresh_auth_cache_from_storage_state", lambda state: saved.append(state) or True
+    )
+
+    assert wb.restore_shared_session(_RestorablePage(), "https://wb.example.com") is True
+    assert saved == [_RestorablePage.STATE]
+
+
+def test_failed_restore_does_not_touch_the_cache(monkeypatch):
+    """A dead session must not overwrite whatever the cache still holds."""
+    from vip_tests.workbench import conftest as wb
+
+    saved: list[dict] = []
+    monkeypatch.setattr(
+        wb, "refresh_auth_cache_from_storage_state", lambda state: saved.append(state) or True
+    )
+
+    assert (
+        wb.restore_shared_session(_RestorablePage(recovers=False), "https://wb.example.com")
+        is False
+    )
+    assert saved == []

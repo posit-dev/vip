@@ -23,6 +23,7 @@ from playwright.sync_api import Locator, Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given
 
+from vip.auth import refresh_auth_cache_from_storage_state
 from vip.clients.workbench import WorkbenchClient
 from vip.plugin import _auth_session_key
 from vip.timeouts import timeout_scale
@@ -570,12 +571,32 @@ def _silent_sso_signin(sso_button, homepage_logo, workbench_url: str) -> bool:
             return False
 
 
+def _refresh_cached_session(page: Page) -> bool:
+    """Write this context's storage state back to the auth cache. Always True.
+
+    The caller has already established that the session is live, so the return
+    value reports *the restore*, not the cache write: a cache that could not be
+    refreshed (absent, read-only) is a slower next run, not a failed restore,
+    and must not be reported as one.
+    """
+    try:
+        refresh_auth_cache_from_storage_state(page.context.storage_state())
+    except Exception as exc:
+        logger.debug("Could not read storage state to refresh the auth cache: %s", exc)
+    return True
+
+
 def restore_shared_session(page: Page, workbench_url: str) -> bool:
     """Sign back in after the sign-out scenario, returning whether it worked.
 
     The scenario deliberately ends the session every other scenario shares, so
     it has to hand one back. Navigating to Workbench and completing the silent
     SSO round-trip mints a fresh session in this browser context.
+
+    A successful restore also writes the fresh session back to the auth cache on
+    disk. Without that the in-run damage is repaired but the cache still holds
+    the cookies the sign-out killed, so the *next* ``vip verify`` rejects it and
+    drops into an interactive re-auth -- a browser popup on every run.
 
     Returns False -- and warns -- when the round-trip cannot complete, e.g. the
     IdP applied single-logout and cleared its own cookies too. That is not
@@ -588,10 +609,10 @@ def restore_shared_session(page: Page, workbench_url: str) -> bool:
         page.goto(workbench_url)
         page.wait_for_load_state("load")
         if logo.is_visible():
-            return True
+            return _refresh_cached_session(page)
         sso_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE)).first
         if sso_button.is_visible() and _silent_sso_signin(sso_button, logo, workbench_url):
-            return True
+            return _refresh_cached_session(page)
     except (PlaywrightTimeoutError, PlaywrightError) as exc:
         logger.warning("Could not sign back in after the sign-out scenario: %s", exc)
         return False
