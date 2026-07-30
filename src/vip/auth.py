@@ -16,7 +16,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from playwright.sync_api import (
@@ -31,6 +31,9 @@ from playwright.sync_api import (
 )
 
 from vip.timeouts import scaled
+
+if TYPE_CHECKING:
+    from vip.config import ProductConfig
 
 
 class AuthConfigError(ValueError):
@@ -425,12 +428,51 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
     os.chmod(meta_path, 0o600)
 
 
+def _resolve_str_if_inferred(
+    url: str | None,
+    inferred: bool,
+    *,
+    insecure: bool,
+    ca_bundle: Path | None,
+) -> str | None:
+    """Resolve a bare url string through ``resolve_url_scheme``'s provenance check.
+
+    ``start_interactive_auth``/``start_headless_auth`` receive ``connect_url``/
+    ``workbench_url`` as plain strings plus a separate ``*_scheme_inferred``
+    bool -- that's the shape ``vip.plugin`` already has to pass across the
+    ``VIPConfig`` -> CLI-function boundary -- rather than a ``ProductConfig``
+    object. ``resolve_url_scheme`` only takes a ``ProductConfig`` (see its
+    docstring for why), so this builds a throwaway one to carry *inferred*
+    across, calls ``resolve_url_scheme``, and returns the resolved string.
+    """
+    if not url:
+        return url
+    from vip.config import ProductConfig
+
+    # ProductConfig.__post_init__ runs _normalize_url on construction, but
+    # *url* here has already been normalized upstream (it always has an
+    # explicit http:// or https:// prefix by the time it reaches this
+    # function) -- so the inferred flag __post_init__ computes is always
+    # False and meaningless. Overwrite it with the caller's *inferred*,
+    # which is the actual, authoritative provenance carried separately
+    # alongside the string. This overwrite-right-after-construction is a
+    # known wart, not a bug: the clean fix is changing start_interactive_auth/
+    # start_headless_auth to take ProductConfig objects directly instead of
+    # a string + a separate bool, which would touch ~15 call sites across
+    # test_auth.py plus plugin.py/cli.py -- out of scope for this bug fix.
+    pc = ProductConfig(url=url)
+    pc.url_scheme_inferred = inferred
+    return resolve_url_scheme(pc, insecure=insecure, ca_bundle=ca_bundle)
+
+
 def start_interactive_auth(
     connect_url: str | None = None,
     workbench_url: str | None = None,
     cache_path: Path | None = None,
     insecure: bool = False,
     ca_bundle: Path | None = None,
+    connect_url_scheme_inferred: bool = False,
+    workbench_url_scheme_inferred: bool = False,
 ) -> InteractiveAuthSession:
     """Launch a headed browser, authenticate via OIDC, and optionally
     mint a Connect API key through the UI.
@@ -453,6 +495,12 @@ def start_interactive_auth(
     When *ca_bundle* is set, the path is exported as ``NODE_EXTRA_CA_CERTS``
     before launching Chromium so it trusts a custom CA (Chromium-level trust
     only; this does not update the OS certificate store).
+
+    *connect_url_scheme_inferred* / *workbench_url_scheme_inferred* mark a URL
+    whose ``https://`` scheme was inferred by ``vip.config._normalize_url``
+    rather than given explicitly (``ProductConfig.url_scheme_inferred``).
+    When set, :func:`resolve_url_scheme` probes the URL and falls back to
+    ``http://`` if https doesn't answer, before it's used for anything.
     """
     if not connect_url and not workbench_url:
         raise ValueError(
@@ -464,6 +512,13 @@ def start_interactive_auth(
         cached = _load_cached_auth(cache_path, connect_url, workbench_url)
         if cached is not None:
             return cached
+
+    connect_url = _resolve_str_if_inferred(
+        connect_url, connect_url_scheme_inferred, insecure=insecure, ca_bundle=ca_bundle
+    )
+    workbench_url = _resolve_str_if_inferred(
+        workbench_url, workbench_url_scheme_inferred, insecure=insecure, ca_bundle=ca_bundle
+    )
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
@@ -605,6 +660,8 @@ def start_headless_auth(
     verbose: bool = False,
     insecure: bool = False,
     ca_bundle: Path | None = None,
+    connect_url_scheme_inferred: bool = False,
+    workbench_url_scheme_inferred: bool = False,
 ) -> InteractiveAuthSession:
     """Launch a headless browser, automate OIDC login, and optionally
     mint a Connect API key through the UI.
@@ -622,6 +679,9 @@ def start_headless_auth(
     When *ca_bundle* is set, the path is exported as ``NODE_EXTRA_CA_CERTS``
     before launching Chromium so it trusts a custom CA (Chromium-level trust
     only; this does not update the OS certificate store).
+
+    *connect_url_scheme_inferred* / *workbench_url_scheme_inferred*: see
+    ``start_interactive_auth``.
     """
     import vip.idp as _idp_mod
 
@@ -668,6 +728,16 @@ def start_headless_auth(
             )
 
         fill_login = get_idp_strategy(idp)
+
+    # Resolve inferred https:// schemes now, after every fail-fast validation
+    # above and right before anything (Playwright or httpx) actually talks to
+    # the URLs, so a config error never pays for a network probe it doesn't need.
+    connect_url = _resolve_str_if_inferred(
+        connect_url, connect_url_scheme_inferred, insecure=insecure, ca_bundle=ca_bundle
+    )
+    workbench_url = _resolve_str_if_inferred(
+        workbench_url, workbench_url_scheme_inferred, insecure=insecure, ca_bundle=ca_bundle
+    )
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
@@ -1301,6 +1371,150 @@ def _body_snippet(resp, limit: int = 200) -> str:
     return text[:limit] if text else "<empty body>"
 
 
+# Cache of resolved schemes, keyed by (url, insecure, ca_bundle) -- the same
+# three inputs that determine what the probe below would decide. A single
+# `vip verify` run can reach ``resolve_url_scheme`` from more than one place
+# -- the interactive/headless auth flow, then again from a client fixture
+# reading the same config value -- so the second and later calls for the
+# same (url, insecure, ca_bundle) are a dict lookup instead of a second live
+# probe. Keying on URL alone would let a cached ``verify=True`` failure
+# silently authorise a downgrade for a later caller that actually passed
+# ``insecure=True`` (or a different ``ca_bundle``) and might have gotten a
+# different, correct answer.
+_scheme_resolution_cache: dict[tuple[str, bool, Path | None], str] = {}
+
+
+def _tls_listener_present(url: str, *, timeout: float) -> bool:
+    """True if something accepts a TCP connection at *url*'s host:port.
+
+    Used to tell "TLS is present but this client doesn't trust it" (a
+    self-signed, expired, or otherwise unverified certificate; a protocol
+    mismatch; any other handshake failure) apart from "nothing is listening
+    here" when an https:// probe fails at the transport level. Those are not
+    the same failure and must not share a remedy: a listener that completes
+    a TCP handshake but fails a TLS handshake is a real server, running TLS,
+    that this client's default verification does not trust -- downgrading to
+    http:// in that case would send credentials to that server in the clear.
+
+    Deciding this with a raw TCP connect rather than by inspecting the
+    httpx/httpcore/ssl exception chain is deliberate. Reproducing this
+    against a real self-signed listener showed ``httpx.ConnectError.__cause__``
+    is httpcore's own ``ConnectError``, not the underlying ``ssl.SSLError`` --
+    getting to the real cause takes walking multiple chain levels, and how
+    many is an implementation detail of httpx/httpcore that can change
+    between versions. A TCP-level check needs no exception introspection at
+    all: it is agnostic to *why* the TLS handshake failed, which is exactly
+    the property wanted here, since every reason it can fail means the same
+    thing -- there is a TLS listener, not an empty port.
+    """
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if not host:
+        return False
+    port = parsed.port or 443
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def resolve_url_scheme(
+    pc: ProductConfig,
+    *,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
+) -> str:
+    """Fall *pc*'s URL back to ``http://`` if an inferred ``https://`` doesn't answer.
+
+    ``vip.config._normalize_url`` defaults a scheme-less host to ``https://``
+    but cannot verify reachability without a network call, which would break
+    config loading's purity (it must stay network-free so, e.g., CI's
+    ``--collect-only`` dry runs never dial out). This is the network-touching
+    counterpart: call it once, from the first place that is actually about to
+    talk to ``pc.url`` for real (an auth flow or a client constructor).
+
+    Provenance is checked here, not by the caller: if ``pc.url_scheme_inferred``
+    is ``False`` -- the user gave an explicit scheme -- this returns ``pc.url``
+    unchanged without touching the network. There is deliberately no way to
+    probe a URL without going through this check: an earlier version took a
+    bare ``url: str`` and trusted every caller to test the flag first, which a
+    type-design review flagged as a hole -- a caller that forgot, or a bare
+    string with the provenance already stripped off, would silently downgrade
+    a URL nobody ever marked as inferred. Taking the whole ``ProductConfig``
+    makes that structurally impossible: there is no bare-string entry point
+    left to misuse.
+
+    A transport-level failure (``httpx.TransportError``) splits into two
+    cases that must not share a remedy:
+
+    - Nothing answers at all (refused connection, DNS failure, timeout) --
+      "https doesn't answer" -- triggers the http:// fallback, logged loudly
+      so a user who meant https notices they got plaintext instead.
+    - Something answers at the TCP level but the TLS handshake itself fails
+      (untrusted/self-signed/expired certificate, protocol mismatch, ...) --
+      see :func:`_tls_listener_present`. This is a *trust* problem, not a
+      *reachability* problem, and downgrading here would silently send
+      credentials to a real server over plaintext. This case does NOT
+      downgrade: ``pc.url`` is left as https://, and a loud warning names the
+      actual remedy (``[tls] insecure`` / ``[tls] ca_bundle`` in ``vip.toml``,
+      or the equivalent flag on commands that have one) instead of a vague
+      connection failure.
+
+    Any actual HTTP response -- including a 5xx -- counts as "https
+    answered" and is kept as-is; only a transport failure reaches either
+    branch above.
+
+    On return, ``pc.url`` holds the resolved value and ``pc.url_scheme_inferred``
+    is reset to ``False`` -- resolution is a one-time transition from
+    "inferred, unverified" to "settled" (settled as https in the
+    trust-problem case above, not just the reachable-and-downgraded case),
+    not a repeatable state. A second call on the same ``pc`` is then a plain
+    attribute read, no cache lookup needed. Results are still cached per
+    ``(url, insecure, ca_bundle)`` in ``_scheme_resolution_cache`` so a
+    *different* ``ProductConfig`` for the same URL and TLS settings (e.g. a
+    fresh instance built from the same ``--connect-url``) doesn't re-probe.
+    """
+    if not pc.url_scheme_inferred:
+        return pc.url
+
+    url = pc.url
+    cache_key = (url, insecure, ca_bundle)
+    if cache_key in _scheme_resolution_cache:
+        resolved = _scheme_resolution_cache[cache_key]
+    else:
+        verify = _httpx_verify(insecure, ca_bundle)
+        resolved = url
+        try:
+            httpx.get(url, timeout=scaled(10.0), verify=verify, follow_redirects=True)
+        except httpx.TransportError as exc:
+            if _tls_listener_present(url, timeout=scaled(5.0)):
+                print(
+                    f">>> Warning: {url} answers on the network but its TLS "
+                    f"certificate was not accepted ({exc}). NOT falling back to "
+                    f"plaintext HTTP -- that would send credentials to this server "
+                    f"in the clear. If this certificate is expected (e.g. "
+                    f"self-signed or an internal CA), set [tls] insecure = true or "
+                    f"[tls] ca_bundle in vip.toml, or pass --insecure/--ca-bundle "
+                    f"where the command supports it."
+                )
+            else:
+                resolved = "http://" + url.removeprefix("https://")
+                print(
+                    f">>> Warning: {url} did not answer ({exc}); falling back to plaintext "
+                    f"HTTP at {resolved}. Pass an explicit http:// or https:// scheme on the "
+                    f"URL to silence this."
+                )
+        _scheme_resolution_cache[cache_key] = resolved
+
+    pc.url = resolved
+    pc.url_scheme_inferred = False
+    return resolved
+
+
 def _resolve_connect_api_base(
     connect_url: str,
     *,
@@ -1399,6 +1613,11 @@ def _create_api_key_via_session(
     cannot accept a custom CA bundle, which caused ``CERTIFICATE_VERIFY_FAILED``
     errors when ``--insecure`` was set (issue #239).
 
+    The client is constructed with ``follow_redirects=True`` to match
+    ``_resolve_connect_api_base``'s probes: a deployment that redirects
+    HTTP -> HTTPS (or drops/adds a trailing slash) would otherwise turn a
+    301/302 into a treated-as-failure response here (issue #537).
+
     The XSRF token is still read from the browser's cookie jar via
     :func:`_xsrf_from_page` and sent as the ``X-Rsc-Xsrf`` request header —
     Connect's double-submit CSRF check requires the header and the cookie to
@@ -1450,6 +1669,7 @@ def _create_api_key_via_session(
             cookies=cookies,
             timeout=scaled(10.0),
             verify=verify,
+            follow_redirects=True,
         ) as client:
             me_resp = client.get("/v1/user")
             if not me_resp.is_success:

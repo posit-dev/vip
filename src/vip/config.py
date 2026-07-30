@@ -15,10 +15,25 @@ else:
     import tomli as tomllib
 
 
-def _normalize_url(url: str) -> str:
+def _normalize_url(url: str) -> tuple[str, bool]:
     """Ensure a URL has a scheme and, for sub-path URLs, a trailing slash.
 
-    Scheme normalization: if no scheme is present, ``http://`` is added.
+    Scheme normalization: if no scheme is present, ``https://`` is added --
+    modern Posit Team deployments are essentially always TLS-terminated, and
+    defaulting a bare hostname to plaintext HTTP breaks API-key minting (and
+    anything else that doesn't follow redirects) against a deployment that
+    redirects HTTP -> HTTPS (see #537). The returned bool reports whether the
+    scheme was *inferred* (no scheme was given) rather than *explicit* (the
+    caller wrote ``http://`` or ``https://`` themselves); an explicit scheme
+    is authoritative and must never be second-guessed.
+
+    A scheme-less host that turns out to only serve plain HTTP still needs a
+    way back to ``http://`` -- that requires an actual network probe, which
+    has no place here. This function must stay pure and network-free so
+    config loading (including CI's ``--collect-only`` dry runs) never dials
+    out. Callers that are about to talk to the URL for real use the returned
+    "inferred" flag to decide whether ``vip.auth.resolve_url_scheme`` may
+    fall back to ``http://`` if ``https://`` doesn't answer.
 
     Trailing-slash normalization: a trailing slash is added **only** when the
     URL has a non-root path component (e.g. ``/pwb`` or ``/connect``).  Without
@@ -30,9 +45,10 @@ def _normalize_url(url: str) -> str:
     ``f"{url}/__api__/..."`` without introducing double slashes.
     """
     if not url:
-        return url
-    if not url.startswith(("http://", "https://")):
-        url = f"http://{url}"
+        return url, False
+    inferred = not url.startswith(("http://", "https://"))
+    if inferred:
+        url = f"https://{url}"
     parsed = urlparse(url)
     path = parsed.path
     if path and path != "/":
@@ -42,7 +58,7 @@ def _normalize_url(url: str) -> str:
     else:
         # Host-only URL: normalise to no trailing slash so f"{url}/..." is safe.
         path = ""
-    return urlunparse(parsed._replace(path=path))
+    return urlunparse(parsed._replace(path=path)), inferred
 
 
 def _as_str_list(value: object, field_name: str) -> list[str]:
@@ -67,9 +83,23 @@ class ProductConfig:
     enabled: bool = True
     url: str = ""
     version: str | None = None
+    # True when ``url`` was given without a scheme and ``https://`` was
+    # inferred by ``_normalize_url``. ``vip.auth.resolve_url_scheme`` consults
+    # this to decide whether an unreachable https:// may fall back to
+    # http://, and resets it to False once resolved -- it tracks a transient
+    # "has this URL been vetted yet" state, not a value the caller chose, so
+    # it is excluded from equality/repr for the same reason a cache-hit flag
+    # would be: two configs that are otherwise identical but differ only in
+    # whether resolution has already run should compare equal, even though a
+    # network probe happening on one and not the other is a real (if
+    # temporary) behavioral difference this exclusion accepts as out of scope
+    # for `==`. Nothing in this codebase compares ProductConfig with `==`
+    # today, so the tradeoff is currently inert -- but it is intentional
+    # should that change, not an oversight.
+    url_scheme_inferred: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        self.url = _normalize_url(self.url)
+        self.url, self.url_scheme_inferred = _normalize_url(self.url)
 
     @property
     def is_configured(self) -> bool:

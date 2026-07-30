@@ -267,14 +267,25 @@ def pytest_configure(config: pytest.Config) -> None:
                 cache_path=cache_path,
                 insecure=vip_cfg.insecure,
                 ca_bundle=vip_cfg.ca_bundle,
+                connect_url_scheme_inferred=vip_cfg.connect.url_scheme_inferred,
+                workbench_url_scheme_inferred=vip_cfg.workbench.url_scheme_inferred,
             )
             config.stash[_auth_session_key] = session
             if session.api_key:
                 vip_cfg.connect.api_key = session.api_key
             # Auth may have rewritten the Connect URL (sub-path dashboard +
-            # root API).  Sync so the test clients hit the same base mint did.
+            # root API, or an inferred https:// downgraded to http:// -- see
+            # resolve_url_scheme).  Sync so the test clients hit the same
+            # base mint/login did.
             if session._connect_url and connect_url and session._connect_url != connect_url:
                 vip_cfg.connect.url = session._connect_url
+            # Same sync for Workbench: an inferred https:// that resolve_url_scheme
+            # downgraded to http:// must reach vip_cfg.workbench.url the same way,
+            # not rely on conftest.py's fixture-level resolve_url_scheme call
+            # hitting a cache entry keyed on the URL string as an unstated
+            # side-channel (issue #562 comment-accuracy review).
+            if session._workbench_url and wb_url and session._workbench_url != wb_url:
+                vip_cfg.workbench.url = session._workbench_url
             if not session.api_key and connect_url:
                 warnings.warn(
                     "VIP: --interactive-auth could not mint an API key. "
@@ -311,6 +322,8 @@ def pytest_configure(config: pytest.Config) -> None:
                     verbose=config.getoption("--vip-verbose", default=False),
                     insecure=vip_cfg.insecure,
                     ca_bundle=vip_cfg.ca_bundle,
+                    connect_url_scheme_inferred=vip_cfg.connect.url_scheme_inferred,
+                    workbench_url_scheme_inferred=vip_cfg.workbench.url_scheme_inferred,
                 )
             except AuthConfigError as exc:
                 raise pytest.UsageError(str(exc)) from None
@@ -318,9 +331,14 @@ def pytest_configure(config: pytest.Config) -> None:
             if session.api_key:
                 vip_cfg.connect.api_key = session.api_key
             # Auth may have rewritten the Connect URL (sub-path dashboard +
-            # root API).  Sync so the test clients hit the same base mint did.
+            # root API, or an inferred https:// downgraded to http:// -- see
+            # resolve_url_scheme).  Sync so the test clients hit the same
+            # base mint/login did.
             if session._connect_url and connect_url and session._connect_url != connect_url:
                 vip_cfg.connect.url = session._connect_url
+            # Same sync for Workbench -- see the --interactive-auth branch above.
+            if session._workbench_url and wb_url and session._workbench_url != wb_url:
+                vip_cfg.workbench.url = session._workbench_url
             if not session.api_key and connect_url:
                 warnings.warn(
                     "VIP: --headless-auth could not mint an API key. "

@@ -67,11 +67,24 @@ class TestConnectConfig:
 
     def test_url_normalized_when_scheme_missing(self):
         cc = ConnectConfig(url="connect.example.com")
-        assert cc.url == "http://connect.example.com"
+        assert cc.url == "https://connect.example.com"
+
+    def test_url_scheme_missing_marks_inferred(self):
+        cc = ConnectConfig(url="connect.example.com")
+        assert cc.url_scheme_inferred is True
 
     def test_url_host_only_no_trailing_slash(self):
         cc = ConnectConfig(url="https://connect.example.com")
         assert cc.url == "https://connect.example.com"
+
+    def test_url_explicit_scheme_not_marked_inferred(self):
+        cc = ConnectConfig(url="https://connect.example.com")
+        assert cc.url_scheme_inferred is False
+
+    def test_url_explicit_http_scheme_preserved(self):
+        cc = ConnectConfig(url="http://connect.example.com")
+        assert cc.url == "http://connect.example.com"
+        assert cc.url_scheme_inferred is False
 
     def test_url_host_only_trailing_slash_stripped(self):
         cc = ConnectConfig(url="https://connect.example.com/")
