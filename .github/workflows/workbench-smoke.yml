@@ -87,10 +87,9 @@ jobs:
     # Scheduled/manual runs always execute (no PR diff for paths-filter to
     # score); PR/push runs still gate on the changed-paths filter.
     if: >-
-      (needs.changes.outputs.relevant == 'true'
-        || github.event_name == 'schedule'
-        || github.event_name == 'workflow_dispatch')
-      && github.actor != 'dependabot[bot]'
+      needs.changes.outputs.relevant == 'true'
+      || github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
     name: Smoke test against Workbench ${{ matrix.workbench-version }}
     runs-on: ubuntu-latest
     strategy:
