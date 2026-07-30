@@ -154,10 +154,21 @@ that already exists.
 `workflow_dispatch`'s optional `version` input is the escape hatch for an
 urgent out-of-band release. Leaving it blank behaves exactly like a scheduled
 run, including the no-commits gate -- it's a "release now" button, not an
-override. Supplying an explicit version bypasses that gate (supplying a
-version is a deliberate act) but the workflow still refuses a version that is
-not strictly greater than the last release tag, since a PyPI publish cannot
-be undone.
+override. Supplying an explicit version bypasses that gate, on the grounds
+that supplying a version is a deliberate act.
+
+Whichever way the version was arrived at, the workflow then refuses to release
+it unless it is strictly greater than the last release tag. This applies to
+the *computed* version too, not only a dispatched one, because the rule keys
+off today's calendar month: if a tag ever lands in a future month, every
+scheduled run until the calendar catches up computes something lower than the
+highest tag. One stray `v2026.12.0` cut in July would otherwise poison
+August, September, October and November in turn. A PyPI version cannot be
+reused once published, so each of those would be unrecoverable.
+
+`scripts/next_version.py --verify <version> --last-tag <tag>` is that check,
+kept in the script rather than inline in the workflow so `selftests/`
+can cover it.
 
 ## Design principles
 

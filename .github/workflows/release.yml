@@ -51,36 +51,10 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      # A dispatch run with an explicit version bypasses the no-commits gate
-      # below (supplying a version is a deliberate act), but still must not
-      # publish backwards -- PyPI releases are unrecoverable. INPUT_VERSION
-      # and LAST_TAG are passed via env rather than interpolated directly
-      # into the script, same as SUITE in workbench-smoke.yml -- a
-      # workflow_dispatch input is user-controlled text and should never be
-      # substituted straight into a shell/script body.
-      # The `github.event_name` clause is not redundant. On a `schedule` event
-      # the `inputs` context is null, and `inputs.version != ''` would then rely
-      # on GitHub coercing null to '' in the comparison. Testing the event first
-      # short-circuits, so `inputs.version` is only ever compared on the one
-      # event that populates it -- the scheduled path never depends on coercion.
-      - name: Validate explicit version input
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.version != '' }}
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-          LAST_TAG: ${{ steps.last-tag.outputs.tag }}
-        run: |
-          uv run python - "$INPUT_VERSION" "$LAST_TAG" <<'PY'
-          import sys
-
-          sys.path.insert(0, "scripts")
-          from next_version import parse_tag
-
-          candidate, last = sys.argv[1], sys.argv[2]
-          if parse_tag(candidate) <= parse_tag(last):
-              print(f"::error::--version {candidate} is not greater than the last release {last}")
-              sys.exit(1)
-          PY
-
+      # INPUT_VERSION and LAST_TAG are passed via env rather than interpolated
+      # directly into the script body, same as SUITE in workbench-smoke.yml --
+      # a workflow_dispatch input is user-controlled text and should never be
+      # substituted straight into a shell.
       - name: Compute release version
         id: version
         env:
@@ -94,12 +68,33 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      # Checked for BOTH paths -- an explicit dispatch version and a computed
+      # one -- because the computed path can also go backwards. The rule keys
+      # off today's calendar month, so if any tag ever lands in a future month
+      # (an over-eager dispatch, a hand-cut tag), every scheduled run until the
+      # calendar catches up computes a LOWER version than the highest tag and
+      # would happily tag and push it. That is not a one-off: a stray
+      # v2026.12.0 in July poisons August, September, October and November in
+      # turn. pip resolvers would never treat those as latest, and a PyPI
+      # version cannot be reused once published, so each one is unrecoverable.
+      #
+      # Validating the resolved version instead of just the dispatch input is
+      # what makes this one check cover both paths.
+      - name: Verify the version moves forward
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          LAST_TAG: ${{ steps.last-tag.outputs.tag }}
+        run: uv run python scripts/next_version.py --verify "$VERSION" --last-tag "$LAST_TAG"
+
       # A dispatch run with no version input behaves exactly like a scheduled
       # run, including this gate -- it's a "release now" button, not an
-      # override. Only an explicit --version bypasses it.
-      # Inverse of the validate step's condition, spelled out for the same
-      # reason: on `schedule` the first clause is true and short-circuits, so
-      # a null `inputs.version` is never compared against ''.
+      # override. Only an explicit version bypasses it.
+      #
+      # The `github.event_name` clause is not redundant. On a `schedule` event
+      # the `inputs` context is null, so a bare `inputs.version == ''` would
+      # rely on GitHub coercing null to '' in the comparison. Testing the event
+      # first short-circuits, so `inputs.version` is only ever compared on the
+      # one event that populates it.
       - name: Check for commits since the last release
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.version == '' }}
         id: gate

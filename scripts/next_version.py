@@ -48,6 +48,19 @@ def next_version(last_tag: str | None, today: date) -> str:
     return f"{year}.{month}.{patch}"
 
 
+def is_forward(candidate: str, last_tag: str) -> bool:
+    """True when ``candidate`` is a strictly newer release than ``last_tag``.
+
+    Both the computed and the explicitly dispatched version have to pass this.
+    The computed one is not automatically safe: :func:`next_version` keys off
+    today's calendar month, so a tag sitting in a *future* month makes every
+    run until the calendar catches up compute something lower than the highest
+    tag. A PyPI version cannot be reused once published, so releasing backwards
+    is unrecoverable and has to fail loudly instead.
+    """
+    return parse_tag(candidate) > parse_tag(last_tag)
+
+
 def _highest_tag() -> str | None:
     """Return the highest version tag in this checkout, or None if there is none.
 
@@ -87,9 +100,30 @@ def main() -> None:
         type=date.fromisoformat,
         help="Date to compute the release for (YYYY-MM-DD). Defaults to today (UTC).",
     )
+    parser.add_argument(
+        "--verify",
+        metavar="VERSION",
+        help=(
+            "Instead of computing a version, check that VERSION is strictly newer "
+            "than the last tag and exit non-zero if it is not."
+        ),
+    )
     args = parser.parse_args()
 
     last_tag = args.last_tag if args.last_tag is not None else _highest_tag()
+
+    if args.verify is not None:
+        if last_tag is None:
+            return  # nothing released yet, so nothing to move backwards past
+        if not is_forward(args.verify, last_tag):
+            print(
+                f"::error::Refusing to release {args.verify}: it is not greater than the "
+                f"last release {last_tag}. If {last_tag} was tagged by mistake, that tag "
+                f"has to be reckoned with before any further release can be cut."
+            )
+            raise SystemExit(1)
+        return
+
     today = args.today if args.today is not None else datetime.now(timezone.utc).date()
     print(next_version(last_tag, today))
 

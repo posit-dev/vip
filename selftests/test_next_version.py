@@ -22,7 +22,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from next_version import next_version, parse_tag  # noqa: E402
+from next_version import is_forward, next_version, parse_tag  # noqa: E402
 
 
 class TestParseTag:
@@ -65,3 +65,36 @@ class TestNextVersion:
 
     def test_no_last_tag_starts_at_patch_zero(self):
         assert next_version(None, date(2026, 7, 30)) == "2026.7.0"
+
+
+class TestIsForward:
+    """The release workflow refuses any version that is not strictly newer."""
+
+    def test_patch_bump_moves_forward(self):
+        assert is_forward("2026.7.1", "v2026.7.0")
+
+    def test_month_bump_moves_forward(self):
+        assert is_forward("2026.8.0", "v2026.7.3")
+
+    def test_calver_moves_forward_past_legacy_semver(self):
+        assert is_forward("2026.7.0", "v0.58.17")
+
+    def test_same_version_is_not_forward(self):
+        assert not is_forward("2026.7.0", "v2026.7.0")
+
+    def test_lower_version_is_not_forward(self):
+        assert not is_forward("2026.7.0", "v2026.7.1")
+
+    def test_future_month_tag_poisons_every_later_computed_version(self):
+        # The reason is_forward is checked on the COMPUTED version too, not just
+        # on an explicitly dispatched one. next_version keys off today's month,
+        # so a tag in a future month (a mistaken dispatch, a hand-cut tag) makes
+        # every run until the calendar catches up compute something lower than
+        # the highest tag -- and each of those would be an unrecoverable
+        # backwards publish to PyPI if it were allowed through.
+        stray = "v2026.12.0"
+        for today in (date(2026, 8, 6), date(2026, 9, 3), date(2026, 10, 1), date(2026, 11, 5)):
+            computed = next_version(stray, today)
+            assert not is_forward(computed, stray), (
+                f"{computed} computed on {today} must be rejected against {stray}"
+            )
