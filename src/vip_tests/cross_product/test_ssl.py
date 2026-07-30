@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import socket
 import ssl
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
@@ -47,22 +48,87 @@ def check_ssl_cert(product, vip_config):
     hostname = parsed.hostname
     port = parsed.port or 443
 
+    try:
+        sock = socket.create_connection((hostname, port), timeout=10)
+    except OSError as exc:
+        # DNS failure, connection refused, or a timed-out connect -- the
+        # host is unreachable, which is not a certificate finding. Same
+        # connect-vs-handshake split as ``_attempt_tls``/``_ConnectError``
+        # below: only the TCP connect stage is skip-worthy. #555.
+        pytest.skip(f"Could not connect to {hostname}:{port}: {exc}")
+
     ctx = ssl.create_default_context()
     try:
-        with socket.create_connection((hostname, port), timeout=10) as sock:
+        with sock:
             with ctx.wrap_socket(sock, server_hostname=hostname) as ssock:
                 cert = ssock.getpeercert()
-                return {"cert": cert, "error": None}
+                return {"cert": cert, "error": None, "hostname": hostname}
     except ssl.SSLCertVerificationError as exc:
-        return {"cert": None, "error": str(exc)}
-    except Exception as exc:
-        pytest.skip(f"Could not connect to {hostname}:{port}: {exc}")
+        return {"cert": None, "error": str(exc), "hostname": hostname}
+    # Deliberately no broader ``except Exception`` here: a handshake failure
+    # for any other reason (a non-cert ssl.SSLError, a mid-handshake drop)
+    # must propagate and fail loudly, not get silently reported as "not
+    # applicable" -- that would gate this file's main new value, the
+    # expiry-margin assertion in ``cert_valid``, behind a broad catch-all.
+
+
+_MONTH_ABBREVIATIONS = {
+    "Jan": 1,
+    "Feb": 2,
+    "Mar": 3,
+    "Apr": 4,
+    "May": 5,
+    "Jun": 6,
+    "Jul": 7,
+    "Aug": 8,
+    "Sep": 9,
+    "Oct": 10,
+    "Nov": 11,
+    "Dec": 12,
+}
+
+
+def _cert_expires_at(cert: dict) -> datetime:
+    """Parse the ``notAfter`` field from ``ssl.SSLSocket.getpeercert()``.
+
+    The format is fixed by OpenSSL (e.g. ``"Jun  1 12:00:00 2030 GMT"``,
+    always UTC) but is parsed with an explicit month-abbreviation lookup
+    rather than ``strptime``: ``%b`` reads from the process's ``LC_TIME``
+    month table, so on a non-English runner (e.g. ``LC_TIME=de_DE``)
+    ``strptime`` would raise on this exact, unchanging string. VIP is
+    customer-run software and does not control the runner's locale. #560.
+    """
+    not_after = cert.get("notAfter")
+    if not not_after:
+        raise ValueError("Certificate has no notAfter field")
+
+    # split() collapses the extra space OpenSSL uses to pad a single-digit
+    # day instead of zero-padding it (e.g. "Jun  1 ..."), so this handles
+    # both single- and double-digit days without special-casing either.
+    month_abbr, day, time_str, year, _tz = not_after.split()
+    month = _MONTH_ABBREVIATIONS[month_abbr]
+    hour, minute, second = (int(part) for part in time_str.split(":"))
+    return datetime(int(year), month, int(day), hour, minute, second, tzinfo=timezone.utc)
 
 
 @then("the certificate is valid and not expired")
-def cert_valid(cert_info):
+def cert_valid(cert_info, vip_config):
     assert cert_info["error"] is None, f"SSL certificate error: {cert_info['error']}"
     assert cert_info["cert"] is not None, "No certificate returned"
+
+    # A handshake succeeding only proves the cert isn't expired *yet* -- an
+    # already-expired cert would have failed verification above. The useful
+    # check is the margin: warn early enough to renew before the cert lapses
+    # and causes an outage. See #555.
+    expires_at = _cert_expires_at(cert_info["cert"])
+    days_remaining = (expires_at - datetime.now(timezone.utc)).total_seconds() / 86400
+    threshold = vip_config.cert_expiry_warning_days
+    assert days_remaining >= threshold, (
+        f"Certificate for {cert_info['hostname']} expires in "
+        f"{days_remaining:.1f} day(s) (on {cert_info['cert']['notAfter']}), "
+        f"under the configured {threshold}-day warning threshold "
+        f"([tls] cert_expiry_warning_days). Renew it before it expires."
+    )
 
 
 @then("the certificate chain is complete")
@@ -95,10 +161,38 @@ def request_http(product, vip_config):
         http_url = f"http://{parsed.hostname}"
     try:
         resp_no_follow = httpx.get(http_url, follow_redirects=False, timeout=10)
-    except httpx.ConnectError:
-        return {"status": None, "location": "", "final_url_scheme": None, "error": "port_closed"}
-    except Exception as exc:
-        return {"status": None, "location": "", "final_url_scheme": None, "error": str(exc)}
+    except (httpx.NetworkError, httpx.ProtocolError) as exc:
+        # NetworkError (ConnectError/ReadError/WriteError/CloseError) is a
+        # refused, reset, or closed TCP connection; ProtocolError (its
+        # subclass RemoteProtocolError in particular) is what a plaintext
+        # HTTP request gets back from a TLS-only port. Both mean "no usable
+        # plain-HTTP endpoint" for the checks below. In practice, hitting a
+        # TLS-only port with plaintext HTTP has been observed to raise
+        # EITHER RemoteProtocolError (server replies with a garbled TLS
+        # byte httpx tries to parse as HTTP) OR ReadError/"Connection reset
+        # by peer" (server just resets on non-TLS bytes) depending on the
+        # server and OS -- confirmed against a live self-signed server,
+        # not assumed -- so NetworkError, not just ConnectError, is needed.
+        #
+        # Deliberately NOT ``httpx.HTTPError`` (too wide) or a bare
+        # ``except Exception`` (wider still): a timeout means the host is
+        # filtered or hung, which is a materially different, reportable
+        # state -- not "closed" -- so it must fall through and fail loudly.
+        # An unrelated bug (httpx.InvalidURL from a malformed configured
+        # URL, or a future edit introducing a NameError/AttributeError
+        # here) must propagate as a real failure too, not get reported as
+        # "port closed, that's fine" -- that would silently recreate the
+        # exact vacuous-check problem this file's steps were just fixed
+        # for. See #457, #555.
+        # src/vip_tests/security/test_https.py::make_http_request classifies
+        # its sibling check the same narrow way -- keep the two in sync.
+        return {
+            "status": None,
+            "location": "",
+            "final_url_scheme": None,
+            "error": "port_closed",
+            "detail": str(exc),
+        }
 
     # Also follow redirects to detect ALB / load-balancer patterns where the
     # HTTP→HTTPS upgrade happens transparently (no client-visible 3xx).  This is
@@ -144,10 +238,27 @@ def redirects_to_https(http_response):
     )
 
 
-@then("the HTTP port is not open")
-def http_port_closed(http_response):
-    # This step is an alternative - if HTTP redirected, that's fine too.
-    pass
+@then("the HTTP port is closed or serves no content directly")
+def http_port_no_content(http_response):
+    # This step is the narrower companion to "the response redirects to
+    # HTTPS": a closed port is fine, and so is a redirect (already verified
+    # above), but a 2xx response means the server served real content over
+    # plaintext HTTP, which is never acceptable. See #555.
+    if http_response["error"] == "port_closed":
+        return
+    status = http_response["status"]
+    # Nothing legitimate reaches here with status=None: the only producer of
+    # None is the port_closed branch above, which already returned. Assert
+    # that explicitly rather than writing `status is None or ...`, which
+    # would silently treat a future None-producing bug as "fine, no content".
+    assert status is not None, (
+        f"Expected an HTTP status since the port answered, got None "
+        f"(error={http_response['error']!r})."
+    )
+    assert not (200 <= status < 300), (
+        f"Plain HTTP served content directly (status {status}) instead of "
+        "redirecting to HTTPS or refusing the connection."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +278,7 @@ def _attempt_tls(
     hostname: str,
     port: int,
     *,
+    insecure: bool = False,
     min_version: ssl.TLSVersion | None = None,
     max_version: ssl.TLSVersion | None = None,
     timeout: float = 10.0,
@@ -174,7 +286,13 @@ def _attempt_tls(
     """Attempt one TLS handshake and classify the result.
 
     Uses ``ssl.create_default_context()`` so the system CA bundle is
-    loaded (and ``SSL_CERT_FILE`` / ``SSL_CERT_DIR`` are honored).
+    loaded (and ``SSL_CERT_FILE`` / ``SSL_CERT_DIR`` are honored) --
+    unless *insecure* is set, in which case certificate verification is
+    disabled entirely. This scenario is about which TLS *versions* a server
+    accepts, not certificate trust, so a user running with
+    ``tls.insecure=true`` (e.g. against a self-signed cert) should still get
+    a meaningful version-enforcement result instead of a cert-trust failure
+    they already opted out of. See #457.
 
     Returns a dict with:
       - ``status``: ``"connected"``, ``"rejected"``,
@@ -195,8 +313,15 @@ def _attempt_tls(
     try:
         try:
             ctx = ssl.create_default_context()
-            ctx.check_hostname = True
-            ctx.verify_mode = ssl.CERT_REQUIRED
+            if insecure:
+                # check_hostname must be cleared before verify_mode, or
+                # ssl raises ValueError("Cannot set verify_mode to
+                # CERT_NONE when check_hostname is enabled").
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+            else:
+                ctx.check_hostname = True
+                ctx.verify_mode = ssl.CERT_REQUIRED
             # ``create_default_context`` sets minimum_version = TLS 1.2 on
             # Python 3.10+.  Reset to the library minimum first so the
             # caller-specified window is applied cleanly — otherwise
@@ -255,16 +380,20 @@ def attempt_tls_connection(product, vip_config):
             "tls1_0": _attempt_tls(
                 hostname,
                 port,
+                insecure=vip_config.insecure,
                 min_version=ssl.TLSVersion.TLSv1,
                 max_version=ssl.TLSVersion.TLSv1,
             ),
             "tls1_1": _attempt_tls(
                 hostname,
                 port,
+                insecure=vip_config.insecure,
                 min_version=ssl.TLSVersion.TLSv1_1,
                 max_version=ssl.TLSVersion.TLSv1_1,
             ),
-            "tls1_2": _attempt_tls(hostname, port, min_version=ssl.TLSVersion.TLSv1_2),
+            "tls1_2": _attempt_tls(
+                hostname, port, insecure=vip_config.insecure, min_version=ssl.TLSVersion.TLSv1_2
+            ),
         }
     except _ConnectError as exc:
         pytest.skip(f"Could not reach {hostname}:{port}: {exc}")
@@ -280,6 +409,10 @@ def attempt_tls_connection(product, vip_config):
             f"assess server TLS enforcement on this client."
         )
 
+    # Carried alongside the per-version results (not iterated by the "TLS
+    # 1.0/1.1" loop below, which only looks up the tls1_* keys) so
+    # ``modern_tls_succeeds`` can give insecure-mode-aware guidance. #457.
+    results["insecure"] = vip_config.insecure
     return results
 
 
@@ -314,6 +447,19 @@ def modern_tls_succeeds(tls_results):
         return
 
     if status == "cert_verify_failed":
+        if tls_results.get("insecure"):
+            # With tls.insecure=true, _attempt_tls disables verification
+            # entirely, so this branch should be unreachable in practice --
+            # but if it ever fires, the SSL_CERT_FILE guidance below would be
+            # actively wrong: the user didn't misconfigure trust, they opted
+            # out of it. #457.
+            raise AssertionError(
+                "TLS 1.2 handshake reached the server, but certificate "
+                "verification failed even though tls.insecure=true disables "
+                "it. This points to a TLS-stack problem, not a "
+                "certificate-trust gap to configure around. "
+                f"Detail: {detail}"
+            )
         raise AssertionError(
             "TLS 1.2 handshake reached the server, but the test runner "
             "could not verify the server's certificate. This is a "

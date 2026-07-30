@@ -62,9 +62,30 @@ def make_http_request(product_url, vip_config):
             "location": resp.headers.get("location", ""),
             "refused": False,
         }
-    except httpx.ConnectError:
-        return {"status": None, "location": "", "refused": True}
-    except Exception:
+    except (httpx.NetworkError, httpx.ProtocolError):
+        # NetworkError (ConnectError/ReadError/WriteError/CloseError) is a
+        # refused, reset, or closed TCP connection; ProtocolError (its
+        # subclass RemoteProtocolError in particular) is what a plaintext
+        # HTTP request gets back from a TLS-only port. Both mean "no usable
+        # plain-HTTP endpoint" for the check below. In practice, hitting a
+        # TLS-only port with plaintext HTTP has been observed to raise
+        # EITHER RemoteProtocolError OR ReadError/"Connection reset by
+        # peer" depending on the server and OS -- confirmed against a live
+        # self-signed server, not assumed -- so NetworkError, not just
+        # ConnectError, is needed.
+        #
+        # Deliberately NOT ``httpx.HTTPError`` (too wide) or a bare
+        # ``except Exception`` (which this used to be, pre-#457, and is
+        # wider still): a timeout means the host is filtered or hung, a
+        # materially different, reportable state -- not "closed" -- so it
+        # must fall through and fail loudly. An unrelated bug -- a
+        # malformed configured URL raising httpx.InvalidURL, or a future
+        # edit introducing a NameError/AttributeError here -- must
+        # propagate as a real failure too, not get reported as "port
+        # closed, that's fine". A silent "refused" on any exception is
+        # exactly the vacuous-check failure mode #555 exists to remove.
+        # src/vip_tests/cross_product/test_ssl.py::request_http classifies
+        # its sibling check the same narrow way -- keep the two in sync.
         return {"status": None, "location": "", "refused": True}
 
 

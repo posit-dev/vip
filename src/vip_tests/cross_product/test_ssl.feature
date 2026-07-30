@@ -20,7 +20,7 @@ Feature: SSL certificates and HTTPS
     Given <product> is configured in vip.toml
     When I request the HTTP URL for <product>
     Then the response redirects to HTTPS
-    And the HTTP port is not open
+    And the HTTP port is closed or serves no content directly
 
     Examples:
       | product         |
