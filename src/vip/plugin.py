@@ -258,9 +258,9 @@ def pytest_configure(config: pytest.Config) -> None:
                 stacklevel=1,
             )
         else:
-            from vip.auth import start_interactive_auth
+            from vip.auth import auth_cache_path, start_interactive_auth
 
-            cache_path = Path(config.rootpath) / ".vip-auth-cache.json"
+            cache_path = auth_cache_path()
             session = start_interactive_auth(
                 connect_url=connect_url,
                 workbench_url=wb_url,
@@ -307,9 +307,9 @@ def pytest_configure(config: pytest.Config) -> None:
                 stacklevel=1,
             )
         else:
-            from vip.auth import AuthConfigError, start_headless_auth
+            from vip.auth import AuthConfigError, auth_cache_path, start_headless_auth
 
-            cache_path = Path(config.rootpath) / ".vip-auth-cache.json"
+            cache_path = auth_cache_path()
             try:
                 session = start_headless_auth(
                     connect_url=connect_url,

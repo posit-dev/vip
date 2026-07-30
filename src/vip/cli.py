@@ -1077,6 +1077,7 @@ def _cleanup_workbench_sessions(
     """
     from vip.auth import (
         AuthConfigError,
+        auth_cache_path,
         authenticated_page,
         start_headless_auth,
         start_interactive_auth,
@@ -1086,11 +1087,10 @@ def _cleanup_workbench_sessions(
 
     insecure = config.insecure
     ca_bundle = config.ca_bundle
-    # Mirrors plugin.py's cache path (Path(config.rootpath) / ".vip-auth-cache.json"):
-    # there is no pytest config here, so the invocation directory stands in for
-    # rootpath, matching where a prior `vip verify` run from the same directory
-    # would have written its cache.
-    cache_path = Path.cwd() / ".vip-auth-cache.json"
+    # Same helper plugin.py uses, so this finds the session a prior `vip verify`
+    # from this directory cached.  These two used to build the path independently
+    # and disagreed for installed VIP -- see auth_cache_path.
+    cache_path = auth_cache_path()
 
     username = config.auth.username
     password = config.auth.password
