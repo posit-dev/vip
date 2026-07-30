@@ -41,6 +41,10 @@ class _AuthFakeLocator:
         if self._on_click is not None:
             self._on_click()
 
+    def or_(self, other):
+        """Model Playwright's Locator.or_ -- visible when either side is."""
+        return _AuthFakeLocator(visible=lambda: self._visible() or other._visible())
+
 
 class _OidcLoginFakePage:
     """Models an OIDC-only sign-in page: a "Sign in with OpenID" button and no
@@ -101,3 +105,96 @@ def test_interactive_auth_skips_when_sso_cannot_complete():
     with pytest.raises(Skipped):
         workbench_login(page, "https://wb.example.com", "", "", interactive_auth=True)
     assert page.sso_clicked is True
+
+
+class _ExternalIdpFakePage:
+    """Models a deployment that redirects sign-in out to a third-party IdP.
+
+    Hitting Workbench unauthenticated lands on the IdP's own page (e.g. Okta's
+    ``/oauth2/v1/authorize``), which has neither Workbench's ``#username`` field
+    nor a "Sign in with ..." button -- Okta's identifier-first submit is named
+    "Next".  The old detection read that as a password deployment and ground the
+    retry loop into "Login failed after 3 attempts".
+    """
+
+    def __init__(self):
+        self.url = (
+            "https://posit.okta.com/oauth2/v1/authorize?client_id=abc"
+            "&redirect_uri=https%3A%2F%2Fsso.example.com%2F__oauth__&response_type=code"
+        )
+        self.filled: list[tuple[str, str]] = []
+
+    def goto(self, *args, **kwargs):
+        pass
+
+    def wait_for_load_state(self, *args, **kwargs):
+        pass
+
+    def locator(self, selector):
+        # Nothing Workbench-specific exists on the IdP's page.
+        return _AuthFakeLocator(visible=lambda: False)
+
+    def get_by_role(self, role, name=None):
+        # No control matching /sign in/i -- Okta's button is named "Next".
+        return _AuthFakeLocator(visible=lambda: False)
+
+    def fill(self, selector, value):
+        self.filled.append((selector, value))
+
+
+def test_password_login_skips_when_workbench_federates_to_external_idp():
+    page = _ExternalIdpFakePage()
+    with pytest.raises(Skipped) as exc:
+        workbench_login(page, "https://wb.example.com", "user", "pass")
+    message = str(exc.value)
+    assert "posit.okta.com" in message, "the skip must name the IdP that took over sign-in"
+    assert page.filled == [], "must not attempt a password form on the IdP's page"
+
+
+def test_interactive_auth_skips_when_redirected_to_external_idp():
+    page = _ExternalIdpFakePage()
+    with pytest.raises(Skipped) as exc:
+        workbench_login(page, "https://wb.example.com", "", "", interactive_auth=True)
+    assert "posit.okta.com" in str(exc.value)
+
+
+class _PasswordLoginFakePage:
+    """A real Workbench password deployment: own origin, own ``#username`` field."""
+
+    def __init__(self):
+        self.url = "https://wb.example.com/auth-sign-in"
+        self._logged_in = False
+        self.filled: list[tuple[str, str]] = []
+
+    def goto(self, *args, **kwargs):
+        pass
+
+    def wait_for_load_state(self, *args, **kwargs):
+        pass
+
+    def locator(self, selector):
+        from vip_tests.workbench.pages import Homepage, LoginPage
+
+        if selector == Homepage.POSIT_LOGO:
+            return _AuthFakeLocator(visible=lambda: self._logged_in)
+        if selector in (LoginPage.USERNAME, f"{LoginPage.USERNAME}, button:has-text('Sign in')"):
+            return _AuthFakeLocator(visible=lambda: True)
+        return _AuthFakeLocator(visible=lambda: False)
+
+    def get_by_role(self, role, name=None):
+        # A password form's submit button also matches /sign in/i.
+        return _AuthFakeLocator(visible=lambda: True)
+
+    def fill(self, selector, value):
+        self.filled.append((selector, value))
+
+    def click(self, selector):
+        self._logged_in = True
+
+
+def test_password_deployment_still_uses_the_login_form():
+    """Guard: the SSO detection must not swallow genuine password deployments."""
+    page = _PasswordLoginFakePage()
+    workbench_login(page, "https://wb.example.com", "user", "pass")
+    assert ("#username", "user") in page.filled
+    assert ("#password", "pass") in page.filled
