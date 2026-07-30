@@ -252,13 +252,42 @@ def _external_idp_host(page_url: str, workbench_url: str) -> str | None:
     either URL cannot be parsed).
     """
     try:
-        current = urlparse(page_url).netloc
-        expected = urlparse(workbench_url).netloc
+        landed = urlparse(page_url)
+        configured = urlparse(workbench_url)
     except ValueError:
         return None
-    if current and expected and current.lower() != expected.lower():
-        return current
+    current = _normalised_netloc(landed)
+    expected = _normalised_netloc(configured)
+    if current and expected and current != expected:
+        return landed.netloc
     return None
+
+
+# Ports that carry no information because they are implied by the scheme.
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _normalised_netloc(parsed) -> str:
+    """Return *parsed*'s host:port with a scheme-default port dropped, lowercased.
+
+    ``https://wb.example.com`` and ``https://wb.example.com:443`` are the same
+    origin, but their raw ``netloc`` strings differ.  Comparing raw values makes
+    a Workbench URL configured with an explicit default port look like a
+    redirect away from itself, which would skip every password-login scenario on
+    a deployment that is not federated at all.
+    """
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return ""
+    try:
+        port = parsed.port
+    except ValueError:
+        # A malformed port ("https://host:notaport") -- keep the raw form rather
+        # than silently treating it as the default.
+        return parsed.netloc.lower()
+    if port is None or port == _DEFAULT_PORTS.get(parsed.scheme.lower()):
+        return host
+    return f"{host}:{port}"
 
 
 def _workbench_session_skip_message(
@@ -604,13 +633,15 @@ def workbench_login(
             if sso_button_present and _silent_sso_signin(sso_button, homepage_logo, workbench_url):
                 return  # Silent SSO succeeded
             # No usable IdP session (expired, or storage state was stripped for the
-            # password-login test) — skip gracefully.
+            # password-login test) — skip gracefully.  Recompute the IdP host: the
+            # click above can navigate off-origin before timing out, so where we
+            # ended up is only knowable now, not before the attempt.
             pytest.skip(
                 _workbench_session_skip_message(
                     auth_mode=auth_mode,
                     workbench_auth_error=workbench_auth_error,
                     landed_url=page.url,
-                    idp_host=idp_host,
+                    idp_host=_external_idp_host(page.url, workbench_url),
                 )
             )
 
@@ -620,7 +651,7 @@ def workbench_login(
                     auth_mode=auth_mode,
                     workbench_auth_error=workbench_auth_error,
                     landed_url=page.url,
-                    idp_host=idp_host,
+                    idp_host=_external_idp_host(page.url, workbench_url),
                 )
             )
         # Even when auth_provider is reported as "password", the deployment may

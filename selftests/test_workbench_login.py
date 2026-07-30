@@ -198,3 +198,75 @@ def test_password_deployment_still_uses_the_login_form():
     workbench_login(page, "https://wb.example.com", "user", "pass")
     assert ("#username", "user") in page.filled
     assert ("#password", "pass") in page.filled
+
+
+# ---------------------------------------------------------------------------
+# External-IdP detection edge cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "landed, configured",
+    [
+        # A default port spelled out on one side only is the same origin.
+        ("https://wb.example.com/auth-sign-in", "https://wb.example.com:443"),
+        ("https://wb.example.com:443/auth-sign-in", "https://wb.example.com"),
+        ("http://wb.example.com/auth-sign-in", "http://wb.example.com:80"),
+        ("http://wb.example.com:80/auth-sign-in", "http://wb.example.com"),
+        # Host comparison is case-insensitive.
+        ("https://WB.example.com/auth-sign-in", "https://wb.example.com"),
+    ],
+)
+def test_default_ports_do_not_look_like_an_external_idp(landed, configured):
+    """A `:443`/`:80` spelled out on one side must not read as a redirect away.
+
+    Misreading it skips every password-login scenario on a deployment that is
+    not federated at all.
+    """
+    from vip_tests.workbench.conftest import _external_idp_host
+
+    assert _external_idp_host(landed, configured) is None
+
+
+@pytest.mark.parametrize(
+    "landed, configured, expected",
+    [
+        ("https://posit.okta.com/oauth2/v1/authorize", "https://wb.example.com", "posit.okta.com"),
+        # A non-default port really is a different origin.
+        ("https://wb.example.com:8443/x", "https://wb.example.com", "wb.example.com:8443"),
+    ],
+)
+def test_genuinely_different_origins_are_still_detected(landed, configured, expected):
+    from vip_tests.workbench.conftest import _external_idp_host
+
+    assert _external_idp_host(landed, configured) == expected
+
+
+class _SsoRedirectsToIdpFakePage(_OidcLoginFakePage):
+    """Workbench's own SSO page whose sign-in click bounces to a dead IdP session.
+
+    The click navigates off-origin and never comes back, so the IdP host is only
+    knowable *after* the attempt -- computing it up front yields None.
+    """
+
+    def __init__(self):
+        super().__init__(idp_valid=False)
+
+    def get_by_role(self, role, name=None):
+        def _click():
+            self.sso_clicked = True
+            self.url = "https://posit.okta.com/oauth2/v1/authorize?client_id=abc"
+
+        return _AuthFakeLocator(visible=lambda: True, on_click=_click)
+
+
+def test_skip_names_the_idp_when_silent_sso_lands_there():
+    page = _SsoRedirectsToIdpFakePage()
+    with pytest.raises(Skipped) as exc:
+        workbench_login(page, "https://wb.example.com", "", "", interactive_auth=True)
+    assert page.sso_clicked is True
+    # Not merely "the URL happens to contain the host": the message must *say*
+    # sign-in was redirected there, which is only knowable after the attempt.
+    assert "redirected to the posit.okta.com sign-in page" in str(exc.value), (
+        f"the skip must name where sign-in actually ended up: {exc.value}"
+    )
