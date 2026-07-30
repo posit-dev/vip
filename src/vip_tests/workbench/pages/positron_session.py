@@ -40,6 +40,13 @@ class PositronSession:
     # posit-dev/positron/test/e2e/pages/console.ts and exec.py).
     ACTIVE_CONSOLE = '.console-instance[style*="z-index: auto"]'
     CONSOLE_INPUT = ".console-input"
+    # Kernel/interpreter status label shown inside the console panel (e.g.
+    # "Starting") while the runtime is not yet accepting execute requests.
+    # Confirmed live: reads "Starting" continuously on a session whose kernel
+    # never becomes interactive (issue #390) -- see exec.py's
+    # _positron_console_state_label. Scope this under CONSOLE_PANEL, since the
+    # class name alone (".state-label") is not distinctive enough on its own.
+    STATE_LABEL = ".state-label"
     # Present even on the Welcome page (before any console starts), so it is a
     # console-independent "this is Positron" discriminator for _detect_ide.
     VARIABLES_PANE = ".positron-variables"

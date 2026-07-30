@@ -266,6 +266,11 @@ _POSITRON_ACTIVE_CONSOLE = PositronSession.ACTIVE_CONSOLE
 _POSITRON_CONSOLE_INPUT = PositronSession.CONSOLE_INPUT
 _POSITRON_CONSOLE_LINES = f"{PositronSession.ACTIVE_CONSOLE} div span"
 _POSITRON_CONSOLE_READY = f"{PositronSession.ACTIVE_CONSOLE} .active-line-number"
+# Kernel/interpreter status label rendered inside the console panel (issue
+# #390 diagnostics). Scoped under the panel rather than the active console
+# instance: confirmed live to be present while the interpreter is still
+# starting, independently of which console instance is currently active.
+_POSITRON_STATE_LABEL = f"{PositronSession.CONSOLE_PANEL} {PositronSession.STATE_LABEL}"
 # The Console and Terminal share the bottom panel; a prior terminal_run leaves
 # the Terminal tab selected, hiding the console. Activate the Console tab first.
 _POSITRON_CONSOLE_TAB = PositronSession.CONSOLE_TAB
@@ -283,6 +288,28 @@ _POSITRON_R_GRACE_POLLS = 10
 # console hidden behind the Terminal is removed from the DOM on some Positron
 # builds, so we activate + briefly poll before concluding no console exists.
 _POSITRON_REACTIVATE_POLLS = 3
+# terminal_run's Positron branch (below) re-reads the marker file via a fresh
+# console-eval call on every poll iteration. positron_eval_r/positron_eval_python
+# each block for their *entire* passed-in timeout before giving up, so handing
+# them the outer loop's whole remaining budget on every attempt means a single
+# unresponsive attempt consumes it all -- the "poll every second" loop only ever
+# gets one real try (see issue #390 investigation). Cap each attempt to a
+# sub-budget generous enough for the happy path (prompt-wait + eval normally
+# resolve in well under a second once a console is up) while still leaving room
+# for dozens of retries across a typical multi-minute terminal_run timeout.
+_POSITRON_READBACK_ATTEMPT_MS = 10_000
+# How long the console's status label (see _positron_console_state_label) may
+# continuously read "Starting" before terminal_run treats it as wedged rather
+# than "still warming up", and fails fast instead of waiting out the full
+# timeout. Chosen well above the ~10s cold-start budgets already trusted
+# elsewhere in this file (_POSITRON_POLL_MS * _POSITRON_R_GRACE_POLLS,
+# ensure_positron_console's own default timeout), so a legitimately slow --
+# but eventually successful -- cold start is not mistaken for a hang. This
+# value was not validated against a session that recovers from "Starting" (the
+# investigation's repro environment never did); treat it as a conservative
+# extrapolation, not a measured threshold, and revisit if it proves too eager
+# or too slow once tested against a real deployment.
+_POSITRON_WEDGED_THRESHOLD_S = 45.0
 
 
 def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
@@ -408,6 +435,43 @@ def _activate_positron_console(page: Page) -> None:
             pass
 
 
+def _positron_console_state_label(page: Page) -> str | None:
+    """Return the console panel's kernel/interpreter status label, if present.
+
+    Positron renders a short status label (e.g. "Starting") inside the console
+    panel while the interpreter is not yet interactive; it is confirmed live to
+    persist indefinitely on a kernel that never becomes ready to execute (issue
+    #390). Idle/ready consoles were not observed to render this element in the
+    same investigation, but that absence was never directly confirmed against a
+    healthy session -- treat ``None`` as "unknown", not "ready".
+
+    Best-effort and never raises: returns ``None`` if the element is absent, or
+    if reading it fails for any reason (detached node, closed page, etc.).
+    """
+    try:
+        label = page.locator(_POSITRON_STATE_LABEL).first
+        if label.count() == 0:
+            return None
+        text = label.text_content(timeout=_POSITRON_PROMPT_POLL_MS)
+        return text.strip() if text else None
+    except Exception:
+        return None
+
+
+def _positron_wedged_state_detail(page: Page) -> str:
+    """Return a human-readable suffix describing the console's status label.
+
+    Used to enrich a "the end marker never appeared" ExecError with ground
+    truth about *why*, when available, rather than leaving the caller to guess
+    whether the interpreter was still warming up or genuinely stuck. Returns an
+    empty string when no status label is present (nothing to add).
+    """
+    state = _positron_console_state_label(page)
+    if not state:
+        return ""
+    return f" Console status label reads {state!r} -- the interpreter may not be accepting input."
+
+
 # Interactive prompt shown on the active console line once the interpreter is
 # ready for input. Typing during "R x.y.z starting." is silently dropped and
 # leaves the REPL at a "+" continuation prompt, so we wait for one of these
@@ -526,7 +590,7 @@ def positron_eval_r(page: Page, expr: str, timeout: int = 30_000) -> str:
 
     raise ExecError(
         f"Positron R console did not return the expected output within {timeout} ms "
-        f"(end marker {end!r} not found)."
+        f"(end marker {end!r} not found).{_positron_wedged_state_detail(page)}"
     )
 
 
@@ -577,7 +641,7 @@ def positron_eval_python(page: Page, expr: str, timeout: int = 30_000) -> str:
 
     raise ExecError(
         f"Positron Python console did not return the expected output within {timeout} ms "
-        f"(end marker {end!r} not found)."
+        f"(end marker {end!r} not found).{_positron_wedged_state_detail(page)}"
     )
 
 
@@ -889,8 +953,11 @@ def terminal_run(
 
     Raises:
         ExecError: *cmd* exited with a non-zero status (message includes the
-            exit code and captured output), or the done marker never
-            appeared within *timeout*.
+            exit code and captured output); the done marker never appeared
+            within *timeout*; or, for Positron, the console's own status label
+            was observed reading "Starting" continuously for longer than
+            _POSITRON_WEDGED_THRESHOLD_S, in which case this raises early
+            (see issue #390) instead of waiting out the full *timeout*.
 
     Note:
         The VS Code editor-open polling path is UNVALIDATED and pending a live
@@ -973,15 +1040,48 @@ def terminal_run(
         # A cold Positron session discovers interpreters and starts its console
         # asynchronously, so read_file can raise (no console yet / output not
         # captured) on early polls; treat those as "not ready" and keep polling
-        # until the deadline. Each attempt gets the remaining budget so the first
-        # cold-start console has time to come up, instead of a fixed few seconds
-        # that guarantees failure. RStudio's console is ready immediately, so its
+        # until the deadline. RStudio's console is ready immediately, so its
         # ExecError is a real failure and stays fatal (as in the VS Code branch);
         # only the Positron cold-start ExecError is retried.
+        #
+        # Positron attempts are capped to _POSITRON_READBACK_ATTEMPT_MS rather than
+        # given the full remaining budget: read_file's Positron path blocks for its
+        # entire timeout before giving up, so handing it the whole remaining budget
+        # on every attempt means one unresponsive attempt starves every retry this
+        # loop was meant to make (see issue #390). RStudio keeps the original
+        # full-remaining-budget behavior -- its console is ready immediately, so
+        # there is nothing to retry around.
+        positron_wedged_since: float | None = None
         while time.monotonic() < deadline:
             remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
+            if ide == "positron":
+                # Distinguish "kernel still warming up" from "kernel wedged and
+                # will never accept input": if the console's own status label has
+                # read "Starting" continuously for longer than any legitimate cold
+                # start should take, stop burning the rest of the timeout finding
+                # that out the hard way. A missing/unreadable label (None) is
+                # treated as "unknown, not wedged" -- it never triggers this path,
+                # so an older Positron build without this element, or a console
+                # that is genuinely idle, behaves exactly as before.
+                state = _positron_console_state_label(page)
+                if state and state.strip().lower() == "starting":
+                    if positron_wedged_since is None:
+                        positron_wedged_since = time.monotonic()
+                    elif time.monotonic() - positron_wedged_since > _POSITRON_WEDGED_THRESHOLD_S:
+                        raise ExecError(
+                            "terminal_run: Positron console has read 'Starting' continuously "
+                            f"for over {_POSITRON_WEDGED_THRESHOLD_S:.0f}s -- the interpreter "
+                            "kernel appears wedged and unlikely to ever accept execute requests "
+                            "(see issue #390). Failing fast instead of waiting out the full "
+                            f"{timeout}ms timeout."
+                        )
+                else:
+                    positron_wedged_since = None
+                attempt_ms = min(remaining_ms, _POSITRON_READBACK_ATTEMPT_MS)
+            else:
+                attempt_ms = remaining_ms
             try:
-                content = read_file(page, tmpfile, timeout=remaining_ms, lang=readback_lang)
+                content = read_file(page, tmpfile, timeout=attempt_ms, lang=readback_lang)
             except ExecError:
                 if ide == "positron":
                     time.sleep(poll_interval)

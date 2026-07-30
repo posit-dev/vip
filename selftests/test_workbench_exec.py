@@ -838,6 +838,73 @@ class TestReadFileRouting:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# _positron_console_state_label / _positron_wedged_state_detail (issue #390)
+# ---------------------------------------------------------------------------
+
+
+class TestPositronConsoleStateLabel:
+    """``_positron_console_state_label`` must be a safe, best-effort read: it
+    is polled on every terminal_run iteration, so it can never raise, and its
+    absence must mean "unknown", not "ready" (see the caveat in its
+    docstring -- a healthy console was never directly observed in the
+    investigation, only a permanently-"Starting" one)."""
+
+    def test_returns_stripped_text_when_present(self):
+        page = MagicMock()
+        page.locator.return_value.first.count.return_value = 1
+        page.locator.return_value.first.text_content.return_value = "  Starting  "
+
+        assert exec_mod._positron_console_state_label(page) == "Starting"
+
+    def test_returns_none_when_element_absent(self):
+        page = MagicMock()
+        page.locator.return_value.first.count.return_value = 0
+
+        assert exec_mod._positron_console_state_label(page) is None
+
+    def test_returns_none_when_text_content_empty(self):
+        page = MagicMock()
+        page.locator.return_value.first.count.return_value = 1
+        page.locator.return_value.first.text_content.return_value = ""
+
+        assert exec_mod._positron_console_state_label(page) is None
+
+    def test_never_raises_on_detached_node(self):
+        """A detached element or closed page must not turn a diagnostic read
+        into a new failure mode -- swallow and report "unknown"."""
+        page = MagicMock()
+        page.locator.side_effect = RuntimeError("page closed")
+
+        assert exec_mod._positron_console_state_label(page) is None
+
+    def test_scoped_under_console_panel(self):
+        """The selector must be scoped under CONSOLE_PANEL, not the bare
+        class name -- ``.state-label`` alone is not distinctive enough."""
+        page = MagicMock()
+        page.locator.return_value.first.count.return_value = 0
+
+        exec_mod._positron_console_state_label(page)
+
+        selector = page.locator.call_args[0][0]
+        assert PositronSession.CONSOLE_PANEL in selector
+        assert PositronSession.STATE_LABEL in selector
+
+
+class TestPositronWedgedStateDetail:
+    def test_empty_when_no_label(self, monkeypatch):
+        monkeypatch.setattr(exec_mod, "_positron_console_state_label", lambda p: None)
+
+        assert exec_mod._positron_wedged_state_detail(MagicMock()) == ""
+
+    def test_includes_label_text_when_present(self, monkeypatch):
+        monkeypatch.setattr(exec_mod, "_positron_console_state_label", lambda p: "Starting")
+
+        detail = exec_mod._positron_wedged_state_detail(MagicMock())
+
+        assert "'Starting'" in detail
+
+
 class TestVisibleTerminalInput:
     """A session may hold more than one terminal (VS Code's Python extension
     spawns one to activate a venv), so the input must be resolved by the
@@ -961,6 +1028,130 @@ class TestTerminalRun:
 
         with pytest.raises(ExecError, match="timed out"):
             exec_mod.terminal_run(page, "sleep 999", timeout=10)
+
+    def test_positron_attempt_timeout_is_capped(self, monkeypatch):
+        """Positron attempts must be capped to _POSITRON_READBACK_ATTEMPT_MS,
+        not handed the outer loop's entire remaining budget: read_file's
+        Positron path blocks for its whole timeout before giving up, so one
+        unresponsive attempt would otherwise starve every retry this loop is
+        meant to make (issue #390)."""
+        self._patch_common(monkeypatch, ide="positron")
+        monkeypatch.setattr(exec_mod, "_positron_console_state_label", lambda p: None)
+        mock_read_file = MagicMock(return_value="ok\nVIP_DONE_deadbeef:0")
+        monkeypatch.setattr(exec_mod, "read_file", mock_read_file)
+        page = MagicMock()
+
+        # timeout is far larger than _POSITRON_READBACK_ATTEMPT_MS, so an
+        # uncapped attempt would receive close to the full value.
+        exec_mod.terminal_run(page, "echo ok", timeout=120_000)
+
+        called_timeout = mock_read_file.call_args.kwargs["timeout"]
+        assert called_timeout <= exec_mod._POSITRON_READBACK_ATTEMPT_MS
+
+    def test_rstudio_attempt_timeout_is_not_capped(self, monkeypatch):
+        """RStudio's console is ready immediately (no retry loop to protect),
+        so its attempts must keep receiving the full remaining budget --
+        the cap is Positron-specific."""
+        self._patch_common(monkeypatch, ide="rstudio")
+        mock_read_file = MagicMock(return_value="ok\nVIP_DONE_deadbeef:0")
+        monkeypatch.setattr(exec_mod, "read_file", mock_read_file)
+        page = MagicMock()
+
+        exec_mod.terminal_run(page, "echo ok", timeout=120_000)
+
+        called_timeout = mock_read_file.call_args.kwargs["timeout"]
+        assert called_timeout > exec_mod._POSITRON_READBACK_ATTEMPT_MS
+
+    def test_positron_never_polls_state_label_for_other_ides(self, monkeypatch):
+        """The wedge check is Positron-specific; RStudio/VS Code must never
+        even query the state label."""
+        self._patch_common(monkeypatch, ide="rstudio")
+        monkeypatch.setattr(
+            exec_mod, "read_file", MagicMock(return_value="ok\nVIP_DONE_deadbeef:0")
+        )
+        mock_label = MagicMock(return_value=None)
+        monkeypatch.setattr(exec_mod, "_positron_console_state_label", mock_label)
+        page = MagicMock()
+
+        exec_mod.terminal_run(page, "echo ok", timeout=1_000)
+
+        mock_label.assert_not_called()
+
+    class _SteppingClock:
+        """A fake ``time.monotonic`` that advances by *step* seconds per call.
+
+        terminal_run's Positron branch calls ``time.monotonic()`` several times
+        per loop iteration (deadline check, remaining-budget calc, wedge-timer
+        bookkeeping); a fixed step per call is enough to deterministically walk
+        past the wedged threshold within a couple of iterations without relying
+        on wall-clock time or ``time.sleep``.
+        """
+
+        def __init__(self, step=20.0):
+            self._t = 0.0
+            self._step = step
+
+        def __call__(self):
+            self._t += self._step
+            return self._t
+
+    def test_positron_fails_fast_when_console_stuck_starting(self, monkeypatch):
+        """Regression coverage for issue #390: a console whose status label
+        reads "Starting" for longer than _POSITRON_WEDGED_THRESHOLD_S must
+        raise a specific, actionable ExecError well before the full timeout
+        elapses, instead of silently consuming the whole budget."""
+        self._patch_common(monkeypatch, ide="positron")
+        monkeypatch.setattr(exec_mod, "read_file", MagicMock(return_value="still starting..."))
+        monkeypatch.setattr(exec_mod, "_positron_console_state_label", lambda p: "Starting")
+        monkeypatch.setattr(exec_mod.time, "sleep", lambda s: None)
+        monkeypatch.setattr(exec_mod.time, "monotonic", self._SteppingClock(step=20.0))
+        page = MagicMock()
+
+        # A timeout far larger than _POSITRON_WEDGED_THRESHOLD_S: if the wedge
+        # check did not fire, this would either loop for a very long time
+        # (real timeout) or raise the generic "timed out" ExecError instead.
+        with pytest.raises(ExecError, match="wedged") as excinfo:
+            exec_mod.terminal_run(page, "git clone ...", timeout=600_000)
+
+        assert "Starting" in str(excinfo.value)
+        assert "390" in str(excinfo.value)
+
+    def test_positron_state_label_none_does_not_trigger_wedge_detection(self, monkeypatch):
+        """A console whose status label is absent/unreadable (an older
+        Positron build, or a genuinely healthy session where the investigation
+        never observed the label at all) must fall back to today's behavior --
+        the plain timeout -- rather than being treated as wedged."""
+        self._patch_common(monkeypatch, ide="positron")
+        monkeypatch.setattr(exec_mod, "read_file", MagicMock(return_value="still running..."))
+        monkeypatch.setattr(exec_mod, "_positron_console_state_label", lambda p: None)
+        monkeypatch.setattr(exec_mod.time, "sleep", lambda s: None)
+        page = MagicMock()
+
+        with pytest.raises(ExecError, match="timed out") as excinfo:
+            exec_mod.terminal_run(page, "sleep 999", timeout=10)
+
+        assert "wedged" not in str(excinfo.value)
+
+    def test_positron_wedge_timer_resets_when_label_changes(self, monkeypatch):
+        """A status label that moves off "Starting" (even transiently) must
+        reset the wedge timer -- only a *continuous* "Starting" reading is
+        evidence of a hang, not a single slow poll."""
+        self._patch_common(monkeypatch, ide="positron")
+        monkeypatch.setattr(exec_mod, "read_file", MagicMock(return_value="still running..."))
+        # Alternate between "Starting" and "Idle" on every call, so the
+        # continuous-duration tracker never accumulates enough evidence to fire.
+        labels = iter(["Starting", "Idle"] * 50)
+        monkeypatch.setattr(
+            exec_mod, "_positron_console_state_label", lambda p: next(labels, "Idle")
+        )
+        monkeypatch.setattr(exec_mod.time, "sleep", lambda s: None)
+        monkeypatch.setattr(exec_mod.time, "monotonic", self._SteppingClock(step=20.0))
+        page = MagicMock()
+
+        with pytest.raises(ExecError, match="timed out") as excinfo:
+            exec_mod.terminal_run(page, "sleep 999", timeout=600_000)
+
+        assert "wedged" not in str(excinfo.value)
 
     def _patch_vscode(self, monkeypatch, content):
         """VS Code polls via editor-open/read/close instead of ``read_file``."""
