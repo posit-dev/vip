@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.58.13 (2026-07-30)
+
+### Bug Fixes
+
+- Correct false skips, flaky search waits, and the header check
+  ([#571](https://github.com/posit-dev/vip/pull/571),
+  [`241b7d2`](https://github.com/posit-dev/vip/commit/241b7d2eb1d645e6e49a8f3100cc9b64c23616b1))
+
+
 ## v0.58.12 (2026-07-30)
 
 ### Bug Fixes
