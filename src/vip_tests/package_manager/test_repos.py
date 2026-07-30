@@ -50,8 +50,19 @@ def _first_repo_serving(pm_client, *, ecosystem, matches, available, package, no
     Skips (never fails) in two distinguishable states: no repo of this
     ecosystem is configured at all, or one is configured but none serves the
     package. Those are different deployment problems and the reason says which.
+
+    *matches* is called with the repo's ``type`` and ``name`` already coerced
+    to strings. The server can send an explicit JSON null for either, which
+    ``.get("type", "")`` would hand straight through as None and crash the
+    matcher on ``.upper()``; normalising here means no matcher has to remember.
+    A repo with no usable name is dropped outright -- there is nothing to query.
     """
-    candidates = [r.get("name", "") for r in pm_client.list_repos() if matches(r)]
+    candidates = []
+    for repo in pm_client.list_repos():
+        name = repo.get("name") or ""
+        repo_type = repo.get("type") or ""
+        if name and matches(repo_type, name):
+            candidates.append(name)
     if not candidates:
         pytest.skip(f"No {ecosystem} repository configured in Package Manager")
     for repo_name in candidates:
@@ -83,7 +94,7 @@ def query_cran(pm_client):
     _first_repo_serving(
         pm_client,
         ecosystem="CRAN",
-        matches=lambda r: r.get("type") == "cran" or "cran" in r.get("name", "").lower(),
+        matches=lambda t, n: t == "cran" or "cran" in n.lower(),
         available=pm_client.cran_package_available,
         package="Matrix",
     )
@@ -98,7 +109,7 @@ def query_pypi(pm_client):
     _first_repo_serving(
         pm_client,
         ecosystem="PyPI",
-        matches=lambda r: r.get("type") == "pypi" or "pypi" in r.get("name", "").lower(),
+        matches=lambda t, n: t == "pypi" or "pypi" in n.lower(),
         available=pm_client.pypi_package_available,
         package="requests",
     )
@@ -113,7 +124,7 @@ def query_bioconductor(pm_client):
     _first_repo_serving(
         pm_client,
         ecosystem="Bioconductor",
-        matches=lambda r: r.get("type") == "bioconductor" or "bioc" in r.get("name", "").lower(),
+        matches=lambda t, n: t == "bioconductor" or "bioc" in n.lower(),
         available=pm_client.bioconductor_package_available,
         package="BiocGenerics",
     )
@@ -128,7 +139,7 @@ def query_openvsx(pm_client):
     _first_repo_serving(
         pm_client,
         ecosystem="OpenVSX",
-        matches=lambda r: r.get("type", "").upper() == "VSX" or "vsx" in r.get("name", "").lower(),
+        matches=lambda t, n: t.upper() == "VSX" or "vsx" in n.lower(),
         available=pm_client.openvsx_extension_available,
         package="golang.Go",
         noun="extension",

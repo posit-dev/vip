@@ -177,3 +177,46 @@ def test_matches_on_declared_type_not_only_the_name_hint(step, repo_names, packa
     )
 
     assert _run_expecting_no_skip(step, client) is True
+
+
+# ---------------------------------------------------------------------------
+# Malformed repo payloads
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("step", "repo_names", "package", "label"), ECOSYSTEMS)
+def test_explicit_null_type_does_not_crash_the_step(step, repo_names, package, label):
+    """``{"type": null}`` is valid JSON the server can send, and ``.get("type",
+    "")`` returns None for it rather than the default -- which the OpenVSX
+    matcher's ``.upper()`` turned into an AttributeError, crashing repo
+    selection instead of skipping or passing. The name hint must still match."""
+    client = FakePMClient(
+        [{"name": repo_names[1], "type": None}],
+        serving={repo_names[1]: {package}},
+    )
+
+    assert _run_expecting_no_skip(step, client) is True
+
+
+@pytest.mark.parametrize(("step", "repo_names", "package", "label"), ECOSYSTEMS)
+def test_explicit_null_name_is_skipped_over(step, repo_names, package, label):
+    """A repo with a null name cannot be queried, so it must be dropped rather
+    than probed as the empty string."""
+    client = FakePMClient(
+        [{"name": None, "type": None}, {"name": repo_names[1], "type": None}],
+        serving={repo_names[1]: {package}},
+    )
+
+    assert _run_expecting_no_skip(step, client) is True
+    assert client.probed == [(repo_names[1], package)]
+
+
+@pytest.mark.parametrize(("step", "repo_names", "package", "label"), ECOSYSTEMS)
+def test_repo_payload_missing_both_keys_is_ignored(step, repo_names, package, label):
+    client = FakePMClient([{}], serving={})
+
+    with pytest.raises(pytest.skip.Exception) as exc_info:
+        step(client)
+
+    assert "configured" in exc_info.value.msg
+    assert client.probed == []

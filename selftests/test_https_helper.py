@@ -15,7 +15,6 @@ import warnings
 
 import httpx
 import pytest
-from _pytest.outcomes import Failed
 
 from vip.config import VIPConfig
 from vip_tests.security.test_https import make_http_request, no_version_headers
@@ -164,7 +163,7 @@ class TestNoVersionHeaders:
         so it stays a failure -- otherwise this check can never fail at all."""
         headers = {"x-powered-by": "Express/4.18.2"}
 
-        with pytest.raises(Failed, match="x-powered-by"):
+        with pytest.raises(pytest.fail.Exception, match="x-powered-by"):
             no_version_headers(headers)
 
     def test_versionless_server_header_neither_warns_nor_fails(self):
@@ -187,5 +186,5 @@ class TestNoVersionHeaders:
             "x-powered-by": "Express/4.18.2",
         }
 
-        with pytest.warns(UserWarning), pytest.raises(Failed, match="x-powered-by"):
+        with pytest.warns(UserWarning), pytest.raises(pytest.fail.Exception, match="x-powered-by"):
             no_version_headers(headers)
