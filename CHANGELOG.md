@@ -1,6 +1,29 @@
 # CHANGELOG
 
 
+## v0.58.11 (2026-07-30)
+
+### Bug Fixes
+
+- **auth**: Infer https for scheme-less URLs, never downgrade silently
+  ([#562](https://github.com/posit-dev/vip/pull/562),
+  [`330688c`](https://github.com/posit-dev/vip/commit/330688ce1476b87e298294f6537ca2bf5a5d43fb))
+
+- **connect**: Retry a deploy once on a transient PPM/CDN failure
+  ([#558](https://github.com/posit-dev/vip/pull/558),
+  [`0daacfc`](https://github.com/posit-dev/vip/commit/0daacfcef129210004e6f50190c70a42a3785efc))
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+- **ssl**: Make the SSL steps assert what their names promise
+  ([#560](https://github.com/posit-dev/vip/pull/560),
+  [`f037871`](https://github.com/posit-dev/vip/commit/f037871b7735bd313b3e872dcf01f245737eb152))
+
+- **workbench**: Cap Positron readback attempts and name a wedged console
+  ([#565](https://github.com/posit-dev/vip/pull/565),
+  [`308681c`](https://github.com/posit-dev/vip/commit/308681ccd53862d49ab34c08a49c0d5ce7a2b3e5))
+
+
 ## v0.58.10 (2026-07-29)
 
 ### Bug Fixes
