@@ -1,6 +1,15 @@
 # CHANGELOG
 
 
+## v0.58.18 (2026-07-30)
+
+### Bug Fixes
+
+- **auth**: Refresh the cached session after restoring a signed-out one
+  ([#578](https://github.com/posit-dev/vip/pull/578),
+  [`1448e54`](https://github.com/posit-dev/vip/commit/1448e5448deb3767a58708c62ee3d539a0cc29db))
+
+
 ## v0.58.17 (2026-07-30)
 
 ### Bug Fixes
