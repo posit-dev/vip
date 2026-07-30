@@ -25,11 +25,11 @@ from vip.version import ProductVersion
 from vip_tests.package_manager.pages import (
     Homepage,
     PackageDetailPage,
-    PackagesPage,
     open_homepage,
     open_package_detail_via_click,
     open_repo_packages,
     search_packages,
+    wait_for_search_results,
 )
 from vip_tests.package_manager.pages.ui import TIMEOUT_ELEMENT, TIMEOUT_PAGE_LOAD
 
@@ -76,28 +76,49 @@ _ECOSYSTEMS: dict[str, dict] = {
         "type": "vsx",
         "hint": "vsx",
         "package": "golang.Go",
+        # OpenVSX ships extensions, not packages; the skip reason says so.
+        "noun": "extension",
         "available": lambda c, r, p: c.openvsx_extension_available(r, p),
     },
 }
 
 
-def _find_ui_target(pm_client, ecosystem: str) -> dict[str, str]:
-    """Return the first repo of *ecosystem* that serves its known package.
+def _find_ui_target(pm_client, ecosystem: str) -> tuple[dict[str, str], list[str]]:
+    """Return the first repo of *ecosystem* serving its package, and the
+    candidates considered.
 
     Matches by repo ``type`` or a name hint (a deployment may name a repo
     ``cran`` without setting a canonical type), then confirms availability over
-    the API. Returns ``{}`` when nothing suitable is configured/synced.
+    the API.
+
+    Returning the candidate list alongside the target is what lets the caller
+    tell two very different states apart: no repo of this ecosystem exists at
+    all (empty list), versus repos exist but none serves the package (populated
+    list). Collapsing both into a bare ``{}`` made every skip read "repo may not
+    be synced yet" — so a deployment with no OpenVSX repository whatsoever sent
+    administrators hunting a stalled sync that did not exist, while
+    ``test_repos.py`` described the same deployment correctly in the same run.
+
+    ``name`` and ``type`` are coerced because the server can send an explicit
+    JSON null for either, which ``.get(key, "")`` passes straight through;
+    ``.lower()`` on that raises. Repos with no usable name are dropped — there
+    is nothing to query.
     """
     eco = _ECOSYSTEMS[ecosystem]
+    candidates: list[str] = []
+    target: dict[str, str] = {}
     for repo in pm_client.list_repos():
-        name = repo.get("name", "")
-        type_matches = (repo.get("type") or "").lower() == eco["type"]
-        hint_matches = eco["hint"] in name.lower()
-        if not (type_matches or hint_matches):
+        name = repo.get("name") or ""
+        repo_type = repo.get("type") or ""
+        if not name:
             continue
+        if not (repo_type.lower() == eco["type"] or eco["hint"] in name.lower()):
+            continue
+        candidates.append(name)
         if eco["available"](pm_client, name, eco["package"]):
-            return {"repo": name, "package": eco["package"], "ecosystem": ecosystem}
-    return {}
+            target = {"repo": name, "package": eco["package"], "ecosystem": ecosystem}
+            break
+    return target, candidates
 
 
 # ---------------------------------------------------------------------------
@@ -120,13 +141,19 @@ def ui_reachable(pm_client):
 def ui_target(pm_client, ecosystem: str) -> dict[str, str]:
     if ecosystem not in _ECOSYSTEMS:
         pytest.fail(f"Unknown ecosystem in feature examples: {ecosystem!r}")
-    target = _find_ui_target(pm_client, ecosystem)
-    if not target:
-        pkg = _ECOSYSTEMS[ecosystem]["package"]
-        pytest.skip(
-            f"No {ecosystem} repository with {pkg!r} available — repo may not be synced yet"
-        )
-    return target
+    eco = _ECOSYSTEMS[ecosystem]
+    target, candidates = _find_ui_target(pm_client, ecosystem)
+    if target:
+        return target
+    # Same two states, same wording as test_repos.py::_first_repo_serving —
+    # these scenarios describe the same deployment in the same run, so the two
+    # modules must not explain one fact two different ways. Keep them in sync.
+    if not candidates:
+        pytest.skip(f"No {ecosystem} repository configured in Package Manager")
+    pytest.skip(
+        f"{ecosystem} {eco.get('noun', 'package')} {eco['package']!r} not available "
+        f"in any of {candidates} — repo may not be synced yet"
+    )
 
 
 @when("I open the Package Manager homepage")
@@ -179,7 +206,11 @@ def then_search_result(page: Page):
     # returning at least one result row is the signal that search works. Assert
     # on the shared result-row selector rather than a per-id hook so this holds
     # for every ecosystem (see PackagesPage.RESULT_ITEMS).
-    expect(page.locator(PackagesPage.RESULT_ITEMS).first).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
+    #
+    # wait_for_search_results owns the timeout: search against a full mirror is
+    # far slower than the other UI waits and warns rather than fails when it is
+    # merely slow. See its docstring for the measurements.
+    wait_for_search_results(page)
 
 
 @when("I open that package's detail page in the web UI")
