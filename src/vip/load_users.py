@@ -97,8 +97,11 @@ class WorkbenchUser(HttpUser):
         self.client.get("/api/sessions", headers=self._headers)
 
     @task(5)
-    def server_settings(self):
-        self.client.get("/api/server/settings", headers=self._headers)
+    def server_version(self):
+        # Workbench's documented version endpoint is /api/version (there is no
+        # /api/server/settings — that path 404s). Requires an API token, which
+        # on_start sets from the injected credentials.
+        self.client.get("/api/version", headers=self._headers)
 
     @task(1)
     def health_check(self):
