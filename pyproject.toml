@@ -61,7 +61,7 @@ load = [
     "python-socketio>=5.16.2,<6",  # CVE-2026-48804 fix; transitive via locust
 ]
 dev = [
-    "ruff>=0.15.0,<0.16",
+    "ruff>=0.15.0,<0.17",
     "mypy>=1.10",
     "pytest-cov>=6.0",
     "pip-audit>=2.7",
