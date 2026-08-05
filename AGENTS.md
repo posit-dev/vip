@@ -146,7 +146,8 @@ Key principles:
 | File | Purpose |
 |------------------------------------|------------------------------------|
 | `src/vip/cli.py` | CLI entry point: version, verify (including `--basic` to skip `@slow`-tagged scenarios), cleanup (Connect content + orphaned Workbench sessions via `--workbench-url`), install, uninstall, auth, scaffold commands; `--version` flag |
-| `src/vip/config.py` | TOML config loader and dataclasses |
+| `src/vip/config.py` | TOML config loader and dataclasses (includes `[proxy]` → `ProxyConfig`) |
+| `src/vip/proxy.py` | Single source of truth for outbound-proxy resolution. `ProxyConfig` + `build_proxy_map` (mirrors httpx's `get_environment_proxies`, incl. NO_PROXY formatting), `build_mounts` (per-scheme `HTTPTransport` mounts that keep `verify`), `proxy_for_url` (httpx-identical most-specific-pattern selection, used by non-httpx probes), `playwright_proxy` (renders a Playwright `launch(proxy=)` dict). Every HTTP egress path routes through this so VIP never diverges from httpx's own env-proxy behavior — see "Outbound proxy support" below |
 | `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers; `authenticated_page` opens a headless page from a cached auth session for `vip cleanup --workbench-url`; `auth_cache_path()` is the single source of truth for the `.vip-auth-cache.json` location (both `plugin.py` and `cli.py` must use it), and `_load_cached_auth` probes Workbench before trusting a cached session; `refresh_auth_cache_from_storage_state` writes a live context's cookies back over a cache whose session has been invalidated (atomic, 0600, existing caches only) |
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
 | `src/vip/plugin.py` | pytest plugin: markers (including `slow`, used by `verify --basic`), auto-skip, JSON report output |
@@ -208,6 +209,7 @@ Clients live in `src/vip/clients/` and use plain httpx. Rules:
 -   Return dicts from JSON responses, not custom model objects.
 -   Add methods only when tests need them.
 -   All clients take a base URL and optional API key in their constructor.
+-   `BaseClient` needs a custom `transport=` (for `retries` and transport-level `verify`), which makes httpx ignore env proxies. It therefore resolves the proxy itself via `vip.proxy` and passes per-scheme `mounts=`. Any new ad-hoc `httpx.get`/`httpx.Client` in the client layer must route through the same proxy — pass `proxy=proxy_for_url(url, self._proxy_map)` (see `fetch_content`), never rely on httpx's ambient env pickup, so an explicit `[proxy]` config applies uniformly. See "Outbound proxy support" below.
 
 ## Configuration
 
@@ -219,6 +221,26 @@ Configuration is in `vip.toml` (see `vip.toml.example` for the template). Secret
 -   `VIP_TEST_TOTP_SECRET` — optional base32 TOTP seed used by `--headless-auth` to auto-fill MFA codes for a dedicated test service account. **Equivalent to bypassing 2FA — never use a personal account's seed.**
 
 The plugin loads config via `--vip-config` or defaults to `./vip.toml`. If no config file exists, all product tests are skipped.
+
+## Outbound proxy support
+
+VIP talks to deployments over three different HTTP mechanisms, and left alone they disagree about proxies: a custom-transport `httpx.Client` (the product API clients) silently ignores `HTTP_PROXY`/`HTTPS_PROXY` — httpx computes `allow_env_proxies = trust_env and transport is None`, so a supplied transport turns env-proxy resolution off — while bare `httpx.get` honors it, and Playwright's Chromium does its own platform-dependent env detection. That split is what makes the Connect API-key flow fail behind a proxy: mint/probe succeed through the proxy, then the ConnectClient calls go direct (or vice-versa).
+
+`src/vip/proxy.py` is the single source of truth that makes every path agree. The invariant: **all outbound HTTP egress resolves its proxy through `vip.proxy`, and no code relies on httpx's ambient env pickup.** Concretely:
+
+- **Product clients** (`BaseClient`): resolve `build_proxy_map` at construction, pass per-scheme `mounts=` (each an `HTTPTransport` carrying `verify`) alongside the base transport. `self._proxy_map` is exposed for ad-hoc calls.
+- **Bare httpx call sites** (auth mint/probe/delete, cache-liveness probe, `fetch_content`, scheme resolution): pass an explicit `proxy=proxy_for_url(url, build_proxy_map(proxy))` **and** `trust_env=False`, so the resolved per-URL proxy (which honors NO_PROXY) is authoritative rather than httpx re-reading the env.
+- **Playwright** (`_launch_chromium`): pass `proxy=playwright_proxy(build_proxy_map(proxy))` so the browser login shares the same proxy.
+
+`ProxyConfig` (from `[proxy]` in `vip.toml`, or `--proxy`/`--no-proxy`) threads from `VIPConfig.proxy` through the conftest client fixtures, the plugin auth entrypoints, and every `cli.py` command. Default (`trust_env=True`, no `url`) reads the ambient environment exactly as httpx would — so the no-config case is unchanged.
+
+Two sharp edges the fix also closes:
+- **Scheme downgrade** (`resolve_url_scheme`): a `ProxyError` must never trigger the `https://`→`http://` fallback (it says nothing about the origin's TLS), and when a proxy applies the raw-socket TLS-listener tiebreak is skipped entirely (it bypasses the proxy, so its "nothing is listening" verdict is about a path VIP will never take). Downgrading there would send credentials in cleartext on a proxy-only host.
+- **retries**: httpx's `HTTPProxy` pool drops the `retries` value (only the direct `ConnectionPool` keeps it). Proxied requests therefore get no connection-retries; this matches httpx and is documented in `proxy.py`, not worked around.
+
+If you add a new HTTP egress path, route it through `vip.proxy` — do not reintroduce a raw `httpx.get`/socket that bypasses the proxy.
+
+**Deliberately scoped out (env-proxy only, not the explicit `[proxy]` config).** A few opt-in/diagnostic paths still use bare `httpx.get` with httpx's default `trust_env=True`, so they honor the ambient `HTTP(S)_PROXY`/`NO_PROXY` env but not an explicit `[proxy]` TOML/`--proxy` config: the test-layer probes in `src/vip_tests/**` (e.g. `prerequisites/test_components.py`, `performance/*`, `security/*`, `package_manager/*`, `cross_product/test_resources.py`, `helpers.py`), the load/perf engine (`src/vip/load_engine.py`, gated behind the `performance` category), and the raw-socket TLS probes in `cross_product/test_ssl.py` / `security/test_https.py` (which test the *plaintext/handshake* boundary and are intentionally direct). The Kubernetes client (`clients/kubernetes.py`) uses the `kubernetes` SDK (urllib3), not httpx, and is out of scope. These are consistent for the common env-var case (the customer's `HTTPS_PROXY`); wiring them to the explicit `[proxy]` config would mean threading `ProxyConfig` into `PerformanceConfig` and every test helper — worth doing only if a deployment needs an explicit proxy that differs from the environment.
 
 ## Workbench session ownership (parallel safety)
 

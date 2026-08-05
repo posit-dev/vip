@@ -839,6 +839,7 @@ def _quit_vip_sessions_via_cookies(
     *,
     insecure: bool,
     ca_bundle,
+    proxy=None,
     owner: str | None = None,
 ) -> int:
     """Quit VIP-named sessions using a scratch cookie-authenticated client.
@@ -849,7 +850,7 @@ def _quit_vip_sessions_via_cookies(
     *owner* scopes the sweep to one xdist worker's own sessions.
     """
     try:
-        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
+        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
         try:
             scratch.set_cookies(cookies)
             return scratch.quit_vip_sessions(owner=owner)
@@ -865,6 +866,7 @@ def _session_api_reachable_via_cookies(
     *,
     insecure: bool,
     ca_bundle,
+    proxy=None,
 ) -> bool:
     """Whether the session API is reachable for a cookie-authenticated client.
 
@@ -873,7 +875,7 @@ def _session_api_reachable_via_cookies(
     Returns ``False`` on any error.
     """
     try:
-        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
+        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
         try:
             scratch.set_cookies(cookies)
             return scratch.sessions_api_reachable()
@@ -889,6 +891,7 @@ def _vip_session_count_via_cookies(
     *,
     insecure: bool,
     ca_bundle,
+    proxy=None,
     owner: str | None = None,
 ) -> int:
     """Count VIP-named sessions still listed for a cookie-authenticated client.
@@ -902,7 +905,7 @@ def _vip_session_count_via_cookies(
     "unknown" and escalate defensively in the latter case.  Never raises.
     """
     try:
-        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle)
+        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
         try:
             scratch.set_cookies(cookies)
             return scratch.count_vip_sessions(owner=owner)
@@ -937,6 +940,7 @@ def _wb_cleanup_state(vip_config, workbench_client):
             cookies,  # type: ignore[arg-type]
             insecure=vip_config.insecure,
             ca_bundle=vip_config.ca_bundle,
+            proxy=vip_config.proxy,
             owner=owner,
         )
     # Belt-and-suspenders: when an API key is configured, also sweep with it.
@@ -993,6 +997,7 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
         cookies,
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
         owner=owner,
     )
     # Detect API reachability once per session (cached on state).
@@ -1002,6 +1007,7 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
             cookies,
             insecure=vip_config.insecure,
             ca_bundle=vip_config.ca_bundle,
+            proxy=vip_config.proxy,
         )
     api_reachable = bool(state["api_reachable"])
     # Escalate to the UI sweep both when the API is unreachable (the cookie/API
@@ -1014,6 +1020,7 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
         cookies,
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
         owner=owner,
     )
     if not api_reachable or remaining != 0:
@@ -1025,6 +1032,7 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
             cookies,
             insecure=vip_config.insecure,
             ca_bundle=vip_config.ca_bundle,
+            proxy=vip_config.proxy,
             owner=owner,
         )
         if still_remaining > 0:

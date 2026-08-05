@@ -269,6 +269,7 @@ def pytest_configure(config: pytest.Config) -> None:
                 ca_bundle=vip_cfg.ca_bundle,
                 connect_url_scheme_inferred=vip_cfg.connect.url_scheme_inferred,
                 workbench_url_scheme_inferred=vip_cfg.workbench.url_scheme_inferred,
+                proxy=vip_cfg.proxy,
             )
             config.stash[_auth_session_key] = session
             if session.api_key:
@@ -324,6 +325,7 @@ def pytest_configure(config: pytest.Config) -> None:
                     ca_bundle=vip_cfg.ca_bundle,
                     connect_url_scheme_inferred=vip_cfg.connect.url_scheme_inferred,
                     workbench_url_scheme_inferred=vip_cfg.workbench.url_scheme_inferred,
+                    proxy=vip_cfg.proxy,
                 )
             except AuthConfigError as exc:
                 raise pytest.UsageError(str(exc)) from None

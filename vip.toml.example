@@ -237,6 +237,35 @@ enabled = false
 # insecure = true (see above -- that scenario is skipped entirely).
 # cert_expiry_warning_days = 30
 
+[proxy]
+# Outbound-proxy configuration for hosts that reach Posit deployments through a
+# forward proxy. This applies uniformly to ALL of VIP's HTTP egress: the product
+# API clients (Connect/Workbench/Package Manager), the auth and URL-probe
+# requests, and the Playwright browser login. Without it, the API clients would
+# silently ignore HTTP_PROXY/HTTPS_PROXY (httpx disables env-proxy resolution
+# when a custom transport is used) while the browser and probe paths honored it
+# -- a split that makes the Connect API-key flow fail behind a proxy.
+#
+# By default (this whole section omitted) VIP reads the ambient environment --
+# HTTP_PROXY / HTTPS_PROXY / ALL_PROXY / NO_PROXY (upper- or lowercase) -- exactly
+# as httpx does. Set values here only to override that.
+#
+# Explicit proxy for all traffic. Overrides the environment.
+# Overridable on the command line with: vip verify --proxy http://proxy:8080
+# url = "http://proxy.corp.example:8080"
+#
+# Hosts to reach directly, bypassing the proxy (same semantics as NO_PROXY:
+# a leading dot / bare domain matches subdomains). Overridable with --no-proxy.
+# no_proxy = ["localhost", "127.0.0.1", ".internal.example.com"]
+#
+# Set enabled = false to force every request direct, ignoring any proxy
+# environment variables (equivalent to `vip verify --no-proxy ''`).
+# enabled = true
+#
+# Set trust_env = false to ignore proxy environment variables without setting an
+# explicit url (has no effect when url is set). Default true.
+# trust_env = true
+
 [security]
 # Set enabled = true to run security-policy compliance tests.
 policy_checks_enabled = false

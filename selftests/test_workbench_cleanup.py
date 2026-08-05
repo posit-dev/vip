@@ -697,8 +697,10 @@ def test_complete_sso_true_when_logo_mounts_after_load():
 def _fake_vip_config(*, api_key: str = ""):
     from types import SimpleNamespace
 
+    from vip.proxy import ProxyConfig
+
     workbench = SimpleNamespace(api_key=api_key)
-    return SimpleNamespace(workbench=workbench, insecure=False, ca_bundle=None)
+    return SimpleNamespace(workbench=workbench, insecure=False, ca_bundle=None, proxy=ProxyConfig())
 
 
 def _fake_page(cookies: list[dict]):

@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from vip.clients.base import BaseClient
+from vip.proxy import ProxyConfig
 from vip.timeouts import scaled
 
 _VIP_CONTENT_TAG = "_vip_test"
@@ -41,6 +42,7 @@ class ConnectClient(BaseClient):
         ca_bundle: Path | None = None,
         auth: httpx.Auth | None = None,
         cookies: httpx.Cookies | None = None,
+        proxy: ProxyConfig | None = None,
     ) -> None:
         api_key = (api_key or "").strip()
         # Send the Connect API key via ``X-RSC-Authorization`` rather than the
@@ -59,8 +61,10 @@ class ConnectClient(BaseClient):
             auth=auth,
             extra_headers={"X-RSC-Authorization": f"Key {api_key}"} if api_key else None,
             cookies=cookies,
+            proxy=proxy,
         )
-        # self._verify is set by BaseClient.__init__ and used by fetch_content.
+        # self._verify / self._proxy_map are set by BaseClient.__init__ and used
+        # by fetch_content.
 
     # -- Server info --------------------------------------------------------
 
@@ -355,6 +359,8 @@ class ConnectClient(BaseClient):
         """
         from urllib.parse import urljoin, urlparse
 
+        from vip.proxy import proxy_for_url, verify_with_env_ca
+
         origin = urlparse(self.base_url)
         origin_key = (origin.scheme, origin.hostname, _normalized_port(origin.scheme, origin.port))
         max_redirects = 10
@@ -364,6 +370,13 @@ class ConnectClient(BaseClient):
         # same-origin redirect guard below ensures these are never sent off-origin.
         rsc = self._client.headers.get("X-RSC-Authorization")
         auth_headers = {"X-RSC-Authorization": rsc} if rsc else {}
+        # Route this ad-hoc request through the same proxy the pooled client
+        # resolved, and pin trust_env=False so that decision is authoritative —
+        # otherwise httpx re-reads the ambient proxy env and would ignore a
+        # NO_PROXY bypass (or a disabled [proxy]) that resolved this URL to
+        # direct. verify_with_env_ca keeps SSL_CERT_FILE/SSL_CERT_DIR honored
+        # despite trust_env=False, matching the pooled client's TLS trust.
+        ad_hoc_verify = verify_with_env_ca(self._verify)
         resp = httpx.get(
             url,
             headers=auth_headers,
@@ -371,7 +384,9 @@ class ConnectClient(BaseClient):
             cookies=self._cookies,
             follow_redirects=False,
             timeout=timeout,
-            verify=self._verify,
+            verify=ad_hoc_verify,
+            proxy=proxy_for_url(url, self._proxy_map),
+            trust_env=False,
         )
         for _ in range(max_redirects):
             if not resp.is_redirect:
@@ -399,7 +414,9 @@ class ConnectClient(BaseClient):
                 cookies=self._cookies,
                 follow_redirects=False,
                 timeout=timeout,
-                verify=self._verify,
+                verify=ad_hoc_verify,
+                proxy=proxy_for_url(absolute_location, self._proxy_map),
+                trust_env=False,
             )
         return resp
 

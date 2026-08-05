@@ -816,3 +816,40 @@ class TestVIPConfigVerify:
         bundle.write_text("fake-pem")
         cfg = VIPConfig(insecure=True, ca_bundle=bundle)
         assert cfg.verify is False
+
+
+class TestLoadConfigProxy:
+    """The [proxy] section maps to VIPConfig.proxy (a ProxyConfig)."""
+
+    def test_proxy_defaults_when_section_missing(self, tmp_toml):
+        path = tmp_toml('[general]\ndeployment_name = "Test"\n')
+        cfg = load_config(path)
+        assert cfg.proxy.url == ""
+        assert cfg.proxy.no_proxy == []
+        assert cfg.proxy.enabled is True
+        assert cfg.proxy.trust_env is True
+
+    def test_proxy_url_from_toml(self, tmp_toml):
+        path = tmp_toml('[proxy]\nurl = "http://proxy.corp:8080"\n')
+        cfg = load_config(path)
+        assert cfg.proxy.url == "http://proxy.corp:8080"
+
+    def test_no_proxy_list_from_toml(self, tmp_toml):
+        path = tmp_toml('[proxy]\nurl = "http://p:8080"\nno_proxy = ["localhost", ".internal"]\n')
+        cfg = load_config(path)
+        assert cfg.proxy.no_proxy == ["localhost", ".internal"]
+
+    def test_no_proxy_comma_string_from_toml(self, tmp_toml):
+        path = tmp_toml('[proxy]\nurl = "http://p:8080"\nno_proxy = "localhost, .internal"\n')
+        cfg = load_config(path)
+        assert cfg.proxy.no_proxy == ["localhost", ".internal"]
+
+    def test_enabled_false_from_toml(self, tmp_toml):
+        path = tmp_toml("[proxy]\nenabled = false\n")
+        cfg = load_config(path)
+        assert cfg.proxy.enabled is False
+
+    def test_trust_env_false_from_toml(self, tmp_toml):
+        path = tmp_toml("[proxy]\ntrust_env = false\n")
+        cfg = load_config(path)
+        assert cfg.proxy.trust_env is False

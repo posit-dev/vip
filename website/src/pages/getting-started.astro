@@ -23,6 +23,7 @@ import Footer from "../components/Footer.astro";
           <li><a href="#authentication">Authentication</a></li>
           <li><a href="#running-tests">Running tests</a></li>
           <li><a href="#configuration-file">Configuration file</a></li>
+          <li><a href="#outbound-proxy">Running behind a proxy</a></li>
           <li><a href="#generating-reports">Generating reports</a></li>
           <li><a href="#extending-vip">Extending VIP</a></li>
           <li><a href="#uninstalling">Uninstalling</a></li>
@@ -306,6 +307,53 @@ def test_new_api_feature():
             Each product section (Connect, Workbench, Package Manager) can be
             enabled or disabled individually. See <code>vip.toml.example</code>
             for the full template.
+          </p>
+        </section>
+
+        <section id="outbound-proxy">
+          <h2>Running behind a proxy</h2>
+          <p>
+            On hosts that reach your Posit deployment through a forward proxy,
+            VIP routes <strong>all</strong> of its outbound HTTP(S) through that
+            proxy — the product API clients (Connect, Workbench, Package
+            Manager), the authentication and URL-probe requests, and the
+            Playwright browser login all take the same path. This matters
+            because httpx disables environment-proxy resolution on a client that
+            uses a custom transport (which VIP's API clients require), so without
+            this handling the API calls would silently bypass the proxy while the
+            browser and probe paths used it — and the Connect API-key flow would
+            fail behind a proxy.
+          </p>
+          <p>
+            By default VIP reads the ambient environment —
+            <code>HTTP_PROXY</code> / <code>HTTPS_PROXY</code> /
+            <code>ALL_PROXY</code> / <code>NO_PROXY</code> (upper- or lowercase) —
+            exactly as httpx does. No configuration is needed for the common
+            case:
+          </p>
+          <pre><code>export HTTPS_PROXY=http://proxy.corp.example:8080
+export NO_PROXY=localhost,.internal.example.com
+vip verify --connect-url https://connect.example.com --headless-auth</code></pre>
+          <p>To set the proxy explicitly instead of via the environment:</p>
+          <pre><code>vip verify --connect-url https://connect.example.com \
+  --proxy http://proxy.corp.example:8080 \
+  --no-proxy localhost,.internal.example.com</code></pre>
+          <p>Or in <code>vip.toml</code>:</p>
+          <pre><code>[proxy]
+url = "http://proxy.corp.example:8080"
+no_proxy = ["localhost", ".internal.example.com"]</code></pre>
+          <p>
+            To force every request direct and ignore any proxy environment
+            variables, disable proxying: <code>vip verify --no-proxy ''</code>,
+            or <code>enabled = false</code> under <code>[proxy]</code>.
+          </p>
+          <p>
+            <strong>Tip:</strong> when a scheme-less URL is given (e.g.
+            <code>--connect-url connect.example.com</code>), VIP probes
+            <code>https://</code> first and may fall back to <code>http://</code>
+            if it does not answer. Behind a proxy-only network this probe can be
+            misled, so pass an explicit <code>https://</code> scheme to skip the
+            fallback entirely and guarantee VIP never downgrades to plaintext.
           </p>
         </section>
 
