@@ -3,6 +3,23 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.8.0 (2026-08-07)
+
+### Bug Fixes
+
+- **workbench**: Read version from homepage footer, not phantom API ([#579](https://github.com/posit-dev/vip/pull/579), [`7439cfe`](https://github.com/posit-dev/vip/commit/7439cfe0a5376cc06c86be6d8826a337f4a3a267))
+
+### Chores
+
+- **deps**: Bump ruff from 0.15.22 to 0.16.0 in the python-dependencies group ([#581](https://github.com/posit-dev/vip/pull/581), [`ae9fa8e`](https://github.com/posit-dev/vip/commit/ae9fa8ec0f60a8d700dfac3752fa99c01e6f5d8a))
+
+- **deps**: Bump the actions-dependencies group with 3 updates ([#582](https://github.com/posit-dev/vip/pull/582), [`8abe1bd`](https://github.com/posit-dev/vip/commit/8abe1bd32e7ac354ff9a1624eb5db7b5d5cd0545))
+
+### Documentation
+
+- Fix the Bedrock role name and note where its trust lives ([#580](https://github.com/posit-dev/vip/pull/580), [`f2aa6e0`](https://github.com/posit-dev/vip/commit/f2aa6e0f51e3caab1cfa6207de72e8f2199350eb))
+
+
 ## v2026.7.0 (2026-07-30)
 
 ### Continuous Integration
