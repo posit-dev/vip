@@ -314,22 +314,22 @@ def test_new_api_feature():
           <h2>Running behind a proxy</h2>
           <p>
             On hosts that reach your Posit deployment through a forward proxy,
-            VIP routes <strong>all</strong> of its outbound HTTP(S) through that
-            proxy — the product API clients (Connect, Workbench, Package
-            Manager), the authentication and URL-probe requests, and the
-            Playwright browser login all take the same path. This matters
-            because httpx disables environment-proxy resolution on a client that
-            uses a custom transport (which VIP's API clients require), so without
-            this handling the API calls would silently bypass the proxy while the
-            browser and probe paths used it — and the Connect API-key flow would
-            fail behind a proxy.
+            VIP routes its core outbound HTTP(S) through that proxy — the product
+            API clients (Connect, Workbench, Package Manager), the authentication
+            and URL-probe requests, and the Playwright browser login all take the
+            same path. This matters because httpx disables environment-proxy
+            resolution on a client that uses a custom transport (which VIP's API
+            clients require), so without this handling the API calls would
+            silently bypass the proxy while the browser and probe paths used it —
+            and the Connect API-key flow would fail behind a proxy.
           </p>
           <p>
             By default VIP reads the ambient environment —
             <code>HTTP_PROXY</code> / <code>HTTPS_PROXY</code> /
             <code>ALL_PROXY</code> / <code>NO_PROXY</code> (upper- or lowercase) —
-            exactly as httpx does. No configuration is needed for the common
-            case:
+            exactly as httpx does. <strong>The environment variables cover every
+            outbound request VIP makes.</strong> No configuration is needed for
+            the common case:
           </p>
           <pre><code>export HTTPS_PROXY=http://proxy.corp.example:8080
 export NO_PROXY=localhost,.internal.example.com
@@ -346,6 +346,19 @@ no_proxy = ["localhost", ".internal.example.com"]</code></pre>
             To force every request direct and ignore any proxy environment
             variables, disable proxying: <code>vip verify --no-proxy ''</code>,
             or <code>enabled = false</code> under <code>[proxy]</code>.
+          </p>
+          <p>
+            <strong>Scope of the explicit config.</strong> An explicit
+            <code>[proxy]</code> / <code>--proxy</code> setting covers the core
+            egress paths — the product API clients, authentication, URL probes,
+            and the browser login. A few diagnostic and load-test paths (some
+            reachability probes under the individual test suites, the
+            performance/load engine, and the raw-socket TLS handshake checks)
+            honor only the proxy <em>environment variables</em>, not an explicit
+            <code>[proxy]</code> config. If your proxy differs from the ambient
+            environment, set the environment variables as well as (or instead of)
+            <code>[proxy]</code> so every path agrees; when the proxy is the same
+            in both, there is nothing extra to do.
           </p>
           <p>
             <strong>Tip:</strong> when a scheme-less URL is given (e.g.

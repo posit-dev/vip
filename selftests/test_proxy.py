@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import socket
 import threading
-import time
 
 import httpx
 import pytest
@@ -145,6 +144,23 @@ def test_no_proxy_as_comma_string_in_from_dict():
     assert cfg.no_proxy == ["localhost", ".internal"]
 
 
+def test_from_dict_rejects_non_boolean_enabled():
+    """A quoted "false" would be truthy and silently turn proxying ON — reject it."""
+    with pytest.raises(ValueError, match="enabled must be a boolean"):
+        ProxyConfig.from_dict({"enabled": "false"})
+
+
+def test_from_dict_rejects_non_boolean_trust_env():
+    with pytest.raises(ValueError, match="trust_env must be a boolean"):
+        ProxyConfig.from_dict({"trust_env": "no"})
+
+
+def test_from_dict_accepts_real_booleans():
+    cfg = ProxyConfig.from_dict({"enabled": False, "trust_env": False})
+    assert cfg.enabled is False
+    assert cfg.trust_env is False
+
+
 # ---------------------------------------------------------------------------
 # proxy_for_url — parity with httpx's own transport selection
 # ---------------------------------------------------------------------------
@@ -216,11 +232,6 @@ def test_build_mounts_selects_proxy_and_bypass():
 
 
 # ---------------------------------------------------------------------------
-# playwright_proxy
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # verify_with_env_ca — keeps SSL_CERT_FILE honored despite trust_env=False
 # ---------------------------------------------------------------------------
 
@@ -231,38 +242,28 @@ def test_verify_with_env_ca_passes_through_false_and_str():
     assert verify_with_env_ca("/etc/ssl/corp.pem") == "/etc/ssl/corp.pem"
 
 
-def test_verify_with_env_ca_true_returns_context_honoring_env(monkeypatch, tmp_path):
+def test_verify_with_env_ca_true_returns_context_honoring_env(monkeypatch):
     """verify=True must become an SSLContext that includes SSL_CERT_FILE certs,
-    so pinning trust_env=False on the request does not drop a corporate CA."""
-    import ssl
-    import subprocess
+    so pinning trust_env=False on the request does not drop a corporate CA.
 
-    cert = tmp_path / "c.pem"
-    subprocess.run(
-        [
-            "openssl",
-            "req",
-            "-x509",
-            "-newkey",
-            "rsa:2048",
-            "-keyout",
-            str(tmp_path / "k.pem"),
-            "-out",
-            str(cert),
-            "-days",
-            "1",
-            "-nodes",
-            "-subj",
-            "/CN=corp",
-        ],
-        check=True,
-        capture_output=True,
-    )
+    Uses a checked-in single-cert PEM fixture (selftests/fixtures/corp_ca.pem)
+    rather than shelling out to openssl — the assertion only needs one
+    recognisable CA in the store, and a fixture keeps this a pure-unit test with
+    no external-tool dependency."""
+    import ssl
+    from pathlib import Path
+
+    cert = Path(__file__).parent / "fixtures" / "corp_ca.pem"
     monkeypatch.setenv("SSL_CERT_FILE", str(cert))
     result = verify_with_env_ca(True)
     assert isinstance(result, ssl.SSLContext)
     # The single corp cert is loaded (vs the large certifi bundle when ignored).
     assert len(result.get_ca_certs()) == 1
+
+
+# ---------------------------------------------------------------------------
+# playwright_proxy
+# ---------------------------------------------------------------------------
 
 
 def test_playwright_proxy_none_when_no_proxy():
@@ -391,7 +392,9 @@ def test_base_client_routes_through_proxy(logging_proxy):
     finally:
         client.close()
 
-    time.sleep(0.2)
+    # No sleep barrier needed: the .get() above is synchronous and only raises
+    # after the proxy has accepted the connection, recorded the request line,
+    # and returned its 502 — so any hit is already recorded once we get here.
     assert any("connect.example.invalid:443" in line for line in logging_proxy.hits), (
         f"expected a CONNECT to the target via the proxy, got {logging_proxy.hits!r}"
     )
@@ -409,8 +412,10 @@ def test_base_client_no_proxy_host_bypasses(logging_proxy):
     finally:
         client.close()
 
-    time.sleep(0.2)
-    # Direct path: DNS for the .invalid host fails, and the proxy is never hit.
+    # No sleep barrier: an erroneously-proxied request would have connected to
+    # the proxy synchronously *inside* the .get() above (before it raised), so a
+    # stray hit would already be recorded here. Direct path: DNS for the .invalid
+    # host fails and the proxy is never contacted.
     assert logging_proxy.hits == [], (
         f"NO_PROXY host must not touch the proxy, got {logging_proxy.hits!r}"
     )
@@ -430,7 +435,8 @@ def test_base_client_disabled_ignores_env_proxy(monkeypatch, logging_proxy):
     finally:
         client.close()
 
-    time.sleep(0.2)
+    # No sleep barrier (see test_base_client_no_proxy_host_bypasses): a proxied
+    # request would already be recorded synchronously before .get() raised.
     assert logging_proxy.hits == []
 
 

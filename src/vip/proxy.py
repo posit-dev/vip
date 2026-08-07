@@ -42,21 +42,32 @@ from dataclasses import dataclass, field
 
 import httpx
 
-try:  # httpx keeps these in _utils; import defensively so a future move is loud, not silent.
+try:
     from httpx._utils import (
         URLPattern,
         get_environment_proxies,
         is_ipv4_hostname,
         is_ipv6_hostname,
     )
-
-    _HTTPX_INTERNALS = True
-except ImportError:  # pragma: no cover - exercised only if httpx reorganises internals
-    URLPattern = None  # type: ignore[assignment,misc]
-    get_environment_proxies = None  # type: ignore[assignment]
-    is_ipv4_hostname = None  # type: ignore[assignment]
-    is_ipv6_hostname = None  # type: ignore[assignment]
-    _HTTPX_INTERNALS = False
+except ImportError as exc:  # pragma: no cover - guards a future httpx internals move
+    # vip.proxy's entire contract is to mirror httpx's env-proxy resolution
+    # byte-for-byte (NO_PROXY formatting, the NO_PROXY=* short-circuit,
+    # most-specific-pattern selection). Those helpers live in httpx._utils. If a
+    # future httpx relocates them we must NOT degrade silently: build_proxy_map's
+    # explicit-url branch needs no internals and would still proxy the pooled
+    # clients, while proxy_for_url would return None — sending the mint, probe,
+    # delete, and fetch_content bare calls *direct* with trust_env=False. That is
+    # worse than the pre-proxy behaviour and a cleartext-credential hazard on a
+    # proxy-only host, exactly the split this module exists to remove. Fail loud
+    # and early, pointing at the supported pin, instead.
+    raise ImportError(
+        "vip.proxy requires httpx's internal env-proxy helpers "
+        "(httpx._utils.URLPattern / get_environment_proxies / is_ipv4_hostname / "
+        f"is_ipv6_hostname), which are missing from the installed httpx {httpx.__version__}. "
+        "VIP supports httpx>=0.27,<1 — pin httpx within that range. Continuing would "
+        "route some HTTP egress around the configured proxy, so VIP refuses to start "
+        "rather than degrade silently."
+    ) from exc
 
 
 # A proxy map matches httpx's internal shape: URL-pattern string -> proxy URL,
@@ -89,20 +100,11 @@ class ProxyConfig:
     @classmethod
     def from_dict(cls, raw: dict) -> ProxyConfig:
         return cls(
-            url=raw.get("url", ""),
+            url=str(raw.get("url", "")),
             no_proxy=_as_host_list(raw.get("no_proxy", [])),
-            enabled=raw.get("enabled", True),
-            trust_env=raw.get("trust_env", True),
+            enabled=_as_bool(raw.get("enabled", True), field="[proxy] enabled"),
+            trust_env=_as_bool(raw.get("trust_env", True), field="[proxy] trust_env"),
         )
-
-    @property
-    def is_active(self) -> bool:
-        """True when this config can produce at least one proxy route.
-
-        Cheap enough to compute without building the whole map; used by
-        callers that only need to know "is a proxy in play at all?".
-        """
-        return bool(build_proxy_map(self))
 
 
 def _as_host_list(value: object) -> list[str]:
@@ -112,6 +114,22 @@ def _as_host_list(value: object) -> list[str]:
     if isinstance(value, list):
         return [str(h).strip() for h in value if str(h).strip()]
     return []
+
+
+def _as_bool(value: object, *, field: str) -> bool:
+    """Reject a non-boolean where a TOML boolean is required.
+
+    TOML has a real boolean type, so ``enabled = false`` parses to ``False``.
+    But ``enabled = "false"`` parses to the *string* ``"false"`` — truthy — which
+    would silently turn proxying **on** for a user who meant to turn it off (and,
+    for a security-sensitive toggle, in the more dangerous direction). Fail fast
+    on a config typo rather than honour the wrong value, matching
+    :func:`vip.config._validate_cert_expiry_warning_days`'s fail-loud convention
+    for fields whose wrong value doesn't otherwise error on first use.
+    """
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"{field} must be a boolean (true/false), got {value!r}")
 
 
 def _normalize_proxy_url(url: str) -> str:
@@ -136,9 +154,9 @@ def _no_proxy_pattern(hostname: str) -> str:
     """
     if "://" in hostname:
         return hostname
-    if _HTTPX_INTERNALS and is_ipv4_hostname(hostname):  # type: ignore[misc]
+    if is_ipv4_hostname(hostname):
         return f"all://{hostname}"
-    if _HTTPX_INTERNALS and is_ipv6_hostname(hostname):  # type: ignore[misc]
+    if is_ipv6_hostname(hostname):
         return f"all://[{hostname}]"
     if hostname.lower() == "localhost":
         return f"all://{hostname}"
@@ -171,10 +189,10 @@ def build_proxy_map(config: ProxyConfig | None) -> ProxyMap:
             proxy_map[_no_proxy_pattern(host)] = None
         return proxy_map
 
-    if config.trust_env and _HTTPX_INTERNALS:
+    if config.trust_env:
         # Reuse httpx's own environment parsing so VIP never diverges from it —
         # same key format, same NO_PROXY semantics, same NO_PROXY=* short-circuit.
-        proxy_map = dict(get_environment_proxies())  # type: ignore[misc]
+        proxy_map = dict(get_environment_proxies())
         # An env map of {} means NO_PROXY=* (bypass everything) or no proxy at
         # all — in both cases adding bypass holes is meaningless, so only merge
         # config.no_proxy when the environment actually configured a proxy.
@@ -230,7 +248,7 @@ def proxy_for_url(url: str, proxy_map: ProxyMap) -> str | None:
     socket probe, Playwright — use this to take the *same* network path the API
     clients will, instead of a divergent one.
     """
-    if not proxy_map or not _HTTPX_INTERNALS:
+    if not proxy_map:
         return None
     target = httpx.URL(url)
     # Match httpx exactly: URLPattern sorts ascending with the *most specific*
@@ -238,7 +256,7 @@ def proxy_for_url(url: str, proxy_map: ProxyMap) -> str | None:
     # tuple than the catch-all ``all://``), and the first matching pattern wins.
     # So a NO_PROXY host beats the catch-all proxy and correctly resolves to
     # None (bypass) — the whole point of consulting this for the #2 tiebreak.
-    for pattern in sorted(URLPattern(k) for k in proxy_map):  # type: ignore[misc]
+    for pattern in sorted(URLPattern(k) for k in proxy_map):
         if pattern.matches(target):
             return proxy_map[pattern.pattern]
     return None

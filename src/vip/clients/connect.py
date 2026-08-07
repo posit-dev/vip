@@ -63,8 +63,8 @@ class ConnectClient(BaseClient):
             cookies=cookies,
             proxy=proxy,
         )
-        # self._verify / self._proxy_map are set by BaseClient.__init__ and used
-        # by fetch_content.
+        # self._verify is set by BaseClient.__init__; fetch_content also reads
+        # the resolved proxy via the public self.proxy_map property.
 
     # -- Server info --------------------------------------------------------
 
@@ -385,7 +385,7 @@ class ConnectClient(BaseClient):
             follow_redirects=False,
             timeout=timeout,
             verify=ad_hoc_verify,
-            proxy=proxy_for_url(url, self._proxy_map),
+            proxy=proxy_for_url(url, self.proxy_map),
             trust_env=False,
         )
         for _ in range(max_redirects):
@@ -415,7 +415,7 @@ class ConnectClient(BaseClient):
                 follow_redirects=False,
                 timeout=timeout,
                 verify=ad_hoc_verify,
-                proxy=proxy_for_url(absolute_location, self._proxy_map),
+                proxy=proxy_for_url(absolute_location, self.proxy_map),
                 trust_env=False,
             )
         return resp

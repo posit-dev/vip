@@ -853,3 +853,10 @@ class TestLoadConfigProxy:
         path = tmp_toml("[proxy]\ntrust_env = false\n")
         cfg = load_config(path)
         assert cfg.proxy.trust_env is False
+
+    def test_quoted_enabled_is_rejected(self, tmp_toml):
+        """A quoted "false" is a truthy string, not a boolean — must fail loud,
+        not silently turn proxying on (the dangerous direction for this toggle)."""
+        path = tmp_toml('[proxy]\nenabled = "false"\n')
+        with pytest.raises(ValueError, match="enabled must be a boolean"):
+            load_config(path)
