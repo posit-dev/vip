@@ -65,7 +65,10 @@ def connect_client(request: pytest.FixtureRequest, vip_config: VIPConfig) -> Con
     # same value, and its own cache means asking from more than one fixture
     # for the same product only probes the network once.
     url = resolve_url_scheme(
-        vip_config.connect, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.connect,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
     # A registered client-auth provider (e.g. Snowflake JWT) authenticates the
     # request itself, so a Connect API key is not required in that case.
@@ -86,6 +89,7 @@ def connect_client(request: pytest.FixtureRequest, vip_config: VIPConfig) -> Con
         ca_bundle=vip_config.ca_bundle,
         auth=auth,
         cookies=cookies,
+        proxy=vip_config.proxy,
     )
     yield client
     client.close()
@@ -94,7 +98,10 @@ def connect_client(request: pytest.FixtureRequest, vip_config: VIPConfig) -> Con
 @pytest.fixture(scope="session")
 def connect_url(vip_config: VIPConfig) -> str:
     return resolve_url_scheme(
-        vip_config.connect, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.connect,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
 
 
@@ -109,7 +116,10 @@ def workbench_client(
         yield None
         return
     url = resolve_url_scheme(
-        vip_config.workbench, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.workbench,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
     auth = build_client_auth(vip_config, "workbench", url)
     # Same gateway-cookie injection as connect_client: the identical OIDC proxy
@@ -123,6 +133,7 @@ def workbench_client(
         ca_bundle=vip_config.ca_bundle,
         auth=auth,
         cookies=cookies,
+        proxy=vip_config.proxy,
     )
     yield client
     client.close()
@@ -131,7 +142,10 @@ def workbench_client(
 @pytest.fixture(scope="session")
 def workbench_url(vip_config: VIPConfig) -> str:
     return resolve_url_scheme(
-        vip_config.workbench, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.workbench,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
 
 
@@ -152,7 +166,10 @@ def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
     if not vip_config.package_manager.is_configured:
         return None
     url = resolve_url_scheme(
-        vip_config.package_manager, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.package_manager,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
     auth = build_client_auth(vip_config, "package_manager", url)
     client = PackageManagerClient(
@@ -161,6 +178,7 @@ def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
         auth=auth,
+        proxy=vip_config.proxy,
     )
     yield client
     client.close()
@@ -169,7 +187,10 @@ def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
 @pytest.fixture(scope="session")
 def pm_url(vip_config: VIPConfig) -> str:
     return resolve_url_scheme(
-        vip_config.package_manager, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.package_manager,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
 
 
@@ -224,6 +245,17 @@ def browser_context_args(
         browser_context_args["storage_state"] = str(session.storage_state_path)
     if vip_config.insecure:
         browser_context_args["ignore_https_errors"] = True
+    # Route in-suite UI-test browsers through the same proxy as the API clients
+    # and the auth-mint browser, so a [proxy]/--proxy config (or the ambient
+    # proxy env) applies uniformly to Playwright too — Chromium's own env-proxy
+    # detection is platform-dependent, so set it explicitly. Playwright accepts
+    # ``proxy`` on the context as well as at launch. ``None`` (no proxy) leaves
+    # the args untouched, so the default remains exactly as pytest-playwright.
+    from vip.proxy import build_proxy_map, playwright_proxy
+
+    pw_proxy = playwright_proxy(build_proxy_map(vip_config.proxy))
+    if pw_proxy is not None:
+        browser_context_args["proxy"] = pw_proxy
     if vip_config.ca_bundle is not None:
         import os
 

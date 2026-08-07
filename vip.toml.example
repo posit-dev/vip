@@ -237,6 +237,46 @@ enabled = false
 # insecure = true (see above -- that scenario is skipped entirely).
 # cert_expiry_warning_days = 30
 
+[proxy]
+# Outbound-proxy configuration for hosts that reach Posit deployments through a
+# forward proxy. This covers VIP's core HTTP egress: the product API clients
+# (Connect/Workbench/Package Manager), the auth and URL-probe requests, and the
+# Playwright browser login. Without it, the API clients would silently ignore
+# HTTP_PROXY/HTTPS_PROXY (httpx disables env-proxy resolution when a custom
+# transport is used) while the browser and probe paths honored it -- a split
+# that makes the Connect API-key flow fail behind a proxy.
+#
+# By default (this whole section omitted) VIP reads the ambient environment --
+# HTTP_PROXY / HTTPS_PROXY / ALL_PROXY / NO_PROXY (upper- or lowercase) -- exactly
+# as httpx does, and the environment variables cover EVERY request VIP makes.
+# Set values here only to override that. (One convenience beyond httpx: if only
+# HTTP_PROXY is set -- a single forward proxy used as the sole outbound tunnel --
+# VIP routes https through it too via CONNECT, so a proxy-only network works
+# without also setting HTTPS_PROXY. An explicit HTTPS_PROXY/ALL_PROXY wins.)
+#
+# Scope note: an explicit url/no_proxy here covers the core paths above. A few
+# diagnostic and load-test paths (some reachability probes under the test
+# suites, the performance/load engine, and the raw-socket TLS handshake checks)
+# honor only the proxy environment variables, not this explicit config. If your
+# proxy differs from the ambient environment, set the env vars too so every path
+# agrees; when they match, there is nothing extra to do.
+#
+# Explicit proxy for all traffic. Overrides the environment.
+# Overridable on the command line with: vip verify --proxy http://proxy:8080
+# url = "http://proxy.corp.example:8080"
+#
+# Hosts to reach directly, bypassing the proxy (same semantics as NO_PROXY:
+# a leading dot / bare domain matches subdomains). Overridable with --no-proxy.
+# no_proxy = ["localhost", "127.0.0.1", ".internal.example.com"]
+#
+# Set enabled = false to force every request direct, ignoring any proxy
+# environment variables (equivalent to `vip verify --no-proxy ''`).
+# enabled = true
+#
+# Set trust_env = false to ignore proxy environment variables without setting an
+# explicit url (has no effect when url is set). Default true.
+# trust_env = true
+
 [security]
 # Set enabled = true to run security-policy compliance tests.
 policy_checks_enabled = false

@@ -275,7 +275,7 @@ def test_run_uninstall_chained_cleanup_invokes_connect_client(tmp_path, monkeypa
     invocations = []
 
     class FakeConnectClient:
-        def __init__(self, url, api_key):
+        def __init__(self, url, api_key, proxy=None):
             invocations.append(("init", url, api_key))
 
         def __enter__(self):

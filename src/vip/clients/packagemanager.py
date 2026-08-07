@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from vip.clients.base import BaseClient
+from vip.proxy import ProxyConfig
 
 # Binary-package probe tables.  PPM's macOS routing ties R version to arch:
 # R 4.6+ -> sonoma-{arm64,x86_64}; R 4.1-4.5 -> big-sur-{arm64,x86_64}.
@@ -39,6 +40,7 @@ class PackageManagerClient(BaseClient):
         insecure: bool = False,
         ca_bundle: Path | None = None,
         auth: httpx.Auth | None = None,
+        proxy: ProxyConfig | None = None,
     ) -> None:
         super().__init__(
             base_url,
@@ -47,6 +49,7 @@ class PackageManagerClient(BaseClient):
             insecure=insecure,
             ca_bundle=ca_bundle,
             auth=auth,
+            proxy=proxy,
         )
 
     # -- Health / status ----------------------------------------------------

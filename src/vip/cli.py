@@ -391,6 +391,28 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
             lines.append(f"ca_bundle = {_json.dumps(str(effective_ca_bundle))}")
         lines.append("")
 
+    # Proxy: --proxy sets an explicit proxy URL; --no-proxy lists bypass hosts.
+    # An empty --no-proxy with no --proxy means "proxying off" (enabled=false),
+    # which forces every request direct regardless of the ambient environment.
+    proxy_url = getattr(args, "proxy", None)
+    no_proxy = getattr(args, "no_proxy", None)
+    if proxy_url or no_proxy is not None:
+        import json as _json
+
+        # Parse the bypass list once, stripping tokens; a value that is empty or
+        # only whitespace/commas yields no hosts.
+        hosts = [h.strip() for h in no_proxy.split(",") if h.strip()] if no_proxy else []
+        lines.append("[proxy]")
+        if proxy_url:
+            lines.append(f"url = {_json.dumps(proxy_url)}")
+        elif not hosts:
+            # No proxy URL and no bypass hosts (--no-proxy '' or whitespace-only):
+            # disable proxying entirely, ignoring any ambient proxy env vars.
+            lines.append("enabled = false")
+        if hosts:
+            lines.append(f"no_proxy = {_json.dumps(hosts)}")
+        lines.append("")
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
         f.write("\n".join(lines) + "\n")
         return f.name
@@ -406,9 +428,24 @@ def run_verify(args: argparse.Namespace) -> None:
     config_path = args.config
     temp_config = None
 
+    proxy_flag_set = getattr(args, "proxy", None) or getattr(args, "no_proxy", None) is not None
     if not config_path and (args.connect_url or args.workbench_url or args.package_manager_url):
         temp_config = _generate_temp_config(args)
         config_path = temp_config
+    elif config_path and proxy_flag_set:
+        # --proxy/--no-proxy are only woven into the generated temp config (via
+        # _generate_temp_config); on a --config run the flags have no consumer,
+        # so the pytest subprocess would load the file's [proxy] (or none) and
+        # silently ignore them. This mirrors --insecure/--ca-bundle on the same
+        # branch. Rather than swallow the flag, tell the user how to make it
+        # take effect. (Ambient HTTP(S)_PROXY still works on a config run.)
+        print(
+            ">>> Warning: --proxy/--no-proxy are ignored when --config is used. "
+            "Put the proxy under a [proxy] section in your config file "
+            "(url = ..., no_proxy = [...], or enabled = false), or set "
+            "HTTP_PROXY/HTTPS_PROXY/NO_PROXY in the environment.",
+            file=sys.stderr,
+        )
 
     # Fail fast when a config file is expected but doesn't exist.
     if config_path and not Path(config_path).is_file():
@@ -758,16 +795,27 @@ def _collect_status(config: VIPConfig) -> dict:
         try:
             from vip.auth import resolve_url_scheme
 
-            resolve_url_scheme(pc, insecure=config.insecure, ca_bundle=config.ca_bundle)
+            resolve_url_scheme(
+                pc, insecure=config.insecure, ca_bundle=config.ca_bundle, proxy=config.proxy
+            )
             if name == "connect":
                 client: ConnectClient | WorkbenchClient | PackageManagerClient = ConnectClient(
                     pc.url,
                     pc.api_key,  # type: ignore[attr-defined]
+                    proxy=config.proxy,
                 )
             elif name == "workbench":
-                client = WorkbenchClient(pc.url, pc.api_key)  # type: ignore[attr-defined]
+                client = WorkbenchClient(
+                    pc.url,
+                    pc.api_key,  # type: ignore[attr-defined]
+                    proxy=config.proxy,
+                )
             else:
-                client = PackageManagerClient(pc.url, pc.token)  # type: ignore[attr-defined]
+                client = PackageManagerClient(
+                    pc.url,
+                    pc.token,  # type: ignore[attr-defined]
+                    proxy=config.proxy,
+                )
             http_status = client.health()
             state = "ok" if http_status < 400 else "fail"
             products[name] = {
@@ -940,6 +988,7 @@ def run_uninstall(args: argparse.Namespace) -> None:
 
     insecure = cfg.insecure if cfg else False
     ca_bundle = cfg.ca_bundle if cfg else None
+    proxy = cfg.proxy if cfg else None
     yes = bool(getattr(args, "yes", False))
 
     # Resolve now, before the plan is built (and therefore before it's
@@ -955,7 +1004,7 @@ def run_uninstall(args: argparse.Namespace) -> None:
     if yes and connect_pc is not None:
         from vip.auth import resolve_url_scheme
 
-        resolve_url_scheme(connect_pc, insecure=insecure, ca_bundle=ca_bundle)
+        resolve_url_scheme(connect_pc, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
 
     plan = build_uninstall_plan(
         manifest=manifest,
@@ -978,8 +1027,10 @@ def run_uninstall(args: argparse.Namespace) -> None:
             # idempotent (it resets url_scheme_inferred once resolved), so
             # calling it again here is a plain attribute read -- kept as a
             # belt-and-suspenders safety net rather than trusted by omission.
-            resolved = resolve_url_scheme(connect_pc, insecure=insecure, ca_bundle=ca_bundle)
-            with ConnectClient(resolved, api_key) as client:
+            resolved = resolve_url_scheme(
+                connect_pc, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
+            )
+            with ConnectClient(resolved, api_key, proxy=proxy) as client:
                 client.cleanup_vip_content()
 
     rc = execute_uninstall_plan(
@@ -1087,6 +1138,7 @@ def _cleanup_workbench_sessions(
 
     insecure = config.insecure
     ca_bundle = config.ca_bundle
+    proxy = config.proxy
     # Same helper plugin.py uses, so this finds the session a prior `vip verify`
     # from this directory cached.  These two used to build the path independently
     # and disagreed for installed VIP -- see auth_cache_path.
@@ -1106,6 +1158,7 @@ def _cleanup_workbench_sessions(
                 cache_path=cache_path,
                 insecure=insecure,
                 ca_bundle=ca_bundle,
+                proxy=proxy,
             )
         else:
             session = start_interactive_auth(
@@ -1113,6 +1166,7 @@ def _cleanup_workbench_sessions(
                 cache_path=cache_path,
                 insecure=insecure,
                 ca_bundle=ca_bundle,
+                proxy=proxy,
             )
     except AuthConfigError as exc:
         print(f"Error: could not authenticate to Workbench: {exc}", file=sys.stderr)
@@ -1130,7 +1184,7 @@ def _cleanup_workbench_sessions(
         print(f"Cleaning up orphaned Workbench sessions at {workbench_url}")
         cookies = session.load_cookies()
         client = WorkbenchClient(
-            workbench_url, cookies=cookies, insecure=insecure, ca_bundle=ca_bundle
+            workbench_url, cookies=cookies, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
         )
         try:
             api_reachable = client.sessions_api_reachable()
@@ -1147,7 +1201,9 @@ def _cleanup_workbench_sessions(
             # sessions (issue #467).
             if not api_reachable or remaining != 0:
                 print("Escalating to browser-driven session cleanup ...")
-                with authenticated_page(session, insecure=insecure, ca_bundle=ca_bundle) as page:
+                with authenticated_page(
+                    session, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
+                ) as page:
                     ui_count = quit_vip_sessions_via_ui(page, workbench_url)
                 print(f"Quit {ui_count} VIP Workbench session(s) via the UI")
         finally:
@@ -1250,10 +1306,10 @@ def run_cleanup(args: argparse.Namespace) -> None:
         from vip.clients.connect import ConnectClient
 
         connect_url = resolve_url_scheme(
-            connect_pc, insecure=config.insecure, ca_bundle=config.ca_bundle
+            connect_pc, insecure=config.insecure, ca_bundle=config.ca_bundle, proxy=config.proxy
         )
         print(f"Cleaning up VIP test content on Connect at {connect_url}")
-        with ConnectClient(connect_url, api_key) as client:
+        with ConnectClient(connect_url, api_key, proxy=config.proxy) as client:
             deleted = client.cleanup_vip_content()
         print(f"Deleted {deleted} VIP test content item(s)")
 
@@ -1261,7 +1317,7 @@ def run_cleanup(args: argparse.Namespace) -> None:
         from vip.auth import resolve_url_scheme
 
         workbench_url = resolve_url_scheme(
-            workbench_pc, insecure=config.insecure, ca_bundle=config.ca_bundle
+            workbench_pc, insecure=config.insecure, ca_bundle=config.ca_bundle, proxy=config.proxy
         )
         _cleanup_workbench_sessions(workbench_url, args, config)
 
@@ -1422,6 +1478,34 @@ def main() -> None:
             "Useful for self-signed or corporate CAs. "
             "For Playwright, sets NODE_EXTRA_CA_CERTS before launching Chromium "
             "(Chromium-level trust only; does not update the OS certificate store)."
+        ),
+    )
+
+    # Proxy configuration
+    proxy_group = verify_parser.add_argument_group("outbound proxy")
+    proxy_group.add_argument(
+        "--proxy",
+        default=None,
+        metavar="URL",
+        help=(
+            "Route outbound HTTP(S) through this proxy (e.g. http://proxy:8080). "
+            "Applies to the product API clients, the auth/probe requests, and the "
+            "Playwright browser login. Overrides HTTP_PROXY/HTTPS_PROXY. Ignored "
+            "when --config is given (use a [proxy] section in the config file "
+            "instead). When omitted, VIP reads the ambient "
+            "HTTP_PROXY/HTTPS_PROXY/NO_PROXY environment (same as httpx)."
+        ),
+    )
+    proxy_group.add_argument(
+        "--no-proxy",
+        default=None,
+        metavar="HOSTS",
+        help=(
+            "Comma-separated hosts to reach directly, bypassing --proxy "
+            "(e.g. localhost,.internal.example). With no --proxy, passing an "
+            "empty value (--no-proxy '') disables proxying entirely, ignoring "
+            "any proxy environment variables. Ignored when --config is given "
+            "(use a [proxy] section in the config file instead)."
         ),
     )
 

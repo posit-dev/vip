@@ -12,6 +12,7 @@ import contextlib
 import logging
 import os
 import shutil
+import ssl
 import tempfile
 import time
 from collections.abc import Iterator, Mapping, Sequence
@@ -32,6 +33,14 @@ from playwright.sync_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
 
+from vip.proxy import (
+    ProxyConfig,
+    build_proxy_map,
+    playwright_proxy,
+    proxy_for_url,
+    redact_proxy_url,
+    verify_with_env_ca,
+)
 from vip.timeouts import scaled
 
 logger = logging.getLogger(__name__)
@@ -69,15 +78,24 @@ _MISSING_DEPS_HINT = (
 )
 
 
-def _launch_chromium(pw, *, headless: bool):
+def _launch_chromium(pw, *, headless: bool, proxy: dict[str, str] | None = None):
     """Launch Chromium via Playwright, turning missing-system-deps errors
     into a clear :class:`AuthConfigError` with a remediation command.
+
+    When *proxy* is a Playwright proxy dict (``{"server": ..., "bypass": ...}``,
+    from :func:`vip.proxy.playwright_proxy`), it is passed to ``launch`` so the
+    browser login traverses the same proxy as VIP's httpx egress. Chromium's own
+    env-proxy detection is platform-dependent; setting it explicitly makes the
+    browser and API paths agree. ``None`` launches exactly as before.
 
     Other Playwright errors (e.g. an already-running browser) propagate
     unchanged so callers can surface them as needed.
     """
+    launch_kwargs: dict = {"headless": headless}
+    if proxy is not None:
+        launch_kwargs["proxy"] = proxy
     try:
-        return pw.chromium.launch(headless=headless)
+        return pw.chromium.launch(**launch_kwargs)
     except PlaywrightError as exc:
         text = str(exc).lower()
         if any(signal in text for signal in _MISSING_DEPS_SIGNALS):
@@ -113,6 +131,7 @@ class InteractiveAuthSession:
     _cache_path: Path | None = field(default=None, repr=False)
     _insecure: bool = field(default=False, repr=False)
     _ca_bundle: Path | None = field(default=None, repr=False)
+    _proxy: ProxyConfig | None = field(default=None, repr=False)
 
     def load_cookies(self) -> httpx.Cookies:
         """Build an httpx cookie jar from the saved Playwright storage state.
@@ -198,6 +217,7 @@ class InteractiveAuthSession:
                     self.key_name,
                     insecure=self._insecure,
                     ca_bundle=self._ca_bundle,
+                    proxy=self._proxy,
                 )
             except Exception as exc:
                 print(f">>> Warning: Could not delete API key: {exc}")
@@ -212,6 +232,7 @@ def authenticated_page(
     *,
     insecure: bool = False,
     ca_bundle: Path | None = None,
+    proxy: ProxyConfig | None = None,
 ) -> Iterator[Page]:
     """Open a headless, authenticated Playwright page from a cached auth session.
 
@@ -232,9 +253,10 @@ def authenticated_page(
     _prev_node_ca = os.environ.get("NODE_EXTRA_CA_CERTS")
     if ca_bundle is not None:
         os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
+    pw_proxy = playwright_proxy(build_proxy_map(proxy))
     try:
         pw = sync_playwright().start()
-        browser = _launch_chromium(pw, headless=True)
+        browser = _launch_chromium(pw, headless=True, proxy=pw_proxy)
         context = browser.new_context(
             storage_state=str(session.storage_state_path),
             ignore_https_errors=insecure,
@@ -350,6 +372,7 @@ def _cached_workbench_session_is_live(
     insecure: bool = False,
     ca_bundle: Path | None = None,
     transport: httpx.BaseTransport | None = None,
+    proxy: ProxyConfig | None = None,
 ) -> _ProbeResult:
     """Report whether *cookies* still authenticate Workbench at *workbench_url*.
 
@@ -363,7 +386,16 @@ def _cached_workbench_session_is_live(
     perfectly good cache, trigger an interactive re-auth that cannot succeed
     either, and bury the real reachability error behind an auth-shaped one.
     """
-    verify = _httpx_verify(insecure, ca_bundle)
+    verify = _httpx_verify_env_aware(insecure, ca_bundle)
+    # Route the liveness probe through the same proxy the clients use, but only
+    # when no explicit transport was injected (a test's MockTransport must not
+    # get a proxy mount layered on top). build_proxy_map already consulted the
+    # environment where appropriate, so trust_env=False makes that resolved
+    # per-URL proxy authoritative (and is moot when a transport is injected,
+    # since httpx ignores env proxies whenever a transport is supplied).
+    probe_proxy = (
+        None if transport is not None else proxy_for_url(workbench_url, build_proxy_map(proxy))
+    )
     try:
         with httpx.Client(
             timeout=scaled(10.0),
@@ -371,6 +403,8 @@ def _cached_workbench_session_is_live(
             follow_redirects=True,
             cookies=cookies,
             transport=transport,
+            proxy=probe_proxy,
+            trust_env=False,
         ) as client:
             response = client.get(workbench_url)
     except httpx.HTTPError as exc:
@@ -390,6 +424,7 @@ def _load_cached_auth(
     *,
     insecure: bool = False,
     ca_bundle: Path | None = None,
+    proxy: ProxyConfig | None = None,
 ) -> InteractiveAuthSession | None:
     """Load a cached auth session if it exists, is recent, and still works.
 
@@ -466,6 +501,7 @@ def _load_cached_auth(
             _cookies_from_storage_state(cache_path),
             insecure=insecure,
             ca_bundle=ca_bundle,
+            proxy=proxy,
         )
         if probe.is_live is False:
             print(
@@ -633,6 +669,7 @@ def _resolve_str_if_inferred(
     *,
     insecure: bool,
     ca_bundle: Path | None,
+    proxy: ProxyConfig | None = None,
 ) -> str | None:
     """Resolve a bare url string through ``resolve_url_scheme``'s provenance check.
 
@@ -661,7 +698,7 @@ def _resolve_str_if_inferred(
     # test_auth.py plus plugin.py/cli.py -- out of scope for this bug fix.
     pc = ProductConfig(url=url)
     pc.url_scheme_inferred = inferred
-    return resolve_url_scheme(pc, insecure=insecure, ca_bundle=ca_bundle)
+    return resolve_url_scheme(pc, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
 
 
 def start_interactive_auth(
@@ -672,6 +709,7 @@ def start_interactive_auth(
     ca_bundle: Path | None = None,
     connect_url_scheme_inferred: bool = False,
     workbench_url_scheme_inferred: bool = False,
+    proxy: ProxyConfig | None = None,
 ) -> InteractiveAuthSession:
     """Launch a headed browser, authenticate via OIDC, and optionally
     mint a Connect API key through the UI.
@@ -709,16 +747,29 @@ def start_interactive_auth(
     # Check for a valid cached session.
     if cache_path:
         cached = _load_cached_auth(
-            cache_path, connect_url, workbench_url, insecure=insecure, ca_bundle=ca_bundle
+            cache_path,
+            connect_url,
+            workbench_url,
+            insecure=insecure,
+            ca_bundle=ca_bundle,
+            proxy=proxy,
         )
         if cached is not None:
             return cached
 
     connect_url = _resolve_str_if_inferred(
-        connect_url, connect_url_scheme_inferred, insecure=insecure, ca_bundle=ca_bundle
+        connect_url,
+        connect_url_scheme_inferred,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        proxy=proxy,
     )
     workbench_url = _resolve_str_if_inferred(
-        workbench_url, workbench_url_scheme_inferred, insecure=insecure, ca_bundle=ca_bundle
+        workbench_url,
+        workbench_url_scheme_inferred,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        proxy=proxy,
     )
 
     # Determine the primary login target.
@@ -732,6 +783,12 @@ def start_interactive_auth(
 
     key_name = f"{_KEY_NAME_PREFIX}{int(time.time())}"
 
+    # Route the browser login through the same proxy as VIP's httpx egress, so
+    # the interactive login does not silently take a different network path than
+    # the API-key mint and the product clients (Chromium's implicit env-proxy
+    # detection is platform-dependent; this makes it explicit and consistent).
+    pw_proxy = playwright_proxy(build_proxy_map(proxy))
+
     pw = None
     browser = None
     _prev_node_ca = os.environ.get("NODE_EXTRA_CA_CERTS")
@@ -739,7 +796,7 @@ def start_interactive_auth(
         os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
     try:
         pw = sync_playwright().start()
-        browser = _launch_chromium(pw, headless=False)
+        browser = _launch_chromium(pw, headless=False, proxy=pw_proxy)
         context = browser.new_context(ignore_https_errors=insecure)
         page = context.new_page()
 
@@ -791,10 +848,10 @@ def start_interactive_auth(
         requested_connect_url = connect_url or ""
         if connect_url:
             connect_url = _resolve_connect_api_base(
-                connect_url, insecure=insecure, ca_bundle=ca_bundle
+                connect_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
             )
             api_key = _create_api_key_via_session(
-                page, connect_url, key_name, insecure=insecure, ca_bundle=ca_bundle
+                page, connect_url, key_name, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
             )
 
         # Visit Workbench so the storage state includes its session cookies.
@@ -816,6 +873,7 @@ def start_interactive_auth(
             _cache_path=cache_path,
             _insecure=insecure,
             _ca_bundle=ca_bundle,
+            _proxy=proxy,
         )
 
         # Cache the session for reuse across runs.
@@ -863,6 +921,7 @@ def start_headless_auth(
     ca_bundle: Path | None = None,
     connect_url_scheme_inferred: bool = False,
     workbench_url_scheme_inferred: bool = False,
+    proxy: ProxyConfig | None = None,
 ) -> InteractiveAuthSession:
     """Launch a headless browser, automate OIDC login, and optionally
     mint a Connect API key through the UI.
@@ -897,7 +956,12 @@ def start_headless_auth(
     # so a warm cache works even when env vars are not set.
     if cache_path:
         cached = _load_cached_auth(
-            cache_path, connect_url, workbench_url, insecure=insecure, ca_bundle=ca_bundle
+            cache_path,
+            connect_url,
+            workbench_url,
+            insecure=insecure,
+            ca_bundle=ca_bundle,
+            proxy=proxy,
         )
         if cached is not None:
             return cached
@@ -936,10 +1000,18 @@ def start_headless_auth(
     # above and right before anything (Playwright or httpx) actually talks to
     # the URLs, so a config error never pays for a network probe it doesn't need.
     connect_url = _resolve_str_if_inferred(
-        connect_url, connect_url_scheme_inferred, insecure=insecure, ca_bundle=ca_bundle
+        connect_url,
+        connect_url_scheme_inferred,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        proxy=proxy,
     )
     workbench_url = _resolve_str_if_inferred(
-        workbench_url, workbench_url_scheme_inferred, insecure=insecure, ca_bundle=ca_bundle
+        workbench_url,
+        workbench_url_scheme_inferred,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        proxy=proxy,
     )
 
     # Determine the primary login target.
@@ -953,6 +1025,10 @@ def start_headless_auth(
 
     key_name = f"{_KEY_NAME_PREFIX}{int(time.time())}"
 
+    # Same proxy as VIP's httpx egress, so the headless login shares the network
+    # path of the mint and product clients rather than Chromium's implicit one.
+    pw_proxy = playwright_proxy(build_proxy_map(proxy))
+
     pw = None
     browser = None
     _prev_node_ca = os.environ.get("NODE_EXTRA_CA_CERTS")
@@ -960,7 +1036,7 @@ def start_headless_auth(
         os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
     try:
         pw = sync_playwright().start()
-        browser = _launch_chromium(pw, headless=True)
+        browser = _launch_chromium(pw, headless=True, proxy=pw_proxy)
         context = browser.new_context(ignore_https_errors=insecure)
         page = context.new_page()
 
@@ -1003,10 +1079,10 @@ def start_headless_auth(
         requested_connect_url = connect_url or ""
         if connect_url:
             connect_url = _resolve_connect_api_base(
-                connect_url, insecure=insecure, ca_bundle=ca_bundle
+                connect_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
             )
             api_key = _create_api_key_via_session(
-                page, connect_url, key_name, insecure=insecure, ca_bundle=ca_bundle
+                page, connect_url, key_name, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
             )
 
         # Visit Workbench so the storage state includes its session cookies.
@@ -1028,6 +1104,7 @@ def start_headless_auth(
             _cache_path=cache_path,
             _insecure=insecure,
             _ca_bundle=ca_bundle,
+            _proxy=proxy,
         )
 
         if cache_path:
@@ -1319,6 +1396,20 @@ def _httpx_verify(insecure: bool, ca_bundle: Path | None) -> bool | str:
     return True
 
 
+def _httpx_verify_env_aware(insecure: bool, ca_bundle: Path | None) -> bool | str | ssl.SSLContext:
+    """Like :func:`_httpx_verify`, but preserves ``SSL_CERT_FILE`` / ``SSL_CERT_DIR``.
+
+    The bare-httpx calls in this module pin ``trust_env=False`` so the proxy VIP
+    resolved is authoritative (httpx would otherwise re-read the proxy
+    environment and could disagree with a ``NO_PROXY`` bypass). ``trust_env``
+    also gates httpx's honoring of the ``SSL_CERT_FILE`` / ``SSL_CERT_DIR`` CA
+    overrides, so :func:`vip.proxy.verify_with_env_ca` folds those back into an
+    ``ssl.SSLContext`` when verification uses the system trust store. See that
+    function for the full rationale.
+    """
+    return verify_with_env_ca(_httpx_verify(insecure, ca_bundle))
+
+
 def _delete_api_key(
     connect_url: str,
     api_key: str,
@@ -1326,17 +1417,21 @@ def _delete_api_key(
     *,
     insecure: bool = False,
     ca_bundle: Path | None = None,
+    proxy: ProxyConfig | None = None,
 ) -> None:
     """Delete the VIP API key using the key itself for authentication."""
 
-    verify = _httpx_verify(insecure, ca_bundle)
+    verify = _httpx_verify_env_aware(insecure, ca_bundle)
 
     base = connect_url.rstrip("/")
+    delete_proxy = proxy_for_url(base, build_proxy_map(proxy))
     with httpx.Client(
         base_url=f"{base}/__api__",
         headers={"Authorization": f"Key {api_key}"},
         timeout=scaled(10.0),
         verify=verify,
+        proxy=delete_proxy,
+        trust_env=False,
     ) as client:
         for keys_path in ("/v1/user/api_keys", "/keys"):
             resp = client.get(keys_path)
@@ -1574,17 +1669,18 @@ def _body_snippet(resp, limit: int = 200) -> str:
     return text[:limit] if text else "<empty body>"
 
 
-# Cache of resolved schemes, keyed by (url, insecure, ca_bundle) -- the same
-# three inputs that determine what the probe below would decide. A single
+# Cache of resolved schemes, keyed by (url, insecure, ca_bundle, applicable_proxy)
+# -- the four inputs that determine what the probe below would decide. A single
 # `vip verify` run can reach ``resolve_url_scheme`` from more than one place
 # -- the interactive/headless auth flow, then again from a client fixture
 # reading the same config value -- so the second and later calls for the
-# same (url, insecure, ca_bundle) are a dict lookup instead of a second live
-# probe. Keying on URL alone would let a cached ``verify=True`` failure
-# silently authorise a downgrade for a later caller that actually passed
-# ``insecure=True`` (or a different ``ca_bundle``) and might have gotten a
-# different, correct answer.
-_scheme_resolution_cache: dict[tuple[str, bool, Path | None], str] = {}
+# same key are a dict lookup instead of a second live probe. Keying on URL
+# alone would let a cached ``verify=True`` failure silently authorise a
+# downgrade for a later caller that actually passed ``insecure=True`` (or a
+# different ``ca_bundle``). The proxy is in the key too because a host reachable
+# only through a proxy fails a direct probe but succeeds a proxied one, so the
+# resolved scheme genuinely differs by which proxy (if any) applies.
+_scheme_resolution_cache: dict[tuple[str, bool, Path | None, str | None], str] = {}
 
 
 def _tls_listener_present(url: str, *, timeout: float) -> bool:
@@ -1630,6 +1726,7 @@ def resolve_url_scheme(
     *,
     insecure: bool = False,
     ca_bundle: Path | None = None,
+    proxy: ProxyConfig | None = None,
 ) -> str:
     """Fall *pc*'s URL back to ``http://`` if an inferred ``https://`` doesn't answer.
 
@@ -1651,12 +1748,25 @@ def resolve_url_scheme(
     makes that structurally impossible: there is no bare-string entry point
     left to misuse.
 
-    A transport-level failure (``httpx.TransportError``) splits into two
-    cases that must not share a remedy:
+    A transport-level failure (``httpx.TransportError``) splits into cases
+    that must not share a remedy:
 
-    - Nothing answers at all (refused connection, DNS failure, timeout) --
-      "https doesn't answer" -- triggers the http:// fallback, logged loudly
-      so a user who meant https notices they got plaintext instead.
+    - The failure is a proxy failure (``httpx.ProxyError``) -- the configured
+      outbound proxy could not establish the tunnel. This says nothing about
+      whether the origin serves TLS, so it must NEVER trigger an http://
+      downgrade: doing so would rewrite the URL to plaintext on the strength
+      of a proxy hiccup and then send credentials in the clear through that
+      same proxy. Keep https:// and warn about the proxy.
+    - A proxy applies to this URL but the probe failed some other way -- the
+      raw-socket TLS-listener tiebreak below is meaningless here (it bypasses
+      the proxy, so a direct-socket "nothing is listening" verdict is about a
+      path VIP will never take). When a proxy is in play we therefore do NOT
+      downgrade; we keep https:// and warn, because a proxy-only network is
+      exactly where a spurious downgrade does the most damage.
+    - Nothing answers at all, no proxy involved (refused connection, DNS
+      failure, timeout) -- "https doesn't answer" -- triggers the http://
+      fallback, logged loudly so a user who meant https notices they got
+      plaintext instead.
     - Something answers at the TCP level but the TLS handshake itself fails
       (untrusted/self-signed/expired certificate, protocol mismatch, ...) --
       see :func:`_tls_listener_present`. This is a *trust* problem, not a
@@ -1685,16 +1795,62 @@ def resolve_url_scheme(
         return pc.url
 
     url = pc.url
-    cache_key = (url, insecure, ca_bundle)
+    # The proxy that applies to this URL is part of what determines the probe's
+    # outcome (a host reachable only through a proxy fails a direct probe but
+    # succeeds a proxied one), so it belongs in the cache key alongside the TLS
+    # settings.  ``None`` reads the ambient proxy environment, matching httpx's
+    # default and the pre-existing behaviour of this bare ``httpx.get`` probe.
+    proxy_map = build_proxy_map(proxy)
+    applicable_proxy = proxy_for_url(url, proxy_map)
+    # Userinfo-stripped form for the warning messages below; the raw
+    # applicable_proxy (which may carry user:pass@) is still used for the actual
+    # request and the cache key, but must never be printed to stdout/CI logs.
+    safe_proxy = redact_proxy_url(applicable_proxy)
+    cache_key = (url, insecure, ca_bundle, applicable_proxy)
     if cache_key in _scheme_resolution_cache:
         resolved = _scheme_resolution_cache[cache_key]
     else:
-        verify = _httpx_verify(insecure, ca_bundle)
+        verify = _httpx_verify_env_aware(insecure, ca_bundle)
         resolved = url
         try:
-            httpx.get(url, timeout=scaled(10.0), verify=verify, follow_redirects=True)
+            # Route the probe through the same proxy the API clients will use,
+            # and pin trust_env=False so ``applicable_proxy`` is authoritative
+            # (httpx would otherwise re-read env proxies and ignore a NO_PROXY
+            # bypass we deliberately resolved to None here).
+            httpx.get(
+                url,
+                timeout=scaled(10.0),
+                verify=verify,
+                follow_redirects=True,
+                proxy=applicable_proxy,
+                trust_env=False,
+            )
+        except httpx.ProxyError as exc:
+            # A proxy failure is not evidence about the origin's TLS. Never
+            # downgrade; the raw-socket tiebreak would bypass the proxy and
+            # mislead. Keep https:// and point at the proxy as the culprit.
+            print(
+                f">>> Warning: {url} could not be reached through the configured "
+                f"proxy ({safe_proxy}): {exc}. NOT falling back to plaintext "
+                f"HTTP -- the proxy, not the server's TLS, is the likely problem. "
+                f"Check the proxy is reachable and permits this host, or add the "
+                f"host to [proxy] no_proxy / NO_PROXY if it should be reached "
+                f"directly."
+            )
         except httpx.TransportError as exc:
-            if _tls_listener_present(url, timeout=scaled(5.0)):
+            if applicable_proxy is not None:
+                # A proxy applies but the failure wasn't a clean ProxyError
+                # (e.g. a read timeout mid-tunnel). The raw-socket tiebreak
+                # bypasses the proxy, so its verdict is about a path we will
+                # never take -- refuse to downgrade rather than trust it.
+                print(
+                    f">>> Warning: {url} did not answer through the configured "
+                    f"proxy ({safe_proxy}): {exc}. NOT falling back to "
+                    f"plaintext HTTP while a proxy is in effect. Verify the proxy "
+                    f"and target, or set an explicit http:// scheme if this host "
+                    f"is genuinely plaintext."
+                )
+            elif _tls_listener_present(url, timeout=scaled(5.0)):
                 print(
                     f">>> Warning: {url} answers on the network but its TLS "
                     f"certificate was not accepted ({exc}). NOT falling back to "
@@ -1723,6 +1879,7 @@ def _resolve_connect_api_base(
     *,
     insecure: bool = False,
     ca_bundle: Path | None = None,
+    proxy: ProxyConfig | None = None,
 ) -> str:
     """Return a Connect URL whose ``/__api__/`` mount actually responds.
 
@@ -1735,6 +1892,10 @@ def _resolve_connect_api_base(
     ``/__api__/server_settings`` is unauthenticated, so probing does not
     need browser cookies.  On any error or ambiguous result, returns the
     original URL so the existing mint diagnostics still run.
+
+    Both probes route through the same proxy the API clients will use, pinned
+    with ``trust_env=False`` so the resolved per-URL proxy (which honours
+    NO_PROXY) is authoritative rather than httpx re-reading the environment.
     """
     from urllib.parse import urlparse, urlunparse
 
@@ -1747,11 +1908,17 @@ def _resolve_connect_api_base(
         # Already at host root — nothing to fall back to.
         return connect_url
 
-    verify = _httpx_verify(insecure, ca_bundle)
+    verify = _httpx_verify_env_aware(insecure, ca_bundle)
+    proxy_map = build_proxy_map(proxy)
     primary = connect_url.rstrip("/") + "/__api__/server_settings"
     try:
         primary_resp = httpx.get(
-            primary, timeout=scaled(10.0), verify=verify, follow_redirects=True
+            primary,
+            timeout=scaled(10.0),
+            verify=verify,
+            follow_redirects=True,
+            proxy=proxy_for_url(primary, proxy_map),
+            trust_env=False,
         )
     except httpx.HTTPError:
         return connect_url
@@ -1762,7 +1929,12 @@ def _resolve_connect_api_base(
     secondary = root + "/__api__/server_settings"
     try:
         secondary_resp = httpx.get(
-            secondary, timeout=scaled(10.0), verify=verify, follow_redirects=True
+            secondary,
+            timeout=scaled(10.0),
+            verify=verify,
+            follow_redirects=True,
+            proxy=proxy_for_url(secondary, proxy_map),
+            trust_env=False,
         )
     except httpx.HTTPError:
         return connect_url
@@ -1806,6 +1978,7 @@ def _create_api_key_via_session(
     *,
     insecure: bool = False,
     ca_bundle: Path | None = None,
+    proxy: ProxyConfig | None = None,
 ) -> str | None:
     """Create a Connect API key by reusing the browser's authenticated session.
 
@@ -1844,9 +2017,12 @@ def _create_api_key_via_session(
     plumbing; manual testing against a staging cluster is needed to close #239.
     """
 
-    verify = _httpx_verify(insecure, ca_bundle)
+    verify = _httpx_verify_env_aware(insecure, ca_bundle)
     base = connect_url.rstrip("/") + "/__api__"
     me_url = f"{base}/v1/user"
+    # Mint through the same proxy the product clients will use, resolved for this
+    # host (honours NO_PROXY). trust_env=False makes that decision authoritative.
+    mint_proxy = proxy_for_url(base, build_proxy_map(proxy))
     # Scope cookie lookup to an actual endpoint path.  RFC 6265 cookie
     # path matching means ``Path=/__api__/`` does *not* match a request
     # to ``/__api__`` (no trailing slash).  Using ``me_url`` matches
@@ -1873,6 +2049,8 @@ def _create_api_key_via_session(
             timeout=scaled(10.0),
             verify=verify,
             follow_redirects=True,
+            proxy=mint_proxy,
+            trust_env=False,
         ) as client:
             me_resp = client.get("/v1/user")
             if not me_resp.is_success:
