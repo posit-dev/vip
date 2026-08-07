@@ -149,7 +149,15 @@ By default VIP reads the ambient environment —
             the common case:
 </p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>export HTTPS_PROXY=http://proxy.corp.example:8080
 export NO_PROXY=localhost,.internal.example.com
-vip verify --connect-url https://connect.example.com --headless-auth</code></pre> <p data-astro-cid-mwd2jfe2>To set the proxy explicitly instead of via the environment:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com \
+vip verify --connect-url https://connect.example.com --headless-auth</code></pre> <p data-astro-cid-mwd2jfe2>
+If your site uses a single forward proxy as its only outbound tunnel
+            and sets just <code data-astro-cid-mwd2jfe2>HTTP_PROXY</code> (no <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code>),
+            VIP routes its https traffic through that proxy too (via the standard
+<code data-astro-cid-mwd2jfe2>CONNECT</code> tunnel) — so a proxy-only network works without
+            you having to also set <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code>. An explicit
+<code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> or <code data-astro-cid-mwd2jfe2>ALL_PROXY</code>, if set, always
+            takes precedence.
+</p> <p data-astro-cid-mwd2jfe2>To set the proxy explicitly instead of via the environment:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com \
   --proxy http://proxy.corp.example:8080 \
   --no-proxy localhost,.internal.example.com</code></pre> <p data-astro-cid-mwd2jfe2>Or in <code data-astro-cid-mwd2jfe2>vip.toml</code>:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>[proxy]
 url = "http://proxy.corp.example:8080"
