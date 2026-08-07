@@ -81,6 +81,45 @@ def test_proxy_error_does_not_downgrade(monkeypatch):
     assert pc.url == "https://connect.example.com"
 
 
+def test_proxy_error_warning_redacts_credentials(monkeypatch, capsys):
+    """The proxy-failure warning must not print embedded user:pass credentials.
+
+    resolve_url_scheme names the applicable proxy in its warning; an
+    authenticated proxy (http://user:pass@host) must be redacted first so the
+    password never reaches stdout/CI logs."""
+
+    def boom(*a, **kw):
+        raise httpx.ProxyError("proxy refused CONNECT")
+
+    monkeypatch.setattr(auth_mod.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod, "_tls_listener_present", lambda *a, **kw: False)
+
+    pc = _inferred_pc()
+    resolve_url_scheme(pc, proxy=ProxyConfig(url="http://alice:s3cret@proxy.corp:8080"))
+
+    out = capsys.readouterr().out
+    assert "s3cret" not in out
+    assert "alice" not in out
+    # ...but the sanitized proxy host is still named for debugging.
+    assert "proxy.corp:8080" in out
+
+
+def test_transport_error_warning_redacts_credentials(monkeypatch, capsys):
+    """The proxy-applies transport-error branch must redact credentials too."""
+
+    def boom(*a, **kw):
+        raise httpx.ConnectTimeout("timed out mid-tunnel")
+
+    monkeypatch.setattr(auth_mod.httpx, "get", boom)
+
+    pc = _inferred_pc()
+    resolve_url_scheme(pc, proxy=ProxyConfig(url="http://alice:s3cret@proxy.corp:8080"))
+
+    out = capsys.readouterr().out
+    assert "s3cret" not in out
+    assert "proxy.corp:8080" in out
+
+
 def test_proxy_routed_transport_error_does_not_downgrade(monkeypatch):
     """With a proxy in effect, a non-ProxyError transport failure still must not
     downgrade — the raw-socket tiebreak bypasses the proxy and would mislead."""

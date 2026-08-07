@@ -38,6 +38,8 @@ def _make_args(**overrides) -> argparse.Namespace:
         "basic": False,
         "insecure": False,
         "ca_bundle": None,
+        "proxy": None,
+        "no_proxy": None,
         "format": "json",
         "ci": False,
     }
@@ -1372,3 +1374,31 @@ class TestFormatFlag:
                 )
             )
         assert exc_info.value.code == 1
+
+
+class TestVerifyProxyFlagWithConfig:
+    """--proxy/--no-proxy have no consumer on a --config run (they only feed the
+    generated temp config), so run_verify must warn rather than silently drop them."""
+
+    def _write_config(self, tmp_path) -> str:
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text('[connect]\nurl = "https://connect.example.com"\n')
+        return str(cfg)
+
+    def test_proxy_flag_with_config_warns(self, tmp_path, capsys):
+        cfg = self._write_config(tmp_path)
+        _capture_call(_make_args(config=cfg, proxy="http://corp:8080"))
+        err = capsys.readouterr().err
+        assert "--proxy/--no-proxy are ignored when --config is used" in err
+
+    def test_no_proxy_flag_with_config_warns(self, tmp_path, capsys):
+        cfg = self._write_config(tmp_path)
+        _capture_call(_make_args(config=cfg, no_proxy="localhost"))
+        err = capsys.readouterr().err
+        assert "ignored when --config is used" in err
+
+    def test_no_warning_without_proxy_flags(self, tmp_path, capsys):
+        cfg = self._write_config(tmp_path)
+        _capture_call(_make_args(config=cfg))
+        err = capsys.readouterr().err
+        assert "ignored when --config is used" not in err

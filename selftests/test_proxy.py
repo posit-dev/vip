@@ -31,6 +31,7 @@ from vip.proxy import (
     build_proxy_map,
     playwright_proxy,
     proxy_for_url,
+    redact_proxy_url,
     verify_with_env_ca,
 )
 
@@ -128,6 +129,26 @@ def test_no_proxy_star_short_circuits(monkeypatch):
     monkeypatch.setenv("HTTPS_PROXY", "http://server:8080")
     monkeypatch.setenv("NO_PROXY", "*")
     assert build_proxy_map(ProxyConfig()) == {}
+
+
+def test_config_no_proxy_star_short_circuits_explicit_url():
+    """A "*" in the config no_proxy list bypasses everything, like NO_PROXY=* —
+    not a useless all://** pattern that leaves the explicit proxy still active."""
+    assert build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=["*"])) == {}
+    assert (
+        proxy_for_url(
+            "https://anything.example",
+            build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=["*"])),
+        )
+        is None
+    )
+
+
+def test_config_no_proxy_star_short_circuits_env(monkeypatch):
+    """ "*" in config no_proxy also bypasses an env-derived proxy."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://envp:8080")
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    assert build_proxy_map(ProxyConfig(no_proxy=["*"])) == {}
 
 
 def test_none_config_reads_env(monkeypatch):
@@ -286,6 +307,48 @@ def test_playwright_proxy_prefers_https_env(monkeypatch):
     monkeypatch.delenv("NO_PROXY", raising=False)
     pw = playwright_proxy(build_proxy_map(ProxyConfig()))
     assert pw is not None and pw["server"] == "http://httpsproxy:2"
+
+
+def test_playwright_proxy_none_for_http_only_env(monkeypatch):
+    """With only HTTP_PROXY set, the browser (https traffic) must go direct —
+    NOT through the http-only proxy — so it agrees with proxy_for_url/httpx and
+    doesn't reintroduce the browser-vs-API proxy split. Regression for the
+    _primary_proxy_server 'any non-None value' fallback."""
+    for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy", "NO_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://corp-proxy:3128")
+    proxy_map = build_proxy_map(ProxyConfig())
+    # httpx side sends https direct...
+    assert proxy_for_url("https://connect.example", proxy_map) is None
+    # ...so the browser must too.
+    assert playwright_proxy(proxy_map) is None
+
+
+# ---------------------------------------------------------------------------
+# redact_proxy_url — never leak proxy credentials into logs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("http://alice:s3cret@proxy.corp:8080", "http://proxy.corp:8080"),
+        ("http://alice:s3cret@proxy.corp", "http://proxy.corp"),
+        ("https://user:pw@10.0.0.1:3128", "https://10.0.0.1:3128"),
+        ("http://tok@proxy:8080", "http://proxy:8080"),  # userinfo with no colon
+        ("http://proxy.corp:8080", "http://proxy.corp:8080"),  # nothing to strip
+        ("http://proxy.corp", "http://proxy.corp"),
+        (None, None),
+        ("", ""),
+    ],
+)
+def test_redact_proxy_url_strips_userinfo(url, expected):
+    assert redact_proxy_url(url) == expected
+
+
+def test_redact_proxy_url_output_has_no_secret():
+    """The redacted form must not contain the password anywhere."""
+    assert "s3cret" not in (redact_proxy_url("http://alice:s3cret@proxy.corp:8080") or "")
 
 
 # ---------------------------------------------------------------------------

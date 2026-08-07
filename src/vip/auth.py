@@ -38,6 +38,7 @@ from vip.proxy import (
     build_proxy_map,
     playwright_proxy,
     proxy_for_url,
+    redact_proxy_url,
     verify_with_env_ca,
 )
 from vip.timeouts import scaled
@@ -1801,6 +1802,10 @@ def resolve_url_scheme(
     # default and the pre-existing behaviour of this bare ``httpx.get`` probe.
     proxy_map = build_proxy_map(proxy)
     applicable_proxy = proxy_for_url(url, proxy_map)
+    # Userinfo-stripped form for the warning messages below; the raw
+    # applicable_proxy (which may carry user:pass@) is still used for the actual
+    # request and the cache key, but must never be printed to stdout/CI logs.
+    safe_proxy = redact_proxy_url(applicable_proxy)
     cache_key = (url, insecure, ca_bundle, applicable_proxy)
     if cache_key in _scheme_resolution_cache:
         resolved = _scheme_resolution_cache[cache_key]
@@ -1826,7 +1831,7 @@ def resolve_url_scheme(
             # mislead. Keep https:// and point at the proxy as the culprit.
             print(
                 f">>> Warning: {url} could not be reached through the configured "
-                f"proxy ({applicable_proxy}): {exc}. NOT falling back to plaintext "
+                f"proxy ({safe_proxy}): {exc}. NOT falling back to plaintext "
                 f"HTTP -- the proxy, not the server's TLS, is the likely problem. "
                 f"Check the proxy is reachable and permits this host, or add the "
                 f"host to [proxy] no_proxy / NO_PROXY if it should be reached "
@@ -1840,7 +1845,7 @@ def resolve_url_scheme(
                 # never take -- refuse to downgrade rather than trust it.
                 print(
                     f">>> Warning: {url} did not answer through the configured "
-                    f"proxy ({applicable_proxy}): {exc}. NOT falling back to "
+                    f"proxy ({safe_proxy}): {exc}. NOT falling back to "
                     f"plaintext HTTP while a proxy is in effect. Verify the proxy "
                     f"and target, or set an explicit http:// scheme if this host "
                     f"is genuinely plaintext."

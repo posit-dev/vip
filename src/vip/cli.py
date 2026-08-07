@@ -428,9 +428,24 @@ def run_verify(args: argparse.Namespace) -> None:
     config_path = args.config
     temp_config = None
 
+    proxy_flag_set = getattr(args, "proxy", None) or getattr(args, "no_proxy", None) is not None
     if not config_path and (args.connect_url or args.workbench_url or args.package_manager_url):
         temp_config = _generate_temp_config(args)
         config_path = temp_config
+    elif config_path and proxy_flag_set:
+        # --proxy/--no-proxy are only woven into the generated temp config (via
+        # _generate_temp_config); on a --config run the flags have no consumer,
+        # so the pytest subprocess would load the file's [proxy] (or none) and
+        # silently ignore them. This mirrors --insecure/--ca-bundle on the same
+        # branch. Rather than swallow the flag, tell the user how to make it
+        # take effect. (Ambient HTTP(S)_PROXY still works on a config run.)
+        print(
+            ">>> Warning: --proxy/--no-proxy are ignored when --config is used. "
+            "Put the proxy under a [proxy] section in your config file "
+            "(url = ..., no_proxy = [...], or enabled = false), or set "
+            "HTTP_PROXY/HTTPS_PROXY/NO_PROXY in the environment.",
+            file=sys.stderr,
+        )
 
     # Fail fast when a config file is expected but doesn't exist.
     if config_path and not Path(config_path).is_file():
@@ -1473,11 +1488,12 @@ def main() -> None:
         default=None,
         metavar="URL",
         help=(
-            "Route all outbound HTTP(S) through this proxy (e.g. http://proxy:8080). "
-            "Applies uniformly to the product API clients, the auth/probe requests, "
-            "and the Playwright browser login. Overrides HTTP_PROXY/HTTPS_PROXY. "
-            "When omitted, VIP reads the ambient HTTP_PROXY/HTTPS_PROXY/NO_PROXY "
-            "environment (same as httpx)."
+            "Route outbound HTTP(S) through this proxy (e.g. http://proxy:8080). "
+            "Applies to the product API clients, the auth/probe requests, and the "
+            "Playwright browser login. Overrides HTTP_PROXY/HTTPS_PROXY. Ignored "
+            "when --config is given (use a [proxy] section in the config file "
+            "instead). When omitted, VIP reads the ambient "
+            "HTTP_PROXY/HTTPS_PROXY/NO_PROXY environment (same as httpx)."
         ),
     )
     proxy_group.add_argument(
@@ -1488,7 +1504,8 @@ def main() -> None:
             "Comma-separated hosts to reach directly, bypassing --proxy "
             "(e.g. localhost,.internal.example). With no --proxy, passing an "
             "empty value (--no-proxy '') disables proxying entirely, ignoring "
-            "any proxy environment variables."
+            "any proxy environment variables. Ignored when --config is given "
+            "(use a [proxy] section in the config file instead)."
         ),
     )
 

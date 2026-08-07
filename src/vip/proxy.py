@@ -145,6 +145,28 @@ def _normalize_proxy_url(url: str) -> str:
     return url if "://" in url else f"http://{url}"
 
 
+def redact_proxy_url(url: str | None) -> str | None:
+    """Strip any ``user:pass@`` userinfo from a proxy URL for safe logging.
+
+    An authenticated forward proxy is commonly configured as
+    ``http://user:pass@proxy.corp:8080`` (via ``HTTPS_PROXY``, ``[proxy] url``,
+    or ``--proxy``), and :func:`proxy_for_url` returns that URL verbatim. Any
+    warning/log line that names the applicable proxy must route the value
+    through here first so the password never lands in stdout or CI logs.
+    Returns the input unchanged when it has no userinfo or cannot be parsed.
+    """
+    if not url:
+        return url
+    try:
+        parsed = httpx.URL(url)
+    except Exception:
+        return url
+    if not (parsed.username or parsed.password):
+        return url
+    hostport = parsed.host if parsed.port is None else f"{parsed.host}:{parsed.port}"
+    return f"{parsed.scheme}://{hostport}"
+
+
 def _no_proxy_pattern(hostname: str) -> str:
     """Return the httpx URL-pattern key for a single ``NO_PROXY`` host.
 
@@ -175,6 +197,15 @@ def build_proxy_map(config: ProxyConfig | None) -> ProxyMap:
         config = ProxyConfig()
 
     if not config.enabled:
+        return {}
+
+    # A bare "*" in no_proxy means "bypass the proxy for everything", exactly as
+    # httpx's get_environment_proxies short-circuits NO_PROXY=* to an empty map.
+    # httpx only applies this to the *environment* NO_PROXY; we extend it to the
+    # explicit [proxy] no_proxy so `no_proxy = ["*"]` (and --no-proxy '*') behave
+    # identically to the env var rather than emitting a useless `all://**`
+    # pattern that never matches and leaves everything still proxied.
+    if "*" in config.no_proxy:
         return {}
 
     if config.url:
@@ -288,11 +319,13 @@ def playwright_proxy(proxy_map: ProxyMap) -> dict[str, str] | None:
     """Render *proxy_map* as a Playwright ``launch(proxy=...)`` dict, or ``None``.
 
     Playwright accepts a single ``server`` plus a comma-separated ``bypass``
-    list, so a map that proxies http and https through different servers cannot
-    be expressed exactly; https wins because Posit product URLs are https. The
+    list. The browser login navigates https Posit product URLs, so the server is
+    the proxy an https URL would select (see :func:`_primary_proxy_server`) — an
+    ``http://``-only proxy that https traffic wouldn't use is deliberately *not*
+    chosen, keeping the browser on the same route as the httpx paths. The
     ``bypass`` list is the map's bypass (``None``-valued) patterns rendered back
-    to bare hostnames. Returns ``None`` when the map configures no proxy, so the
-    caller launches Chromium exactly as before.
+    to bare hostnames. Returns ``None`` when no proxy applies to the browser's
+    https traffic, so the caller launches Chromium exactly as before.
     """
     server = _primary_proxy_server(proxy_map)
     if server is None:
@@ -310,13 +343,21 @@ def playwright_proxy(proxy_map: ProxyMap) -> dict[str, str] | None:
 
 
 def _primary_proxy_server(proxy_map: ProxyMap) -> str | None:
-    """Pick the single proxy server Playwright should use (prefer https, then all)."""
+    """Pick the single proxy server Playwright should use for the browser login.
+
+    The browser login always navigates **https** Posit product URLs, so the
+    only proxies that apply are the ones an https URL would select: an explicit
+    ``all://`` (from ``--proxy`` / ``[proxy] url``) or an ``https://`` env proxy.
+    We deliberately do **not** fall back to an ``http://``-scheme-keyed proxy
+    (i.e. a bare ``HTTP_PROXY`` with no ``HTTPS_PROXY`` / ``ALL_PROXY``): httpx's
+    own selection sends https direct in that configuration, and
+    :func:`proxy_for_url` agrees, so routing the browser's https traffic through
+    that http-only proxy would reintroduce the exact browser-vs-API split this
+    module exists to eliminate. Returning ``None`` there keeps the browser direct
+    too, matching every httpx path.
+    """
     for key in ("https://", "all://"):
         value = proxy_map.get(key)
-        if value:
-            return value
-    # Fall back to any non-None proxy value present.
-    for value in proxy_map.values():
         if value:
             return value
     return None
