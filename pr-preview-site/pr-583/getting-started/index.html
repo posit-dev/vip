@@ -132,21 +132,21 @@ Each product section (Connect, Workbench, Package Manager) can be
 for the full template.
 </p> </section> <section id="outbound-proxy" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Running behind a proxy</h2> <p data-astro-cid-mwd2jfe2>
 On hosts that reach your Posit deployment through a forward proxy,
-            VIP routes <strong data-astro-cid-mwd2jfe2>all</strong> of its outbound HTTP(S) through that
-            proxy — the product API clients (Connect, Workbench, Package
-            Manager), the authentication and URL-probe requests, and the
-            Playwright browser login all take the same path. This matters
-            because httpx disables environment-proxy resolution on a client that
-            uses a custom transport (which VIP's API clients require), so without
-            this handling the API calls would silently bypass the proxy while the
-            browser and probe paths used it — and the Connect API-key flow would
-            fail behind a proxy.
+            VIP routes its core outbound HTTP(S) through that proxy — the product
+            API clients (Connect, Workbench, Package Manager), the authentication
+            and URL-probe requests, and the Playwright browser login all take the
+            same path. This matters because httpx disables environment-proxy
+            resolution on a client that uses a custom transport (which VIP's API
+            clients require), so without this handling the API calls would
+            silently bypass the proxy while the browser and probe paths used it —
+            and the Connect API-key flow would fail behind a proxy.
 </p> <p data-astro-cid-mwd2jfe2>
 By default VIP reads the ambient environment —
 <code data-astro-cid-mwd2jfe2>HTTP_PROXY</code> / <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> /
 <code data-astro-cid-mwd2jfe2>ALL_PROXY</code> / <code data-astro-cid-mwd2jfe2>NO_PROXY</code> (upper- or lowercase) —
-            exactly as httpx does. No configuration is needed for the common
-            case:
+            exactly as httpx does. <strong data-astro-cid-mwd2jfe2>The environment variables cover every
+            outbound request VIP makes.</strong> No configuration is needed for
+            the common case:
 </p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>export HTTPS_PROXY=http://proxy.corp.example:8080
 export NO_PROXY=localhost,.internal.example.com
 vip verify --connect-url https://connect.example.com --headless-auth</code></pre> <p data-astro-cid-mwd2jfe2>To set the proxy explicitly instead of via the environment:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com \
@@ -157,6 +157,17 @@ no_proxy = ["localhost", ".internal.example.com"]</code></pre> <p data-astro-cid
 To force every request direct and ignore any proxy environment
             variables, disable proxying: <code data-astro-cid-mwd2jfe2>vip verify --no-proxy ''</code>,
             or <code data-astro-cid-mwd2jfe2>enabled = false</code> under <code data-astro-cid-mwd2jfe2>[proxy]</code>.
+</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Scope of the explicit config.</strong> An explicit
+<code data-astro-cid-mwd2jfe2>[proxy]</code> / <code data-astro-cid-mwd2jfe2>--proxy</code> setting covers the core
+            egress paths — the product API clients, authentication, URL probes,
+            and the browser login. A few diagnostic and load-test paths (some
+            reachability probes under the individual test suites, the
+            performance/load engine, and the raw-socket TLS handshake checks)
+            honor only the proxy <em data-astro-cid-mwd2jfe2>environment variables</em>, not an explicit
+<code data-astro-cid-mwd2jfe2>[proxy]</code> config. If your proxy differs from the ambient
+            environment, set the environment variables as well as (or instead of)
+<code data-astro-cid-mwd2jfe2>[proxy]</code> so every path agrees; when the proxy is the same
+            in both, there is nothing extra to do.
 </p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Tip:</strong> when a scheme-less URL is given (e.g.
 <code data-astro-cid-mwd2jfe2>--connect-url connect.example.com</code>), VIP probes
 <code data-astro-cid-mwd2jfe2>https://</code> first and may fall back to <code data-astro-cid-mwd2jfe2>http://</code>
