@@ -334,6 +334,15 @@ def test_new_api_feature():
           <pre><code>export HTTPS_PROXY=http://proxy.corp.example:8080
 export NO_PROXY=localhost,.internal.example.com
 vip verify --connect-url https://connect.example.com --headless-auth</code></pre>
+          <p>
+            If your site uses a single forward proxy as its only outbound tunnel
+            and sets just <code>HTTP_PROXY</code> (no <code>HTTPS_PROXY</code>),
+            VIP routes its https traffic through that proxy too (via the standard
+            <code>CONNECT</code> tunnel) — so a proxy-only network works without
+            you having to also set <code>HTTPS_PROXY</code>. An explicit
+            <code>HTTPS_PROXY</code> or <code>ALL_PROXY</code>, if set, always
+            takes precedence.
+          </p>
           <p>To set the proxy explicitly instead of via the environment:</p>
           <pre><code>vip verify --connect-url https://connect.example.com \
   --proxy http://proxy.corp.example:8080 \

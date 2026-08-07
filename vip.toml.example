@@ -249,7 +249,10 @@ enabled = false
 # By default (this whole section omitted) VIP reads the ambient environment --
 # HTTP_PROXY / HTTPS_PROXY / ALL_PROXY / NO_PROXY (upper- or lowercase) -- exactly
 # as httpx does, and the environment variables cover EVERY request VIP makes.
-# Set values here only to override that.
+# Set values here only to override that. (One convenience beyond httpx: if only
+# HTTP_PROXY is set -- a single forward proxy used as the sole outbound tunnel --
+# VIP routes https through it too via CONNECT, so a proxy-only network works
+# without also setting HTTPS_PROXY. An explicit HTTPS_PROXY/ALL_PROXY wins.)
 #
 # Scope note: an explicit url/no_proxy here covers the core paths above. A few
 # diagnostic and load-test paths (some reachability probes under the test

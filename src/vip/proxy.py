@@ -221,9 +221,10 @@ def build_proxy_map(config: ProxyConfig | None) -> ProxyMap:
         return proxy_map
 
     if config.trust_env:
-        # Reuse httpx's own environment parsing so VIP never diverges from it —
-        # same key format, same NO_PROXY semantics, same NO_PROXY=* short-circuit.
+        # Reuse httpx's own environment parsing so VIP inherits its key format,
+        # NO_PROXY semantics, and NO_PROXY=* short-circuit.
         proxy_map = dict(get_environment_proxies())
+        _promote_http_proxy_to_https(proxy_map)
         # An env map of {} means NO_PROXY=* (bypass everything) or no proxy at
         # all — in both cases adding bypass holes is meaningless, so only merge
         # config.no_proxy when the environment actually configured a proxy.
@@ -233,6 +234,34 @@ def build_proxy_map(config: ProxyConfig | None) -> ProxyMap:
         return proxy_map
 
     return {}
+
+
+def _promote_http_proxy_to_https(proxy_map: ProxyMap) -> None:
+    """Extend a lone ``HTTP_PROXY`` to also carry https traffic, in place.
+
+    A deliberate divergence from httpx's env parsing. httpx keys its proxy map
+    by the *target* scheme, so ``HTTP_PROXY=http://gw:3128`` alone yields
+    ``{"http://": ...}`` with no ``https://`` entry — and httpx therefore sends
+    https **direct**. That's fine for a general HTTP client, but many
+    organisations run a single forward proxy as their *only* outbound tunnel and
+    set just ``http_proxy``, expecting all egress — including https, via the
+    proxy's ``CONNECT`` tunnel — to flow through it. On such a proxy-only network
+    the httpx default means VIP's https product traffic can never leave the host.
+
+    (The scheme in ``http://gw:3128`` describes how VIP talks *to the proxy*, not
+    what the proxy may carry: an HTTP proxy tunnels https end-to-end via
+    ``CONNECT``, so pointing https at it is valid.)
+
+    So when the environment gave us an ``http://`` proxy but named neither an
+    ``https://`` proxy (``HTTPS_PROXY``) nor a catch-all (``ALL_PROXY`` →
+    ``all://``), reuse the http proxy for https as well. If the operator set an
+    explicit ``HTTPS_PROXY`` or ``ALL_PROXY``, that stands — we never override a
+    deliberate choice, and a per-host ``NO_PROXY`` still bypasses (its
+    ``all://*host`` pattern is more specific than the promoted ``https://``).
+    """
+    http_proxy = proxy_map.get("http://")
+    if http_proxy and "https://" not in proxy_map and "all://" not in proxy_map:
+        proxy_map["https://"] = http_proxy
 
 
 def build_mounts(
@@ -320,12 +349,11 @@ def playwright_proxy(proxy_map: ProxyMap) -> dict[str, str] | None:
 
     Playwright accepts a single ``server`` plus a comma-separated ``bypass``
     list. The browser login navigates https Posit product URLs, so the server is
-    the proxy an https URL would select (see :func:`_primary_proxy_server`) — an
-    ``http://``-only proxy that https traffic wouldn't use is deliberately *not*
-    chosen, keeping the browser on the same route as the httpx paths. The
-    ``bypass`` list is the map's bypass (``None``-valued) patterns rendered back
-    to bare hostnames. Returns ``None`` when no proxy applies to the browser's
-    https traffic, so the caller launches Chromium exactly as before.
+    the proxy an https URL would select (see :func:`_primary_proxy_server`),
+    keeping the browser on the same route as the httpx paths. The ``bypass`` list
+    is the map's bypass (``None``-valued) patterns rendered back to bare
+    hostnames. Returns ``None`` when no proxy applies to the browser's https
+    traffic, so the caller launches Chromium exactly as before.
     """
     server = _primary_proxy_server(proxy_map)
     if server is None:
@@ -345,16 +373,16 @@ def playwright_proxy(proxy_map: ProxyMap) -> dict[str, str] | None:
 def _primary_proxy_server(proxy_map: ProxyMap) -> str | None:
     """Pick the single proxy server Playwright should use for the browser login.
 
-    The browser login always navigates **https** Posit product URLs, so the
-    only proxies that apply are the ones an https URL would select: an explicit
-    ``all://`` (from ``--proxy`` / ``[proxy] url``) or an ``https://`` env proxy.
-    We deliberately do **not** fall back to an ``http://``-scheme-keyed proxy
-    (i.e. a bare ``HTTP_PROXY`` with no ``HTTPS_PROXY`` / ``ALL_PROXY``): httpx's
-    own selection sends https direct in that configuration, and
-    :func:`proxy_for_url` agrees, so routing the browser's https traffic through
-    that http-only proxy would reintroduce the exact browser-vs-API split this
-    module exists to eliminate. Returning ``None`` there keeps the browser direct
-    too, matching every httpx path.
+    The browser login always navigates **https** Posit product URLs, so it uses
+    the proxy an https URL would select: an ``https://`` key (an explicit
+    ``HTTPS_PROXY``, or the http->https promotion in
+    :func:`_promote_http_proxy_to_https` that lets a lone ``HTTP_PROXY`` tunnel
+    https too) or a catch-all ``all://`` (``--proxy`` / ``[proxy] url`` /
+    ``ALL_PROXY``). This is exactly what :func:`proxy_for_url` returns for an
+    https URL, so the browser and every httpx path take the same route by
+    construction — no independent scheme fallback that could diverge. Returns
+    ``None`` only when no proxy applies to https (the map has neither key), in
+    which case httpx sends https direct and the browser must too.
     """
     for key in ("https://", "all://"):
         value = proxy_map.get(key)

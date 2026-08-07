@@ -41,7 +41,11 @@ from vip.proxy import (
 
 
 def test_env_map_matches_httpx(monkeypatch):
-    """With no explicit config, build_proxy_map must equal httpx's own env map."""
+    """With no explicit config, build_proxy_map matches httpx's own env map.
+
+    Uses both http_proxy and https_proxy so the http->https promotion (see
+    test_http_proxy_promoted_to_https) is a no-op here and parity is exact; the
+    promotion is the one deliberate divergence and has its own test."""
     from httpx._utils import get_environment_proxies
 
     for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
@@ -149,6 +153,53 @@ def test_config_no_proxy_star_short_circuits_env(monkeypatch):
     monkeypatch.setenv("HTTPS_PROXY", "http://envp:8080")
     monkeypatch.delenv("NO_PROXY", raising=False)
     assert build_proxy_map(ProxyConfig(no_proxy=["*"])) == {}
+
+
+def test_http_proxy_promoted_to_https(monkeypatch):
+    """A lone HTTP_PROXY must also carry https (the org's single outbound tunnel):
+    the org points only http_proxy at their gateway and expects https to tunnel
+    through it via CONNECT. httpx alone would send https direct."""
+    for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy", "NO_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://gw:3128")
+    proxy_map = build_proxy_map(ProxyConfig())
+    assert proxy_map == {"http://": "http://gw:3128", "https://": "http://gw:3128"}
+    assert proxy_for_url("https://connect.example", proxy_map) == "http://gw:3128"
+
+
+def test_explicit_https_proxy_not_overridden_by_http(monkeypatch):
+    """An explicit HTTPS_PROXY is a deliberate choice — promotion must not clobber
+    it, even when it differs from HTTP_PROXY."""
+    for var in ("ALL_PROXY", "all_proxy", "NO_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://http-gw:1")
+    monkeypatch.setenv("HTTPS_PROXY", "http://https-gw:2")
+    proxy_map = build_proxy_map(ProxyConfig())
+    assert proxy_map["https://"] == "http://https-gw:2"
+    assert proxy_for_url("https://connect.example", proxy_map) == "http://https-gw:2"
+
+
+def test_all_proxy_not_promoted_over_http(monkeypatch):
+    """ALL_PROXY already covers https, so an http_proxy alongside it must not add
+    a redundant/conflicting https:// key."""
+    for var in ("HTTPS_PROXY", "https_proxy", "NO_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://http-gw:1")
+    monkeypatch.setenv("ALL_PROXY", "http://all-gw:2")
+    proxy_map = build_proxy_map(ProxyConfig())
+    assert "https://" not in proxy_map
+    assert proxy_for_url("https://connect.example", proxy_map) == "http://all-gw:2"
+
+
+def test_http_proxy_promotion_still_honors_no_proxy(monkeypatch):
+    """A NO_PROXY host must still bypass a promoted http->https map."""
+    for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://gw:3128")
+    monkeypatch.setenv("NO_PROXY", ".internal.example")
+    proxy_map = build_proxy_map(ProxyConfig())
+    assert proxy_for_url("https://x.internal.example", proxy_map) is None
+    assert proxy_for_url("https://connect.example", proxy_map) == "http://gw:3128"
 
 
 def test_none_config_reads_env(monkeypatch):
@@ -309,19 +360,21 @@ def test_playwright_proxy_prefers_https_env(monkeypatch):
     assert pw is not None and pw["server"] == "http://httpsproxy:2"
 
 
-def test_playwright_proxy_none_for_http_only_env(monkeypatch):
-    """With only HTTP_PROXY set, the browser (https traffic) must go direct —
-    NOT through the http-only proxy — so it agrees with proxy_for_url/httpx and
-    doesn't reintroduce the browser-vs-API proxy split. Regression for the
-    _primary_proxy_server 'any non-None value' fallback."""
+def test_http_only_env_browser_and_httpx_agree_via_tunnel(monkeypatch):
+    """With only HTTP_PROXY set (the "single outbound tunnel" org), https must
+    tunnel through that proxy on BOTH the httpx and browser paths, and they must
+    agree — no browser-vs-API split, and no https-goes-direct dead end on a
+    proxy-only network. Guards both the http->https promotion and the
+    _primary_proxy_server selection staying in lockstep with proxy_for_url."""
     for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy", "NO_PROXY"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://corp-proxy:3128")
     proxy_map = build_proxy_map(ProxyConfig())
-    # httpx side sends https direct...
-    assert proxy_for_url("https://connect.example", proxy_map) is None
-    # ...so the browser must too.
-    assert playwright_proxy(proxy_map) is None
+    httpx_pick = proxy_for_url("https://connect.example", proxy_map)
+    browser_pick = (playwright_proxy(proxy_map) or {}).get("server")
+    assert httpx_pick == "http://corp-proxy:3128"
+    assert browser_pick == "http://corp-proxy:3128"
+    assert httpx_pick == browser_pick
 
 
 # ---------------------------------------------------------------------------
