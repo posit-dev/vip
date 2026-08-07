@@ -347,13 +347,23 @@ def verify_with_env_ca(verify: bool | str) -> bool | str | ssl.SSLContext:
 def playwright_proxy(proxy_map: ProxyMap) -> dict[str, str] | None:
     """Render *proxy_map* as a Playwright ``launch(proxy=...)`` dict, or ``None``.
 
-    Playwright accepts a single ``server`` plus a comma-separated ``bypass``
-    list. The browser login navigates https Posit product URLs, so the server is
-    the proxy an https URL would select (see :func:`_primary_proxy_server`),
-    keeping the browser on the same route as the httpx paths. The ``bypass`` list
-    is the map's bypass (``None``-valued) patterns rendered back to bare
-    hostnames. Returns ``None`` when no proxy applies to the browser's https
-    traffic, so the caller launches Chromium exactly as before.
+    Playwright accepts a ``server`` plus optional ``username`` / ``password`` and
+    a comma-separated ``bypass`` list. The browser login navigates https Posit
+    product URLs, so the server is the proxy an https URL would select (see
+    :func:`_primary_proxy_server`), keeping the browser on the same route as the
+    httpx paths. The ``bypass`` list is the map's bypass (``None``-valued)
+    patterns rendered back to bare hostnames. Returns ``None`` when no proxy
+    applies to the browser's https traffic, so the caller launches Chromium
+    exactly as before.
+
+    An authenticated proxy is commonly given as ``http://user:pass@proxy:8080``.
+    httpx parses that userinfo into its own proxy auth, but Chromium **ignores**
+    credentials embedded in the proxy server string — Playwright expects them in
+    separate ``username`` / ``password`` fields. Passing the raw URL as ``server``
+    would make the browser log in fail with a 407 while every httpx path
+    authenticates fine: exactly the browser-vs-API split this module exists to
+    remove. So split any userinfo out of the server URL into ``username`` /
+    ``password`` and hand Playwright a credential-free ``server``.
     """
     server = _primary_proxy_server(proxy_map)
     if server is None:
@@ -364,10 +374,33 @@ def playwright_proxy(proxy_map: ProxyMap) -> dict[str, str] | None:
         if proxy_url is None
     ]
     proxy: dict[str, str] = {"server": server}
+    username, password = _split_proxy_userinfo(server)
+    if username is not None:
+        proxy["server"] = redact_proxy_url(server) or server
+        proxy["username"] = username
+        proxy["password"] = password or ""
     bypass = ",".join(h for h in bypass_hosts if h)
     if bypass:
         proxy["bypass"] = bypass
     return proxy
+
+
+def _split_proxy_userinfo(url: str) -> tuple[str | None, str | None]:
+    """Return the ``(username, password)`` embedded in a proxy URL, or ``(None, None)``.
+
+    Mirrors what :func:`redact_proxy_url` parses, but returns the credentials so
+    :func:`playwright_proxy` can hand them to Playwright's dedicated fields
+    rather than leaving them in the ``server`` string (which Chromium drops).
+    Returns ``(None, None)`` when the URL has no userinfo or cannot be parsed, so
+    an unauthenticated proxy is passed through as a bare ``server`` unchanged.
+    """
+    try:
+        parsed = httpx.URL(url)
+    except Exception:
+        return None, None
+    if not (parsed.username or parsed.password):
+        return None, None
+    return parsed.username, parsed.password
 
 
 def _primary_proxy_server(proxy_map: ProxyMap) -> str | None:

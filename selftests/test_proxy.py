@@ -360,6 +360,32 @@ def test_playwright_proxy_prefers_https_env(monkeypatch):
     assert pw is not None and pw["server"] == "http://httpsproxy:2"
 
 
+def test_playwright_proxy_splits_authenticated_credentials():
+    """An authenticated proxy must expose its creds in Playwright's dedicated
+    username/password fields, NOT embedded in ``server`` — Chromium ignores
+    userinfo in the server string, so leaving it there 407s the browser login
+    while every httpx path (which parses the userinfo) authenticates fine. The
+    ``server`` handed to Playwright must also be credential-free so the password
+    can't leak into browser logs."""
+    cfg = ProxyConfig(url="http://alice:s3cret@proxy.corp:8080")
+    pw = playwright_proxy(build_proxy_map(cfg))
+    assert pw is not None
+    assert pw["username"] == "alice"
+    assert pw["password"] == "s3cret"
+    assert pw["server"] == "http://proxy.corp:8080"
+    assert "s3cret" not in pw["server"]
+
+
+def test_playwright_proxy_no_credential_keys_when_unauthenticated():
+    """A proxy with no userinfo must not sprout empty username/password keys —
+    Playwright would try to authenticate with a blank user and could 407."""
+    pw = playwright_proxy(build_proxy_map(ProxyConfig(url="http://proxy.corp:8080")))
+    assert pw is not None
+    assert pw["server"] == "http://proxy.corp:8080"
+    assert "username" not in pw
+    assert "password" not in pw
+
+
 def test_http_only_env_browser_and_httpx_agree_via_tunnel(monkeypatch):
     """With only HTTP_PROXY set (the "single outbound tunnel" org), https must
     tunnel through that proxy on BOTH the httpx and browser paths, and they must
