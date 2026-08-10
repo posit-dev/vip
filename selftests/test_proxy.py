@@ -355,52 +355,99 @@ def test_playwright_proxy_renders_server_and_bypass():
 
 
 def test_bare_no_proxy_host_bypasses_subdomains_in_the_browser_too():
-    """A bare NO_PROXY host must bypass subdomains for Chromium, not just httpx.
+    """A bare NO_PROXY host must bypass the apex and its subdomains for Chromium.
 
-    httpx renders ``NO_PROXY=example.com`` as ``all://*example.com``, which
-    bypasses ``example.com`` AND ``www.example.com``. Chromium's bypass grammar
-    treats a bare ``example.com`` as an exact-host match, so dropping the ``*``
-    when rendering the Playwright dict makes the browser proxy the very
-    subdomains every httpx path reaches directly -- and products live on
-    subdomains (connect.example.com), so this is the case that matters.
+    httpx renders ``NO_PROXY=example.com`` as ``all://*example.com``, whose
+    regex is ``^(.+\\.)?example\\.com$`` -- the apex plus dot-separated
+    subdomains. Chromium reads a bare ``example.com`` as an exact-host match, so
+    rendering it that way makes the browser proxy the very subdomains every
+    httpx path reaches directly, and products live on subdomains.
 
-    ``*example.com`` is a valid Chromium HOSTNAME_PATTERN matching both, and
-    Playwright passes it through untouched (it only prepends ``*`` to entries
-    that already start with ``.``).
+    Chromium has no single pattern with httpx's match set, so this takes two
+    entries: the apex verbatim, plus ``*.example.com`` for subdomains.
     """
     cfg = ProxyConfig(url="http://p:8080", no_proxy=["example.com"])
     proxy_map = build_proxy_map(cfg)
-    # httpx bypasses the subdomain ...
+    # httpx bypasses the apex and the subdomain ...
+    assert proxy_for_url("https://example.com", proxy_map) is None
     assert proxy_for_url("https://connect.example.com", proxy_map) is None
     # ... so the browser must be told to as well.
     pw = playwright_proxy(proxy_map)
     assert pw is not None
-    assert pw["bypass"] == "*example.com"
+    assert pw["bypass"] == "example.com,*.example.com"
+
+
+def test_bare_no_proxy_host_does_not_bypass_prefix_lookalikes():
+    """The subdomain fix must not widen the bypass to suffix lookalikes.
+
+    httpx is explicit that ``NO_PROXY=google.com`` disables ``google.com`` and
+    ``www.google.com`` "but not wwwgoogle.com" -- its regex requires a dot
+    separator. A single Chromium ``*example.com`` entry is a plain glob and does
+    match ``badexample.com``, which would send browser traffic direct that every
+    httpx path proxies: the same browser/API split in the opposite direction,
+    and a wider hole than the one it closes.
+
+    Verified against real Chromium: with ``bypass='*testdom.local'`` the browser
+    reached ``badtestdom.local`` directly while httpx proxied it; with
+    ``bypass='testdom.local,*.testdom.local'`` both proxied it.
+    """
+    cfg = ProxyConfig(url="http://p:8080", no_proxy=["example.com"])
+    proxy_map = build_proxy_map(cfg)
+    # httpx sends the lookalike through the proxy ...
+    assert proxy_for_url("https://badexample.com", proxy_map) == "http://p:8080"
+    # ... so the browser must not carry a glob that would bypass it.
+    entries = playwright_proxy(proxy_map)["bypass"].split(",")
+    assert "*example.com" not in entries
+    assert entries == ["example.com", "*.example.com"]
 
 
 @pytest.mark.parametrize(
-    "no_proxy_host,pattern,bypass_entry,also_bypassed",
+    "no_proxy_host,pattern,bypass,direct,proxied",
     [
-        ("example.com", "all://*example.com", "*example.com", "connect.example.com"),
+        (
+            "example.com",
+            "all://*example.com",
+            "example.com,*.example.com",
+            ["example.com", "connect.example.com", "a.b.example.com"],
+            ["badexample.com", "example.com.evil.test"],
+        ),
         (
             ".internal.example",
             "all://*.internal.example",
             "*.internal.example",
-            "wb.internal.example",
+            ["wb.internal.example"],
+            ["internal.example", "badinternal.example"],
+        ),
+        (
+            "localhost",
+            "all://localhost",
+            "localhost",
+            ["localhost"],
+            ["notlocalhost"],
         ),
     ],
 )
 def test_playwright_bypass_matches_httpx_for_each_no_proxy_form(
-    no_proxy_host, pattern, bypass_entry, also_bypassed
+    no_proxy_host, pattern, bypass, direct, proxied
 ):
-    """Every bypass pattern httpx builds must render to a Playwright entry with
-    the same match set -- checked against ``proxy_for_url`` on the subdomain."""
+    """Every bypass pattern httpx builds must render to Playwright entries with
+    the same match set -- asserted in *both* directions.
+
+    The negative half is the point: a rendering that is merely "wide enough" to
+    cover the subdomains also silently bypasses lookalikes httpx proxies, which
+    is the same browser/API split pointing the other way.
+    """
     proxy_map = build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=[no_proxy_host]))
     assert pattern in proxy_map
-    assert proxy_for_url(f"https://{also_bypassed}", proxy_map) is None
+    for host in direct:
+        assert proxy_for_url(f"https://{host}", proxy_map) is None, f"httpx should bypass {host}"
+    for host in proxied:
+        assert proxy_for_url(f"https://{host}", proxy_map) == "http://p:8080", (
+            f"httpx should proxy {host}"
+        )
     pw = playwright_proxy(proxy_map)
     assert pw is not None
-    assert pw["bypass"] == bypass_entry
+    assert pw["bypass"] == bypass
 
 
 def test_playwright_proxy_uses_the_http_proxy_for_an_http_target(monkeypatch):
@@ -455,7 +502,8 @@ def test_playwright_proxy_keeps_the_server_when_the_target_is_bypassed():
     pw = playwright_proxy(proxy_map, target)
     assert pw is not None
     assert pw["server"] == "http://p:8080"  # still available for the IdP hop
-    assert pw["bypass"] == "*internal.example"  # and the target is bypassed
+    # and the target is bypassed (apex + subdomains, matching httpx)
+    assert pw["bypass"] == "internal.example,*.internal.example"
 
 
 def test_playwright_proxy_without_target_keeps_https_first_selection(monkeypatch):

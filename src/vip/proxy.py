@@ -376,9 +376,10 @@ def playwright_proxy(proxy_map: ProxyMap, target_url: str | None = None) -> dict
     if server is None:
         return None
     bypass_hosts = [
-        _pattern_to_bypass_host(pattern)
+        entry
         for pattern, proxy_url in proxy_map.items()
         if proxy_url is None
+        for entry in _pattern_to_bypass_hosts(pattern)
     ]
     proxy: dict[str, str] = {"server": server}
     username, password = _split_proxy_userinfo(server)
@@ -449,21 +450,30 @@ def _primary_proxy_server(proxy_map: ProxyMap, target_url: str | None = None) ->
     return None
 
 
-def _pattern_to_bypass_host(pattern: str) -> str:
-    """Convert an httpx bypass pattern back to a Playwright bypass hostname.
+def _pattern_to_bypass_hosts(pattern: str) -> list[str]:
+    """Convert an httpx bypass pattern into the Playwright bypass entries that
+    reproduce its match set exactly.
 
-    Inverse of :func:`_no_proxy_pattern`: ``all://*.foo`` → ``*.foo``,
-    ``all://*foo`` → ``*foo``, ``all://host`` → ``host``, ``all://[::1]`` → ``::1``.
+    Inverse of :func:`_no_proxy_pattern`. The three forms and why they differ:
 
-    The leading ``*`` is deliberately **kept**. httpx renders a bare
-    ``NO_PROXY=example.com`` as ``all://*example.com``, whose match set is
-    ``example.com`` *and* ``www.example.com``. Chromium's bypass grammar reads a
-    bare ``example.com`` as an exact-host match, so stripping the ``*`` would
-    make the browser proxy exactly the subdomains every httpx path reaches
-    directly — and Posit products live on subdomains, so that is the case that
-    matters. ``*example.com`` is a valid Chromium HOSTNAME_PATTERN covering both,
-    and Playwright forwards it unchanged (it only prepends ``*`` to entries that
-    already start with ``.``, which leaves ``*.foo`` alone as well).
+    * ``all://*foo`` (from a bare ``NO_PROXY=foo``) → ``["foo", "*.foo"]``.
+      httpx compiles this to ``^(.+\\.)?foo$`` — the apex *and* dot-separated
+      subdomains, but explicitly not ``badfoo``. Chromium has no single pattern
+      with that match set: a bare ``foo`` is exact-host only (too narrow, so the
+      browser would proxy subdomains httpx reaches directly), while ``*foo`` is a
+      plain glob that also swallows ``badfoo`` (too wide, so the browser would go
+      direct where httpx proxies — a wider hole than the one it closes). Two
+      entries give the apex and the subdomains and nothing else.
+    * ``all://*.foo`` (from ``NO_PROXY=.foo``) → ``["*.foo"]``. httpx's
+      ``^.+\\.foo$`` is subdomains only, which ``*.foo`` matches exactly.
+    * ``all://host`` / ``all://[::1]`` (an IP or ``localhost``) → the bare host.
+
+    Playwright forwards these unchanged; it only prepends ``*`` to entries that
+    already start with ``.``.
     """
     host = pattern.removeprefix("all://").removeprefix("http://").removeprefix("https://")
-    return host.strip("[]")
+    host = host.strip("[]")
+    if host.startswith("*") and not host.startswith("*."):
+        apex = host[1:]
+        return [apex, f"*.{apex}"]
+    return [host]
