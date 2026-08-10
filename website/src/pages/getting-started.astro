@@ -347,14 +347,27 @@ vip verify --connect-url https://connect.example.com --headless-auth</code></pre
           <pre><code>vip verify --connect-url https://connect.example.com \
   --proxy http://proxy.corp.example:8080 \
   --no-proxy localhost,.internal.example.com</code></pre>
-          <p>Or in <code>vip.toml</code>:</p>
+          <p>
+            The flags only apply on a run like the one above, where you pass
+            product URLs directly — they are written into the configuration VIP
+            generates for that run. On a run that loads a config file, whether
+            via <code>--config</code> or a <code>./vip.toml</code> found in the
+            working directory, there is nothing for them to write into and VIP
+            warns that it ignored them. Configure the proxy in the file instead:
+          </p>
           <pre><code>[proxy]
 url = "http://proxy.corp.example:8080"
 no_proxy = ["localhost", ".internal.example.com"]</code></pre>
           <p>
+            Note that an explicit <code>url</code> (or <code>--proxy</code>)
+            replaces the environment's <code>NO_PROXY</code> rather than merging
+            with it, so repeat any bypass hosts under <code>no_proxy</code>.
+          </p>
+          <p>
             To force every request direct and ignore any proxy environment
-            variables, disable proxying: <code>vip verify --no-proxy ''</code>,
-            or <code>enabled = false</code> under <code>[proxy]</code>.
+            variables, disable proxying: <code>enabled = false</code> under
+            <code>[proxy]</code>, or <code>vip verify --no-proxy ''</code>
+            alongside product-URL flags.
           </p>
           <p>
             <strong>Scope of the explicit config.</strong> An explicit

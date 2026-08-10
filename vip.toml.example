@@ -261,16 +261,23 @@ enabled = false
 # proxy differs from the ambient environment, set the env vars too so every path
 # agrees; when they match, there is nothing extra to do.
 #
-# Explicit proxy for all traffic. Overrides the environment.
-# Overridable on the command line with: vip verify --proxy http://proxy:8080
+# Note on the CLI flags: --proxy/--no-proxy only apply when you pass product
+# URLs directly (vip verify --connect-url ...), because they are woven into the
+# config VIP generates for that run. On any run that loads a config file -- this
+# one, whether via --config or found as ./vip.toml -- they have nothing to write
+# into and VIP warns that it ignored them. Configure the proxy here instead, or
+# set HTTP_PROXY/HTTPS_PROXY/NO_PROXY in the environment.
+#
+# Explicit proxy for all traffic. Overrides the environment -- including its
+# NO_PROXY, which is NOT merged in, so repeat any bypass hosts under no_proxy.
 # url = "http://proxy.corp.example:8080"
 #
 # Hosts to reach directly, bypassing the proxy (same semantics as NO_PROXY:
-# a leading dot / bare domain matches subdomains). Overridable with --no-proxy.
+# a leading dot / bare domain matches subdomains).
 # no_proxy = ["localhost", "127.0.0.1", ".internal.example.com"]
 #
 # Set enabled = false to force every request direct, ignoring any proxy
-# environment variables (equivalent to `vip verify --no-proxy ''`).
+# environment variables.
 # enabled = true
 #
 # Set trust_env = false to ignore proxy environment variables without setting an
