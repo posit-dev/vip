@@ -231,6 +231,30 @@ def workbench_auth_error(request: pytest.FixtureRequest) -> str | None:
     return session.workbench_auth_error
 
 
+def _ui_browser_proxy(vip_config: VIPConfig) -> dict[str, str] | None:
+    """The Playwright ``proxy`` dict for in-suite UI tests, or ``None``.
+
+    Routes the UI-test browsers through the same proxy as the API clients and
+    the auth-mint browser, so a ``[proxy]``/``--proxy`` config (or the ambient
+    proxy env) applies uniformly to Playwright too -- Chromium's own env-proxy
+    detection is platform-dependent, so we set it explicitly.
+
+    Resolved against the URL these browsers actually drive, because Playwright
+    takes a single proxy server per context and the http and https proxies can
+    differ: picking the https one for an http:// Workbench would put the browser
+    on a different gateway than every httpx call to the same host. Workbench is
+    preferred as the target since it owns the bulk of the UI tests; NO_PROXY
+    hosts are still handled per-request through the ``bypass`` list.
+
+    ``None`` (no proxy applies) leaves the browser args untouched, so the default
+    stays exactly as pytest-playwright had it.
+    """
+    from vip.proxy import build_proxy_map, playwright_proxy
+
+    target = vip_config.workbench.url or vip_config.connect.url or vip_config.package_manager.url
+    return playwright_proxy(build_proxy_map(vip_config.proxy), target or None)
+
+
 @pytest.fixture(scope="session")
 def browser_context_args(
     browser_context_args, request: pytest.FixtureRequest, vip_config: VIPConfig
@@ -245,15 +269,7 @@ def browser_context_args(
         browser_context_args["storage_state"] = str(session.storage_state_path)
     if vip_config.insecure:
         browser_context_args["ignore_https_errors"] = True
-    # Route in-suite UI-test browsers through the same proxy as the API clients
-    # and the auth-mint browser, so a [proxy]/--proxy config (or the ambient
-    # proxy env) applies uniformly to Playwright too — Chromium's own env-proxy
-    # detection is platform-dependent, so set it explicitly. Playwright accepts
-    # ``proxy`` on the context as well as at launch. ``None`` (no proxy) leaves
-    # the args untouched, so the default remains exactly as pytest-playwright.
-    from vip.proxy import build_proxy_map, playwright_proxy
-
-    pw_proxy = playwright_proxy(build_proxy_map(vip_config.proxy))
+    pw_proxy = _ui_browser_proxy(vip_config)
     if pw_proxy is not None:
         browser_context_args["proxy"] = pw_proxy
     if vip_config.ca_bundle is not None:

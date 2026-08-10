@@ -344,17 +344,24 @@ def verify_with_env_ca(verify: bool | str) -> bool | str | ssl.SSLContext:
     return httpx.create_ssl_context(verify=True, trust_env=True)
 
 
-def playwright_proxy(proxy_map: ProxyMap) -> dict[str, str] | None:
+def playwright_proxy(proxy_map: ProxyMap, target_url: str | None = None) -> dict[str, str] | None:
     """Render *proxy_map* as a Playwright ``launch(proxy=...)`` dict, or ``None``.
 
     Playwright accepts a ``server`` plus optional ``username`` / ``password`` and
-    a comma-separated ``bypass`` list. The browser login navigates https Posit
-    product URLs, so the server is the proxy an https URL would select (see
-    :func:`_primary_proxy_server`), keeping the browser on the same route as the
-    httpx paths. The ``bypass`` list is the map's bypass (``None``-valued)
-    patterns rendered back to bare hostnames. Returns ``None`` when no proxy
-    applies to the browser's https traffic, so the caller launches Chromium
-    exactly as before.
+    a comma-separated ``bypass`` list. *target_url* is the URL the browser will
+    navigate; its scheme picks the proxy, so the browser takes the route
+    :func:`proxy_for_url` would give that URL rather than assuming https (see
+    :func:`_primary_proxy_server`). Omit it only when there is no single
+    navigation target, in which case https-first selection applies. The
+    ``bypass`` list is the map's bypass (``None``-valued) patterns rendered back
+    to hostname patterns. Returns ``None`` when no proxy applies at all, so the
+    caller launches Chromium exactly as before.
+
+    Note that *target_url* chooses *which* proxy, not *whether* there is one: a
+    target on the bypass list still yields a dict, because the login browser does
+    not stay on one host — it follows a redirect to the IdP, which usually is not
+    bypassed and does need the proxy. Chromium applies ``bypass`` per request, so
+    the target itself still goes direct.
 
     An authenticated proxy is commonly given as ``http://user:pass@proxy:8080``.
     httpx parses that userinfo into its own proxy auth, but Chromium **ignores**
@@ -365,7 +372,7 @@ def playwright_proxy(proxy_map: ProxyMap) -> dict[str, str] | None:
     remove. So split any userinfo out of the server URL into ``username`` /
     ``password`` and hand Playwright a credential-free ``server``.
     """
-    server = _primary_proxy_server(proxy_map)
+    server = _primary_proxy_server(proxy_map, target_url)
     if server is None:
         return None
     bypass_hosts = [
@@ -403,21 +410,39 @@ def _split_proxy_userinfo(url: str) -> tuple[str | None, str | None]:
     return parsed.username, parsed.password
 
 
-def _primary_proxy_server(proxy_map: ProxyMap) -> str | None:
+def _primary_proxy_server(proxy_map: ProxyMap, target_url: str | None = None) -> str | None:
     """Pick the single proxy server Playwright should use for the browser login.
 
-    The browser login always navigates **https** Posit product URLs, so it uses
-    the proxy an https URL would select: an ``https://`` key (an explicit
-    ``HTTPS_PROXY``, or the http->https promotion in
+    Playwright takes one ``server`` per browser and normalises it to a single
+    ``scheme://host:port`` (its ``normalizeProxySettings`` rewrites the value, so
+    Chromium's per-scheme ``--proxy-server=http=a;https=b`` form is not an
+    option). We therefore pick the proxy for the scheme of *target_url* — the URL
+    the browser is about to navigate — so the browser and every httpx path take
+    the same route by construction.
+
+    That scheme matters whenever the two differ. With ``HTTP_PROXY`` and
+    ``HTTPS_PROXY`` pointing at different gateways and a product served over
+    plain http (TLS terminated upstream, or an inferred https URL that
+    :func:`~vip.auth.resolve_url_scheme` downgraded), always selecting the https
+    key would hand Chromium the https gateway while every httpx call used the
+    http one — the browser/API split this module exists to remove.
+
+    Without *target_url* (no single navigation target) the https key wins, then
+    the catch-all: an explicit ``HTTPS_PROXY``, or the http->https promotion in
     :func:`_promote_http_proxy_to_https` that lets a lone ``HTTP_PROXY`` tunnel
-    https too) or a catch-all ``all://`` (``--proxy`` / ``[proxy] url`` /
-    ``ALL_PROXY``). This is exactly what :func:`proxy_for_url` returns for an
-    https URL, so the browser and every httpx path take the same route by
-    construction — no independent scheme fallback that could diverge. Returns
-    ``None`` only when no proxy applies to https (the map has neither key), in
-    which case httpx sends https direct and the browser must too.
+    https, or ``all://`` from ``--proxy`` / ``[proxy] url`` / ``ALL_PROXY``.
+    Returns ``None`` only when the map has none of the applicable keys, in which
+    case httpx goes direct and the browser must too.
     """
-    for key in ("https://", "all://"):
+    keys = ("https://", "all://")
+    if target_url:
+        try:
+            scheme = httpx.URL(target_url).scheme
+        except Exception:
+            scheme = ""
+        if scheme == "http":
+            keys = ("http://", "all://")
+    for key in keys:
         value = proxy_map.get(key)
         if value:
             return value

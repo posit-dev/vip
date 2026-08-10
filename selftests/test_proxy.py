@@ -403,6 +403,71 @@ def test_playwright_bypass_matches_httpx_for_each_no_proxy_form(
     assert pw["bypass"] == bypass_entry
 
 
+def test_playwright_proxy_uses_the_http_proxy_for_an_http_target(monkeypatch):
+    """With distinct per-scheme env proxies and an http:// target, the browser must
+    get the same proxy httpx picks.
+
+    Selecting on the https key regardless of the target hands Chromium the https
+    proxy while every httpx path uses the http one -- a browser/API split that
+    bites whenever a product is served over plain http (TLS terminated upstream,
+    or after resolve_url_scheme downgrades an inferred https URL).
+    """
+    for var in ("ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://http-gw:1")
+    monkeypatch.setenv("HTTPS_PROXY", "http://https-gw:2")
+    proxy_map = build_proxy_map(ProxyConfig())
+
+    target = "http://wb.internal"
+    httpx_pick = proxy_for_url(target, proxy_map)
+    browser_pick = (playwright_proxy(proxy_map, target) or {}).get("server")
+
+    assert httpx_pick == "http://http-gw:1"
+    assert browser_pick == httpx_pick
+
+
+def test_playwright_proxy_uses_the_https_proxy_for_an_https_target(monkeypatch):
+    """The mirror case: an https target still selects the https proxy."""
+    for var in ("ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://http-gw:1")
+    monkeypatch.setenv("HTTPS_PROXY", "http://https-gw:2")
+    proxy_map = build_proxy_map(ProxyConfig())
+
+    target = "https://connect.internal"
+    assert (playwright_proxy(proxy_map, target) or {}).get("server") == proxy_for_url(
+        target, proxy_map
+    )
+
+
+def test_playwright_proxy_keeps_the_server_when_the_target_is_bypassed():
+    """A bypassed target must still leave a proxy server configured.
+
+    The target URL selects *which* proxy, not whether there is one: the login
+    browser does not stay on one host -- it follows a redirect to the IdP, which
+    is not on the bypass list and does need the proxy. Chromium applies the
+    bypass list per-request, so the target still goes direct.
+    """
+    cfg = ProxyConfig(url="http://p:8080", no_proxy=["internal.example"])
+    proxy_map = build_proxy_map(cfg)
+    target = "https://wb.internal.example"
+    assert proxy_for_url(target, proxy_map) is None  # httpx reaches it directly
+    pw = playwright_proxy(proxy_map, target)
+    assert pw is not None
+    assert pw["server"] == "http://p:8080"  # still available for the IdP hop
+    assert pw["bypass"] == "*internal.example"  # and the target is bypassed
+
+
+def test_playwright_proxy_without_target_keeps_https_first_selection(monkeypatch):
+    """Callers with no single navigation target keep the https-first behavior."""
+    for var in ("ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://http-gw:1")
+    monkeypatch.setenv("HTTPS_PROXY", "http://https-gw:2")
+    pw = playwright_proxy(build_proxy_map(ProxyConfig()))
+    assert pw is not None and pw["server"] == "http://https-gw:2"
+
+
 def test_playwright_proxy_prefers_https_env(monkeypatch):
     monkeypatch.setenv("HTTP_PROXY", "http://httpproxy:1")
     monkeypatch.setenv("HTTPS_PROXY", "http://httpsproxy:2")
@@ -506,6 +571,106 @@ def test_launch_chromium_passes_proxy_dict():
     _launch_chromium(pw, headless=False, proxy=proxy)
     kwargs = pw.chromium.launch.call_args.kwargs
     assert kwargs == {"headless": False, "proxy": proxy}
+
+
+# ---------------------------------------------------------------------------
+# Browser callers pass their navigation target, so the browser and the API
+# clients resolve the same proxy even when the target is http://
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def _split_scheme_proxies(monkeypatch):
+    """HTTP_PROXY and HTTPS_PROXY pointing at different gateways."""
+    for var in ("ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://http-gw:1")
+    monkeypatch.setenv("HTTPS_PROXY", "http://https-gw:2")
+
+
+def _launched_proxy(monkeypatch) -> dict:
+    """Capture the proxy dict handed to ``_launch_chromium``."""
+    from vip import auth as auth_mod
+
+    seen: dict = {}
+
+    def fake_launch(pw, *, headless, proxy=None):
+        seen["proxy"] = proxy
+        raise RuntimeError("stop after launch")
+
+    monkeypatch.setattr(auth_mod, "_launch_chromium", fake_launch)
+    return seen
+
+
+def test_interactive_auth_browser_uses_the_proxy_for_its_login_target(
+    monkeypatch, _split_scheme_proxies
+):
+    """The interactive login navigates the primary product URL, so an http://
+    product must put the browser on the http proxy -- the same one the API-key
+    mint and the product clients will use."""
+    from vip.auth import start_interactive_auth
+
+    seen = _launched_proxy(monkeypatch)
+    with pytest.raises(Exception, match="stop after launch"):
+        start_interactive_auth(connect_url="http://connect.internal", cache_path=None)
+
+    assert seen["proxy"]["server"] == "http://http-gw:1"
+    assert seen["proxy"]["server"] == proxy_for_url(
+        "http://connect.internal", build_proxy_map(ProxyConfig())
+    )
+
+
+def test_headless_auth_browser_uses_the_proxy_for_its_login_target(
+    monkeypatch, _split_scheme_proxies
+):
+    """Same contract for the headless login path."""
+    from vip.auth import start_headless_auth
+
+    seen = _launched_proxy(monkeypatch)
+    with pytest.raises(Exception, match="stop after launch"):
+        start_headless_auth(
+            connect_url="http://connect.internal",
+            cache_path=None,
+            username="u",
+            password="p",
+        )
+
+    assert seen["proxy"]["server"] == "http://http-gw:1"
+
+
+def test_authenticated_page_uses_the_proxy_for_the_workbench_url(
+    monkeypatch, tmp_path, _split_scheme_proxies
+):
+    """``vip cleanup --workbench-url`` drives the Workbench UI, so its browser
+    must take the route httpx would take to that same Workbench URL."""
+    from vip.auth import InteractiveAuthSession, authenticated_page
+
+    state = tmp_path / "state.json"
+    state.write_text('{"cookies": [], "origins": []}')
+    session = InteractiveAuthSession(storage_state_path=state, _workbench_url="http://wb.internal")
+
+    seen = _launched_proxy(monkeypatch)
+    with pytest.raises(Exception, match="stop after launch"):
+        with authenticated_page(session):
+            pass
+
+    assert seen["proxy"]["server"] == "http://http-gw:1"
+
+
+def test_ui_test_browser_context_uses_the_proxy_for_the_product_url(_split_scheme_proxies):
+    """The in-suite UI tests drive the configured products, so their browser
+    context must resolve the same proxy the API clients did."""
+    from vip.config import VIPConfig
+    from vip.proxy import playwright_proxy
+    from vip_tests.conftest import _ui_browser_proxy
+
+    cfg = VIPConfig()
+    cfg.workbench.url = "http://wb.internal"
+
+    pw_proxy = _ui_browser_proxy(cfg)
+    assert pw_proxy is not None
+    assert pw_proxy["server"] == "http://http-gw:1"
+    assert pw_proxy == playwright_proxy(build_proxy_map(cfg.proxy), "http://wb.internal")
 
 
 # ---------------------------------------------------------------------------

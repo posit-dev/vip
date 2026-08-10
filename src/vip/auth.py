@@ -253,7 +253,10 @@ def authenticated_page(
     _prev_node_ca = os.environ.get("NODE_EXTRA_CA_CERTS")
     if ca_bundle is not None:
         os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
-    pw_proxy = playwright_proxy(build_proxy_map(proxy))
+    # The page this opens drives the Workbench UI, so resolve the proxy for that
+    # URL specifically -- an http:// Workbench must take the http proxy, not
+    # whatever an https URL would have selected.
+    pw_proxy = playwright_proxy(build_proxy_map(proxy), session._workbench_url or None)
     try:
         pw = sync_playwright().start()
         browser = _launch_chromium(pw, headless=True, proxy=pw_proxy)
@@ -787,7 +790,9 @@ def start_interactive_auth(
     # the interactive login does not silently take a different network path than
     # the API-key mint and the product clients (Chromium's implicit env-proxy
     # detection is platform-dependent; this makes it explicit and consistent).
-    pw_proxy = playwright_proxy(build_proxy_map(proxy))
+    # Resolved for ``primary_url`` -- the URL this browser is about to navigate --
+    # so an http:// product selects the http proxy rather than the https one.
+    pw_proxy = playwright_proxy(build_proxy_map(proxy), primary_url)
 
     pw = None
     browser = None
@@ -1027,7 +1032,8 @@ def start_headless_auth(
 
     # Same proxy as VIP's httpx egress, so the headless login shares the network
     # path of the mint and product clients rather than Chromium's implicit one.
-    pw_proxy = playwright_proxy(build_proxy_map(proxy))
+    # Resolved for the URL this browser will navigate (see start_interactive_auth).
+    pw_proxy = playwright_proxy(build_proxy_map(proxy), primary_url)
 
     pw = None
     browser = None

@@ -27,6 +27,32 @@ _PROXY_ENV_VARS = (
 
 
 @pytest.fixture(autouse=True)
+def _restore_auth_entrypoints():
+    """Undo in-process ``pytester`` runs that rebind ``vip.auth``'s entrypoints.
+
+    Several plugin tests write a conftest that stubs authentication with
+    ``vip.auth.start_interactive_auth = _fake_session``.  Those runs execute
+    ``runpytest_inprocess`` -- the same interpreter, the same ``vip.auth``
+    module object -- so the assignment outlives the inner session and every
+    later selftest that calls the real function silently gets the stub back
+    (an ``InteractiveAuthSession`` with a ``/dev/null`` storage state), passing
+    or failing for reasons that have nothing to do with what it asserts.
+
+    Snapshot and restore around every test so the leak cannot cross a test
+    boundary.  Cheap, and it fixes the whole class of leak rather than the two
+    conftests that happen to cause it today.
+    """
+    import vip.auth as _auth
+
+    saved = {
+        name: getattr(_auth, name) for name in ("start_interactive_auth", "start_headless_auth")
+    }
+    yield
+    for name, func in saved.items():
+        setattr(_auth, name, func)
+
+
+@pytest.fixture(autouse=True)
 def _no_ambient_proxy(monkeypatch):
     """Clear proxy environment variables for every selftest.
 
