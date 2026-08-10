@@ -159,12 +159,24 @@ If your site uses a single forward proxy as its only outbound tunnel
             takes precedence.
 </p> <p data-astro-cid-mwd2jfe2>To set the proxy explicitly instead of via the environment:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com \
   --proxy http://proxy.corp.example:8080 \
-  --no-proxy localhost,.internal.example.com</code></pre> <p data-astro-cid-mwd2jfe2>Or in <code data-astro-cid-mwd2jfe2>vip.toml</code>:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>[proxy]
+  --no-proxy localhost,.internal.example.com</code></pre> <p data-astro-cid-mwd2jfe2>
+The flags only apply on a run like the one above, where you pass
+            product URLs directly — they are written into the configuration VIP
+            generates for that run. On a run that loads a config file, whether
+            via <code data-astro-cid-mwd2jfe2>--config</code> or a <code data-astro-cid-mwd2jfe2>./vip.toml</code> found in the
+            working directory, there is nothing for them to write into and VIP
+            warns that it ignored them. Configure the proxy in the file instead:
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>[proxy]
 url = "http://proxy.corp.example:8080"
 no_proxy = ["localhost", ".internal.example.com"]</code></pre> <p data-astro-cid-mwd2jfe2>
+Note that an explicit <code data-astro-cid-mwd2jfe2>url</code> (or <code data-astro-cid-mwd2jfe2>--proxy</code>)
+            replaces the environment's <code data-astro-cid-mwd2jfe2>NO_PROXY</code> rather than merging
+            with it, so repeat any bypass hosts under <code data-astro-cid-mwd2jfe2>no_proxy</code>.
+</p> <p data-astro-cid-mwd2jfe2>
 To force every request direct and ignore any proxy environment
-            variables, disable proxying: <code data-astro-cid-mwd2jfe2>vip verify --no-proxy ''</code>,
-            or <code data-astro-cid-mwd2jfe2>enabled = false</code> under <code data-astro-cid-mwd2jfe2>[proxy]</code>.
+            variables, disable proxying: <code data-astro-cid-mwd2jfe2>enabled = false</code> under
+<code data-astro-cid-mwd2jfe2>[proxy]</code>, or <code data-astro-cid-mwd2jfe2>vip verify --no-proxy ''</code>
+alongside product-URL flags.
 </p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Scope of the explicit config.</strong> An explicit
 <code data-astro-cid-mwd2jfe2>[proxy]</code> / <code data-astro-cid-mwd2jfe2>--proxy</code> setting covers the core
             egress paths — the product API clients, authentication, URL probes,
