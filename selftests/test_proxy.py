@@ -349,7 +349,58 @@ def test_playwright_proxy_renders_server_and_bypass():
     assert pw["server"] == "http://p:8080"
     bypass = set(pw["bypass"].split(","))
     assert "localhost" in bypass
-    assert ".internal.example" in bypass
+    # The httpx pattern's leading ``*`` is preserved so Chromium matches the same
+    # hosts -- see test_bare_no_proxy_host_bypasses_subdomains_in_the_browser_too.
+    assert "*.internal.example" in bypass
+
+
+def test_bare_no_proxy_host_bypasses_subdomains_in_the_browser_too():
+    """A bare NO_PROXY host must bypass subdomains for Chromium, not just httpx.
+
+    httpx renders ``NO_PROXY=example.com`` as ``all://*example.com``, which
+    bypasses ``example.com`` AND ``www.example.com``. Chromium's bypass grammar
+    treats a bare ``example.com`` as an exact-host match, so dropping the ``*``
+    when rendering the Playwright dict makes the browser proxy the very
+    subdomains every httpx path reaches directly -- and products live on
+    subdomains (connect.example.com), so this is the case that matters.
+
+    ``*example.com`` is a valid Chromium HOSTNAME_PATTERN matching both, and
+    Playwright passes it through untouched (it only prepends ``*`` to entries
+    that already start with ``.``).
+    """
+    cfg = ProxyConfig(url="http://p:8080", no_proxy=["example.com"])
+    proxy_map = build_proxy_map(cfg)
+    # httpx bypasses the subdomain ...
+    assert proxy_for_url("https://connect.example.com", proxy_map) is None
+    # ... so the browser must be told to as well.
+    pw = playwright_proxy(proxy_map)
+    assert pw is not None
+    assert pw["bypass"] == "*example.com"
+
+
+@pytest.mark.parametrize(
+    "no_proxy_host,pattern,bypass_entry,also_bypassed",
+    [
+        ("example.com", "all://*example.com", "*example.com", "connect.example.com"),
+        (
+            ".internal.example",
+            "all://*.internal.example",
+            "*.internal.example",
+            "wb.internal.example",
+        ),
+    ],
+)
+def test_playwright_bypass_matches_httpx_for_each_no_proxy_form(
+    no_proxy_host, pattern, bypass_entry, also_bypassed
+):
+    """Every bypass pattern httpx builds must render to a Playwright entry with
+    the same match set -- checked against ``proxy_for_url`` on the subdomain."""
+    proxy_map = build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=[no_proxy_host]))
+    assert pattern in proxy_map
+    assert proxy_for_url(f"https://{also_bypassed}", proxy_map) is None
+    pw = playwright_proxy(proxy_map)
+    assert pw is not None
+    assert pw["bypass"] == bypass_entry
 
 
 def test_playwright_proxy_prefers_https_env(monkeypatch):

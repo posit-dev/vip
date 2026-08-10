@@ -427,9 +427,18 @@ def _primary_proxy_server(proxy_map: ProxyMap) -> str | None:
 def _pattern_to_bypass_host(pattern: str) -> str:
     """Convert an httpx bypass pattern back to a Playwright bypass hostname.
 
-    Inverse of :func:`_no_proxy_pattern`: ``all://*.foo`` → ``.foo``,
-    ``all://host`` → ``host``, ``all://[::1]`` → ``::1``.
+    Inverse of :func:`_no_proxy_pattern`: ``all://*.foo`` → ``*.foo``,
+    ``all://*foo`` → ``*foo``, ``all://host`` → ``host``, ``all://[::1]`` → ``::1``.
+
+    The leading ``*`` is deliberately **kept**. httpx renders a bare
+    ``NO_PROXY=example.com`` as ``all://*example.com``, whose match set is
+    ``example.com`` *and* ``www.example.com``. Chromium's bypass grammar reads a
+    bare ``example.com`` as an exact-host match, so stripping the ``*`` would
+    make the browser proxy exactly the subdomains every httpx path reaches
+    directly — and Posit products live on subdomains, so that is the case that
+    matters. ``*example.com`` is a valid Chromium HOSTNAME_PATTERN covering both,
+    and Playwright forwards it unchanged (it only prepends ``*`` to entries that
+    already start with ``.``, which leaves ``*.foo`` alone as well).
     """
     host = pattern.removeprefix("all://").removeprefix("http://").removeprefix("https://")
-    host = host.removeprefix("*")
     return host.strip("[]")

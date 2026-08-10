@@ -432,15 +432,21 @@ def run_verify(args: argparse.Namespace) -> None:
     if not config_path and (args.connect_url or args.workbench_url or args.package_manager_url):
         temp_config = _generate_temp_config(args)
         config_path = temp_config
-    elif config_path and proxy_flag_set:
+    elif proxy_flag_set:
         # --proxy/--no-proxy are only woven into the generated temp config (via
-        # _generate_temp_config); on a --config run the flags have no consumer,
-        # so the pytest subprocess would load the file's [proxy] (or none) and
-        # silently ignore them. This mirrors --insecure/--ca-bundle on the same
-        # branch. Rather than swallow the flag, tell the user how to make it
-        # take effect. (Ambient HTTP(S)_PROXY still works on a config run.)
+        # _generate_temp_config); any run that loads a config file instead has no
+        # consumer for them, so the pytest subprocess would load the file's
+        # [proxy] (or none) and silently ignore the flags. This mirrors
+        # --insecure/--ca-bundle on the same branch. Rather than swallow the
+        # flag, tell the user how to make it take effect. (Ambient
+        # HTTP(S)_PROXY still works on a config run.)
+        #
+        # Keyed on "no temp config was generated", NOT on ``config_path``: the
+        # default-resolution path (a ./vip.toml with no --config and no URL
+        # flags -- the documented normal setup) still has config_path=None here
+        # and would slip through a ``config_path and ...`` test entirely.
         print(
-            ">>> Warning: --proxy/--no-proxy are ignored when --config is used. "
+            ">>> Warning: --proxy/--no-proxy are ignored when a config file is used. "
             "Put the proxy under a [proxy] section in your config file "
             "(url = ..., no_proxy = [...], or enabled = false), or set "
             "HTTP_PROXY/HTTPS_PROXY/NO_PROXY in the environment.",
@@ -1490,10 +1496,13 @@ def main() -> None:
         help=(
             "Route outbound HTTP(S) through this proxy (e.g. http://proxy:8080). "
             "Applies to the product API clients, the auth/probe requests, and the "
-            "Playwright browser login. Overrides HTTP_PROXY/HTTPS_PROXY. Ignored "
-            "when --config is given (use a [proxy] section in the config file "
-            "instead). When omitted, VIP reads the ambient "
-            "HTTP_PROXY/HTTPS_PROXY/NO_PROXY environment (same as httpx)."
+            "Playwright browser login. Overrides HTTP_PROXY/HTTPS_PROXY, and also "
+            "supersedes any NO_PROXY in the environment (repeat bypass hosts with "
+            "--no-proxy). Only takes effect alongside the product-URL flags; it is "
+            "ignored on a run that loads a config file, whether via --config or a "
+            "./vip.toml (use a [proxy] section there instead). When omitted, VIP "
+            "reads the ambient HTTP_PROXY/HTTPS_PROXY/NO_PROXY environment (same "
+            "as httpx)."
         ),
     )
     proxy_group.add_argument(
@@ -1504,8 +1513,9 @@ def main() -> None:
             "Comma-separated hosts to reach directly, bypassing --proxy "
             "(e.g. localhost,.internal.example). With no --proxy, passing an "
             "empty value (--no-proxy '') disables proxying entirely, ignoring "
-            "any proxy environment variables. Ignored when --config is given "
-            "(use a [proxy] section in the config file instead)."
+            "any proxy environment variables. Ignored on a run that loads a "
+            "config file, whether via --config or a ./vip.toml (use a [proxy] "
+            "section there instead)."
         ),
     )
 
