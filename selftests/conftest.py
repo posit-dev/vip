@@ -14,6 +14,41 @@ import pytest
 # Enable the pytester fixture for plugin integration tests.
 pytest_plugins = ["pytester"]
 
+_PROXY_ENV_VARS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_proxy(monkeypatch):
+    """Clear proxy environment variables for every selftest.
+
+    ``vip.proxy.build_proxy_map(None)`` reads the ambient proxy environment, and
+    ``resolve_url_scheme`` changes behavior when a proxy applies -- it refuses
+    the inferred-https -> http downgrade, because the raw-socket TLS-listener
+    tiebreak bypasses the proxy and so cannot speak to the path VIP would take.
+    Without this, running the selftests on a machine with ``HTTP_PROXY``
+    exported flips that branch under a dozen scheme-resolution tests that never
+    mention proxies, and their probes attempt real connections through it.
+
+    Autouse and package-wide on purpose: any test that constructs a client,
+    resolves a URL, or loads a config can reach the proxy layer, so opting in
+    per-test would just recreate the gap. Tests that *are* about proxy behavior
+    set the variables they need via ``monkeypatch.setenv``, which still works --
+    this fixture runs first and only removes what it did not put there.
+
+    See ``selftests/test_proxy_env_isolation.py`` for the guard on this fixture.
+    """
+    for var in _PROXY_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
 
 @pytest.fixture()
 def pytester(pytester):

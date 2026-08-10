@@ -47,11 +47,9 @@ def _clear_scheme_cache():
     auth_mod._scheme_resolution_cache.clear()
 
 
-@pytest.fixture(autouse=True)
-def _no_ambient_proxy(monkeypatch):
-    for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
-        monkeypatch.delenv(var, raising=False)
-        monkeypatch.delenv(var.lower(), raising=False)
+# Ambient proxy variables are cleared package-wide by the autouse
+# ``_no_ambient_proxy`` fixture in selftests/conftest.py -- a module-local copy
+# here would shadow it by name and drift out of sync with the shared list.
 
 
 # ---------------------------------------------------------------------------
