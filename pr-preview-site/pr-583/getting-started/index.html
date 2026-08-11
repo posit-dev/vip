@@ -156,15 +156,14 @@ If your site uses a single forward proxy as its only outbound tunnel
 <code data-astro-cid-mwd2jfe2>CONNECT</code> tunnel), rather than sending it direct the way
             httpx would. An explicit <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> or
 <code data-astro-cid-mwd2jfe2>ALL_PROXY</code>, if set, always takes precedence.
-</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>On a proxy-only network, still set <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code>
-(or <code data-astro-cid-mwd2jfe2>ALL_PROXY</code>).</strong> That promotion applies to the
-            proxy-aware core paths — the API clients, authentication, URL probes
-            and the browser login — but not to the diagnostic and load-test paths
-            described below, which read the environment directly and so send https
-            direct when only <code data-astro-cid-mwd2jfe2>HTTP_PROXY</code> is set. Relying on the
-            promotion alone therefore works for the product API tests while the
-            reachability and performance probes fail. Naming an https proxy
-            explicitly keeps every path on the same route.
+</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Lone <code data-astro-cid-mwd2jfe2>HTTP_PROXY</code>.</strong> When only
+<code data-astro-cid-mwd2jfe2>HTTP_PROXY</code> is set, VIP promotes it to carry https too
+            (via <code data-astro-cid-mwd2jfe2>CONNECT</code>). On a <code data-astro-cid-mwd2jfe2>vip verify</code> run that
+            promotion reaches every path, including the environment-honoring
+            reachability and performance probes, because VIP reconciles the test
+            subprocess's environment (see “Scope of the explicit config” below).
+            Naming <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> / <code data-astro-cid-mwd2jfe2>ALL_PROXY</code> explicitly is
+            still clearer if you want a specific https gateway.
 </p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Setup.</strong> <code data-astro-cid-mwd2jfe2>vip install</code> downloads the
             Playwright Chromium build, and it reads no configuration file — so
             that download honors the proxy <em data-astro-cid-mwd2jfe2>environment variables</em> only.
@@ -191,22 +190,21 @@ To force every request direct and ignore any proxy environment
             variables, disable proxying: <code data-astro-cid-mwd2jfe2>enabled = false</code> under
 <code data-astro-cid-mwd2jfe2>[proxy]</code>, or <code data-astro-cid-mwd2jfe2>vip verify --no-proxy ''</code>
 alongside product-URL flags.
-</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Scope of the explicit config.</strong> An explicit
-<code data-astro-cid-mwd2jfe2>[proxy]</code> / <code data-astro-cid-mwd2jfe2>--proxy</code> setting covers the core
-            egress paths — the product API clients, authentication, URL probes,
-            and the browser login. A few diagnostic and load-test paths (some
-            reachability probes under the individual test suites and the
-            performance/load engine) honor only the proxy
-<em data-astro-cid-mwd2jfe2>environment variables</em>, not an explicit
-<code data-astro-cid-mwd2jfe2>[proxy]</code> config. The raw-socket TLS handshake checks
-            (the SSL and HTTPS suites, and the listener probe behind scheme
-            resolution) honor <em data-astro-cid-mwd2jfe2>neither</em>: they open a TCP connection
-            directly to test the plaintext/handshake boundary, so they have no
-            proxy to speak through and will fail on a host with no direct route
-            out, whatever you configure. If your proxy differs from the ambient
-            environment, set the environment variables as well as (or instead of)
-<code data-astro-cid-mwd2jfe2>[proxy]</code> so every path agrees; when the proxy is the same
-            in both, there is nothing extra to do.
+</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Scope of the explicit config.</strong> On a
+<code data-astro-cid-mwd2jfe2>vip verify</code> run VIP reconciles the test subprocess's
+            environment with your <code data-astro-cid-mwd2jfe2>[proxy]</code> / <code data-astro-cid-mwd2jfe2>--proxy</code>
+setting, so it applies uniformly — the product API clients,
+            authentication, URL probes, the browser login, <em data-astro-cid-mwd2jfe2>and</em> the
+            environment-honoring paths in the suites (some reachability probes
+            and the performance/load engine). An <code data-astro-cid-mwd2jfe2>enabled = false</code>
+(or <code data-astro-cid-mwd2jfe2>--no-proxy ''</code>) likewise forces the whole run direct.
+            The one exception is the raw-socket TLS handshake checks (the SSL and
+            HTTPS suites, and the listener probe behind scheme resolution): they
+            open a TCP connection directly to test the plaintext/handshake
+            boundary, so they have no proxy to speak through and will fail on a
+            host with no direct route out, whatever you configure.
+            (<code data-astro-cid-mwd2jfe2>vip status</code> and <code data-astro-cid-mwd2jfe2>vip cleanup</code> run in-process
+            and honor the <code data-astro-cid-mwd2jfe2>[proxy]</code> config directly.)
 </p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Always give product URLs an explicit scheme when a proxy is
             in effect.</strong> For a scheme-less URL (e.g.
 <code data-astro-cid-mwd2jfe2>--connect-url connect.example.com</code>) VIP probes
