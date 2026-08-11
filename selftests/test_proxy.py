@@ -425,6 +425,28 @@ def test_bare_no_proxy_host_does_not_bypass_prefix_lookalikes():
             ["localhost"],
             ["notlocalhost"],
         ),
+        # httpx's URLPattern parses the mask as a URL *path* and drops it, so its
+        # host regex is ^10\.0\.0\.0$ -- only the literal address bypasses, never
+        # the range. Chromium would read 10.0.0.0/8 as a real CIDR rule and
+        # bypass every host in it, sending internal traffic direct that every
+        # httpx call proxies. Parity with httpx is the contract, so the mask is
+        # dropped here too.
+        (
+            "10.0.0.0/8",
+            "all://10.0.0.0/8",
+            "10.0.0.0",
+            ["10.0.0.0"],
+            ["10.1.2.3", "10.0.0.1"],
+        ),
+        # Chromium's bypass grammar needs IPv6 literals bracketed; the bare form
+        # is parsed with ':' as a port separator and never matches.
+        (
+            "::1",
+            "all://[::1]",
+            "[::1]",
+            ["[::1]"],
+            [],
+        ),
     ],
 )
 def test_playwright_bypass_matches_httpx_for_each_no_proxy_form(
@@ -504,6 +526,72 @@ def test_playwright_proxy_keeps_the_server_when_the_target_is_bypassed():
     assert pw["server"] == "http://p:8080"  # still available for the IdP hop
     # and the target is bypassed (apex + subdomains, matching httpx)
     assert pw["bypass"] == "internal.example,*.internal.example"
+
+
+def test_playwright_proxy_falls_back_when_the_target_scheme_has_no_proxy(monkeypatch):
+    """A target whose scheme has no key must still get the map's other proxy.
+
+    ``target_url`` chooses *which* proxy, never *whether* there is one. With only
+    HTTPS_PROXY set and an http:// product, returning None launches the browser
+    with no proxy at all -- but the login immediately redirects to the https IdP,
+    which every httpx path proxies. The browser would be the only thing on the
+    box that cannot reach it.
+    """
+    for var in ("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTPS_PROXY", "http://gw:3128")
+    proxy_map = build_proxy_map(ProxyConfig())
+    assert proxy_map == {"https://": "http://gw:3128"}
+
+    pw = playwright_proxy(proxy_map, "http://wb.internal")
+    assert pw is not None, "browser must keep a proxy for the https IdP hop"
+    assert pw["server"] == "http://gw:3128"
+    # And that is the proxy httpx uses for the hop the browser actually needs it for.
+    assert pw["server"] == proxy_for_url("https://idp.okta.com", proxy_map)
+
+
+def test_playwright_proxy_is_none_only_when_the_map_has_no_proxy_at_all():
+    """The one case that legitimately launches Chromium unproxied."""
+    assert playwright_proxy({}, "http://wb.internal") is None
+
+
+def test_disabled_proxy_forces_the_browser_direct(monkeypatch):
+    """``enabled = false`` / ``--no-proxy ''`` must reach Chromium, not just httpx.
+
+    Omitting Playwright's ``proxy=`` does not mean "go direct" -- it means "decide
+    for yourself", and Chromium then reads the ambient proxy environment (on
+    Linux) or the system proxy settings. So the one case where the user has
+    explicitly demanded a direct path is the case where the browser would proxy
+    while every httpx call goes direct: precisely the split this module exists to
+    remove. ``--no-proxy-server`` is the switch that actually forces it; note
+    that Playwright rewrites a ``direct://`` server string into a real proxy
+    (``normalizeProxySettings``), so that is not an option.
+    """
+    from vip.proxy import chromium_launch_args
+
+    monkeypatch.setenv("HTTPS_PROXY", "http://gw:3128")
+    assert chromium_launch_args(ProxyConfig(enabled=False)) == ["--no-proxy-server"]
+    assert chromium_launch_args(ProxyConfig(trust_env=False)) == ["--no-proxy-server"]
+
+
+def test_no_extra_launch_args_when_a_proxy_is_configured(monkeypatch):
+    """A configured proxy is carried by ``proxy=``; --no-proxy-server would fight it."""
+    from vip.proxy import chromium_launch_args
+
+    monkeypatch.setenv("HTTPS_PROXY", "http://gw:3128")
+    assert chromium_launch_args(ProxyConfig()) == []
+    assert chromium_launch_args(ProxyConfig(url="http://p:8080")) == []
+
+
+def test_no_extra_launch_args_when_nothing_is_configured(monkeypatch):
+    """Nothing configured is not the same as explicitly off -- leave Chromium alone,
+    exactly as before this module existed."""
+    from vip.proxy import chromium_launch_args
+
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    assert chromium_launch_args(ProxyConfig()) == []
+    assert chromium_launch_args(None) == []
 
 
 def test_playwright_proxy_without_target_keeps_https_first_selection(monkeypatch):
@@ -589,6 +677,25 @@ def test_redact_proxy_url_strips_userinfo(url, expected):
     assert redact_proxy_url(url) == expected
 
 
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("http://u:p@[fe80::1]:8080", "http://[fe80::1]:8080"),
+        ("http://u:p@[fe80::1]", "http://[fe80::1]"),
+        ("http://[fe80::1]:8080", "http://[fe80::1]:8080"),
+    ],
+)
+def test_redact_proxy_url_keeps_ipv6_brackets(url, expected):
+    """An IPv6 proxy host must stay bracketed when userinfo is stripped.
+
+    ``httpx.URL.host`` returns the address unbracketed, so naive reassembly
+    yields ``http://fe80::1:8080`` -- ambiguous, and unusable as a proxy server.
+    playwright_proxy hands this exact string to Chromium as ``server`` for any
+    authenticated IPv6 proxy, so the browser fails where every httpx path works.
+    """
+    assert redact_proxy_url(url) == expected
+
+
 def test_redact_proxy_url_output_has_no_secret():
     """The redacted form must not contain the password anywhere."""
     assert "s3cret" not in (redact_proxy_url("http://alice:s3cret@proxy.corp:8080") or "")
@@ -621,6 +728,52 @@ def test_launch_chromium_passes_proxy_dict():
     assert kwargs == {"headless": False, "proxy": proxy}
 
 
+def test_launch_chromium_forwards_extra_args():
+    from unittest.mock import MagicMock
+
+    from vip.auth import _launch_chromium
+
+    pw = MagicMock()
+    _launch_chromium(pw, headless=True, proxy=None, args=["--no-proxy-server"])
+    assert pw.chromium.launch.call_args.kwargs == {
+        "headless": True,
+        "args": ["--no-proxy-server"],
+    }
+
+
+def test_disabled_proxy_reaches_the_auth_browser(monkeypatch):
+    """The whole point of chromium_launch_args: it must actually be plumbed in.
+
+    With [proxy] enabled = false and an ambient proxy, the login browser must be
+    launched with --no-proxy-server, not merely without proxy=.
+    """
+    from vip.auth import start_interactive_auth
+
+    monkeypatch.setenv("HTTPS_PROXY", "http://gw:3128")
+    seen = _launched_proxy(monkeypatch)
+    with pytest.raises(Exception, match="stop after launch"):
+        start_interactive_auth(
+            connect_url="https://connect.internal",
+            cache_path=None,
+            proxy=ProxyConfig(enabled=False),
+        )
+    assert seen["proxy"] is None
+    assert seen["args"] == ["--no-proxy-server"]
+
+
+def test_ui_test_browser_context_is_forced_direct_when_disabled(monkeypatch):
+    """Same for the in-suite UI browsers, which take launch args from
+    ``browser_type_launch_args`` rather than from _launch_chromium."""
+    from vip.config import VIPConfig
+    from vip_tests.conftest import _ui_browser_launch_args
+
+    monkeypatch.setenv("HTTPS_PROXY", "http://gw:3128")
+    cfg = VIPConfig()
+    cfg.proxy = ProxyConfig(enabled=False)
+    assert _ui_browser_launch_args(cfg) == ["--no-proxy-server"]
+    assert _ui_browser_launch_args(VIPConfig()) == []
+
+
 # ---------------------------------------------------------------------------
 # Browser callers pass their navigation target, so the browser and the API
 # clients resolve the same proxy even when the target is http://
@@ -642,8 +795,9 @@ def _launched_proxy(monkeypatch) -> dict:
 
     seen: dict = {}
 
-    def fake_launch(pw, *, headless, proxy=None):
+    def fake_launch(pw, *, headless, proxy=None, args=None):
         seen["proxy"] = proxy
+        seen["args"] = args
         raise RuntimeError("stop after launch")
 
     monkeypatch.setattr(auth_mod, "_launch_chromium", fake_launch)
@@ -703,6 +857,36 @@ def test_authenticated_page_uses_the_proxy_for_the_workbench_url(
             pass
 
     assert seen["proxy"]["server"] == "http://http-gw:1"
+
+
+def test_ui_browser_proxy_resolves_an_inferred_scheme_first(monkeypatch, _split_scheme_proxies):
+    """A scheme-less --workbench-url must be resolved before picking the proxy.
+
+    ``browser_context_args`` is session-scoped and depends only on ``vip_config``,
+    so nothing orders it after a fixture that calls ``resolve_url_scheme``. Using
+    the raw URL pins the browser to the https gateway while the URL later
+    downgrades to http and the API clients use the http one -- the exact split
+    ``_ui_browser_proxy`` exists to prevent.
+    """
+    from vip.config import VIPConfig
+    from vip_tests.conftest import _ui_browser_proxy
+
+    cfg = VIPConfig()
+    cfg.workbench.url = "https://wb.internal"
+    cfg.workbench.url_scheme_inferred = True
+
+    # Stand in for the live probe: the inferred https:// does not answer, so
+    # resolve_url_scheme falls back to http://.
+    def fake_resolve(pc, **kwargs):
+        pc.url = "http://wb.internal"
+        pc.url_scheme_inferred = False
+        return pc.url
+
+    monkeypatch.setattr("vip_tests.conftest.resolve_url_scheme", fake_resolve)
+
+    pw_proxy = _ui_browser_proxy(cfg)
+    assert pw_proxy is not None
+    assert pw_proxy["server"] == "http://http-gw:1"
 
 
 def test_ui_test_browser_context_uses_the_proxy_for_the_product_url(_split_scheme_proxies):

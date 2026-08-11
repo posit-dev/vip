@@ -246,13 +246,61 @@ def _ui_browser_proxy(vip_config: VIPConfig) -> dict[str, str] | None:
     preferred as the target since it owns the bulk of the UI tests; NO_PROXY
     hosts are still handled per-request through the ``bypass`` list.
 
+    The target goes through ``resolve_url_scheme`` first. This fixture is
+    session-scoped and depends only on ``vip_config``, so nothing orders it after
+    the client fixtures that resolve those URLs -- reading a scheme-less
+    ``--workbench-url`` raw would pick the proxy for the *inferred* ``https://``
+    and then leave the browser on that gateway after the URL downgraded to
+    ``http://``, which is the split this helper exists to prevent. The call is
+    memoized and idempotent, so doing it here costs nothing.
+
     ``None`` (no proxy applies) leaves the browser args untouched, so the default
     stays exactly as pytest-playwright had it.
     """
     from vip.proxy import build_proxy_map, playwright_proxy
 
-    target = vip_config.workbench.url or vip_config.connect.url or vip_config.package_manager.url
-    return playwright_proxy(build_proxy_map(vip_config.proxy), target or None)
+    for pc in (vip_config.workbench, vip_config.connect, vip_config.package_manager):
+        if not pc.url:
+            continue
+        target = resolve_url_scheme(
+            pc,
+            insecure=vip_config.insecure,
+            ca_bundle=vip_config.ca_bundle,
+            proxy=vip_config.proxy,
+        )
+        return playwright_proxy(build_proxy_map(vip_config.proxy), target or None)
+    return playwright_proxy(build_proxy_map(vip_config.proxy))
+
+
+def _ui_browser_launch_args(vip_config: VIPConfig) -> list[str]:
+    """Extra Chromium switches for the in-suite UI browsers.
+
+    ``--no-proxy-server`` when the user explicitly disabled proxying: a context
+    with no ``proxy`` key leaves Chromium free to pick up the ambient proxy
+    environment or system settings, which would proxy the browser while every
+    httpx call goes direct. See :func:`vip.proxy.chromium_launch_args`.
+    """
+    from vip.proxy import chromium_launch_args
+
+    return chromium_launch_args(vip_config.proxy)
+
+
+@pytest.fixture(scope="session")
+def browser_type_launch_args(browser_type_launch_args, vip_config: VIPConfig):
+    """Force the UI-test browsers direct when ``[proxy]`` is explicitly disabled.
+
+    Overrides the pytest-playwright fixture of the same name; the parameter name
+    *must* match to receive the base fixture value. This is launch-level rather
+    than context-level because ``--no-proxy-server`` is a browser switch, not a
+    context option.
+    """
+    extra = _ui_browser_launch_args(vip_config)
+    if extra:
+        browser_type_launch_args["args"] = [
+            *browser_type_launch_args.get("args", []),
+            *extra,
+        ]
+    return browser_type_launch_args
 
 
 @pytest.fixture(scope="session")

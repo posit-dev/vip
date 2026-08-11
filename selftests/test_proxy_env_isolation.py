@@ -39,6 +39,28 @@ def test_no_proxy_env_visible_to_selftests():
     assert leaked == {}
 
 
+def test_isolation_survives_a_system_level_proxy(monkeypatch):
+    """Clearing environment variables is not enough on macOS.
+
+    ``httpx._utils.get_environment_proxies`` calls ``urllib.request.getproxies``,
+    which on darwin is ``getproxies_environment() or getproxies_macosx_sysconf()``
+    -- with the environment cleared it falls straight through to the proxy
+    configured in System Settings. On a corporate-managed Mac that puts the
+    scheme-resolution tests back on the no-downgrade branch, which is the
+    confusing failure mode this isolation exists to prevent.
+
+    Simulated here by making the system-config lookup return a proxy, since a
+    real one cannot be assumed on any given machine.
+    """
+    monkeypatch.setattr("urllib.request.getproxies_environment", lambda: {}, raising=False)
+    monkeypatch.setattr(
+        "urllib.request.getproxies_macosx_sysconf",
+        lambda: {"http": "http://sysconf-gw:3128", "https": "http://sysconf-gw:3128"},
+        raising=False,
+    )
+    assert build_proxy_map(None) == {}
+
+
 def test_default_proxy_config_resolves_to_direct():
     """The default ProxyConfig must resolve to "everything direct" in selftests.
 

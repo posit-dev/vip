@@ -163,7 +163,11 @@ def redact_proxy_url(url: str | None) -> str | None:
         return url
     if not (parsed.username or parsed.password):
         return url
-    hostport = parsed.host if parsed.port is None else f"{parsed.host}:{parsed.port}"
+    # ``httpx.URL.host`` returns an IPv6 address unbracketed, so reassembling it
+    # naively gives ``http://fe80::1:8080`` -- ambiguous, and unusable as a proxy
+    # server string (playwright_proxy hands this straight to Chromium).
+    host = f"[{parsed.host}]" if ":" in parsed.host else parsed.host
+    hostport = host if parsed.port is None else f"{host}:{parsed.port}"
     return f"{parsed.scheme}://{hostport}"
 
 
@@ -393,6 +397,37 @@ def playwright_proxy(proxy_map: ProxyMap, target_url: str | None = None) -> dict
     return proxy
 
 
+def chromium_launch_args(config: ProxyConfig | None) -> list[str]:
+    """Extra Chromium switches needed to honor *config*, beyond ``proxy=``.
+
+    Returns ``["--no-proxy-server"]`` when the user has **explicitly** turned
+    proxying off (``[proxy] enabled = false``, ``--no-proxy ''``, or
+    ``trust_env = false``), and ``[]`` otherwise.
+
+    This exists because omitting Playwright's ``proxy=`` does not tell Chromium
+    "go direct" — it tells it "decide for yourself", and Chromium then reads the
+    ambient ``http_proxy``/``https_proxy`` (on Linux) or the system proxy
+    settings. :func:`playwright_proxy` returns ``None`` both when nothing is
+    configured and when proxying is explicitly disabled, and those two must not
+    behave the same: the second is the one case where the user has demanded a
+    direct path, and it is exactly where the browser would otherwise proxy while
+    every httpx call goes direct.
+
+    ``--no-proxy-server`` is the switch that actually forces it. Playwright's
+    ``normalizeProxySettings`` rewrites a ``direct://`` server (empty host) into
+    ``http://direct://``, i.e. a real proxy, so passing that through ``proxy=``
+    is not an alternative.
+
+    "Nothing configured" deliberately returns ``[]`` — Chromium is left exactly
+    as it behaved before this module existed.
+    """
+    if config is None:
+        return []
+    if not config.enabled or (not config.url and not config.trust_env):
+        return ["--no-proxy-server"]
+    return []
+
+
 def _split_proxy_userinfo(url: str) -> tuple[str | None, str | None]:
     """Return the ``(username, password)`` embedded in a proxy URL, or ``(None, None)``.
 
@@ -432,17 +467,26 @@ def _primary_proxy_server(proxy_map: ProxyMap, target_url: str | None = None) ->
     the catch-all: an explicit ``HTTPS_PROXY``, or the http->https promotion in
     :func:`_promote_http_proxy_to_https` that lets a lone ``HTTP_PROXY`` tunnel
     https, or ``all://`` from ``--proxy`` / ``[proxy] url`` / ``ALL_PROXY``.
-    Returns ``None`` only when the map has none of the applicable keys, in which
-    case httpx goes direct and the browser must too.
+
+    *target_url* chooses *which* proxy, never *whether* there is one: when its
+    scheme has no key we fall through to the map's other proxies rather than
+    returning ``None``. A browser is not single-host — an http:// product login
+    redirects straight to an https IdP that httpx proxies — so dropping the
+    proxy because the first hop does not need it would leave the browser as the
+    only thing on the box that cannot reach the IdP. ``None`` therefore means
+    exactly one thing: the map has no proxy at all, so httpx goes direct too.
     """
-    keys = ("https://", "all://")
     if target_url:
         try:
             scheme = httpx.URL(target_url).scheme
         except Exception:
             scheme = ""
         if scheme == "http":
-            keys = ("http://", "all://")
+            keys = ("http://", "all://", "https://")
+        else:
+            keys = ("https://", "all://", "http://")
+    else:
+        keys = ("https://", "all://", "http://")
     for key in keys:
         value = proxy_map.get(key)
         if value:
@@ -466,13 +510,24 @@ def _pattern_to_bypass_hosts(pattern: str) -> list[str]:
       entries give the apex and the subdomains and nothing else.
     * ``all://*.foo`` (from ``NO_PROXY=.foo``) → ``["*.foo"]``. httpx's
       ``^.+\\.foo$`` is subdomains only, which ``*.foo`` matches exactly.
-    * ``all://host`` / ``all://[::1]`` (an IP or ``localhost``) → the bare host.
+    * ``all://host`` (an IP or ``localhost``) → the bare host. IPv6 keeps its
+      brackets (``all://[::1]`` → ``["[::1]"]``): Chromium's bypass grammar wants
+      an IP_LITERAL bracketed, and reads the bare ``::1`` with ``:`` as a port
+      separator, so it never matches and the entry silently does nothing.
+    * A CIDR mask is **dropped** (``all://10.0.0.0/8`` → ``["10.0.0.0"]``).
+      httpx's ``URLPattern`` parses ``/8`` as a URL path and ignores it, leaving
+      the host regex ``^10\\.0\\.0\\.0$`` — the literal address only, never the
+      range. Chromium *does* implement CIDR bypass rules, so forwarding the mask
+      would bypass every host in the range while every httpx call to those same
+      hosts is proxied. Parity with httpx is the contract here, so match its
+      (admittedly limited) behavior rather than invent a wider one.
 
     Playwright forwards these unchanged; it only prepends ``*`` to entries that
     already start with ``.``.
     """
     host = pattern.removeprefix("all://").removeprefix("http://").removeprefix("https://")
-    host = host.strip("[]")
+    # Drop a CIDR mask, mirroring what httpx's URLPattern does with it.
+    host = host.split("/", 1)[0]
     if host.startswith("*") and not host.startswith("*."):
         apex = host[1:]
         return [apex, f"*.{apex}"]

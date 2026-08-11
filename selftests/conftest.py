@@ -70,10 +70,22 @@ def _no_ambient_proxy(monkeypatch):
     set the variables they need via ``monkeypatch.setenv``, which still works --
     this fixture runs first and only removes what it did not put there.
 
+    Clearing the variables is necessary but not sufficient. httpx resolves them
+    through ``urllib.request.getproxies``, which on darwin is
+    ``getproxies_environment() or getproxies_macosx_sysconf()`` -- with the
+    environment cleared it falls straight through to whatever proxy is set in
+    System Settings, so on a corporate-managed Mac the isolation would silently
+    do nothing. Pin httpx's lookup to the environment-only variant, which is what
+    ``getproxies`` already is on Linux, so the two platforms behave the same and
+    tests that deliberately ``monkeypatch.setenv`` a proxy still work.
+
     See ``selftests/test_proxy_env_isolation.py`` for the guard on this fixture.
     """
+    from urllib.request import getproxies_environment
+
     for var in _PROXY_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr("httpx._utils.getproxies", getproxies_environment)
 
 
 @pytest.fixture()

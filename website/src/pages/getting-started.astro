@@ -328,8 +328,8 @@ def test_new_api_feature():
             <code>HTTP_PROXY</code> / <code>HTTPS_PROXY</code> /
             <code>ALL_PROXY</code> / <code>NO_PROXY</code> (upper- or lowercase) —
             exactly as httpx does. <strong>The environment variables cover every
-            outbound request VIP makes.</strong> No configuration is needed for
-            the common case:
+            outbound HTTP request VIP makes.</strong> No configuration is needed
+            for the common case:
           </p>
           <pre><code>export HTTPS_PROXY=http://proxy.corp.example:8080
 export NO_PROXY=localhost,.internal.example.com
@@ -374,10 +374,15 @@ no_proxy = ["localhost", ".internal.example.com"]</code></pre>
             <code>[proxy]</code> / <code>--proxy</code> setting covers the core
             egress paths — the product API clients, authentication, URL probes,
             and the browser login. A few diagnostic and load-test paths (some
-            reachability probes under the individual test suites, the
-            performance/load engine, and the raw-socket TLS handshake checks)
-            honor only the proxy <em>environment variables</em>, not an explicit
-            <code>[proxy]</code> config. If your proxy differs from the ambient
+            reachability probes under the individual test suites and the
+            performance/load engine) honor only the proxy
+            <em>environment variables</em>, not an explicit
+            <code>[proxy]</code> config. The raw-socket TLS handshake checks
+            (the SSL and HTTPS suites, and the listener probe behind scheme
+            resolution) honor <em>neither</em>: they open a TCP connection
+            directly to test the plaintext/handshake boundary, so they have no
+            proxy to speak through and will fail on a host with no direct route
+            out, whatever you configure. If your proxy differs from the ambient
             environment, set the environment variables as well as (or instead of)
             <code>[proxy]</code> so every path agrees; when the proxy is the same
             in both, there is nothing extra to do.

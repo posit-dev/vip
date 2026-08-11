@@ -36,6 +36,7 @@ from playwright.sync_api import (
 from vip.proxy import (
     ProxyConfig,
     build_proxy_map,
+    chromium_launch_args,
     playwright_proxy,
     proxy_for_url,
     redact_proxy_url,
@@ -78,7 +79,13 @@ _MISSING_DEPS_HINT = (
 )
 
 
-def _launch_chromium(pw, *, headless: bool, proxy: dict[str, str] | None = None):
+def _launch_chromium(
+    pw,
+    *,
+    headless: bool,
+    proxy: dict[str, str] | None = None,
+    args: list[str] | None = None,
+):
     """Launch Chromium via Playwright, turning missing-system-deps errors
     into a clear :class:`AuthConfigError` with a remediation command.
 
@@ -88,12 +95,19 @@ def _launch_chromium(pw, *, headless: bool, proxy: dict[str, str] | None = None)
     env-proxy detection is platform-dependent; setting it explicitly makes the
     browser and API paths agree. ``None`` launches exactly as before.
 
+    *args* carries extra Chromium switches from
+    :func:`vip.proxy.chromium_launch_args` -- specifically ``--no-proxy-server``
+    when the user explicitly disabled proxying, which ``proxy=None`` alone does
+    not achieve (Chromium falls back to its own env/system detection).
+
     Other Playwright errors (e.g. an already-running browser) propagate
     unchanged so callers can surface them as needed.
     """
     launch_kwargs: dict = {"headless": headless}
     if proxy is not None:
         launch_kwargs["proxy"] = proxy
+    if args:
+        launch_kwargs["args"] = args
     try:
         return pw.chromium.launch(**launch_kwargs)
     except PlaywrightError as exc:
@@ -257,9 +271,10 @@ def authenticated_page(
     # URL specifically -- an http:// Workbench must take the http proxy, not
     # whatever an https URL would have selected.
     pw_proxy = playwright_proxy(build_proxy_map(proxy), session._workbench_url or None)
+    pw_args = chromium_launch_args(proxy)
     try:
         pw = sync_playwright().start()
-        browser = _launch_chromium(pw, headless=True, proxy=pw_proxy)
+        browser = _launch_chromium(pw, headless=True, proxy=pw_proxy, args=pw_args)
         context = browser.new_context(
             storage_state=str(session.storage_state_path),
             ignore_https_errors=insecure,
@@ -793,6 +808,7 @@ def start_interactive_auth(
     # Resolved for ``primary_url`` -- the URL this browser is about to navigate --
     # so an http:// product selects the http proxy rather than the https one.
     pw_proxy = playwright_proxy(build_proxy_map(proxy), primary_url)
+    pw_args = chromium_launch_args(proxy)
 
     pw = None
     browser = None
@@ -801,7 +817,7 @@ def start_interactive_auth(
         os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
     try:
         pw = sync_playwright().start()
-        browser = _launch_chromium(pw, headless=False, proxy=pw_proxy)
+        browser = _launch_chromium(pw, headless=False, proxy=pw_proxy, args=pw_args)
         context = browser.new_context(ignore_https_errors=insecure)
         page = context.new_page()
 
@@ -1034,6 +1050,7 @@ def start_headless_auth(
     # path of the mint and product clients rather than Chromium's implicit one.
     # Resolved for the URL this browser will navigate (see start_interactive_auth).
     pw_proxy = playwright_proxy(build_proxy_map(proxy), primary_url)
+    pw_args = chromium_launch_args(proxy)
 
     pw = None
     browser = None
@@ -1042,7 +1059,7 @@ def start_headless_auth(
         os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
     try:
         pw = sync_playwright().start()
-        browser = _launch_chromium(pw, headless=True, proxy=pw_proxy)
+        browser = _launch_chromium(pw, headless=True, proxy=pw_proxy, args=pw_args)
         context = browser.new_context(ignore_https_errors=insecure)
         page = context.new_page()
 
