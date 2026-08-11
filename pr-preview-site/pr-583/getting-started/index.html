@@ -157,6 +157,12 @@ If your site uses a single forward proxy as its only outbound tunnel
             you having to also set <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code>. An explicit
 <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> or <code data-astro-cid-mwd2jfe2>ALL_PROXY</code>, if set, always
             takes precedence.
+</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Setup.</strong> <code data-astro-cid-mwd2jfe2>vip install</code> downloads the
+            Playwright Chromium build, and it reads no configuration file — so
+            that download honors the proxy <em data-astro-cid-mwd2jfe2>environment variables</em> only.
+            Export <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> before running it; a proxy configured
+            solely under <code data-astro-cid-mwd2jfe2>[proxy]</code> in <code data-astro-cid-mwd2jfe2>vip.toml</code> cannot
+            reach it, and the install fails with an opaque network error.
 </p> <p data-astro-cid-mwd2jfe2>To set the proxy explicitly instead of via the environment:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com \
   --proxy http://proxy.corp.example:8080 \
   --no-proxy localhost,.internal.example.com</code></pre> <p data-astro-cid-mwd2jfe2>
@@ -193,12 +199,24 @@ alongside product-URL flags.
             environment, set the environment variables as well as (or instead of)
 <code data-astro-cid-mwd2jfe2>[proxy]</code> so every path agrees; when the proxy is the same
             in both, there is nothing extra to do.
-</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Tip:</strong> when a scheme-less URL is given (e.g.
-<code data-astro-cid-mwd2jfe2>--connect-url connect.example.com</code>), VIP probes
-<code data-astro-cid-mwd2jfe2>https://</code> first and may fall back to <code data-astro-cid-mwd2jfe2>http://</code>
-if it does not answer. Behind a proxy-only network this probe can be
-            misled, so pass an explicit <code data-astro-cid-mwd2jfe2>https://</code> scheme to skip the
-            fallback entirely and guarantee VIP never downgrades to plaintext.
+</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Always give product URLs an explicit scheme when a proxy is
+            in effect.</strong> For a scheme-less URL (e.g.
+<code data-astro-cid-mwd2jfe2>--connect-url connect.example.com</code>) VIP probes
+<code data-astro-cid-mwd2jfe2>https://</code> first and falls back to <code data-astro-cid-mwd2jfe2>http://</code> if
+            nothing answers — but it decides that using a direct socket, which
+            says nothing about a path that goes through the proxy. So whenever a
+            proxy applies to the host, VIP keeps <code data-astro-cid-mwd2jfe2>https://</code> and
+            reports the proxy as the likely problem rather than silently
+            rewriting your URL to plaintext and sending credentials in the clear.
+</p> <p data-astro-cid-mwd2jfe2>
+The practical consequence: a product genuinely served over plain
+<code data-astro-cid-mwd2jfe2>http</code> will not be found from a scheme-less URL on a host
+            with a proxy configured. Write
+<code data-astro-cid-mwd2jfe2>--connect-url http://connect.example.com</code> (an explicit
+            scheme is never probed or rewritten), or list the host under
+<code data-astro-cid-mwd2jfe2>no_proxy</code> / <code data-astro-cid-mwd2jfe2>NO_PROXY</code> if it should be reached
+            directly. Note that this applies when only <code data-astro-cid-mwd2jfe2>HTTP_PROXY</code> is
+            set too, since VIP routes https through it as described above.
 </p> </section> <section id="generating-reports" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Generating reports</h2> <p data-astro-cid-mwd2jfe2>After running tests, generate and render the report:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2># Run tests and save results
 vip verify --connect-url https://connect.example.com --report report/results.json
 
