@@ -153,10 +153,18 @@ vip verify --connect-url https://connect.example.com --headless-auth</code></pre
 If your site uses a single forward proxy as its only outbound tunnel
             and sets just <code data-astro-cid-mwd2jfe2>HTTP_PROXY</code> (no <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code>),
             VIP routes its https traffic through that proxy too (via the standard
-<code data-astro-cid-mwd2jfe2>CONNECT</code> tunnel) — so a proxy-only network works without
-            you having to also set <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code>. An explicit
-<code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> or <code data-astro-cid-mwd2jfe2>ALL_PROXY</code>, if set, always
-            takes precedence.
+<code data-astro-cid-mwd2jfe2>CONNECT</code> tunnel), rather than sending it direct the way
+            httpx would. An explicit <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> or
+<code data-astro-cid-mwd2jfe2>ALL_PROXY</code>, if set, always takes precedence.
+</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>On a proxy-only network, still set <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code>
+(or <code data-astro-cid-mwd2jfe2>ALL_PROXY</code>).</strong> That promotion applies to the
+            proxy-aware core paths — the API clients, authentication, URL probes
+            and the browser login — but not to the diagnostic and load-test paths
+            described below, which read the environment directly and so send https
+            direct when only <code data-astro-cid-mwd2jfe2>HTTP_PROXY</code> is set. Relying on the
+            promotion alone therefore works for the product API tests while the
+            reachability and performance probes fail. Naming an https proxy
+            explicitly keeps every path on the same route.
 </p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Setup.</strong> <code data-astro-cid-mwd2jfe2>vip install</code> downloads the
             Playwright Chromium build, and it reads no configuration file — so
             that download honors the proxy <em data-astro-cid-mwd2jfe2>environment variables</em> only.
