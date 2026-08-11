@@ -265,6 +265,10 @@ enabled = false
 # proxy differs from the ambient environment, set the env vars too so every path
 # agrees; when they match, there is nothing extra to do.
 #
+# Setup note: `vip install` reads no config file, so its Playwright Chromium
+# download honors only the proxy environment variables. Export HTTPS_PROXY
+# before running it -- a proxy configured only here cannot reach that download.
+#
 # Note on the CLI flags: --proxy/--no-proxy only apply when you pass product
 # URLs directly (vip verify --connect-url ...), because they are woven into the
 # config VIP generates for that run. On any run that loads a config file -- this

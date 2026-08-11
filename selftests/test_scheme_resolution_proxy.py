@@ -161,6 +161,70 @@ def test_env_proxy_also_guards_downgrade(monkeypatch):
     assert resolved == "https://connect.example.com"
 
 
+def test_lone_http_proxy_env_guards_downgrade_through_promotion(monkeypatch):
+    """A lone ``HTTP_PROXY`` guards the downgrade too, via the https promotion.
+
+    This is the interaction between the module's two deliberate decisions, and
+    it is ratified rather than special-cased. ``_promote_http_proxy_to_https``
+    extends a lone ``http://`` env proxy to cover ``https://`` (a single forward
+    proxy is often the only outbound tunnel), which makes ``applicable_proxy``
+    non-``None`` for every inferred-https URL -- so the guard here engages for an
+    operator who never named an https proxy at all.
+
+    The consequence is a real behaviour change: before proxy support,
+    ``vip verify --connect-url connect.example.com`` against an http-only
+    product downgraded and worked on a host with ``http_proxy`` exported; now it
+    keeps https and fails loudly. That is the safe direction (the raw-socket
+    tiebreak bypasses the proxy, so its verdict is about a path VIP will never
+    take, and downgrading would put credentials in cleartext on a proxy-only
+    host) and both mitigations are one step -- pass an explicit scheme, or list
+    the host in ``NO_PROXY`` (see the two tests below).
+
+    Locked in here because the promotion makes the guard fire *implicitly*:
+    ``test_env_proxy_also_guards_downgrade`` above sets ``https_proxy``, so
+    nothing covered the path where the operator set only ``http_proxy``. Drop
+    the promotion and this test downgrades again.
+    """
+    monkeypatch.setenv("http_proxy", "http://gw:3128")
+
+    def boom(*a, **kw):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(auth_mod.httpx, "get", boom)
+    monkeypatch.setattr(
+        auth_mod,
+        "_tls_listener_present",
+        lambda *a, **kw: pytest.fail("the direct tiebreak must not run while a proxy applies"),
+    )
+
+    assert resolve_url_scheme(_inferred_pc(), proxy=None) == "https://connect.example.com"
+
+
+def test_lone_http_proxy_with_no_proxy_host_downgrades_again(monkeypatch):
+    """The documented escape hatch from the promotion guard: ``NO_PROXY``.
+
+    A host the operator lists in ``NO_PROXY`` resolves to direct, so the
+    raw-socket tiebreak is once again describing the path VIP will take, and a
+    genuine no-listener case downgrades exactly as it did before proxy support.
+    """
+    monkeypatch.setenv("http_proxy", "http://gw:3128")
+    monkeypatch.setenv("no_proxy", "connect.example.com")
+    calls = {"tiebreak": 0}
+
+    def boom(*a, **kw):
+        raise httpx.ConnectError("connection refused")
+
+    def no_listener(*a, **kw):
+        calls["tiebreak"] += 1
+        return False
+
+    monkeypatch.setattr(auth_mod.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod, "_tls_listener_present", no_listener)
+
+    assert resolve_url_scheme(_inferred_pc(), proxy=None) == "http://connect.example.com"
+    assert calls["tiebreak"] == 1
+
+
 def test_no_proxy_host_still_uses_direct_tiebreak(monkeypatch):
     """A host in NO_PROXY takes the direct path, so the tiebreak still applies
     and a genuine no-listener case downgrades as before."""

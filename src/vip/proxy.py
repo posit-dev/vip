@@ -567,6 +567,16 @@ def _primary_proxy_server(proxy_map: ProxyMap, target_url: str | None = None) ->
     return None
 
 
+# An ``all://`` bypass pattern carrying one of these ports matches, in httpx, only
+# the scheme for which that port is *not* the default: httpx compares a pattern's
+# port against the target URL's *normalised* port, and a URL's default port
+# normalises to ``None``. So ``all://*host:443`` never matches ``https://host``
+# (port ``None``) and does match ``http://host:443``. Chromium compares against
+# the *effective* port, so a scheme-less ``host:443`` entry matches implicit-port
+# https too. Qualifying with the other scheme reproduces httpx exactly.
+_OTHER_SCHEME_FOR_PORT = {443: "http", 80: "https"}
+
+
 def _pattern_to_bypass_hosts(pattern: str) -> list[str]:
     """Convert an httpx bypass pattern into the Playwright bypass entries that
     reproduce its match set exactly.
@@ -594,13 +604,72 @@ def _pattern_to_bypass_hosts(pattern: str) -> list[str]:
       would bypass every host in the range while every httpx call to those same
       hosts is proxied. Parity with httpx is the contract here, so match its
       (admittedly limited) behavior rather than invent a wider one.
+    * A **scheme-qualified** pattern keeps its scheme
+      (``https://foo`` → ``["https://foo"]``). httpx uses a ``NO_PROXY`` host
+      containing ``"://"`` as the pattern verbatim, so it bypasses that scheme
+      and still proxies the other one to the same host. Chromium's bypass
+      grammar is ``[ SCHEME "://" ] HOSTNAME_PATTERN [ ":" PORT ]``, so dropping
+      the scheme bypasses **both** — the browser goes direct where httpx
+      proxies, the wider of the two failure directions.
+      :func:`_bypass_host_for_url` qualifies its entry for the same reason.
+    * A **whole-scheme wildcard** survives only when something narrows it
+      (``https://*`` → ``["https://*"]`` and ``all://*:8443`` → ``["*:8443"]``,
+      but ``all://*`` → ``[]``). See the inline comment below: a bare ``all://*``
+      ties with the catch-all ``all://`` on ``URLPattern.priority`` and loses, so
+      httpx *proxies* it; a scheme or a port makes it win.
+    * **Ports come from** :class:`URLPattern`, **never from the pattern text.**
+      httpx resolves a port against the pattern's own scheme and normalises a
+      default one away, so ``https://foo:443`` matches https to ``foo`` on *any*
+      port and must render port-less. Chromium instead compares against the
+      request's effective port, and the two models genuinely disagree for an
+      ``all://`` pattern carrying 80 or 443 — see ``_OTHER_SCHEME_FOR_PORT``.
 
     Playwright forwards these unchanged; it only prepends ``*`` to entries that
     already start with ``.``.
     """
-    host = pattern.removeprefix("all://").removeprefix("http://").removeprefix("https://")
-    # Drop a CIDR mask, mirroring what httpx's URLPattern does with it.
-    host = host.split("/", 1)[0]
+    # Take the scheme, host and port from httpx's own parser rather than slicing
+    # the pattern text. It has already resolved the three things this function
+    # kept getting wrong by hand: ``all://`` becomes an empty scheme, a CIDR mask
+    # is parsed off as a URL path, and a port is normalised against the pattern's
+    # scheme (so a default one becomes ``None``). The host is still expanded
+    # below, because the glob-to-Chromium mapping has no equivalent on the object.
+    parsed = URLPattern(pattern)
+    scheme, host, port = parsed.scheme, parsed.host, parsed.port
+
+    if not scheme and port in _OTHER_SCHEME_FOR_PORT:
+        # The one case where httpx's and Chromium's port models genuinely
+        # disagree. httpx compares against the *normalised* port, where a URL's
+        # default port is ``None``; Chromium compares against the *effective*
+        # port. An ``all://`` pattern has no default of its own, so ``:443``
+        # survives normalisation and then matches only the scheme for which 443
+        # is not the default -- http. Chromium's scheme-less ``:443`` would also
+        # match an implicit-port https URL, bypassing in the browser what every
+        # httpx path proxies. Qualifying with the other scheme reproduces httpx
+        # exactly (verified: ``bypass='http://host:443'`` leaves implicit-port
+        # https proxied).
+        scheme = _OTHER_SCHEME_FOR_PORT[port]
+
+    prefix = f"{scheme}://" if scheme else ""
+    suffix = f":{port}" if port is not None else ""
+
+    if not host:
+        # A wildcard host (``*``, which URLPattern normalises to ``""``): the
+        # pattern skips the host check and matches every host on its scheme/port.
+        # Chromium spells that the same way -- verified, ``bypass='https://*'``
+        # sends https direct and still proxies http.
+        #
+        # But only when a scheme or a port narrows it. A bare ``all://*``
+        # normalises to empty scheme, host *and* port, giving it the identical
+        # ``URLPattern.priority`` tuple as the catch-all ``all://`` that carries
+        # the proxy; sorting is stable and ``all://`` is inserted first, so it
+        # wins and httpx *proxies* those requests. A bare Chromium ``*`` is a
+        # working bypass, so emitting one would send the browser direct for
+        # everything while every httpx path is proxied -- the too-wide direction,
+        # silently escaping a mandated proxy. (``NO_PROXY=*``, the form operators
+        # actually write, never reaches here: :func:`build_proxy_map`
+        # short-circuits it to an empty map and :func:`chromium_launch_args` adds
+        # ``--no-proxy-server``.)
+        return [f"{prefix}*{suffix}"] if prefix or suffix else []
 
     # Split into the literal domain httpx will match on and the Chromium entries
     # that reproduce it, following the same three branches httpx's URLPattern uses
@@ -612,14 +681,26 @@ def _pattern_to_bypass_hosts(pattern: str) -> list[str]:
     else:
         domain, entries = host, [host]
 
-    if "*" in domain:
-        # httpx escapes the host into its regex, so a ``*`` surviving into the
-        # literal domain means the pattern demands a literal ``*`` in the
-        # hostname and can never match anything real -- ``NO_PROXY=*.foo.com``
-        # becomes ``^(.+\\.)?\\*\\.foo\\.com$``. Chromium's grammar *does* glob,
-        # so emitting an entry here would bypass every subdomain in the browser
-        # while every httpx call is proxied, silently escaping a mandated proxy.
-        # NO_PROXY has no wildcard syntax; httpx's reading is that this matches
-        # nothing, and the browser has to agree.
+    if not domain or "*" in domain or domain.startswith("."):
+        # httpx escapes the host into its regex, so anything surviving into the
+        # literal domain that a real hostname cannot contain means the pattern
+        # matches nothing -- and the browser has to match nothing too, or it
+        # silently escapes a mandated proxy while every httpx call is proxied.
+        #
+        # A ``*``: ``NO_PROXY=*.foo.com`` becomes ``^(.+\\.)?\\*\\.foo\\.com$``,
+        # demanding a literal ``*`` in the hostname. NO_PROXY has no wildcard
+        # syntax, but users write it anyway, and Chromium's grammar *does* glob.
+        #
+        # A leading ``.``: URLPattern only special-cases a host starting with
+        # ``*``, so a scheme-qualified ``https://.foo.com`` compiles to the exact
+        # regex ``^\\.foo\\.com$``. Chromium reads a leading dot as a suffix
+        # match, so the entry would bypass every subdomain. (The ``all://`` forms
+        # cannot reach here -- :func:`_no_proxy_pattern` prepends ``*`` to a bare
+        # or dotted host, leaving the dot inside a ``*.`` prefix we strip above.)
         return []
-    return entries
+    # ``URLPattern.host`` hands back an IPv6 literal unbracketed, and Chromium's
+    # bypass grammar wants IP_LITERAL bracketed -- it reads a bare ``::1`` with
+    # ``:`` as a port separator, so the entry never matches. A glob entry never
+    # needs this (an IPv6 host cannot start with ``*``).
+    entries = [f"[{entry}]" if ":" in entry else entry for entry in entries]
+    return [f"{prefix}{entry}{suffix}" for entry in entries]

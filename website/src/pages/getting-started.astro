@@ -343,6 +343,14 @@ vip verify --connect-url https://connect.example.com --headless-auth</code></pre
             <code>HTTPS_PROXY</code> or <code>ALL_PROXY</code>, if set, always
             takes precedence.
           </p>
+          <p>
+            <strong>Setup.</strong> <code>vip install</code> downloads the
+            Playwright Chromium build, and it reads no configuration file — so
+            that download honors the proxy <em>environment variables</em> only.
+            Export <code>HTTPS_PROXY</code> before running it; a proxy configured
+            solely under <code>[proxy]</code> in <code>vip.toml</code> cannot
+            reach it, and the install fails with an opaque network error.
+          </p>
           <p>To set the proxy explicitly instead of via the environment:</p>
           <pre><code>vip verify --connect-url https://connect.example.com \
   --proxy http://proxy.corp.example:8080 \
@@ -388,12 +396,25 @@ no_proxy = ["localhost", ".internal.example.com"]</code></pre>
             in both, there is nothing extra to do.
           </p>
           <p>
-            <strong>Tip:</strong> when a scheme-less URL is given (e.g.
-            <code>--connect-url connect.example.com</code>), VIP probes
-            <code>https://</code> first and may fall back to <code>http://</code>
-            if it does not answer. Behind a proxy-only network this probe can be
-            misled, so pass an explicit <code>https://</code> scheme to skip the
-            fallback entirely and guarantee VIP never downgrades to plaintext.
+            <strong>Always give product URLs an explicit scheme when a proxy is
+            in effect.</strong> For a scheme-less URL (e.g.
+            <code>--connect-url connect.example.com</code>) VIP probes
+            <code>https://</code> first and falls back to <code>http://</code> if
+            nothing answers — but it decides that using a direct socket, which
+            says nothing about a path that goes through the proxy. So whenever a
+            proxy applies to the host, VIP keeps <code>https://</code> and
+            reports the proxy as the likely problem rather than silently
+            rewriting your URL to plaintext and sending credentials in the clear.
+          </p>
+          <p>
+            The practical consequence: a product genuinely served over plain
+            <code>http</code> will not be found from a scheme-less URL on a host
+            with a proxy configured. Write
+            <code>--connect-url http://connect.example.com</code> (an explicit
+            scheme is never probed or rewritten), or list the host under
+            <code>no_proxy</code> / <code>NO_PROXY</code> if it should be reached
+            directly. Note that this applies when only <code>HTTP_PROXY</code> is
+            set too, since VIP routes https through it as described above.
           </p>
         </section>
 

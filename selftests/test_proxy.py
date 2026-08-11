@@ -426,6 +426,199 @@ def test_bare_no_proxy_host_does_not_bypass_prefix_lookalikes():
     assert entries == ["example.com", "*.example.com"]
 
 
+def test_scheme_qualified_no_proxy_keeps_its_scheme_in_the_browser():
+    """A NO_PROXY entry carrying a scheme bypasses that scheme only -- in the
+    browser too.
+
+    httpx keeps a ``"://"``-bearing NO_PROXY host as the pattern verbatim, so
+    ``https://example.com`` bypasses https and still proxies http to the same
+    host. Chromium's bypass grammar is
+    ``[ SCHEME "://" ] HOSTNAME_PATTERN [ ":" PORT ]``, so dropping the scheme
+    yields a scheme-less entry that bypasses *both* -- the browser goes direct
+    where every httpx path proxies, which is the wider of the two failure
+    directions and the one ``_bypass_host_for_url`` is already scheme-qualified
+    to avoid.
+    """
+    proxy_map = build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=["https://example.com"]))
+    assert "https://example.com" in proxy_map
+    # httpx bypasses https to the apex, and proxies http to it ...
+    assert proxy_for_url("https://example.com", proxy_map) is None
+    assert proxy_for_url("http://example.com", proxy_map) == "http://p:8080"
+    # ... plus subdomains on either scheme (the pattern is exact-host).
+    assert proxy_for_url("https://wb.example.com", proxy_map) == "http://p:8080"
+    # ... so the browser entry has to carry the scheme.
+    pw = playwright_proxy(proxy_map)
+    assert pw is not None
+    assert pw["bypass"].split(",") == ["https://example.com"]
+
+
+@pytest.mark.parametrize(
+    "no_proxy_host,bypass",
+    [
+        # Wildcard host forms are matchable, and mean the same thing they mean
+        # under ``all://`` -- just restricted to the one scheme.
+        ("https://*example.com", "https://example.com,https://*.example.com"),
+        ("https://*.example.com", "https://*.example.com"),
+        # A leading dot is NOT a wildcard to httpx: URLPattern only special-cases
+        # a host starting with ``*``, so ``.example.com`` compiles to the exact
+        # regex ``^\.example\.com$``, which no real hostname matches. Chromium
+        # *does* read a leading dot as a suffix match, so emitting the entry would
+        # bypass every subdomain in the browser while httpx proxies them all.
+        ("https://.example.com", None),
+    ],
+)
+def test_scheme_qualified_no_proxy_wildcard_forms_match_httpx(no_proxy_host, bypass):
+    """The scheme-qualified forms follow httpx's host handling, not Chromium's."""
+    proxy_map = build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=[no_proxy_host]))
+    pw = playwright_proxy(proxy_map, "https://wb.example.com")
+    assert pw is not None
+    if bypass is None:
+        assert proxy_for_url("https://wb.example.com", proxy_map) == "http://p:8080"
+        assert proxy_for_url("https://example.com", proxy_map) == "http://p:8080"
+        assert "bypass" not in pw, (
+            f"unmatchable pattern leaked a browser bypass: {pw.get('bypass')!r}"
+        )
+    else:
+        assert pw["bypass"] == bypass
+
+
+@pytest.mark.parametrize(
+    "no_proxy_host,bypass,direct_scheme",
+    [
+        ("https://*", "https://*", "https"),
+        ("http://*", "http://*", "http"),
+    ],
+)
+def test_scheme_wide_no_proxy_wildcard_bypasses_that_scheme_in_the_browser(
+    no_proxy_host, bypass, direct_scheme
+):
+    """``no_proxy = ["https://*"]`` means "bypass the proxy for all https".
+
+    ``URLPattern("https://*")`` keeps ``host == ""`` (it normalises the ``*``
+    away), so it matches every host on that scheme and httpx sends all https
+    direct while still proxying http. Chromium spells the same thing the same
+    way -- verified with a recording gateway: ``bypass='https://*'`` sends https
+    direct and still routes http through the proxy.
+
+    Rendering it as nothing leaves the browser proxying every https request that
+    every httpx path sends direct. That is the too-narrow direction, so it does
+    not escape a mandated proxy, but it still breaks the browser login against a
+    proxy the operator has told VIP to avoid for https.
+    """
+    proxy_map = build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=[no_proxy_host]))
+    proxied_scheme = "http" if direct_scheme == "https" else "https"
+    assert proxy_for_url(f"{direct_scheme}://example.com", proxy_map) is None
+    assert proxy_for_url(f"{proxied_scheme}://example.com", proxy_map) == "http://p:8080"
+    pw = playwright_proxy(proxy_map, f"{direct_scheme}://example.com")
+    assert pw is not None
+    assert pw["bypass"] == bypass
+
+
+def test_scheme_less_no_proxy_wildcard_emits_nothing_because_httpx_proxies_it():
+    """``all://*`` must NOT render to a browser ``*``, even though it looks like
+    "bypass everything".
+
+    ``URLPattern("all://*")`` normalises to empty scheme *and* empty host, giving
+    it the identical ``priority`` tuple to the catch-all ``all://`` that carries
+    the proxy. Sorting is stable and ``all://`` is inserted first, so it wins and
+    httpx **proxies** these requests -- both here and inside
+    ``httpx.Client(mounts=...)``, which sorts the same keys the same way.
+
+    A bare ``*`` is a working Chromium bypass (verified: both schemes go direct),
+    so emitting one would bypass everything in the browser while every httpx path
+    is proxied: the too-wide direction, silently escaping a mandated proxy. Only a
+    scheme narrows the wildcard enough to be renderable. (``NO_PROXY=*`` -- the
+    form operators actually write -- is short-circuited to an empty map by
+    ``build_proxy_map`` long before this, and ``chromium_launch_args`` adds
+    ``--no-proxy-server``.)
+    """
+    proxy_map = build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=["all://*"]))
+    assert proxy_for_url("https://example.com", proxy_map) == "http://p:8080"
+    assert proxy_for_url("http://example.com", proxy_map) == "http://p:8080"
+    pw = playwright_proxy(proxy_map, "https://example.com")
+    assert pw is not None
+    assert "bypass" not in pw, f"scheme-less wildcard leaked a browser bypass: {pw.get('bypass')!r}"
+
+
+@pytest.mark.parametrize(
+    "no_proxy_host,bypass,direct,proxied",
+    [
+        # httpx normalises a scheme's DEFAULT port away at URL-parse time, so
+        # ``https://*:443`` keeps port None and matches every https URL on ANY
+        # port. Forwarding the literal :443 would restrict Chromium to 443.
+        (
+            "https://*:443",
+            "https://*",
+            ["https://ex.com", "https://ex.com:8443"],
+            ["http://ex.com", "http://ex.com:8080"],
+        ),
+        ("http://*:80", "http://*", ["http://ex.com", "http://ex.com:8080"], ["https://ex.com"]),
+        # A non-default port survives normalisation, so it must survive rendering.
+        ("https://*:8443", "https://*:8443", ["https://ex.com:8443"], ["https://ex.com"]),
+        (
+            "all://*:8443",
+            "*:8443",
+            ["https://ex.com:8443", "http://ex.com:8443"],
+            ["http://ex.com"],
+        ),
+        # The sharp one: ``all://`` has no default port, so :443 survives, and
+        # httpx then matches only the scheme for which 443 is *not* the default --
+        # http. A scheme-less Chromium ``:443`` also matches implicit-port https,
+        # bypassing in the browser what every httpx path proxies. Qualify with the
+        # other scheme to close that.
+        (
+            "all://*:443",
+            "http://*:443",
+            ["http://ex.com:443"],
+            ["https://ex.com", "https://ex.com:443", "http://ex.com"],
+        ),
+        (
+            "all://*:80",
+            "https://*:80",
+            ["https://ex.com:80"],
+            ["http://ex.com", "http://ex.com:80"],
+        ),
+        # The same two rules on a real host rather than a wildcard.
+        (
+            "https://ex.com:443",
+            "https://ex.com",
+            ["https://ex.com", "https://ex.com:8443"],
+            ["http://ex.com"],
+        ),
+        (
+            "ex.com:443",
+            "http://ex.com:443,http://*.ex.com:443",
+            ["http://ex.com:443"],
+            ["https://ex.com", "https://ex.com:443", "http://ex.com"],
+        ),
+        # Regression control: a non-default port on a bare host is unchanged.
+        (
+            "ex.com:8080",
+            "ex.com:8080,*.ex.com:8080",
+            ["https://ex.com:8080", "http://ex.com:8080"],
+            ["https://ex.com"],
+        ),
+    ],
+)
+def test_playwright_bypass_matches_httpx_for_ports(no_proxy_host, bypass, direct, proxied):
+    """Port handling must come from httpx's normalisation, not the pattern string.
+
+    ``URLPattern`` resolves a port against the pattern's scheme (a default port
+    becomes ``None``, i.e. "any port"), while Chromium compares against the
+    request's effective port. Hand-parsing the pattern text diverges in both
+    directions, so the port is taken from ``URLPattern`` and, for the one case
+    where the two models genuinely disagree, the entry is scheme-qualified.
+    """
+    proxy_map = build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=[no_proxy_host]))
+    for url in direct:
+        assert proxy_for_url(url, proxy_map) is None, f"httpx should bypass {url}"
+    for url in proxied:
+        assert proxy_for_url(url, proxy_map) == "http://p:8080", f"httpx should proxy {url}"
+    pw = playwright_proxy(proxy_map)
+    assert pw is not None
+    assert pw.get("bypass") == bypass
+
+
 @pytest.mark.parametrize(
     "no_proxy_host,pattern,bypass,direct,proxied",
     [
