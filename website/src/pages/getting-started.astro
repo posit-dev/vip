@@ -338,10 +338,20 @@ vip verify --connect-url https://connect.example.com --headless-auth</code></pre
             If your site uses a single forward proxy as its only outbound tunnel
             and sets just <code>HTTP_PROXY</code> (no <code>HTTPS_PROXY</code>),
             VIP routes its https traffic through that proxy too (via the standard
-            <code>CONNECT</code> tunnel) — so a proxy-only network works without
-            you having to also set <code>HTTPS_PROXY</code>. An explicit
-            <code>HTTPS_PROXY</code> or <code>ALL_PROXY</code>, if set, always
-            takes precedence.
+            <code>CONNECT</code> tunnel), rather than sending it direct the way
+            httpx would. An explicit <code>HTTPS_PROXY</code> or
+            <code>ALL_PROXY</code>, if set, always takes precedence.
+          </p>
+          <p>
+            <strong>On a proxy-only network, still set <code>HTTPS_PROXY</code>
+            (or <code>ALL_PROXY</code>).</strong> That promotion applies to the
+            proxy-aware core paths — the API clients, authentication, URL probes
+            and the browser login — but not to the diagnostic and load-test paths
+            described below, which read the environment directly and so send https
+            direct when only <code>HTTP_PROXY</code> is set. Relying on the
+            promotion alone therefore works for the product API tests while the
+            reachability and performance probes fail. Naming an https proxy
+            explicitly keeps every path on the same route.
           </p>
           <p>
             <strong>Setup.</strong> <code>vip install</code> downloads the
