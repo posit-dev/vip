@@ -860,3 +860,28 @@ class TestLoadConfigProxy:
         path = tmp_toml('[proxy]\nenabled = "false"\n')
         with pytest.raises(ValueError, match="enabled must be a boolean"):
             load_config(path)
+
+
+def test_proxy_no_proxy_rejects_non_list_non_string():
+    """A malformed ``no_proxy`` must fail loud, not silently drop every bypass.
+
+    ``no_proxy = true`` (or a number, or a table) is the same class of config typo
+    ``_as_bool`` rejects twenty lines away, and it fails in the same direction:
+    the bypass list vanishes and traffic the operator meant to keep off the proxy
+    is tunnelled through it, with no error.
+    """
+    import pytest
+
+    from vip.proxy import ProxyConfig
+
+    for bad in (True, 10, {"hosts": ["localhost"]}):
+        with pytest.raises(ValueError, match=r"\[proxy\] no_proxy"):
+            ProxyConfig.from_dict({"no_proxy": bad})
+
+
+def test_proxy_no_proxy_accepts_list_and_comma_string():
+    from vip.proxy import ProxyConfig
+
+    assert ProxyConfig.from_dict({"no_proxy": ["a", "b"]}).no_proxy == ["a", "b"]
+    assert ProxyConfig.from_dict({"no_proxy": "a, b"}).no_proxy == ["a", "b"]
+    assert ProxyConfig.from_dict({}).no_proxy == []

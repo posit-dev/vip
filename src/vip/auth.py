@@ -1810,9 +1810,10 @@ def resolve_url_scheme(
     trust-problem case above, not just the reachable-and-downgraded case),
     not a repeatable state. A second call on the same ``pc`` is then a plain
     attribute read, no cache lookup needed. Results are still cached per
-    ``(url, insecure, ca_bundle)`` in ``_scheme_resolution_cache`` so a
-    *different* ``ProductConfig`` for the same URL and TLS settings (e.g. a
-    fresh instance built from the same ``--connect-url``) doesn't re-probe.
+    ``(url, insecure, ca_bundle, applicable_proxy)`` in
+    ``_scheme_resolution_cache`` so a *different* ``ProductConfig`` for the same
+    URL, TLS settings and proxy (e.g. a fresh instance built from the same
+    ``--connect-url``) doesn't re-probe.
     """
     if not pc.url_scheme_inferred:
         return pc.url

@@ -377,6 +377,30 @@ def test_bare_no_proxy_host_bypasses_subdomains_in_the_browser_too():
     assert pw["bypass"] == "example.com,*.example.com"
 
 
+@pytest.mark.parametrize("no_proxy_host", ["*.foo.com", ".*.foo.com", "**.foo.com", "*foo.com"])
+def test_star_in_no_proxy_host_bypasses_nothing_in_the_browser_either(no_proxy_host):
+    """A ``*`` inside a NO_PROXY host makes httpx's pattern unmatchable -- and the
+    browser must be just as unmatchable.
+
+    httpx builds its regex from the host verbatim, escaping it, so
+    ``NO_PROXY=*.foo.com`` becomes ``all://**.foo.com`` with regex
+    ``^(.+\\.)?\\*\\.foo\\.com$`` -- it requires a literal ``*`` in the hostname
+    and therefore never matches anything real. Chromium's grammar *does* treat
+    ``*`` as a glob, so rendering the entry naively hands the browser a working
+    wildcard while every httpx call is proxied: on a mandated-proxy network the
+    browser silently escapes the proxy.
+
+    Users write this form often even though NO_PROXY has no wildcard syntax, so
+    the safe reading is httpx's: it matches nothing, and so must the browser.
+    """
+    proxy_map = build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=[no_proxy_host]))
+    # httpx proxies the subdomain -- the pattern cannot match it.
+    assert proxy_for_url("https://wb.foo.com", proxy_map) == "http://p:8080"
+    pw = playwright_proxy(proxy_map, "https://wb.foo.com")
+    assert pw is not None
+    assert "bypass" not in pw, f"unmatchable pattern leaked a browser bypass: {pw.get('bypass')!r}"
+
+
 def test_bare_no_proxy_host_does_not_bypass_prefix_lookalikes():
     """The subdomain fix must not widen the bypass to suffix lookalikes.
 
@@ -548,6 +572,34 @@ def test_playwright_proxy_falls_back_when_the_target_scheme_has_no_proxy(monkeyp
     assert pw["server"] == "http://gw:3128"
     # And that is the proxy httpx uses for the hop the browser actually needs it for.
     assert pw["server"] == proxy_for_url("https://idp.okta.com", proxy_map)
+    # But the target itself must still be reached directly, exactly as httpx does,
+    # or Chromium sends a plain-http request to a gateway that will 403/407 it.
+    assert proxy_for_url("http://wb.internal", proxy_map) is None
+    assert "wb.internal" in pw["bypass"].split(",")
+
+
+def test_bypassed_target_is_not_added_twice_or_when_already_proxied():
+    """The target only joins the bypass list when httpx would reach it directly."""
+    # Proxied target (all:// covers it): no bypass entry for it.
+    m = build_proxy_map(ProxyConfig(url="http://p:8080"))
+    assert proxy_for_url("http://localhost:3939", m) == "http://p:8080"
+    assert "bypass" not in playwright_proxy(m, "http://localhost:3939")
+    # Already-bypassed target: the NO_PROXY pattern covers it; no duplicate.
+    m2 = build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=["wb.internal"]))
+    entries = playwright_proxy(m2, "https://wb.internal")["bypass"].split(",")
+    assert entries.count("wb.internal") == 1
+    # A target covered by a *wildcard* pattern must not be re-listed either --
+    # proxy_for_url returns None for "a bypass matched" and for "nothing
+    # matched", and only the latter needs an explicit entry.
+    m3 = build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=[".internal.example"]))
+    assert playwright_proxy(m3, "https://wb.internal.example")["bypass"] == "*.internal.example"
+
+
+def test_bypassed_ipv6_target_is_bracketed_for_chromium():
+    """An IPv6 target added to the bypass list needs Chromium's bracketed form."""
+    m = build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=["2001:db8::1"]))
+    pw = playwright_proxy(m, "http://[2001:db8::1]:8787")
+    assert "[2001:db8::1]" in pw["bypass"].split(",")
 
 
 def test_playwright_proxy_is_none_only_when_the_map_has_no_proxy_at_all():

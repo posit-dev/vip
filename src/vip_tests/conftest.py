@@ -287,12 +287,18 @@ def _ui_browser_launch_args(vip_config: VIPConfig) -> list[str]:
 
 @pytest.fixture(scope="session")
 def browser_type_launch_args(browser_type_launch_args, vip_config: VIPConfig):
-    """Force the UI-test browsers direct when ``[proxy]`` is explicitly disabled.
+    """Apply the resolved proxy to the UI-test browsers at launch.
 
     Overrides the pytest-playwright fixture of the same name; the parameter name
-    *must* match to receive the base fixture value. This is launch-level rather
-    than context-level because ``--no-proxy-server`` is a browser switch, not a
-    context option.
+    *must* match to receive the base fixture value.
+
+    Both the proxy and ``--no-proxy-server`` are set here so the in-suite
+    browsers and the auth browsers in ``vip.auth`` configure the same thing the
+    same way -- ``_launch_chromium`` passes both at launch, and having one entry
+    point do it per-context invited the two to drift. ``--no-proxy-server`` has
+    to be launch-level regardless (it is a browser switch, not a context
+    option), and the two are mutually exclusive: ``chromium_launch_args``
+    returns nothing whenever a proxy is configured.
     """
     extra = _ui_browser_launch_args(vip_config)
     if extra:
@@ -300,6 +306,9 @@ def browser_type_launch_args(browser_type_launch_args, vip_config: VIPConfig):
             *browser_type_launch_args.get("args", []),
             *extra,
         ]
+    pw_proxy = _ui_browser_proxy(vip_config)
+    if pw_proxy is not None:
+        browser_type_launch_args["proxy"] = pw_proxy
     return browser_type_launch_args
 
 
@@ -317,9 +326,7 @@ def browser_context_args(
         browser_context_args["storage_state"] = str(session.storage_state_path)
     if vip_config.insecure:
         browser_context_args["ignore_https_errors"] = True
-    pw_proxy = _ui_browser_proxy(vip_config)
-    if pw_proxy is not None:
-        browser_context_args["proxy"] = pw_proxy
+    # The proxy is applied at launch (see browser_type_launch_args), not here.
     if vip_config.ca_bundle is not None:
         import os
 

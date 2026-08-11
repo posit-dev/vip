@@ -108,12 +108,21 @@ class ProxyConfig:
 
 
 def _as_host_list(value: object) -> list[str]:
-    """Normalize a ``no_proxy`` value (list, or comma-separated string) to a list."""
+    """Normalize a ``no_proxy`` value (list, or comma-separated string) to a list.
+
+    Anything else is a config typo and raises, rather than silently yielding an
+    empty list. A dropped bypass list is the same class of failure
+    :func:`_as_bool` rejects below, and it fails in the same direction: hosts the
+    operator meant to keep off the proxy get tunnelled through it, with nothing
+    in the output to say so.
+    """
     if isinstance(value, str):
         return [h.strip() for h in value.split(",") if h.strip()]
     if isinstance(value, list):
         return [str(h).strip() for h in value if str(h).strip()]
-    return []
+    raise ValueError(
+        f"[proxy] no_proxy must be a list of hosts or a comma-separated string, got {value!r}"
+    )
 
 
 def _as_bool(value: object, *, field: str) -> bool:
@@ -385,6 +394,19 @@ def playwright_proxy(proxy_map: ProxyMap, target_url: str | None = None) -> dict
         if proxy_url is None
         for entry in _pattern_to_bypass_hosts(pattern)
     ]
+    # When the chosen server is a fallback -- httpx would reach *target_url*
+    # directly, but the browser still needs a proxy for the hops that follow --
+    # bypass the target explicitly. Otherwise Chromium sends a plain-http request
+    # for an http:// product to an https gateway that will 403/407 it, while
+    # every httpx call to the same host goes direct.
+    if target_url and proxy_for_url(target_url, proxy_map) is None:
+        if not _matches_a_bypass_pattern(target_url, proxy_map):
+            # Only when nothing in the map already covers it -- a target the
+            # NO_PROXY patterns match is bypassed by those, and re-listing its
+            # exact host would just add noise Chromium has to parse.
+            target_host = _bypass_host_for_url(target_url)
+            if target_host and target_host not in bypass_hosts:
+                bypass_hosts.append(target_host)
     proxy: dict[str, str] = {"server": server}
     username, password = _split_proxy_userinfo(server)
     if username is not None:
@@ -395,6 +417,38 @@ def playwright_proxy(proxy_map: ProxyMap, target_url: str | None = None) -> dict
     if bypass:
         proxy["bypass"] = bypass
     return proxy
+
+
+def _matches_a_bypass_pattern(url: str, proxy_map: ProxyMap) -> bool:
+    """Whether *url* resolves to direct because a bypass pattern matched it.
+
+    :func:`proxy_for_url` returns ``None`` both for "a bypass pattern won" and
+    for "no pattern matched at all"; only the second needs the target adding to
+    Playwright's bypass list.
+    """
+    try:
+        target = httpx.URL(url)
+    except Exception:
+        return False
+    for pattern in sorted(URLPattern(k) for k in proxy_map):
+        if pattern.matches(target):
+            return proxy_map[pattern.pattern] is None
+    return False
+
+
+def _bypass_host_for_url(url: str) -> str | None:
+    """The Chromium bypass entry for *url*'s host, or ``None`` if unparseable.
+
+    IPv6 literals are re-bracketed: ``httpx.URL.host`` strips the brackets, and
+    Chromium's bypass grammar reads the bare form with ``:`` as a port separator.
+    """
+    try:
+        host = httpx.URL(url).host
+    except Exception:
+        return None
+    if not host:
+        return None
+    return f"[{host}]" if ":" in host else host
 
 
 def chromium_launch_args(config: ProxyConfig | None) -> list[str]:
@@ -528,7 +582,25 @@ def _pattern_to_bypass_hosts(pattern: str) -> list[str]:
     host = pattern.removeprefix("all://").removeprefix("http://").removeprefix("https://")
     # Drop a CIDR mask, mirroring what httpx's URLPattern does with it.
     host = host.split("/", 1)[0]
-    if host.startswith("*") and not host.startswith("*."):
-        apex = host[1:]
-        return [apex, f"*.{apex}"]
-    return [host]
+
+    # Split into the literal domain httpx will match on and the Chromium entries
+    # that reproduce it, following the same three branches httpx's URLPattern uses
+    # to build its host regex.
+    if host.startswith("*."):
+        domain, entries = host[2:], [f"*.{host[2:]}"]
+    elif host.startswith("*"):
+        domain, entries = host[1:], [host[1:], f"*.{host[1:]}"]
+    else:
+        domain, entries = host, [host]
+
+    if "*" in domain:
+        # httpx escapes the host into its regex, so a ``*`` surviving into the
+        # literal domain means the pattern demands a literal ``*`` in the
+        # hostname and can never match anything real -- ``NO_PROXY=*.foo.com``
+        # becomes ``^(.+\\.)?\\*\\.foo\\.com$``. Chromium's grammar *does* glob,
+        # so emitting an entry here would bypass every subdomain in the browser
+        # while every httpx call is proxied, silently escaping a mandated proxy.
+        # NO_PROXY has no wildcard syntax; httpx's reading is that this matches
+        # nothing, and the browser has to agree.
+        return []
+    return entries

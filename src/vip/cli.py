@@ -386,9 +386,7 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
         if insecure:
             lines.append("insecure = true")
         if effective_ca_bundle:
-            import json as _json
-
-            lines.append(f"ca_bundle = {_json.dumps(str(effective_ca_bundle))}")
+            lines.append(f"ca_bundle = {json.dumps(str(effective_ca_bundle))}")
         lines.append("")
 
     # Proxy: --proxy sets an explicit proxy URL; --no-proxy lists bypass hosts.
@@ -397,20 +395,18 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     proxy_url = getattr(args, "proxy", None)
     no_proxy = getattr(args, "no_proxy", None)
     if proxy_url or no_proxy is not None:
-        import json as _json
-
         # Parse the bypass list once, stripping tokens; a value that is empty or
         # only whitespace/commas yields no hosts.
         hosts = [h.strip() for h in no_proxy.split(",") if h.strip()] if no_proxy else []
         lines.append("[proxy]")
         if proxy_url:
-            lines.append(f"url = {_json.dumps(proxy_url)}")
+            lines.append(f"url = {json.dumps(proxy_url)}")
         elif not hosts:
             # No proxy URL and no bypass hosts (--no-proxy '' or whitespace-only):
             # disable proxying entirely, ignoring any ambient proxy env vars.
             lines.append("enabled = false")
         if hosts:
-            lines.append(f"no_proxy = {_json.dumps(hosts)}")
+            lines.append(f"no_proxy = {json.dumps(hosts)}")
         lines.append("")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
