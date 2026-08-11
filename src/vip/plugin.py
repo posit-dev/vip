@@ -226,6 +226,29 @@ def pytest_configure(config: pytest.Config) -> None:
     ext_dirs.extend(config.getoption("--vip-extensions") or [])
     config.stash[_ext_dirs_key] = ext_dirs
 
+    _any_product_configured = any(
+        pc.is_configured for pc in (vip_cfg.connect, vip_cfg.workbench, vip_cfg.package_manager)
+    )
+    if _any_product_configured and not hasattr(config, "workerinput"):
+        # Resolve the proxy map once on the controller, purely so that a promoted
+        # lone HTTP_PROXY announces itself somewhere the user will actually see
+        # it.  ``vip.proxy`` emits that notice wherever the promotion happens,
+        # but every other entry point into it during a run is a client fixture
+        # or a URL probe -- pytest captures their output and hides it on a
+        # passing run, whereas output from ``pytest_configure`` is not captured.
+        #
+        # Workers are excluded for the same reason the auth branches below are:
+        # pytest_configure fires on every one of them, and the notice would be
+        # repeated once per worker.  Runs with no product configured are excluded
+        # because this plugin loads from an entry point in every venv VIP is
+        # installed into, and ``load_config`` returns defaults rather than
+        # bailing when there is no vip.toml -- so without the gate, a lone
+        # http_proxy would make an unrelated project's pytest run announce
+        # egress behavior for a run that makes no egress at all.
+        from vip.proxy import build_proxy_map
+
+        build_proxy_map(vip_cfg.proxy)
+
     # Handle interactive auth — login via browser, then close before tests.
     # With pytest-xdist the browser auth happens once in the controller;
     # credentials are forwarded to workers via pytest_configure_node.

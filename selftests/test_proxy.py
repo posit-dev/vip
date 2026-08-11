@@ -19,6 +19,7 @@ Two layers:
 
 from __future__ import annotations
 
+import importlib.util
 import socket
 import threading
 
@@ -27,6 +28,7 @@ import pytest
 
 from vip.proxy import (
     ProxyConfig,
+    ProxyConfigError,
     build_mounts,
     build_proxy_map,
     chromium_launch_args,
@@ -203,6 +205,106 @@ def test_http_proxy_promotion_still_honors_no_proxy(monkeypatch):
     assert proxy_for_url("https://connect.example", proxy_map) == "http://gw:3128"
 
 
+def test_http_proxy_promotion_announces_itself_once(monkeypatch, capsys):
+    """The promotion is the one place VIP diverges from curl/httpx, and it fires
+    with no flag set — so it must say so, and say it once.
+
+    Without a notice, a host with a stray http_proxy exported for dnf/apt sees
+    every https call move onto that gateway and the only symptom is "curl works,
+    VIP doesn't", with nothing naming the promotion or its escape hatches. The
+    guard matters as much as the message: build_proxy_map runs once per client
+    construction and once per proxy_for_url caller."""
+    import vip.proxy
+
+    monkeypatch.setattr(vip.proxy, "_promotion_notice_emitted", False)
+    for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy", "NO_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://gw:3128")
+
+    build_proxy_map(ProxyConfig())
+    build_proxy_map(ProxyConfig())
+    build_proxy_map(ProxyConfig())
+
+    err = capsys.readouterr().err
+    assert err.count(">>> Notice:") == 1
+    assert "http://gw:3128" in err
+    # Both escape hatches have to be in the message a user actually sees.
+    assert "HTTPS_PROXY" in err and "NO_PROXY" in err
+
+
+def test_promotion_notice_redacts_proxy_credentials(monkeypatch, capsys):
+    """An authenticated gateway must not put its password on stderr/CI logs."""
+    import vip.proxy
+
+    monkeypatch.setattr(vip.proxy, "_promotion_notice_emitted", False)
+    for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy", "NO_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://user:sekret@gw:3128")
+
+    build_proxy_map(ProxyConfig())
+
+    err = capsys.readouterr().err
+    assert "sekret" not in err
+    assert "http://gw:3128" in err
+
+
+def test_promotion_notice_survives_pytest_capture(pytester, monkeypatch):
+    """A notice nobody sees is not a notice.
+
+    Every entry into build_proxy_map during a run is a client fixture or a URL
+    probe, and pytest captures their output and discards it on a passing run --
+    which is the run this notice most needs to reach. ``plugin.pytest_configure``
+    primes the resolution on the controller precisely because output from
+    ``pytest_configure`` is not captured. This test fails if that priming is
+    removed, which no unit test on ``vip.proxy`` alone would catch."""
+    for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://gw.corp:3128")
+    pytester.makefile(
+        ".toml",
+        vip='[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://c.example.com"\n',
+    )
+    pytester.makepyfile("def test_ok():\n    assert True\n")
+
+    result = pytester.runpytest_subprocess("--vip-config=vip.toml")
+
+    result.assert_outcomes(passed=1)
+    result.stderr.fnmatch_lines(["*Notice: HTTP_PROXY is set (http://gw.corp:3128)*"])
+
+
+def test_no_promotion_notice_without_a_configured_product(pytester, monkeypatch):
+    """The notice must not escape into unrelated projects.
+
+    VIP's plugin loads from an entry point in every venv VIP is installed into,
+    and ``load_config`` returns defaults rather than bailing when there is no
+    vip.toml. Ungated, a lone http_proxy would make any other project's pytest
+    run announce egress behavior for a run that makes no egress at all."""
+    for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://gw.corp:3128")
+    pytester.makepyfile("def test_ok():\n    assert True\n")
+
+    result = pytester.runpytest_subprocess()
+
+    result.assert_outcomes(passed=1)
+    assert ">>> Notice:" not in result.stderr.str()
+
+
+def test_no_promotion_notice_when_nothing_is_promoted(monkeypatch, capsys):
+    """An explicit HTTPS_PROXY is httpx's own behavior — nothing to announce."""
+    import vip.proxy
+
+    monkeypatch.setattr(vip.proxy, "_promotion_notice_emitted", False)
+    for var in ("ALL_PROXY", "all_proxy", "NO_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://http-gw:1")
+    monkeypatch.setenv("HTTPS_PROXY", "http://https-gw:2")
+
+    build_proxy_map(ProxyConfig())
+
+    assert ">>> Notice:" not in capsys.readouterr().err
+
+
 def test_none_config_reads_env(monkeypatch):
     """Passing None (no ProxyConfig) reads the environment, like httpx's default."""
     monkeypatch.delenv("HTTP_PROXY", raising=False)
@@ -302,6 +404,65 @@ def test_build_mounts_selects_proxy_and_bypass():
         assert chosen_proxy("https://directhost.example/x") is None
     finally:
         client.close()
+
+
+def test_socks_proxy_without_the_extra_fails_with_vip_context(monkeypatch):
+    """ALL_PROXY is the variable people point at a SOCKS proxy, and VIP does not
+    depend on httpx[socks].
+
+    Before the clients honored the environment at all, such a variable was inert
+    for them; now build_mounts runs in BaseClient.__init__, so httpx's bare
+    ImportError would land at fixture setup and error every product test with a
+    message that never names the environment variable behind it."""
+    if importlib.util.find_spec("socksio") is not None:
+        pytest.skip("httpx[socks] is installed, so httpx accepts a socks5:// proxy here")
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "NO_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("ALL_PROXY", "socks5://socksgw.corp:1080")
+
+    proxy_map = build_proxy_map(ProxyConfig())
+    assert proxy_map == {"all://": "socks5://socksgw.corp:1080"}
+    with pytest.raises(ProxyConfigError) as excinfo:
+        build_mounts(proxy_map, verify=True)
+    message = str(excinfo.value)
+    assert "socks5://socksgw.corp:1080" in message
+    assert "httpx[socks]" in message
+    assert "ALL_PROXY" in message
+
+
+def test_unknown_proxy_scheme_fails_with_vip_context():
+    """httpx.Proxy rejects anything outside http/https/socks5 with a message that
+    says nothing about where VIP got the value."""
+    with pytest.raises(ProxyConfigError) as excinfo:
+        build_mounts({"https://": "ftp://gw.corp:2121"}, verify=True)
+    message = str(excinfo.value)
+    assert "ftp://gw.corp:2121" in message
+    assert "enabled = false" in message
+
+
+def test_malformed_proxy_url_fails_with_vip_context():
+    """A typo'd port is the likeliest of the three ways httpx rejects a proxy URL,
+    and the one that most easily escapes: httpx.InvalidURL derives from Exception,
+    not ValueError, so it slips past a `(ValueError, ImportError)` clause."""
+    assert not issubclass(httpx.InvalidURL, ValueError)
+    with pytest.raises(ProxyConfigError) as excinfo:
+        build_mounts({"http://": "http://gw:abc"}, verify=True)
+    assert "http://gw:abc" in str(excinfo.value)
+
+
+def test_proxy_config_error_message_redacts_credentials():
+    """The failing URL goes into an error string that reaches stdout/CI logs."""
+    with pytest.raises(ProxyConfigError) as excinfo:
+        build_mounts({"https://": "ftp://user:sekret@gw.corp:2121"}, verify=True)
+    message = str(excinfo.value)
+    assert "sekret" not in message
+    assert "ftp://gw.corp:2121" in message
+
+
+def test_proxy_config_error_is_a_value_error():
+    """vip status catches broadly and reports config problems as a failed check;
+    keeping this a ValueError also leaves argument-error paths unchanged."""
+    assert issubclass(ProxyConfigError, ValueError)
 
 
 # ---------------------------------------------------------------------------

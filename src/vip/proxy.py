@@ -38,6 +38,7 @@ rather than worked around.
 from __future__ import annotations
 
 import ssl
+import sys
 from dataclasses import dataclass, field
 
 import httpx
@@ -73,6 +74,15 @@ except ImportError as exc:  # pragma: no cover - guards a future httpx internals
 # A proxy map matches httpx's internal shape: URL-pattern string -> proxy URL,
 # or ``None`` to mean "bypass the proxy for URLs matching this pattern".
 ProxyMap = dict[str, "str | None"]
+
+
+class ProxyConfigError(ValueError):
+    """The resolved proxy URL is one httpx cannot use.
+
+    Subclasses :class:`ValueError` so the broad ``except Exception`` in
+    ``vip status`` and the argument-error paths keep treating it as a config
+    problem, while callers that care can catch it specifically.
+    """
 
 
 @dataclass
@@ -249,6 +259,12 @@ def build_proxy_map(config: ProxyConfig | None) -> ProxyMap:
     return {}
 
 
+# One-shot guard for the promotion notice below. ``build_proxy_map`` runs once
+# per client construction and once per ``proxy_for_url`` caller, so an unguarded
+# print would repeat dozens of times in a single run.
+_promotion_notice_emitted = False
+
+
 def _promote_http_proxy_to_https(proxy_map: ProxyMap) -> None:
     """Extend a lone ``HTTP_PROXY`` to also carry https traffic, in place.
 
@@ -271,10 +287,29 @@ def _promote_http_proxy_to_https(proxy_map: ProxyMap) -> None:
     explicit ``HTTPS_PROXY`` or ``ALL_PROXY``, that stands — we never override a
     deliberate choice, and a per-host ``NO_PROXY`` still bypasses (its
     ``all://*host`` pattern is more specific than the promoted ``https://``).
+
+    Because this is the one place VIP does something curl, requests and httpx do
+    not, it announces itself once per run. A user whose products were reachable
+    directly and who has a stray ``http_proxy`` exported for ``dnf``/``apt`` sees
+    every https call move onto that gateway with no flag set; without a notice
+    the only symptom is "curl works, VIP doesn't" and nothing points at the
+    promotion or its two escape hatches.
     """
+    global _promotion_notice_emitted
+
     http_proxy = proxy_map.get("http://")
     if http_proxy and "https://" not in proxy_map and "all://" not in proxy_map:
         proxy_map["https://"] = http_proxy
+        if not _promotion_notice_emitted:
+            _promotion_notice_emitted = True
+            print(
+                f">>> Notice: HTTP_PROXY is set ({redact_proxy_url(http_proxy)}) with no "
+                f"HTTPS_PROXY/ALL_PROXY, so VIP is routing https through it via CONNECT "
+                f"(curl and httpx would send https direct). Set HTTPS_PROXY/ALL_PROXY to "
+                f"choose a different gateway, or NO_PROXY for hosts that should be "
+                f"reached directly.",
+                file=sys.stderr,
+            )
 
 
 def build_mounts(
@@ -298,6 +333,9 @@ def build_mounts(
     Returns an empty dict for an empty map, so a proxy-less client is byte-for-
     byte the same as before this module existed (no mounts → base transport
     handles everything).
+
+    Raises :class:`ProxyConfigError` when httpx cannot use the resolved proxy —
+    see :func:`_proxy_transport`.
     """
     mounts: dict[str, httpx.BaseTransport] = {}
     for pattern, proxy_url in proxy_map.items():
@@ -306,10 +344,56 @@ def build_mounts(
             # (a direct ConnectionPool honours it, unlike the proxy pool).
             mounts[pattern] = httpx.HTTPTransport(retries=retries, verify=verify)
         else:
-            mounts[pattern] = httpx.HTTPTransport(
-                retries=retries, verify=verify, proxy=httpx.Proxy(proxy_url)
-            )
+            mounts[pattern] = _proxy_transport(proxy_url, verify=verify, retries=retries)
     return mounts
+
+
+def _proxy_transport(
+    proxy_url: str,
+    *,
+    verify: bool | str,
+    retries: int,
+) -> httpx.HTTPTransport:
+    """Build the proxied transport for *proxy_url*, or fail with VIP context.
+
+    httpx rejects a proxy URL it cannot use in three different ways, at three
+    different depths, with messages that never name where the value came from:
+    :class:`httpx.Proxy` raises ``ValueError("Unknown scheme for proxy URL")``
+    for anything outside http/https/socks5, :class:`httpx.HTTPTransport` raises
+    ``ImportError`` for a ``socks5://`` proxy when the optional ``socksio``
+    package is absent (VIP does not depend on ``httpx[socks]``), and
+    :class:`httpx.URL` raises ``httpx.InvalidURL`` for a malformed one
+    (``HTTP_PROXY=http://gw:abc`` → ``Invalid port: 'abc'``).
+
+    ``InvalidURL`` has to be named explicitly: it derives from ``Exception``,
+    not ``ValueError``, so a plain-typo proxy URL — the likeliest of the three
+    to be hit — would otherwise be the one case that still escaped with no
+    context at all.
+
+    That matters because :class:`~vip.clients.base.BaseClient` resolves its
+    mounts in ``__init__``, so the raise lands at *fixture setup* and errors
+    every product test at once. ``ALL_PROXY`` is exactly the variable people
+    conventionally point at a SOCKS proxy, and before VIP routed the pooled
+    clients through the environment at all, such a variable was inert for them.
+    Re-raise with the value (userinfo stripped), where VIP got it, and the ways
+    out — including the browser-side asymmetry, since Chromium accepts a
+    ``socks5://`` server and would proxy happily while httpx cannot.
+    """
+    try:
+        return httpx.HTTPTransport(retries=retries, verify=verify, proxy=httpx.Proxy(proxy_url))
+    except (ValueError, ImportError, httpx.InvalidURL) as exc:
+        raise ProxyConfigError(
+            f"Cannot route VIP's HTTP egress through the configured proxy "
+            f"{redact_proxy_url(proxy_url)}: {exc} "
+            f"VIP takes this value from [proxy] url / --proxy, or from the "
+            f"HTTP_PROXY / HTTPS_PROXY / ALL_PROXY environment variables. "
+            f"Either install the extra httpx needs for it (a socks5:// proxy "
+            f"requires httpx[socks]), point VIP at an http:// proxy instead, or "
+            f"force a direct path with [proxy] enabled = false (--no-proxy ''). "
+            f"Note that Chromium accepts proxy schemes httpx cannot, so leaving "
+            f"this unresolved would put the browser login and the API clients on "
+            f"different network paths."
+        ) from exc
 
 
 def proxy_for_url(url: str, proxy_map: ProxyMap) -> str | None:
