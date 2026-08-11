@@ -33,6 +33,7 @@ from vip.proxy import (
     build_proxy_map,
     chromium_launch_args,
     playwright_proxy,
+    proxy_env_for_subprocess,
     proxy_for_url,
     redact_proxy_url,
     verify_with_env_ca,
@@ -463,6 +464,119 @@ def test_proxy_config_error_is_a_value_error():
     """vip status catches broadly and reports config problems as a failed check;
     keeping this a ValueError also leaves argument-error paths unchanged."""
     assert issubclass(ProxyConfigError, ValueError)
+
+
+# ---------------------------------------------------------------------------
+# redact_proxy_url — must not leak a password even when the URL is unparseable
+# ---------------------------------------------------------------------------
+
+
+def test_redact_proxy_url_strips_password_when_unparseable():
+    """A malformed authenticated proxy (typo'd port) makes httpx.URL raise. The
+    failure branch used to return the raw string, leaking the password into the
+    ProxyConfigError that names it. It must strip the userinfo textually instead."""
+    bad = "http://user:s3cr3t@proxy.corp:8O80"  # 8O80 -> invalid port -> httpx.URL raises
+    with pytest.raises(httpx.InvalidURL):
+        httpx.URL(bad)
+    redacted = redact_proxy_url(bad)
+    assert "s3cr3t" not in redacted
+    assert redacted == "http://proxy.corp:8O80"
+
+
+def test_malformed_authenticated_proxy_error_does_not_leak_password():
+    """End-to-end: an unparseable authenticated proxy URL must not surface its
+    password in the ProxyConfigError message (which reaches stdout/CI logs)."""
+    with pytest.raises(ProxyConfigError) as excinfo:
+        build_mounts({"https://": "http://user:s3cr3t@gw.corp:8O80"}, verify=True)
+    assert "s3cr3t" not in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# proxy_env_for_subprocess — reconciles the child env with the resolved config
+# so the environment-honoring egress paths take the same route as the clients
+# ---------------------------------------------------------------------------
+
+
+def test_env_reconcile_disabled_strips_every_proxy_var():
+    env = {
+        "HTTPS_PROXY": "http://gw:3128",
+        "https_proxy": "http://gw:3128",
+        "NO_PROXY": "localhost",
+        "PATH": "/usr/bin",
+    }
+    out = proxy_env_for_subprocess(ProxyConfig(enabled=False), env)
+    assert not any(k.lower() in {"http_proxy", "https_proxy", "all_proxy", "no_proxy"} for k in out)
+    assert out["PATH"] == "/usr/bin"  # non-proxy vars untouched
+
+
+def test_env_reconcile_no_proxy_star_strips_every_proxy_var():
+    out = proxy_env_for_subprocess(ProxyConfig(no_proxy=["*"]), {"HTTPS_PROXY": "http://gw:3128"})
+    assert "HTTPS_PROXY" not in out
+
+
+def test_env_reconcile_trust_env_false_strips_when_no_url():
+    out = proxy_env_for_subprocess(ProxyConfig(trust_env=False), {"HTTP_PROXY": "http://gw:3128"})
+    assert "HTTP_PROXY" not in out
+
+
+def test_env_reconcile_explicit_url_sets_all_schemes():
+    out = proxy_env_for_subprocess(ProxyConfig(url="http://gw:3128"), {"PATH": "/usr/bin"})
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        assert out[var] == "http://gw:3128"
+        assert out[var.lower()] == "http://gw:3128"
+
+
+def test_env_reconcile_explicit_url_overrides_and_clears_ambient_no_proxy():
+    env = {"HTTPS_PROXY": "http://other:9999", "NO_PROXY": "was.here", "no_proxy": "was.here"}
+    out = proxy_env_for_subprocess(ProxyConfig(url="http://gw:3128"), env)
+    assert out["HTTPS_PROXY"] == "http://gw:3128"  # ambient proxy overridden
+    assert "NO_PROXY" not in out and "no_proxy" not in out  # ambient NO_PROXY cleared
+
+
+def test_env_reconcile_explicit_url_sets_no_proxy_from_config():
+    out = proxy_env_for_subprocess(
+        ProxyConfig(url="http://gw:3128", no_proxy=["localhost", ".internal"]), {}
+    )
+    assert out["NO_PROXY"] == "localhost,.internal"
+    assert out["no_proxy"] == "localhost,.internal"
+
+
+def test_env_reconcile_scheme_less_url_is_normalized():
+    out = proxy_env_for_subprocess(ProxyConfig(url="gw:3128"), {})
+    assert out["HTTPS_PROXY"] == "http://gw:3128"
+
+
+def test_env_reconcile_trust_env_leaves_ambient_untouched():
+    env = {"HTTPS_PROXY": "http://gw:3128", "NO_PROXY": "localhost"}
+    out = proxy_env_for_subprocess(ProxyConfig(), env)  # trust_env default, no url
+    assert out["HTTPS_PROXY"] == "http://gw:3128"
+    assert out["NO_PROXY"] == "localhost"
+
+
+def test_env_reconcile_trust_env_merges_config_no_proxy():
+    env = {"HTTPS_PROXY": "http://gw:3128", "NO_PROXY": "localhost"}
+    out = proxy_env_for_subprocess(ProxyConfig(no_proxy=["extra.host"]), env)
+    assert out["NO_PROXY"] == "localhost,extra.host"
+
+
+def test_env_reconcile_promotes_lone_http_proxy_to_https():
+    """The pooled clients promote a lone HTTP_PROXY to carry https; the
+    env-honoring paths must get the same promotion via the child env."""
+    out = proxy_env_for_subprocess(ProxyConfig(), {"HTTP_PROXY": "http://gw:3128"})
+    assert out["HTTPS_PROXY"] == "http://gw:3128"
+    assert out["https_proxy"] == "http://gw:3128"
+
+
+def test_env_reconcile_does_not_promote_when_https_already_set():
+    env = {"HTTP_PROXY": "http://a:3128", "HTTPS_PROXY": "http://b:3129"}
+    out = proxy_env_for_subprocess(ProxyConfig(), env)
+    assert out["HTTPS_PROXY"] == "http://b:3129"  # explicit https gateway preserved
+
+
+def test_env_reconcile_does_not_mutate_input():
+    env = {"HTTPS_PROXY": "http://gw:3128"}
+    proxy_env_for_subprocess(ProxyConfig(enabled=False), env)
+    assert env == {"HTTPS_PROXY": "http://gw:3128"}  # caller's mapping intact
 
 
 # ---------------------------------------------------------------------------

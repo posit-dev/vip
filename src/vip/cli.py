@@ -597,8 +597,25 @@ def run_verify(args: argparse.Namespace) -> None:
         # overrides any conflicting --capture args from user or verbose.
         cmd.append("-s")
 
+    # Reconcile the child environment with the resolved proxy so the
+    # env-honoring egress in the suites (bare httpx.get probes, the load engine,
+    # Chromium's own detection) takes the same route as the pooled clients that
+    # read the config directly. Without this an explicit [proxy] url proxies the
+    # clients but not the probes, and enabled=false disables the clients while
+    # the probes stay on the ambient proxy. Best-effort: any config-load error
+    # falls through to the ambient environment unchanged (env=None).
+    subprocess_env: dict[str, str] | None = None
+    if config_path:
+        try:
+            from vip.config import load_config
+            from vip.proxy import proxy_env_for_subprocess
+
+            subprocess_env = proxy_env_for_subprocess(load_config(config_path).proxy, os.environ)
+        except Exception:
+            subprocess_env = None
+
     try:
-        result = subprocess.run(cmd, timeout=args.test_timeout)
+        result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env)
         sys.exit(result.returncode)
     except subprocess.TimeoutExpired:
         print(

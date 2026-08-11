@@ -37,8 +37,10 @@ rather than worked around.
 
 from __future__ import annotations
 
+import re
 import ssl
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 import httpx
@@ -172,14 +174,21 @@ def redact_proxy_url(url: str | None) -> str | None:
     or ``--proxy``), and :func:`proxy_for_url` returns that URL verbatim. Any
     warning/log line that names the applicable proxy must route the value
     through here first so the password never lands in stdout or CI logs.
-    Returns the input unchanged when it has no userinfo or cannot be parsed.
+    Returns the input unchanged when it has no userinfo. When the URL cannot be
+    parsed at all, a ``user:pass@`` component is still stripped textually rather
+    than echoed verbatim -- the failure branch used to return the raw string, so
+    a malformed authenticated proxy (e.g. a typo'd port, ``http://u:p@gw:8O80``)
+    leaked its password into the :class:`ProxyConfigError` that names it.
     """
     if not url:
         return url
     try:
         parsed = httpx.URL(url)
     except Exception:
-        return url
+        # httpx.URL rejected the value (most often an invalid port). We still
+        # must not surface an embedded password -- this return flows straight
+        # into a ProxyConfigError message. Strip any ``user:pass@`` textually.
+        return re.sub(r"(://)[^/@]*@", r"\1", url)
     if not (parsed.username or parsed.password):
         return url
     # ``httpx.URL.host`` returns an IPv6 address unbracketed, so reassembling it
@@ -310,6 +319,110 @@ def _promote_http_proxy_to_https(proxy_map: ProxyMap) -> None:
                 f"reached directly.",
                 file=sys.stderr,
             )
+
+
+# Proxy environment variables, upper- and lowercase. httpx (with the default
+# ``trust_env=True``), requests/Locust, and Chromium's own detection all read
+# whichever case is present, so a reconciliation has to touch every one.
+_PROXY_ENV_VARS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+)
+
+
+def proxy_env_for_subprocess(config: ProxyConfig | None, env: Mapping[str, str]) -> dict[str, str]:
+    """Return a copy of *env* reconciled with *config* for a spawned subprocess.
+
+    VIP's pooled API clients and its parent-process auth/probe calls resolve the
+    proxy from :class:`ProxyConfig` directly (they pin ``trust_env=False``), so
+    they are already authoritative. But several egress paths *inside* the product
+    test suites read the environment instead: the reachability, data-source, SSL
+    and error-handling probes are bare ``httpx.get`` calls (``trust_env=True`` by
+    default), the performance/load engine issues its own ``httpx``/Locust
+    requests, and Chromium falls back to its own env detection. When
+    ``vip verify`` spawns the pytest subprocess it passes the result of this
+    function as that child's environment, so those env-honoring paths take the
+    same route as everything else.
+
+    Without this the two egress families diverged: ``[proxy] url`` / ``--proxy``
+    proxied the API clients but the reachability probes went direct (a proxy-only
+    host would pass the API tests and fail the probes with connection errors that
+    look like product faults), and ``[proxy] enabled = false`` / ``--no-proxy ''``
+    disabled the clients while the probes stayed on the ambient proxy -- the exact
+    split :mod:`vip.proxy` exists to remove.
+
+    The reconciliation mirrors :func:`build_proxy_map`'s resolution order:
+
+    * Proxying disabled (``enabled=false``, ``no_proxy=['*']``, or
+      ``trust_env=false`` with no explicit url) -> every proxy var is removed, so
+      the env-honoring paths go direct. This is what makes ``enabled=false`` /
+      ``--no-proxy ''`` genuinely "force every request direct" for a whole
+      ``vip verify`` run, as the docs promise.
+    * An explicit ``url`` -> ``HTTP_PROXY``/``HTTPS_PROXY``/``ALL_PROXY`` are all
+      set to it (matching the ``all://`` catch-all the pooled clients build) and
+      ``NO_PROXY`` is set to the ``no_proxy`` list (or cleared) -- overriding, not
+      merging, the ambient values, exactly as an explicit url overrides the
+      environment for the clients.
+    * ``trust_env`` with no explicit url -> the ambient environment already drives
+      both families the same way, so it is left in place. A config-level
+      ``no_proxy`` is appended to any existing ``NO_PROXY`` so an explicit bypass
+      list still reaches the env-honoring paths, and a lone ``HTTP_PROXY`` is
+      promoted to also carry https (mirroring :func:`_promote_http_proxy_to_https`
+      so the promotion the pooled clients apply reaches these paths too).
+
+    Returns a fresh dict; the caller's own ``os.environ`` is never mutated.
+    """
+    if config is None:
+        config = ProxyConfig()
+    result = dict(env)
+
+    def _set_pair(upper: str, value: str) -> None:
+        # Keep the upper- and lowercase spellings in lock-step so whichever one
+        # a downstream library reads sees the same value.
+        result[upper] = value
+        result[upper.lower()] = value
+
+    # Disabled / bypass-everything / trust_env off with nothing explicit: clear
+    # every proxy var so the env-honoring paths go direct. (The browser is forced
+    # direct separately via ``chromium_launch_args`` -> ``--no-proxy-server``.)
+    # Same predicate as chromium_launch_args' explicit_direct, by construction.
+    disabled = (
+        not config.enabled or "*" in config.no_proxy or (not config.url and not config.trust_env)
+    )
+    if disabled:
+        for var in _PROXY_ENV_VARS:
+            result.pop(var, None)
+        return result
+
+    if config.url:
+        url = _normalize_proxy_url(config.url)
+        _set_pair("HTTP_PROXY", url)
+        _set_pair("HTTPS_PROXY", url)
+        _set_pair("ALL_PROXY", url)
+        if config.no_proxy:
+            _set_pair("NO_PROXY", ",".join(config.no_proxy))
+        else:
+            result.pop("NO_PROXY", None)
+            result.pop("no_proxy", None)
+        return result
+
+    # trust_env with no explicit url: the ambient environment is authoritative.
+    if config.no_proxy:
+        existing = result.get("NO_PROXY") or result.get("no_proxy") or ""
+        merged = ",".join(part for part in (existing, ",".join(config.no_proxy)) if part)
+        _set_pair("NO_PROXY", merged)
+    http_proxy = result.get("HTTP_PROXY") or result.get("http_proxy")
+    has_https = result.get("HTTPS_PROXY") or result.get("https_proxy")
+    has_all = result.get("ALL_PROXY") or result.get("all_proxy")
+    if http_proxy and not has_https and not has_all:
+        _set_pair("HTTPS_PROXY", http_proxy)
+    return result
 
 
 def build_mounts(

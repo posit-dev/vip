@@ -256,18 +256,18 @@ enabled = false
 # Set values here only to override that. (One convenience beyond httpx: if only
 # HTTP_PROXY is set -- a single forward proxy used as the sole outbound tunnel --
 # VIP routes https through it too via CONNECT rather than sending it direct the
-# way httpx would. An explicit HTTPS_PROXY/ALL_PROXY wins. On a proxy-only
-# network, still set HTTPS_PROXY or ALL_PROXY: that promotion covers the core
-# paths but not the diagnostic/load-test paths in the scope note below, which
-# read the environment directly and send https direct when only HTTP_PROXY is
-# set -- so the product API tests pass while the reachability probes fail.)
+# way httpx would. An explicit HTTPS_PROXY/ALL_PROXY wins.)
 #
-# Scope note: an explicit url/no_proxy here covers the core paths above. A few
-# diagnostic and load-test paths (some reachability probes under the test
-# suites, the performance/load engine, and the raw-socket TLS handshake checks)
-# honor only the proxy environment variables, not this explicit config. If your
-# proxy differs from the ambient environment, set the env vars too so every path
-# agrees; when they match, there is nothing extra to do.
+# Scope note: on a `vip verify` run VIP reconciles the test subprocess's
+# environment with the values here, so an explicit url/no_proxy (or the lone
+# HTTP_PROXY promotion above) applies uniformly -- the product API clients, the
+# auth/probe requests, the browser login, AND the environment-honoring paths in
+# the suites (some reachability probes, the performance/load engine). The one
+# exception is the raw-socket TLS handshake checks (the SSL and HTTPS suites, and
+# the listener check behind scheme resolution): they open a TCP connection
+# directly and have no proxy to speak through, so on a host with no direct route
+# out they fail regardless. (`vip status`/`vip cleanup` run in-process and honor
+# this config directly.)
 #
 # Setup note: `vip install` reads no config file, so its Playwright Chromium
 # download honors only the proxy environment variables. Export HTTPS_PROXY
@@ -289,7 +289,9 @@ enabled = false
 # no_proxy = ["localhost", "127.0.0.1", ".internal.example.com"]
 #
 # Set enabled = false to force every request direct, ignoring any proxy
-# environment variables.
+# environment variables. On a `vip verify` run this is enforced for the whole
+# run -- VIP strips the proxy variables from the test subprocess too, so the
+# environment-honoring probes and load engine also go direct.
 # enabled = true
 #
 # Set trust_env = false to ignore proxy environment variables without setting an
