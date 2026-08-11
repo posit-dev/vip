@@ -437,18 +437,28 @@ def _matches_a_bypass_pattern(url: str, proxy_map: ProxyMap) -> bool:
 
 
 def _bypass_host_for_url(url: str) -> str | None:
-    """The Chromium bypass entry for *url*'s host, or ``None`` if unparseable.
+    """The Chromium bypass entry for *url*, or ``None`` if unparseable.
+
+    Scheme-qualified (``http://wb.internal``), because this entry exists only for
+    the scheme-fallback case, where httpx sends *this* scheme direct but still
+    proxies the *other* scheme to the same host. Chromium's bypass grammar is
+    ``[ SCHEME "://" ] HOSTNAME_PATTERN [ ":" PORT ]``, so a bare ``wb.internal``
+    is scheme-less and bypasses both -- an http product that redirects to https
+    on the same host would then escape a mandated proxy in the browser while
+    every httpx call still went through it. Playwright forwards the qualified
+    form unchanged (it only prepends ``*`` to entries starting with ``.``).
 
     IPv6 literals are re-bracketed: ``httpx.URL.host`` strips the brackets, and
-    Chromium's bypass grammar reads the bare form with ``:`` as a port separator.
+    Chromium reads the bare form with ``:`` as a port separator.
     """
     try:
-        host = httpx.URL(url).host
+        parsed = httpx.URL(url)
     except Exception:
         return None
-    if not host:
+    host, scheme = parsed.host, parsed.scheme
+    if not host or not scheme:
         return None
-    return f"[{host}]" if ":" in host else host
+    return f"{scheme}://[{host}]" if ":" in host else f"{scheme}://{host}"
 
 
 def chromium_launch_args(config: ProxyConfig | None) -> list[str]:
@@ -477,9 +487,18 @@ def chromium_launch_args(config: ProxyConfig | None) -> list[str]:
     """
     if config is None:
         return []
-    if not config.enabled or (not config.url and not config.trust_env):
-        return ["--no-proxy-server"]
-    return []
+    explicit_direct = (
+        # [proxy] enabled = false / --no-proxy ''
+        not config.enabled
+        # A "*" bypasses everything, exactly as NO_PROXY=* does -- build_proxy_map
+        # short-circuits it to {} regardless of any url, so the browser has to be
+        # told as well. Without this the user asks for "bypass everything" and gets
+        # httpx direct while Chromium quietly keeps using the ambient proxy.
+        or "*" in config.no_proxy
+        # trust_env = false with nothing explicit to fall back to
+        or (not config.url and not config.trust_env)
+    )
+    return ["--no-proxy-server"] if explicit_direct else []
 
 
 def _split_proxy_userinfo(url: str) -> tuple[str | None, str | None]:

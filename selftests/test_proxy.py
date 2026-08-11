@@ -29,6 +29,7 @@ from vip.proxy import (
     ProxyConfig,
     build_mounts,
     build_proxy_map,
+    chromium_launch_args,
     playwright_proxy,
     proxy_for_url,
     redact_proxy_url,
@@ -575,7 +576,32 @@ def test_playwright_proxy_falls_back_when_the_target_scheme_has_no_proxy(monkeyp
     # But the target itself must still be reached directly, exactly as httpx does,
     # or Chromium sends a plain-http request to a gateway that will 403/407 it.
     assert proxy_for_url("http://wb.internal", proxy_map) is None
-    assert "wb.internal" in pw["bypass"].split(",")
+    # Scheme-qualified: httpx only sends *http* to this host directly, and still
+    # proxies https to the same host. A bare ``wb.internal`` is scheme-less in
+    # Chromium's grammar and would bypass both, so an http product that redirects
+    # to https on the same host would escape the proxy in the browser only.
+    assert "http://wb.internal" in pw["bypass"].split(",")
+    assert "wb.internal" not in pw["bypass"].split(",")
+    assert proxy_for_url("https://wb.internal", proxy_map) == "http://gw:3128"
+
+
+def test_fallback_target_bypass_is_scheme_qualified_for_ipv6_too(monkeypatch):
+    """The scheme-qualified fallback entry still brackets an IPv6 literal.
+
+    Chromium's bypass grammar reads a bare ``2001:db8::5`` as host + port, so an
+    unbracketed entry silently never matches and the browser proxies a target
+    httpx reaches directly. The map must leave the target's scheme uncovered --
+    an ``all://`` from an explicit ``url`` would proxy it, so no fallback entry
+    is added and the bracketing is never exercised.
+    """
+    for var in ("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HTTPS_PROXY", "http://gw:3128")
+    m = build_proxy_map(ProxyConfig())
+    assert proxy_for_url("http://[2001:db8::5]", m) is None, "fallback branch must be reachable"
+    assert "http://[2001:db8::5]" in playwright_proxy(m, "http://[2001:db8::5]")["bypass"].split(
+        ","
+    )
 
 
 def test_bypassed_target_is_not_added_twice_or_when_already_proxied():
@@ -633,6 +659,31 @@ def test_no_extra_launch_args_when_a_proxy_is_configured(monkeypatch):
     monkeypatch.setenv("HTTPS_PROXY", "http://gw:3128")
     assert chromium_launch_args(ProxyConfig()) == []
     assert chromium_launch_args(ProxyConfig(url="http://p:8080")) == []
+
+
+@pytest.mark.parametrize(
+    "cfg",
+    [
+        ProxyConfig(url="http://p:8080", no_proxy=["*"]),
+        ProxyConfig(no_proxy=["*"]),
+        ProxyConfig(enabled=False),
+        ProxyConfig(trust_env=False),
+    ],
+    ids=["url+star", "star-only", "disabled", "no-trust-env"],
+)
+def test_every_explicit_direct_request_reaches_chromium(cfg, monkeypatch):
+    """Whenever the config explicitly routes everything direct, the browser must
+    be told so too.
+
+    ``build_proxy_map`` short-circuits a ``"*"`` in no_proxy to an empty map, the
+    same as ``enabled = false`` -- but an empty map only means ``playwright_proxy``
+    returns None, which leaves Chromium free to read the ambient environment or
+    system proxy settings. So the user asks for "bypass everything" and gets httpx
+    direct with the browser still proxied.
+    """
+    monkeypatch.setenv("HTTPS_PROXY", "http://ambient-gw:3128")
+    assert build_proxy_map(cfg) == {}
+    assert chromium_launch_args(cfg) == ["--no-proxy-server"]
 
 
 def test_no_extra_launch_args_when_nothing_is_configured(monkeypatch):
