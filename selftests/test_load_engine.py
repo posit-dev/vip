@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import http.server
+import queue
 import sys
 import threading
 
+import httpx
 import pytest
 
 from vip.config import PerformanceConfig
@@ -46,11 +48,62 @@ class _OKHandler(http.server.BaseHTTPRequestHandler):
         pass  # suppress noisy request logging
 
 
-class _ThreadedHTTPServer(http.server.ThreadingHTTPServer):
-    """HTTPServer that handles each request in a new thread."""
+class _ThreadedHTTPServer(http.server.HTTPServer):
+    """HTTPServer that serves requests from a pool of pre-started threads.
+
+    Deliberately *not* ``ThreadingHTTPServer``.  That class starts a fresh
+    thread per request, and a thread started while coverage's
+    ``threading.settrace`` hook is installed can die in
+    ``Thread._bootstrap_inner`` before ``run()`` -- see
+    ``TestMockServerThreads`` for the full mechanism.  With a thread per
+    request, one such death silently swallows a request: the connection is
+    accepted and never answered, the client waits out the whole 30s load-test
+    timeout, and the run reports a failure rate the load engine did not
+    produce.  These tests fire up to 1000 requests apiece, so the rare
+    per-thread race turns into a recurring CI flake.
+
+    The pool moves every thread start to fixture setup, where a death costs a
+    redundant worker rather than a request.  64 workers absorb the 200
+    concurrent connections the async tests open: each request is answered
+    immediately, so workers are never held.
+    """
 
     allow_reuse_address = True
-    daemon_threads = True
+    pool_size = 64
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._requests: queue.Queue = queue.Queue()
+        self._workers = [
+            threading.Thread(target=self._serve_requests, daemon=True)
+            for _ in range(self.pool_size)
+        ]
+        for worker in self._workers:
+            worker.start()
+
+    def process_request(self, request, client_address):
+        """Hand the accepted socket to the pool instead of a new thread."""
+        self._requests.put((request, client_address))
+
+    def _serve_requests(self):
+        while True:
+            item = self._requests.get()
+            if item is None:  # shutdown sentinel
+                return
+            request, client_address = item
+            try:
+                self.finish_request(request, client_address)
+            except Exception:
+                self.handle_error(request, client_address)
+            finally:
+                self.shutdown_request(request)
+
+    def server_close(self):
+        for _ in self._workers:
+            self._requests.put(None)
+        for worker in self._workers:
+            worker.join(timeout=2)
+        super().server_close()
 
 
 @pytest.fixture(scope="module")
@@ -61,6 +114,40 @@ def mock_server():
     t.start()
     yield url
     server.shutdown()
+    server.server_close()
+
+
+class TestMockServerThreads:
+    def test_no_thread_starts_while_requests_are_in_flight(self, mock_server, monkeypatch):
+        """Handler threads must be pre-started, never spawned per request.
+
+        A thread that starts while coverage's ``threading.settrace`` hook is
+        installed can die inside ``Thread._bootstrap_inner`` -- at
+        ``_sys.settrace(_trace_hook)``, before ``run()`` ever executes -- with
+        "Cannot install a trace function while another trace function is being
+        installed".  A thread-per-request server loses the whole request when
+        that happens: the socket is already accepted, nothing answers it, and
+        the client burns its full 30s timeout before recording a failure the
+        load engine never caused.  Served from a pre-started pool, the same
+        thread death costs one redundant worker and no request.
+        """
+        # Warm up outside the spy so the fixture's own thread creation is never
+        # counted, whichever test in this module reaches the fixture first.
+        assert httpx.get(mock_server, timeout=10).status_code == 200
+
+        started: list[str] = []
+        real_start = threading.Thread.start
+
+        def _spy_start(thread):
+            started.append(thread.name)
+            return real_start(thread)
+
+        monkeypatch.setattr(threading.Thread, "start", _spy_start)
+
+        for _ in range(20):
+            assert httpx.get(mock_server, timeout=10).status_code == 200
+
+        assert started == [], f"threads started while serving requests: {started}"
 
 
 # ---------------------------------------------------------------------------
