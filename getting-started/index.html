@@ -12,7 +12,7 @@ GitHub
             1.1.16 1.92.08 2.12.51.56.82 1.27.82
             2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54
             1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013
-            8.013 0 0016 8c0-4.42-3.58-8-8-8z" data-astro-cid-3ef6ksr2></path> </svg> </a> </nav> </div> </header>  <div class="page-header" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <h1 data-astro-cid-mwd2jfe2>Getting Started</h1> <p data-astro-cid-mwd2jfe2>Validate your Posit Team deployment in minutes.</p> </div> </div> <main class="content" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <aside class="toc" data-astro-cid-mwd2jfe2> <h4 data-astro-cid-mwd2jfe2>On this page</h4> <ul data-astro-cid-mwd2jfe2> <li data-astro-cid-mwd2jfe2><a href="#quick-start" data-astro-cid-mwd2jfe2>Quick start</a></li> <li data-astro-cid-mwd2jfe2><a href="#authentication" data-astro-cid-mwd2jfe2>Authentication</a></li> <li data-astro-cid-mwd2jfe2><a href="#running-tests" data-astro-cid-mwd2jfe2>Running tests</a></li> <li data-astro-cid-mwd2jfe2><a href="#configuration-file" data-astro-cid-mwd2jfe2>Configuration file</a></li> <li data-astro-cid-mwd2jfe2><a href="#generating-reports" data-astro-cid-mwd2jfe2>Generating reports</a></li> <li data-astro-cid-mwd2jfe2><a href="#extending-vip" data-astro-cid-mwd2jfe2>Extending VIP</a></li> <li data-astro-cid-mwd2jfe2><a href="#uninstalling" data-astro-cid-mwd2jfe2>Uninstalling</a></li> </ul> </aside> <article class="docs" data-astro-cid-mwd2jfe2> <section id="quick-start" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Quick start</h2> <p data-astro-cid-mwd2jfe2>
+            8.013 0 0016 8c0-4.42-3.58-8-8-8z" data-astro-cid-3ef6ksr2></path> </svg> </a> </nav> </div> </header>  <div class="page-header" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <h1 data-astro-cid-mwd2jfe2>Getting Started</h1> <p data-astro-cid-mwd2jfe2>Validate your Posit Team deployment in minutes.</p> </div> </div> <main class="content" data-astro-cid-mwd2jfe2> <div class="container" data-astro-cid-mwd2jfe2> <aside class="toc" data-astro-cid-mwd2jfe2> <h4 data-astro-cid-mwd2jfe2>On this page</h4> <ul data-astro-cid-mwd2jfe2> <li data-astro-cid-mwd2jfe2><a href="#quick-start" data-astro-cid-mwd2jfe2>Quick start</a></li> <li data-astro-cid-mwd2jfe2><a href="#authentication" data-astro-cid-mwd2jfe2>Authentication</a></li> <li data-astro-cid-mwd2jfe2><a href="#running-tests" data-astro-cid-mwd2jfe2>Running tests</a></li> <li data-astro-cid-mwd2jfe2><a href="#configuration-file" data-astro-cid-mwd2jfe2>Configuration file</a></li> <li data-astro-cid-mwd2jfe2><a href="#outbound-proxy" data-astro-cid-mwd2jfe2>Running behind a proxy</a></li> <li data-astro-cid-mwd2jfe2><a href="#generating-reports" data-astro-cid-mwd2jfe2>Generating reports</a></li> <li data-astro-cid-mwd2jfe2><a href="#extending-vip" data-astro-cid-mwd2jfe2>Extending VIP</a></li> <li data-astro-cid-mwd2jfe2><a href="#uninstalling" data-astro-cid-mwd2jfe2>Uninstalling</a></li> </ul> </aside> <article class="docs" data-astro-cid-mwd2jfe2> <section id="quick-start" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Quick start</h2> <p data-astro-cid-mwd2jfe2>
 VIP verifies Posit Team across standalone deployments.
 </p> <p data-astro-cid-mwd2jfe2>Install VIP to start:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>uv tool install posit-vip
 vip install</code></pre> <p data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>vip install</code> installs Playwright's Chromium browser
@@ -130,6 +130,99 @@ If no <code data-astro-cid-mwd2jfe2>--config</code> is specified and no URL flag
 Each product section (Connect, Workbench, Package Manager) can be
             enabled or disabled individually. See <code data-astro-cid-mwd2jfe2>vip.toml.example</code>
 for the full template.
+</p> </section> <section id="outbound-proxy" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Running behind a proxy</h2> <p data-astro-cid-mwd2jfe2>
+On hosts that reach your Posit deployment through a forward proxy,
+            VIP routes its core outbound HTTP(S) through that proxy — the product
+            API clients (Connect, Workbench, Package Manager), the authentication
+            and URL-probe requests, and the Playwright browser login all take the
+            same path. This matters because httpx disables environment-proxy
+            resolution on a client that uses a custom transport (which VIP's API
+            clients require), so without this handling the API calls would
+            silently bypass the proxy while the browser and probe paths used it —
+            and the Connect API-key flow would fail behind a proxy.
+</p> <p data-astro-cid-mwd2jfe2>
+By default VIP reads the ambient environment —
+<code data-astro-cid-mwd2jfe2>HTTP_PROXY</code> / <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> /
+<code data-astro-cid-mwd2jfe2>ALL_PROXY</code> / <code data-astro-cid-mwd2jfe2>NO_PROXY</code> (upper- or lowercase) —
+            exactly as httpx does. <strong data-astro-cid-mwd2jfe2>The environment variables cover every
+            outbound HTTP request VIP makes.</strong> No configuration is needed
+            for the common case:
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>export HTTPS_PROXY=http://proxy.corp.example:8080
+export NO_PROXY=localhost,.internal.example.com
+vip verify --connect-url https://connect.example.com --headless-auth</code></pre> <p data-astro-cid-mwd2jfe2>
+If your site uses a single forward proxy as its only outbound tunnel
+            and sets just <code data-astro-cid-mwd2jfe2>HTTP_PROXY</code> (no <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code>),
+            VIP routes its https traffic through that proxy too (via the standard
+<code data-astro-cid-mwd2jfe2>CONNECT</code> tunnel), rather than sending it direct the way
+            httpx would. An explicit <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> or
+<code data-astro-cid-mwd2jfe2>ALL_PROXY</code>, if set, always takes precedence.
+</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Lone <code data-astro-cid-mwd2jfe2>HTTP_PROXY</code>.</strong> When only
+<code data-astro-cid-mwd2jfe2>HTTP_PROXY</code> is set, VIP promotes it to carry https too
+            (via <code data-astro-cid-mwd2jfe2>CONNECT</code>). On a <code data-astro-cid-mwd2jfe2>vip verify</code> run that
+            promotion reaches every path, including the environment-honoring
+            reachability and performance probes, because VIP reconciles the test
+            subprocess's environment (see “Scope of the explicit config” below).
+            Naming <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> / <code data-astro-cid-mwd2jfe2>ALL_PROXY</code> explicitly is
+            still clearer if you want a specific https gateway.
+</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Setup.</strong> <code data-astro-cid-mwd2jfe2>vip install</code> downloads the
+            Playwright Chromium build, and it reads no configuration file — so
+            that download honors the proxy <em data-astro-cid-mwd2jfe2>environment variables</em> only.
+            Export <code data-astro-cid-mwd2jfe2>HTTPS_PROXY</code> before running it; a proxy configured
+            solely under <code data-astro-cid-mwd2jfe2>[proxy]</code> in <code data-astro-cid-mwd2jfe2>vip.toml</code> cannot
+            reach it, and the install fails with an opaque network error.
+</p> <p data-astro-cid-mwd2jfe2>To set the proxy explicitly instead of via the environment:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com \
+  --proxy http://proxy.corp.example:8080 \
+  --no-proxy localhost,.internal.example.com</code></pre> <p data-astro-cid-mwd2jfe2>
+The flags only apply on a run like the one above, where you pass
+            product URLs directly — they are written into the configuration VIP
+            generates for that run. On a run that loads a config file, whether
+            via <code data-astro-cid-mwd2jfe2>--config</code> or a <code data-astro-cid-mwd2jfe2>./vip.toml</code> found in the
+            working directory, there is nothing for them to write into and VIP
+            warns that it ignored them. Configure the proxy in the file instead:
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>[proxy]
+url = "http://proxy.corp.example:8080"
+no_proxy = ["localhost", ".internal.example.com"]</code></pre> <p data-astro-cid-mwd2jfe2>
+Note that an explicit <code data-astro-cid-mwd2jfe2>url</code> (or <code data-astro-cid-mwd2jfe2>--proxy</code>)
+            replaces the environment's <code data-astro-cid-mwd2jfe2>NO_PROXY</code> rather than merging
+            with it, so repeat any bypass hosts under <code data-astro-cid-mwd2jfe2>no_proxy</code>.
+</p> <p data-astro-cid-mwd2jfe2>
+To force every request direct and ignore any proxy environment
+            variables, disable proxying: <code data-astro-cid-mwd2jfe2>enabled = false</code> under
+<code data-astro-cid-mwd2jfe2>[proxy]</code>, or <code data-astro-cid-mwd2jfe2>vip verify --no-proxy ''</code>
+alongside product-URL flags.
+</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Scope of the explicit config.</strong> On a
+<code data-astro-cid-mwd2jfe2>vip verify</code> run VIP reconciles the test subprocess's
+            environment with your <code data-astro-cid-mwd2jfe2>[proxy]</code> / <code data-astro-cid-mwd2jfe2>--proxy</code>
+setting, so it applies uniformly — the product API clients,
+            authentication, URL probes, the browser login, <em data-astro-cid-mwd2jfe2>and</em> the
+            environment-honoring paths in the suites (some reachability probes
+            and the performance/load engine). An <code data-astro-cid-mwd2jfe2>enabled = false</code>
+(or <code data-astro-cid-mwd2jfe2>--no-proxy ''</code>) likewise forces the whole run direct.
+            The one exception is the raw-socket TLS handshake checks (the SSL and
+            HTTPS suites, and the listener probe behind scheme resolution): they
+            open a TCP connection directly to test the plaintext/handshake
+            boundary, so they have no proxy to speak through and will fail on a
+            host with no direct route out, whatever you configure.
+            (<code data-astro-cid-mwd2jfe2>vip status</code> and <code data-astro-cid-mwd2jfe2>vip cleanup</code> run in-process
+            and honor the <code data-astro-cid-mwd2jfe2>[proxy]</code> config directly.)
+</p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Always give product URLs an explicit scheme when a proxy is
+            in effect.</strong> For a scheme-less URL (e.g.
+<code data-astro-cid-mwd2jfe2>--connect-url connect.example.com</code>) VIP probes
+<code data-astro-cid-mwd2jfe2>https://</code> first and falls back to <code data-astro-cid-mwd2jfe2>http://</code> if
+            nothing answers — but it decides that using a direct socket, which
+            says nothing about a path that goes through the proxy. So whenever a
+            proxy applies to the host, VIP keeps <code data-astro-cid-mwd2jfe2>https://</code> and
+            reports the proxy as the likely problem rather than silently
+            rewriting your URL to plaintext and sending credentials in the clear.
+</p> <p data-astro-cid-mwd2jfe2>
+The practical consequence: a product genuinely served over plain
+<code data-astro-cid-mwd2jfe2>http</code> will not be found from a scheme-less URL on a host
+            with a proxy configured. Write
+<code data-astro-cid-mwd2jfe2>--connect-url http://connect.example.com</code> (an explicit
+            scheme is never probed or rewritten), or list the host under
+<code data-astro-cid-mwd2jfe2>no_proxy</code> / <code data-astro-cid-mwd2jfe2>NO_PROXY</code> if it should be reached
+            directly. Note that this applies when only <code data-astro-cid-mwd2jfe2>HTTP_PROXY</code> is
+            set too, since VIP routes https through it as described above.
 </p> </section> <section id="generating-reports" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Generating reports</h2> <p data-astro-cid-mwd2jfe2>After running tests, generate and render the report:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2># Run tests and save results
 vip verify --connect-url https://connect.example.com --report report/results.json
 
