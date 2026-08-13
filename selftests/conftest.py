@@ -14,6 +14,79 @@ import pytest
 # Enable the pytester fixture for plugin integration tests.
 pytest_plugins = ["pytester"]
 
+_PROXY_ENV_VARS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+)
+
+
+@pytest.fixture(autouse=True)
+def _restore_auth_entrypoints():
+    """Undo in-process ``pytester`` runs that rebind ``vip.auth``'s entrypoints.
+
+    Several plugin tests write a conftest that stubs authentication with
+    ``vip.auth.start_interactive_auth = _fake_session``.  Those runs execute
+    ``runpytest_inprocess`` -- the same interpreter, the same ``vip.auth``
+    module object -- so the assignment outlives the inner session and every
+    later selftest that calls the real function silently gets the stub back
+    (an ``InteractiveAuthSession`` with a ``/dev/null`` storage state), passing
+    or failing for reasons that have nothing to do with what it asserts.
+
+    Snapshot and restore around every test so the leak cannot cross a test
+    boundary.  Cheap, and it fixes the whole class of leak rather than the two
+    conftests that happen to cause it today.
+    """
+    import vip.auth as _auth
+
+    saved = {
+        name: getattr(_auth, name) for name in ("start_interactive_auth", "start_headless_auth")
+    }
+    yield
+    for name, func in saved.items():
+        setattr(_auth, name, func)
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_proxy(monkeypatch):
+    """Clear proxy environment variables for every selftest.
+
+    ``vip.proxy.build_proxy_map(None)`` reads the ambient proxy environment, and
+    ``resolve_url_scheme`` changes behavior when a proxy applies -- it refuses
+    the inferred-https -> http downgrade, because the raw-socket TLS-listener
+    tiebreak bypasses the proxy and so cannot speak to the path VIP would take.
+    Without this, running the selftests on a machine with ``HTTP_PROXY``
+    exported flips that branch under a dozen scheme-resolution tests that never
+    mention proxies, and their probes attempt real connections through it.
+
+    Autouse and package-wide on purpose: any test that constructs a client,
+    resolves a URL, or loads a config can reach the proxy layer, so opting in
+    per-test would just recreate the gap. Tests that *are* about proxy behavior
+    set the variables they need via ``monkeypatch.setenv``, which still works --
+    this fixture runs first and only removes what it did not put there.
+
+    Clearing the variables is necessary but not sufficient. httpx resolves them
+    through ``urllib.request.getproxies``, which on darwin is
+    ``getproxies_environment() or getproxies_macosx_sysconf()`` -- with the
+    environment cleared it falls straight through to whatever proxy is set in
+    System Settings, so on a corporate-managed Mac the isolation would silently
+    do nothing. Pin httpx's lookup to the environment-only variant, which is what
+    ``getproxies`` already is on Linux, so the two platforms behave the same and
+    tests that deliberately ``monkeypatch.setenv`` a proxy still work.
+
+    See ``selftests/test_proxy_env_isolation.py`` for the guard on this fixture.
+    """
+    from urllib.request import getproxies_environment
+
+    for var in _PROXY_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr("httpx._utils.getproxies", getproxies_environment)
+
 
 @pytest.fixture()
 def pytester(pytester):

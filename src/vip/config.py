@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
+from vip.proxy import ProxyConfig
+
 if sys.version_info >= (3, 11):
     import tomllib
 else:
@@ -490,6 +492,12 @@ class VIPConfig:
     ca_bundle: Path | None = None
     cert_expiry_warning_days: int = 30
 
+    # Outbound-proxy resolution for all HTTP egress (API clients, auth/probe
+    # httpx calls, and the Playwright browser login).  Defaults to reading the
+    # ambient HTTP_PROXY/HTTPS_PROXY/NO_PROXY environment (``trust_env=True``),
+    # matching httpx's own default behaviour.
+    proxy: ProxyConfig = field(default_factory=ProxyConfig)
+
     @property
     def verify(self) -> bool | str:
         """The httpx ``verify`` value derived from TLS config.
@@ -583,6 +591,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     runtimes_raw = raw.get("runtimes", {})
     performance_raw = raw.get("performance", {})
     tls_raw = raw.get("tls", {})
+    proxy_raw = raw.get("proxy", {})
 
     data_sources: list[DataSourceEntry] = []
     for name, ds in data_sources_raw.items():
@@ -618,4 +627,5 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         cert_expiry_warning_days=_validate_cert_expiry_warning_days(
             tls_raw.get("cert_expiry_warning_days", 30)
         ),
+        proxy=ProxyConfig.from_dict(proxy_raw),
     )

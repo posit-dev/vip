@@ -23,6 +23,7 @@ import Footer from "../components/Footer.astro";
           <li><a href="#authentication">Authentication</a></li>
           <li><a href="#running-tests">Running tests</a></li>
           <li><a href="#configuration-file">Configuration file</a></li>
+          <li><a href="#outbound-proxy">Running behind a proxy</a></li>
           <li><a href="#generating-reports">Generating reports</a></li>
           <li><a href="#extending-vip">Extending VIP</a></li>
           <li><a href="#uninstalling">Uninstalling</a></li>
@@ -306,6 +307,122 @@ def test_new_api_feature():
             Each product section (Connect, Workbench, Package Manager) can be
             enabled or disabled individually. See <code>vip.toml.example</code>
             for the full template.
+          </p>
+        </section>
+
+        <section id="outbound-proxy">
+          <h2>Running behind a proxy</h2>
+          <p>
+            On hosts that reach your Posit deployment through a forward proxy,
+            VIP routes its core outbound HTTP(S) through that proxy — the product
+            API clients (Connect, Workbench, Package Manager), the authentication
+            and URL-probe requests, and the Playwright browser login all take the
+            same path. This matters because httpx disables environment-proxy
+            resolution on a client that uses a custom transport (which VIP's API
+            clients require), so without this handling the API calls would
+            silently bypass the proxy while the browser and probe paths used it —
+            and the Connect API-key flow would fail behind a proxy.
+          </p>
+          <p>
+            By default VIP reads the ambient environment —
+            <code>HTTP_PROXY</code> / <code>HTTPS_PROXY</code> /
+            <code>ALL_PROXY</code> / <code>NO_PROXY</code> (upper- or lowercase) —
+            exactly as httpx does. <strong>The environment variables cover every
+            outbound HTTP request VIP makes.</strong> No configuration is needed
+            for the common case:
+          </p>
+          <pre><code>export HTTPS_PROXY=http://proxy.corp.example:8080
+export NO_PROXY=localhost,.internal.example.com
+vip verify --connect-url https://connect.example.com --headless-auth</code></pre>
+          <p>
+            If your site uses a single forward proxy as its only outbound tunnel
+            and sets just <code>HTTP_PROXY</code> (no <code>HTTPS_PROXY</code>),
+            VIP routes its https traffic through that proxy too (via the standard
+            <code>CONNECT</code> tunnel), rather than sending it direct the way
+            httpx would. An explicit <code>HTTPS_PROXY</code> or
+            <code>ALL_PROXY</code>, if set, always takes precedence.
+          </p>
+          <p>
+            <strong>Lone <code>HTTP_PROXY</code>.</strong> When only
+            <code>HTTP_PROXY</code> is set, VIP promotes it to carry https too
+            (via <code>CONNECT</code>). On a <code>vip verify</code> run that
+            promotion reaches every path, including the environment-honoring
+            reachability and performance probes, because VIP reconciles the test
+            subprocess's environment (see “Scope of the explicit config” below).
+            Naming <code>HTTPS_PROXY</code> / <code>ALL_PROXY</code> explicitly is
+            still clearer if you want a specific https gateway.
+          </p>
+          <p>
+            <strong>Setup.</strong> <code>vip install</code> downloads the
+            Playwright Chromium build, and it reads no configuration file — so
+            that download honors the proxy <em>environment variables</em> only.
+            Export <code>HTTPS_PROXY</code> before running it; a proxy configured
+            solely under <code>[proxy]</code> in <code>vip.toml</code> cannot
+            reach it, and the install fails with an opaque network error.
+          </p>
+          <p>To set the proxy explicitly instead of via the environment:</p>
+          <pre><code>vip verify --connect-url https://connect.example.com \
+  --proxy http://proxy.corp.example:8080 \
+  --no-proxy localhost,.internal.example.com</code></pre>
+          <p>
+            The flags only apply on a run like the one above, where you pass
+            product URLs directly — they are written into the configuration VIP
+            generates for that run. On a run that loads a config file, whether
+            via <code>--config</code> or a <code>./vip.toml</code> found in the
+            working directory, there is nothing for them to write into and VIP
+            warns that it ignored them. Configure the proxy in the file instead:
+          </p>
+          <pre><code>[proxy]
+url = "http://proxy.corp.example:8080"
+no_proxy = ["localhost", ".internal.example.com"]</code></pre>
+          <p>
+            Note that an explicit <code>url</code> (or <code>--proxy</code>)
+            replaces the environment's <code>NO_PROXY</code> rather than merging
+            with it, so repeat any bypass hosts under <code>no_proxy</code>.
+          </p>
+          <p>
+            To force every request direct and ignore any proxy environment
+            variables, disable proxying: <code>enabled = false</code> under
+            <code>[proxy]</code>, or <code>vip verify --no-proxy ''</code>
+            alongside product-URL flags.
+          </p>
+          <p>
+            <strong>Scope of the explicit config.</strong> On a
+            <code>vip verify</code> run VIP reconciles the test subprocess's
+            environment with your <code>[proxy]</code> / <code>--proxy</code>
+            setting, so it applies uniformly — the product API clients,
+            authentication, URL probes, the browser login, <em>and</em> the
+            environment-honoring paths in the suites (some reachability probes
+            and the performance/load engine). An <code>enabled = false</code>
+            (or <code>--no-proxy ''</code>) likewise forces the whole run direct.
+            The one exception is the raw-socket TLS handshake checks (the SSL and
+            HTTPS suites, and the listener probe behind scheme resolution): they
+            open a TCP connection directly to test the plaintext/handshake
+            boundary, so they have no proxy to speak through and will fail on a
+            host with no direct route out, whatever you configure.
+            (<code>vip status</code> and <code>vip cleanup</code> run in-process
+            and honor the <code>[proxy]</code> config directly.)
+          </p>
+          <p>
+            <strong>Always give product URLs an explicit scheme when a proxy is
+            in effect.</strong> For a scheme-less URL (e.g.
+            <code>--connect-url connect.example.com</code>) VIP probes
+            <code>https://</code> first and falls back to <code>http://</code> if
+            nothing answers — but it decides that using a direct socket, which
+            says nothing about a path that goes through the proxy. So whenever a
+            proxy applies to the host, VIP keeps <code>https://</code> and
+            reports the proxy as the likely problem rather than silently
+            rewriting your URL to plaintext and sending credentials in the clear.
+          </p>
+          <p>
+            The practical consequence: a product genuinely served over plain
+            <code>http</code> will not be found from a scheme-less URL on a host
+            with a proxy configured. Write
+            <code>--connect-url http://connect.example.com</code> (an explicit
+            scheme is never probed or rewritten), or list the host under
+            <code>no_proxy</code> / <code>NO_PROXY</code> if it should be reached
+            directly. Note that this applies when only <code>HTTP_PROXY</code> is
+            set too, since VIP routes https through it as described above.
           </p>
         </section>
 

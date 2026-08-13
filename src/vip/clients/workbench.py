@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from vip.clients.base import BaseClient
+from vip.proxy import ProxyConfig
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,7 @@ class WorkbenchClient(BaseClient):
         ca_bundle: Path | None = None,
         auth: httpx.Auth | None = None,
         cookies: httpx.Cookies | None = None,
+        proxy: ProxyConfig | None = None,
     ) -> None:
         super().__init__(
             base_url,
@@ -151,6 +153,7 @@ class WorkbenchClient(BaseClient):
             ca_bundle=ca_bundle,
             auth=auth,
             cookies=cookies,
+            proxy=proxy,
         )
 
     # -- Health / info ------------------------------------------------------

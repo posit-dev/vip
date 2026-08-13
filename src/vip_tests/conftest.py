@@ -65,7 +65,10 @@ def connect_client(request: pytest.FixtureRequest, vip_config: VIPConfig) -> Con
     # same value, and its own cache means asking from more than one fixture
     # for the same product only probes the network once.
     url = resolve_url_scheme(
-        vip_config.connect, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.connect,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
     # A registered client-auth provider (e.g. Snowflake JWT) authenticates the
     # request itself, so a Connect API key is not required in that case.
@@ -86,6 +89,7 @@ def connect_client(request: pytest.FixtureRequest, vip_config: VIPConfig) -> Con
         ca_bundle=vip_config.ca_bundle,
         auth=auth,
         cookies=cookies,
+        proxy=vip_config.proxy,
     )
     yield client
     client.close()
@@ -94,7 +98,10 @@ def connect_client(request: pytest.FixtureRequest, vip_config: VIPConfig) -> Con
 @pytest.fixture(scope="session")
 def connect_url(vip_config: VIPConfig) -> str:
     return resolve_url_scheme(
-        vip_config.connect, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.connect,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
 
 
@@ -109,7 +116,10 @@ def workbench_client(
         yield None
         return
     url = resolve_url_scheme(
-        vip_config.workbench, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.workbench,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
     auth = build_client_auth(vip_config, "workbench", url)
     # Same gateway-cookie injection as connect_client: the identical OIDC proxy
@@ -123,6 +133,7 @@ def workbench_client(
         ca_bundle=vip_config.ca_bundle,
         auth=auth,
         cookies=cookies,
+        proxy=vip_config.proxy,
     )
     yield client
     client.close()
@@ -131,7 +142,10 @@ def workbench_client(
 @pytest.fixture(scope="session")
 def workbench_url(vip_config: VIPConfig) -> str:
     return resolve_url_scheme(
-        vip_config.workbench, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.workbench,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
 
 
@@ -152,7 +166,10 @@ def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
     if not vip_config.package_manager.is_configured:
         return None
     url = resolve_url_scheme(
-        vip_config.package_manager, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.package_manager,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
     auth = build_client_auth(vip_config, "package_manager", url)
     client = PackageManagerClient(
@@ -161,6 +178,7 @@ def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
         insecure=vip_config.insecure,
         ca_bundle=vip_config.ca_bundle,
         auth=auth,
+        proxy=vip_config.proxy,
     )
     yield client
     client.close()
@@ -169,7 +187,10 @@ def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
 @pytest.fixture(scope="session")
 def pm_url(vip_config: VIPConfig) -> str:
     return resolve_url_scheme(
-        vip_config.package_manager, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
+        vip_config.package_manager,
+        insecure=vip_config.insecure,
+        ca_bundle=vip_config.ca_bundle,
+        proxy=vip_config.proxy,
     )
 
 
@@ -210,6 +231,87 @@ def workbench_auth_error(request: pytest.FixtureRequest) -> str | None:
     return session.workbench_auth_error
 
 
+def _ui_browser_proxy(vip_config: VIPConfig) -> dict[str, str] | None:
+    """The Playwright ``proxy`` dict for in-suite UI tests, or ``None``.
+
+    Routes the UI-test browsers through the same proxy as the API clients and
+    the auth-mint browser, so a ``[proxy]``/``--proxy`` config (or the ambient
+    proxy env) applies uniformly to Playwright too -- Chromium's own env-proxy
+    detection is platform-dependent, so we set it explicitly.
+
+    Resolved against the URL these browsers actually drive, because Playwright
+    takes a single proxy server per context and the http and https proxies can
+    differ: picking the https one for an http:// Workbench would put the browser
+    on a different gateway than every httpx call to the same host. Workbench is
+    preferred as the target since it owns the bulk of the UI tests; NO_PROXY
+    hosts are still handled per-request through the ``bypass`` list.
+
+    The target goes through ``resolve_url_scheme`` first. This fixture is
+    session-scoped and depends only on ``vip_config``, so nothing orders it after
+    the client fixtures that resolve those URLs -- reading a scheme-less
+    ``--workbench-url`` raw would pick the proxy for the *inferred* ``https://``
+    and then leave the browser on that gateway after the URL downgraded to
+    ``http://``, which is the split this helper exists to prevent. The call is
+    memoized and idempotent, so doing it here costs nothing.
+
+    ``None`` (no proxy applies) leaves the browser args untouched, so the default
+    stays exactly as pytest-playwright had it.
+    """
+    from vip.proxy import build_proxy_map, playwright_proxy
+
+    for pc in (vip_config.workbench, vip_config.connect, vip_config.package_manager):
+        if not pc.url:
+            continue
+        target = resolve_url_scheme(
+            pc,
+            insecure=vip_config.insecure,
+            ca_bundle=vip_config.ca_bundle,
+            proxy=vip_config.proxy,
+        )
+        return playwright_proxy(build_proxy_map(vip_config.proxy), target or None)
+    return playwright_proxy(build_proxy_map(vip_config.proxy))
+
+
+def _ui_browser_launch_args(vip_config: VIPConfig) -> list[str]:
+    """Extra Chromium switches for the in-suite UI browsers.
+
+    ``--no-proxy-server`` when the user explicitly disabled proxying: a context
+    with no ``proxy`` key leaves Chromium free to pick up the ambient proxy
+    environment or system settings, which would proxy the browser while every
+    httpx call goes direct. See :func:`vip.proxy.chromium_launch_args`.
+    """
+    from vip.proxy import chromium_launch_args
+
+    return chromium_launch_args(vip_config.proxy)
+
+
+@pytest.fixture(scope="session")
+def browser_type_launch_args(browser_type_launch_args, vip_config: VIPConfig):
+    """Apply the resolved proxy to the UI-test browsers at launch.
+
+    Overrides the pytest-playwright fixture of the same name; the parameter name
+    *must* match to receive the base fixture value.
+
+    Both the proxy and ``--no-proxy-server`` are set here so the in-suite
+    browsers and the auth browsers in ``vip.auth`` configure the same thing the
+    same way -- ``_launch_chromium`` passes both at launch, and having one entry
+    point do it per-context invited the two to drift. ``--no-proxy-server`` has
+    to be launch-level regardless (it is a browser switch, not a context
+    option), and the two are mutually exclusive: ``chromium_launch_args``
+    returns nothing whenever a proxy is configured.
+    """
+    extra = _ui_browser_launch_args(vip_config)
+    if extra:
+        browser_type_launch_args["args"] = [
+            *browser_type_launch_args.get("args", []),
+            *extra,
+        ]
+    pw_proxy = _ui_browser_proxy(vip_config)
+    if pw_proxy is not None:
+        browser_type_launch_args["proxy"] = pw_proxy
+    return browser_type_launch_args
+
+
 @pytest.fixture(scope="session")
 def browser_context_args(
     browser_context_args, request: pytest.FixtureRequest, vip_config: VIPConfig
@@ -224,6 +326,7 @@ def browser_context_args(
         browser_context_args["storage_state"] = str(session.storage_state_path)
     if vip_config.insecure:
         browser_context_args["ignore_https_errors"] = True
+    # The proxy is applied at launch (see browser_type_launch_args), not here.
     if vip_config.ca_bundle is not None:
         import os
 

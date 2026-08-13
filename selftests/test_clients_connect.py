@@ -267,6 +267,7 @@ def test_connect_client_verify_false_when_insecure(monkeypatch):
 
     assert captured, "httpx.get was not called"
     assert captured[0].get("verify") is False
+    assert captured[0].get("trust_env") is False
 
 
 def test_connect_client_verify_ca_bundle(monkeypatch, tmp_path):
@@ -290,10 +291,15 @@ def test_connect_client_verify_ca_bundle(monkeypatch, tmp_path):
 
     assert captured, "httpx.get was not called"
     assert captured[0].get("verify") == str(bundle)
+    assert captured[0].get("trust_env") is False
 
 
 def test_connect_client_verify_true_by_default(monkeypatch):
-    """ConnectClient without TLS flags passes verify=True to httpx.get."""
+    """ConnectClient without TLS flags: fetch_content pins trust_env=False (so the
+    resolved proxy is authoritative) but passes an env-CA-aware SSLContext as
+    verify, so SSL_CERT_FILE/SSL_CERT_DIR are still honored rather than dropped."""
+    import ssl
+
     base_url = "https://connect.example.com"
     initial_url = f"{base_url}/content/abc/"
     captured: list[dict] = []
@@ -308,4 +314,7 @@ def test_connect_client_verify_true_by_default(monkeypatch):
     client.fetch_content(initial_url)
 
     assert captured, "httpx.get was not called"
-    assert captured[0].get("verify") is True
+    # verify is no longer the bare True — it is an SSLContext that folds in the
+    # environment's CA overrides (so trust_env=False does not lose them).
+    assert isinstance(captured[0].get("verify"), ssl.SSLContext)
+    assert captured[0].get("trust_env") is False

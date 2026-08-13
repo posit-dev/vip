@@ -297,7 +297,12 @@ class TestInteractiveAuthSessionCleanup:
             session.cleanup()
 
         deleter.assert_called_once_with(
-            "https://c.example.com", "LIVE", "_vip_interactive_1", insecure=False, ca_bundle=None
+            "https://c.example.com",
+            "LIVE",
+            "_vip_interactive_1",
+            insecure=False,
+            ca_bundle=None,
+            proxy=None,
         )
 
     def test_deletes_when_cache_state_file_is_missing(self, tmp_path):
@@ -331,7 +336,12 @@ class TestInteractiveAuthSessionCleanup:
             session.cleanup()
 
         deleter.assert_called_once_with(
-            "https://c.example.com", "LIVE", "_vip_interactive_1", insecure=False, ca_bundle=None
+            "https://c.example.com",
+            "LIVE",
+            "_vip_interactive_1",
+            insecure=False,
+            ca_bundle=None,
+            proxy=None,
         )
 
     def test_deletes_when_cache_state_file_is_malformed(self, tmp_path):
@@ -361,7 +371,12 @@ class TestInteractiveAuthSessionCleanup:
             session.cleanup()
 
         deleter.assert_called_once_with(
-            "https://c.example.com", "LIVE", "_vip_interactive_1", insecure=False, ca_bundle=None
+            "https://c.example.com",
+            "LIVE",
+            "_vip_interactive_1",
+            insecure=False,
+            ca_bundle=None,
+            proxy=None,
         )
 
     def test_deletes_when_cache_references_a_different_key(self, tmp_path):
@@ -373,7 +388,12 @@ class TestInteractiveAuthSessionCleanup:
             session.cleanup()
 
         deleter.assert_called_once_with(
-            "https://c.example.com", "MINE", "_vip_interactive_1", insecure=False, ca_bundle=None
+            "https://c.example.com",
+            "MINE",
+            "_vip_interactive_1",
+            insecure=False,
+            ca_bundle=None,
+            proxy=None,
         )
 
     def test_deletes_when_session_has_no_cache_path(self, tmp_path):
@@ -394,7 +414,12 @@ class TestInteractiveAuthSessionCleanup:
             session.cleanup()
 
         deleter.assert_called_once_with(
-            "https://c.example.com", "LIVE", "_vip_interactive_1", insecure=False, ca_bundle=None
+            "https://c.example.com",
+            "LIVE",
+            "_vip_interactive_1",
+            insecure=False,
+            ca_bundle=None,
+            proxy=None,
         )
 
 
@@ -539,7 +564,7 @@ class TestStartInteractiveAuthSchemeResolutionWiring:
         called_pc = resolve.call_args.args[0]
         assert called_pc.url == "https://connect.example.com"
         assert called_pc.url_scheme_inferred is True
-        assert resolve.call_args.kwargs == {"insecure": False, "ca_bundle": None}
+        assert resolve.call_args.kwargs == {"insecure": False, "ca_bundle": None, "proxy": None}
         assert session._connect_url == "http://connect.example.com"
         # The mint client must have been called with the resolved URL, not
         # the original https:// one.
@@ -628,7 +653,7 @@ class TestStartHeadlessAuthSchemeResolutionWiring:
         called_pc = resolve.call_args.args[0]
         assert called_pc.url == "https://connect.example.com"
         assert called_pc.url_scheme_inferred is True
-        assert resolve.call_args.kwargs == {"insecure": False, "ca_bundle": None}
+        assert resolve.call_args.kwargs == {"insecure": False, "ca_bundle": None, "proxy": None}
         assert session._connect_url == "http://connect.example.com"
         assert mint.call_args.args[1] == "http://connect.example.com"
 
@@ -2754,7 +2779,7 @@ class TestLoadCachedAuthProbesWorkbench:
         cache = self._write_cache(tmp_path, workbench_url="https://w.example.com")
         seen = {}
 
-        def record(url, cookies, *, insecure=False, ca_bundle=None, transport=None):
+        def record(url, cookies, *, insecure=False, ca_bundle=None, transport=None, proxy=None):
             seen["insecure"] = insecure
             seen["ca_bundle"] = ca_bundle
             return auth_mod._ProbeResult(True)

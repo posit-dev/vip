@@ -816,3 +816,72 @@ class TestVIPConfigVerify:
         bundle.write_text("fake-pem")
         cfg = VIPConfig(insecure=True, ca_bundle=bundle)
         assert cfg.verify is False
+
+
+class TestLoadConfigProxy:
+    """The [proxy] section maps to VIPConfig.proxy (a ProxyConfig)."""
+
+    def test_proxy_defaults_when_section_missing(self, tmp_toml):
+        path = tmp_toml('[general]\ndeployment_name = "Test"\n')
+        cfg = load_config(path)
+        assert cfg.proxy.url == ""
+        assert cfg.proxy.no_proxy == []
+        assert cfg.proxy.enabled is True
+        assert cfg.proxy.trust_env is True
+
+    def test_proxy_url_from_toml(self, tmp_toml):
+        path = tmp_toml('[proxy]\nurl = "http://proxy.corp:8080"\n')
+        cfg = load_config(path)
+        assert cfg.proxy.url == "http://proxy.corp:8080"
+
+    def test_no_proxy_list_from_toml(self, tmp_toml):
+        path = tmp_toml('[proxy]\nurl = "http://p:8080"\nno_proxy = ["localhost", ".internal"]\n')
+        cfg = load_config(path)
+        assert cfg.proxy.no_proxy == ["localhost", ".internal"]
+
+    def test_no_proxy_comma_string_from_toml(self, tmp_toml):
+        path = tmp_toml('[proxy]\nurl = "http://p:8080"\nno_proxy = "localhost, .internal"\n')
+        cfg = load_config(path)
+        assert cfg.proxy.no_proxy == ["localhost", ".internal"]
+
+    def test_enabled_false_from_toml(self, tmp_toml):
+        path = tmp_toml("[proxy]\nenabled = false\n")
+        cfg = load_config(path)
+        assert cfg.proxy.enabled is False
+
+    def test_trust_env_false_from_toml(self, tmp_toml):
+        path = tmp_toml("[proxy]\ntrust_env = false\n")
+        cfg = load_config(path)
+        assert cfg.proxy.trust_env is False
+
+    def test_quoted_enabled_is_rejected(self, tmp_toml):
+        """A quoted "false" is a truthy string, not a boolean — must fail loud,
+        not silently turn proxying on (the dangerous direction for this toggle)."""
+        path = tmp_toml('[proxy]\nenabled = "false"\n')
+        with pytest.raises(ValueError, match="enabled must be a boolean"):
+            load_config(path)
+
+
+def test_proxy_no_proxy_rejects_non_list_non_string():
+    """A malformed ``no_proxy`` must fail loud, not silently drop every bypass.
+
+    ``no_proxy = true`` (or a number, or a table) is the same class of config typo
+    ``_as_bool`` rejects twenty lines away, and it fails in the same direction:
+    the bypass list vanishes and traffic the operator meant to keep off the proxy
+    is tunnelled through it, with no error.
+    """
+    import pytest
+
+    from vip.proxy import ProxyConfig
+
+    for bad in (True, 10, {"hosts": ["localhost"]}):
+        with pytest.raises(ValueError, match=r"\[proxy\] no_proxy"):
+            ProxyConfig.from_dict({"no_proxy": bad})
+
+
+def test_proxy_no_proxy_accepts_list_and_comma_string():
+    from vip.proxy import ProxyConfig
+
+    assert ProxyConfig.from_dict({"no_proxy": ["a", "b"]}).no_proxy == ["a", "b"]
+    assert ProxyConfig.from_dict({"no_proxy": "a, b"}).no_proxy == ["a", "b"]
+    assert ProxyConfig.from_dict({}).no_proxy == []

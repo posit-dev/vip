@@ -38,6 +38,8 @@ def _make_args(**overrides) -> argparse.Namespace:
         "basic": False,
         "insecure": False,
         "ca_bundle": None,
+        "proxy": None,
+        "no_proxy": None,
         "format": "json",
         "ci": False,
     }
@@ -1372,3 +1374,68 @@ class TestFormatFlag:
                 )
             )
         assert exc_info.value.code == 1
+
+
+class TestVerifyProxyFlagWithConfig:
+    """--proxy/--no-proxy have no consumer on a config-file run (they only feed the
+    generated temp config), so run_verify must warn rather than silently drop them."""
+
+    def _write_config(self, tmp_path) -> str:
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text('[connect]\nurl = "https://connect.example.com"\n')
+        return str(cfg)
+
+    def test_proxy_flag_with_config_warns(self, tmp_path, capsys):
+        cfg = self._write_config(tmp_path)
+        _capture_call(_make_args(config=cfg, proxy="http://corp:8080"))
+        err = capsys.readouterr().err
+        assert "--proxy/--no-proxy are ignored when a config file is used" in err
+
+    def test_no_proxy_flag_with_config_warns(self, tmp_path, capsys):
+        cfg = self._write_config(tmp_path)
+        _capture_call(_make_args(config=cfg, no_proxy="localhost"))
+        err = capsys.readouterr().err
+        assert "ignored when a config file is used" in err
+
+    def test_no_warning_without_proxy_flags(self, tmp_path, capsys):
+        cfg = self._write_config(tmp_path)
+        _capture_call(_make_args(config=cfg))
+        err = capsys.readouterr().err
+        assert "ignored when a config file is used" not in err
+
+    def test_proxy_flag_with_implicit_vip_toml_warns(self, tmp_path, monkeypatch, capsys):
+        """The default-config path (a ./vip.toml, no --config, no URL flags) is the
+        documented normal setup and drops --proxy just as silently as --config does.
+
+        ``config_path`` is still None when the warning branch is evaluated, so a
+        condition keyed on ``config_path`` never fires here -- the flag has to be
+        detected by "no temp config was generated" instead.
+        """
+        self._write_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        _capture_call(_make_args(proxy="http://corp:8080"))
+        err = capsys.readouterr().err
+        assert "ignored when a config file is used" in err
+
+    def test_no_proxy_flag_with_implicit_vip_toml_warns(self, tmp_path, monkeypatch, capsys):
+        self._write_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        _capture_call(_make_args(no_proxy="localhost"))
+        err = capsys.readouterr().err
+        assert "ignored when a config file is used" in err
+
+    def test_no_warning_with_implicit_vip_toml_and_no_flags(self, tmp_path, monkeypatch, capsys):
+        self._write_config(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        _capture_call(_make_args())
+        err = capsys.readouterr().err
+        assert "ignored when a config file is used" not in err
+
+    def test_no_warning_when_flags_reach_the_generated_config(self, capsys):
+        """--proxy with a URL flag DOES take effect (it feeds _generate_temp_config),
+        so warning there would be wrong."""
+        _capture_call(
+            _make_args(connect_url="https://connect.example.com", proxy="http://corp:8080")
+        )
+        err = capsys.readouterr().err
+        assert "ignored when a config file is used" not in err
