@@ -3,6 +3,13 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.8.1 (2026-08-13)
+
+### Features
+
+- Route all HTTP egress through HTTP(S)_PROXY consistently ([#583](https://github.com/posit-dev/vip/pull/583), [`cf54f41`](https://github.com/posit-dev/vip/commit/cf54f419a9ca7583424645d729a5e35f757e1409))
+
+
 ## v2026.8.0 (2026-08-07)
 
 ### Bug Fixes
