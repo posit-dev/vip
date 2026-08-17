@@ -79,15 +79,15 @@ _MISSING_DEPS_HINT = (
 )
 
 # Substring of Playwright's own error when a headed browser is launched with
-# no display (e.g. --interactive-auth run directly on a headless Connect/
-# Workbench/Package Manager server over SSH). See
+# no display (e.g. --interactive-auth run directly, over SSH, on a headless
+# Connect, Workbench, or Package Manager server). See
 # https://github.com/posit-dev/vip/issues/588.
 _NO_DISPLAY_SIGNALS = ("headed browser without having a xserver running",)
 
 _NO_DISPLAY_HINT = (
     "--interactive-auth opens a visible browser window, so it needs a display "
-    "and must run from your own workstation or CI runner -- not the headless "
-    "Connect/Workbench/Package Manager server. From a headless host, use "
+    "and must run from your own workstation or CI runner -- not a headless "
+    "Connect, Workbench, or Package Manager server. From a headless host, use "
     "--headless-auth (or --api-auth) instead."
 )
 

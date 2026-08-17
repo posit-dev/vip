@@ -47,12 +47,12 @@ vip install</code></pre>
           </p>
           <p>
             <strong>Run VIP from your own workstation or a CI runner, not the
-            Connect/Workbench/Package Manager server itself.</strong> VIP
-            checks the deployment the way a real client would — over the
+            Connect, Workbench, or Package Manager servers themselves.</strong>
+            VIP checks the deployment the way a real client would — over the
             same URL, proxy, and TLS termination your users go through —
             and <code>--interactive-auth</code> opens a visible browser
-            window, which needs a display that a product server typically
-            doesn't have. If you must run VIP directly on a headless server,
+            window, which needs a display those servers typically don't
+            have. If you must run VIP directly on a headless server,
             use <code>--headless-auth</code> or <code>--api-auth</code>
             instead (see <a href="#authentication">Authentication</a> below).
           </p>
@@ -114,7 +114,7 @@ vip verify --connect-url https://connect.example.com --api-auth</code></pre>
             password). After login, VIP mints a temporary API key, saves the
             session, and runs all tests headlessly. No credentials need to be
             configured in advance. Because it opens a visible browser window,
-            run it from a machine with a display — your workstation, not the
+            run it from a machine with a display — your workstation, not a
             headless product server — or VIP raises an error telling you to
             use <code>--headless-auth</code> instead.
           </p>
