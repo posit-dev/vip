@@ -252,9 +252,14 @@ def session_becomes_active(page: Page, session_context: dict):
 
 @when("the RStudio IDE is displayed and functional")
 def rstudio_functional(page: Page):
-    """Verify RStudio IDE core elements are visible."""
-    expect(page.locator(RStudioSession.LOGO)).to_be_visible(timeout=TIMEOUT_CLEANUP)
-    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_DIALOG)
+    """Verify RStudio IDE core elements are visible.
+
+    ``CONTAINER`` is the readiness gate rather than ``LOGO``: when the
+    deployed R is newer than the maximum R version RStudio was tested
+    against, RStudio renders a version-mismatch warning and the logo never
+    becomes visible, even though the session is healthy (#464).
+    """
+    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_CLEANUP)
     expect(page.locator(RStudioSession.PROJECT_MENU)).to_be_visible(timeout=TIMEOUT_DIALOG)
 
 

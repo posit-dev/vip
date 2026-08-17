@@ -167,8 +167,11 @@ def verify_connectivity(
     _start_session(page, session_name)
     _wait_for_active_and_join(page, session_name)
 
-    expect(page.locator(RStudioSession.LOGO)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_DIALOG)
+    # ``CONTAINER`` is the readiness gate rather than ``LOGO``: when the deployed R
+    # is newer than the maximum R version RStudio was tested against, RStudio
+    # renders a version-mismatch warning and the logo never becomes visible, even
+    # though the session is healthy (#464).
+    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
 
     results = []
     for ds in data_sources:

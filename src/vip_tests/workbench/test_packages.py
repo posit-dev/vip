@@ -139,9 +139,12 @@ def check_r_repos(page: Page, workbench_url: str):
     _start_session(page, session_name)
     _wait_for_active_and_join(page, session_name)
 
-    # Wait for RStudio to be fully loaded before interacting with the console
-    expect(page.locator(RStudioSession.LOGO)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_DIALOG)
+    # Wait for RStudio to be fully loaded before interacting with the console.
+    # ``CONTAINER`` is the readiness gate rather than ``LOGO``: when the deployed R
+    # is newer than the maximum R version RStudio was tested against, RStudio
+    # renders a version-mismatch warning and the logo never becomes visible, even
+    # though the session is healthy (#464).
+    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
 
     output = _execute_r_command(page, "getOption('repos')")
 
