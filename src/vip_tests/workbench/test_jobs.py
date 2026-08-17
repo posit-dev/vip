@@ -191,9 +191,12 @@ def join_rstudio_session(page: Page, job_context: dict):
 
 @when("the RStudio IDE loads successfully")
 def rstudio_ide_loaded(page: Page):
-    """Verify the RStudio IDE core elements are visible."""
-    expect(page.locator(RStudioSession.LOGO)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
-    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_DIALOG)
+    """Verify the RStudio IDE core elements are visible.
+
+    Gates on ``CONTAINER`` rather than ``LOGO`` — see #464, where a newer
+    deployed R than RStudio's max-tested version suppresses the logo.
+    """
+    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_IDE_LOAD)
     # Wait for the console to become ready before interacting.
     expect(page.locator(ConsolePaneSelectors.INPUT)).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
 

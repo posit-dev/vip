@@ -341,7 +341,7 @@ def _launch_and_join(page: Page, ide_name: str, git_session_ctx: dict) -> None:
 def launch_rstudio(page: Page, git_session_ctx: dict):
     _launch_and_join(page, "RStudio", git_session_ctx)
     try:
-        page.locator(RStudioSession.LOGO).wait_for(state="visible", timeout=_TIMEOUT_IDE_READY)
+        page.locator(RStudioSession.CONTAINER).wait_for(state="visible", timeout=_TIMEOUT_IDE_READY)
     except PlaywrightTimeoutError:
         pytest.skip(
             "RStudio did not load within timeout — "
