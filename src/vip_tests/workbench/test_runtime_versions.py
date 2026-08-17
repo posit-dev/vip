@@ -35,7 +35,7 @@ _FILENAME = Path(__file__).name
 
 @scenario(
     "test_runtime_versions.feature",
-    "Launched RStudio session uses expected R version",
+    "Launched RStudio session reports an expected R version",
 )
 def test_r_version_in_session():
     pass
@@ -175,10 +175,10 @@ def session_context(page: Page, workbench_url: str):
 
 
 @when(
-    "the user starts a new RStudio session with the first expected R version",
+    "the user starts a new RStudio session",
     target_fixture="session_context",
 )
-def start_rstudio_with_r_version(
+def start_rstudio_session(
     page: Page,
     session_context: dict,
     workbench_url: str,
