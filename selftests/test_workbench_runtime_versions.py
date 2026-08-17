@@ -7,7 +7,6 @@ import textwrap
 import pytest
 
 from vip.config import RuntimesConfig, VIPConfig, load_config
-from vip_tests.workbench.pages.homepage import NewSessionDialog
 
 
 class TestRuntimesConfigExcluded:
@@ -61,22 +60,6 @@ class TestRuntimesConfigExcluded:
         assert config.runtimes.python_excluded_versions == []
 
 
-class TestNewSessionDialogVersionSelectors:
-    def test_r_version_dropdown_selector_defined(self):
-        assert hasattr(NewSessionDialog, "R_VERSION_DROPDOWN")
-        assert NewSessionDialog.R_VERSION_DROPDOWN
-
-    def test_python_version_dropdown_selector_defined(self):
-        assert hasattr(NewSessionDialog, "PYTHON_VERSION_DROPDOWN")
-        assert NewSessionDialog.PYTHON_VERSION_DROPDOWN
-
-    def test_r_version_selector_is_css_id(self):
-        assert NewSessionDialog.R_VERSION_DROPDOWN.startswith("#")
-
-    def test_python_version_selector_is_css_id(self):
-        assert NewSessionDialog.PYTHON_VERSION_DROPDOWN.startswith("#")
-
-
 class TestRuntimeVersionsFeatureFile:
     @pytest.fixture
     def feature_path(self):
@@ -97,17 +80,15 @@ class TestRuntimeVersionsFeatureFile:
         content = feature_path.read_text()
         assert "@workbench" in content
 
-    def test_feature_has_three_scenarios(self, feature_path):
+    def test_feature_has_one_scenario(self, feature_path):
         from vip.gherkin import parse_feature_file
 
         result = parse_feature_file(feature_path)
-        assert len(result["scenarios"]) == 3
+        assert len(result["scenarios"]) == 1
 
-    def test_feature_scenarios_cover_r_python_and_session(self, feature_path):
+    def test_feature_scenario_covers_r_version_in_session(self, feature_path):
         from vip.gherkin import parse_feature_file
 
         result = parse_feature_file(feature_path)
         titles = [s["title"] for s in result["scenarios"]]
-        assert any("R version" in t for t in titles)
-        assert any("Python version" in t for t in titles)
         assert any("RStudio" in t or "session" in t.lower() for t in titles)

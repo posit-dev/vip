@@ -343,8 +343,9 @@ jobs:
             #                        is anonymous read-only (git_test.auth_method=none)
             #   test_session_capacity 1/1
             #   test_jobs            1/2 — no Background Jobs tab in the container
-            #   test_runtime_versions 3/3 expected — [runtimes] is now populated
-            #                        from the container by the config step (#550)
+            #   test_runtime_versions 1/1 — file now holds a single scenario,
+            #                        the in-session R version check; needs
+            #                        [runtimes] populated to run (#516)
             #   test_packages        moved here from the gate (#551): it needs the
             #                        [package_manager] URL, which is full-tier
             #                        only, and on the gate it spent 29s launching

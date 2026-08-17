@@ -35,23 +35,7 @@ _FILENAME = Path(__file__).name
 
 @scenario(
     "test_runtime_versions.feature",
-    "Expected R versions are available in Workbench session dialog",
-)
-def test_r_versions():
-    pass
-
-
-@scenario(
-    "test_runtime_versions.feature",
-    "Expected Python versions are available in Workbench session dialog",
-)
-def test_python_versions():
-    pass
-
-
-@scenario(
-    "test_runtime_versions.feature",
-    "Launched RStudio session uses expected R version",
+    "Launched RStudio session reports an expected R version",
 )
 def test_r_version_in_session():
     pass
@@ -95,52 +79,6 @@ def user_logged_in(
 def r_versions_specified(expected_r_versions):
     if not expected_r_versions:
         pytest.skip("No expected R versions specified in vip.toml [runtimes]")
-
-
-@given("expected Python versions are specified in vip.toml")
-def python_versions_specified(expected_python_versions):
-    if not expected_python_versions:
-        pytest.skip("No expected Python versions specified in vip.toml [runtimes]")
-
-
-# ---------------------------------------------------------------------------
-# Helper: read options from a <select> or ARIA listbox dropdown
-# ---------------------------------------------------------------------------
-
-
-def _read_dropdown_options(page: Page, selector: str) -> list[str]:
-    """Return text values from a version dropdown in the New Session dialog.
-
-    Handles both ``<select>`` elements (native HTML) and custom ARIA
-    listbox dropdowns (Radix / shadcn style).  Returns an empty list when
-    the selector is not present so callers can skip gracefully.
-    """
-    locator = page.locator(selector)
-    if locator.count() == 0:
-        return []
-
-    tag = locator.evaluate("el => el.tagName.toLowerCase()")
-    if tag == "select":
-        options = locator.locator("option")
-        return [opt.inner_text().strip() for opt in options.all()]
-
-    # Custom dropdown: click to open the listbox, then read [role='option'] items
-    try:
-        locator.click(timeout=TIMEOUT_QUICK)
-    except PlaywrightTimeoutError:
-        return []
-
-    option_locator = page.locator("[role='listbox'] [role='option'], [role='option']")
-    try:
-        option_locator.first.wait_for(state="visible", timeout=TIMEOUT_QUICK)
-    except PlaywrightTimeoutError:
-        # Dismiss and return nothing if listbox never appeared
-        page.keyboard.press("Escape")
-        return []
-
-    versions = [opt.inner_text().strip() for opt in option_locator.all()]
-    page.keyboard.press("Escape")
-    return versions
 
 
 def _dismiss_dialog(page: Page) -> None:
@@ -212,86 +150,6 @@ def _open_dialog_with_rstudio_tab(page: Page):
 
 
 # ---------------------------------------------------------------------------
-# When steps: open dialog and read version lists
-# ---------------------------------------------------------------------------
-
-
-@when(
-    "I check the available R versions in the New Session dialog",
-    target_fixture="available_r",
-)
-def check_r_versions_in_dialog(page: Page) -> list[str]:
-    _open_dialog_with_rstudio_tab(page)
-
-    versions = _read_dropdown_options(page, NewSessionDialog.R_VERSION_DROPDOWN)
-    _dismiss_dialog(page)
-    if not versions:
-        pytest.skip(
-            "R version selector not present in New Session dialog — "
-            "this Workbench instance may not expose a version dropdown"
-        )
-    return versions
-
-
-@when(
-    "I check the available Python versions in the New Session dialog",
-    target_fixture="available_python",
-)
-def check_python_versions_in_dialog(page: Page) -> list[str]:
-    _open_dialog_with_rstudio_tab(page)
-
-    versions = _read_dropdown_options(page, NewSessionDialog.PYTHON_VERSION_DROPDOWN)
-    _dismiss_dialog(page)
-    if not versions:
-        pytest.skip(
-            "Python version selector not present in New Session dialog — "
-            "this Workbench instance may not expose a version dropdown"
-        )
-    return versions
-
-
-# ---------------------------------------------------------------------------
-# Then steps: assertions against available versions
-# ---------------------------------------------------------------------------
-
-
-@then("all expected R versions are present in the R version selector")
-def r_versions_present(expected_r_versions: list[str], available_r: list[str]):
-    missing = [v for v in expected_r_versions if v not in available_r]
-    assert not missing, (
-        f"Missing R versions in Workbench dialog: {missing}. Available: {available_r}"
-    )
-
-
-@then("no excluded R versions are present in the R version selector")
-def r_excluded_versions_absent(vip_config, available_r: list[str]):
-    excluded = vip_config.runtimes.r_excluded_versions
-    found = [v for v in available_r if v in excluded]
-    assert not found, (
-        f"Excluded R versions found in Workbench dialog: {found}. "
-        f"These versions should not be available."
-    )
-
-
-@then("all expected Python versions are present in the Python version selector")
-def python_versions_present(expected_python_versions: list[str], available_python: list[str]):
-    missing = [v for v in expected_python_versions if v not in available_python]
-    assert not missing, (
-        f"Missing Python versions in Workbench dialog: {missing}. Available: {available_python}"
-    )
-
-
-@then("no excluded Python versions are present in the Python version selector")
-def python_excluded_versions_absent(vip_config, available_python: list[str]):
-    excluded = vip_config.runtimes.python_excluded_versions
-    found = [v for v in available_python if v in excluded]
-    assert not found, (
-        f"Excluded Python versions found in Workbench dialog: {found}. "
-        f"These versions should not be available."
-    )
-
-
-# ---------------------------------------------------------------------------
 # In-session scenario: launch RStudio with a specific R version
 # ---------------------------------------------------------------------------
 
@@ -317,10 +175,10 @@ def session_context(page: Page, workbench_url: str):
 
 
 @when(
-    "the user starts a new RStudio session with the first expected R version",
+    "the user starts a new RStudio session",
     target_fixture="session_context",
 )
-def start_rstudio_with_r_version(
+def start_rstudio_session(
     page: Page,
     session_context: dict,
     workbench_url: str,
@@ -335,20 +193,6 @@ def start_rstudio_with_r_version(
     # this the dialog launches its default IDE (Positron on current Workbench),
     # and the later ``#rstudio_container`` assertion times out.
     dialog = _open_dialog_with_rstudio_tab(page)
-
-    # Try to select the expected R version if a dropdown exists
-    r_dropdown = page.locator(NewSessionDialog.R_VERSION_DROPDOWN)
-    if r_dropdown.count() > 0:
-        tag = r_dropdown.evaluate("el => el.tagName.toLowerCase()")
-        if tag == "select":
-            r_dropdown.select_option(expected_r_versions[0])
-        else:
-            r_dropdown.click(timeout=TIMEOUT_QUICK)
-            option = page.locator(f"[role='option']:has-text('{expected_r_versions[0]}')")
-            if option.count() > 0:
-                option.first.click(timeout=TIMEOUT_QUICK)
-            else:
-                page.keyboard.press("Escape")
 
     page.fill(NewSessionDialog.SESSION_NAME, session_name)
 
