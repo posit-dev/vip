@@ -46,6 +46,17 @@ vip install</code></pre>
             <code>vip uninstall</code>.
           </p>
           <p>
+            <strong>Run VIP from your own workstation or a CI runner, not the
+            Connect, Workbench, or Package Manager servers themselves.</strong>
+            VIP checks the deployment the way a real client would — over the
+            same URL, proxy, and TLS termination your users go through —
+            and <code>--interactive-auth</code> opens a visible browser
+            window, which needs a display those servers typically don't
+            have. If you must run VIP directly on a headless server,
+            use <code>--headless-auth</code> or <code>--api-auth</code>
+            instead (see <a href="#authentication">Authentication</a> below).
+          </p>
+          <p>
             <code>uv tool install posit-vip</code> resolves the newest versions
             each release allows. For a reproducible install pinned to a
             release's tested dependency set, pass that release's constraints
@@ -102,7 +113,10 @@ vip verify --connect-url https://connect.example.com --api-auth</code></pre>
             you can log in through any identity provider (Okta, SAML, OIDC,
             password). After login, VIP mints a temporary API key, saves the
             session, and runs all tests headlessly. No credentials need to be
-            configured in advance.
+            configured in advance. Because it opens a visible browser window,
+            run it from a machine with a display — your workstation, not a
+            headless product server — or VIP raises an error telling you to
+            use <code>--headless-auth</code> instead.
           </p>
           <pre><code>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre>
           <p>
@@ -119,8 +133,10 @@ vip verify --connect-url https://connect.example.com --api-auth</code></pre>
 
           <h3>Headless auth (no display)</h3>
           <p>
-            On a headless Linux server, use <code>--headless-auth</code> to
-            automate the OIDC login in a headless browser. Set
+            If you need to run VIP directly on a headless Linux server (or
+            any host without a display), use <code>--headless-auth</code> to
+            automate the OIDC login in a headless browser instead of
+            <code>--interactive-auth</code>. Set
             <code>idp</code> in your <code>vip.toml</code> to tell VIP which
             identity provider to automate. If MFA is enabled, VIP prompts for
             the verification code in the terminal.

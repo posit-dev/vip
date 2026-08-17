@@ -21,6 +21,13 @@ vip install
 vip verify --connect-url https://connect.example.com --interactive-auth
 ```
 
+Run VIP from your own workstation or a CI runner, not the Connect, Workbench,
+or Package Manager servers themselves: VIP checks the deployment the way a
+real client would (over the same URL, proxy, and TLS termination your users
+go through), and `--interactive-auth` opens a visible browser window that
+those servers typically don't have a display for. On a headless server, use
+`--headless-auth` or `--api-auth` instead (see below).
+
 ### Reproducible install
 
 `uv tool install posit-vip` resolves the newest versions each release allows. To

@@ -141,6 +141,24 @@ class TestStartHeadlessAuthPlaywrightErrors:
                     password="pass",
                 )
 
+    def test_no_display_at_interactive_launch_gives_remediation(self):
+        """A headed launch with no display (e.g. --interactive-auth run
+        directly on a headless server) must point at --headless-auth instead
+        of surfacing Playwright's raw XServer error (see issue #588)."""
+        from playwright.sync_api import Error as PlaywrightError
+
+        from vip.auth import start_interactive_auth
+
+        pw = MagicMock()
+        pw.start.return_value.chromium.launch.side_effect = PlaywrightError(
+            "Looks like you launched a headed browser without having a XServer "
+            "running.\nSet either 'headless: true' or use 'xvfb-run "
+            "<your-playwright-app>' before running Playwright."
+        )
+        with patch("vip.auth.sync_playwright", return_value=pw):
+            with pytest.raises(AuthConfigError, match="--headless-auth"):
+                start_interactive_auth(connect_url="https://c.example.com")
+
     def test_unrelated_playwright_launch_error_propagates(self):
         """Launch errors that aren't missing-deps must not be rewritten."""
         from playwright.sync_api import Error as PlaywrightError
