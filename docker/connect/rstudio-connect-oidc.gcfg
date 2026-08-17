@@ -28,4 +28,4 @@ Enabled = true
 ; "Could not locate a Python installation" on ghcr.io/posit-dev/connect.
 ; Matches the image's own default rstudio-connect.gcfg -- bump this if
 ; RSC_VERSION moves to an image with a different bundled Python version.
-Executable = /opt/python/3.14.6/bin/python
+Executable = /opt/python/3.14.7/bin/python
