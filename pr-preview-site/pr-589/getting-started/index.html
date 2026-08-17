@@ -20,12 +20,12 @@ vip install</code></pre> <p data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jf
             safely, along with other test artifacts, with
 <code data-astro-cid-mwd2jfe2>vip uninstall</code>.
 </p> <p data-astro-cid-mwd2jfe2> <strong data-astro-cid-mwd2jfe2>Run VIP from your own workstation or a CI runner, not the
-            Connect/Workbench/Package Manager server itself.</strong> VIP
-            checks the deployment the way a real client would — over the
+            Connect, Workbench, or Package Manager servers themselves.</strong>
+VIP checks the deployment the way a real client would — over the
             same URL, proxy, and TLS termination your users go through —
             and <code data-astro-cid-mwd2jfe2>--interactive-auth</code> opens a visible browser
-            window, which needs a display that a product server typically
-            doesn't have. If you must run VIP directly on a headless server,
+            window, which needs a display those servers typically don't
+            have. If you must run VIP directly on a headless server,
             use <code data-astro-cid-mwd2jfe2>--headless-auth</code> or <code data-astro-cid-mwd2jfe2>--api-auth</code>
 instead (see <a href="#authentication" data-astro-cid-mwd2jfe2>Authentication</a> below).
 </p> <p data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>uv tool install posit-vip</code> resolves the newest versions
@@ -62,7 +62,7 @@ Pass <code data-astro-cid-mwd2jfe2>--interactive-auth</code> to open a Chromium 
             password). After login, VIP mints a temporary API key, saves the
             session, and runs all tests headlessly. No credentials need to be
             configured in advance. Because it opens a visible browser window,
-            run it from a machine with a display — your workstation, not the
+            run it from a machine with a display — your workstation, not a
             headless product server — or VIP raises an error telling you to
             use <code data-astro-cid-mwd2jfe2>--headless-auth</code> instead.
 </p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com --interactive-auth</code></pre> <p data-astro-cid-mwd2jfe2>
