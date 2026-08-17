@@ -78,6 +78,19 @@ _MISSING_DEPS_HINT = (
     "    uv run vip install"
 )
 
+# Substring of Playwright's own error when a headed browser is launched with
+# no display (e.g. --interactive-auth run directly on a headless Connect/
+# Workbench/Package Manager server over SSH). See
+# https://github.com/posit-dev/vip/issues/588.
+_NO_DISPLAY_SIGNALS = ("headed browser without having a xserver running",)
+
+_NO_DISPLAY_HINT = (
+    "--interactive-auth opens a visible browser window, so it needs a display "
+    "and must run from your own workstation or CI runner -- not the headless "
+    "Connect/Workbench/Package Manager server. From a headless host, use "
+    "--headless-auth (or --api-auth) instead."
+)
+
 
 def _launch_chromium(
     pw,
@@ -86,8 +99,9 @@ def _launch_chromium(
     proxy: dict[str, str] | None = None,
     args: list[str] | None = None,
 ):
-    """Launch Chromium via Playwright, turning missing-system-deps errors
-    into a clear :class:`AuthConfigError` with a remediation command.
+    """Launch Chromium via Playwright, turning missing-system-deps and
+    no-display errors into a clear :class:`AuthConfigError` with a
+    remediation command.
 
     When *proxy* is a Playwright proxy dict (``{"server": ..., "bypass": ...}``,
     from :func:`vip.proxy.playwright_proxy`), it is passed to ``launch`` so the
@@ -114,6 +128,8 @@ def _launch_chromium(
         text = str(exc).lower()
         if any(signal in text for signal in _MISSING_DEPS_SIGNALS):
             raise AuthConfigError(_MISSING_DEPS_HINT) from exc
+        if any(signal in text for signal in _NO_DISPLAY_SIGNALS):
+            raise AuthConfigError(_NO_DISPLAY_HINT) from exc
         raise
 
 
