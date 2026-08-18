@@ -15,13 +15,14 @@ set -eu
 #   keycloak.crt/.key      -- leaf cert for keycloak.vip.test
 #   connect.crt/.key       -- leaf cert for connect.vip.test
 #   workbench.crt/.key     -- leaf cert for workbench.vip.test
+#   workbench-saml.crt/.key -- leaf cert for workbench-saml.vip.test (issue #263 SAML lane)
 #
 # Idempotent: skips generation if ca.crt already exists, so re-running
 # `docker compose up` against a warm volume doesn't rotate certs underneath
 # a running Keycloak/Connect/Workbench.
 
 OUT="${OUT:-/certs}"
-DOMAINS="keycloak connect workbench"
+DOMAINS="keycloak connect workbench workbench-saml"
 
 if [ -f "${OUT}/ca.crt" ]; then
   echo "gen-certs: ${OUT}/ca.crt already exists, skipping generation."

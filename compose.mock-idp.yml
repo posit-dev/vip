@@ -12,14 +12,25 @@
 # /etc/hosts entries pointing all three names at 127.0.0.1 (see
 # .github/workflows/mock-idp-e2e.yml and `just mock-idp-up`).
 #
+# A fourth hostname, workbench-saml.vip.test, is a second Workbench lane
+# configured for SAML instead of OIDC against the same Keycloak realm. It
+# exists to reproduce issue #263 (Workbench behind SAML on a separate
+# hostname from Connect): the OIDC lane above is green daily, which proves
+# the cross-hostname piggyback works over OIDC, so SAML is the one variable
+# it does not cover. SAML is exclusive of PAM/OIDC on a single Workbench
+# instance, so this lane is a separate service rather than a toggle on
+# `workbench`, and it sits behind the `saml` profile so the default
+# `just mock-idp-up` topology (and the OIDC lane's behavior) is unchanged.
+#
 # `cert-init` also generates a random TOTP seed for the realm's test user
 # and renders the realm import file with it (docker/keycloak/gen-totp-secret.sh)
 # rather than baking a fixed secret into the repo. Read it back with
 # `just mock-idp-totp-secret` and export it as VIP_TEST_TOTP_SECRET.
 #
 # Usage:
-#   just mock-idp-up      # generate certs + TOTP seed, start Keycloak + Connect + Workbench
-#   just mock-idp-down    # tear down and remove the generated certs/volumes
+#   just mock-idp-up        # generate certs + TOTP seed, start Keycloak + Connect + Workbench
+#   just mock-idp-saml-up   # same, plus the workbench-saml SAML lane (issue #263)
+#   just mock-idp-down      # tear down and remove the generated certs/volumes
 #
 # License keys (required, same as compose.yml):
 #   RSC_LICENSE, RSW_LICENSE
@@ -133,6 +144,40 @@ services:
       retries: 12
       start_period: 30s
 
+  # Second Workbench lane, configured for SAML instead of OIDC against the
+  # same Keycloak realm (issue #263). Behind the `saml` profile so it never
+  # starts as part of the default `just mock-idp-up` topology -- the `workbench`
+  # service above (the OIDC control) is untouched.
+  workbench-saml:
+    profiles: ["saml"]
+    build:
+      context: ./docker/workbench
+      dockerfile: Dockerfile.saml
+      args:
+        RSW_VERSION: ${RSW_VERSION:-latest}
+    depends_on:
+      cert-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+    environment:
+      RSW_LICENSE: ${RSW_LICENSE:-}
+    volumes:
+      - workbench-saml-home:/home
+      - mock-idp-certs:/certs:ro
+    ports:
+      - "127.0.0.1:8788:8787"
+    networks:
+      vip-mock-idp:
+        aliases:
+          - workbench-saml.vip.test
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:8787"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
 networks:
   vip-mock-idp:
     driver: bridge
@@ -142,3 +187,4 @@ volumes:
   mock-idp-realm-import:
   connect-oidc-data:
   workbench-oidc-home:
+  workbench-saml-home:

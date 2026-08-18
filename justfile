@@ -113,6 +113,14 @@ mock-idp-up:
 mock-idp-down:
     docker compose -f compose.mock-idp.yml down -v
 
+# Start the mock-IdP E2E stack with the SAML Workbench lane also enabled
+# (issue #263: Workbench behind SAML on a separate hostname from Connect).
+# Same requirements as `mock-idp-up`, plus add workbench-saml.vip.test to
+# /etc/hosts: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test workbench-saml.vip.test`.
+mock-idp-saml-up:
+    docker compose -f compose.mock-idp.yml --profile saml up -d --build --wait
+    @docker compose -f compose.mock-idp.yml --profile saml ps
+
 # Print the mock-IdP stack's auto-generated TOTP seed. Export it before
 # running `vip verify --headless-auth` locally:
 #   export VIP_TEST_TOTP_SECRET=$(just mock-idp-totp-secret)
