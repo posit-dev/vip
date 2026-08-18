@@ -281,19 +281,22 @@ def pytest_configure(config: pytest.Config) -> None:
                 stacklevel=1,
             )
         else:
-            from vip.auth import auth_cache_path, start_interactive_auth
+            from vip.auth import AuthConfigError, auth_cache_path, start_interactive_auth
 
             cache_path = auth_cache_path()
-            session = start_interactive_auth(
-                connect_url=connect_url,
-                workbench_url=wb_url,
-                cache_path=cache_path,
-                insecure=vip_cfg.insecure,
-                ca_bundle=vip_cfg.ca_bundle,
-                connect_url_scheme_inferred=vip_cfg.connect.url_scheme_inferred,
-                workbench_url_scheme_inferred=vip_cfg.workbench.url_scheme_inferred,
-                proxy=vip_cfg.proxy,
-            )
+            try:
+                session = start_interactive_auth(
+                    connect_url=connect_url,
+                    workbench_url=wb_url,
+                    cache_path=cache_path,
+                    insecure=vip_cfg.insecure,
+                    ca_bundle=vip_cfg.ca_bundle,
+                    connect_url_scheme_inferred=vip_cfg.connect.url_scheme_inferred,
+                    workbench_url_scheme_inferred=vip_cfg.workbench.url_scheme_inferred,
+                    proxy=vip_cfg.proxy,
+                )
+            except AuthConfigError as exc:
+                raise pytest.UsageError(str(exc)) from None
             config.stash[_auth_session_key] = session
             if session.api_key:
                 vip_cfg.connect.api_key = session.api_key

@@ -54,8 +54,27 @@ class AuthConfigError(ValueError):
     """Raised for user-facing authentication configuration errors."""
 
 
+class AuthTimeoutError(AuthConfigError):
+    """Raised when a login round-trip does not complete before its deadline.
+
+    A subclass of :class:`AuthConfigError` so ``plugin.py``'s existing
+    ``except AuthConfigError`` handler (which converts it to a clean
+    ``pytest.UsageError`` rather than an ``INTERNALERROR`` traceback) picks
+    this up too, with no change to that handler required. See #263.
+    """
+
+
 # Prefix for VIP-managed API keys.  A timestamp is appended per run.
 _KEY_NAME_PREFIX = "_vip_interactive_"
+
+# Single timeout for an IdP login round-trip (browser leaves the product,
+# authenticates at the IdP, and lands back). Used by the interactive poll
+# loop, the headless _wait_for_product_redirect poll, and (for consistency)
+# _authenticate_workbench's post-Connect SSO wait. Workbench previously used
+# its own, shorter 2-minute timeout, which made it time out -- and skip
+# Workbench tests -- well before the primary round-trip's window closed.
+# See #596.
+_IDP_ROUNDTRIP_TIMEOUT_SECONDS = 300
 
 # Orphan keys younger than this are left alone so a concurrent ``vip verify``
 # run does not have its freshly-minted key yanked out from under it.  Cleanup
@@ -845,7 +864,7 @@ def start_interactive_auth(
 
         # Poll until login completes
         base = primary_url.rstrip("/")
-        deadline = time.monotonic() + scaled(300)
+        deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
         login_completed = False
 
         # Login detection: for Connect check we left /__login__,
@@ -873,9 +892,12 @@ def start_interactive_auth(
                 break
 
         if not login_completed:
-            raise RuntimeError(
-                "Login did not complete within 5 minutes. "
-                "Please rerun and complete authentication in the browser window."
+            state = _describe_final_page_state(page, primary_url)
+            raise AuthTimeoutError(
+                "Login did not complete within "
+                f"{_timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))}. "
+                "Please rerun and complete authentication in the browser window. "
+                f"Browser {state}."
             )
 
         # Mint Connect API key only if Connect is configured.  Keep the
@@ -1098,7 +1120,7 @@ def start_headless_auth(
                 _fill_product_login(page, username, password)
 
             # Wait for redirect back to the product.
-            _wait_for_product_redirect(page, primary_url)
+            _wait_for_product_redirect(page, primary_url, provider=provider)
         except PlaywrightTimeoutError as exc:
             raise AuthConfigError(
                 "Headless auth timed out during login. "
@@ -1237,10 +1259,16 @@ def _fill_product_login(page: Page, username: str, password: str) -> None:
     _log_verbose(">>> Product login form submitted.")
 
 
-def _wait_for_product_redirect(page: Page, product_url: str) -> None:
-    """Wait until the browser has returned to the product after IdP auth."""
+def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = "") -> None:
+    """Wait until the browser has returned to the product after IdP auth.
+
+    *provider* names the configured auth provider (``"oidc"``, ``"saml"``,
+    ``"oauth2"``) so a timeout error names the protocol that actually ran
+    instead of assuming OIDC (see #263). Leave it as "" when unknown here;
+    the message falls back to neutral wording.
+    """
     base = product_url.rstrip("/").lower()
-    deadline = time.monotonic() + scaled(300)  # 5-minute timeout
+    deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
     clicked_oidc_confirm = False
 
     while time.monotonic() < deadline:
@@ -1262,9 +1290,13 @@ def _wait_for_product_redirect(page: Page, product_url: str) -> None:
         except Exception:
             break
 
-    raise RuntimeError(
-        "OIDC login did not complete within 5 minutes. "
-        "Check credentials, IdP configuration, and MFA setup."
+    label = _protocol_label(provider)
+    verb = f"{label} login" if label else "Login"
+    state = _describe_final_page_state(page, product_url)
+    raise AuthTimeoutError(
+        f"{verb} did not complete within "
+        f"{_timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))}. "
+        f"Check credentials, IdP configuration, and MFA setup. Browser {state}."
     )
 
 
@@ -1367,7 +1399,9 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
     print(">>> Waiting for Workbench SSO redirect chain ...")
     print(">>> If prompted, please complete authentication in the browser.\n")
 
-    deadline = time.monotonic() + scaled(120)  # 2-minute timeout
+    # Share the single round-trip timeout (see _IDP_ROUNDTRIP_TIMEOUT_SECONDS)
+    # rather than this function's own, shorter one.
+    deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
     last_url = url
     while time.monotonic() < deadline:
         try:
@@ -1386,13 +1420,18 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
         except Exception:
             break
 
+    timeout_label = _timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))
+    try:
+        last_title = page.title()
+    except Exception:
+        last_title = "<unknown>"
     print(
-        ">>> Warning: Workbench authentication did not complete within 2 minutes.\n"
+        f">>> Warning: Workbench authentication did not complete within {timeout_label}.\n"
         ">>> Workbench browser tests may skip.\n"
     )
     return (
-        "Workbench authentication did not complete within 2 minutes "
-        f"(last URL: {_strip_url_query(last_url)}). "
+        f"Workbench authentication did not complete within {timeout_label} "
+        f"(last URL: {_strip_url_query(last_url)}, page title: {last_title!r}). "
         "OIDC session may not be shared between Connect and Workbench, "
         "or the auth-sign-in page required interaction."
     )
@@ -1416,6 +1455,59 @@ def _strip_url_query(url: str) -> str:
         return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
     except Exception:
         return url
+
+
+def _describe_final_page_state(page: Page, expected_origin: str) -> str:
+    """Best-effort description of where the browser ended up, for a
+    timeout error.
+
+    Before this, a redirect timeout said only "did not complete" -- never
+    where the browser actually was, so a SAML diagnostic run couldn't tell
+    whether it never left the IdP, bounced back to the product's own
+    sign-in page, or something else entirely (see #263). Every read here is
+    guarded: the page may already be closed or crashed by the time the
+    deadline fires, and a diagnostic must never itself raise and mask the
+    original timeout.
+    """
+    try:
+        url = _strip_url_query(page.url)
+    except Exception:
+        url = "<unknown -- page may be closed or crashed>"
+    try:
+        title = page.title()
+    except Exception:
+        title = "<unknown>"
+    return f"ended up at {url!r} (title: {title!r}); expected to land on {expected_origin!r}"
+
+
+_PROVIDER_LABELS = {"oidc": "OIDC", "saml": "SAML", "oauth2": "OAuth2"}
+
+
+def _protocol_label(provider: str) -> str:
+    """Human-readable protocol name for *provider*, or "" when it isn't a
+    recognized IdP-backed provider.
+
+    A timeout error used to hardcode "OIDC" even during a SAML run (see
+    #263); callers use this to name whatever is actually configured, and
+    fall back to neutral wording ("Login", not a wrong protocol) when the
+    provider isn't one of the known IdP-backed ones.
+    """
+    return _PROVIDER_LABELS.get(provider.strip().lower(), "")
+
+
+def _timeout_label(seconds: float) -> str:
+    """Human-readable minutes for a *scaled* timeout.
+
+    The error text used to hardcode "5 minutes" / "2 minutes" while the
+    actual deadline was ``scaled(300)`` / ``scaled(120)`` -- under
+    ``VIP_TIMEOUT_SCALE=2`` VIP waited 10 minutes but claimed 5 (see #263).
+    This derives the text from the real, already-scaled value instead.
+    """
+    minutes = seconds / 60
+    if minutes == int(minutes):
+        n = int(minutes)
+        return f"{n} minute{'s' if n != 1 else ''}"
+    return f"{minutes:.1f} minutes"
 
 
 def _httpx_verify(insecure: bool, ca_bundle: Path | None) -> bool | str:

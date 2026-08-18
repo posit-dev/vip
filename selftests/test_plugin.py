@@ -1415,6 +1415,64 @@ class TestHeadlessAuthPluginWiring:
         result.stderr.fnmatch_lines(["*--headless-auth*requires*idp*keycloak*okta*"])
 
 
+class TestAuthTimeoutBecomesCleanUsageError:
+    """A login-timeout (``AuthTimeoutError``) must exit as a clean
+    ``pytest.UsageError`` for BOTH auth modes, never an INTERNALERROR
+    traceback (see #263). ``--headless-auth`` already routed its call
+    through ``except AuthConfigError`` in ``pytest_configure``;
+    ``--interactive-auth``'s call site had no try/except at all until this
+    fix, so its timeout used to crash the whole pytest session."""
+
+    _RAISE_TIMEOUT_CONFTEST = """
+        import vip.auth
+
+        def _raise_timeout(*args, **kwargs):
+            raise vip.auth.AuthTimeoutError(
+                "Login did not complete within 5 minutes. "
+                "Browser ended up at 'https://idp.example.com/login'; "
+                "expected to land on 'https://c.example.com'."
+            )
+
+        vip.auth.start_interactive_auth = _raise_timeout
+        vip.auth.start_headless_auth = _raise_timeout
+        """
+
+    def _pytester_with_timeout_conftest(self, pytester, *, provider: str = "") -> None:
+        pytester.makeconftest(self._RAISE_TIMEOUT_CONFTEST)
+        auth_section = f'\n[auth]\nprovider = "{provider}"\n' if provider else ""
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n' + auth_section
+            ),
+        )
+        pytester.makepyfile("def test_placeholder(): pass")
+
+    def test_interactive_auth_timeout_is_clean_usage_error(self, pytester):
+        """This is the path #263 was reported on: it must no longer crash."""
+        self._pytester_with_timeout_conftest(pytester)
+
+        result = pytester.runpytest("--vip-config=vip.toml", "--interactive-auth")
+
+        assert result.ret == pytest.ExitCode.USAGE_ERROR
+        result.stderr.fnmatch_lines(["*Login did not complete within 5 minutes*"])
+        full_output = "\n".join(result.outlines + result.errlines)
+        assert "INTERNALERROR" not in full_output
+
+    def test_headless_auth_timeout_is_clean_usage_error(self, pytester, monkeypatch):
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
+        self._pytester_with_timeout_conftest(pytester, provider="password")
+
+        result = pytester.runpytest("--vip-config=vip.toml", "--headless-auth")
+
+        assert result.ret == pytest.ExitCode.USAGE_ERROR
+        result.stderr.fnmatch_lines(["*Login did not complete within 5 minutes*"])
+        full_output = "\n".join(result.outlines + result.errlines)
+        assert "INTERNALERROR" not in full_output
+
+
 class TestAuthModeStash:
     """The plugin stashes the active auth mode so tests can distinguish modes."""
 
