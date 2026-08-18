@@ -56,6 +56,7 @@ dependencies = [
 report = []
 load = [
     "locust>=2.20,<3",
+    "click>=8.3.3,<9",  # PYSEC-2026-2132 fix; transitive via flask/locust
     "msgpack>=1.2.1,<2",  # GHSA-6v7p-g79w-8964 fix; transitive via locust
     "python-engineio>=4.13.2,<5",  # CVE-2026-48802, CVE-2026-48809 fix; transitive via locust
     "python-socketio>=5.16.2,<6",  # CVE-2026-48804 fix; transitive via locust
@@ -181,10 +182,10 @@ markers = [
     "min_version(product, version): only run when product meets minimum version",
     "if_applicable: test is skipped when the feature is not configured",
     "api_auth: test requires only an API key, not browser credentials",
-    "rstudio: Workbench RStudio IDE-launch scenario",
-    "vscode: Workbench VS Code IDE-launch scenario",
-    "jupyter: Workbench JupyterLab IDE-launch scenario",
-    "positron: Workbench Positron IDE-launch scenario",
+    "rstudio: Workbench RStudio IDE scenario",
+    "vscode: Workbench VS Code IDE scenario",
+    "jupyter: Workbench JupyterLab IDE scenario",
+    "positron: Workbench Positron IDE scenario",
 ]
 
 [tool.mypy]

@@ -1776,6 +1776,44 @@ class TestCreateApiKeyViaSession:
 
         assert client_cls.call_args.kwargs["follow_redirects"] is True
 
+    def test_returns_none_when_post_response_is_a_list(self):
+        """A 301/302 on the key-creation POST must degrade to None, not crash.
+
+        httpx (like browsers and curl) downgrades POST to GET when following a
+        301 or 302 -- only 307/308 preserve the method.  The downgraded GET
+        lands on the same path, which is Connect's key-*listing* route, so the
+        response body is a JSON array rather than the created-key object.
+        Calling ``.get("key")`` on that list raises ``AttributeError``, which
+        is not in the caught tuple, so it escaped and took the whole run down
+        (issue #561).  ``follow_redirects=True`` (issue #537) is what put this
+        path in reach: before it, the redirect came back as not-success and
+        the function returned None on its own.
+
+        The function is documented to return the key or None on failure, so a
+        redirect it cannot interpret must take the None path.
+        """
+        from vip.auth import _create_api_key_via_session
+
+        page = self._page()
+        me = self._httpx_response(json_data={"guid": "g"})
+        keys_list = self._httpx_response(json_data=[])
+        # What the downgraded GET actually returns: the key-listing array.
+        redirected_to_listing = self._httpx_response(
+            json_data=[{"id": "1", "name": "_vip_interactive_1"}]
+        )
+
+        def get_side_effect(path, **_kw):
+            return me if path.endswith("/v1/user") else keys_list
+
+        patcher, _cls, _client = self._patch_httpx_client(
+            get_side_effect=get_side_effect,
+            post_rv=redirected_to_listing,
+        )
+        with patcher:
+            result = _create_api_key_via_session(page, "https://c.example.com", "k")
+
+        assert result is None
+
     def test_ca_bundle_sets_verify_path(self, tmp_path):
         """When ca_bundle is set, httpx.Client must receive verify=str(ca_bundle)."""
         from vip.auth import _create_api_key_via_session

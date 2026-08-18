@@ -2123,7 +2123,26 @@ def _create_api_key_via_session(
                 )
                 return None
 
-            api_key = create_resp.json().get("key")
+            created = create_resp.json()
+            if not isinstance(created, dict):
+                # A 301/302 on the POST is followed as a GET -- httpx
+                # downgrades the method exactly as browsers and curl do, and
+                # only 307/308 preserve it.  The downgraded GET lands on the
+                # same path, which is the key-*listing* route, so a JSON array
+                # comes back instead of the created key.  Without this guard
+                # ``.get("key")`` raises ``AttributeError``, which is not in
+                # the caught tuple below and so crashes auth outright (#561).
+                print(
+                    f">>> Warning: POST /v1/users/{guid}/keys returned a "
+                    f"{type(created).__name__}, not an object. A proxy most "
+                    "likely redirected the request with 301/302, which turns "
+                    "the POST into a GET of the key-listing route. Configure "
+                    "the proxy to redirect with 307/308, or point --connect-url "
+                    "at the final URL so no redirect is needed."
+                )
+                return None
+
+            api_key = created.get("key")
             if not api_key:
                 print(">>> Warning: Connect response did not include a key string.")
                 return None
