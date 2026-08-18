@@ -19,7 +19,7 @@ set -eu
 #
 # Idempotent: skips generation if ca.crt already exists, so re-running
 # `docker compose up` against a warm volume doesn't rotate certs underneath
-# a running Keycloak/Connect/Workbench.
+# a running Keycloak/Connect/Workbench (including the optional workbench-saml lane).
 
 OUT="${OUT:-/certs}"
 DOMAINS="keycloak connect workbench workbench-saml"
