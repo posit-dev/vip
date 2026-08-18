@@ -965,6 +965,49 @@ class TestAuthenticateWorkbench:
         assert result is not None
         assert "did not complete within 10 minutes" in result
 
+    def test_saml_provider_names_saml_in_message(self, monkeypatch):
+        """Mirrors TestWaitForProductRedirectTimeout.test_saml_provider_names_saml_in_message:
+        a SAML run's Workbench timeout reason must not hardcode OIDC (see #263)."""
+        from unittest.mock import PropertyMock
+
+        from vip import auth as auth_mod
+
+        page = MagicMock()
+        page.goto.return_value = None
+        page.wait_for_load_state.return_value = None
+        type(page).url = PropertyMock(return_value="https://wb.example.com/auth-sign-in")
+
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        result = auth_mod._authenticate_workbench(page, "https://wb.example.com", provider="saml")
+
+        assert result is not None
+        assert "SAML session may not be shared" in result
+        assert "OIDC" not in result
+
+    def test_unrecognized_provider_uses_neutral_wording(self, monkeypatch):
+        """No provider (the default) must not assert a protocol the caller
+        can't confirm — same convention as _wait_for_product_redirect."""
+        from unittest.mock import PropertyMock
+
+        from vip import auth as auth_mod
+
+        page = MagicMock()
+        page.goto.return_value = None
+        page.wait_for_load_state.return_value = None
+        type(page).url = PropertyMock(return_value="https://wb.example.com/auth-sign-in")
+
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
+
+        assert result is not None
+        assert "The login session may not be shared" in result
+        assert "OIDC" not in result
+        assert "SAML" not in result
+
 
 class TestLoadCachedAuth:
     """_load_cached_auth must refuse to reuse a cache that was minted

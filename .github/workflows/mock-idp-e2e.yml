@@ -348,12 +348,41 @@ jobs:
               exec uv run vip verify \
                 --workbench-url https://workbench-saml.vip.test:8788 \
                 --ca-bundle /certs/ca.crt \
-                --headless-auth --idp keycloak \
+                --headless-auth --idp keycloak --provider saml \
                 --categories workbench \
                 --filter test_workbench_login \
                 --report out/results-saml-workbench-only.json \
                 -- --junitxml=out/mock-idp-results-saml-workbench-only.xml --vip-verbose
             ' 2>&1 | tee mock-idp-out/saml-workbench-only.log
+
+          # TEMPORARY: a genuine Workbench auth failure surfaces as
+          # pytest.skip, so `vip verify` exits 0 and this step reports a
+          # false green even though the login test we care about never ran
+          # ("1 passed, 2 skipped"). The durable fix is #596 (a real vip
+          # verify exit-code contract); until that lands, assert directly
+          # that the login test(s) for the product URL(s) passed above
+          # actually executed. Checking named tests rather than the
+          # testsuite's skipped= count matters: prerequisites/
+          # test_expected_failure always skips unless
+          # VIP_ENABLE_EXPECTED_FAILURE_DEMO is set, so a count-based guard
+          # would fail every run regardless of #263. Deliberately duplicated
+          # in both steps so the whole block lifts out cleanly once #596
+          # ships.
+          python3 - mock-idp-out/mock-idp-results-saml-workbench-only.xml test_workbench_login <<'PY'
+          import sys, xml.etree.ElementTree as ET
+
+          xml_path, *required = sys.argv[1:]
+          cases = {tc.get("name", ""): tc for tc in ET.parse(xml_path).iter("testcase")}
+          problems = []
+          for want in required:
+              matched = [n for n in cases if want in n]
+              if not matched:
+                  problems.append(f"{want}: never collected")
+              problems += [f"{n}: skipped" for n in matched if cases[n].find("skipped") is not None]
+          if problems:
+              print("::error::The SAML workbench-only run did not execute its login test(s) -- " + "; ".join(problems) + " (see #596)")
+              sys.exit(1)
+          PY
 
       - name: Run SAML diagnostic (Connect + Workbench, the #263 topology)
         if: always()
@@ -378,12 +407,41 @@ jobs:
                 --connect-url https://connect.vip.test:3939 \
                 --workbench-url https://workbench-saml.vip.test:8788 \
                 --ca-bundle /certs/ca.crt \
-                --headless-auth --idp keycloak \
+                --headless-auth --idp keycloak --provider saml \
                 --categories "connect or workbench" \
                 --filter "test_connect_login_ui or test_workbench_login" \
                 --report out/results-saml-both.json \
                 -- --junitxml=out/mock-idp-results-saml-both.xml --vip-verbose
             ' 2>&1 | tee mock-idp-out/saml-both.log
+
+          # TEMPORARY: a genuine Workbench auth failure surfaces as
+          # pytest.skip, so `vip verify` exits 0 and this step reports a
+          # false green even though the login test we care about never ran
+          # ("1 passed, 2 skipped"). The durable fix is #596 (a real vip
+          # verify exit-code contract); until that lands, assert directly
+          # that the login test(s) for the product URL(s) passed above
+          # actually executed. Checking named tests rather than the
+          # testsuite's skipped= count matters: prerequisites/
+          # test_expected_failure always skips unless
+          # VIP_ENABLE_EXPECTED_FAILURE_DEMO is set, so a count-based guard
+          # would fail every run regardless of #263. Deliberately duplicated
+          # in both steps so the whole block lifts out cleanly once #596
+          # ships.
+          python3 - mock-idp-out/mock-idp-results-saml-both.xml test_connect_login_ui test_workbench_login <<'PY'
+          import sys, xml.etree.ElementTree as ET
+
+          xml_path, *required = sys.argv[1:]
+          cases = {tc.get("name", ""): tc for tc in ET.parse(xml_path).iter("testcase")}
+          problems = []
+          for want in required:
+              matched = [n for n in cases if want in n]
+              if not matched:
+                  problems.append(f"{want}: never collected")
+              problems += [f"{n}: skipped" for n in matched if cases[n].find("skipped") is not None]
+          if problems:
+              print("::error::The SAML Connect+Workbench run did not execute its login test(s) -- " + "; ".join(problems) + " (see #596)")
+              sys.exit(1)
+          PY
 
       # Same placement rationale as the headless-auth job's identical step:
       # after both E2E attempts, not just after stack startup, so a login-flow

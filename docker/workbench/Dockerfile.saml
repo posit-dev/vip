@@ -9,7 +9,8 @@ ARG RSW_VERSION=latest
 FROM rstudio/rstudio-workbench:${RSW_VERSION}
 
 COPY entrypoint-saml.sh /usr/local/bin/entrypoint-saml.sh
-RUN chmod +x /usr/local/bin/entrypoint-saml.sh
+COPY startup.sh /usr/local/bin/startup.sh
+RUN chmod +x /usr/local/bin/entrypoint-saml.sh /usr/local/bin/startup.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint-saml.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]

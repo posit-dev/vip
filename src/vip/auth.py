@@ -1149,7 +1149,7 @@ def start_headless_auth(
         # Visit Workbench so the storage state includes its session cookies.
         workbench_auth_error: str | None = None
         if workbench_url and connect_url:
-            workbench_auth_error = _authenticate_workbench(page, workbench_url)
+            workbench_auth_error = _authenticate_workbench(page, workbench_url, provider=provider)
 
         context.storage_state(path=str(storage_state_path))
 
@@ -1335,7 +1335,7 @@ def _on_login_page(url: str) -> bool:
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
 
 
-def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
+def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "") -> str | None:
     """Navigate to Workbench to establish an SSO session.
 
     After the user authenticated to Connect via OIDC, the identity provider
@@ -1353,6 +1353,12 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
     If SSO does not resolve automatically (e.g. the auth-sign-in page
     requires a click), we attempt to click through.  The headed browser is
     still visible so the user can also intervene manually.
+
+    *provider* names the configured auth provider (``"oidc"``, ``"saml"``,
+    ``"oauth2"``), same convention as :func:`_wait_for_product_redirect`, so
+    the timeout reason names the protocol that actually ran instead of
+    assuming OIDC (see #263). Leave it as "" when unknown here; the message
+    falls back to neutral wording.
 
     Returns ``None`` on success, or a short string describing why
     Workbench authentication did not complete.  Callers stash this on
@@ -1425,6 +1431,8 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
         last_title = page.title()
     except Exception:
         last_title = "<unknown>"
+    label = _protocol_label(provider)
+    session_desc = f"{label} session" if label else "The login session"
     print(
         f">>> Warning: Workbench authentication did not complete within {timeout_label}.\n"
         ">>> Workbench browser tests may skip.\n"
@@ -1432,7 +1440,7 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
     return (
         f"Workbench authentication did not complete within {timeout_label} "
         f"(last URL: {_strip_url_query(last_url)}, page title: {last_title!r}). "
-        "OIDC session may not be shared between Connect and Workbench, "
+        f"{session_desc} may not be shared between Connect and Workbench, "
         "or the auth-sign-in page required interaction."
     )
 

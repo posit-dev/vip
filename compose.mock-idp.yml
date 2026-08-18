@@ -162,6 +162,8 @@ services:
         condition: service_healthy
     environment:
       RSW_LICENSE: ${RSW_LICENSE:-}
+      VIP_TEST_USERNAME: ${VIP_TEST_USERNAME:-vip_test}
+      VIP_TEST_PASSWORD: ${VIP_TEST_PASSWORD:-vip_test_password}
     volumes:
       - workbench-saml-home:/home
       - mock-idp-certs:/certs:ro
