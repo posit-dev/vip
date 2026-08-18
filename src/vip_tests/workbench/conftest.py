@@ -118,7 +118,16 @@ def _workbench_group_name(ide_markers: set[str], module_stem: str) -> str:
     each IDE runs on its own worker: ``workbench_ide_<ide>``. That is what puts an IDE's
     launch and extension tests on the same worker. Every other Workbench test groups by
     feature module: ``workbench_<stem>`` (a leading ``test_`` stripped).
+
+    Raises ``pytest.UsageError`` if *ide_markers* carries more than one IDE marker,
+    mirroring the guard in ``test_ide_extensions.py``'s
+    ``_skip_if_ide_launch_did_not_pass`` fixture -- rather than silently picking
+    whichever marker happens to come first in ``_IDE_MARKERS`` order.
     """
+    if len(ide_markers) > 1:
+        raise pytest.UsageError(
+            f"Expected at most one IDE marker in {_IDE_MARKERS}, got {sorted(ide_markers)}"
+        )
     for ide in _IDE_MARKERS:
         if ide in ide_markers:
             return f"workbench_ide_{ide}"

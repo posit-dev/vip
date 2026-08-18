@@ -130,6 +130,13 @@ class TestWorkbenchGroupName:
     def test_module_without_test_prefix_kept_verbatim(self):
         assert wb._workbench_group_name(set(), "chronicle_probe") == "workbench_chronicle_probe"
 
+    def test_multiple_ide_markers_raise_usage_error(self):
+        # No item carries two IDE markers today, but the same fixed-order loop that
+        # decides between them here must not silently pick the first one -- see the
+        # matching guard in test_ide_extensions.py's cascade-skip fixture.
+        with pytest.raises(pytest.UsageError, match="at most one IDE marker"):
+            wb._workbench_group_name({"rstudio", "vscode"}, "test_ide_launch")
+
 
 class _FakeMarker:
     def __init__(self, name):
@@ -390,6 +397,106 @@ class TestIdeLaunchOutcomeHookIntegration:
         )
         outcomes = self._run_and_capture_outcomes(pytester)
         assert outcomes == {}
+
+
+class TestCascadeSkipFixtureIntegration:
+    """#592/#594: the real ``_skip_if_ide_launch_did_not_pass`` autouse fixture from
+    ``test_ide_extensions.py``, exercised end to end via ``pytester``.
+
+    Nothing in the selftest or product suite runs this fixture otherwise, so a
+    break in it (e.g. a stale stash key, a flipped skip condition) would go
+    undetected -- see the "cascade skip" section of ``conftest.py``. The fixture
+    is imported from its real module rather than reimplemented: pytest_bdd's
+    ``@scenario`` decorator only resolves (it needs an active pytest config on
+    ``CONFIG_STACK``) inside a live pytest session, which ``runpytest_inprocess``
+    provides, so this must run through pytester rather than a bare import.
+    """
+
+    def _make_conftest(self, pytester):
+        # Delegate to the real hook that records launch outcomes into the stash
+        # the fixture reads back from -- same wiring as
+        # TestIdeLaunchOutcomeHookIntegration above.
+        pytester.makeconftest(
+            """
+            from vip_tests.workbench import conftest as wb
+
+            pytest_runtest_makereport = wb.pytest_runtest_makereport
+            """
+        )
+
+    def _setup_report(self, result, test_name: str):
+        reports = result.reprec.getreports("pytest_runtest_logreport")
+        return next(r for r in reports if r.when == "setup" and r.nodeid.endswith(f"::{test_name}"))
+
+    def test_extension_scenario_skips_when_launch_did_not_pass(self, pytester):
+        self._make_conftest(pytester)
+        # "test_ide_launch.py" sorts before "test_zz_extensions.py" so the launch
+        # test's outcome is recorded before the extension test's setup runs --
+        # in the real suite that ordering comes from hybrid xdist grouping plus
+        # pytest-order, which pytester's isolated rootdir does not apply.
+        pytester.makepyfile(
+            test_ide_launch="""
+            import pytest
+
+            @pytest.mark.jupyter
+            def test_launch_jupyter():
+                assert False, "boom"
+            """,
+            test_zz_extensions="""
+            from vip_tests.workbench.test_ide_extensions import _skip_if_ide_launch_did_not_pass
+            import pytest
+
+            @pytest.mark.jupyter
+            def test_jupyterlab_extensions():
+                pass
+            """,
+        )
+        result = pytester.runpytest_inprocess()
+        result.assert_outcomes(failed=1, skipped=1)
+        report = self._setup_report(result, "test_jupyterlab_extensions")
+        assert report.skipped
+        assert "JupyterLab launch did not pass (failed)" in str(report.longrepr)
+
+    def test_extension_scenario_runs_when_launch_passed(self, pytester):
+        self._make_conftest(pytester)
+        pytester.makepyfile(
+            test_ide_launch="""
+            import pytest
+
+            @pytest.mark.jupyter
+            def test_launch_jupyter():
+                pass
+            """,
+            test_zz_extensions="""
+            from vip_tests.workbench.test_ide_extensions import _skip_if_ide_launch_did_not_pass
+            import pytest
+
+            @pytest.mark.jupyter
+            def test_jupyterlab_extensions():
+                pass
+            """,
+        )
+        result = pytester.runpytest_inprocess()
+        # Both pass: the recorded "passed" launch outcome means the fixture's
+        # "absence or passed means run" rule leaves the extension test alone.
+        result.assert_outcomes(passed=2)
+
+    def test_multiple_ide_markers_raise_usage_error(self, pytester):
+        self._make_conftest(pytester)
+        pytester.makepyfile(
+            test_zz_extensions="""
+            from vip_tests.workbench.test_ide_extensions import _skip_if_ide_launch_did_not_pass
+            import pytest
+
+            @pytest.mark.jupyter
+            @pytest.mark.positron
+            def test_two_ide_markers():
+                pass
+            """,
+        )
+        result = pytester.runpytest_inprocess()
+        result.assert_outcomes(errors=1)
+        result.stdout.fnmatch_lines(["*UsageError*Expected exactly one IDE marker*"])
 
 
 class TestRealMarkerMechanics:

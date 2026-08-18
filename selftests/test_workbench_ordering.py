@@ -95,6 +95,15 @@ def _file_of(nodeid: str) -> str:
     return Path(nodeid.split("::", 1)[0]).stem
 
 
+def _function_of(nodeid: str) -> str:
+    """Return the test function name (e.g. ``test_launch_rstudio``) for a node id.
+
+    Strips the trailing ``[chromium]`` parametrize suffix so callers can
+    compare against the bare scenario function name.
+    """
+    return nodeid.split("::", 1)[1].split("[", 1)[0]
+
+
 def _first_index_of_file(nodeids: list[str], file_stem: str) -> int:
     for i, nodeid in enumerate(nodeids):
         if _file_of(nodeid) == file_stem:
@@ -188,18 +197,25 @@ def test_ide_marker_selects_matching_launch_and_extensions_scenarios(tmp_path: P
 
     RStudio has no extensions scenario today, so its marker selects only the
     launch file.
+
+    Asserting scenario *function names* (not just file stems) matters: a
+    marker mix-up between two IDEs on the extensions functions (e.g. jupyter
+    and positron swapped between ``test_jupyterlab_extensions`` and
+    ``test_positron_extensions``) would still select the right *file* --
+    ``test_ide_extensions`` -- for both markers, and a file-only assertion
+    would not catch it.
     """
-    marker_to_expected_files = {
-        "rstudio": {"test_ide_launch"},
-        "vscode": {"test_ide_launch", "test_ide_extensions"},
-        "jupyter": {"test_ide_launch", "test_ide_extensions"},
-        "positron": {"test_ide_launch", "test_ide_extensions"},
+    marker_to_expected_functions = {
+        "rstudio": {"test_launch_rstudio"},
+        "vscode": {"test_launch_vscode", "test_vscode_extensions"},
+        "jupyter": {"test_launch_jupyter", "test_jupyterlab_extensions"},
+        "positron": {"test_launch_positron", "test_positron_extensions"},
     }
-    for marker, expected_files in marker_to_expected_files.items():
+    for marker, expected_functions in marker_to_expected_functions.items():
         nodeids = _collect_workbench_nodeids(tmp_path, marker_expr=marker)
-        files = {_file_of(n) for n in nodeids}
-        assert files == expected_files, (
-            f"-m {marker} should select exactly {expected_files}, got {files}: {nodeids}"
+        functions = {_function_of(n) for n in nodeids}
+        assert functions == expected_functions, (
+            f"-m {marker} should select exactly {expected_functions}, got {functions}: {nodeids}"
         )
 
 
