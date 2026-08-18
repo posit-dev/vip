@@ -17,6 +17,12 @@
 # rather than baking a fixed secret into the repo. Read it back with
 # `just mock-idp-totp-secret` and export it as VIP_TEST_TOTP_SECRET.
 #
+# Keycloak authenticates the realm's "vip_test" user, but rserver still
+# needs a matching local Unix account to resolve the SSO login to --
+# entrypoint-oidc.sh provisions it via docker/workbench/startup.sh, using
+# the VIP_TEST_USERNAME/VIP_TEST_PASSWORD below. Their defaults must stay in
+# sync with docker/keycloak/realm-vip.json's "username"/password value.
+#
 # Usage:
 #   just mock-idp-up      # generate certs + TOTP seed, start Keycloak + Connect + Workbench
 #   just mock-idp-down    # tear down and remove the generated certs/volumes
@@ -117,6 +123,8 @@ services:
         condition: service_healthy
     environment:
       RSW_LICENSE: ${RSW_LICENSE:-}
+      VIP_TEST_USERNAME: ${VIP_TEST_USERNAME:-vip_test}
+      VIP_TEST_PASSWORD: ${VIP_TEST_PASSWORD:-vip_test_password}
     volumes:
       - workbench-oidc-home:/home
       - mock-idp-certs:/certs:ro
