@@ -55,10 +55,14 @@ chmod 0600 /etc/rstudio/openid-client-secret
 # its own `id` check therefore misses. Tolerate that, then assert the
 # postcondition, so a genuine provisioning failure stops the container here
 # instead of resurfacing later as an unexplained sign-in rejection.
+VIP_USER="${VIP_TEST_USERNAME:-vip_test}"
+VIP_PASS="${VIP_TEST_PASSWORD:-vip_test_password}"
+
 /usr/local/bin/vip-create-test-user.sh || true
-if ! id "${VIP_TEST_USERNAME:-vip_test}" >/dev/null 2>&1; then
-  echo "entrypoint-oidc: ERROR: could not provision ${VIP_TEST_USERNAME:-vip_test}." >&2
+if ! id "$VIP_USER" >/dev/null 2>&1; then
+  echo "entrypoint-oidc: ERROR: could not provision $VIP_USER." >&2
   exit 1
 fi
 
+echo "${VIP_USER}:${VIP_PASS}" | chpasswd
 exec "$@"
