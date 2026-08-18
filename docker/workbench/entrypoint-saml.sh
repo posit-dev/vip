@@ -55,17 +55,21 @@ EOF
 # without one it rejects the session ("Error converting userIdentifier to
 # username" / "Failed to get user details."). This image has no
 # cont-init.d/s6-overlay to run docker/workbench/startup.sh for us the way
-# compose.yml's password-auth stack does, so call the same script directly;
-# it shares the VIP_TEST_USERNAME/VIP_TEST_PASSWORD env contract (and
+# compose.yml's password-auth stack does, so call the same script directly.
+# It is installed as vip-create-test-user.sh, NOT startup.sh: the stock image
+# already ships its own /usr/local/bin/startup.sh (the supervisord
+# "rstudio-workbench" program runs it to create the rstudio user and exec
+# rserver), and overwriting that stops rserver from ever starting.
+# It shares the VIP_TEST_USERNAME/VIP_TEST_PASSWORD env contract (and
 # defaults) with that stack.
 #
-# startup.sh is idempotent, but `useradd -m` can still exit non-zero when the
+# The script is idempotent, but `useradd -m` can still exit non-zero when the
 # home directory already exists -- which happens on a container recreate
 # against a warm /home volume, since /etc/passwd lives in the image layer and
-# startup.sh's own `id` check therefore misses. Tolerate that, then assert the
+# its own `id` check therefore misses. Tolerate that, then assert the
 # postcondition, so a genuine provisioning failure stops the container here
 # instead of resurfacing later as an unexplained sign-in rejection.
-/usr/local/bin/startup.sh || true
+/usr/local/bin/vip-create-test-user.sh || true
 if ! id "${VIP_TEST_USERNAME:-vip_test}" >/dev/null 2>&1; then
   echo "entrypoint-saml: ERROR: could not provision ${VIP_TEST_USERNAME:-vip_test}." >&2
   exit 1
