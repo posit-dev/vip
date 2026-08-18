@@ -2133,7 +2133,7 @@ def _create_api_key_via_session(
                 # ``.get("key")`` raises ``AttributeError``, which is not in
                 # the caught tuple below and so crashes auth outright (#561).
                 print(
-                    ">>> Warning: POST /v1/users/<guid>/keys returned a "
+                    f">>> Warning: POST /v1/users/{guid}/keys returned a "
                     f"{type(created).__name__}, not an object. A proxy most "
                     "likely redirected the request with 301/302, which turns "
                     "the POST into a GET of the key-listing route. Configure "
