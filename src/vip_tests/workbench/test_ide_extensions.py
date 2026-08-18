@@ -95,6 +95,10 @@ def _skip_if_ide_launch_did_not_pass(request: pytest.FixtureRequest) -> None:
     ide_markers = {m.name for m in request.node.iter_markers()} & set(_IDE_MARKERS)
     if not ide_markers:
         return
+    if len(ide_markers) != 1:
+        raise pytest.UsageError(
+            f"Expected exactly one IDE marker in {_IDE_MARKERS}, got {sorted(ide_markers)}"
+        )
     ide = next(iter(ide_markers))
     outcomes = request.config.stash.get(_ide_launch_outcome_key, {})
     reason = _ide_extension_skip_reason(ide, outcomes.get(ide))
