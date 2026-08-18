@@ -211,6 +211,187 @@ class TestCollectionHook:
         assert item.added == []
 
 
+class TestExtensionSharesLaunchGroup:
+    """#592: an extension scenario must join its IDE's launch group.
+
+    ``pytest_collection_modifyitems`` groups purely off the IDE marker set on
+    the item, independent of which file it came from -- so once
+    test_ide_extensions.py's scenarios carry the same IDE markers as
+    test_ide_launch.py's, they land in the same ``workbench_ide_<ide>`` group
+    (and therefore the same xdist worker) for free.
+    """
+
+    def _wb_dir(self):
+        return Path(wb.__file__).parent
+
+    def test_vscode_extension_item_joins_vscode_launch_group(self):
+        launch_item = _FakeItem(self._wb_dir() / "test_ide_launch.py", ["workbench", "vscode"])
+        extensions_item = _FakeItem(
+            self._wb_dir() / "test_ide_extensions.py", ["workbench", "vscode"]
+        )
+        config = _FakeConfig(object())
+        wb.pytest_collection_modifyitems(config, [launch_item, extensions_item])
+
+        launch_group = next(args for name, args in launch_item.added if name == "xdist_group")
+        extensions_group = next(
+            args for name, args in extensions_item.added if name == "xdist_group"
+        )
+        assert launch_group == extensions_group == ("workbench_ide_vscode",)
+
+
+class TestRecordIdeLaunchOutcome:
+    def test_first_record_sets_outcome(self):
+        outcomes: dict[str, str] = {}
+        wb._record_ide_launch_outcome(outcomes, "vscode", "passed")
+        assert outcomes == {"vscode": "passed"}
+
+    def test_setup_skip_then_no_call_leaves_skipped(self):
+        # Models the real "IDE not configured" setup-phase skip: only one
+        # phase ever reports (call never runs), so only one call happens.
+        outcomes: dict[str, str] = {}
+        wb._record_ide_launch_outcome(outcomes, "positron", "skipped")
+        assert outcomes == {"positron": "skipped"}
+
+    def test_passed_setup_then_failed_call_ends_failed(self):
+        outcomes: dict[str, str] = {}
+        wb._record_ide_launch_outcome(outcomes, "jupyter", "passed")
+        wb._record_ide_launch_outcome(outcomes, "jupyter", "failed")
+        assert outcomes == {"jupyter": "failed"}
+
+    def test_later_passed_never_overwrites_earlier_skipped(self):
+        # The guard this test exists for: a later phase reporting "passed"
+        # must not erase an earlier non-passed verdict.
+        outcomes: dict[str, str] = {}
+        wb._record_ide_launch_outcome(outcomes, "rstudio", "skipped")
+        wb._record_ide_launch_outcome(outcomes, "rstudio", "passed")
+        assert outcomes == {"rstudio": "skipped"}
+
+    def test_later_passed_never_overwrites_earlier_failed(self):
+        outcomes: dict[str, str] = {}
+        wb._record_ide_launch_outcome(outcomes, "vscode", "failed")
+        wb._record_ide_launch_outcome(outcomes, "vscode", "passed")
+        assert outcomes == {"vscode": "failed"}
+
+
+class TestIdeExtensionSkipReason:
+    def test_absence_means_run(self):
+        # The critical rule: no recorded outcome at all -> None (run), never a skip.
+        assert wb._ide_extension_skip_reason("vscode", None) is None
+
+    def test_passed_means_run(self):
+        assert wb._ide_extension_skip_reason("jupyter", "passed") is None
+
+    def test_skipped_outcome_names_ide_and_outcome(self):
+        reason = wb._ide_extension_skip_reason("positron", "skipped")
+        assert reason is not None
+        assert "Positron" in reason
+        assert "skipped" in reason
+
+    def test_failed_outcome_names_ide_and_outcome(self):
+        reason = wb._ide_extension_skip_reason("vscode", "failed")
+        assert reason is not None
+        assert "VS Code" in reason
+        assert "failed" in reason
+
+    def test_unknown_ide_falls_back_to_marker_name(self):
+        # Defensive: an ide not in _IDE_DISPLAY_NAMES still produces a message
+        # rather than raising, naming the raw marker instead of a display name.
+        reason = wb._ide_extension_skip_reason("made_up_ide", "failed")
+        assert reason is not None
+        assert "made_up_ide" in reason
+
+
+class TestIdeLaunchOutcomeHookIntegration:
+    """End-to-end: the real ``pytest_runtest_makereport`` hookwrapper, exercised
+    via ``pytester`` against real pytest test execution rather than fake items.
+    """
+
+    def _run_and_capture_outcomes(self, pytester) -> dict[str, str]:
+        # Delegate to the real hook (not a copy) and dump the stash it filled to
+        # a file at session end, where the outer test can read it back.
+        pytester.makeconftest(
+            """
+            import json
+
+            import pytest
+            from vip_tests.workbench import conftest as wb
+
+            pytest_runtest_makereport = wb.pytest_runtest_makereport
+
+            def pytest_sessionfinish(session):
+                outcomes = session.config.stash.get(wb._ide_launch_outcome_key, {})
+                (session.config.rootpath / "outcomes.json").write_text(json.dumps(outcomes))
+            """
+        )
+        pytester.runpytest_inprocess()
+        outcomes_path = pytester.path / "outcomes.json"
+        if not outcomes_path.exists():
+            return {}
+        import json
+
+        return json.loads(outcomes_path.read_text())
+
+    def test_setup_skip_is_recorded_even_though_call_never_runs(self, pytester):
+        pytester.makepyfile(
+            test_ide_launch="""
+            import pytest
+
+            @pytest.fixture
+            def _unavailable():
+                pytest.skip("VS Code IDE not available in this Workbench deployment")
+
+            @pytest.mark.vscode
+            def test_launch_vscode(_unavailable):
+                pass
+            """
+        )
+        outcomes = self._run_and_capture_outcomes(pytester)
+        assert outcomes == {"vscode": "skipped"}
+
+    def test_call_failure_is_recorded(self, pytester):
+        pytester.makepyfile(
+            test_ide_launch="""
+            import pytest
+
+            @pytest.mark.jupyter
+            def test_launch_jupyter():
+                assert False, "boom"
+            """
+        )
+        outcomes = self._run_and_capture_outcomes(pytester)
+        assert outcomes == {"jupyter": "failed"}
+
+    def test_full_pass_is_recorded(self, pytester):
+        pytester.makepyfile(
+            test_ide_launch="""
+            import pytest
+
+            @pytest.mark.rstudio
+            def test_launch_rstudio():
+                pass
+            """
+        )
+        outcomes = self._run_and_capture_outcomes(pytester)
+        assert outcomes == {"rstudio": "passed"}
+
+    def test_non_launch_file_and_unmarked_tests_are_ignored(self, pytester):
+        pytester.makepyfile(
+            test_ide_launch="""
+            def test_no_ide_marker():
+                pass
+            """,
+            test_ide_extensions="""
+            import pytest
+
+            @pytest.mark.vscode
+            def test_vscode_extensions():
+                pass
+            """,
+        )
+        outcomes = self._run_and_capture_outcomes(pytester)
+        assert outcomes == {}
+
+
 class TestRealMarkerMechanics:
     """Guard the assumption the fakes above cannot: that the hook's strip + add_marker
     sequence is actually visible to pytest-xdist, which reads xdist_group via

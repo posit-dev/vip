@@ -94,13 +94,30 @@ pytestmark = [pytest.mark.workbench, pytest.mark.xdist_group("workbench")]
 
 _IDE_MARKERS = ("rstudio", "vscode", "jupyter", "positron")
 
+# Human-readable names for the _IDE_MARKERS, used in skip messages (#592).
+_IDE_DISPLAY_NAMES: dict[str, str] = {
+    "rstudio": "RStudio",
+    "vscode": "VS Code",
+    "jupyter": "JupyterLab",
+    "positron": "Positron",
+}
+
+# Records each IDE's test_ide_launch.py outcome ("passed" / "failed" / "skipped")
+# so test_ide_extensions.py can skip the extension checks for an IDE whose
+# launch test did not pass, instead of rediscovering "this IDE isn't
+# available" the expensive way -- launching a session and timing out after
+# TIMEOUT_SESSION_START (~90s). See pytest_runtest_makereport below and the
+# autouse fixture in test_ide_extensions.py (#592).
+_ide_launch_outcome_key = pytest.StashKey[dict[str, str]]()
+
 
 def _workbench_group_name(ide_markers: set[str], module_stem: str) -> str:
     """Compute the xdist group for a Workbench test under shared auth (hybrid grouping).
 
-    IDE-launch scenarios (carrying an IDE marker) group by IDE so each IDE runs on its own
-    worker: ``workbench_ide_<ide>``. Every other Workbench test groups by feature module:
-    ``workbench_<stem>`` (a leading ``test_`` stripped).
+    Any scenario carrying an IDE marker -- launch and extensions alike -- groups by IDE so
+    each IDE runs on its own worker: ``workbench_ide_<ide>``. That is what puts an IDE's
+    launch and extension tests on the same worker. Every other Workbench test groups by
+    feature module: ``workbench_<stem>`` (a leading ``test_`` stripped).
     """
     for ide in _IDE_MARKERS:
         if ide in ide_markers:
@@ -146,6 +163,65 @@ def pytest_collection_modifyitems(
         # shadowed. plugin.py's _assign_xdist_group then respects the group we add here.
         item.own_markers = [m for m in item.own_markers if m.name != "xdist_group"]
         item.add_marker(pytest.mark.xdist_group(group))
+
+
+def _record_ide_launch_outcome(outcomes: dict[str, str], ide: str, new_outcome: str) -> None:
+    """Merge *new_outcome* into *outcomes* for *ide*, keeping the "worst" result.
+
+    A later phase is never allowed to overwrite a recorded non-passed outcome
+    with "passed" -- a launch that skipped or failed at an earlier phase must
+    not look like it passed just because a later phase did. Any other
+    transition (first record, or a later phase that is itself non-passed)
+    simply overwrites.
+    """
+    previous = outcomes.get(ide)
+    if previous is not None and previous != "passed" and new_outcome == "passed":
+        return
+    outcomes[ide] = new_outcome
+
+
+def _ide_extension_skip_reason(ide: str, outcome: str | None) -> str | None:
+    """Return the skip reason for *ide*'s recorded launch *outcome*, or ``None`` to run.
+
+    Absence of a recorded outcome (*outcome* is ``None``) always returns
+    ``None`` (run) -- this is the "absence means run" rule from #592: the
+    launch tests may have been deselected (``--basic`` drops ``@slow``),
+    ``test_ide_extensions.py`` may be run standalone, or the stash may simply
+    be empty on this worker. Only a positive "it did not pass" (a recorded,
+    non-``"passed"`` outcome) returns a skip reason.
+    """
+    if outcome is None or outcome == "passed":
+        return None
+    display = _IDE_DISPLAY_NAMES.get(ide, ide)
+    return f"{display} launch did not pass ({outcome}) — skipping extension checks"
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
+    """Record each IDE-launch scenario's outcome for the extensions cascade skip.
+
+    Only ``test_ide_launch.py`` items carrying one of ``_IDE_MARKERS`` are
+    recorded (the hybrid grouping above puts an IDE's launch and extensions
+    scenarios in the same xdist group, so they always land on the same
+    worker -- the same process whose stash this reads back from). Both the
+    ``setup`` and ``call`` phases are recorded, so an "IDE not configured"
+    skip raised during setup (see ``_dismiss_dialog_and_skip``) is captured
+    even though ``call`` never runs -- see :func:`_record_ide_launch_outcome`
+    for the merge rule.
+    """
+    outcome = yield
+    report: pytest.TestReport = outcome.get_result()
+    if report.when not in ("setup", "call"):
+        return
+    item_path = getattr(item, "path", None)
+    if item_path is None or item_path.name != "test_ide_launch.py":
+        return
+    ide_markers = {m.name for m in item.iter_markers()} & set(_IDE_MARKERS)
+    if not ide_markers:
+        return
+    outcomes = item.config.stash.setdefault(_ide_launch_outcome_key, {})
+    for ide in ide_markers:
+        _record_ide_launch_outcome(outcomes, ide, report.outcome)
 
 
 # ---------------------------------------------------------------------------

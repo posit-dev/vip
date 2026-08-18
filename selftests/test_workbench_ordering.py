@@ -174,6 +174,35 @@ def test_login_collects_before_signout(tmp_path: Path) -> None:
     assert login_idx < signout_idx, f"login must collect before sign-out: {nodeids}"
 
 
+def test_ide_marker_selects_matching_launch_and_extensions_scenarios(tmp_path: Path) -> None:
+    """#592: each IDE marker must select exactly its launch scenario plus its
+    (if any) extensions scenario -- nothing else.
+
+    ``pytest_collection_modifyitems`` in ``workbench/conftest.py`` groups
+    Workbench items for xdist purely off this marker set (see
+    ``_workbench_group_name``): every item carrying a given IDE marker lands
+    in that IDE's ``workbench_ide_<ide>`` group. So an IDE marker selecting
+    exactly the launch+extensions pair here is what "shares its IDE's group"
+    reduces to -- if a scenario carried the wrong marker (or none), this
+    would select the wrong set of files.
+
+    RStudio has no extensions scenario today, so its marker selects only the
+    launch file.
+    """
+    marker_to_expected_files = {
+        "rstudio": {"test_ide_launch"},
+        "vscode": {"test_ide_launch", "test_ide_extensions"},
+        "jupyter": {"test_ide_launch", "test_ide_extensions"},
+        "positron": {"test_ide_launch", "test_ide_extensions"},
+    }
+    for marker, expected_files in marker_to_expected_files.items():
+        nodeids = _collect_workbench_nodeids(tmp_path, marker_expr=marker)
+        files = {_file_of(n) for n in nodeids}
+        assert files == expected_files, (
+            f"-m {marker} should select exactly {expected_files}, got {files}: {nodeids}"
+        )
+
+
 def test_basic_marker_deselects_slow_workbench_features(tmp_path: Path) -> None:
     """End-to-end: ``-m "not slow"`` (what ``vip verify --basic`` applies) must
     drop exactly the @slow-tagged Workbench features and keep the basic ones.

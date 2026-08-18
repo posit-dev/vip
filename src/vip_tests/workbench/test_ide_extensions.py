@@ -25,11 +25,14 @@ from pytest_bdd import given, scenario, then, when
 
 from vip.config import VIPConfig
 from vip_tests.workbench.conftest import (
+    _IDE_MARKERS,
     TIMEOUT_CLEANUP,
     TIMEOUT_DIALOG,
     TIMEOUT_IDE_LOAD,
     TIMEOUT_PAGE_LOAD,
     TIMEOUT_QUICK,
+    _ide_extension_skip_reason,
+    _ide_launch_outcome_key,
     assert_homepage_loaded,
     unique_session_name,
     wait_for_session_active,
@@ -48,19 +51,55 @@ pytestmark = pytest.mark.order(90)
 _FILENAME = Path(__file__).name
 
 
+@pytest.mark.vscode
 @scenario("test_ide_extensions.feature", "VS Code has required extensions")
 def test_vscode_extensions():
     pass
 
 
+@pytest.mark.jupyter
 @scenario("test_ide_extensions.feature", "JupyterLab has required extensions")
 def test_jupyterlab_extensions():
     pass
 
 
+@pytest.mark.positron
 @scenario("test_ide_extensions.feature", "Positron has required extensions")
 def test_positron_extensions():
     pass
+
+
+# ---------------------------------------------------------------------------
+# Cascade skip (#592)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _skip_if_ide_launch_did_not_pass(request: pytest.FixtureRequest) -> None:
+    """Skip an extension scenario if its IDE's launch test did not pass.
+
+    Reads the outcome recorded by ``pytest_runtest_makereport`` in
+    ``conftest.py`` for the same IDE, and defers the skip/run decision to
+    ``_ide_extension_skip_reason`` (see its docstring for the "absence means
+    run" rule this depends on). Extension scenarios that launch a session
+    already rediscover an unavailable IDE the expensive way -- launching and
+    waiting out ``TIMEOUT_SESSION_START`` (~90s) before
+    ``_dismiss_dialog_and_skip`` gives up -- so skipping immediately when the
+    launch test already found (and recorded) that outcome avoids paying that
+    cost twice.
+
+    Autouse, but only for this module: only ``test_ide_extensions.py``'s
+    three scenarios carry an IDE marker here, so this never touches any
+    other Workbench test.
+    """
+    ide_markers = {m.name for m in request.node.iter_markers()} & set(_IDE_MARKERS)
+    if not ide_markers:
+        return
+    ide = next(iter(ide_markers))
+    outcomes = request.config.stash.get(_ide_launch_outcome_key, {})
+    reason = _ide_extension_skip_reason(ide, outcomes.get(ide))
+    if reason is not None:
+        pytest.skip(reason)
 
 
 # ---------------------------------------------------------------------------
