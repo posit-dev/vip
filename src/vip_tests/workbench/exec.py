@@ -203,6 +203,175 @@ def _parse_done_marker(content: str, done_marker: str) -> tuple[str, int] | None
 
 
 # ---------------------------------------------------------------------------
+# Console line delivery
+# ---------------------------------------------------------------------------
+
+# Attempts to get one line into a console input intact. The first attempt is an
+# atomic insert; the rest alternate keystroke typing and inserting, so a build
+# that ignores either mechanism still gets two tries at the other.
+_CONSOLE_DELIVERY_ORDER = ("insert", "type", "insert", "type")
+# Enter presses allowed per submit. A completion popup consumes the first Enter
+# for itself; extra Enters on an already-submitted (empty) line are harmless --
+# they just draw a fresh prompt -- so retrying costs nothing.
+_CONSOLE_SUBMIT_ATTEMPTS = 3
+# Zero-width characters Ace can splice into its rendered text layer.
+_ZERO_WIDTH_CHARS = "\u200b\u200c\u200d\ufeff"
+
+
+def _normalize_console_text(text: str) -> str:
+    """Reduce console text to just its characters, for typed-vs-landed comparison.
+
+    Ace renders spaces as non-breaking spaces, soft-wraps long lines (inserting
+    newlines that are not in the source), and can splice zero-width characters
+    into its text layer -- none of which mean the command was corrupted. All
+    whitespace is therefore dropped rather than normalized: comparing the *same*
+    string against itself, the only thing a whitespace-insensitive check can miss
+    is whitespace-only corruption, which is a far smaller risk than falsely
+    reporting corruption every time Ace renders a space its own way.
+    """
+    stripped = text
+    for ch in _ZERO_WIDTH_CHARS:
+        stripped = stripped.replace(ch, "")
+    return re.sub(r"\s+", "", stripped)
+
+
+def _console_input_text(console_input) -> str:
+    """Read the text currently sitting in a console input, or "" if unreadable.
+
+    RStudio's ``#rstudio_console_input`` is an Ace editor div, not an ``<input>``
+    (``Locator.fill``/``input_value`` raise on it), so the text has to come from
+    the rendered DOM. Never raises: an unreadable input must degrade to "no
+    verification", not to a test failure.
+    """
+    try:
+        return console_input.text_content() or ""
+    except Exception:
+        return ""
+
+
+def _clear_console_input(page: Page, console_input) -> None:
+    """Empty a console input via select-all + Backspace.
+
+    ``Locator.fill("")`` does not work on Ace's editor div, and Escape is not
+    usable either -- in RStudio it clears the line only after first closing any
+    open completion popup, so its effect depends on state we cannot observe.
+    """
+    console_input.click()
+    page.keyboard.press("ControlOrMeta+a")
+    page.keyboard.press("Backspace")
+
+
+def _deliver_console_line(page: Page, console_input, line: str) -> str:
+    """Put *line* into *console_input*, verifying that it landed intact.
+
+    Delivery defaults to a single ``keyboard.insert_text`` rather than
+    per-character typing. The console is an Ace editor, and typing walks it
+    through every intermediate state of the line, which lets its auto-close and
+    path-completion machinery rewrite or swallow characters: live, a 171-char
+    marker-wrapped command stopped after 142 characters mid-string-literal, with
+    Ace's pending ``")`` auto-close pair left behind, and the truncated command
+    was never submitted. One atomic insertion presents no intermediate states to
+    react to.
+
+    Each attempt is verified by reading the input back, and a mismatch is
+    re-sent with the other mechanism. The check is *containment*, not equality:
+    Ace keeps hidden helper nodes (notably a font-measurement node holding long
+    runs of filler characters) inside its editor DOM, and those would fail an
+    equality check on every single call while telling us nothing about the
+    command. Containment still catches the failure this exists for -- characters
+    going missing -- and is blind only to *extra* text being inserted alongside
+    an otherwise intact command.
+
+    Verification is advisory only: if the readback never matches, this returns a
+    diagnostic note instead of raising, so a console whose text cannot be read
+    back stays exactly as workable as it was before -- the caller's marker
+    assertion remains the judge of success.
+
+    Returns:
+        "" when the line was verified to have landed intact, otherwise a
+        human-readable note describing the mismatch, for the caller to fold into
+        its own failure message.
+    """
+    want = _normalize_console_text(line)
+    landed = ""
+    for mechanism in _CONSOLE_DELIVERY_ORDER:
+        _clear_console_input(page, console_input)
+        if mechanism == "insert":
+            console_input.focus()
+            try:
+                page.keyboard.insert_text(line)
+            except Exception:
+                # Not every driver/build accepts atomic insertion; the next
+                # attempt is a keystroke type, so just move on.
+                continue
+        else:
+            console_input.type(line)
+        landed = _console_input_text(console_input)
+        if want in _normalize_console_text(landed):
+            return ""
+    return (
+        f"the command never landed in the console input intact after "
+        f"{len(_CONSOLE_DELIVERY_ORDER)} attempts: sent {len(line)} chars, "
+        f"read back {len(landed)} chars ({landed!r})"
+    )
+
+
+def _submit_console_line(page: Page, console_input, line: str) -> str:
+    """Press Enter until *line* is no longer sitting in the console input.
+
+    RStudio opens a path-completion popup on the quotes in the marker literals,
+    and while it is open Enter accepts the completion instead of submitting --
+    leaving the command in the input while the readback waits out its whole
+    timeout for output that will never come.
+
+    The success condition is "*line* is gone from the input", not "the input is
+    empty", for the same reason ``_deliver_console_line`` tests containment:
+    Ace's hidden helper nodes mean the input is never textually empty. Extra
+    Enter presses are safe -- once the line is submitted the input holds no
+    command, so they only draw a fresh prompt.
+
+    Returns:
+        "" once the line is gone, otherwise a note for the caller's failure
+        message.
+    """
+    want = _normalize_console_text(line)
+    for _ in range(_CONSOLE_SUBMIT_ATTEMPTS):
+        console_input.press("Enter")
+        if want not in _normalize_console_text(_console_input_text(console_input)):
+            return ""
+    return (
+        f"the command was not submitted: it was still in the console input after "
+        f"{_CONSOLE_SUBMIT_ATTEMPTS} Enter presses (a completion popup may be "
+        f"consuming Enter)"
+    )
+
+
+def _deliver_terminal_line(page: Page, terminal_input, line: str) -> None:
+    """Put *line* into an xterm.js terminal input, atomically where possible.
+
+    Same hazard as ``_deliver_console_line``: per-character typing walks the
+    widget through every intermediate state of the line and can lose characters
+    under load. ``insert_text`` hands xterm.js the whole string in one input
+    event, which it relays to the PTY in one write.
+
+    Unlike the console path there is no verification, because there is nothing
+    to read back: ``.xterm-helper-textarea`` is a write-only accessibility relay
+    that xterm.js drains and clears, and the rendered line lives in a
+    canvas/WebGL surface the DOM cannot see. Re-sending on suspicion is not an
+    option either -- a command that did run would run twice, which is exactly
+    the ``destination path already exists`` class of failure in issue #438. A
+    lost command therefore still surfaces as a done-marker timeout; atomic
+    delivery is what makes losing it unlikely in the first place.
+    """
+    terminal_input.focus()
+    try:
+        page.keyboard.insert_text(line)
+    except Exception:
+        # Not every driver/build accepts atomic insertion; keystrokes still work.
+        terminal_input.type(line)
+
+
+# ---------------------------------------------------------------------------
 # Console / cell eval primitives
 # ---------------------------------------------------------------------------
 
@@ -214,6 +383,12 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
     prior scrollback in the console pane.  Waits up to *timeout* milliseconds
     for the end marker to appear before raising ExecError.
 
+    The command is delivered and submitted via ``_deliver_console_line`` /
+    ``_submit_console_line`` rather than a blind type-then-Enter: the console is
+    an Ace editor that can drop characters mid-line and let a completion popup
+    eat the Enter, and neither is visible in the readback until the whole
+    *timeout* has burned down.
+
     Args:
         page: Playwright page for an active RStudio session.
         expr: R expression (single line or semicolon-chained).
@@ -223,10 +398,12 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
         Raw text between the VIP markers, stripped of whitespace.
 
     Raises:
-        ExecError: End marker did not appear within *timeout* — typically means
-            a startup script (e.g. an ``.Rprofile`` with an interactive
-            Acceptable-Usage-Policy prompt) is blocking the console before it
-            can accept input.
+        ExecError: End marker did not appear within *timeout*. The message says
+            which of the two causes applies: the command never landed in the
+            input intact / was never submitted, or it was delivered cleanly and
+            the console produced no output anyway — typically a startup script
+            (e.g. an ``.Rprofile`` with an interactive Acceptable-Usage-Policy
+            prompt) blocking the console.
         PlaywrightTimeoutError: Console input was not visible within *timeout*.
     """
     start, end = _make_sentinels()
@@ -241,19 +418,33 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
 
     console_input = page.locator(ConsolePaneSelectors.INPUT)
     expect(console_input).to_be_visible(timeout=timeout)
-    console_input.click()
-    console_input.type(wrapped)
-    console_input.press("Enter")
+    notes = [
+        note
+        for note in (
+            _deliver_console_line(page, console_input, wrapped),
+            _submit_console_line(page, console_input, wrapped),
+        )
+        if note
+    ]
 
     console_output = page.locator(ConsolePaneSelectors.OUTPUT)
     try:
         expect(console_output).to_contain_text(end, timeout=timeout)
-    except PlaywrightTimeoutError as exc:
+    except (AssertionError, PlaywrightTimeoutError) as exc:
+        # expect() raises AssertionError, not PlaywrightTimeoutError, so
+        # AssertionError must be caught here or this diagnosis never reaches the
+        # report and the failure surfaces as a multi-kilobyte console dump
+        # (including Ace's hidden font-measurement node) instead.
+        detail = (
+            " Delivery diagnostics: " + "; ".join(notes) + "."
+            if notes
+            else " The command was verified to have landed in the console input "
+            "and been submitted, so the console accepted it but produced no "
+            "output: a startup script (e.g. an .Rprofile with an interactive "
+            "Acceptable-Usage-Policy prompt) may be blocking it."
+        )
         raise ExecError(
-            "R console did not return the expected output within "
-            f"{timeout} ms. A startup script (e.g. an .Rprofile with an "
-            "interactive Acceptable-Usage-Policy prompt) may be blocking the "
-            "console before it can accept input."
+            f"R console did not return the expected output within {timeout} ms.{detail}"
         ) from exc
 
     text = console_output.text_content() or ""
@@ -991,12 +1182,12 @@ def terminal_run(
 
     _ensure_terminal_open(page, timeout=timeout)
     terminal_input = _visible_terminal_input(page)
-    # Focus rather than click: the xterm textarea only needs keyboard focus to
-    # receive input, and a pointer click is intercepted by the terminal panel's
-    # "Terminal actions" toolbar overlay (which sits over the textarea), timing
-    # out the click. focus() is not subject to pointer-event interception.
-    terminal_input.focus()
-    terminal_input.type(shell_cmd)
+    # _deliver_terminal_line focuses rather than clicks: the xterm textarea only
+    # needs keyboard focus to receive input, and a pointer click is intercepted
+    # by the terminal panel's "Terminal actions" toolbar overlay (which sits over
+    # the textarea), timing out the click. focus() is not subject to
+    # pointer-event interception.
+    _deliver_terminal_line(page, terminal_input, shell_cmd)
     terminal_input.press("Enter")
 
     deadline = time.monotonic() + timeout / 1000.0
@@ -1101,7 +1292,10 @@ def terminal_run(
             time.sleep(poll_interval)
 
     raise ExecError(
-        f"terminal_run timed out after {timeout}ms waiting for done marker in {tmpfile!r}"
+        f"terminal_run timed out after {timeout}ms waiting for done marker in {tmpfile!r}. "
+        "Either the command is still running, or it never reached the shell -- the "
+        "terminal widget cannot be read back to tell the two apart (see "
+        "_deliver_terminal_line)."
     )
 
 

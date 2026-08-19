@@ -26,13 +26,17 @@ import vip_tests.workbench.exec as exec_mod
 from vip_tests.workbench.exec import (
     ExecError,
     _b64_write_cmd,
+    _deliver_console_line,
+    _deliver_terminal_line,
     _detect_ide,
     _extract_between_markers,
     _make_sentinels,
+    _normalize_console_text,
     _parse_done_marker,
     _read_file_r_expr,
     _split_marker,
     _strip_r_index,
+    _submit_console_line,
     _wrap_python_expr,
     _wrap_python_expr_inline,
     _wrap_r_expr,
@@ -944,12 +948,16 @@ class TestTerminalRun:
 
     @staticmethod
     def _typed_cmd(page):
-        """The command string terminal_run typed into the (visible) terminal.
+        """The command string terminal_run sent to the (visible) terminal.
 
-        terminal_run resolves the input via ``_visible_terminal_input``, which
-        returns ``page.locator(...).last``, so the ``.type()`` call lands on the
-        ``.last`` child mock rather than ``page.locator.return_value``.
+        Delivery goes through ``_deliver_terminal_line``, which prefers one
+        atomic ``page.keyboard.insert_text`` and only falls back to keystroke
+        typing on the ``.last`` child mock (``_visible_terminal_input`` returns
+        ``page.locator(...).last``, so ``.type()`` lands there rather than on
+        ``page.locator.return_value``). Read whichever mechanism was used.
         """
+        if page.keyboard.insert_text.call_args is not None:
+            return page.keyboard.insert_text.call_args[0][0]
         return page.locator.return_value.last.type.call_args[0][0]
 
     def test_writes_done_marker_unconditionally(self, monkeypatch):
@@ -1285,3 +1293,297 @@ class TestWriteBundle:
 
         with pytest.raises(ExecError, match="write failed"):
             write_bundle(MagicMock(), "/tmp/bundle", {"app.py": "APP"})
+
+
+# ---------------------------------------------------------------------------
+# Console line delivery (issue: RStudio dropped the tail of a typed command)
+# ---------------------------------------------------------------------------
+
+
+class _AceFakeInput:
+    """Ace-like console input that can lose the tail of keystroke-typed text.
+
+    Models the two RStudio behaviours that broke ``rstudio_eval`` live: the
+    console pane is an Ace editor, so per-keystroke typing can stop partway
+    through a line and the editor's auto-close leaves its own pending closers
+    to the right of the cursor; and its completion popup can consume the Enter
+    that should have submitted the line.
+    """
+
+    def __init__(self, page):
+        self._page = page
+
+    def click(self, timeout=None):
+        pass
+
+    def focus(self, timeout=None):
+        pass
+
+    def count(self):
+        # Stands in for both the Console tab and the console input; rstudio_eval
+        # only asks whether the tab exists before clicking it.
+        return 1
+
+    def text_content(self, timeout=None):
+        return self._page.line + self._page.helper_node_text
+
+    def inner_text(self, timeout=None):
+        return self.text_content()
+
+    def type(self, text, **kwargs):
+        self._page.deliveries.append(("type", text))
+        drop = self._page.drop_tail_on_type.pop(0) if self._page.drop_tail_on_type else 0
+        if drop:
+            # Truncate, then append the auto-close pair Ace leaves behind for
+            # the still-open quote and call paren (exactly what the live console
+            # showed: 142 of 171 chars, then a stray `")`).
+            self._page.line += text[:-drop] + '")'
+        else:
+            self._page.line += text
+
+    def press(self, key, **kwargs):
+        self._page.keyboard.press(key)
+
+
+class _AceFakeKeyboard:
+    def __init__(self, page):
+        self._page = page
+
+    def insert_text(self, text):
+        self._page.deliveries.append(("insert", text))
+        if self._page.insert_text_noop:
+            return
+        self._page.line += text
+
+    def press(self, key):
+        self._page.pressed.append(key)
+        if key == "Enter":
+            if self._page.swallow_enters > 0:
+                self._page.swallow_enters -= 1
+                return
+            self._page.submitted.append(self._page.line)
+            self._page.line = ""
+        elif key == "Backspace":
+            self._page.line = ""
+
+
+class _AceFakePage:
+    """Scriptable fake RStudio console page for delivery/submit tests.
+
+    - ``insert_text_noop``: the editor ignores atomic ``insert_text`` entirely.
+    - ``drop_tail_on_type``: per-``type()``-call count of trailing characters to
+      lose (``[29, 0]`` = first typing attempt truncates, second lands intact).
+    - ``swallow_enters``: how many Enter presses the completion popup eats.
+    - ``helper_node_text``: text from Ace's hidden helper nodes, always present
+      in the input's DOM text and never part of the command.
+    """
+
+    def __init__(
+        self,
+        *,
+        insert_text_noop=False,
+        drop_tail_on_type=None,
+        swallow_enters=0,
+        helper_node_text="",
+    ):
+        self.insert_text_noop = insert_text_noop
+        self.helper_node_text = helper_node_text
+        self.drop_tail_on_type = list(drop_tail_on_type or [])
+        self.swallow_enters = swallow_enters
+        self.line = ""
+        self.submitted: list[str] = []
+        self.pressed: list[str] = []
+        self.deliveries: list[tuple[str, str]] = []
+        self.keyboard = _AceFakeKeyboard(self)
+        self.input = _AceFakeInput(self)
+
+    def locator(self, selector):
+        return self.input
+
+
+class TestNormalizeConsoleText:
+    def test_strips_ace_rendering_whitespace(self):
+        """Ace renders spaces as NBSP and soft-wraps long lines, so comparing
+        typed vs landed must ignore whitespace entirely — only the characters
+        matter."""
+        assert _normalize_console_text('cat("a", "b")\n') == _normalize_console_text(
+            'cat("a", "b")'
+        )
+
+    def test_strips_zero_width_characters(self):
+        assert _normalize_console_text("ab​c") == "abc"
+
+    def test_detects_real_character_loss(self):
+        assert _normalize_console_text('cat("45cbb")') != _normalize_console_text(
+            'cat("45cbb0e569")'
+        )
+
+
+class TestDeliverConsoleLine:
+    LINE = 'cat("<<VIP-START-abc", "def>>\\n", sep=""); 1 + 1'
+
+    def test_atomic_insert_is_tried_first_and_needs_no_retype(self):
+        """A single insert_text carries the whole line, so the editor never sees
+        the intermediate states its auto-close and completion popup react to."""
+        page = _AceFakePage()
+        note = _deliver_console_line(page, page.input, self.LINE)
+        assert note == ""
+        assert page.deliveries == [("insert", self.LINE)]
+        assert page.line == self.LINE
+
+    def test_falls_back_to_typing_when_insert_text_lands_nothing(self):
+        page = _AceFakePage(insert_text_noop=True)
+        note = _deliver_console_line(page, page.input, self.LINE)
+        assert note == ""
+        assert [kind for kind, _ in page.deliveries] == ["insert", "type"]
+        assert page.line == self.LINE
+
+    def test_retypes_when_the_line_lands_corrupted(self):
+        """The live failure: the tail of the command never arrived and Ace's
+        auto-close left a stray `")`. Verification must catch that and re-send
+        rather than submitting a truncated command."""
+        page = _AceFakePage(insert_text_noop=True, drop_tail_on_type=[29, 0])
+        note = _deliver_console_line(page, page.input, self.LINE)
+        assert note == ""
+        assert page.line == self.LINE
+        assert [kind for kind, _ in page.deliveries].count("type") == 2
+
+    def test_returns_diagnostic_without_raising_when_never_verified(self):
+        """Verification must only ever help: if the readback never matches, say
+        so in a note and let the caller's marker assertion be the judge. Raising
+        here would turn a console we simply cannot read into a hard failure."""
+        page = _AceFakePage(insert_text_noop=True, drop_tail_on_type=[29] * 8)
+        note = _deliver_console_line(page, page.input, self.LINE)
+        assert note != ""
+        assert "landed" in note
+        assert str(len(self.LINE)) in note
+
+
+class TestSubmitConsoleLine:
+    def test_single_enter_on_a_responsive_console(self):
+        page = _AceFakePage()
+        page.line = "1 + 1"
+        note = _submit_console_line(page, page.input, "1 + 1")
+        assert note == ""
+        assert page.submitted == ["1 + 1"]
+        assert page.pressed == ["Enter"]
+
+    def test_retries_enter_when_the_completion_popup_eats_it(self):
+        """RStudio opens a path-completion popup on the quotes in the marker
+        literals; while it is open Enter accepts the completion instead of
+        submitting, leaving the command sitting in the input."""
+        page = _AceFakePage(swallow_enters=1)
+        page.line = "1 + 1"
+        note = _submit_console_line(page, page.input, "1 + 1")
+        assert note == ""
+        assert page.submitted == ["1 + 1"]
+        assert page.pressed == ["Enter", "Enter"]
+
+    def test_reports_a_line_that_never_submits(self):
+        page = _AceFakePage(swallow_enters=99)
+        page.line = "1 + 1"
+        note = _submit_console_line(page, page.input, "1 + 1")
+        assert "not submitted" in note
+
+
+class TestConsoleVerificationToleratesAceHelperNodes:
+    """Ace keeps hidden helper nodes (a font-measurement node holding long runs
+    of filler characters) inside its editor DOM, so the input is never textually
+    equal to the command nor ever textually empty. Both checks must therefore
+    ask "is the command present / gone", not "does the text match / is it empty",
+    or every single eval would report a bogus mismatch and burn every retry."""
+
+    ACE_JUNK = "X" * 512
+
+    LINE = 'cat("<<VIP-START-abc", "def>>\\n", sep=""); 1 + 1'
+
+    def test_delivery_verifies_despite_trailing_helper_text(self):
+        page = _AceFakePage(helper_node_text=self.ACE_JUNK)
+        note = _deliver_console_line(page, page.input, self.LINE)
+        assert note == ""
+        assert [kind for kind, _ in page.deliveries] == ["insert"]
+
+    def test_submit_verifies_despite_trailing_helper_text(self):
+        page = _AceFakePage(helper_node_text=self.ACE_JUNK)
+        page.line = self.LINE
+        note = _submit_console_line(page, page.input, self.LINE)
+        assert note == ""
+        assert page.pressed == ["Enter"]
+
+
+class TestRstudioEvalErrorPath:
+    def test_raises_execerror_not_raw_assertionerror_on_missing_marker(self, monkeypatch):
+        """Playwright's expect() raises AssertionError, not TimeoutError, so the
+        original ``except PlaywrightTimeoutError`` never fired and the failure
+        surfaced as an 8KB console dump instead of the intended diagnosis."""
+
+        def boom(*args, **kwargs):
+            raise AssertionError("Locator expected to contain text ...")
+
+        monkeypatch.setattr(
+            exec_mod,
+            "expect",
+            lambda *a, **k: MagicMock(
+                **{
+                    "to_be_visible": lambda **kw: None,
+                    "to_contain_text": boom,
+                }
+            ),
+        )
+        page = _AceFakePage()
+        with pytest.raises(ExecError) as excinfo:
+            exec_mod.rstudio_eval(page, "1 + 1", timeout=100)
+        assert "did not return the expected output" in str(excinfo.value)
+
+    def test_error_message_carries_the_delivery_diagnostic(self, monkeypatch):
+        """When the command demonstrably never landed intact, that fact belongs
+        in the failure message — it is the difference between a one-line
+        diagnosis and re-deriving it from a console dump."""
+
+        def boom(*args, **kwargs):
+            raise AssertionError("Locator expected to contain text ...")
+
+        monkeypatch.setattr(
+            exec_mod,
+            "expect",
+            lambda *a, **k: MagicMock(
+                **{
+                    "to_be_visible": lambda **kw: None,
+                    "to_contain_text": boom,
+                }
+            ),
+        )
+        page = _AceFakePage(insert_text_noop=True, drop_tail_on_type=[20] * 8)
+        with pytest.raises(ExecError) as excinfo:
+            exec_mod.rstudio_eval(page, "1 + 1", timeout=100)
+        assert "landed" in str(excinfo.value)
+
+
+class TestDeliverTerminalLine:
+    LINE = "( git clone repo ) > /tmp/vip_term_x.txt 2>&1; rc=$?"
+
+    def test_prefers_one_atomic_insert(self):
+        """xterm.js relays a single input event to the PTY as one write, so the
+        command cannot be torn apart mid-flight the way keystrokes can."""
+        page = MagicMock()
+        terminal_input = MagicMock()
+        _deliver_terminal_line(page, terminal_input, self.LINE)
+        page.keyboard.insert_text.assert_called_once_with(self.LINE)
+        terminal_input.focus.assert_called_once()
+        terminal_input.type.assert_not_called()
+
+    def test_falls_back_to_typing_when_insert_text_is_unsupported(self):
+        page = MagicMock()
+        page.keyboard.insert_text.side_effect = RuntimeError("not supported")
+        terminal_input = MagicMock()
+        _deliver_terminal_line(page, terminal_input, self.LINE)
+        terminal_input.type.assert_called_once_with(self.LINE)
+
+    def test_never_resends(self):
+        """Re-sending a shell command that may already have run would run it
+        twice -- the ``destination path already exists`` failure class in #438.
+        Delivery is one-shot by design; loss surfaces as a done-marker timeout."""
+        page = MagicMock()
+        terminal_input = MagicMock()
+        _deliver_terminal_line(page, terminal_input, self.LINE)
+        assert page.keyboard.insert_text.call_count == 1
