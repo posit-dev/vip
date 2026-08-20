@@ -26,7 +26,7 @@ dependencies = [
     "pytest==9.1.1",  # exact-pinned; at/above CVE-2025-71176 floor (9.0.3)
     "pytest-bdd==8.1.0",  # exact-pinned
     "pytest-order==1.5.0",  # exact-pinned
-    "pytest-playwright==0.8.0",  # exact-pinned
+    "pytest-playwright==0.9.0",  # exact-pinned
     "pytest-xdist==3.8.0",  # exact-pinned
     "tomli>=2.0,<3;python_version<'3.11'",
     "requests>=2.33.0,<3",  # transitive via pytest-playwright; capped to track updates
