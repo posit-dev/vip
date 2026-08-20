@@ -100,7 +100,7 @@ jobs:
       - name: Generate highlights with Claude
         if: steps.gather.outputs.has_prs == 'true'
         id: analyze
-        uses: anthropics/claude-code-action@9db594c7a0e82298c121c18b7f08aa1579ce7341 # v1
+        uses: anthropics/claude-code-action@239e3a730883eeb5c53db12b0fc9573b3024b126 # v1
         with:
           github_token: ${{ github.token }}
           use_bedrock: true
