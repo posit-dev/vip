@@ -12,6 +12,7 @@ import pytest
 from vip.plugin import (
     _emit_extra_formats,
     _extract_exception_info,
+    _extract_skip_reason,
     _format_concise_error,
     _outcome_color,
     _shorten_location_line,
@@ -160,6 +161,44 @@ class TestExtractExceptionInfo:
         exc_type, exc_message = _extract_exception_info(longrepr)
         assert exc_type == "AssertionError"
         assert "Connect: /metrics returned 403" in exc_message
+
+
+class TestExtractSkipReason:
+    """F3: pulling a human-readable skip reason out of report.longrepr."""
+
+    def test_tuple_longrepr_strips_skipped_prefix(self):
+        # This is the real shape pytest hands back for a skip -- a 3-tuple
+        # with the caller's absolute file path in element 0. Reading the
+        # reason out of element 2 directly means that path never gets near
+        # results.json.
+        longrepr = (
+            "/Users/dev/vip/selftests/test_load_engine.py",
+            255,
+            "Skipped: high-concurrency localhost loads are flaky on macOS CI runners",
+        )
+        assert (
+            _extract_skip_reason(longrepr)
+            == "high-concurrency localhost loads are flaky on macOS CI runners"
+        )
+
+    def test_tuple_with_empty_reason_returns_none(self):
+        assert _extract_skip_reason(("/some/path.py", 1, "Skipped: ")) is None
+
+    def test_plain_string_without_prefix_is_returned_as_is(self):
+        assert _extract_skip_reason("not configured") == "not configured"
+
+    def test_plain_string_with_prefix_is_stripped(self):
+        assert _extract_skip_reason("Skipped: not configured") == "not configured"
+
+    def test_none_returns_none(self):
+        assert _extract_skip_reason(None) is None
+
+    def test_unexpected_shapes_fall_back_to_none_without_crashing(self):
+        assert _extract_skip_reason(("too", "few")) is None
+        assert _extract_skip_reason(("a", "b", "c", "d")) is None
+        assert _extract_skip_reason(("path", 1, 12345)) is None
+        assert _extract_skip_reason(12345) is None
+        assert _extract_skip_reason([]) is None
 
 
 class TestOutcomeColor:
@@ -786,6 +825,141 @@ class TestPluginIntegration:
         data = json.loads(report_path.read_text())
         result = data["results"][0]
         assert result["na_version"] is False
+
+    def test_json_report_includes_skip_reason(self, selftest_pytester):
+        """A marker-skipped test's reason lands in skip_reason, and longrepr is
+        dropped rather than storing pytest's absolute-path-carrying tuple form."""
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.skip(reason="high-concurrency localhost loads are flaky")
+            def test_skips():
+                pass
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        result = data["results"][0]
+        assert result["outcome"] == "skipped"
+        assert result["skip_reason"] == "high-concurrency localhost loads are flaky"
+        assert result["longrepr"] is None
+
+    def test_json_report_na_version_skip_also_gets_skip_reason(self, selftest_pytester):
+        """na_version skips (see _skip_version_unknown) are still skips, so they
+        get a skip_reason too -- it complements na_version, not replaces it."""
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://example.com"\n'
+            ),
+        )
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.min_version(product="connect", version="9999.01.0")
+            def test_future_version():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        result = data["results"][0]
+        assert result["na_version"] is True
+        assert result["skip_reason"] is not None
+        assert "version unknown for connect" in result["skip_reason"]
+
+    def test_json_report_skip_reason_none_for_non_skips(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            """
+            def test_plain():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        assert data["results"][0]["skip_reason"] is None
+
+    def test_json_report_failure_longrepr_unaffected_by_skip_change(self, selftest_pytester):
+        """Dropping longrepr is specific to skips -- a failure still gets one."""
+        selftest_pytester.makepyfile(
+            """
+            def test_fails():
+                assert False, "boom"
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        result = data["results"][0]
+        assert result["outcome"] == "failed"
+        assert result["longrepr"] is not None
+        assert result["skip_reason"] is None
+
+    def test_json_report_includes_provenance_fields(self, selftest_pytester):
+        """F9: results.json records the version/duration/environment that
+        produced it."""
+        import platform as _platform
+
+        selftest_pytester.makepyfile(
+            """
+            def test_plain():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        from vip import __version__ as vip_version
+
+        assert data["vip_version"] == vip_version
+        # This pytester run executes in-process (runpytest, not
+        # runpytest_subprocess), so it shares this test's own interpreter --
+        # the recorded python_version/platform must match it exactly.
+        assert data["python_version"] == _platform.python_version()
+        assert data["platform"] == _platform.platform()
+        assert isinstance(data["run_duration_seconds"], float)
+        assert data["run_duration_seconds"] >= 0
+        assert data["basic_mode"] is False
+
+    def test_json_report_basic_mode_true_when_slow_marker_excluded(self, selftest_pytester):
+        """basic_mode reflects the resolved marker expression, not a dedicated
+        flag -- `vip verify --basic` and a hand-written `-m "not slow"` both
+        set it, because both actually excluded the slow marker."""
+        selftest_pytester.makepyfile(
+            """
+            def test_plain():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+            "-m",
+            "not slow",
+        )
+        data = json.loads(report_path.read_text())
+        assert data["basic_mode"] is True
 
     def test_interactive_auth_skipped_when_no_auth_products(self, selftest_pytester):
         """--interactive-auth skips the browser flow when no auth-requiring products are enabled.

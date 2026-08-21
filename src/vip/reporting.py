@@ -29,12 +29,46 @@ class TestResult:
     scenario_title: str | None = None
     feature_description: str | None = None
     na_version: bool = False
+    # Human-readable reason a skipped test was skipped (e.g. "high-concurrency
+    # localhost loads are flaky on macOS CI runners"), with pytest's "Skipped: "
+    # prefix stripped. Populated by the plugin from ``report.longrepr`` — see
+    # ``plugin._extract_skip_reason``. ``None`` for non-skips, and also for a
+    # skip whose longrepr doesn't have the expected shape (never crash trying
+    # to explain a skip). ``longrepr`` itself is deliberately *not* populated
+    # for skips (see the plugin's ``pytest_runtest_logreport``): pytest's
+    # stringified longrepr for a skip is a 3-tuple embedding the absolute path
+    # of the file that called ``skip()``, which has no business in a report
+    # that gets archived/published, and skip_reason already carries the part
+    # a reader actually wants.
+    skip_reason: str | None = None
 
     @property
     def category(self) -> str:
-        """Derive the top-level test category from the nodeid."""
-        # nodeid looks like "tests/connect/test_auth.py::test_login"
-        parts = self.nodeid.split("/")
+        """Derive the top-level test category from the nodeid.
+
+        A nodeid starts with the pytest path to the test file, so the category
+        is the directory holding it: ``vip_tests/connect/test_auth.py::test_x``
+        is ``connect``.
+
+        Anchor on the ``vip_tests`` package segment rather than a fixed index.
+        The prefix depends on how the suite was collected -- a source checkout
+        yields ``src/vip_tests/...`` while an installed wheel yields a
+        site-packages path -- so the old fixed ``parts[1]`` returned the
+        literal string ``"vip_tests"`` for every result this repo actually
+        produces. That collapsed the whole Detailed Results page into one
+        section headed "Vip Tests" and labelled every SARIF logical location
+        ``vip_tests / <check>``. The ``parts[1]`` fallback is kept for nodeids
+        that do not run out of the package at all, such as a custom test
+        directory passed via ``--vip-test-dir``.
+        """
+        parts = self.nodeid.split("::", 1)[0].split("/")
+        if "vip_tests" in parts:
+            idx = parts.index("vip_tests") + 1
+            # Only a directory counts as a category. A file sitting directly
+            # in vip_tests/ (conftest.py, say) has no category of its own.
+            if idx < len(parts) - 1:
+                return parts[idx]
+            return "unknown"
         if len(parts) >= 2:
             return parts[1]
         return "unknown"
@@ -73,6 +107,17 @@ class ReportData:
     exit_status: int = 0
     products: list[ProductInfo] = field(default_factory=list)
     results: list[TestResult] = field(default_factory=list)
+    # Provenance: what produced this report, so a customer archiving it as
+    # evidence can tell which VIP version ran, how long it took, and whether
+    # it was a full or `--basic` run. All default to None/unset rather than a
+    # concrete-looking value (e.g. 0.0 or "unknown") so an older results.json
+    # written before these fields existed loads as "not recorded" instead of
+    # silently claiming a value that was never measured.
+    vip_version: str | None = None
+    run_duration_seconds: float | None = None
+    python_version: str | None = None
+    platform: str | None = None
+    basic_mode: bool | None = None
 
     @property
     def total(self) -> int:
@@ -135,6 +180,7 @@ def load_results(path: str | Path) -> ReportData:
             scenario_title=r.get("scenario_title"),
             feature_description=r.get("feature_description"),
             na_version=r.get("na_version", False),
+            skip_reason=r.get("skip_reason"),
         )
         for r in raw.get("results", [])
     ]
@@ -157,6 +203,11 @@ def load_results(path: str | Path) -> ReportData:
         exit_status=raw.get("exit_status", 0),
         products=products,
         results=results,
+        vip_version=raw.get("vip_version"),
+        run_duration_seconds=raw.get("run_duration_seconds"),
+        python_version=raw.get("python_version"),
+        platform=raw.get("platform"),
+        basic_mode=raw.get("basic_mode"),
     )
 
 
@@ -205,8 +256,16 @@ def write_junit_xml(data: ReportData, path: str | Path) -> None:
             )
             failure.text = _xml_safe(r.longrepr or r.concise_error or "")
         elif r.outcome == "skipped":
-            reason = "N/A for this product version" if r.na_version else "skipped"
-            ET.SubElement(case, "skipped", message=reason)
+            # skip_reason is the real reason (see TestResult.skip_reason); the
+            # na_version wording is a fallback for reports written before that
+            # field existed, and "skipped" is the last resort with no reason at all.
+            if r.skip_reason:
+                reason = r.skip_reason
+            elif r.na_version:
+                reason = "N/A for this product version"
+            else:
+                reason = "skipped"
+            ET.SubElement(case, "skipped", message=_xml_safe(reason))
 
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -235,7 +294,14 @@ def write_sarif(data: ReportData, path: str | Path) -> None:
         if r.outcome == "failed":
             text = r.concise_error or r.longrepr or "check failed"
         elif r.outcome == "skipped":
-            text = "N/A for this product version" if r.na_version else "check skipped"
+            # Same precedence as write_junit_xml: real reason, then the
+            # na_version fallback wording, then a generic message.
+            if r.skip_reason:
+                text = r.skip_reason
+            elif r.na_version:
+                text = "N/A for this product version"
+            else:
+                text = "check skipped"
         else:
             text = check
         results.append(
