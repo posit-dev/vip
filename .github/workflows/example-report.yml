@@ -12,6 +12,20 @@ jobs:
         with:
           persist-credentials: false
 
+      # Unlike Workbench and Package Manager, Connect has no license-gate
+      # step: this workflow always builds a [connect] section (see "Configure
+      # VIP for CI" below) and the published report is anchored on Connect, so
+      # there is no graceful-degradation path that would still produce a
+      # meaningful example. Fail loudly and immediately, the same way
+      # packagemanager-smoke.yml treats a missing RSPM_LICENSE, rather than
+      # letting the "Start Connect" step fail opaquely deep in with-connect.
+      - name: Check for CONNECT_LICENSE
+        run: |
+          if [ -z "${{ secrets.CONNECT_LICENSE }}" ]; then
+            echo "::error::CONNECT_LICENSE secret is not configured; the example report cannot be built without Connect. Set the CONNECT_LICENSE repository secret."
+            exit 1
+          fi
+
       # Free disk space before pulling the Connect, Workbench, and Package
       # Manager images plus the Playwright Chromium download. The default
       # ubuntu-latest root volume (~14 GB free) otherwise fills up and the
@@ -139,6 +153,60 @@ jobs:
           echo "Resolved Connect version: ${VERSION}"
           echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      # with-workbench's default `user` input is "testuser" (see
+      # posit-dev/with-workbench's action.yml), and that name flows into the
+      # shared [auth] section below, which every product test reads via the
+      # test_username/test_password fixtures. Connect has no equivalent
+      # account -- with-connect only exposes an API key, never a
+      # username/password -- so create one that matches, via the same API key
+      # the "Resolve Connect version" step above already validated. This
+      # keeps "the test user exists in the user list" (test_users.py) honest
+      # instead of relying on an account Connect never created. It also gives
+      # the UI-login scenario real credentials to submit, though note that
+      # scenario cannot currently detect the difference either way: Connect
+      # 303-redirects GET /__login__ to <dashboard>/#/login before any
+      # credentials are entered, so its "we left /__login__" assertion is
+      # vacuous. Tracked separately; do not read a passing login scenario here
+      # as evidence this step worked.
+      #
+      # The credentials go through the environment rather than being
+      # interpolated straight into the JSON body: a password containing a
+      # quote would otherwise break the shell quoting and produce a
+      # malformed request. An already-existing account is treated as success
+      # so re-runs stay idempotent, and any other non-2xx prints the response
+      # body -- `curl -sf >/dev/null` would fail the job with no diagnostics
+      # at all.
+      - name: Provision Connect test user
+        if: steps.wb-license.outputs.available == 'true'
+        env:
+          CONNECT_SERVER: ${{ steps.connect.outputs.CONNECT_SERVER }}
+          CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
+          TEST_USER: ${{ steps.workbench.outputs.WORKBENCH_USER }}
+          TEST_PASSWORD: ${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}
+        run: |
+          BODY=$(jq -nc \
+            --arg u "${TEST_USER}" \
+            --arg p "${TEST_PASSWORD}" \
+            '{username: $u, email: ($u + "@example.com"), password: $p, user_role: "publisher"}')
+          HTTP_CODE=$(curl -s -o /tmp/create_user.json -w '%{http_code}' -X POST \
+            -H "Authorization: Key ${CONNECT_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "${BODY}" \
+            "${CONNECT_SERVER}/__api__/v1/users")
+          case "${HTTP_CODE}" in
+            2??)
+              echo "Created Connect user '${TEST_USER}'"
+              ;;
+            409)
+              echo "Connect user '${TEST_USER}' already exists; nothing to do"
+              ;;
+            *)
+              echo "ERROR: creating Connect user '${TEST_USER}' returned HTTP ${HTTP_CODE}"
+              cat /tmp/create_user.json
+              exit 1
+              ;;
+          esac
+
       # Start Package Manager in Docker
       - name: Start Package Manager
         if: steps.pm-license.outputs.available == 'true'
@@ -148,7 +216,7 @@ jobs:
             --name packagemanager \
             -p 4242:4242 \
             -e RSPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
-            rstudio/rstudio-package-manager:ubuntu2204-2024.08.0
+            rstudio/rstudio-package-manager:ubuntu2204
           echo "PM_URL=http://localhost:4242" >> "$GITHUB_OUTPUT"
 
       # Wait for Package Manager health check
@@ -205,7 +273,13 @@ jobs:
 
           echo "Repositories provisioned successfully"
 
-      # Resolve the actual Package Manager version
+      # Resolve the actual Package Manager version. Fail loudly rather than
+      # falling back to a hardcoded string, matching the Connect and
+      # Workbench resolve-version steps above: a silent fallback here would
+      # have masked the stale-PM-version bug this step is fixing, and a
+      # placeholder is no more meaningful than an explicit failure once the
+      # bare `ubuntu2204` tag (which always resolves to the latest build,
+      # per packagemanager-smoke.yml) is what was actually requested.
       - name: Resolve Package Manager version
         if: steps.pm-license.outputs.available == 'true'
         id: pm-version
@@ -213,7 +287,9 @@ jobs:
           RESPONSE=$(curl -sf http://localhost:4242/__api__/status)
           VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty')
           if [ -z "${VERSION}" ]; then
-            VERSION="ubuntu2204-2024.08.0"
+            echo "ERROR: Could not resolve Package Manager version from /__api__/status"
+            echo "Response body: ${RESPONSE}"
+            exit 1
           fi
           echo "Resolved Package Manager version: ${VERSION}"
           echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -277,10 +353,19 @@ jobs:
           ${WB_AUTH}
           EOF
 
+      # `|| true` used to swallow pytest's exit code entirely, so a real crash
+      # (bad collection, a plugin exception, wrong CLI usage) rendered a report
+      # from a stale or missing results.json and still went green. Capture the
+      # code instead: 0 (all passed) and 1 (some tests failed -- expected here,
+      # since the demo scenario fails by design) both mean pytest ran to
+      # completion and results.json is trustworthy, so let the job continue to
+      # the render step. 2-5 (interrupted, internal error, usage error, no
+      # tests collected) mean it didn't, so fail the job loudly instead.
       - name: Run smoke tests and generate results
         env:
           VIP_ENABLE_EXPECTED_FAILURE_DEMO: "1"
         run: |
+          set +e
           uv run pytest \
             src/vip_tests/prerequisites/ \
             src/vip_tests/connect/test_auth.py \
@@ -291,8 +376,15 @@ jobs:
             src/vip_tests/workbench/test_auth.py \
             src/vip_tests/package_manager/test_repos.py \
             -v \
-            --vip-config=vip.toml \
-          || true
+            --vip-config=vip.toml
+          PYTEST_EXIT_CODE=$?
+          set -e
+          echo "pytest exited with code ${PYTEST_EXIT_CODE}"
+          if [ "${PYTEST_EXIT_CODE}" -eq 0 ] || [ "${PYTEST_EXIT_CODE}" -eq 1 ]; then
+            exit 0
+          fi
+          echo "::error::pytest exited with code ${PYTEST_EXIT_CODE} (collection, usage, or internal error rather than a test failure); see the log above for details."
+          exit 1
 
       - name: Render Quarto report
         run: cd report && uv run quarto render
