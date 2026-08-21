@@ -63,7 +63,11 @@ class TestResult:
         """
         parts = self.nodeid.split("::", 1)[0].split("/")
         if "vip_tests" in parts:
-            idx = parts.index("vip_tests") + 1
+            # Scan from the right: the innermost ``vip_tests`` is the package
+            # root closest to the category directory, so a collection path that
+            # happens to nest one inside another (or inside a folder of the
+            # same name) still resolves to the real category.
+            idx = len(parts) - 1 - parts[::-1].index("vip_tests") + 1
             # Only a directory counts as a category. A file sitting directly
             # in vip_tests/ (conftest.py, say) has no category of its own.
             if idx < len(parts) - 1:

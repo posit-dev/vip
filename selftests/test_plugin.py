@@ -166,6 +166,20 @@ class TestExtractExceptionInfo:
 class TestExtractSkipReason:
     """F3: pulling a human-readable skip reason out of report.longrepr."""
 
+    def test_whitespace_only_reason_is_treated_as_absent(self):
+        """A blank reason must fall back to None, not render an empty line.
+
+        Both a ``reason="   "`` and a bare ``"Skipped:    "`` leave whitespace
+        once the prefix is stripped; truthy-but-blank would reach the report as
+        an empty skip line instead of the "no reason recorded" wording.
+        """
+        assert _extract_skip_reason(("/p/test_x.py", 3, "Skipped:    ")) is None
+        assert _extract_skip_reason(("/p/test_x.py", 3, "   ")) is None
+
+    def test_reason_is_stripped_of_surrounding_whitespace(self):
+        got = _extract_skip_reason(("/p/test_x.py", 3, "Skipped:  no license  "))
+        assert got == "no license"
+
     def test_tuple_longrepr_strips_skipped_prefix(self):
         # This is the real shape pytest hands back for a skip -- a 3-tuple
         # with the caller's absolute file path in element 0. Reading the

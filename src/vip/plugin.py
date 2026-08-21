@@ -944,7 +944,11 @@ def _extract_skip_reason(longrepr: object) -> str | None:
         return None
     if message.startswith(_SKIPPED_PREFIX):
         message = message[len(_SKIPPED_PREFIX) :]
-    return message or None
+    # Strip before the emptiness check, not after: "Skipped:    " and a
+    # ``reason="   "`` both leave whitespace once the prefix is removed, and a
+    # truthy-but-blank reason renders as an empty line in the report rather
+    # than falling back to the "no reason recorded" wording.
+    return message.strip() or None
 
 
 def _format_concise_error(

@@ -310,10 +310,14 @@ def skip_reason_html(item: TestResult) -> str:
         return ""
     if item.status == "na_version":
         parts = [_esc(_NA_VERSION_EXPLANATION)]
-        if item.skip_reason:
-            parts.append(f'<span class="vip-skip-detail">{_esc(item.skip_reason)}</span>')
+        if item.skip_reason and item.skip_reason.strip():
+            detail = _esc(item.skip_reason.strip())
+            parts.append(f'<span class="vip-skip-detail">{detail}</span>')
         return f'<div class="vip-skip-reason">{"".join(parts)}</div>'
-    reason = item.skip_reason or "No reason recorded."
+    # ``.strip()`` guards a results.json written before the plugin started
+    # normalising this: a whitespace-only reason is truthy and would render as
+    # a blank line instead of the fallback wording.
+    reason = (item.skip_reason or "").strip() or "No reason recorded."
     return f'<div class="vip-skip-reason">{_esc(reason)}</div>'
 
 

@@ -198,7 +198,12 @@ jobs:
               echo "Created Connect user '${TEST_USER}'"
               ;;
             409)
-              echo "Connect user '${TEST_USER}' already exists; nothing to do"
+              # Idempotent re-run: Connect returns 409 when the username is
+              # taken. Print the body rather than swallowing it, so a 409
+              # raised by some other uniqueness constraint is still visible in
+              # the log instead of passing silently as "already exists".
+              echo "Connect user '${TEST_USER}' already exists; nothing to do. Response:"
+              cat /tmp/create_user.json
               ;;
             *)
               echo "ERROR: creating Connect user '${TEST_USER}' returned HTTP ${HTTP_CODE}"

@@ -32,6 +32,43 @@ class TestTestResult:
         )
         assert r.category == "workbench"
 
+    def test_category_anchors_on_the_vip_tests_package_segment(self):
+        """The real nodeid shape, which the old fixed-index lookup got wrong.
+
+        Nodeids are rooted at ``src/vip_tests/<category>/...``, one segment
+        deeper than the ``tests/<category>/...`` shape the old ``parts[1]``
+        lookup assumed, so every real result used to come back as the literal
+        string ``"vip_tests"``.
+        """
+        r = TestResult(nodeid="src/vip_tests/connect/test_auth.py::test_login", outcome="passed")
+        assert r.category == "connect"
+
+    def test_category_resolves_from_an_installed_wheel_path(self):
+        """An installed wheel collects from site-packages, so the prefix depth
+        is not fixed and cannot be indexed by position."""
+        r = TestResult(
+            nodeid=(
+                "/opt/venv/lib/python3.12/site-packages/vip_tests/"
+                "package_manager/test_repos.py::test_cran"
+            ),
+            outcome="passed",
+        )
+        assert r.category == "package_manager"
+
+    def test_category_is_unknown_for_a_file_directly_in_vip_tests(self):
+        """A file sitting in the package root has no category directory."""
+        r = TestResult(nodeid="src/vip_tests/conftest.py::test_x", outcome="passed")
+        assert r.category == "unknown"
+
+    def test_category_prefers_the_innermost_vip_tests_segment(self):
+        """A collection path that nests one vip_tests inside another still
+        resolves to the real category, not the outer segment."""
+        r = TestResult(
+            nodeid="custom/vip_tests/x/vip_tests/workbench/test_b.py::test_y",
+            outcome="passed",
+        )
+        assert r.category == "workbench"
+
     def test_optional_fields_default_none(self):
         r = TestResult(nodeid="a", outcome="passed")
         assert r.scenario_title is None
