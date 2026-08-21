@@ -1,15 +1,21 @@
 /* Shared styles for the VIP Quarto report.
-   Product/category badges rendered by index.qmd and details.qmd reference the
-   .badge-* classes below (see _PRODUCT_BADGE_CSS in those files). Keeping them
-   here — loaded via _quarto.yml's format.html.css — means both pages share one
-   definition instead of duplicating it in each inline <style> block. */
+   Both index.qmd and details.qmd render through src/vip/report_html.py, which
+   emits classes from here rather than each page carrying its own inline
+   <style> block (see report_html.py's module docstring). Loaded via
+   _quarto.yml's format.html.css, so both pages share one definition. */
 
-/* Product badges */
+/* ------------------------------------------------------------------ */
+/* Product / category badges (primary — see report_html._PRIMARY_BADGES) */
+/* ------------------------------------------------------------------ */
+
 .badge-connect,
 .badge-workbench,
 .badge-package-manager,
 .badge-security,
-.badge-prerequisites {
+.badge-prerequisites,
+.badge-cross-product,
+.badge-config-hygiene,
+.badge-performance {
   display: inline-block;
   color: white;
   padding: 2px 8px;
@@ -37,4 +43,296 @@
 
 .badge-prerequisites {
   background-color: #6c757d;
+}
+
+.badge-cross-product {
+  background-color: #7c5cbf;
+}
+
+.badge-config-hygiene {
+  background-color: #b45309;
+}
+
+.badge-performance {
+  background-color: #0891b2;
+}
+
+/* Secondary badges (see report_html._SECONDARY_BADGES): quieter than the
+   product pills above — outlined rather than filled, so an IDE or "slow"
+   tag reads as supplementary information, not another product. */
+.badge-ide,
+.badge-slow {
+  display: inline-block;
+  color: #4b5563;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  padding: 1px 7px;
+  border-radius: 12px;
+  font-size: 0.75em;
+  font-weight: 600;
+  margin-left: 6px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Summary status pill (index.qmd's overall PASS/FAIL) */
+/* ------------------------------------------------------------------ */
+
+.summary-status-pass {
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.summary-status-fail {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------ */
+/* Result cards */
+/* ------------------------------------------------------------------ */
+
+.vip-cat-section {
+  margin-bottom: 2rem;
+}
+
+.vip-cat-header {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+  color: #1f2937;
+}
+
+.vip-cat-counts {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin-bottom: 0.75rem;
+}
+
+.vip-test-card {
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+  background: #fefefe;
+}
+
+.vip-test-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.vip-test-scenario {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: #1f2937;
+}
+
+.vip-badge {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.vip-test-meta {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-family: monospace;
+  margin-top: 0.125rem;
+}
+
+.vip-test-duration {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-left: 0.5rem;
+}
+
+.vip-test-description {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  font-style: italic;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+/* The specific version-gate detail on an N/A card, quieter than the
+   plain-English explanation it follows. */
+.vip-skip-detail {
+  display: block;
+  margin-top: 0.125rem;
+  font-family: monospace;
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+.vip-skip-reason {
+  font-size: 0.8125rem;
+  color: #92400e;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.vip-test-steps {
+  margin-top: 0.375rem;
+}
+
+.vip-test-steps summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #6b7280;
+  padding: 0.25rem 0;
+}
+
+.vip-test-steps summary:hover {
+  color: #374151;
+}
+
+.vip-step-list {
+  margin: 0.25rem 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.vip-step-list li {
+  font-size: 0.8125rem;
+  font-family: monospace;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.vip-step-list li::before {
+  content: "› ";
+  color: #9ca3af;
+}
+
+.vip-fail-concise {
+  font-size: 0.875rem;
+  color: #dc2626;
+  font-weight: 600;
+  margin-top: 0.375rem;
+}
+
+.vip-fail-details {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.vip-fail-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: #6b7280;
+  padding: 0.25rem 0;
+}
+
+.vip-fail-details summary:hover {
+  color: #374151;
+}
+
+.vip-fail-error-wrap {
+  position: relative;
+  margin-top: 0.375rem;
+}
+
+.vip-fail-error {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  padding: 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.vip-copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  z-index: 1;
+}
+
+.vip-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.vip-fail-hints {
+  background: #fffbeb;
+  border: 1px solid #fbbf24;
+  border-radius: 4px;
+  padding: 0.875rem 1rem;
+  font-size: 0.875rem;
+  color: #92400e;
+  margin-top: 0.5rem;
+}
+
+.vip-fail-hints ul,
+.vip-fail-hints ol {
+  margin: 0.25rem 0 0.75rem 1.25rem;
+  padding: 0;
+}
+
+.vip-fail-hints li {
+  margin-bottom: 0.25rem;
+}
+
+.vip-fail-hints p {
+  margin: 0.25rem 0;
+}
+
+.vip-fail-hints a {
+  color: #92400e;
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ */
+/* Print / PDF (F10): customers archive and PDF this report, so a plain
+   "Ctrl+P" needs to produce something usable — hidden hints and tracebacks
+   expanded, cards not split across a page boundary, and no interactive
+   chrome (copy buttons do nothing on paper; the navbar is meaningless once
+   printed). */
+/* ------------------------------------------------------------------ */
+
+@media print {
+  /* Expand every collapsed section so the printed page includes tracebacks
+     and hints, not just their <summary> labels. */
+  details {
+    display: block;
+  }
+
+  details > summary {
+    display: none;
+  }
+
+  /* Keep a card's badge, title, and traceback together rather than letting
+     the page break land in the middle of one. */
+  .vip-test-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .vip-copy-btn,
+  .navbar,
+  #quarto-header {
+    display: none !important;
+  }
 }
