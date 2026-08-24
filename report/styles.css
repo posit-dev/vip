@@ -319,6 +319,12 @@
     display: block;
   }
 
+  /* UA styles hide non-summary content for closed <details>; override so
+     tracebacks/hints print even when collapsed on-screen. */
+  details:not([open]) > *:not(summary) {
+    display: block !important;
+  }
+
   details > summary {
     display: none;
   }
