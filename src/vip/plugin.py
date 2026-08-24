@@ -18,6 +18,7 @@ Responsibilities:
 from __future__ import annotations
 
 import json
+import platform
 import re
 import sys
 import threading
@@ -43,6 +44,11 @@ _results_key = pytest.StashKey[list[dict[str, Any]]]()
 _auth_session_key = pytest.StashKey[Any]()
 _auth_mode_key = pytest.StashKey[str]()
 _version_na_key = pytest.StashKey[bool]()
+# Wall-clock start of the session, for the "run_duration_seconds" provenance
+# field. Recorded in every process (worker or controller) but only read back
+# on the controller in pytest_sessionfinish, which is the process that
+# ultimately writes results.json.
+_session_start_key = pytest.StashKey[float]()
 
 # Module-level reference to the active pytest.Config, set in pytest_configure.
 # Safe because pytester runs in a subprocess (fresh import each time).
@@ -559,6 +565,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     # reporter is guaranteed to exist.
     _install_progress_recolor(session.config)
     _install_location_shortener(session.config)
+    session.config.stash[_session_start_key] = time.monotonic()
 
     ext_dirs = session.config.stash.get(_ext_dirs_key, [])
     for d in ext_dirs:
@@ -909,6 +916,41 @@ def _extract_exception_info(longrepr: str) -> tuple[str, str]:
     return "UnknownError", longrepr.strip()[:200]
 
 
+_SKIPPED_PREFIX = "Skipped: "
+
+
+def _extract_skip_reason(longrepr: object) -> str | None:
+    """Pull the human-readable reason out of a skip report's ``longrepr``.
+
+    For a skip, pytest hands back ``report.longrepr`` as a 3-tuple
+    ``(path, lineno, message)`` where ``message`` is ``"Skipped: <reason>"`` —
+    that shape is what ``pytest.mark.skip(reason=...)``, a bare
+    ``pytest.skip(...)`` call, and ``_skip_version_unknown``'s marker-based
+    skip all produce, so this one path also covers ``na_version`` skips. We
+    read the tuple directly rather than regex-parsing ``str(report.longrepr)``
+    — the whole point is to avoid the absolute source path that stringified
+    form embeds in element 0 (see ``TestResult.skip_reason``'s docstring).
+    A plain string or ``None`` (unusual, but not ruled out by pytest's own
+    typing) is handled too. Anything else falls back to ``None`` instead of
+    guessing at a shape we haven't seen.
+    """
+    if isinstance(longrepr, tuple) and len(longrepr) == 3:
+        message = longrepr[2]
+    elif isinstance(longrepr, str) or longrepr is None:
+        message = longrepr
+    else:
+        return None
+    if not isinstance(message, str) or not message:
+        return None
+    if message.startswith(_SKIPPED_PREFIX):
+        message = message[len(_SKIPPED_PREFIX) :]
+    # Strip before the emptiness check, not after: "Skipped:    " and a
+    # ``reason="   "`` both leave whitespace once the prefix is removed, and a
+    # truthy-but-blank reason renders as an empty line in the report rather
+    # than falling back to the "no reason recorded" wording.
+    return message.strip() or None
+
+
 def _format_concise_error(
     nodeid: str,
     exc_type: str,
@@ -1132,9 +1174,18 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
         if results is not None:
             longrepr_str = str(report.longrepr) if report.longrepr else None
             concise_error = None
+            skip_reason = None
             if report.outcome == "failed" and longrepr_str:
                 exc_type, exc_message = _extract_exception_info(longrepr_str)
                 concise_error = _format_concise_error(report.nodeid, exc_type, exc_message)
+            elif report.outcome == "skipped":
+                skip_reason = _extract_skip_reason(report.longrepr)
+                # Stringified longrepr is pytest's raw ``(path, lineno, "Skipped:
+                # ...")`` tuple and leaks the absolute path of the file that
+                # called skip() into results.json (an uploaded CI artifact).
+                # skip_reason above already carries the part worth keeping, so
+                # don't also store the leaky form for skips.
+                longrepr_str = None
 
             results.append(
                 {
@@ -1143,6 +1194,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
                     "duration": report.duration,
                     "longrepr": longrepr_str,
                     "concise_error": concise_error,
+                    "skip_reason": skip_reason,
                     "markers": list(getattr(report, "vip_markers", ())),
                     "scenario_title": getattr(report, "vip_scenario_title", None),
                     "feature_description": getattr(report, "vip_feature_description", None),
@@ -1217,10 +1269,29 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             "configured": pc.is_configured,
         }
 
+    from vip import __version__ as vip_version
+
+    session_start = session.config.stash.get(_session_start_key, None)
+    run_duration_seconds = time.monotonic() - session_start if session_start is not None else None
+    # There is no dedicated "--basic" flag on the plugin side — `vip verify
+    # --basic` (cli.py) maps to the generic pytest `-m` marker expression,
+    # appending "not slow" to whatever categories/markers were already
+    # selected. Detecting that from here means reading the resolved
+    # expression back rather than a purpose-built flag, but it is also the
+    # more honest signal: it reflects "was the slow marker actually excluded",
+    # true for any run that got there via `-m "not slow"` directly too, not
+    # just ones that went through `--basic`.
+    basic_mode = "not slow" in (session.config.getoption("markexpr", default="") or "")
+
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "deployment_name": cfg.deployment_name,
         "exit_status": exitstatus,
+        "vip_version": vip_version,
+        "run_duration_seconds": run_duration_seconds,
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+        "basic_mode": basic_mode,
         "products": products,
         "results": results,
     }

@@ -1,9 +1,23 @@
 project:
   type: website
   output-dir: _output
+  # Explicit on purpose: some Quarto releases silently render nothing at all
+  # (exit 0, no output, no log line) for a website project with no `render:`
+  # list, instead of falling back to "every .qmd in the directory" as older
+  # versions do. cli.run_report already treats an empty render as a loud
+  # failure (see test_errors_when_render_produces_no_output) rather than a
+  # crash, which is what made this reproducible — but the real fix is to
+  # never depend on that implicit discovery in the first place.
+  render:
+    - index.qmd
+    - details.qmd
 
 website:
   title: "VIP - Verified Installation of Posit"
+  # A 2-page site gets little value from a search index, and the generated
+  # search.json (~295 KB) was most of the report's non-code weight (F10 —
+  # customers archive this report, so its size matters).
+  search: false
   navbar:
     left:
       - href: index.qmd
@@ -17,3 +31,9 @@ format:
     toc: true
     code-fold: true
     css: styles.css
+    # F10: customers archive/PDF this report as evidence. embed-resources
+    # inlines every asset (this stylesheet, Bootstrap, fonts) into each page's
+    # own HTML file, so index.html and details.html are each single-file and
+    # openable offline. It does not affect the hyperlink between them — that
+    # is a plain <a href> to the other page's own (also self-contained) file.
+    embed-resources: true

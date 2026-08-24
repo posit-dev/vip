@@ -32,6 +32,43 @@ class TestTestResult:
         )
         assert r.category == "workbench"
 
+    def test_category_anchors_on_the_vip_tests_package_segment(self):
+        """The real nodeid shape, which the old fixed-index lookup got wrong.
+
+        Nodeids are rooted at ``src/vip_tests/<category>/...``, one segment
+        deeper than the ``tests/<category>/...`` shape the old ``parts[1]``
+        lookup assumed, so every real result used to come back as the literal
+        string ``"vip_tests"``.
+        """
+        r = TestResult(nodeid="src/vip_tests/connect/test_auth.py::test_login", outcome="passed")
+        assert r.category == "connect"
+
+    def test_category_resolves_from_an_installed_wheel_path(self):
+        """An installed wheel collects from site-packages, so the prefix depth
+        is not fixed and cannot be indexed by position."""
+        r = TestResult(
+            nodeid=(
+                "/opt/venv/lib/python3.12/site-packages/vip_tests/"
+                "package_manager/test_repos.py::test_cran"
+            ),
+            outcome="passed",
+        )
+        assert r.category == "package_manager"
+
+    def test_category_is_unknown_for_a_file_directly_in_vip_tests(self):
+        """A file sitting in the package root has no category directory."""
+        r = TestResult(nodeid="src/vip_tests/conftest.py::test_x", outcome="passed")
+        assert r.category == "unknown"
+
+    def test_category_prefers_the_innermost_vip_tests_segment(self):
+        """A collection path that nests one vip_tests inside another still
+        resolves to the real category, not the outer segment."""
+        r = TestResult(
+            nodeid="custom/vip_tests/x/vip_tests/workbench/test_b.py::test_y",
+            outcome="passed",
+        )
+        assert r.category == "workbench"
+
     def test_optional_fields_default_none(self):
         r = TestResult(nodeid="a", outcome="passed")
         assert r.scenario_title is None
@@ -82,6 +119,67 @@ class TestReportData:
         assert set(cats.keys()) == {"connect", "workbench"}
         assert len(cats["connect"]) == 2
         assert len(cats["workbench"]) == 1
+
+
+class TestProvenance:
+    """F9: ReportData carries provenance about what produced the report."""
+
+    def test_defaults_are_none(self):
+        rd = ReportData()
+        assert rd.vip_version is None
+        assert rd.run_duration_seconds is None
+        assert rd.python_version is None
+        assert rd.platform is None
+        assert rd.basic_mode is None
+
+    def test_loaded_from_json(self, tmp_path):
+        data = {
+            "deployment_name": "Test",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "exit_status": 0,
+            "vip_version": "2026.8.2",
+            "run_duration_seconds": 123.45,
+            "python_version": "3.12.4",
+            "platform": "Linux-6.8.0-x86_64-with-glibc2.35",
+            "basic_mode": True,
+            "products": {},
+            "results": [],
+        }
+        p = tmp_path / "results.json"
+        p.write_text(json.dumps(data))
+        rd = load_results(p)
+        assert rd.vip_version == "2026.8.2"
+        assert rd.run_duration_seconds == 123.45
+        assert rd.python_version == "3.12.4"
+        assert rd.platform == "Linux-6.8.0-x86_64-with-glibc2.35"
+        assert rd.basic_mode is True
+
+    def test_missing_keys_default_none(self, sample_results_json):
+        # sample_results_json predates provenance -- confirms an older
+        # results.json still loads, with "not recorded" rather than a
+        # made-up value.
+        rd = load_results(sample_results_json)
+        assert rd.vip_version is None
+        assert rd.run_duration_seconds is None
+        assert rd.python_version is None
+        assert rd.platform is None
+        assert rd.basic_mode is None
+
+    def test_basic_mode_false_is_preserved_not_defaulted(self, tmp_path):
+        # An explicit False must round-trip as False, not get treated as
+        # "missing" and coerced to None.
+        data = {
+            "deployment_name": "Test",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "exit_status": 0,
+            "basic_mode": False,
+            "products": {},
+            "results": [],
+        }
+        p = tmp_path / "results.json"
+        p.write_text(json.dumps(data))
+        rd = load_results(p)
+        assert rd.basic_mode is False
 
 
 class TestLoadResults:
@@ -301,6 +399,44 @@ class TestNAVersionStatus:
         assert rd.total == 2
 
 
+class TestSkipReason:
+    def test_default_none(self):
+        r = TestResult(nodeid="a", outcome="skipped")
+        assert r.skip_reason is None
+
+    def test_loaded_from_json(self, tmp_path):
+        data = {
+            "deployment_name": "Test",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "exit_status": 0,
+            "products": {},
+            "results": [
+                {
+                    "nodeid": "tests/performance/test_load.py::test_high_concurrency",
+                    "outcome": "skipped",
+                    "duration": 0.0,
+                    "markers": ["performance"],
+                    "skip_reason": "high-concurrency localhost loads are flaky on macOS CI runners",
+                },
+            ],
+        }
+        p = tmp_path / "results.json"
+        p.write_text(json.dumps(data))
+        rd = load_results(p)
+        assert (
+            rd.results[0].skip_reason
+            == "high-concurrency localhost loads are flaky on macOS CI runners"
+        )
+
+    def test_missing_key_defaults_none(self, sample_results_json):
+        # sample_results_json predates skip_reason -- confirms old results.json
+        # files still load without the new key present.
+        rd = load_results(sample_results_json)
+        skips = [r for r in rd.results if r.outcome == "skipped"]
+        assert skips
+        assert all(r.skip_reason is None for r in skips)
+
+
 class TestConciseError:
     def test_concise_error_field_default_none(self):
         r = TestResult(nodeid="a", outcome="passed")
@@ -505,6 +641,59 @@ class TestWriteJUnitXml:
         suite = tree.getroot().find("testsuite")
         assert suite.get("tests") == "0"
 
+    def test_skip_reason_used_as_message(self, tmp_path):
+        """A skip with skip_reason set uses it verbatim, not 'skipped'."""
+        out = tmp_path / "junit.xml"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/performance/test_load.py::test_high_concurrency",
+                    outcome="skipped",
+                    skip_reason="flaky on macOS CI runners",
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        tree = ET.parse(out)
+        skipped = tree.getroot().find(".//skipped")
+        assert skipped.get("message") == "flaky on macOS CI runners"
+
+    def test_skip_reason_takes_precedence_over_na_version(self, tmp_path):
+        """skip_reason wins even when na_version is also set (see _skip_version_unknown)."""
+        out = tmp_path / "junit.xml"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_api.py::test_v1",
+                    outcome="skipped",
+                    na_version=True,
+                    skip_reason="VIP: version unknown for connect",
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        tree = ET.parse(out)
+        skipped = tree.getroot().find(".//skipped")
+        assert skipped.get("message") == "VIP: version unknown for connect"
+
+    def test_na_version_wording_is_fallback_without_skip_reason(self, tmp_path):
+        """A na_version skip with no skip_reason (older results.json) keeps the
+        pre-existing wording rather than falling all the way to 'skipped'."""
+        out = tmp_path / "junit.xml"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_api.py::test_v1",
+                    outcome="skipped",
+                    na_version=True,
+                ),
+            ],
+        )
+        write_junit_xml(data, out)
+        tree = ET.parse(out)
+        skipped = tree.getroot().find(".//skipped")
+        assert skipped.get("message") == "N/A for this product version"
+
 
 class TestWriteSarif:
     def _sample(self) -> ReportData:
@@ -609,3 +798,35 @@ class TestWriteSarif:
         doc = json.loads(out.read_text())
         assert doc["runs"][0]["results"] == []
         assert doc["version"] == "2.1.0"
+
+    def test_skip_reason_used_as_message(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/performance/test_load.py::test_high_concurrency",
+                    outcome="skipped",
+                    skip_reason="flaky on macOS CI runners",
+                ),
+            ],
+        )
+        write_sarif(data, out)
+        doc = json.loads(out.read_text())
+        result = doc["runs"][0]["results"][0]
+        assert result["message"]["text"] == "flaky on macOS CI runners"
+
+    def test_na_version_wording_is_fallback_without_skip_reason(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        data = ReportData(
+            results=[
+                TestResult(
+                    nodeid="tests/connect/test_api.py::test_v1",
+                    outcome="skipped",
+                    na_version=True,
+                ),
+            ],
+        )
+        write_sarif(data, out)
+        doc = json.loads(out.read_text())
+        result = doc["runs"][0]["results"][0]
+        assert result["message"]["text"] == "N/A for this product version"

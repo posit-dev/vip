@@ -205,6 +205,28 @@ class TestRunReportFromArbitraryDir:
         assert (report_dir / "_output" / "index.html").is_file()
         assert "Report generated" in capsys.readouterr().out
 
+    def test_does_not_nest_when_already_inside_report_dir(self, tmp_path, monkeypatch, capsys):
+        """Running from inside ``report/`` renders in place, not in report/report.
+
+        ``Path("report")`` resolves relative to the invocation, so calling
+        ``vip report --results results.json`` from within a report directory
+        used to create a nested ``report/report/`` and render there, leaving a
+        stray tree behind and hiding the output a level deeper than expected.
+        """
+        from vip import cli
+
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        (report_dir / "results.json").write_text('{"results": []}')
+        monkeypatch.chdir(report_dir)
+        monkeypatch.setattr(cli.subprocess, "run", _fake_quarto(create_output=True))
+
+        cli.run_report(_make_args(results="results.json"))
+
+        assert not (report_dir / "report").exists()
+        assert (report_dir / "_output" / "index.html").is_file()
+        assert "Report generated" in capsys.readouterr().out
+
     def test_pins_quarto_python_to_current_interpreter(self, tmp_path, monkeypatch):
         """run_report forces Quarto's kernel to sys.executable (issue #554).
 
