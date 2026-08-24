@@ -542,13 +542,14 @@ def render_products_table(data: ReportData) -> str:
     configured = data.configured_products()
     if not configured:
         return "<p><em>No products configured. Set product URLs in <code>vip.toml</code>.</em></p>"
-    categories = group_by_category(data.results)
     rows = []
     for product in configured:
         name = _esc(product.name.replace("_", " ").title())
         url = _esc(product.url)
         version = _esc(product.version) if product.version else "—"
-        items = categories.get(product.name, [])
+        items = [
+            r for r in data.results if product.name in r.markers or r.category == product.name
+        ]
         if not items:
             results_cell = "no results recorded"
         else:
