@@ -129,6 +129,19 @@ def pytest_configure(config: pytest.Config) -> None:
     global _active_config
     _active_config = config
 
+    # Register VIP's core fixtures and shared BDD steps as their own pytest
+    # plugin (see vip.fixtures' module docstring for why: directory-scoped
+    # conftest.py fixtures are invisible to extension directories loaded via
+    # --vip-extensions, issue #609). Deferred import: vip.fixtures imports
+    # stash keys and require_connect_api_key from this module, and importing
+    # it here -- after this module has finished its own top-level
+    # definitions -- avoids a circular import at module-load time. Runs once
+    # per pytest process, so xdist workers register it too (each is a fresh
+    # process that goes through pytest_configure independently).
+    from vip.fixtures import register as _register_fixtures
+
+    _register_fixtures(config)
+
     # Register the canonical warning filters in the plugin so they apply
     # regardless of the pytest rootdir, including when vip is installed into
     # an unrelated project.

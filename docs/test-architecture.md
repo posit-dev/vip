@@ -19,7 +19,7 @@ graph TD
 
     subgraph "Layer 2: DSL"
         S["Step definitions<br/>(given / when / then)"]
-        FX["Fixtures<br/>(conftest.py)"]
+        FX["Fixtures<br/>(vip.fixtures)"]
         S
         FX
     end
@@ -149,11 +149,20 @@ Skips carry the same burden of accuracy as failures. A skip reason states *why* 
 
 ### Fixtures as glue
 
-Pytest fixtures (`conftest.py`) are the glue between layers. They provide:
+Pytest fixtures are the glue between layers. They provide:
 - **Configuration**: `vip_config`, `connect_url`, `test_username`
 - **Clients**: `connect_client`, `workbench_client`, `pm_client`
 - **Browser state**: `page`, `browser_context_args`
 - **Feature flags**: `email_enabled`, `monitoring_enabled`
+
+VIP's core fixtures live in `src/vip/fixtures.py`, not a `conftest.py`. pytest scopes
+`conftest.py` fixtures by directory ancestry, which would make them invisible to a test
+extension collected from outside `src/vip_tests` (see "Writing a Test Extension" below) —
+so `vip.plugin` registers `vip.fixtures` as part of VIP's own pytest plugin instead,
+making every fixture and shared "Given" step available everywhere `vip` is installed,
+regardless of where a test lives on disk. `src/vip_tests/conftest.py` still defines a
+handful of fixtures deliberately kept out of that global plugin (autouse Connect
+content-cleanup) — see that file's docstring for why.
 
 ## Layer 3: The Driver Port (protocols/interfaces)
 

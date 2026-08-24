@@ -1336,7 +1336,7 @@ def test_ui_test_browser_context_is_forced_direct_when_disabled(monkeypatch):
     """Same for the in-suite UI browsers, which take launch args from
     ``browser_type_launch_args`` rather than from _launch_chromium."""
     from vip.config import VIPConfig
-    from vip_tests.conftest import _ui_browser_launch_args
+    from vip.fixtures import _ui_browser_launch_args
 
     monkeypatch.setenv("HTTPS_PROXY", "http://gw:3128")
     cfg = VIPConfig()
@@ -1440,7 +1440,7 @@ def test_ui_browser_proxy_resolves_an_inferred_scheme_first(monkeypatch, _split_
     ``_ui_browser_proxy`` exists to prevent.
     """
     from vip.config import VIPConfig
-    from vip_tests.conftest import _ui_browser_proxy
+    from vip.fixtures import _ui_browser_proxy
 
     cfg = VIPConfig()
     cfg.workbench.url = "https://wb.internal"
@@ -1453,7 +1453,7 @@ def test_ui_browser_proxy_resolves_an_inferred_scheme_first(monkeypatch, _split_
         pc.url_scheme_inferred = False
         return pc.url
 
-    monkeypatch.setattr("vip_tests.conftest.resolve_url_scheme", fake_resolve)
+    monkeypatch.setattr("vip.fixtures.resolve_url_scheme", fake_resolve)
 
     pw_proxy = _ui_browser_proxy(cfg)
     assert pw_proxy is not None
@@ -1464,8 +1464,8 @@ def test_ui_test_browser_context_uses_the_proxy_for_the_product_url(_split_schem
     """The in-suite UI tests drive the configured products, so their browser
     context must resolve the same proxy the API clients did."""
     from vip.config import VIPConfig
+    from vip.fixtures import _ui_browser_proxy
     from vip.proxy import playwright_proxy
-    from vip_tests.conftest import _ui_browser_proxy
 
     cfg = VIPConfig()
     cfg.workbench.url = "http://wb.internal"
