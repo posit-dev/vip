@@ -613,6 +613,23 @@ class TestPageOrchestration:
         html = report_html.render_details_page(data, {})
         assert html.count("navigator.clipboard.writeText") == 1
 
+    def test_print_expand_script_included_once(self):
+        """A printed report that omits its tracebacks is the failure mode here,
+        so guard against the script being dropped from a page."""
+        data = ReportData(results=[TestResult(nodeid="a", outcome="failed", longrepr="boom")])
+        html = report_html.render_details_page(data, {})
+        assert html.count("addEventListener('beforeprint'") == 1
+
+    def test_print_expand_is_idempotent(self):
+        """Chromium fires both beforeprint and the print matchMedia change, so
+        expand() runs twice. Without the guard the second call resets the record
+        and restore() re-collapses nothing, leaving the report permanently
+        expanded after a print. The behaviour itself is JS and needs a browser;
+        this only pins the guard so it cannot be dropped silently.
+        """
+        assert "if (expanded) return;" in report_html.PRINT_EXPAND_SCRIPT
+        assert "if (!expanded) return;" in report_html.PRINT_EXPAND_SCRIPT
+
 
 # ---------------------------------------------------------------------------
 # Steps lookup (feature file resolution)

@@ -481,8 +481,14 @@ document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
 PRINT_EXPAND_SCRIPT = """
 <script>
 (function() {
-  var expanded = [];
+  // null means "not currently expanded for print". Both handlers below fire on
+  // a real print in Chromium, so expand() runs twice; without this guard the
+  // second call finds nothing closed, resets the record to empty, and restore()
+  // then re-collapses nothing, leaving the reader's report permanently expanded
+  // after they print it. Redundant paths have to be idempotent.
+  var expanded = null;
   function expand() {
+    if (expanded) return;
     expanded = [];
     document.querySelectorAll('details:not([open])').forEach(function(d) {
       expanded.push(d);
@@ -490,8 +496,9 @@ PRINT_EXPAND_SCRIPT = """
     });
   }
   function restore() {
+    if (!expanded) return;
     expanded.forEach(function(d) { d.open = false; });
-    expanded = [];
+    expanded = null;
   }
   window.addEventListener('beforeprint', expand);
   window.addEventListener('afterprint', restore);
