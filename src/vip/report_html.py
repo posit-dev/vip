@@ -193,6 +193,21 @@ def category_for(item: TestResult) -> str:
     return item.category
 
 
+def results_for_product(results: list[TestResult], product: str) -> list[TestResult]:
+    """Every result that counts toward *product*'s row in the rollup (F7).
+
+    A result counts when it is tagged for the product *or* lives in the
+    product's directory. Deliberately broader than ``category_for``, which
+    assigns each result to exactly one bucket: a scenario tagged for two
+    products genuinely exercised both, so a single-bucket rule would silently
+    under-count one of them. The consequence is that the product rows do not
+    sum to the run total, which was already true (``prerequisites`` and
+    ``security`` results belong to no product row at all) and is why the
+    Summary table carries the authoritative totals.
+    """
+    return [r for r in results if product in r.markers or r.category == product]
+
+
 def group_by_category(results: list[TestResult]) -> dict[str, list[TestResult]]:
     """Group results by ``category_for`` (see its docstring for why not
     ``ReportData.by_category``), preserving each category's first-seen order."""
@@ -457,6 +472,42 @@ document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
 """
 
 
+# Expand every collapsed section for the duration of a print, then restore it.
+# The print stylesheet handles engines that support ::details-content, but not
+# every browser a customer prints from does, and a report that silently omits
+# its tracebacks on paper is worse than one that omits them on screen. Safari
+# has historically not fired onbeforeprint, so the matchMedia listener covers
+# it. Restoring on the way out keeps the on-screen state the reader chose.
+PRINT_EXPAND_SCRIPT = """
+<script>
+(function() {
+  var expanded = [];
+  function expand() {
+    expanded = [];
+    document.querySelectorAll('details:not([open])').forEach(function(d) {
+      expanded.push(d);
+      d.open = true;
+    });
+  }
+  function restore() {
+    expanded.forEach(function(d) { d.open = false; });
+    expanded = [];
+  }
+  window.addEventListener('beforeprint', expand);
+  window.addEventListener('afterprint', restore);
+  if (window.matchMedia) {
+    var mq = window.matchMedia('print');
+    var onChange = function(e) { (e.matches ? expand : restore)(); };
+    if (mq.addEventListener) {
+      mq.addEventListener('change', onChange);
+    } else if (mq.addListener) {
+      mq.addListener(onChange);
+    }
+  }
+})();
+</script>
+"""
+
 # ---------------------------------------------------------------------------
 # Page-level orchestration
 # ---------------------------------------------------------------------------
@@ -491,6 +542,7 @@ def render_details_page(data: ReportData, hints: dict[str, dict]) -> str:
             index += 1
         parts.append("</div>")
     parts.append(CLIPBOARD_SCRIPT)
+    parts.append(PRINT_EXPAND_SCRIPT)
     return "".join(parts)
 
 
@@ -534,6 +586,7 @@ def render_actionable_cards(data: ReportData, hints: dict[str, dict]) -> str:
             index += 1
         parts.append("</div>")
     parts.append(CLIPBOARD_SCRIPT)
+    parts.append(PRINT_EXPAND_SCRIPT)
     return "".join(parts)
 
 
@@ -547,9 +600,7 @@ def render_products_table(data: ReportData) -> str:
         name = _esc(product.name.replace("_", " ").title())
         url = _esc(product.url)
         version = _esc(product.version) if product.version else "—"
-        items = [
-            r for r in data.results if product.name in r.markers or r.category == product.name
-        ]
+        items = results_for_product(data.results, product.name)
         if not items:
             results_cell = "no results recorded"
         else:

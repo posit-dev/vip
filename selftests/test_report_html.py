@@ -418,6 +418,38 @@ class TestRenderProductsTable:
         assert "1 skipped" in html
         assert "3 tests" in html
 
+    def test_a_scenario_tagged_for_two_products_counts_for_both(self):
+        """The rollup rule is deliberately broader than category_for.
+
+        A cross-product scenario exercised both products, so assigning it to a
+        single bucket would silently under-count one of them. The product rows
+        therefore do not sum to the run total; the Summary table is where the
+        authoritative totals live.
+        """
+        item = TestResult(
+            nodeid="src/vip_tests/cross_product/test_ssl.py::t1",
+            outcome="passed",
+            markers=["connect", "workbench"],
+        )
+        assert report_html.results_for_product([item], "connect") == [item]
+        assert report_html.results_for_product([item], "workbench") == [item]
+
+    def test_product_rollup_matches_on_directory_when_untagged(self):
+        item = TestResult(
+            nodeid="src/vip_tests/package_manager/test_repos.py::t1", outcome="passed"
+        )
+        assert report_html.results_for_product([item], "package_manager") == [item]
+        assert report_html.results_for_product([item], "connect") == []
+
+    def test_prerequisites_results_belong_to_no_product_row(self):
+        item = TestResult(
+            nodeid="src/vip_tests/prerequisites/test_components.py::t1",
+            outcome="passed",
+            markers=["prerequisites"],
+        )
+        assert report_html.results_for_product([item], "connect") == []
+        assert report_html.results_for_product([item], "workbench") == []
+
     def test_configured_product_with_no_results_says_so(self):
         data = ReportData(products=[ProductInfo(name="workbench", configured=True)])
         html = report_html.render_products_table(data)

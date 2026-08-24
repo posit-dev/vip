@@ -319,8 +319,18 @@
     display: block;
   }
 
-  /* UA styles hide non-summary content for closed <details>; override so
-     tracebacks/hints print even when collapsed on-screen. */
+  /* A closed <details> hides its content two different ways depending on the
+     engine, so both need overriding. Newer Chromium/WebKit hide it via the
+     ::details-content pseudo-element's content-visibility, which a display
+     rule on the children does not touch (verified: with only the rule below,
+     a collapsed traceback still did not render under print media). Engines
+     without ::details-content fall back to hiding the children, which the
+     second rule covers. PRINT_EXPAND_SCRIPT is the belt-and-braces for
+     anything that honours neither. */
+  details::details-content {
+    content-visibility: visible !important;
+  }
+
   details:not([open]) > *:not(summary) {
     display: block !important;
   }
