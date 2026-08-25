@@ -70,9 +70,14 @@ is skipped and flagged N/A-by-version rather than run optimistically.
 
 ## Public fixtures (from VIP core)
 
-All fixtures below are defined in `src/vip_tests/conftest.py` and are
-available automatically -- do not redefine them in your own `conftest.py`,
-or you will silently shadow the config-driven values.
+All fixtures below are defined in `src/vip/fixtures.py`, which VIP registers
+as a pytest plugin, so they are available to your extension wherever it lives
+on disk -- do not redefine them in your own `conftest.py`, or you will
+silently shadow the config-driven values.
+
+One gap to know about: the Connect content-cleanup fixtures stay scoped to
+VIP's own test package, so an extension that creates Connect content is
+responsible for removing it (`connect_client.cleanup_content(guids)`).
 
 | Fixture | Returns | Purpose |
 |---|---|---|
@@ -103,6 +108,22 @@ or you will silently shadow the config-driven values.
 **`connect_client`, `workbench_client`, `pm_client`, and `kubernetes_client`
 can all be `None`.** Guard against that (skip or assert) before using one,
 the same way VIP's own tests do.
+
+## Shared Gherkin steps
+
+VIP registers these `Given` steps globally, so a `.feature` file in your
+extension can use them without you writing a step definition. Each one skips
+the scenario when that product is absent from `vip.toml`, which is a useful
+complement to the product marker: the marker decides whether the scenario is
+collected at all, the step decides whether it runs.
+
+| Step | Defined in |
+|---|---|
+| `Given Connect is configured in vip.toml` | `src/vip/fixtures.py` |
+| `Given Workbench is configured in vip.toml` | `src/vip/fixtures.py` |
+| `Given Package Manager is configured in vip.toml` | `src/vip/fixtures.py` |
+
+Every other step in your `.feature` files is yours to define.
 
 ## Registered markers
 
