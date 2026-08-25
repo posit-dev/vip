@@ -62,6 +62,8 @@ directly.
 
 from __future__ import annotations
 
+from collections.abc import Generator
+
 import pytest
 from pytest_bdd import given
 
@@ -98,7 +100,9 @@ def vip_verbose(request: pytest.FixtureRequest) -> bool:
 
 
 @pytest.fixture(scope="session")
-def connect_client(request: pytest.FixtureRequest, vip_config: VIPConfig) -> ConnectClient | None:
+def connect_client(
+    request: pytest.FixtureRequest, vip_config: VIPConfig
+) -> Generator[ConnectClient | None]:
     from vip.plugin import _auth_session_key, require_connect_api_key
 
     if not vip_config.connect.is_configured:
@@ -161,7 +165,7 @@ def connect_url(vip_config: VIPConfig) -> str:
 @pytest.fixture(scope="session")
 def workbench_client(
     request: pytest.FixtureRequest, vip_config: VIPConfig
-) -> WorkbenchClient | None:
+) -> Generator[WorkbenchClient | None]:
     from vip.plugin import _auth_session_key
 
     if not vip_config.workbench.is_configured:
@@ -217,9 +221,15 @@ def kubernetes_client(vip_config: VIPConfig) -> KubernetesClient | None:
 
 
 @pytest.fixture(scope="session")
-def pm_client(vip_config: VIPConfig) -> PackageManagerClient | None:
+def pm_client(vip_config: VIPConfig) -> Generator[PackageManagerClient | None]:
     if not vip_config.package_manager.is_configured:
-        return None
+        # Yield (not return) None, for the same reason as connect_client and
+        # workbench_client above: a bare return from a generator fixture raises
+        # "pm_client did not yield a value" instead of handing back None.  This
+        # one was missed when the other two were fixed, so requesting pm_client
+        # on a run without Package Manager configured used to error in setup.
+        yield None
+        return
     url = resolve_url_scheme(
         vip_config.package_manager,
         insecure=vip_config.insecure,

@@ -102,3 +102,39 @@ class TestUrlFixturesResolveTheRightProductConfig:
             fixtures.connect_url.__wrapped__(vip_config)
 
         assert mock_get.call_args.kwargs["verify"] == str(ca)
+
+
+class TestClientFixturesYieldNoneWhenProductUnconfigured:
+    """Each client fixture must hand back ``None`` for an unconfigured product.
+
+    These are generator fixtures, so a bare ``return`` ends the generator
+    without producing a value and pytest raises "<name> did not yield a value"
+    during setup -- the caller never gets the ``None`` the signature promises.
+    ``pm_client`` did exactly that until it was fixed alongside the move to
+    ``vip.fixtures``; ``connect_client`` and ``workbench_client`` had already
+    been corrected. All three are pinned here so the next one cannot regress on
+    its own.
+    """
+
+    def _first_yield(self, gen):
+        try:
+            return next(gen)
+        except StopIteration:  # pragma: no cover - the bug this test pins
+            raise AssertionError(
+                "fixture returned instead of yielding; pytest would report "
+                "'did not yield a value' during setup"
+            ) from None
+
+    def test_pm_client_yields_none(self):
+        cfg = VIPConfig(package_manager=PackageManagerConfig(url=""))
+        assert self._first_yield(fixtures.pm_client.__wrapped__(cfg)) is None
+
+    def test_connect_client_yields_none(self):
+        cfg = VIPConfig(connect=ConnectConfig(url=""))
+        gen = fixtures.connect_client.__wrapped__(MagicMock(), cfg)
+        assert self._first_yield(gen) is None
+
+    def test_workbench_client_yields_none(self):
+        cfg = VIPConfig(workbench=WorkbenchConfig(url=""))
+        gen = fixtures.workbench_client.__wrapped__(MagicMock(), cfg)
+        assert self._first_yield(gen) is None
