@@ -1,4 +1,4 @@
-"""Tests for the scheme-resolution wiring in vip_tests/conftest.py.
+"""Tests for the scheme-resolution wiring in vip.fixtures.
 
 ``connect_client``/``workbench_client``/``pm_client`` (and their companion
 ``connect_url``/``workbench_url``/``pm_url`` fixtures) are the seam that talks
@@ -11,7 +11,7 @@ take a bare ``url: str`` and trust the caller to have checked
 ``ProductConfig.url_scheme_inferred`` first. It now takes the whole
 ``ProductConfig`` and checks provenance itself (see ``TestResolveUrlScheme``
 in ``test_auth.py`` for the full behavior matrix), which means there is no
-longer a separate conftest.py helper with its own logic to test in
+longer a separate helper with its own logic to test in
 isolation -- these fixtures are now a single direct call. What is still
 worth pinning down here is that each fixture passes the *right*
 ``ProductConfig`` (connect's, not workbench's or package_manager's) and the
@@ -29,8 +29,8 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 
+from vip import fixtures
 from vip.config import ConnectConfig, PackageManagerConfig, VIPConfig, WorkbenchConfig
-from vip_tests import conftest
 
 
 class TestUrlFixturesResolveTheRightProductConfig:
@@ -43,7 +43,7 @@ class TestUrlFixturesResolveTheRightProductConfig:
         vip_config = VIPConfig(connect=ConnectConfig(url="connect.example.com"))
 
         with patch("httpx.get", return_value=MagicMock(status_code=200)):
-            url = conftest.connect_url.__wrapped__(vip_config)
+            url = fixtures.connect_url.__wrapped__(vip_config)
 
         assert url == "https://connect.example.com"
 
@@ -51,7 +51,7 @@ class TestUrlFixturesResolveTheRightProductConfig:
         vip_config = VIPConfig(connect=ConnectConfig(url="connect.example.com"))
 
         with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
-            url = conftest.connect_url.__wrapped__(vip_config)
+            url = fixtures.connect_url.__wrapped__(vip_config)
 
         assert url == "http://connect.example.com"
         assert vip_config.connect.url == "http://connect.example.com"
@@ -60,7 +60,7 @@ class TestUrlFixturesResolveTheRightProductConfig:
         vip_config = VIPConfig(connect=ConnectConfig(url="https://connect.example.com"))
 
         with patch("httpx.get") as mock_get:
-            url = conftest.connect_url.__wrapped__(vip_config)
+            url = fixtures.connect_url.__wrapped__(vip_config)
 
         assert url == "https://connect.example.com"
         mock_get.assert_not_called()
@@ -75,7 +75,7 @@ class TestUrlFixturesResolveTheRightProductConfig:
         )
 
         with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
-            url = conftest.workbench_url.__wrapped__(vip_config)
+            url = fixtures.workbench_url.__wrapped__(vip_config)
 
         assert url == "http://workbench.example.com"
         assert vip_config.workbench.url == "http://workbench.example.com"
@@ -86,7 +86,7 @@ class TestUrlFixturesResolveTheRightProductConfig:
         vip_config = VIPConfig(package_manager=PackageManagerConfig(url="pm.example.com"))
 
         with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
-            url = conftest.pm_url.__wrapped__(vip_config)
+            url = fixtures.pm_url.__wrapped__(vip_config)
 
         assert url == "http://pm.example.com"
 
@@ -99,6 +99,42 @@ class TestUrlFixturesResolveTheRightProductConfig:
         )
 
         with patch("httpx.get", return_value=MagicMock(status_code=200)) as mock_get:
-            conftest.connect_url.__wrapped__(vip_config)
+            fixtures.connect_url.__wrapped__(vip_config)
 
         assert mock_get.call_args.kwargs["verify"] == str(ca)
+
+
+class TestClientFixturesYieldNoneWhenProductUnconfigured:
+    """Each client fixture must hand back ``None`` for an unconfigured product.
+
+    These are generator fixtures, so a bare ``return`` ends the generator
+    without producing a value and pytest raises "<name> did not yield a value"
+    during setup -- the caller never gets the ``None`` the signature promises.
+    ``pm_client`` did exactly that until it was fixed alongside the move to
+    ``vip.fixtures``; ``connect_client`` and ``workbench_client`` had already
+    been corrected. All three are pinned here so the next one cannot regress on
+    its own.
+    """
+
+    def _first_yield(self, gen):
+        try:
+            return next(gen)
+        except StopIteration:  # pragma: no cover - the bug this test pins
+            raise AssertionError(
+                "fixture returned instead of yielding; pytest would report "
+                "'did not yield a value' during setup"
+            ) from None
+
+    def test_pm_client_yields_none(self):
+        cfg = VIPConfig(package_manager=PackageManagerConfig(url=""))
+        assert self._first_yield(fixtures.pm_client.__wrapped__(cfg)) is None
+
+    def test_connect_client_yields_none(self):
+        cfg = VIPConfig(connect=ConnectConfig(url=""))
+        gen = fixtures.connect_client.__wrapped__(MagicMock(), cfg)
+        assert self._first_yield(gen) is None
+
+    def test_workbench_client_yields_none(self):
+        cfg = VIPConfig(workbench=WorkbenchConfig(url=""))
+        gen = fixtures.workbench_client.__wrapped__(MagicMock(), cfg)
+        assert self._first_yield(gen) is None

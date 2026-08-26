@@ -150,7 +150,8 @@ Key principles:
 | `src/vip/proxy.py` | Single source of truth for outbound-proxy resolution. `ProxyConfig` + `build_proxy_map` (mirrors httpx's `get_environment_proxies`, incl. NO_PROXY formatting), `build_mounts` (per-scheme `HTTPTransport` mounts that keep `verify`), `proxy_for_url` (httpx-identical most-specific-pattern selection, used by non-httpx probes), `playwright_proxy` (renders a Playwright `launch(proxy=)` dict). Every HTTP egress path routes through this so VIP never diverges from httpx's own env-proxy behavior — see "Outbound proxy support" below |
 | `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers; `authenticated_page` opens a headless page from a cached auth session for `vip cleanup --workbench-url`; `auth_cache_path()` is the single source of truth for the `.vip-auth-cache.json` location (both `plugin.py` and `cli.py` must use it), and `_load_cached_auth` probes Workbench before trusting a cached session; `refresh_auth_cache_from_storage_state` writes a live context's cookies back over a cache whose session has been invalidated (atomic, 0600, existing caches only) |
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
-| `src/vip/plugin.py` | pytest plugin: markers (including `slow`, used by `verify --basic`), auto-skip, JSON report output |
+| `src/vip/plugin.py` | pytest plugin: markers (including `slow`, used by `verify --basic`), auto-skip, JSON report output; `pytest_configure` also registers `vip.fixtures` as its own named plugin (`"vip-fixtures"`) so core fixtures resolve regardless of directory ancestry — see that module's docstring |
+| `src/vip/fixtures.py` | VIP's core pytest fixtures and shared BDD "Given" steps (`vip_config`, `connect_client`, `browser_context_args`, etc.), registered by `vip.plugin.pytest_configure` rather than defined in a `conftest.py` — pytest scopes `conftest.py` fixtures by directory ancestry, which made them invisible to extension directories (issue #609) |
 | `src/vip/version.py` | `ProductVersion` parsing/comparison for `min_version` gating; `MINIMUM_SUPPORTED_POSIT_TEAM` support floor (powers `vip version`) |
 | `src/vip/workbench_ui.py` | Browser-driven Workbench session-cleanup sweep (`quit_vip_sessions_via_ui`), shared by the per-test cleanup fixture and `vip cleanup --workbench-url`; takes an `owner` so a per-test sweep only quits its own xdist worker's sessions |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
@@ -164,7 +165,7 @@ Key principles:
 | `src/vip/install/playwright.py` | Playwright cache detection + `playwright install chromium` wrapper |
 | `src/vip/install/plan.py` | Pure `build_install_plan` / `build_uninstall_plan` builders |
 | `src/vip/install/runner.py` | Plan executor: dry-run formatting + execute (system packages, Playwright, manifest writes) |
-| `src/vip_tests/conftest.py` | Root fixtures: clients, auth, runtimes, data sources |
+| `src/vip_tests/conftest.py` | Directory-scoped warning filter (kept out of the global plugin deliberately) plus the three autouse Connect content-cleanup fixtures — see that file's docstring for why those stay directory-scoped instead of moving to `src/vip/fixtures.py` |
 | `report/index.qmd` | Quarto summary page |
 | `report/details.qmd` | Quarto detailed results page |
 
@@ -189,7 +190,10 @@ auto-skip works correctly (feature-level Gherkin tags alone are not sufficient).
 
 ## Fixtures available in product tests
 
-These are defined in `src/vip_tests/conftest.py` and available to all tests:
+These are defined in `src/vip/fixtures.py` and registered as part of VIP's own pytest plugin
+(`vip.plugin.pytest_configure`), so they are available to every test collected in a run —
+including extension directories loaded via `--vip-extensions`, not just tests under
+`src/vip_tests`:
 
 -   `vip_config` -- the full `VIPConfig` object
 -   `connect_client` / `workbench_client` / `pm_client` -- httpx API clients (or `None` if not configured)
