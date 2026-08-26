@@ -469,17 +469,44 @@ quarto publish connect --server https://connect.example.com</code></pre>
         <section id="extending-vip">
           <h2>Extending VIP</h2>
           <p>
-            Add site-specific tests without modifying the VIP source tree. Create a directory with
-            <code>.feature</code> and <code>.py</code> files following the same conventions:
+            Add site-specific tests without modifying the VIP source tree. The
+            quickest start is <code>vip scaffold</code>, which writes a working
+            extension you can edit:
           </p>
+          <pre><code>vip scaffold --list
+vip scaffold --template minimal --output ./my-tests</code></pre>
+          <p>Two templates ship with VIP:</p>
+          <ul>
+            <li>
+              <code>minimal</code> &mdash; a single-scenario health check against a
+              product you already have configured. Start here.
+            </li>
+            <li>
+              <code>cross-product</code> &mdash; R and Python runtime version checks
+              plus package installability across Connect and Workbench, the pattern
+              regulated environments tend to need. This is the default.
+            </li>
+          </ul>
+          <p>
+            Every scaffolded directory also gets an <code>AGENTS.md</code> describing
+            the extension contract: which markers drive auto-skip, how
+            <code>min_version</code> gating works, and the fixtures, clients and
+            shared Gherkin steps your tests can use. It is written for whoever
+            authors the tests, whether that is you or a coding assistant you point
+            at the directory.
+          </p>
+          <p>Run the extension by pointing VIP at the directory:</p>
           <pre><code>vip verify --connect-url https://connect.example.com \
-  --extensions /opt/vip-custom-tests</code></pre>
+  --extensions ./my-tests</code></pre>
           <p>Or configure extension directories in <code>vip.toml</code>:</p>
           <pre><code># vip.toml
 [general]
-extension_dirs = ["/opt/vip-custom-tests"]</code></pre>
+extension_dirs = ["./my-tests"]</code></pre>
           <p>
-            See <a href="https://github.com/posit-dev/vip/tree/main/examples/custom_tests"><code>examples/custom_tests/</code></a> in the repository for a working example.
+            Extensions have full access to VIP's own fixtures, so your tests can
+            reuse the authenticated clients rather than building their own. See
+            <a href="https://github.com/posit-dev/vip/blob/main/docs/test-architecture.md">the test architecture guide</a>
+            for the four-layer structure extensions follow.
           </p>
         </section>
 
