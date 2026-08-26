@@ -15,9 +15,15 @@ rhel9/rhel10/opensuse install jobs and the Mock-IdP E2E job all failed.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-import tomllib
+# tomllib is stdlib from 3.11; VIP still supports 3.10, where tomli backfills
+# it. Same guard as src/vip/config.py.
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _PYPROJECT = _REPO_ROOT / "pyproject.toml"
