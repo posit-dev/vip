@@ -713,12 +713,32 @@ def _ensure_report_templates(report_dir: Path) -> bool:
     return _has_all_report_templates(report_dir)
 
 
+def _resolve_report_dir() -> Path:
+    """Return the working report directory for the current invocation.
+
+    The report directory is ``./report`` relative to the invocation, but a
+    plain ``Path("report")`` also resolves that way when the caller is already
+    standing *inside* a report directory -- so ``vip report --results
+    results.json`` run from within ``report/`` used to create a nested
+    ``report/report/``, copy the templates into it, and render there. That left
+    a stray tree behind (papered over by a ``report/report/`` .gitignore entry)
+    and hid the rendered output one level deeper than the caller expected.
+
+    Treat a working directory already named ``report`` as the report directory
+    instead of descending into it.
+    """
+    cwd = Path.cwd()
+    if cwd.name == "report":
+        return Path()
+    return Path("report")
+
+
 def run_report(args: argparse.Namespace) -> None:
     """Render the Quarto report from a results.json file."""
     import shutil
     import webbrowser
 
-    report_dir = Path("report")
+    report_dir = _resolve_report_dir()
     report_dir.mkdir(parents=True, exist_ok=True)
 
     results_src = Path(args.results)
