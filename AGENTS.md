@@ -178,11 +178,21 @@ VIP ships two canonical extension examples in `examples/`:
 | `examples/custom_tests/` | Minimal HTTP health-check extension (simpler starting point) |
 | `examples/cross_product_validation/` | GxP/regulated-environment pattern: runtime version checks + DESeq2/PyDeSEQ2 package installability across Connect and Workbench |
 
-Generate the cross-product example in a new directory with:
+Generate either one in a new directory with `vip scaffold` (`--template` defaults to
+`cross-product`, so bare `vip scaffold --output DIR` is unchanged):
 
 ```bash
-vip scaffold --output ./my-custom-tests
+vip scaffold --list
+vip scaffold --template minimal --output ./my-custom-tests
+vip scaffold --template cross-product --output ./my-custom-tests
 ```
+
+Every scaffolded directory also gets an `AGENTS.md`, generated from the single shared source
+`examples/_shared/AGENTS.md`. It's the extension contract for whoever (human or agent) writes the
+new tests: the auto-skip rules, `min_version` gating, and an enumerated inventory of public
+fixtures, registered markers, and client entry points. `selftests/test_scaffold_agents_md.py`
+parses the real source and fails if that inventory ever drifts -- keep it in sync when fixtures or
+markers change.
 
 When writing a new extension example, follow the same four-layer architecture and add
 `@pytest.mark.connect` / `@pytest.mark.workbench` decorators to every `@scenario` function so
