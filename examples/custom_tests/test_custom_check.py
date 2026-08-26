@@ -11,10 +11,17 @@ Or on the command line:
     vip verify --config vip.toml --extensions /path/to/custom_tests
 
 This is the "minimal" scaffold template. It checks the Connect deployment
-you already have configured (via the ``connect_url`` fixture from VIP core)
-rather than a hardcoded external address, so the very first run of a new
-extension exercises the product you are actually validating and needs no
-outbound internet access.
+you already have configured, via VIP's own ``connect_client`` fixture, rather
+than a hardcoded external address -- so the first run of a new extension
+exercises the product you are actually validating and needs no outbound
+internet access.
+
+Reach for the VIP fixtures rather than calling ``httpx`` yourself. A bare
+``httpx.get()`` ignores the TLS and proxy settings VIP is configured with
+(``[tls] insecure``/``ca_bundle`` and the ``[proxy]`` block), so a test written
+that way fails against a deployment behind a private CA or a proxy-only
+network -- exactly the environments VIP exists to validate. ``connect_client``
+carries all of that already.
 
 Custom tests have full access to VIP fixtures (vip_config, connect_client,
 etc. -- see AGENTS.md for the full list) and can use any pytest-bdd or
@@ -23,7 +30,6 @@ Playwright features.
 
 from __future__ import annotations
 
-import httpx
 import pytest
 from pytest_bdd import given, scenario, then, when
 
@@ -50,29 +56,26 @@ def have_endpoint():
     pass
 
 
-@when("I request the custom endpoint", target_fixture="custom_response")
-def request_endpoint(connect_url):
-    # `connect_url` is a VIP core fixture (defined in src/vip_tests/conftest.py)
-    # that resolves to the Connect URL configured in vip.toml. Using it
-    # instead of a constant means this test always checks *your* deployment.
+@when("I request the custom endpoint", target_fixture="custom_status")
+def request_endpoint(connect_client):
+    # `connect_client` is a VIP core fixture (defined in src/vip/fixtures.py)
+    # that hands you an authenticated httpx wrapper pointed at the Connect
+    # deployment configured in vip.toml -- already carrying your proxy, CA
+    # bundle and insecure settings. Using it instead of building your own
+    # request means this test checks *your* deployment, the same way VIP's
+    # own tests reach it.
     #
-    # `/server_settings` is Connect's unauthenticated health endpoint, so this
-    # check needs no API key -- a good fit for a "first extension you run"
-    # template. Swap in your own endpoint and, if it needs auth, the
-    # `connect_client` fixture (an authenticated httpx wrapper) instead.
+    # `.health()` returns the HTTP status of Connect's server-settings
+    # endpoint. Swap in whichever call your check needs; the client exposes
+    # named methods (`server_settings()`, `current_user()`, ...) rather than a
+    # generic get.
     #
-    # `target_fixture="custom_response"` is pytest-bdd's mechanism for passing
+    # `target_fixture="custom_status"` is pytest-bdd's mechanism for passing
     # this step's return value to the `then` step below as a fixture named
-    # `custom_response`, instead of stashing it in a module-level global.
-    url = f"{connect_url}/__api__/server_settings"
-    try:
-        return httpx.get(url, timeout=15)
-    except Exception as exc:
-        pytest.fail(f"Could not reach {url}: {exc}")
+    # `custom_status`, instead of stashing it in a module-level global.
+    return connect_client.health()
 
 
 @then("it responds successfully")
-def responds_ok(custom_response):
-    assert custom_response.status_code < 400, (
-        f"Custom endpoint returned HTTP {custom_response.status_code}"
-    )
+def responds_ok(custom_status):
+    assert custom_status < 400, f"Custom endpoint returned HTTP {custom_status}"

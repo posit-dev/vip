@@ -170,8 +170,13 @@ them through the fixtures rather than constructing your own.
   literal string.
 - Apply the product marker (`@pytest.mark.connect`, etc.) directly on every
   `@scenario` function, not only as a Gherkin tag.
-- Prefer VIP's fixtures (`connect_client`, `connect_url`, ...) over
-  constructing your own HTTP client or reading `vip.toml` by hand.
+- Prefer VIP's client fixtures (`connect_client`, `workbench_client`,
+  `pm_client`) over calling `httpx` yourself. A bare `httpx.get()` ignores the
+  TLS and proxy settings VIP runs with (`[tls] insecure` / `ca_bundle` and the
+  `[proxy]` block), so it fails against deployments behind a private CA or on a
+  proxy-only network -- the environments VIP exists to validate. The clients
+  carry all of it. If you must reach a non-Posit endpoint, read those settings
+  off `vip_config` rather than assuming a direct route out.
 - Do not hardcode URLs or credentials. Read them from `vip_config` or the
   narrower fixtures above so the extension checks whatever deployment the
   user configured, not a fixed address.
@@ -192,7 +197,6 @@ Feature: My check
 
 ```python
 # my_check.py
-import httpx
 import pytest
 from pytest_bdd import given, scenario, then, when
 
@@ -208,12 +212,13 @@ def have_endpoint():
     pass
 
 
-@when("I request my endpoint", target_fixture="response")
-def request_endpoint(connect_url):
-    return httpx.get(f"{connect_url}/__api__/server_settings", timeout=15)
+@when("I request my endpoint", target_fixture="status")
+def request_endpoint(connect_client):
+    # connect_client already carries your proxy, CA bundle and TLS settings.
+    return connect_client.health()
 
 
 @then("it responds successfully")
-def responds_ok(response):
-    assert response.status_code < 400
+def responds_ok(status):
+    assert status < 400
 ```

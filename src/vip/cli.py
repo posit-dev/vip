@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import os
@@ -677,7 +678,6 @@ def _ensure_report_templates(report_dir: Path) -> bool:
     that the refresh did overwrite, so local template customizations never
     disappear silently.
     """
-    import contextlib
     import importlib.resources
 
     replaced: list[str] = []
@@ -1097,23 +1097,32 @@ _SCAFFOLD_TEMPLATES: dict[str, tuple[str, str]] = {
 _DEFAULT_SCAFFOLD_TEMPLATE = "cross-product"
 
 
-def _resolve_scaffold_source(dirname: str) -> Path | None:
+def _resolve_scaffold_source(dirname: str, stack: contextlib.ExitStack) -> Path | None:
     """Locate the source directory for a scaffold template, or None if missing.
 
     Prefer the bundled copy inside the installed wheel (_scaffold/ is embedded
     via [tool.hatch.build.targets.wheel.force-include]).  Fall back to the
     repo's top-level examples/ directory so in-repo usage and selftests work
     without building a wheel first.
+
+    The bundled path is materialized through ``importlib.resources.as_file``,
+    whose context must stay open for as long as anyone reads from the returned
+    path: for a zip-imported package as_file() extracts into a temporary
+    directory that is deleted when the context exits, so closing it here would
+    hand back a path that no longer exists by the time the caller copies from
+    it.  It is entered on the caller's ExitStack instead, which run_scaffold
+    holds open across the copy -- the same pattern _ensure_report_templates
+    uses for the bundled Quarto templates.
     """
     import importlib.resources
 
     try:
         scaffold_pkg = importlib.resources.files("vip") / "_scaffold" / dirname
         # files() returns a Traversable; we need a real Path for shutil.copytree.
-        with importlib.resources.as_file(scaffold_pkg) as p:
-            if p.is_dir():
-                return p
-    except (TypeError, FileNotFoundError):
+        p = stack.enter_context(importlib.resources.as_file(scaffold_pkg))
+        if p.is_dir():
+            return p
+    except (TypeError, OSError, ModuleNotFoundError):
         pass
 
     # Source checkout: three levels up from src/vip/cli.py → repo root.
@@ -1168,45 +1177,49 @@ def run_scaffold(args: argparse.Namespace) -> None:
         sys.exit(1)
     dirname, _description = _SCAFFOLD_TEMPLATES[template]
 
-    src = _resolve_scaffold_source(dirname)
-    if src is None:
-        print(
-            f"Error: could not locate examples/{dirname}/. "
-            "Ensure VIP is installed from source or as a wheel built with examples.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    # One ExitStack spans every read of a bundled resource: the paths handed
+    # back by _resolve_scaffold_source are only guaranteed to exist while it is
+    # open (see that function's docstring).
+    with contextlib.ExitStack() as stack:
+        src = _resolve_scaffold_source(dirname, stack)
+        if src is None:
+            print(
+                f"Error: could not locate examples/{dirname}/. "
+                "Ensure VIP is installed from source or as a wheel built with examples.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
-    dest = Path(args.output)
-    if dest.exists() and not args.force:
-        print(
-            f"Error: destination already exists: {dest}\nPass --force to overwrite.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        dest = Path(args.output)
+        if dest.exists() and not args.force:
+            print(
+                f"Error: destination already exists: {dest}\nPass --force to overwrite.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
-    if dest.exists():
-        if dest.is_dir() and not dest.is_symlink():
-            shutil.rmtree(dest)
+        if dest.exists():
+            if dest.is_dir() and not dest.is_symlink():
+                shutil.rmtree(dest)
+            else:
+                dest.unlink()
+
+        shutil.copytree(src, dest)
+
+        # AGENTS.md is shared across every template (single source of truth), so
+        # it's copied in separately rather than living inside each template dir.
+        shared_agents_md = _resolve_scaffold_source("_shared", stack)
+        if shared_agents_md is not None:
+            shutil.copyfile(shared_agents_md / "AGENTS.md", dest / "AGENTS.md")
         else:
-            dest.unlink()
-
-    shutil.copytree(src, dest)
-
-    # AGENTS.md is shared across every template (single source of truth), so
-    # it's copied in separately rather than living inside each template dir.
-    shared_agents_md = _resolve_scaffold_source("_shared")
-    if shared_agents_md is not None:
-        shutil.copyfile(shared_agents_md / "AGENTS.md", dest / "AGENTS.md")
-    else:
-        # Don't fail the scaffold over it -- the tests themselves are still
-        # usable -- but say so, because a silently missing AGENTS.md means a
-        # packaging regression that is otherwise invisible to the user.
-        print(
-            "Warning: could not locate examples/_shared/AGENTS.md; "
-            "the scaffolded directory has no extension-authoring guide.",
-            file=sys.stderr,
-        )
+            # Don't fail the scaffold over it -- the tests themselves are still
+            # usable -- but say so, because a silently missing AGENTS.md means a
+            # packaging regression that is otherwise invisible to the user.
+            print(
+                "Warning: could not locate examples/_shared/AGENTS.md; "
+                "the scaffolded directory has no extension-authoring guide.",
+                file=sys.stderr,
+            )
 
     print(f"Scaffolded extension to: {dest}")
     print(_scaffold_next_steps(template, dest))
