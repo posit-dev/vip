@@ -254,13 +254,30 @@ quarto publish connect --server https://connect.example.com</code></pre> <p data
 <a href="https://quarto.org/docs/download/" data-astro-cid-mwd2jfe2>Quarto CLI</a> must be
             installed.
 </p> </section> <section id="extending-vip" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Extending VIP</h2> <p data-astro-cid-mwd2jfe2>
-Add site-specific tests without modifying the VIP source tree. Create a directory with
-<code data-astro-cid-mwd2jfe2>.feature</code> and <code data-astro-cid-mwd2jfe2>.py</code> files following the same conventions:
-</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com \
-  --extensions /opt/vip-custom-tests</code></pre> <p data-astro-cid-mwd2jfe2>Or configure extension directories in <code data-astro-cid-mwd2jfe2>vip.toml</code>:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2># vip.toml
+Add site-specific tests without modifying the VIP source tree. The
+            quickest start is <code data-astro-cid-mwd2jfe2>vip scaffold</code>, which writes a working
+            extension you can edit:
+</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip scaffold --list
+vip scaffold --template minimal --output ./my-tests</code></pre> <p data-astro-cid-mwd2jfe2>Two templates ship with VIP:</p> <ul data-astro-cid-mwd2jfe2> <li data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>minimal</code> &mdash; a single-scenario health check against a
+              product you already have configured. Start here.
+</li> <li data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>cross-product</code> &mdash; R and Python runtime version checks
+              plus package installability across Connect and Workbench, the pattern
+              regulated environments tend to need. This is the default.
+</li> </ul> <p data-astro-cid-mwd2jfe2>
+Every scaffolded directory also gets an <code data-astro-cid-mwd2jfe2>AGENTS.md</code> describing
+            the extension contract: which markers drive auto-skip, how
+<code data-astro-cid-mwd2jfe2>min_version</code> gating works, and the fixtures, clients and
+            shared Gherkin steps your tests can use. It is written for whoever
+            authors the tests, whether that is you or a coding assistant you point
+            at the directory.
+</p> <p data-astro-cid-mwd2jfe2>Run the extension by pointing VIP at the directory:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com \
+  --extensions ./my-tests</code></pre> <p data-astro-cid-mwd2jfe2>Or configure extension directories in <code data-astro-cid-mwd2jfe2>vip.toml</code>:</p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2># vip.toml
 [general]
-extension_dirs = ["/opt/vip-custom-tests"]</code></pre> <p data-astro-cid-mwd2jfe2>
-See <a href="https://github.com/posit-dev/vip/tree/main/examples/custom_tests" data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>examples/custom_tests/</code></a> in the repository for a working example.
+extension_dirs = ["./my-tests"]</code></pre> <p data-astro-cid-mwd2jfe2>
+Extensions have full access to VIP's own fixtures, so your tests can
+            reuse the authenticated clients rather than building their own. See
+<a href="https://github.com/posit-dev/vip/blob/main/docs/test-architecture.md" data-astro-cid-mwd2jfe2>the test architecture guide</a>
+for the four-layer structure extensions follow.
 </p> </section> <section id="uninstalling" data-astro-cid-mwd2jfe2> <h2 data-astro-cid-mwd2jfe2>Uninstalling</h2> <p data-astro-cid-mwd2jfe2>
 When you are done with VIP, run <code data-astro-cid-mwd2jfe2>vip uninstall</code> to preview
             what will be removed. It prints a dry-run plan without changing
