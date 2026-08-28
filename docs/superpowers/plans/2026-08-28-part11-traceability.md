@@ -1240,6 +1240,8 @@ def load_controls(path: str | Path) -> dict[str, ControlSpec]:
     """Load a controls.toml file into ControlSpec objects keyed by control id."""
     p = Path(path)
     if not p.is_file():
+        if p.exists():
+            raise ControlListError(f"control list {p} is not a file")
         raise ControlListError(f"control list not found: {p}")
     try:
         raw = tomllib.loads(p.read_text(encoding="utf-8"))
@@ -1247,17 +1249,33 @@ def load_controls(path: str | Path) -> dict[str, ControlSpec]:
         raise ControlListError(f"could not read control list {p}: {exc}") from exc
 
     table = raw.get("controls")
-    if not isinstance(table, dict) or not table:
+    if not isinstance(table, dict):
         raise ControlListError(f"{p} has no [controls] table")
+    if not table:
+        raise ControlListError(f"{p} has an empty [controls] table")
 
     controls: dict[str, ControlSpec] = {}
     for control_id, body in table.items():
         if not isinstance(body, dict):
             raise ControlListError(f"[controls.{control_id}] must be a table")
+        # Type-check before any string operation. This file is customer-authored,
+        # so every malformed shape must leave here as a ControlListError naming the
+        # control -- never as an AttributeError from .strip() or a TypeError from
+        # hashing an unhashable value into the frozenset below.
         description = body.get("description")
-        if not description:
-            raise ControlListError(f"[controls.{control_id}] is missing a description")
+        if not isinstance(description, str):
+            if description is None:
+                raise ControlListError(f"[controls.{control_id}] is missing a description")
+            raise ControlListError(
+                f"[controls.{control_id}] has description={description!r}; expected a string"
+            )
+        if not description.strip():
+            raise ControlListError(f"[controls.{control_id}] has an empty description")
         verification = body.get("verification", "automated")
+        if not isinstance(verification, str):
+            raise ControlListError(
+                f"[controls.{control_id}] has verification={verification!r}; expected a string"
+            )
         if verification not in VERIFICATION_VALUES:
             raise ControlListError(
                 f"[controls.{control_id}] has verification={verification!r};"
