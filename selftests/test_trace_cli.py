@@ -127,3 +127,35 @@ def test_missing_control_file_errors_clearly(tmp_path):
     proc = _run("--results", str(results), "--controls", str(tmp_path / "nope.toml"))
     assert proc.returncode != 0
     assert "not found" in proc.stderr
+
+
+def test_malformed_json_without_sidecar_errors_cleanly(tmp_path):
+    # No sidecar, so verify_results_checksum can't catch this as a checksum
+    # mismatch -- this is exactly the population "missing sidecar is fine"
+    # exists to serve (older results files), so it must not fall through to
+    # a raw traceback.
+    _, controls = _results(tmp_path, write_sidecar=False)
+    results = tmp_path / "results.json"
+    results.write_text("{not valid json")
+    proc = _run("--results", str(results), "--controls", str(controls))
+    assert proc.returncode != 0
+    assert "Error" in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+
+def test_valid_json_non_object_without_sidecar_errors_cleanly(tmp_path):
+    _, controls = _results(tmp_path, write_sidecar=False)
+    results = tmp_path / "results.json"
+    results.write_text("[]")
+    proc = _run("--results", str(results), "--controls", str(controls))
+    assert proc.returncode != 0
+    assert "Error" in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+
+def test_unknown_major_schema_does_not_print_raw_warning(tmp_path):
+    results, controls = _results(tmp_path, schema_version="2.0")
+    proc = _run("--results", str(results), "--controls", str(controls))
+    assert proc.returncode != 0
+    assert "Error:" in proc.stderr
+    assert "UserWarning" not in proc.stderr

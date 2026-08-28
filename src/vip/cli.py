@@ -1493,6 +1493,8 @@ def run_version(args: argparse.Namespace) -> None:
 
 def run_trace(args: argparse.Namespace) -> None:
     """Join a results.json against a control list and emit a traceability matrix."""
+    import warnings
+
     from vip.reporting import load_results
     from vip.traceability import (
         ControlListError,
@@ -1512,11 +1514,20 @@ def run_trace(args: argparse.Namespace) -> None:
 
     try:
         verify_results_checksum(results_path)
-        data = load_results(results_path)
+        # load_results only warns (not raises) on an unknown schema major --
+        # it's also called from index.qmd/details.qmd/`vip report`, where that
+        # warning is the point. run_trace does its own hard check immediately
+        # below, so suppress the redundant warning here only.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            data = load_results(results_path)
         check_results_schema(data.schema_version)
         controls = load_controls(args.controls)
     except (ResultsIntegrityError, ControlListError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError, AttributeError) as exc:
+        print(f"Error: could not read results file {results_path}: {exc}", file=sys.stderr)
         sys.exit(1)
 
     matrix = build_traceability_matrix(data, controls, tag_prefix=args.tag_prefix)
