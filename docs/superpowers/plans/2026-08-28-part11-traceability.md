@@ -2,7 +2,7 @@
 
 > For agentic workers: REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-Goal: Let a Gherkin scenario declare the compliance control it satisfies, harden `results.json` into an attributable evidence record, and add a `vip trace` command that joins the two into a traceability matrix.
+Goal: Let a Gherkin scenario declare the compliance control it satisfies, harden `results.json` into an attributable evidence record, add a `vip trace` command that joins the two into a traceability matrix, and render that matrix into the HTML and PDF report editions.
 
 Architecture: Three layers, built bottom-up. First `results.json` gains provenance (schema version, per-test timestamps, execution attribution, a checksum sidecar) — this ships value on its own. Then `@control-*` Gherkin tags are registered as real pytest markers so they survive strict-marker CI and reach `results.json`. Finally a new `src/vip/traceability.py` joins a customer-supplied `controls.toml` against those markers and renders CSV/JSON for a downstream PDF pipeline.
 
@@ -38,15 +38,19 @@ three `cli.py` insertion points rather than trusting any number here:
 `_SCAFFOLD_TEMPLATES` moves 1087 -> 1139, `_scaffold_next_steps` 1136 -> 1188,
 and the `subcommand_parsers` map 1936 -> 1989.
 
-Rendering the traceability matrix into the PDF is deliberately not in this
-plan. See section 8.4 of the spec for why, and for the three constraints
-(#618's shared-content-layer rule, `_lit` escaping of customer-supplied control
-text, and `render_document`'s lack of any control-list input) that a follow-up
-would have to satisfy.
+Tasks 13 and 14 render the traceability matrix into both report editions and
+therefore depend on #618 being merged. They are the last two tasks on purpose:
+everything through Task 12 stands alone, so if #618 slips or changes shape, the
+CSV/JSON export still ships. Do not start Task 13 before #618 lands -- it
+modifies `report_content.py`, which does not exist on main.
 
 ## Task ordering and shipping seams
 
 Tasks 1-4 (evidence record) are independent of 5-11 and ship value alone. Tasks 5-6 (tagging) are independent of 1-4. Task 7 onward consumes both. If this needs to be split across people, the seam is after Task 4 and after Task 6.
+
+Tasks 13-14 are a separate phase gated on PR #618. They render the matrix into
+the HTML and PDF report editions. Task 12 is the natural release point; 13-14
+are additive on top of a working feature, not a prerequisite for it.
 
 ---
 
@@ -2464,21 +2468,32 @@ Add to `src/vip/clients/connect.py`, following the surrounding style (`self._cli
         """Return the status code for `path` requested with no credentials.
 
         Uses a separate short-lived client so the configured API key and
-        cookies are not sent. Routes through the same proxy map as every other
-        egress path (see the proxy notes in CLAUDE.md); never relies on httpx's
-        ambient env pickup.
+        cookies are not sent -- sending them would make the scenario assert
+        nothing at all, since an authorised caller is *supposed* to get 200.
+
+        Mirrors ``fetch_content``'s ad-hoc-request contract: route through the
+        proxy the pooled client already resolved and pin ``trust_env=False``
+        so that decision is authoritative, then fold the CA env overrides back
+        in by hand. ``trust_env=False`` disables httpx's own reading of
+        ``SSL_CERT_FILE``/``SSL_CERT_DIR`` along with the proxy vars, so
+        without ``verify_with_env_ca`` this probe would fail TLS against a
+        corporate CA that the pooled client verifies fine -- surfacing as a
+        Part 11 scenario erroring on a deployment that is actually healthy.
         """
+        from vip.proxy import proxy_for_url, verify_with_env_ca
+
         url = f"{self.base_url.rstrip('/')}{path}"
         with httpx.Client(
-            verify=self.verify,
-            proxy=proxy_for_url(url, self.proxy_map),
+            verify=verify_with_env_ca(self._verify),
+            proxy=proxy_for_url(url, self._proxy_map),
             trust_env=False,
             timeout=30.0,
         ) as client:
             return client.get(url).status_code
 ```
 
-Add `from vip.proxy import proxy_for_url` to the imports if it is not already there.
+The deferred import matches `fetch_content` (`connect.py:362`), which is the
+established pattern for ad-hoc requests in this client.
 
 Add `selftests/test_connect_audit_client.py` covering all three against a stubbed transport:
 
@@ -2529,7 +2544,78 @@ def test_allowed_methods_never_issues_a_mutating_request():
 
     _client(handler).audit_log_allowed_methods()
     assert seen == ["OPTIONS"]
+
+
+class _RecordingClient:
+    """Stands in for httpx.Client so we can inspect how it was constructed.
+
+    unauthenticated_status builds its own client rather than using
+    self._client, so MockTransport on the pooled client cannot see it.
+    """
+
+    instances: list["_RecordingClient"] = []
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.requested = None
+        _RecordingClient.instances.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def get(self, url):
+        self.requested = url
+        return httpx.Response(401, request=httpx.Request("GET", url))
+
+
+@pytest.fixture
+def recording_client(monkeypatch):
+    _RecordingClient.instances = []
+    monkeypatch.setattr(httpx, "Client", _RecordingClient)
+    return _RecordingClient
+
+
+def test_unauthenticated_status_returns_the_status(recording_client):
+    c = ConnectClient(base_url="https://connect.example.com", api_key="k")
+    assert c.unauthenticated_status("/__api__/v1/users") == 401
+    assert recording_client.instances[0].requested == (
+        "https://connect.example.com/__api__/v1/users"
+    )
+
+
+def test_unauthenticated_status_sends_no_credentials(recording_client):
+    """The whole point of the method: an authorised caller would get 200."""
+    c = ConnectClient(base_url="https://connect.example.com", api_key="SECRET_KEY")
+    c.unauthenticated_status("/__api__/v1/users")
+
+    kwargs = recording_client.instances[0].kwargs
+    # No auth, no cookies, and no headers carrying the key were configured.
+    assert "auth" not in kwargs or kwargs["auth"] is None
+    assert not kwargs.get("cookies")
+    assert "SECRET_KEY" not in repr(kwargs.get("headers", {}))
+
+
+def test_unauthenticated_status_pins_trust_env_and_keeps_env_ca(recording_client):
+    """trust_env=False also disables SSL_CERT_FILE; verify_with_env_ca restores it."""
+    from vip.proxy import verify_with_env_ca
+
+    c = ConnectClient(base_url="https://connect.example.com", api_key="k")
+    c.unauthenticated_status("/__api__/v1/users")
+
+    kwargs = recording_client.instances[0].kwargs
+    assert kwargs["trust_env"] is False
+    assert kwargs["verify"] == verify_with_env_ca(c._verify)
+    assert "proxy" in kwargs
 ```
+
+Note the last test compares against `verify_with_env_ca(c._verify)` rather than
+asserting a literal: the point is that the ad-hoc client's trust store matches
+what the pooled client would use, not that it equals any particular value. If
+`verify_with_env_ca` returns a fresh `SSLContext` per call, compare
+`type(...)` and the CA env vars instead of using `==`.
 
 If `/v1/audit_logs` turns out not to be the endpoint this deployment exposes, adjust the path in the client — not in the step file.
 
@@ -2705,6 +2791,460 @@ git commit -m "docs: document control tagging and the traceability export"
 
 ---
 
+### Task 13: Traceability section in the shared content layer
+
+Files:
+- Modify: `src/vip/report_content.py` (new content function + constants)
+- Modify: `src/vip/reporting.py` (control-list discovery for the report pipeline)
+- Test: `selftests/test_report_content_traceability.py` (create)
+
+Interfaces:
+- Consumes: `traceability.build_traceability_matrix`, `load_controls`, `TraceabilityMatrix` (Tasks 7-9)
+- Produces: `report_content.traceability_rows(matrix) -> list[list[str]]`; `report_content.TRACEABILITY_HEADERS: list[str]`; `report_content.COVERAGE_LABELS: dict[str, str]`; `reporting.controls_path() -> Path | None`
+
+Why the shared layer first, in its own task: AGENTS.md on #618 requires that
+visual changes land in `report_content` with both backends updated in the same
+commit, so the HTML and PDF editions cannot drift. Task 13 builds the
+format-neutral half; Task 14 renders it in both backends together. Splitting
+that way keeps each task independently testable without ever committing a
+state where the two editions disagree.
+
+The report pipeline has no notion of a control list today. `vip-report.qmd`
+loads `results.json` from the working report directory; the control list is
+resolved the same way, by convention, so no config schema changes. A report
+directory with no `controls.toml` simply has no traceability section — this
+must be the silent, ordinary case, since every existing user has no control
+list and their report must not sprout an error.
+
+- [ ] Step 1: Write the failing test
+
+Create `selftests/test_report_content_traceability.py`:
+
+```python
+from vip.report_content import COVERAGE_LABELS, TRACEABILITY_HEADERS, traceability_rows
+from vip.reporting import ReportData, TestResult
+from vip.traceability import ControlSpec, build_traceability_matrix
+
+
+def _matrix():
+    data = ReportData(
+        results=[
+            TestResult(
+                nodeid="t.py::a",
+                outcome="passed",
+                markers=["control-x"],
+                scenario_title="Publishing is recorded",
+                started_at="2026-08-28T12:00:00+00:00",
+            )
+        ]
+    )
+    controls = {
+        "x": ControlSpec("x", "Audit trail", reference="21 CFR 11.10(e)", risk="high"),
+        "y": ControlSpec("y", "Training", verification="procedural"),
+        "z": ControlSpec("z", "Untested control"),
+    }
+    return build_traceability_matrix(data, controls)
+
+
+def test_headers_are_stable():
+    assert TRACEABILITY_HEADERS == ["Control", "Requirement", "Coverage", "Evidence"]
+
+
+def test_one_row_per_control_not_per_match():
+    """The PDF is page-constrained; collapse matches into one cell."""
+    rows = traceability_rows(_matrix())
+    assert len(rows) == 3
+    assert [r[0] for r in rows] == ["x", "y", "z"]
+
+
+def test_covered_row_names_the_scenario_and_status():
+    row = traceability_rows(_matrix())[0]
+    assert "Publishing is recorded" in row[3]
+    assert "passed" in row[3]
+
+
+def test_reference_is_folded_into_the_requirement_cell():
+    assert "21 CFR 11.10(e)" in traceability_rows(_matrix())[0][1]
+
+
+def test_gap_and_not_automatable_read_differently():
+    rows = {r[0]: r for r in traceability_rows(_matrix())}
+    assert rows["y"][2] == COVERAGE_LABELS["not_automatable"]
+    assert rows["z"][2] == COVERAGE_LABELS["gap"]
+    assert rows["y"][2] != rows["z"][2]
+
+
+def test_uncovered_evidence_cell_is_not_blank():
+    """A blank cell reads as a rendering bug, not as an absence of evidence."""
+    rows = {r[0]: r for r in traceability_rows(_matrix())}
+    assert rows["z"][3].strip()
+    assert rows["y"][3].strip()
+
+
+def test_every_cell_is_a_string():
+    """Both backends escape strings; a None would crash or print 'None'."""
+    for row in traceability_rows(_matrix()):
+        assert len(row) == len(TRACEABILITY_HEADERS)
+        assert all(isinstance(cell, str) for cell in row)
+```
+
+- [ ] Step 2: Run test to verify it fails
+
+Run: `uv run pytest selftests/test_report_content_traceability.py -v`
+Expected: FAIL with `ImportError: cannot import name 'traceability_rows'`
+
+- [ ] Step 3: Write minimal implementation
+
+Append to `src/vip/report_content.py`:
+
+```python
+# Coverage wording. "not automatable" must never read as a gap: a control
+# nobody can automate is a statement about the control, not a hole in the
+# test suite, and an auditor reading the two as the same thing is exactly
+# the misreading this whole feature exists to prevent.
+COVERAGE_LABELS = {
+    "covered": "covered",
+    "gap": "no automated test",
+    "not_automatable": "not verifiable by automated test",
+}
+
+TRACEABILITY_HEADERS = ["Control", "Requirement", "Coverage", "Evidence"]
+
+# Shown in the Evidence column when there is nothing to cite.
+_NO_EVIDENCE = {
+    "gap": "none — no scenario carries this control's tag",
+    "not_automatable": "outside the automated suite by design",
+}
+
+
+def traceability_rows(matrix) -> list[list[str]]:
+    """Format-neutral rows for the traceability matrix table.
+
+    One row per control rather than per match: the PDF is page-constrained and
+    a control satisfied by six scenarios would otherwise push everything else
+    off the page. The CSV export (`vip trace --format csv`) is the per-match
+    view; this is the at-a-glance one.
+    """
+    rows: list[list[str]] = []
+    for entry in matrix.entries:
+        control = entry.control
+        requirement = control.description
+        if control.reference:
+            requirement = f"{requirement} ({control.reference})"
+        if entry.matches:
+            evidence = "; ".join(
+                f"{m.scenario_title or m.nodeid} — {m.status}" for m in entry.matches
+            )
+        else:
+            evidence = _NO_EVIDENCE.get(entry.coverage, "none")
+        rows.append(
+            [
+                control.control_id,
+                requirement,
+                COVERAGE_LABELS.get(entry.coverage, entry.coverage),
+                evidence,
+            ]
+        )
+    return rows
+```
+
+Add to `src/vip/reporting.py`, beside `troubleshooting_path`:
+
+```python
+def controls_path(report_dir: str | Path | None = None) -> Path | None:
+    """Locate a controls.toml in the working report directory, or None.
+
+    Resolved by convention rather than configuration: `vip report --controls`
+    copies the file here, the same way results.json arrives. Returning None is
+    the ordinary case -- every deployment without a compliance mapping has no
+    control list, and their report must simply omit the section rather than
+    warn about it.
+    """
+    base = Path(report_dir) if report_dir is not None else Path.cwd()
+    candidate = base / "controls.toml"
+    return candidate if candidate.is_file() else None
+```
+
+- [ ] Step 4: Run test to verify it passes
+
+Run: `uv run pytest selftests/test_report_content_traceability.py -v`
+Expected: 7 passed
+
+- [ ] Step 5: Commit
+
+```bash
+git add src/vip/report_content.py src/vip/reporting.py selftests/test_report_content_traceability.py
+git commit -m "feat(report): add traceability rows to the shared content layer"
+```
+
+---
+
+### Task 14: Render the traceability section in both report editions
+
+Files:
+- Modify: `src/vip/report_typst.py` (table renderer + `render_document`)
+- Modify: `src/vip/report_html.py` (table renderer)
+- Modify: `report/vip-report.qmd`, `report/index.qmd`
+- Modify: `src/vip/cli.py` (`run_report` gains `--controls`)
+- Test: `selftests/test_report_typst_traceability.py` (create), extend `selftests/test_report_html.py`
+
+Interfaces:
+- Consumes: `report_content.traceability_rows`, `TRACEABILITY_HEADERS` (Task 13)
+- Produces: `report_typst.render_traceability_table(matrix) -> str`; `report_html.render_traceability_table(matrix) -> str`; `report_typst.render_document(data, hints, matrix=None)` (new optional third parameter)
+
+Both backends in one commit, per the #618 rule. Two hazards specific to this
+section:
+
+Control descriptions and notes are customer-authored free text, and in Typst a
+bare `#`, `*`, `_` or `$` is live markup — `#panic()` in a description would
+abort the render. Every dynamic value must go through `_lit`. The existing
+`_text` and `_call` helpers already do this; never interpolate a value into
+Typst source by hand.
+
+`render_document` grows an optional third parameter rather than a required
+one, so the existing call in `vip-report.qmd` and every existing test keeps
+working and a report with no control list is unchanged.
+
+- [ ] Step 1: Write the failing test
+
+Create `selftests/test_report_typst_traceability.py`:
+
+```python
+from vip.report_typst import render_document, render_traceability_table
+from vip.reporting import ReportData, TestResult
+from vip.traceability import ControlSpec, build_traceability_matrix
+
+
+def _matrix(description="Audit trail"):
+    data = ReportData(
+        results=[
+            TestResult(
+                nodeid="t.py::a",
+                outcome="passed",
+                markers=["control-x"],
+                scenario_title="Publishing is recorded",
+            )
+        ]
+    )
+    return build_traceability_matrix(data, {"x": ControlSpec("x", description)})
+
+
+def test_table_renders_a_vip_table_call():
+    out = render_traceability_table(_matrix())
+    assert out.startswith("#vip-table(")
+    assert "Publishing is recorded" in out
+
+
+def test_typst_markup_in_a_control_description_is_inert():
+    """A control list is customer-authored; a bare # is live Typst markup."""
+    out = render_traceability_table(_matrix(description='#panic("boom") *bold* $x$'))
+    # The dangerous characters survive only inside an escaped string literal,
+    # never as a bare call at the start of a token.
+    assert '#panic("boom")' not in out.replace('\\"', '"').replace('"', "")
+    assert "panic" in out
+
+
+def test_quotes_and_backslashes_are_escaped():
+    out = render_traceability_table(_matrix(description='a "quoted" c:\\path'))
+    assert '\\"quoted\\"' in out
+    assert "c:\\\\path" in out
+
+
+def test_document_omits_the_section_without_a_matrix():
+    data = ReportData(results=[TestResult(nodeid="t.py::a", outcome="passed")])
+    assert "Traceability" not in render_document(data, {})
+
+
+def test_document_includes_the_section_with_a_matrix():
+    data = ReportData(results=[TestResult(nodeid="t.py::a", outcome="passed")])
+    out = render_document(data, {}, matrix=_matrix())
+    assert "Traceability Matrix" in out
+
+
+def test_render_document_still_accepts_two_positional_arguments():
+    """The qmd and every existing test call it with two."""
+    data = ReportData(results=[TestResult(nodeid="t.py::a", outcome="passed")])
+    assert render_document(data, {})
+```
+
+- [ ] Step 2: Run test to verify it fails
+
+Run: `uv run pytest selftests/test_report_typst_traceability.py -v`
+Expected: FAIL with `ImportError: cannot import name 'render_traceability_table'`
+
+- [ ] Step 3: Implement the Typst backend
+
+In `src/vip/report_typst.py`, import the new content helpers alongside the
+existing `report_content` imports, then add after `render_provenance_table`
+(around line 437):
+
+```python
+def render_traceability_table(matrix) -> str:
+    """Control-to-scenario coverage, for an archivable evidence document.
+
+    Every cell goes through ``_text``/``_lit``: control descriptions are
+    customer-authored free text, so an unescaped ``#`` would be a live Typst
+    call rather than a character.
+    """
+    rows = [
+        [
+            _call("vip-mono", "8.5pt", _lit("#374151"), _lit(row[0])),
+            _text(row[1], size="9pt"),
+            _text(row[2], size="9pt"),
+            _text(row[3], size="9pt"),
+        ]
+        for row in traceability_rows(matrix)
+    ]
+    if not rows:
+        return _paragraph("No controls defined.", italic=True)
+    return _table("(auto, 1.4fr, auto, 1.6fr)", TRACEABILITY_HEADERS, rows)
+```
+
+Change `render_document`'s signature and append the section:
+
+```python
+def render_document(data: ReportData, hints: dict[str, dict], matrix=None) -> str:
+    """The whole PDF body, preamble included, ready to emit as a ``{=typst}`` block.
+
+    ``matrix`` is optional: a deployment with no control list gets exactly the
+    document it got before this section existed.
+    """
+```
+
+Immediately before the `"#pagebreak()\n"` that precedes Detailed Results, add:
+
+```python
+    if matrix is not None:
+        parts.extend(
+            [
+                "#pagebreak()\n",
+                _heading("Traceability Matrix", 2),
+                _labelled_line(
+                    "Coverage",
+                    f"{matrix.covered_count} covered, {matrix.gap_count} without an "
+                    f"automated test, of {len(matrix.entries)} controls",
+                ),
+                render_traceability_table(matrix),
+            ]
+        )
+```
+
+Note `parts` is currently a single list literal; convert it to a list built
+before the `if`, then `return "".join(parts)` unchanged.
+
+- [ ] Step 4: Run the Typst tests
+
+Run: `uv run pytest selftests/test_report_typst_traceability.py -v`
+Expected: 6 passed
+
+- [ ] Step 5: Implement the HTML backend and test it
+
+In `src/vip/report_html.py`, after `render_provenance_table`:
+
+```python
+def render_traceability_table(matrix) -> str:
+    """Control-to-scenario coverage, matching the PDF edition's section."""
+    rows = traceability_rows(matrix)
+    if not rows:
+        return "<p><em>No controls defined.</em></p>"
+    head = "".join(f"<th>{_esc(h)}</th>" for h in TRACEABILITY_HEADERS)
+    body = "".join(
+        "<tr>" + "".join(f"<td>{_esc(cell)}</td>" for cell in row) + "</tr>" for row in rows
+    )
+    return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+```
+
+Append to `selftests/test_report_html.py`:
+
+```python
+def test_traceability_table_escapes_control_text():
+    from vip.report_html import render_traceability_table
+    from vip.reporting import ReportData, TestResult
+    from vip.traceability import ControlSpec, build_traceability_matrix
+
+    data = ReportData(results=[TestResult(nodeid="t.py::a", outcome="passed")])
+    matrix = build_traceability_matrix(
+        data, {"x": ControlSpec("x", "<script>alert(1)</script>")}
+    )
+    out = render_traceability_table(matrix)
+    assert "<script>" not in out
+    assert "&lt;script&gt;" in out
+
+
+def test_traceability_table_matches_the_pdf_row_count():
+    """Both editions render the same rows; only the markup differs."""
+    from vip.report_content import traceability_rows
+    from vip.report_html import render_traceability_table
+    from vip.reporting import ReportData, TestResult
+    from vip.traceability import ControlSpec, build_traceability_matrix
+
+    data = ReportData(results=[TestResult(nodeid="t.py::a", outcome="passed")])
+    matrix = build_traceability_matrix(
+        data, {"a": ControlSpec("a", "One"), "b": ControlSpec("b", "Two")}
+    )
+    assert render_traceability_table(matrix).count("<tr>") == len(traceability_rows(matrix)) + 1
+```
+
+Run: `uv run pytest selftests/test_report_html.py -v`
+Expected: all pass
+
+- [ ] Step 6: Wire both documents
+
+In `report/vip-report.qmd`, extend the existing cell (keep the four-backtick
+fence and the `#| output: asis` directives):
+
+```python
+from vip.reporting import controls_path, load_results, load_troubleshooting, troubleshooting_path
+from vip.traceability import build_traceability_matrix, load_controls
+
+data = load_results(Path("results.json"))
+_troubleshooting_path = troubleshooting_path()
+hints = load_troubleshooting(_troubleshooting_path) if _troubleshooting_path else {}
+
+# Optional: only a deployment with a compliance mapping has a control list.
+_controls = controls_path()
+matrix = build_traceability_matrix(data, load_controls(_controls)) if _controls else None
+
+print("```{=typst}")
+print(report_typst.render_document(data, hints, matrix=matrix))
+print("```")
+```
+
+In `report/index.qmd`, add an equivalent conditional block that calls
+`report_html.render_traceability_table(matrix)` and wraps it in
+`display(Markdown(...))` — per CLAUDE.md, a bare `Markdown()` inside a
+conditional is silently swallowed, so it must be wrapped in `display()`.
+
+- [ ] Step 7: Add `--controls` to `vip report`
+
+In `run_report` (`cli.py:753-832` on #618), add a `--controls PATH` option to
+the report subparser and copy the file into the resolved report directory
+alongside the templates, so the two `.qmd` files find it by convention. Print
+the control count on success. Omitting the flag must leave the report byte-for-
+byte as it is today.
+
+- [ ] Step 8: Render end to end
+
+```bash
+uv run vip verify --config vip.toml --vip-extensions ./examples/part11_validation || true
+uv run vip report --controls examples/part11_validation/controls.toml
+```
+Expected: `report/_output/vip-report.pdf` exists and contains a Traceability
+Matrix section; `index.html` shows the same rows. Then run without `--controls`
+and confirm neither document shows the section.
+
+- [ ] Step 9: Lint and commit
+
+```bash
+uv run ruff check src/ src/vip_tests/ selftests/ examples/
+uv run ruff format src/ src/vip_tests/ selftests/ examples/
+uv run pytest selftests/ -q
+git add src/vip/report_typst.py src/vip/report_html.py src/vip/cli.py report/ selftests/
+git commit -m "feat(report): render the traceability matrix in both report editions"
+```
+
+---
+
 ## Post-implementation cleanup
 
 Per CLAUDE.md, at the end of the plan remove the plan and the spec:
@@ -2730,4 +3270,7 @@ absence for an oversight. All are recorded in section 7.5 of the spec.
 - Cryptographic signing of the evidence record.
 - Runtime versions on the system under test in the provenance block.
 - SARIF `properties.tags` carrying control tags.
-- PDF rendering, owned by a separate team.
+- Per-match rows in the report editions. Tasks 13-14 render one row per
+  control; the per-match view stays the CSV export's job, because a control
+  satisfied by six scenarios would otherwise dominate a page-constrained
+  document.
