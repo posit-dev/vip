@@ -2001,6 +2001,35 @@ def check_results_schema(schema_version: str | None) -> None:
         )
 ```
 
+Additionally, add a NON-FATAL warning to `load_results` in `src/vip/reporting.py`,
+so the report pipeline is not silently misled by a file it cannot represent:
+
+```python
+    schema_version = raw.get("schema_version")
+    if schema_version and schema_version.split(".", 1)[0] != RESULTS_SCHEMA_VERSION.split(".", 1)[0]:
+        warnings.warn(
+            f"results.json schema version {schema_version} is newer than this vip "
+            f"understands ({RESULTS_SCHEMA_VERSION}); some fields may be missing or "
+            "misinterpreted",
+            stacklevel=2,
+        )
+```
+
+Warn rather than raise, and only here. `load_results` is called from
+`index.qmd`, `details.qmd` and `vip report`, so raising would surface as an
+unreadable traceback inside a Quarto notebook cell — the same failure mode the
+`--controls` validation in Task 14 exists to avoid. `vip trace` keeps the hard
+error, because a traceability matrix built from a schema this VIP cannot read
+is a compliance artifact making claims it cannot support. Add two tests: a
+`2.0` file warns from `load_results` but still returns data, and the same file
+makes `vip trace` exit non-zero.
+
+Note this requires `import warnings` in `reporting.py` — Task 13 also adds it,
+whichever lands first.
+
+```python
+```
+
 Add the import of the results schema constant at the top of `traceability.py`:
 
 ```python
