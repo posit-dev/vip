@@ -24,21 +24,28 @@ def _make_args(**overrides) -> argparse.Namespace:
     return argparse.Namespace(**defaults)
 
 
-def _fake_quarto(create_output: bool):
-    """Return a subprocess.run stand-in that fakes a quarto render.
+def _fake_quarto(create_output: bool, pdf_returncode: int = 0):
+    """Return a subprocess.run stand-in that fakes the per-document renders.
 
-    When ``create_output`` is true it writes the index.html that a real
-    render would produce, so run_report's success path can be exercised
-    without Quarto installed.
+    run_report renders each listed document with its own
+    ``quarto render <doc>`` call, so the stand-in writes the output file the
+    named document would produce. ``pdf_returncode`` makes only the
+    vip-report.qmd call fail, the shape of a Quarto too old to know Typst.
     """
 
     def _run(cmd, cwd=None, **kwargs):
+        document = cmd[-1]
+        if document == "vip-report.qmd" and pdf_returncode != 0:
+            return types.SimpleNamespace(returncode=pdf_returncode)
         if create_output and cwd is not None:
             from pathlib import Path
 
             out = Path(cwd) / "_output"
             out.mkdir(parents=True, exist_ok=True)
-            (out / "index.html").write_text("<html>report</html>")
+            if document == "vip-report.qmd":
+                (out / "vip-report.pdf").write_bytes(b"%PDF-fake")
+            else:
+                (out / (Path(document).stem + ".html")).write_text("<html>report</html>")
         return types.SimpleNamespace(returncode=0)
 
     return _run
@@ -205,7 +212,10 @@ class TestRunReportFromArbitraryDir:
 
         assert (report_dir / "index.qmd").is_file()
         assert (report_dir / "_output" / "index.html").is_file()
-        assert "Report generated" in capsys.readouterr().out
+        assert (report_dir / "_output" / "vip-report.pdf").is_file()
+        out = capsys.readouterr().out
+        assert "Report generated" in out
+        assert "PDF generated" in out
 
     def test_does_not_nest_when_already_inside_report_dir(self, tmp_path, monkeypatch, capsys):
         """Running from inside ``report/`` renders in place, not in report/report.
@@ -307,6 +317,54 @@ class TestRunReportFromArbitraryDir:
 
         assert exc.value.code == 1
         assert "quarto was not found" in capsys.readouterr().err
+
+    def test_pdf_failure_degrades_to_warning(self, tmp_path, monkeypatch, capsys):
+        """A Typst-less Quarto must not cost the user the HTML report.
+
+        Pre-1.4 Quarto has no typst format, so the vip-report.qmd render
+        fails. That is the reviewed regression: with one combined render its
+        nonzero exit aborted run_report before the HTML hand-off. Rendered
+        separately, the HTML report still succeeds and the PDF only warns.
+        """
+        from vip import cli
+
+        monkeypatch.chdir(tmp_path)
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        (report_dir / "results.json").write_text('{"results": []}')
+        monkeypatch.setattr(
+            cli.subprocess, "run", _fake_quarto(create_output=True, pdf_returncode=1)
+        )
+
+        cli.run_report(_make_args())
+
+        captured = capsys.readouterr()
+        assert "Report generated" in captured.out
+        assert "PDF generated" not in captured.out
+        assert "Warning" in captured.err
+        assert "quarto --version" in captured.err
+
+    def test_html_failure_is_fatal_and_skips_the_pdf(self, tmp_path, monkeypatch, capsys):
+        from vip import cli
+
+        monkeypatch.chdir(tmp_path)
+        report_dir = tmp_path / "report"
+        report_dir.mkdir()
+        (report_dir / "results.json").write_text('{"results": []}')
+
+        rendered = []
+
+        def _failing_html(cmd, cwd=None, **kwargs):
+            rendered.append(cmd[-1])
+            return types.SimpleNamespace(returncode=3)
+
+        monkeypatch.setattr(cli.subprocess, "run", _failing_html)
+
+        with pytest.raises(SystemExit) as exc:
+            cli.run_report(_make_args())
+
+        assert exc.value.code == 3
+        assert rendered == ["index.qmd"], "must stop at the first failed page"
 
 
 class TestSupportFileResolution:

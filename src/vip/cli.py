@@ -789,18 +789,20 @@ def run_report(args: argparse.Namespace) -> None:
     # import vip.gherkin / vip.reporting) or the Jupyter stack. sys.executable
     # is the vip install itself, which always has both. See issue #554.
     env = {**os.environ, "QUARTO_PYTHON": sys.executable}
-    try:
-        result = subprocess.run(["quarto", "render"], cwd=str(report_dir), env=env)
-    except FileNotFoundError:
-        print(
-            "Error: quarto was not found on PATH. Install Quarto "
-            "(https://quarto.org/docs/get-started/) and re-run.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
 
-    if result.returncode != 0:
-        sys.exit(result.returncode)
+    # The HTML pages and the PDF render as separate quarto invocations on
+    # purpose. One combined `quarto render` ties their fates together: on a
+    # Quarto too old to know Typst (pre-1.4), the PDF document fails the
+    # whole render *after* the HTML pages already rendered, and `vip report`
+    # would exit nonzero without handing over the HTML report it just
+    # produced. HTML is the primary artifact, so only its failure is fatal;
+    # the PDF degrades to a warning. All three documents stay in
+    # _quarto.yml's render list because a single-document render only lands
+    # in _output/ for listed files.
+    for page in ("index.qmd", "details.qmd"):
+        returncode = _quarto_render(page, report_dir, env)
+        if returncode != 0:
+            sys.exit(returncode)
 
     output = report_dir / "_output" / "index.html"
     if not output.exists():
@@ -813,22 +815,40 @@ def run_report(args: argparse.Namespace) -> None:
 
     print(f"Report generated: {output}")
 
-    # The PDF edition (report/vip-report.qmd) is part of the same render, so a
-    # missing one means Quarto compiled the HTML pages and then failed on the
-    # Typst document. Say so instead of staying silent: the PDF is the copy
-    # customers archive, and `quarto render` exits 0 either way.
+    # The PDF is the copy customers archive, so a missing one warns loudly —
+    # but never fails the command, and never blocks the HTML hand-off above.
     pdf = report_dir / "_output" / "vip-report.pdf"
-    if pdf.exists():
+    if _quarto_render("vip-report.qmd", report_dir, env) == 0 and pdf.exists():
         print(f"PDF generated: {pdf}")
     else:
         print(
             f"Warning: the HTML report rendered but {pdf} did not. "
-            "Quarto compiles it with Typst, which ships with Quarto 1.4 and later.",
+            "Quarto compiles it with Typst, which ships with Quarto 1.4 and "
+            "later — check `quarto --version` and upgrade if it is older.",
             file=sys.stderr,
         )
 
     if args.open:
         webbrowser.open(output.resolve().as_uri())
+
+
+def _quarto_render(document: str, report_dir: Path, env: dict[str, str]) -> int:
+    """Render one listed document of the report project, returning quarto's exit code.
+
+    A missing quarto binary is fatal here rather than at the caller: it means
+    no document can render at all, and the message is the same wherever it
+    surfaces.
+    """
+    try:
+        result = subprocess.run(["quarto", "render", document], cwd=str(report_dir), env=env)
+    except FileNotFoundError:
+        print(
+            "Error: quarto was not found on PATH. Install Quarto "
+            "(https://quarto.org/docs/get-started/) and re-run.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return result.returncode
 
 
 def _collect_status(config: VIPConfig) -> dict:
