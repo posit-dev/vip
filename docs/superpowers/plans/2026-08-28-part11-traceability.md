@@ -2573,25 +2573,40 @@ class _RecordingClient:
 
 @pytest.fixture
 def recording_client(monkeypatch):
-    _RecordingClient.instances = []
-    monkeypatch.setattr(httpx, "Client", _RecordingClient)
-    return _RecordingClient
+    """Build a ConnectClient, THEN patch httpx.Client. Order is load-bearing.
+
+    BaseClient.__init__ builds its own pooled httpx.Client (`base.py:135`).
+    Patching before construction would make instances[0] the pooled client --
+    which legitimately does carry credentials -- so every assertion below
+    would inspect the wrong object and the credential test would pass or fail
+    for entirely the wrong reason.
+    """
+
+    def _make(**kwargs):
+        client = ConnectClient(base_url="https://connect.example.com", **kwargs)
+        _RecordingClient.instances = []
+        monkeypatch.setattr(httpx, "Client", _RecordingClient)
+        return client
+
+    return _make
 
 
 def test_unauthenticated_status_returns_the_status(recording_client):
-    c = ConnectClient(base_url="https://connect.example.com", api_key="k")
+    c = recording_client(api_key="k")
     assert c.unauthenticated_status("/__api__/v1/users") == 401
-    assert recording_client.instances[0].requested == (
+    # Exactly one client was built, and it is the ad-hoc one.
+    assert len(_RecordingClient.instances) == 1
+    assert _RecordingClient.instances[0].requested == (
         "https://connect.example.com/__api__/v1/users"
     )
 
 
 def test_unauthenticated_status_sends_no_credentials(recording_client):
     """The whole point of the method: an authorised caller would get 200."""
-    c = ConnectClient(base_url="https://connect.example.com", api_key="SECRET_KEY")
+    c = recording_client(api_key="SECRET_KEY")
     c.unauthenticated_status("/__api__/v1/users")
 
-    kwargs = recording_client.instances[0].kwargs
+    kwargs = _RecordingClient.instances[0].kwargs
     # No auth, no cookies, and no headers carrying the key were configured.
     assert "auth" not in kwargs or kwargs["auth"] is None
     assert not kwargs.get("cookies")
@@ -2602,10 +2617,10 @@ def test_unauthenticated_status_pins_trust_env_and_keeps_env_ca(recording_client
     """trust_env=False also disables SSL_CERT_FILE; verify_with_env_ca restores it."""
     from vip.proxy import verify_with_env_ca
 
-    c = ConnectClient(base_url="https://connect.example.com", api_key="k")
+    c = recording_client(api_key="k")
     c.unauthenticated_status("/__api__/v1/users")
 
-    kwargs = recording_client.instances[0].kwargs
+    kwargs = _RecordingClient.instances[0].kwargs
     assert kwargs["trust_env"] is False
     assert kwargs["verify"] == verify_with_env_ca(c._verify)
     assert "proxy" in kwargs
@@ -2809,12 +2824,26 @@ format-neutral half; Task 14 renders it in both backends together. Splitting
 that way keeps each task independently testable without ever committing a
 state where the two editions disagree.
 
-The report pipeline has no notion of a control list today. `vip-report.qmd`
-loads `results.json` from the working report directory; the control list is
-resolved the same way, by convention, so no config schema changes. A report
-directory with no `controls.toml` simply has no traceability section — this
-must be the silent, ordinary case, since every existing user has no control
-list and their report must not sprout an error.
+The report pipeline has no notion of a control list today. It is passed
+explicitly through the environment rather than copied into the report
+directory: `_quarto_render` (`cli.py:835` on #618) already takes an `env` dict
+and forwards it to `subprocess.run`, so `vip report --controls PATH` sets
+`VIP_CONTROLS` for that render and nothing persists afterwards.
+
+Copying the file into the report directory was the obvious design and is
+wrong. The report directory survives between runs, so a single
+`vip report --controls ...` would leave a `controls.toml` behind that every
+later plain `vip report` would silently pick up — the section would reappear
+with no flag asking for it, and a stale control list at that. An evidence
+document that grows a compliance section nobody requested, from a file nobody
+remembers copying, is exactly the wrong failure mode here.
+
+No `VIP_CONTROLS` means no traceability section, and that must be the silent,
+ordinary case: every existing user has no control list and their report must
+not sprout an error or a warning. The tradeoff is that a bare
+`quarto render` outside `vip report` needs the variable set by hand; that is
+documented rather than worked around, because the alternative is the
+persistent-state bug above.
 
 - [ ] Step 1: Write the failing test
 
@@ -2951,18 +2980,28 @@ def traceability_rows(matrix) -> list[list[str]]:
 Add to `src/vip/reporting.py`, beside `troubleshooting_path`:
 
 ```python
-def controls_path(report_dir: str | Path | None = None) -> Path | None:
-    """Locate a controls.toml in the working report directory, or None.
+def controls_path() -> Path | None:
+    """Resolve the control list for this render from ``VIP_CONTROLS``, or None.
 
-    Resolved by convention rather than configuration: `vip report --controls`
-    copies the file here, the same way results.json arrives. Returning None is
-    the ordinary case -- every deployment without a compliance mapping has no
-    control list, and their report must simply omit the section rather than
-    warn about it.
+    Deliberately environment-scoped rather than a file discovered in the report
+    directory: the report directory persists between runs, so a copied
+    controls.toml would make the traceability section reappear on every later
+    render that never asked for it. Reading the environment scopes the choice
+    to exactly the render `vip report --controls` set it for.
+
+    Returning None is the ordinary case -- every deployment without a
+    compliance mapping has no control list, and their report must simply omit
+    the section rather than warn about it. A path that is set but missing is
+    the one case worth surfacing, since the operator explicitly asked for it.
     """
-    base = Path(report_dir) if report_dir is not None else Path.cwd()
-    candidate = base / "controls.toml"
-    return candidate if candidate.is_file() else None
+    raw = os.environ.get("VIP_CONTROLS")
+    if not raw:
+        return None
+    candidate = Path(raw)
+    if not candidate.is_file():
+        warnings.warn(f"VIP_CONTROLS is set but not a file: {candidate}", stacklevel=2)
+        return None
+    return candidate
 ```
 
 - [ ] Step 4: Run test to verify it passes
@@ -3202,6 +3241,8 @@ _troubleshooting_path = troubleshooting_path()
 hints = load_troubleshooting(_troubleshooting_path) if _troubleshooting_path else {}
 
 # Optional: only a deployment with a compliance mapping has a control list.
+# controls_path() reads VIP_CONTROLS, which `vip report --controls` sets for
+# this render only -- nothing is left in the report directory afterwards.
 _controls = controls_path()
 matrix = build_traceability_matrix(data, load_controls(_controls)) if _controls else None
 
@@ -3218,20 +3259,57 @@ conditional is silently swallowed, so it must be wrapped in `display()`.
 - [ ] Step 7: Add `--controls` to `vip report`
 
 In `run_report` (`cli.py:753-832` on #618), add a `--controls PATH` option to
-the report subparser and copy the file into the resolved report directory
-alongside the templates, so the two `.qmd` files find it by convention. Print
-the control count on success. Omitting the flag must leave the report byte-for-
-byte as it is today.
+the report subparser. Validate the path up front and exit non-zero with a
+clear message if it is missing or malformed — call `load_controls` there so a
+broken control list fails before Quarto starts, not inside a notebook cell
+where the traceback is unreadable. Then set it on the env dict already threaded
+into `_quarto_render`:
+
+```python
+    if getattr(args, "controls", None):
+        controls_file = Path(args.controls).resolve()
+        try:
+            controls = load_controls(controls_file)
+        except ControlListError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        env["VIP_CONTROLS"] = str(controls_file)
+        print(f"Traceability: {len(controls)} controls from {controls_file}")
+```
+
+Do not copy the file into the report directory. Omitting the flag must leave
+the report byte-for-byte as it is today, and must keep doing so on the next
+run — which a copied file would break.
 
 - [ ] Step 8: Render end to end
 
 ```bash
 uv run vip verify --config vip.toml --vip-extensions ./examples/part11_validation || true
 uv run vip report --controls examples/part11_validation/controls.toml
+uv run vip report
 ```
-Expected: `report/_output/vip-report.pdf` exists and contains a Traceability
-Matrix section; `index.html` shows the same rows. Then run without `--controls`
-and confirm neither document shows the section.
+Expected: the first `vip report` produces `report/_output/vip-report.pdf` with
+a Traceability Matrix section, and `index.html` showing the same rows. The
+second, with no flag, must show the section in neither document — run it
+against the same report directory, immediately after, since that back-to-back
+ordering is the regression this design exists to prevent. Confirm no
+`controls.toml` was left in the report directory.
+
+Add a selftest for the same invariant rather than relying on the manual check:
+
+```python
+def test_second_render_without_controls_has_no_section(monkeypatch, tmp_path):
+    """The flag must not leave state behind that a later render picks up."""
+    from vip.reporting import controls_path
+
+    controls = tmp_path / "controls.toml"
+    controls.write_text('[controls.x]\ndescription = "d"\n')
+    monkeypatch.setenv("VIP_CONTROLS", str(controls))
+    assert controls_path() == controls
+
+    monkeypatch.delenv("VIP_CONTROLS")
+    assert controls_path() is None
+```
 
 - [ ] Step 9: Lint and commit
 
