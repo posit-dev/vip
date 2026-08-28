@@ -1,6 +1,7 @@
 # VIP-specific
 vip.toml
 report/results.json
+report/results.json.sha256
 report/failures.json
 report/connect_system_checks.json
 .vip-auth-cache.json
