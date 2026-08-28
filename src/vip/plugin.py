@@ -31,6 +31,7 @@ from typing import Any
 
 import pytest
 
+from vip.attribution import collect_execution_metadata
 from vip.config import VIPConfig, load_config
 from vip.reporting import RESULTS_SCHEMA_VERSION
 from vip.version import ProductVersion
@@ -129,6 +130,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         default=False,
         help="Show full pytest tracebacks instead of concise error messages.",
+    )
+    group.addoption(
+        "--vip-no-attribution",
+        action="store_true",
+        default=False,
+        help="Omit host/git/CI attribution from results.json.",
     )
 
 
@@ -1325,6 +1332,11 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         "basic_mode": basic_mode,
         "products": products,
         "results": results,
+        "execution": (
+            None
+            if session.config.getoption("--vip-no-attribution", default=False)
+            else collect_execution_metadata()
+        ),
     }
 
     try:

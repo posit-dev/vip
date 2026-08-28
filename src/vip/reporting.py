@@ -136,6 +136,9 @@ class ReportData:
     python_version: str | None = None
     platform: str | None = None
     basic_mode: bool | None = None
+    # Host / git / CI attribution; see vip.attribution. None when the run used
+    # --vip-no-attribution, or for a results.json predating the field.
+    execution: dict | None = None
 
     @property
     def total(self) -> int:
@@ -229,6 +232,7 @@ def load_results(path: str | Path) -> ReportData:
         python_version=raw.get("python_version"),
         platform=raw.get("platform"),
         basic_mode=raw.get("basic_mode"),
+        execution=raw.get("execution"),
     )
 
 
