@@ -8,8 +8,10 @@ regulatory mapping; nothing here interprets ``reference``, ``risk`` or
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from vip.reporting import ReportData
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -91,3 +93,112 @@ def load_controls(path: str | Path) -> dict[str, ControlSpec]:
             notes=body.get("notes"),
         )
     return controls
+
+
+@dataclass
+class ControlMatch:
+    """One scenario that carries a control's tag."""
+
+    nodeid: str
+    scenario_title: str | None
+    status: str
+    started_at: str | None
+    finished_at: str | None
+    detail: str | None
+
+
+@dataclass
+class ControlEntry:
+    control: ControlSpec
+    matches: list[ControlMatch] = field(default_factory=list)
+    # "covered" | "gap" | "not_automatable"
+    coverage: str = "gap"
+
+
+@dataclass
+class TraceabilityMatrix:
+    entries: list[ControlEntry] = field(default_factory=list)
+    unrecognized_tags: list[str] = field(default_factory=list)
+    provenance: dict = field(default_factory=dict)
+    schema_version: str = MATRIX_SCHEMA_VERSION
+
+    @property
+    def gap_count(self) -> int:
+        return sum(1 for e in self.entries if e.coverage == "gap")
+
+    @property
+    def covered_count(self) -> int:
+        return sum(1 for e in self.entries if e.coverage == "covered")
+
+
+def _provenance(data: ReportData) -> dict:
+    products = {
+        p.name: {"url": p.url, "version": p.version, "configured": p.configured}
+        for p in data.products
+    }
+    return {
+        "generated_at": data.generated_at,
+        "deployment_name": data.deployment_name,
+        "vip_version": data.vip_version,
+        "results_schema_version": data.schema_version,
+        "exit_status": data.exit_status,
+        # basic_mode is surfaced deliberately: a matrix built from a
+        # `vip verify --basic` run omits every @slow scenario and would
+        # otherwise assert coverage that was never exercised.
+        "basic_mode": data.basic_mode,
+        "execution": data.execution,
+        # Describes the VIP runner, not the system under test. The products
+        # table below identifies the system under test.
+        "runner_python_version": data.python_version,
+        "runner_platform": data.platform,
+        "products": products,
+    }
+
+
+def build_traceability_matrix(
+    data: ReportData,
+    controls: dict[str, ControlSpec],
+    tag_prefix: str = "control-",
+) -> TraceabilityMatrix:
+    """Join control definitions against tagged test results.
+
+    Sorted deterministically -- by control id, then by nodeid within a control
+    -- so the same results.json and control list always produce byte-identical
+    output for a downstream renderer to diff.
+    """
+    by_tag: dict[str, list[ControlMatch]] = {}
+    seen_tags: set[str] = set()
+    for result in data.results:
+        for marker in result.markers:
+            if not marker.startswith(tag_prefix):
+                continue
+            seen_tags.add(marker)
+            by_tag.setdefault(marker, []).append(
+                ControlMatch(
+                    nodeid=result.nodeid,
+                    scenario_title=result.scenario_title,
+                    status=result.status,
+                    started_at=result.started_at,
+                    finished_at=result.finished_at,
+                    detail=result.concise_error or result.skip_reason,
+                )
+            )
+
+    entries: list[ControlEntry] = []
+    for control_id in sorted(controls):
+        control = controls[control_id]
+        matches = sorted(by_tag.get(f"{tag_prefix}{control_id}", []), key=lambda m: m.nodeid)
+        if matches:
+            coverage = "covered"
+        elif control.verification != "automated":
+            coverage = "not_automatable"
+        else:
+            coverage = "gap"
+        entries.append(ControlEntry(control=control, matches=matches, coverage=coverage))
+
+    known = {f"{tag_prefix}{cid}" for cid in controls}
+    return TraceabilityMatrix(
+        entries=entries,
+        unrecognized_tags=sorted(seen_tags - known),
+        provenance=_provenance(data),
+    )
