@@ -48,6 +48,12 @@ class TestResult:
     # that gets archived/published, and skip_reason already carries the part
     # a reader actually wants.
     skip_reason: str | None = None
+    # When this check began and ended, UTC ISO 8601, from pytest's report.start
+    # and report.stop. This is the call phase, so it excludes fixture setup
+    # (except for a setup-phase skip, where it is the setup start). None for a
+    # results.json written before these fields existed.
+    started_at: str | None = None
+    finished_at: str | None = None
 
     @property
     def category(self) -> str:
@@ -193,6 +199,8 @@ def load_results(path: str | Path) -> ReportData:
             feature_description=r.get("feature_description"),
             na_version=r.get("na_version", False),
             skip_reason=r.get("skip_reason"),
+            started_at=r.get("started_at"),
+            finished_at=r.get("finished_at"),
         )
         for r in raw.get("results", [])
     ]

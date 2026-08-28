@@ -965,6 +965,20 @@ def _extract_skip_reason(longrepr: object) -> str | None:
     return message.strip() or None
 
 
+def _epoch_to_iso(value: float | None) -> str | None:
+    """Convert a pytest report epoch float to a UTC ISO 8601 string.
+
+    Returns None rather than raising for a missing or unrepresentable value:
+    a provenance field is never worth failing a verification run over.
+    """
+    if value is None:
+        return None
+    try:
+        return datetime.fromtimestamp(value, timezone.utc).isoformat()
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
 def _format_concise_error(
     nodeid: str,
     exc_type: str,
@@ -1213,6 +1227,8 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
                     "scenario_title": getattr(report, "vip_scenario_title", None),
                     "feature_description": getattr(report, "vip_feature_description", None),
                     "na_version": getattr(report, "vip_na_version", False),
+                    "started_at": _epoch_to_iso(getattr(report, "start", None)),
+                    "finished_at": _epoch_to_iso(getattr(report, "stop", None)),
                 }
             )
 
