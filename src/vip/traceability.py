@@ -225,6 +225,20 @@ CSV_COLUMNS = [
 ]
 
 
+def _neutralize_formula(value: str) -> str:
+    """Prefix leading formula characters with apostrophe to prevent Excel evaluation.
+
+    When a CSV is opened in Excel, a cell starting with =, +, -, or @ is evaluated
+    as a formula, which is a security and integrity risk for compliance artifacts.
+    The apostrophe forces literal interpretation. This alters the value as seen by
+    non-Excel CSV readers (they will see the leading apostrophe); JSON is the format
+    to use when exact fidelity matters.
+    """
+    if value and value[0] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
+
+
 def _control_columns(entry: ControlEntry) -> dict:
     c = entry.control
     return {
@@ -248,33 +262,36 @@ def render_csv(matrix: TraceabilityMatrix) -> str:
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=CSV_COLUMNS, lineterminator="\n")
     writer.writeheader()
+
+    def _neutralize_row(row: dict) -> dict:
+        """Apply formula neutralization to all string values in the row."""
+        return {k: _neutralize_formula(v) if isinstance(v, str) else v for k, v in row.items()}
+
     for entry in matrix.entries:
         base = _control_columns(entry)
         if not entry.matches:
-            writer.writerow(
-                {
-                    **base,
-                    "scenario": "",
-                    "nodeid": "",
-                    "status": "",
-                    "started_at": "",
-                    "finished_at": "",
-                    "detail": "",
-                }
-            )
+            row = {
+                **base,
+                "scenario": "",
+                "nodeid": "",
+                "status": "",
+                "started_at": "",
+                "finished_at": "",
+                "detail": "",
+            }
+            writer.writerow(_neutralize_row(row))
             continue
         for match in entry.matches:
-            writer.writerow(
-                {
-                    **base,
-                    "scenario": match.scenario_title or "",
-                    "nodeid": match.nodeid,
-                    "status": match.status,
-                    "started_at": match.started_at or "",
-                    "finished_at": match.finished_at or "",
-                    "detail": match.detail or "",
-                }
-            )
+            row = {
+                **base,
+                "scenario": match.scenario_title or "",
+                "nodeid": match.nodeid,
+                "status": match.status,
+                "started_at": match.started_at or "",
+                "finished_at": match.finished_at or "",
+                "detail": match.detail or "",
+            }
+            writer.writerow(_neutralize_row(row))
     return buf.getvalue()
 
 
@@ -308,4 +325,4 @@ def render_json(matrix: TraceabilityMatrix) -> str:
             for entry in matrix.entries
         ],
     }
-    return json.dumps(payload, indent=2, sort_keys=False) + "\n"
+    return json.dumps(payload, indent=2, sort_keys=False, ensure_ascii=False) + "\n"

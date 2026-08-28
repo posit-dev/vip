@@ -93,3 +93,89 @@ def test_json_round_trips():
     entry = next(e for e in payload["controls"] if e["control_id"] == "x")
     assert entry["matches"][0]["nodeid"] == "t.py::a"
     assert entry["reference"] == "21 CFR 11.10(e)"
+
+
+def test_csv_formula_injection_equals_sign():
+    data = ReportData(
+        generated_at="2026-08-28T12:00:00+00:00",
+        vip_version="2026.8.3",
+        results=[],
+    )
+    controls = {
+        "a": ControlSpec("a", "=SUM(A1:A10)", verification="automated"),
+    }
+    matrix = build_traceability_matrix(data, controls)
+    rows = list(csv.DictReader(io.StringIO(render_csv(matrix))))
+    assert rows[0]["description"] == "'=SUM(A1:A10)"
+
+
+def test_csv_formula_injection_plus_sign():
+    data = ReportData(
+        generated_at="2026-08-28T12:00:00+00:00",
+        vip_version="2026.8.3",
+        results=[],
+    )
+    controls = {
+        "a": ControlSpec("a", "+1+1", verification="automated"),
+    }
+    matrix = build_traceability_matrix(data, controls)
+    rows = list(csv.DictReader(io.StringIO(render_csv(matrix))))
+    assert rows[0]["description"] == "'+1+1"
+
+
+def test_csv_formula_injection_minus_sign():
+    data = ReportData(
+        generated_at="2026-08-28T12:00:00+00:00",
+        vip_version="2026.8.3",
+        results=[],
+    )
+    controls = {
+        "a": ControlSpec("a", "-2+3", verification="automated"),
+    }
+    matrix = build_traceability_matrix(data, controls)
+    rows = list(csv.DictReader(io.StringIO(render_csv(matrix))))
+    assert rows[0]["description"] == "'-2+3"
+
+
+def test_csv_formula_injection_at_sign():
+    data = ReportData(
+        generated_at="2026-08-28T12:00:00+00:00",
+        vip_version="2026.8.3",
+        results=[],
+    )
+    controls = {
+        "a": ControlSpec("a", "@SUM(1,2)", verification="automated"),
+    }
+    matrix = build_traceability_matrix(data, controls)
+    rows = list(csv.DictReader(io.StringIO(render_csv(matrix))))
+    assert rows[0]["description"] == "'@SUM(1,2)"
+
+
+def test_csv_normal_description_not_escaped():
+    data = ReportData(
+        generated_at="2026-08-28T12:00:00+00:00",
+        vip_version="2026.8.3",
+        results=[],
+    )
+    controls = {
+        "a": ControlSpec("a", "Normal Description", verification="automated"),
+    }
+    matrix = build_traceability_matrix(data, controls)
+    rows = list(csv.DictReader(io.StringIO(render_csv(matrix))))
+    assert rows[0]["description"] == "Normal Description"
+    assert not rows[0]["description"].startswith("'")
+
+
+def test_json_non_ascii_appears_literally():
+    data = ReportData(
+        generated_at="2026-08-28T12:00:00+00:00",
+        vip_version="2026.8.3",
+        results=[],
+    )
+    controls = {
+        "a": ControlSpec("a", "Café français", verification="automated"),
+    }
+    matrix = build_traceability_matrix(data, controls)
+    rendered = render_json(matrix)
+    assert "Café français" in rendered
+    assert "\\u" not in rendered
