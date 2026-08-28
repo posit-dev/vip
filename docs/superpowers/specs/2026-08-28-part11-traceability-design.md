@@ -640,6 +640,45 @@ and document-management layer. The right division of labour is for VIP to
 produce clean, deterministic, well-provenanced machine-readable input and for
 that layer to render it.
 
+### sassoftware/sas-validation-scenarios
+
+Offered later as the concrete example of a CSV tracker demonstrating the data
+structures to build. It is not one, and the distinction matters enough to
+record so nobody re-derives it.
+
+The repository is a Locust-based functional and load-testing framework for SAS
+Viya 4: scenarios are Python test files driven by Locust, optionally through
+Playwright or the Viya CLI, and results are per-run CSVs named by concurrent
+user count for scaling analysis in SAS Visual Analytics. Across all 234 files
+there is not one occurrence of "21 CFR", "Part 11", "GxP", "compliance",
+"qualification", "traceability", "IQ/OQ/PQ", "audit trail", "signature",
+"protocol" or "deviation". Its own INTRODUCTION.md states the point directly:
+the scenarios "are not intended to be comprehensive, nor do they guarantee
+compliance with any industry-specific regulatory requirements."
+
+"Validation" there means deployment verification, not Computer System
+Validation. So the correct reading is not that this is the target state — it is
+that `sas-validation-scenarios` is SAS's analogue of VIP itself. The comparison
+is peer-to-peer, and it is genuinely informative in two ways:
+
+- A major vendor selling into the same regulated market ships a
+  deployment-verification suite and explicitly declines to claim regulatory
+  compliance from it. That is the stance section 7.1 already takes, arrived at
+  independently. It is corroboration that the scoping discipline here is
+  normal industry practice rather than excessive caution.
+- Its results directory accumulates one file per run rather than overwriting,
+  which is the same shape as this spec's decision to emit one timestamped
+  `results.json` per run and leave accumulation to whoever owns archiving.
+
+Taken with the other two references, the score is zero for three: the "GxP AI
+Validation framework" is not findable, AlcoaBase is a single-star early-stage
+project, and this one is a load-testing suite that disclaims the use case. The
+reasonable inference is that automated Part 11 traceability matrices are
+produced by commercial CSV tooling or in-house systems, not by open-source
+projects — so there is no reference implementation to copy, and the design here
+has to be argued from the regulation and from vendor compliance matrices
+(Beckman, Microtrac) instead. That is what section 7.1 does.
+
 ## 8. Interaction with PR #618 (the PDF report)
 
 PR #618 (`feat/report-pdf`) adds a native Quarto/Typst PDF edition of the
