@@ -7,6 +7,9 @@ regulatory mapping; nothing here interprets ``reference``, ``risk`` or
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -202,3 +205,107 @@ def build_traceability_matrix(
         unrecognized_tags=sorted(seen_tags - known),
         provenance=_provenance(data),
     )
+
+
+CSV_COLUMNS = [
+    "control_id",
+    "description",
+    "reference",
+    "risk",
+    "verification",
+    "responsibility",
+    "coverage",
+    "scenario",
+    "nodeid",
+    "status",
+    "started_at",
+    "finished_at",
+    "detail",
+    "notes",
+]
+
+
+def _control_columns(entry: ControlEntry) -> dict:
+    c = entry.control
+    return {
+        "control_id": c.control_id,
+        "description": c.description,
+        "reference": c.reference or "",
+        "risk": c.risk or "",
+        "verification": c.verification,
+        "responsibility": c.responsibility or "",
+        "coverage": entry.coverage,
+        "notes": c.notes or "",
+    }
+
+
+def render_csv(matrix: TraceabilityMatrix) -> str:
+    """Render the matrix as CSV: one row per control/scenario pair.
+
+    A control with no matching scenario still gets a row, with the scenario
+    columns empty, so a coverage gap is visible rather than absent.
+    """
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=CSV_COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    for entry in matrix.entries:
+        base = _control_columns(entry)
+        if not entry.matches:
+            writer.writerow(
+                {
+                    **base,
+                    "scenario": "",
+                    "nodeid": "",
+                    "status": "",
+                    "started_at": "",
+                    "finished_at": "",
+                    "detail": "",
+                }
+            )
+            continue
+        for match in entry.matches:
+            writer.writerow(
+                {
+                    **base,
+                    "scenario": match.scenario_title or "",
+                    "nodeid": match.nodeid,
+                    "status": match.status,
+                    "started_at": match.started_at or "",
+                    "finished_at": match.finished_at or "",
+                    "detail": match.detail or "",
+                }
+            )
+    return buf.getvalue()
+
+
+def render_json(matrix: TraceabilityMatrix) -> str:
+    """Render the matrix as JSON, carrying the full provenance block."""
+    payload = {
+        "schema_version": matrix.schema_version,
+        "provenance": matrix.provenance,
+        "summary": {
+            "total": len(matrix.entries),
+            "covered": matrix.covered_count,
+            "gaps": matrix.gap_count,
+            "not_automatable": sum(1 for e in matrix.entries if e.coverage == "not_automatable"),
+        },
+        "unrecognized_tags": matrix.unrecognized_tags,
+        "controls": [
+            {
+                **_control_columns(entry),
+                "matches": [
+                    {
+                        "nodeid": m.nodeid,
+                        "scenario": m.scenario_title,
+                        "status": m.status,
+                        "started_at": m.started_at,
+                        "finished_at": m.finished_at,
+                        "detail": m.detail,
+                    }
+                    for m in entry.matches
+                ],
+            }
+            for entry in matrix.entries
+        ],
+    }
+    return json.dumps(payload, indent=2, sort_keys=False) + "\n"
