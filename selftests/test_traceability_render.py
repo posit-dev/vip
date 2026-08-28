@@ -151,6 +151,48 @@ def test_csv_formula_injection_at_sign():
     assert rows[0]["description"] == "'@SUM(1,2)"
 
 
+def test_csv_formula_injection_leading_tab():
+    data = ReportData(
+        generated_at="2026-08-28T12:00:00+00:00",
+        vip_version="2026.8.3",
+        results=[],
+    )
+    controls = {
+        "a": ControlSpec("a", "\t=SUM(1,2)", verification="automated"),
+    }
+    matrix = build_traceability_matrix(data, controls)
+    rows = list(csv.DictReader(io.StringIO(render_csv(matrix))))
+    assert rows[0]["description"] == "'\t=SUM(1,2)"
+
+
+def test_csv_formula_injection_leading_carriage_return():
+    data = ReportData(
+        generated_at="2026-08-28T12:00:00+00:00",
+        vip_version="2026.8.3",
+        results=[],
+    )
+    controls = {
+        "a": ControlSpec("a", "\r=SUM(1,2)", verification="automated"),
+    }
+    matrix = build_traceability_matrix(data, controls)
+    rows = list(csv.DictReader(io.StringIO(render_csv(matrix))))
+    assert rows[0]["description"] == "'\r=SUM(1,2)"
+
+
+def test_csv_formula_injection_leading_newline():
+    data = ReportData(
+        generated_at="2026-08-28T12:00:00+00:00",
+        vip_version="2026.8.3",
+        results=[],
+    )
+    controls = {
+        "a": ControlSpec("a", "\n=SUM(1,2)", verification="automated"),
+    }
+    matrix = build_traceability_matrix(data, controls)
+    rows = list(csv.DictReader(io.StringIO(render_csv(matrix))))
+    assert rows[0]["description"] == "'\n=SUM(1,2)"
+
+
 def test_csv_normal_description_not_escaped():
     data = ReportData(
         generated_at="2026-08-28T12:00:00+00:00",

@@ -63,6 +63,45 @@ def test_scenarios_carry_literal_product_markers():
     assert steps.count("@pytest.mark.connect") + steps.count("@pytest.mark.workbench") >= 3
 
 
+def test_request_refused_step(pytester):
+    """Unit-test ``request_refused`` at the step-function level, no live deployment.
+
+    A correctly-secured deployment fronted by OIDC/SAML or a forward-auth
+    gateway answers an unauthenticated call with a redirect (302/307), not a
+    bare 401/403 -- that must still count as a refusal. Only a 2xx (access
+    actually granted) is a real control failure. A 5xx is a broken
+    deployment, not evidence either way, so it fails with its own distinct
+    message rather than being silently accepted as a refusal.
+    """
+    (pytester.path / "conftest.py").write_text(
+        f"import sys\nsys.path.insert(0, {str(EXAMPLE)!r})\n"
+    )
+    pytester.makepyfile(
+        test_refused="""
+import pytest
+from test_part11_validation import request_refused
+
+
+@pytest.mark.parametrize("status", [401, 403, 302, 307])
+def test_accepts_refusal_statuses(status):
+    request_refused(status)
+
+
+def test_fails_when_access_is_granted():
+    request_refused(200)
+
+
+def test_fails_on_server_error_rather_than_passing():
+    request_refused(500)
+"""
+    )
+    result = pytester.runpytest_subprocess("-p", "no:cacheprovider")
+    result.assert_outcomes(passed=4, failed=2)
+    output = result.stdout.str()
+    assert "access control is not enforced" in output
+    assert "not evidence of a working access control" in output
+
+
 def test_example_collects(tmp_path):
     """Collect with Connect "configured" so @connect scenarios aren't deselected.
 

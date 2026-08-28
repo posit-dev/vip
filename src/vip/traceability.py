@@ -234,8 +234,14 @@ def _neutralize_formula(value: str) -> str:
     The apostrophe forces literal interpretation. This alters the value as seen by
     non-Excel CSV readers (they will see the leading apostrophe); JSON is the format
     to use when exact fidelity matters.
+
+    A leading \\t, \\r, or \\n is included in the dangerous prefix set too: a
+    spreadsheet importer commonly strips or normalizes leading control
+    characters before evaluating the cell, so "\\t=SUM(1,2)" would otherwise
+    reach the sheet as an unescaped formula (OWASP's CSV-injection guidance
+    treats these control characters the same as the leading =/+/-/@).
     """
-    if value and value[0] in ("=", "+", "-", "@"):
+    if value and value[0] in ("=", "+", "-", "@", "\t", "\r", "\n"):
         return "'" + value
     return value
 
@@ -355,6 +361,32 @@ def verify_results_checksum(path: str | Path) -> str | None:
             f"checksum mismatch for {p}: sidecar records {recorded[0]}, file hashes to {digest}"
         )
     return digest
+
+
+def read_results_schema_version(path: str | Path) -> str | None:
+    """Read the top-level ``schema_version`` out of a results.json file.
+
+    This is deliberately independent of ``load_results``: it must be callable
+    (and must raise cleanly) BEFORE ``load_results`` ever touches the file, so
+    an incompatible or structurally malformed results file is rejected by the
+    schema gate instead of crashing inside ``load_results``' own field
+    indexing (`r["nodeid"]`, `r["outcome"]`, ...).
+    """
+    p = Path(path)
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        raise ResultsIntegrityError(f"could not read results file {p}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ResultsIntegrityError(f"could not read results file {p}: not a JSON object")
+    schema_version = raw.get("schema_version")
+    if schema_version is None:
+        return None
+    if not isinstance(schema_version, str):
+        raise ResultsIntegrityError(
+            f"could not read results file {p}: schema_version={schema_version!r} is not a string"
+        )
+    return schema_version
 
 
 def check_results_schema(schema_version: str | None) -> None:

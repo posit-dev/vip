@@ -1514,6 +1514,7 @@ def run_trace(args: argparse.Namespace) -> None:
         build_traceability_matrix,
         check_results_schema,
         load_controls,
+        read_results_schema_version,
         render_csv,
         render_json,
         verify_results_checksum,
@@ -1526,19 +1527,36 @@ def run_trace(args: argparse.Namespace) -> None:
 
     try:
         verify_results_checksum(results_path)
+        # Read and validate the schema version BEFORE load_results ever
+        # indexes into the results list. load_results assumes current-shape
+        # rows (r["nodeid"], r["outcome"], ...) and raises KeyError on
+        # anything else, so the schema gate must run first or an
+        # incompatible/malformed file crashes before it can be refused
+        # cleanly.
+        check_results_schema(read_results_schema_version(results_path))
         # load_results only warns (not raises) on an unknown schema major --
         # it's also called from index.qmd/details.qmd/`vip report`, where that
-        # warning is the point. run_trace does its own hard check immediately
-        # below, so suppress the redundant warning here only.
+        # warning is the point. The check above already hard-errors on the
+        # same condition, so suppress the redundant warning here only.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             data = load_results(results_path)
-        check_results_schema(data.schema_version)
         controls = load_controls(args.controls)
     except (ResultsIntegrityError, ControlListError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError, AttributeError) as exc:
+    except (
+        json.JSONDecodeError,
+        OSError,
+        UnicodeDecodeError,
+        AttributeError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        # A malformed results.json must not surface as a traceback -- this
+        # catches structural failures (e.g. {"results": [{}]}) that pass JSON
+        # parsing and the schema gate but fail load_results' own field
+        # indexing.
         print(f"Error: could not read results file {results_path}: {exc}", file=sys.stderr)
         sys.exit(1)
 

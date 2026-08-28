@@ -129,6 +129,43 @@ def test_missing_control_file_errors_clearly(tmp_path):
     assert "not found" in proc.stderr
 
 
+def _raw_results(tmp_path, payload, write_sidecar=True):
+    p = tmp_path / "results.json"
+    data = json.dumps(payload, indent=2).encode()
+    p.write_bytes(data)
+    if write_sidecar:
+        p.with_name("results.json.sha256").write_text(
+            f"{hashlib.sha256(data).hexdigest()}  results.json\n"
+        )
+    controls = tmp_path / "controls.toml"
+    controls.write_text(CONTROLS)
+    return p, controls
+
+
+def test_unknown_major_schema_with_malformed_results_errors_cleanly_before_load(tmp_path):
+    # The schema gate must run BEFORE load_results ever indexes into the
+    # results list, so a genuinely incompatible major (empty-dict results,
+    # not just a future version number over current-shape rows) is refused
+    # cleanly instead of crashing with a KeyError inside load_results.
+    results, controls = _raw_results(
+        tmp_path, {"schema_version": "2.0", "results": [{}]}, write_sidecar=False
+    )
+    proc = _run("--results", str(results), "--controls", str(controls))
+    assert proc.returncode != 0
+    assert "Error:" in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+
+def test_current_major_with_structurally_malformed_results_errors_cleanly(tmp_path):
+    # No schema_version mismatch here -- this is a current-major file whose
+    # results are the wrong shape, which must not escape as a raw KeyError.
+    results, controls = _raw_results(tmp_path, {"results": [{}]}, write_sidecar=False)
+    proc = _run("--results", str(results), "--controls", str(controls))
+    assert proc.returncode != 0
+    assert "Error:" in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+
 def test_malformed_json_without_sidecar_errors_cleanly(tmp_path):
     # No sidecar, so verify_results_checksum can't catch this as a checksum
     # mismatch -- this is exactly the population "missing sidecar is fine"

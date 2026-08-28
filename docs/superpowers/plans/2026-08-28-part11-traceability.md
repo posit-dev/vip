@@ -1806,10 +1806,50 @@ def render_json(matrix: TraceabilityMatrix) -> str:
     return json.dumps(payload, indent=2, sort_keys=False) + "\n"
 ```
 
+A control list is external input (whoever owns the regulatory mapping supplies
+it), and a CSV traceability matrix is meant to be opened in Excel/Sheets, so
+`render_csv` must neutralize CSV formula injection: a cell whose *rendered*
+first character is `=`, `+`, `-`, or `@` is evaluated as a formula by
+Excel/Sheets rather than displayed as text. `\t`, `\r`, and `\n` are dangerous
+leading characters too -- a spreadsheet importer commonly strips or
+normalizes a leading control character before evaluating the cell, so
+`"\t=SUM(1,2)"` would otherwise reach the sheet as an unescaped formula (this
+is why OWASP's CSV-injection guidance treats them the same as the leading
+`=`/`+`/`-`/`@`). Add to `src/vip/traceability.py`, applied to every string
+value in the row before it is written:
+
+```python
+def _neutralize_formula(value: str) -> str:
+    """Prefix leading formula characters with apostrophe to prevent Excel evaluation.
+
+    When a CSV is opened in Excel, a cell starting with =, +, -, or @ is evaluated
+    as a formula, which is a security and integrity risk for compliance artifacts.
+    The apostrophe forces literal interpretation. This alters the value as seen by
+    non-Excel CSV readers (they will see the leading apostrophe); JSON is the format
+    to use when exact fidelity matters.
+
+    A leading \t, \r, or \n is included in the dangerous prefix set too: a
+    spreadsheet importer commonly strips or normalizes leading control
+    characters before evaluating the cell, so "\t=SUM(1,2)" would otherwise
+    reach the sheet as an unescaped formula.
+    """
+    if value and value[0] in ("=", "+", "-", "@", "\t", "\r", "\n"):
+        return "'" + value
+    return value
+```
+
+`render_csv` runs every string value in a row through this before
+`writer.writerow` (a `_neutralize_row` helper maps it over the row dict), so
+`description`, `notes`, `detail`, and every other free-text column are
+protected without special-casing which column is "dangerous". Add tests
+asserting a description beginning with each of `=`, `+`, `-`, `@`, `\t`, `\r`,
+`\n` is apostrophe-prefixed in the rendered CSV, and that an ordinary
+description is not.
+
 - [ ] Step 4: Run test to verify it passes
 
 Run: `uv run pytest selftests/test_traceability_render.py -v`
-Expected: 6 passed
+Expected: all passed, including the formula-injection cases
 
 - [ ] Step 5: Commit
 
@@ -2010,6 +2050,32 @@ def verify_results_checksum(path: str | Path) -> str | None:
     return digest
 
 
+def read_results_schema_version(path: str | Path) -> str | None:
+    """Read the top-level ``schema_version`` out of a results.json file.
+
+    This is deliberately independent of ``load_results``: it must be callable
+    (and must raise cleanly) BEFORE ``load_results`` ever touches the file, so
+    an incompatible or structurally malformed results file is rejected by the
+    schema gate instead of crashing inside ``load_results``' own field
+    indexing (`r["nodeid"]`, `r["outcome"]`, ...).
+    """
+    p = Path(path)
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        raise ResultsIntegrityError(f"could not read results file {p}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ResultsIntegrityError(f"could not read results file {p}: not a JSON object")
+    schema_version = raw.get("schema_version")
+    if schema_version is None:
+        return None
+    if not isinstance(schema_version, str):
+        raise ResultsIntegrityError(
+            f"could not read results file {p}: schema_version={schema_version!r} is not a string"
+        )
+    return schema_version
+
+
 def check_results_schema(schema_version: str | None) -> None:
     """Refuse an unknown major schema version; accept an unknown minor.
 
@@ -2025,6 +2091,15 @@ def check_results_schema(schema_version: str | None) -> None:
             f"vip (understands {RESULTS_SCHEMA_VERSION}); upgrade vip or regenerate the results"
         )
 ```
+
+`run_trace` (Step 4 below) must call `read_results_schema_version` and
+`check_results_schema` BEFORE `load_results`, not after. `load_results`
+indexes `r["nodeid"]` and `r["outcome"]` directly, so a results file whose
+shape this vip cannot parse -- the exact case the schema gate exists to
+reject -- crashes with a raw `KeyError` during the load, before the schema
+check ever runs. Reordering closes that gap: the schema version is read and
+validated from the raw file first, and only a file that passes the gate is
+handed to `load_results`.
 
 Additionally, add a NON-FATAL warning to `load_results` in `src/vip/reporting.py`,
 so the report pipeline is not silently misled by a file it cannot represent:
@@ -2074,6 +2149,7 @@ def run_trace(args: argparse.Namespace) -> None:
         build_traceability_matrix,
         check_results_schema,
         load_controls,
+        read_results_schema_version,
         render_csv,
         render_json,
         verify_results_checksum,
@@ -2086,25 +2162,37 @@ def run_trace(args: argparse.Namespace) -> None:
 
     try:
         verify_results_checksum(results_path)
-        # Suppress load_results' own unknown-major warning HERE ONLY: this
-        # function hard-errors on the same condition two lines down, so the
-        # warning is pure noise in a compliance tool's output. load_results
-        # must keep warning for `vip report` and the Quarto pages, which are
-        # the reason that warning exists at all.
+        # Read and validate the schema version BEFORE load_results ever
+        # indexes into the results list. load_results assumes current-shape
+        # rows (r["nodeid"], r["outcome"], ...) and raises KeyError on
+        # anything else, so the schema gate must run first or an
+        # incompatible/malformed file crashes before it can be refused
+        # cleanly.
+        check_results_schema(read_results_schema_version(results_path))
+        # load_results only warns (not raises) on an unknown schema major --
+        # it's also called from index.qmd/details.qmd/`vip report`, where that
+        # warning is the point. The check above already hard-errors on the
+        # same condition, so suppress the redundant warning here only.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             data = load_results(results_path)
-        check_results_schema(data.schema_version)
         controls = load_controls(args.controls)
     except (ResultsIntegrityError, ControlListError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError, AttributeError) as exc:
-        # A malformed results.json must not surface as a traceback. This is
-        # reachable specifically for files with NO .sha256 sidecar -- a
-        # corrupted file WITH one is caught by verify_results_checksum above.
-        # That sidecar-less population is exactly the one the "missing sidecar
-        # is fine" rule exists to serve, so it is the one that needs this.
+    except (
+        json.JSONDecodeError,
+        OSError,
+        UnicodeDecodeError,
+        AttributeError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        # A malformed results.json must not surface as a traceback. This
+        # catches structural failures (e.g. {"results": [{}]}) that pass JSON
+        # parsing and the schema gate but fail load_results' own field
+        # indexing (KeyError/TypeError), plus the pre-existing sidecar-less
+        # corruption case verify_results_checksum can't catch on its own.
         print(f"Error: could not read results file {results_path}: {exc}", file=sys.stderr)
         sys.exit(1)
 
@@ -2126,6 +2214,14 @@ def run_trace(args: argparse.Namespace) -> None:
     else:
         sys.stdout.write(rendered)
 ```
+
+Add tests covering the reordering and the widened except clause: a `2.0`
+results file whose `results` entries are EMPTY DICTS (not just a future
+version number over otherwise current-shape rows) must exit non-zero with a
+clean `Error:` on stderr and no `Traceback`; and a CURRENT-major results file
+with the same malformed `{"results": [{}]}` shape must produce the same
+clean error via the widened `except` clause, since it never triggers the
+schema gate at all.
 
 Add the subparser after the `scaffold_parser.set_defaults(func=run_scaffold)` line:
 
@@ -2170,7 +2266,7 @@ Add `"trace": trace_parser,` to the `subcommand_parsers` dict.
 - [ ] Step 5: Run test to verify it passes
 
 Run: `uv run pytest selftests/test_trace_cli.py -v`
-Expected: 10 passed
+Expected: all passed, including the reordering and malformed-results cases
 
 - [ ] Step 6: Check the help renders
 
@@ -2467,11 +2563,46 @@ def request_privileged_endpoint(connect_client, privileged_endpoint):
 
 @then("the request is refused")
 def request_refused(unauthenticated_status):
-    assert unauthenticated_status in (401, 403), (
-        f"expected 401/403, got {unauthenticated_status}"
-    )
+    """Assert the control that matters: unauthenticated access is not GRANTED.
 
+    A bare `in (401, 403)` check fails a correctly-secured deployment fronted
+    by OIDC/SAML or a forward-auth gateway, which answers an unauthenticated
+    API call with a redirect (302/307) to a login page rather than a 401/403 --
+    a deployment shape VIP explicitly supports. That redirect IS a refusal:
+    the request never reached the privileged endpoint unauthenticated.
 
+    So the assertion is inverted: any 2xx is the one outcome that is actually
+    unsafe (credentials were not required), and that is what fails the
+    scenario. 401/403 and any 3xx are accepted as refusals. Every other status
+    is handled explicitly rather than falling through a bare comparison: a 5xx
+    means the deployment errored, which is not evidence the access control
+    works (or that it's broken) -- it is inconclusive, so the scenario fails
+    with a message that says so rather than passing silently. Anything else
+    unrecognized also fails explicitly, so a new status code shows up as a
+    named failure instead of a silent pass.
+    """
+    status = unauthenticated_status
+    if 200 <= status < 300:
+        pytest.fail(
+            f"unauthenticated request was granted (status {status}); "
+            "access control is not enforced"
+        )
+    if status in (401, 403) or 300 <= status < 400:
+        return
+    if 500 <= status < 600:
+        pytest.fail(
+            f"deployment returned {status} for an unauthenticated request; a server "
+            "error is not evidence of a working access control"
+        )
+    pytest.fail(f"unexpected status {status}; cannot confirm the request was refused")
+```
+
+Add step-function-level tests (no live deployment required) asserting
+`request_refused` accepts 401, 403, 302, and 307 as refusals, fails on 200
+with a message naming the grant, and fails on 500 with a message distinct
+from the grant case.
+
+```python
 @when("I ask which methods the audit log endpoint allows", target_fixture="allowed_methods")
 def audit_log_allowed_methods(connect_client):
     """Read the advertised method set. Never issue a mutating request.
