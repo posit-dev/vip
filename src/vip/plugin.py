@@ -1347,14 +1347,17 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         # only useful if it verifies against the file actually on disk.
         data = json.dumps(payload, indent=2).encode("utf-8")
         p.write_bytes(data)
-        digest = hashlib.sha256(data).hexdigest()
-        # shasum -c compatible: "<hex>  <filename>". Written unconditionally
-        # rather than gated on --vip-format, because the checksum is a property
-        # of the evidence file rather than an output format.
-        p.with_name(f"{p.name}.sha256").write_text(f"{digest}  {p.name}\n")
     except OSError as exc:
         warnings.warn(f"VIP: could not write report to {report_path}: {exc}", stacklevel=1)
         return
+
+    # A checksum is an optional artifact and must never suppress the outputs the
+    # user actually asked for (junit/sarif via --vip-format, and failures.json).
+    try:
+        digest = hashlib.sha256(data).hexdigest()
+        p.with_name(f"{p.name}.sha256").write_text(f"{digest}  {p.name}\n")
+    except OSError as exc:
+        warnings.warn(f"VIP: could not write checksum sidecar for {p}: {exc}", stacklevel=1)
 
     fmt = session.config.getoption("--vip-format", default="json")
     try:
