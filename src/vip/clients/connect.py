@@ -497,3 +497,62 @@ class ConnectClient(BaseClient):
         resp = self._client.post("/v1/tasks/send-test-email", json={"to": to})
         resp.raise_for_status()
         return resp.json()
+
+    # -- Audit log ------------------------------------------------------------
+
+    def list_audit_logs(self, *, limit: int = 20) -> list[dict[str, Any]] | None:
+        """Return recent audit log entries, or None if unavailable.
+
+        None (rather than an exception) for 404/403 so a caller can skip on a
+        deployment that does not expose the endpoint or a key that cannot read
+        it, without conflating that with an empty log.
+        """
+        resp = self._client.get("/v1/audit_logs", params={"limit": limit})
+        if resp.status_code in (403, 404):
+            return None
+        resp.raise_for_status()
+        payload = resp.json()
+        return payload.get("results", []) if isinstance(payload, dict) else payload
+
+    def audit_log_allowed_methods(self) -> set[str] | None:
+        """Return the HTTP methods the audit log endpoint advertises, or None.
+
+        Reads the Allow header from an OPTIONS request. Deliberately
+        read-only: proving the audit trail is immutable must never involve
+        deleting an audit record, which in a regulated deployment destroys the
+        very evidence the control protects.
+        """
+        resp = self._client.request("OPTIONS", "/v1/audit_logs")
+        if resp.status_code in (401, 403, 404, 405, 501):
+            return None
+        allow = resp.headers.get("allow", "")
+        if not allow:
+            return None
+        return {m.strip().upper() for m in allow.split(",") if m.strip()}
+
+    def unauthenticated_status(self, path: str) -> int:
+        """Return the status code for `path` requested with no credentials.
+
+        Uses a separate short-lived client so the configured API key and
+        cookies are not sent -- sending them would make the scenario assert
+        nothing at all, since an authorised caller is *supposed* to get 200.
+
+        Mirrors ``fetch_content``'s ad-hoc-request contract: route through the
+        proxy the pooled client already resolved and pin ``trust_env=False``
+        so that decision is authoritative, then fold the CA env overrides back
+        in by hand. ``trust_env=False`` disables httpx's own reading of
+        ``SSL_CERT_FILE``/``SSL_CERT_DIR`` along with the proxy vars, so
+        without ``verify_with_env_ca`` this probe would fail TLS against a
+        corporate CA that the pooled client verifies fine -- surfacing as a
+        Part 11 scenario erroring on a deployment that is actually healthy.
+        """
+        from vip.proxy import proxy_for_url, verify_with_env_ca
+
+        url = f"{self.base_url.rstrip('/')}{path}"
+        with httpx.Client(
+            verify=verify_with_env_ca(self._verify),
+            proxy=proxy_for_url(url, self._proxy_map),
+            trust_env=False,
+            timeout=30.0,
+        ) as client:
+            return client.get(url).status_code

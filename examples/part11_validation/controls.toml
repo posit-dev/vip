@@ -1,0 +1,46 @@
+# Sample control list for `vip trace`. This is a TEMPLATE: replace these
+# entries with your organisation's own regulatory mapping. VIP does not
+# interpret `reference`, `risk` or `responsibility` -- they are carried
+# through to the matrix verbatim.
+
+[controls.audit-trail-publish]
+description = "Deployment of content is recorded with actor and timestamp"
+reference = "21 CFR 11.10(e)"
+risk = "high"
+verification = "automated"
+responsibility = "shared"
+notes = "Retention duration of the audit log is a customer configuration decision."
+
+[controls.access-control-privileged-action]
+description = "Only authorised individuals may perform privileged actions"
+reference = "21 CFR 11.10(g)"
+risk = "high"
+verification = "automated"
+responsibility = "shared"
+
+[controls.record-retention]
+description = "Audit trail entries cannot be altered or deleted by ordinary users"
+reference = "21 CFR 11.10(e)"
+risk = "high"
+verification = "automated"
+responsibility = "shared"
+
+[controls.personnel-training]
+description = "Personnel have the education, training and experience to perform their tasks"
+reference = "21 CFR 11.10(i)"
+risk = "medium"
+verification = "procedural"
+responsibility = "customer"
+notes = "Evidenced by training records in your QMS. No automated test can establish this."
+
+[controls.signature-manifestation]
+description = "Signed records display the signer's printed name, date/time and meaning"
+reference = "21 CFR 11.50"
+risk = "high"
+verification = "manual"
+responsibility = "customer"
+notes = """
+Posit Team does not implement electronic signatures. This control is satisfied
+by the application you build on top of Posit Team, not by the platform, and is
+listed here to show how a non-automatable control appears in the matrix.
+"""

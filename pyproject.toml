@@ -157,6 +157,7 @@ packages = ["src/vip", "src/vip_tests"]
 [tool.hatch.build.targets.wheel.force-include]
 "examples/cross_product_validation" = "vip/_scaffold/cross_product_validation"
 "examples/custom_tests" = "vip/_scaffold/custom_tests"
+"examples/part11_validation" = "vip/_scaffold/part11_validation"
 # AGENTS.md source shared by every scaffold template; copied into the output
 # dir by run_scaffold() after copytree(). Keep this path in sync with
 # _resolve_scaffold_source("_shared") in src/vip/cli.py.
