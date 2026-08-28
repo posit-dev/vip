@@ -1439,3 +1439,42 @@ class TestVerifyProxyFlagWithConfig:
         )
         err = capsys.readouterr().err
         assert "ignored when a config file is used" not in err
+
+
+class TestAllowUnprovenFlag:
+    """`vip verify --allow-unproven` opts out of the unproven exit code."""
+
+    def test_flag_forwarded_to_pytest_when_set(self):
+        cmd = _capture_cmd(_make_args(allow_unproven=True))
+        assert "--vip-allow-unproven" in cmd
+
+    def test_flag_absent_by_default(self):
+        # Default is strict: an unverified check fails the run.
+        cmd = _capture_cmd(_make_args(allow_unproven=False))
+        assert "--vip-allow-unproven" not in cmd
+
+    def _parse_verify(self, *argv: str) -> argparse.Namespace:
+        """Parse a `vip verify` command line and return the namespace.
+
+        The parser is built inside main(), so reach it the way the other CLI
+        selftests do: run main() with run_verify stubbed out and capture the
+        namespace it would have been handed.
+        """
+        seen: list[argparse.Namespace] = []
+        with (
+            patch("vip.cli.run_verify", side_effect=seen.append),
+            patch.object(sys, "argv", ["vip", "verify", *argv]),
+        ):
+            from vip.cli import main
+
+            main()
+        assert seen, "run_verify was never reached"
+        return seen[0]
+
+    def test_parser_defaults_to_false(self):
+        args = self._parse_verify("--connect-url", "https://example.com")
+        assert args.allow_unproven is False
+
+    def test_parser_accepts_the_flag(self):
+        args = self._parse_verify("--connect-url", "https://example.com", "--allow-unproven")
+        assert args.allow_unproven is True

@@ -557,6 +557,8 @@ def run_verify(args: argparse.Namespace) -> None:
         cmd.append("--no-auth")
     if args.api_auth:
         cmd.append("--api-auth")
+    if getattr(args, "allow_unproven", False):
+        cmd.append("--vip-allow-unproven")
     for ext in args.extensions or []:
         cmd.append(f"--vip-extensions={ext}")
     if args.categories:
@@ -1752,6 +1754,18 @@ def main() -> None:
             "several minutes (R package restore, Python venv creation), so "
             "raise this further for large suites or slow servers. For "
             "per-deploy limits, set deploy_timeout under [connect] in vip.toml."
+        ),
+    )
+
+    verify_parser.add_argument(
+        "--allow-unproven",
+        action="store_true",
+        default=False,
+        help=(
+            "Exit 0 even when checks could not be verified. By default a check "
+            "that VIP was asked to run but could not (for example, a configured "
+            "product whose authentication never completed) fails the run, so an "
+            "unverified deployment is not reported as a passing one."
         ),
     )
 

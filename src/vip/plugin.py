@@ -31,6 +31,7 @@ from typing import Any
 
 import pytest
 
+from vip.attest import UNPROVEN_SENTINEL
 from vip.config import VIPConfig, load_config
 from vip.version import ProductVersion
 
@@ -69,6 +70,14 @@ _PRODUCT_MARKERS = {
     "package_manager": "package_manager",
 }
 
+#: Exit code for a run in which nothing failed but something went unverified.
+#: Deliberately distinct from pytest's own codes (0 ok, 1 failed, 2 interrupted,
+#: 3 internal, 4 usage, 5 no tests collected) so a CI job can tell "the
+#: deployment is broken" from "we could not check the deployment" without
+#: parsing output. See ``vip.attest`` for what makes a check unproven.
+EXIT_UNPROVEN = 6
+
+
 # ---------------------------------------------------------------------------
 # Plugin hooks
 # ---------------------------------------------------------------------------
@@ -80,6 +89,16 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--vip-config",
         default=None,
         help="Path to vip.toml configuration file.",
+    )
+    group.addoption(
+        "--vip-allow-unproven",
+        action="store_true",
+        default=False,
+        help=(
+            "Exit 0 even when checks went unproven (could not be verified). "
+            "Restores the pre-attestation behaviour where an unverified check "
+            "was indistinguishable from a passing run."
+        ),
     )
     group.addoption(
         "--vip-extensions",
@@ -932,6 +951,26 @@ def _extract_exception_info(longrepr: str) -> tuple[str, str]:
 _SKIPPED_PREFIX = "Skipped: "
 
 
+def _classify_skip_reason(reason: str | None) -> tuple[str | None, bool]:
+    """Split a skip reason into its human-readable text and its classification.
+
+    ``vip.attest.unproven`` prefixes the reason with a sentinel so the
+    classification survives the trip from the skip site to here (see that
+    module for why the reason string is the transport). This strips it back
+    off, so the sentinel never reaches a report, a terminal line, or a user.
+
+    Returns ``(reason_without_sentinel_or_None, is_unproven)``. The sentinel
+    must be a *prefix* -- a reason that merely quotes it is not a
+    classification.
+    """
+    if reason is None:
+        return None, False
+    if not reason.startswith(UNPROVEN_SENTINEL):
+        return reason, False
+    stripped = reason[len(UNPROVEN_SENTINEL) :].strip()
+    return (stripped or None), True
+
+
 def _extract_skip_reason(longrepr: object) -> str | None:
     """Pull the human-readable reason out of a skip report's ``longrepr``.
 
@@ -1188,11 +1227,12 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
             longrepr_str = str(report.longrepr) if report.longrepr else None
             concise_error = None
             skip_reason = None
+            unproven = False
             if report.outcome == "failed" and longrepr_str:
                 exc_type, exc_message = _extract_exception_info(longrepr_str)
                 concise_error = _format_concise_error(report.nodeid, exc_type, exc_message)
             elif report.outcome == "skipped":
-                skip_reason = _extract_skip_reason(report.longrepr)
+                skip_reason, unproven = _classify_skip_reason(_extract_skip_reason(report.longrepr))
                 # Stringified longrepr is pytest's raw ``(path, lineno, "Skipped:
                 # ...")`` tuple and leaks the absolute path of the file that
                 # called skip() into results.json (an uploaded CI artifact).
@@ -1212,6 +1252,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
                     "scenario_title": getattr(report, "vip_scenario_title", None),
                     "feature_description": getattr(report, "vip_feature_description", None),
                     "na_version": getattr(report, "vip_na_version", False),
+                    "unproven": unproven,
                 }
             )
 
@@ -1253,6 +1294,39 @@ def _emit_extra_formats(fmt: str, results_path: Path) -> None:
         write_sarif(data, results_path.parent / "results.sarif")
 
 
+def _apply_unproven_exit_status(session: pytest.Session, exitstatus: int) -> int:
+    """Fail the run when checks went unproven, and return the effective status.
+
+    Only promotes a status of 0. A real failure is the stronger signal and
+    must not be masked -- if pytest already decided the run failed, that
+    verdict stands. ``--vip-allow-unproven`` opts out entirely.
+
+    Mutates ``session.exitstatus`` so the process exit code follows, and
+    returns the new value so the caller records the same number in
+    results.json rather than the stale one pytest passed in.
+    """
+    if exitstatus != 0:
+        return exitstatus
+    if session.config.getoption("--vip-allow-unproven", default=False):
+        return exitstatus
+    results = session.config.stash.get(_results_key, None) or []
+    unproven = [r for r in results if r.get("unproven")]
+    if not unproven:
+        return exitstatus
+
+    session.exitstatus = EXIT_UNPROVEN
+    reasons = "\n".join(
+        f"  - {r['nodeid']}: {r.get('skip_reason') or 'no reason recorded'}" for r in unproven
+    )
+    print(
+        f"\nVIP: {len(unproven)} check(s) could not be verified. Nothing failed, "
+        f"but nothing was proven either:\n{reasons}\n"
+        "Pass --allow-unproven to treat these as an ordinary skip.",
+        file=sys.stderr,
+    )
+    return EXIT_UNPROVEN
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     # xdist workers skip all session-end cleanup (controller handles it).
     is_worker = hasattr(session.config, "workerinput")
@@ -1262,6 +1336,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         auth_session = session.config.stash.get(_auth_session_key, None)
         if auth_session is not None:
             auth_session.cleanup()
+
+    if not is_worker:
+        exitstatus = _apply_unproven_exit_status(session, exitstatus)
 
     report_path = session.config.getoption("--vip-report")
     if not report_path or is_worker:

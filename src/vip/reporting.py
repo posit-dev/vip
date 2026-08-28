@@ -29,6 +29,14 @@ class TestResult:
     scenario_title: str | None = None
     feature_description: str | None = None
     na_version: bool = False
+    # True when the check was skipped because VIP could not do what it was
+    # asked to do -- as opposed to an ordinary skip, which means there was
+    # nothing to do (product not configured, tier lacks the feature). The
+    # distinction is the whole point: a validation tool that reports the two
+    # identically cannot tell "verified" from "never looked". Set by
+    # ``vip.attest.unproven`` at the skip site and carried through by the
+    # plugin; see ``ReportData.unproven`` for how it reaches the exit code.
+    unproven: bool = False
     # Human-readable reason a skipped test was skipped (e.g. "high-concurrency
     # localhost loads are flaky on macOS CI runners"), with pytest's "Skipped: "
     # prefix stripped. Populated by the plugin from ``report.longrepr`` — see
@@ -79,17 +87,26 @@ class TestResult:
 
     @property
     def status(self) -> str:
-        """Report status, distinguishing N/A-by-version from ordinary skips.
+        """Report status, splitting skips into three distinguishable kinds.
 
         Returns ``"na_version"`` when the test was skipped because a
         product's version could not be determined (see
-        ``plugin._skip_version_unknown``), otherwise returns ``outcome``
-        unchanged. Quarto templates key their styling dicts on this value
-        instead of raw ``outcome`` so version gaps render distinctly from
-        both passes/failures and ordinary (unconfigured-feature) skips.
+        ``plugin._skip_version_unknown``), ``"unproven"`` when VIP was asked
+        to run the check and could not (see ``vip.attest.unproven``), and
+        otherwise ``outcome`` unchanged. Quarto templates key their styling
+        dicts on this value instead of raw ``outcome`` so version gaps and
+        unverified checks each render distinctly from both passes/failures
+        and ordinary (unconfigured-feature) skips.
+
+        ``na_version`` wins when both flags are set: it is the more specific
+        statement about *why* the check could not run, and it already owns a
+        badge of its own.
         """
-        if self.na_version and self.outcome == "skipped":
-            return "na_version"
+        if self.outcome == "skipped":
+            if self.na_version:
+                return "na_version"
+            if self.unproven:
+                return "unproven"
         return self.outcome
 
 
@@ -144,6 +161,16 @@ class ReportData:
         return sum(1 for r in self.results if r.outcome == "skipped")
 
     @property
+    def unproven(self) -> int:
+        """Checks VIP was asked to run and could not.
+
+        Keyed on ``status`` rather than the raw flag so an ``na_version``
+        result is counted once, under N/A, and not again here. Like
+        ``na_version``, these still count toward ``skipped``.
+        """
+        return sum(1 for r in self.results if r.status == "unproven")
+
+    @property
     def generated_at_display(self) -> str:
         """Human-readable timestamp."""
         if not self.generated_at:
@@ -184,6 +211,7 @@ def load_results(path: str | Path) -> ReportData:
             scenario_title=r.get("scenario_title"),
             feature_description=r.get("feature_description"),
             na_version=r.get("na_version", False),
+            unproven=r.get("unproven", False),
             skip_reason=r.get("skip_reason"),
         )
         for r in raw.get("results", [])
@@ -224,6 +252,30 @@ def _xml_safe(text: str) -> str:
     return _XML_INVALID_CHARS.sub("", _ANSI_CSI.sub("", text))
 
 
+UNPROVEN_PREFIX = "UNPROVEN: "
+
+
+def _skip_message(r: TestResult, *, generic: str) -> str:
+    """Build the reason text a machine-readable format shows for a skip.
+
+    Precedence is the real recorded reason, then the ``na_version`` fallback
+    wording (for reports written before ``skip_reason`` existed), then
+    *generic*. An unproven skip gets :data:`UNPROVEN_PREFIX` in front of
+    whatever that resolves to, so the classification survives into JUnit --
+    which has no third outcome state to put it in -- and stays greppable in
+    any reporter that only shows the message.
+    """
+    if r.skip_reason:
+        reason = r.skip_reason
+    elif r.na_version:
+        reason = "N/A for this product version"
+    else:
+        reason = generic
+    if r.status == "unproven":
+        return f"{UNPROVEN_PREFIX}{reason}"
+    return reason
+
+
 def write_junit_xml(data: ReportData, path: str | Path) -> None:
     """Write test results as a JUnit XML file for CI test reporters."""
     # VIP's ReportData has no "error" outcome distinct from "failed"; always 0.
@@ -260,15 +312,11 @@ def write_junit_xml(data: ReportData, path: str | Path) -> None:
             )
             failure.text = _xml_safe(r.longrepr or r.concise_error or "")
         elif r.outcome == "skipped":
-            # skip_reason is the real reason (see TestResult.skip_reason); the
-            # na_version wording is a fallback for reports written before that
-            # field existed, and "skipped" is the last resort with no reason at all.
-            if r.skip_reason:
-                reason = r.skip_reason
-            elif r.na_version:
-                reason = "N/A for this product version"
-            else:
-                reason = "skipped"
+            # An unproven check stays a <skipped> element: JUnit has only
+            # failure/error/skipped, and promoting it to a failure would make
+            # every existing reporter double-count against the run's own
+            # exit code. The classification rides in the message instead.
+            reason = _skip_message(r, generic="could not verify" if r.unproven else "skipped")
             ET.SubElement(case, "skipped", message=_xml_safe(reason))
 
     p = Path(path)
@@ -276,14 +324,24 @@ def write_junit_xml(data: ReportData, path: str | Path) -> None:
     ET.ElementTree(suites).write(p, encoding="utf-8", xml_declaration=True)
 
 
-_SARIF_LEVEL = {"failed": "error", "passed": "none", "skipped": "note"}
+# Keyed on TestResult.status, not the raw outcome, so an unproven check can
+# carry its own level. SARIF has a rung between "clean" and "broken" and this
+# is exactly what it is for: nothing failed, but nothing was verified either.
+_SARIF_LEVEL = {
+    "failed": "error",
+    "passed": "none",
+    "skipped": "note",
+    "na_version": "note",
+    "unproven": "warning",
+}
 
 
 def write_sarif(data: ReportData, path: str | Path) -> None:
     """Write test results as SARIF 2.1.0 for secops / code-scanning ingestion.
 
-    Every check emits a result (fail=error, pass=none, skip=note) to give a
-    full audit trail of what was validated, not only failures.
+    Every check emits a result (fail=error, unproven=warning, pass=none,
+    skip=note) to give a full audit trail of what was validated, not only
+    failures -- including the checks that never got to run.
     """
     from vip import __version__
 
@@ -298,20 +356,13 @@ def write_sarif(data: ReportData, path: str | Path) -> None:
         if r.outcome == "failed":
             text = r.concise_error or r.longrepr or "check failed"
         elif r.outcome == "skipped":
-            # Same precedence as write_junit_xml: real reason, then the
-            # na_version fallback wording, then a generic message.
-            if r.skip_reason:
-                text = r.skip_reason
-            elif r.na_version:
-                text = "N/A for this product version"
-            else:
-                text = "check skipped"
+            text = _skip_message(r, generic="could not verify" if r.unproven else "check skipped")
         else:
             text = check
         results.append(
             {
                 "ruleId": r.nodeid,
-                "level": _SARIF_LEVEL.get(r.outcome, "none"),
+                "level": _SARIF_LEVEL.get(r.status, "none"),
                 "message": {"text": text},
                 "locations": [{"logicalLocations": [{"name": f"{r.category} / {check}"}]}],
             }

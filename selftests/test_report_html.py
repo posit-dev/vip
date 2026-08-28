@@ -654,3 +654,67 @@ class TestFeatureStepIndex:
         html = report_html.steps_html(["Given a thing", "Then another thing"])
         assert "Given a thing" in html
         assert "<details" in html
+
+
+class TestUnprovenRendering:
+    """The report is the artifact an auditor reads; unproven must be visible."""
+
+    def test_unproven_has_its_own_badge_style(self):
+        from vip.report_html import _DEFAULT_OUTCOME_STYLE, _OUTCOME_STYLES
+
+        style = _OUTCOME_STYLES.get("unproven")
+        assert style is not None, "unproven must not fall through to the '?' style"
+        assert style is not _DEFAULT_OUTCOME_STYLE
+        assert style.label != _OUTCOME_STYLES["skipped"].label
+
+    def test_unproven_is_grouped_ahead_of_ordinary_skips(self):
+        from vip.report_html import OUTCOME_ORDER
+
+        assert "unproven" in OUTCOME_ORDER
+        # Actionable outcomes lead: a failure, then a check that could not run,
+        # then the skips that were correct to skip.
+        assert OUTCOME_ORDER.index("unproven") < OUTCOME_ORDER.index("skipped")
+        assert OUTCOME_ORDER.index("failed") < OUTCOME_ORDER.index("unproven")
+
+    def test_unproven_has_a_label(self):
+        from vip.report_html import OUTCOME_LABELS
+
+        assert OUTCOME_LABELS.get("unproven")
+        assert OUTCOME_LABELS["unproven"] != OUTCOME_LABELS["skipped"]
+
+    def test_counts_summary_names_unproven_separately(self):
+        from vip.report_html import _outcome_counts_summary
+
+        summary = _outcome_counts_summary(
+            [
+                TestResult(nodeid="a", outcome="skipped", unproven=True),
+                TestResult(nodeid="b", outcome="skipped"),
+            ]
+        )
+        assert "1 skipped" in summary
+        assert "skipped" in summary and summary.count("skipped") == 1
+        assert "unproven" in summary.lower()
+
+    def test_unproven_card_explains_itself(self):
+        from vip.report_html import skip_reason_html
+
+        html = skip_reason_html(
+            TestResult(
+                nodeid="a",
+                outcome="skipped",
+                unproven=True,
+                skip_reason="Workbench authentication did not complete",
+            )
+        )
+        # The operator needs both the plain-English meaning and the raw cause.
+        assert "not verified" in html.lower() or "could not" in html.lower()
+        assert "Workbench authentication did not complete" in html
+
+    def test_ordinary_skip_card_is_unchanged(self):
+        from vip.report_html import skip_reason_html
+
+        html = skip_reason_html(
+            TestResult(nodeid="a", outcome="skipped", skip_reason="Connect is not configured")
+        )
+        assert "could not" not in html.lower()
+        assert "Connect is not configured" in html

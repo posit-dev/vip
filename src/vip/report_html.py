@@ -84,15 +84,20 @@ _OUTCOME_STYLES: dict[str, OutcomeStyle] = {
     "failed": OutcomeStyle("FAIL", "#dc2626", "#fecaca"),
     "skipped": OutcomeStyle("SKIP", "#6b7280", "#e5e7eb"),
     "na_version": OutcomeStyle("N/A", "#d97706", "#fde68a"),
+    # Amber-red: not a failure, but not a pass either. Reads closer to FAIL
+    # than to SKIP on purpose -- an unverified check is the thing this report
+    # exists to make impossible to overlook.
+    "unproven": OutcomeStyle("UNPROVEN", "#b45309", "#fed7aa"),
 }
 _DEFAULT_OUTCOME_STYLE = OutcomeStyle("?", "#6b7280", "#e5e7eb")
 
 # Order and label for the outcome-grouped sections on index.qmd (failures are
 # the actionable ones, so they lead).
-OUTCOME_ORDER = ("failed", "skipped", "na_version")
+OUTCOME_ORDER = ("failed", "unproven", "skipped", "na_version")
 OUTCOME_LABELS = {
     "failed": "Failed",
     "passed": "Passed",
+    "unproven": "Not verified",
     "skipped": "Skipped",
     "na_version": "N/A (version)",
 }
@@ -306,11 +311,19 @@ _NA_VERSION_EXPLANATION = (
 )
 
 
+_UNPROVEN_EXPLANATION = (
+    "This check was not verified. VIP was asked to run it and could not, so "
+    "this is not a statement that the deployment is healthy -- only that "
+    "nothing was checked here."
+)
+
+
 def skip_reason_html(item: TestResult) -> str:
     """An explanation for a skip card (F3).
 
-    ``na_version`` reads distinctly from an ordinary skip (see
-    ``TestResult.status``): it leads with plain-English wording, because the
+    ``na_version`` and ``unproven`` each read distinctly from an ordinary
+    skip (see ``TestResult.status``): they lead with plain-English wording,
+    because the
     raw reason is phrased for whoever is debugging VIP rather than for whoever
     is reading the report. It does *not* stop there. ``_skip_version_unknown``
     records which product and which ``min_version`` expression it could not
@@ -323,8 +336,11 @@ def skip_reason_html(item: TestResult) -> str:
     """
     if item.outcome != "skipped":
         return ""
-    if item.status == "na_version":
-        parts = [_esc(_NA_VERSION_EXPLANATION)]
+    if item.status in ("na_version", "unproven"):
+        explanation = (
+            _NA_VERSION_EXPLANATION if item.status == "na_version" else _UNPROVEN_EXPLANATION
+        )
+        parts = [_esc(explanation)]
         if item.skip_reason and item.skip_reason.strip():
             detail = _esc(item.skip_reason.strip())
             parts.append(f'<span class="vip-skip-detail">{detail}</span>')
@@ -447,6 +463,7 @@ def _outcome_counts_summary(items: list[TestResult]) -> str:
     order = [
         ("passed", "passed"),
         ("failed", "failed"),
+        ("unproven", "unproven"),
         ("skipped", "skipped"),
         ("na_version", "N/A (version)"),
     ]
