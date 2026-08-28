@@ -2977,7 +2977,23 @@ def traceability_rows(matrix) -> list[list[str]]:
     return rows
 ```
 
-Add to `src/vip/reporting.py`, beside `troubleshooting_path`:
+Add to `src/vip/reporting.py`, beside `troubleshooting_path`. This function
+needs two imports the module does not currently have — its import block is
+`json`, `re`, `sys`, `xml.etree.ElementTree`, `dataclasses`, `pathlib` and the
+`tomllib` shim, so add `os` and `warnings` alongside them in alphabetical
+order:
+
+```python
+import json
+import os
+import re
+import sys
+import warnings
+```
+
+Without those, every report render fails with `NameError` before it can even
+determine that `VIP_CONTROLS` is unset — breaking the ordinary no-controls
+case, which is the one path every existing user takes.
 
 ```python
 def controls_path() -> Path | None:
@@ -3113,8 +3129,10 @@ Expected: FAIL with `ImportError: cannot import name 'render_traceability_table'
 
 - [ ] Step 3: Implement the Typst backend
 
-In `src/vip/report_typst.py`, import the new content helpers alongside the
-existing `report_content` imports, then add after `render_provenance_table`
+In `src/vip/report_typst.py`, add `TRACEABILITY_HEADERS` and
+`traceability_rows` to the existing `from vip.report_content import (...)`
+block, keeping its ordering convention (uppercase constants first, then
+lowercase names, each alphabetical). Then add after `render_provenance_table`
 (around line 437):
 
 ```python
@@ -3178,7 +3196,11 @@ Expected: 6 passed
 
 - [ ] Step 5: Implement the HTML backend and test it
 
-In `src/vip/report_html.py`, after `render_provenance_table`:
+In `src/vip/report_html.py`, add the same two names to its
+`from vip.report_content import (...)` block — `TRACEABILITY_HEADERS` after
+`OUTCOME_ORDER`, and `traceability_rows` after `summary_status`, matching the
+block's existing sort. `_esc` is already imported at the top
+(`from html import escape as _esc`). Then add after `render_provenance_table`:
 
 ```python
 def render_traceability_table(matrix) -> str:
