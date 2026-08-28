@@ -69,9 +69,13 @@ def load_controls(path: str | Path) -> dict[str, ControlSpec]:
             raise ControlListError(
                 f"[controls.{control_id}] has description={description!r}; expected a string"
             )
-        if not description:
+        if not description.strip():
             raise ControlListError(f"[controls.{control_id}] has an empty description")
         verification = body.get("verification", "automated")
+        if not isinstance(verification, str):
+            raise ControlListError(
+                f"[controls.{control_id}] has verification={verification!r}; expected a string"
+            )
         if verification not in VERIFICATION_VALUES:
             raise ControlListError(
                 f"[controls.{control_id}] has verification={verification!r};"

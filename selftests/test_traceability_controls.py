@@ -99,3 +99,38 @@ def test_empty_controls_table_is_an_error(tmp_path):
     p.write_text("[controls]\n")
     with pytest.raises(ControlListError, match="empty"):
         load_controls(p)
+
+
+def test_list_verification_is_an_error(tmp_path):
+    p = tmp_path / "controls.toml"
+    p.write_text('[controls.x]\ndescription = "d"\nverification = ["automated"]\n')
+    with pytest.raises(ControlListError, match="x.*expected a string"):
+        load_controls(p)
+
+
+def test_dict_verification_is_an_error(tmp_path):
+    p = tmp_path / "controls.toml"
+    p.write_text('[controls.x]\ndescription = "d"\n[controls.x.verification]\nauto = true\n')
+    with pytest.raises(ControlListError, match="x.*expected a string"):
+        load_controls(p)
+
+
+def test_numeric_verification_is_an_error(tmp_path):
+    p = tmp_path / "controls.toml"
+    p.write_text('[controls.x]\ndescription = "d"\nverification = 5\n')
+    with pytest.raises(ControlListError, match="verification"):
+        load_controls(p)
+
+
+def test_boolean_verification_is_an_error(tmp_path):
+    p = tmp_path / "controls.toml"
+    p.write_text('[controls.x]\ndescription = "d"\nverification = true\n')
+    with pytest.raises(ControlListError, match="verification"):
+        load_controls(p)
+
+
+def test_whitespace_only_description_is_an_error(tmp_path):
+    p = tmp_path / "controls.toml"
+    p.write_text('[controls.x]\ndescription = "   "\n')
+    with pytest.raises(ControlListError, match="empty"):
+        load_controls(p)
