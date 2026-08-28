@@ -253,3 +253,6 @@ presentations/qa-overview/index_files/
 # local dev license files
 /*.lic
 
+
+# Superpowers SDD scratch (subagent-driven-development workspace)
+.superpowers/
