@@ -9,9 +9,18 @@ the deferred list into the main design on the second pass.
 
 Someone is looking for VIP to produce something close to an automated 21 CFR
 Part 11 traceability matrix: a mapping from regulatory control to timestamped
-test evidence. VIP already produces timestamped, versioned, machine-readable
-per-check results (`report/results.json`, JUnit XML, SARIF), and its Gherkin
-feature files are already written as plain-language requirement statements.
+test evidence. VIP already produces machine-readable per-check results
+(`report/results.json`, JUnit XML, SARIF), and its Gherkin feature files are
+already written as plain-language requirement statements.
+
+Be precise about what "timestamped, versioned" does and does not mean today,
+because the downstream PDF pipeline will build on this wording. Before the
+section 2 changes land, `results.json` carries a single run-level
+`generated_at` and no schema version at all: individual results have a
+`duration` but no start time. So the existing evidence is run-timestamped and
+unversioned, and a per-control row could not honestly claim a timestamp of its
+own. Section 2 is what makes per-check timestamping and a versioned schema
+true rather than aspirational.
 What's missing is a way to attach a control ID to a scenario, a way to turn
 that into an actual matrix, enough provenance on the evidence record to make a
 result attributable to a specific pipeline execution, and a worked example
@@ -86,15 +95,35 @@ Three corrections to the original draft of this section:
   reporting schema change is needed" is only true for the JSON path. Adding
   control tags to SARIF (as `properties.tags`, which the format supports) is
   listed as deferred work in section 7.
-- Unregistered marks warn. Each distinct `@control-*` tag raises a
-  `PytestUnknownMarkWarning` (`_pytest/mark/structures.py:628`). Nothing in
-  VIP escalates it today, so a run merely gets a noisy warnings summary — but
-  under `-W error::pytest.PytestUnknownMarkWarning` it is a hard collection
-  error, which a regulated customer running strict CI is plausibly doing.
-  Dynamic slugs cannot be pre-registered by name, so `plugin.py::pytest_configure`
-  gains one `filterwarnings` line ignoring `PytestUnknownMarkWarning` for marks
-  matching the configured prefix, alongside the seven `ignore:` entries already
-  at `plugin.py:156-173`. This is a small plugin change, not zero.
+- Unregistered marks must be registered, not merely silenced. Each distinct
+  `@control-*` tag is an unregistered mark, and pytest punishes that two
+  different ways. By default it raises `PytestUnknownMarkWarning`
+  (`_pytest/mark/structures.py:628`), which is a hard error under
+  `-W error::pytest.PytestUnknownMarkWarning`. Under `--strict-markers` /
+  `strict_markers` it does not warn at all — it calls `fail()` and aborts
+  collection with "`'control-audit-trail-publish' not found in markers
+  configuration option`". Verified against the pinned pytest 9.1.1.
+
+  A `filterwarnings` ignore therefore does not solve this: it cannot touch the
+  strict-markers path, which is precisely the mode a regulated customer's CI
+  is most likely to enable. Instead, `plugin.py::pytest_configure` pre-scans
+  the feature files it is about to collect, extracts every tag matching the
+  control prefix, and registers each one via
+  `config.addinivalue_line("markers", f"{tag}: compliance control tag")`.
+
+  Verified empirically: with pre-registration, a control-tagged scenario
+  collects and passes under `--strict-markers` and
+  `-W error::pytest.PytestUnknownMarkWarning` together, the warnings disappear
+  entirely, and the tags still arrive in `results.json`. One mechanism covers
+  both failure modes, so no `filterwarnings` entry is needed at all.
+
+  Two implementation notes. The scan must cover the same roots pytest will
+  collect — `config.args` plus any `--vip-extensions` directories — rather than
+  blindly walking `rootpath`, which would be wasteful in a large monorepo and
+  would register controls from files that are not part of this run. And VIP
+  already has a Gherkin tag parser in `gherkin.py`; reuse it rather than adding
+  a second regex, keeping this consistent with the `gherkin.py` fix in the next
+  bullet.
 - Tag ordering in a feature file matters. `gherkin.py:52-57` derives a
   feature's `"marker"` from the first token of the first tag line in the file.
   A `@control-*` tag written before `@connect` hijacks that value, which feeds
@@ -418,8 +447,14 @@ For the tagging convention (section 1):
 
 - A selftest asserting a `@control-*` tag does not hijack `gherkin.py`'s
   derived feature marker.
-- A selftest asserting a `@control-*` tag raises no warning under the plugin's
-  filter — run it under `-W error::pytest.PytestUnknownMarkWarning`.
+- A selftest asserting a `@control-*` tag collects cleanly under
+  `--strict-markers` and under `-W error::pytest.PytestUnknownMarkWarning`, as
+  separate cases and combined. Both must be covered: they are distinct code
+  paths in pytest (`fail()` vs `warnings.warn`), and a fix for one does not
+  imply a fix for the other.
+- A selftest asserting the control tags still reach `results.json` after
+  pre-registration, so a future change to the registration mechanism cannot
+  silently drop the evidence it exists to preserve.
 
 For the evidence record (section 2), all via the `pytester` fixture so a real
 subprocess run produces a real `results.json`:
