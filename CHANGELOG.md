@@ -3,6 +3,19 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.8.3 (2026-08-28)
+
+### Bug Fixes
+
+- **extensions**: Make VIP core fixtures visible to extension directories ([#610](https://github.com/posit-dev/vip/pull/610), [`48176d4`](https://github.com/posit-dev/vip/commit/48176d43aae128b2361cb759425e350b23da1bcb))
+
+- **report**: Repair the example validation report end to end ([#607](https://github.com/posit-dev/vip/pull/607), [`3eb3d71`](https://github.com/posit-dev/vip/commit/3eb3d71c75f2fcc5624d334905fe0357ca776c18))
+
+### Features
+
+- **scaffold**: Add template registry and ship an extension-authoring guide ([#611](https://github.com/posit-dev/vip/pull/611), [`6fa3e10`](https://github.com/posit-dev/vip/commit/6fa3e1071903b99362190e7b532673eae735dd0d))
+
+
 ## v2026.8.2 (2026-08-20)
 
 ### Bug Fixes
