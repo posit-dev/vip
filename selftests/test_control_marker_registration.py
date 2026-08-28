@@ -72,3 +72,34 @@ def test_control_tags_still_reach_results_json(pytester):
     markers = json.loads(report.read_text())["results"][0]["markers"]
     assert "control-cfr-11-10-e" in markers
     assert "connect" in markers
+
+
+def test_extension_dir_from_vip_toml_registers_control_tags(pytester, tmp_path):
+    """An extension dir named only via [general] extension_dirs (not
+    --vip-extensions) must still get its control tags registered."""
+    ext_dir = tmp_path / "ext"
+    ext_dir.mkdir()
+    (ext_dir / "t.feature").write_text(FEATURE)
+    (ext_dir / "test_t.py").write_text(STEPS)
+    (pytester.path / "vip.toml").write_text(
+        f'[connect]\nurl = "https://c.example.com"\n\n[general]\nextension_dirs = ["{ext_dir}"]\n'
+    )
+    result = pytester.runpytest_subprocess(
+        "--vip-config", "vip.toml", "--strict-markers", "-p", "no:cacheprovider"
+    )
+    result.assert_outcomes(passed=1)
+
+
+def test_targeted_step_file_registers_control_tags(pytester):
+    """Naming the step (.py) file directly -- a normal targeted dev run --
+    must still discover the control tags in the adjacent .feature file."""
+    _write_suite(pytester)
+    result = pytester.runpytest_subprocess(
+        "--vip-config",
+        "vip.toml",
+        "--strict-markers",
+        "-p",
+        "no:cacheprovider",
+        "test_t.py",
+    )
+    result.assert_outcomes(passed=1)

@@ -83,13 +83,17 @@ def _feature_roots(config: pytest.Config) -> list[Path]:
 
     Scanning these rather than walking rootpath keeps the pre-scan cheap in a
     large monorepo and avoids registering controls from feature files that are
-    not part of this run.
+    not part of this run. Extension directories are read from the merged
+    ``_ext_dirs_key`` stash (config file ``[general] extension_dirs`` plus
+    ``--vip-extensions``), not by re-reading the CLI option alone -- callers
+    must run this after ``config.stash[_ext_dirs_key]`` is populated in
+    ``pytest_configure``.
     """
     roots: list[Path] = []
     for arg in config.args:
         candidate = Path(str(arg).split("::")[0])
         roots.append(candidate if candidate.is_absolute() else Path(config.rootpath) / candidate)
-    roots.extend(Path(d) for d in (config.getoption("--vip-extensions", default=[]) or []))
+    roots.extend(Path(d) for d in config.stash.get(_ext_dirs_key, []))
     return roots or [Path(config.rootpath)]
 
 
@@ -99,7 +103,14 @@ def _discover_control_tags(config: pytest.Config) -> set[str]:
     for root in _feature_roots(config):
         try:
             if root.is_file():
-                features = [root] if root.suffix == ".feature" else []
+                if root.suffix == ".feature":
+                    features = [root]
+                else:
+                    # pytest-bdd suites are usually collected by their step
+                    # (.py) file, not the .feature file the tags live in --
+                    # e.g. a targeted `pytest test_x.py`. Scan only the
+                    # containing directory; do not walk upward or widen.
+                    features = sorted(root.parent.glob("*.feature"))
             else:
                 features = sorted(root.rglob("*.feature"))
         except OSError:
@@ -253,15 +264,6 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "jupyter: Workbench JupyterLab IDE scenario")
     config.addinivalue_line("markers", "positron: Workbench Positron IDE scenario")
 
-    # Compliance control tags (@control-<slug>) become pytest markers via
-    # pytest-bdd's default pytest_bdd_apply_tag hook. Their slugs are chosen by
-    # the customer, so they cannot be registered by name ahead of time -- but an
-    # unregistered mark warns by default and aborts collection outright under
-    # --strict-markers, which regulated CI is likely to enable. Registering the
-    # tags we are about to collect satisfies both paths at once.
-    for tag in sorted(_discover_control_tags(config)):
-        config.addinivalue_line("markers", f"{tag}: compliance control tag")
-
     # In concise mode, suppress the "short test summary info" section — the
     # inline concise error messages make it redundant.
     if not config.getoption("--vip-verbose", default=False):
@@ -298,6 +300,18 @@ def pytest_configure(config: pytest.Config) -> None:
     ext_dirs: list[str] = list(vip_cfg.extension_dirs)
     ext_dirs.extend(config.getoption("--vip-extensions") or [])
     config.stash[_ext_dirs_key] = ext_dirs
+
+    # Compliance control tags (@control-<slug>) become pytest markers via
+    # pytest-bdd's default pytest_bdd_apply_tag hook. Their slugs are chosen by
+    # the customer, so they cannot be registered by name ahead of time -- but an
+    # unregistered mark warns by default and aborts collection outright under
+    # --strict-markers, which regulated CI is likely to enable. Registering the
+    # tags we are about to collect satisfies both paths at once. Run after the
+    # ext_dirs stash above so _feature_roots sees both extension sources
+    # (config-file [general] extension_dirs and --vip-extensions), and still
+    # well before collection starts.
+    for tag in sorted(_discover_control_tags(config)):
+        config.addinivalue_line("markers", f"{tag}: compliance control tag")
 
     _any_product_configured = any(
         pc.is_configured for pc in (vip_cfg.connect, vip_cfg.workbench, vip_cfg.package_manager)
