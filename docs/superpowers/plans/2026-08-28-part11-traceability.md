@@ -2086,11 +2086,26 @@ def run_trace(args: argparse.Namespace) -> None:
 
     try:
         verify_results_checksum(results_path)
-        data = load_results(results_path)
+        # Suppress load_results' own unknown-major warning HERE ONLY: this
+        # function hard-errors on the same condition two lines down, so the
+        # warning is pure noise in a compliance tool's output. load_results
+        # must keep warning for `vip report` and the Quarto pages, which are
+        # the reason that warning exists at all.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            data = load_results(results_path)
         check_results_schema(data.schema_version)
         controls = load_controls(args.controls)
     except (ResultsIntegrityError, ControlListError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError, AttributeError) as exc:
+        # A malformed results.json must not surface as a traceback. This is
+        # reachable specifically for files with NO .sha256 sidecar -- a
+        # corrupted file WITH one is caught by verify_results_checksum above.
+        # That sidecar-less population is exactly the one the "missing sidecar
+        # is fine" rule exists to serve, so it is the one that needs this.
+        print(f"Error: could not read results file {results_path}: {exc}", file=sys.stderr)
         sys.exit(1)
 
     matrix = build_traceability_matrix(data, controls, tag_prefix=args.tag_prefix)
