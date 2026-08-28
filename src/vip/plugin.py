@@ -34,6 +34,7 @@ import pytest
 
 from vip.attribution import collect_execution_metadata
 from vip.config import VIPConfig, load_config
+from vip.gherkin import CONTROL_TAG_PREFIX, parse_feature_file
 from vip.reporting import RESULTS_SCHEMA_VERSION
 from vip.version import ProductVersion
 
@@ -75,6 +76,41 @@ _PRODUCT_MARKERS = {
 # ---------------------------------------------------------------------------
 # Plugin hooks
 # ---------------------------------------------------------------------------
+
+
+def _feature_roots(config: pytest.Config) -> list[Path]:
+    """Directories pytest is about to collect, plus any extension directories.
+
+    Scanning these rather than walking rootpath keeps the pre-scan cheap in a
+    large monorepo and avoids registering controls from feature files that are
+    not part of this run.
+    """
+    roots: list[Path] = []
+    for arg in config.args:
+        candidate = Path(str(arg).split("::")[0])
+        roots.append(candidate if candidate.is_absolute() else Path(config.rootpath) / candidate)
+    roots.extend(Path(d) for d in (config.getoption("--vip-extensions", default=[]) or []))
+    return roots or [Path(config.rootpath)]
+
+
+def _discover_control_tags(config: pytest.Config) -> set[str]:
+    """Collect every @control-* tag from the feature files about to be collected."""
+    tags: set[str] = set()
+    for root in _feature_roots(config):
+        try:
+            if root.is_file():
+                features = [root] if root.suffix == ".feature" else []
+            else:
+                features = sorted(root.rglob("*.feature"))
+        except OSError:
+            continue
+        for feature in features:
+            try:
+                parsed = parse_feature_file(feature)
+            except (OSError, UnicodeDecodeError):
+                continue
+            tags.update(t for t in parsed["tags"] if t.startswith(CONTROL_TAG_PREFIX))
+    return tags
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -216,6 +252,15 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "vscode: Workbench VS Code IDE scenario")
     config.addinivalue_line("markers", "jupyter: Workbench JupyterLab IDE scenario")
     config.addinivalue_line("markers", "positron: Workbench Positron IDE scenario")
+
+    # Compliance control tags (@control-<slug>) become pytest markers via
+    # pytest-bdd's default pytest_bdd_apply_tag hook. Their slugs are chosen by
+    # the customer, so they cannot be registered by name ahead of time -- but an
+    # unregistered mark warns by default and aborts collection outright under
+    # --strict-markers, which regulated CI is likely to enable. Registering the
+    # tags we are about to collect satisfies both paths at once.
+    for tag in sorted(_discover_control_tags(config)):
+        config.addinivalue_line("markers", f"{tag}: compliance control tag")
 
     # In concise mode, suppress the "short test summary info" section — the
     # inline concise error messages make it redundant.
