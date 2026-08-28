@@ -17,6 +17,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import platform
 import re
@@ -1342,7 +1343,15 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     try:
         p = Path(report_path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(payload, indent=2))
+        # Hash the exact bytes written, not a re-serialization: the sidecar is
+        # only useful if it verifies against the file actually on disk.
+        data = json.dumps(payload, indent=2).encode("utf-8")
+        p.write_bytes(data)
+        digest = hashlib.sha256(data).hexdigest()
+        # shasum -c compatible: "<hex>  <filename>". Written unconditionally
+        # rather than gated on --vip-format, because the checksum is a property
+        # of the evidence file rather than an output format.
+        p.with_name(f"{p.name}.sha256").write_text(f"{digest}  {p.name}\n")
     except OSError as exc:
         warnings.warn(f"VIP: could not write report to {report_path}: {exc}", stacklevel=1)
         return
