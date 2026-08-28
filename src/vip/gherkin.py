@@ -14,6 +14,13 @@ _KEYWORDS = frozenset(["Scenario:", "Scenario Outline:", "Background:", "Rule:",
 # Step keywords (prefix match after stripping whitespace).
 _STEP_PREFIXES = ("Given ", "When ", "Then ", "And ", "But ")
 
+# Gherkin tags of the form @control-<slug> map a scenario to a compliance
+# control. They are deliberately excluded from the derived feature marker:
+# that value feeds the HTML report cards and the generated test catalog and
+# feature matrix, so a control tag written before the product tag would
+# otherwise silently mislabel the feature.
+CONTROL_TAG_PREFIX = "control-"
+
 
 def parse_feature_file(path: Path, *, relative_to: Path | None = None) -> dict:
     """Parse a ``.feature`` file and return a structured dict.
@@ -28,8 +35,8 @@ def parse_feature_file(path: Path, *, relative_to: Path | None = None) -> dict:
 
     Returns
     -------
-    dict with keys: ``title``, ``description``, ``marker``, ``file``,
-    ``scenarios`` (list of dicts with ``title`` and ``steps``).
+    dict with keys: ``title``, ``description``, ``marker``, ``tags``,
+    ``file``, ``scenarios`` (list of dicts with ``title`` and ``steps``).
     """
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
@@ -38,6 +45,7 @@ def parse_feature_file(path: Path, *, relative_to: Path | None = None) -> dict:
     title = ""
     description_lines: list[str] = []
     scenarios: list[dict] = []
+    tags: list[str] = []
 
     in_description = False
     current_scenario: dict | None = None
@@ -49,12 +57,15 @@ def parse_feature_file(path: Path, *, relative_to: Path | None = None) -> dict:
         if not line or line.startswith("#"):
             continue
 
-        # Tag line — first tag becomes the marker.
+        # Tag line — first non-control tag becomes the marker.
         if line.startswith("@"):
-            # A tag after we've started collecting scenarios means a new
-            # tagged scenario, but we only care about the file-level marker.
+            line_tags = [tok.lstrip("@") for tok in line.split() if tok.startswith("@")]
+            tags.extend(line_tags)
             if not marker:
-                marker = line.lstrip("@").split()[0] if line.lstrip("@") else ""
+                for tag in line_tags:
+                    if not tag.startswith(CONTROL_TAG_PREFIX):
+                        marker = tag
+                        break
             continue
 
         # Feature title.
@@ -98,6 +109,7 @@ def parse_feature_file(path: Path, *, relative_to: Path | None = None) -> dict:
         "title": title,
         "description": "\n".join(description_lines).strip(),
         "marker": marker,
+        "tags": tags,
         "file": file_str,
         "scenarios": scenarios,
     }
