@@ -21,6 +21,29 @@ Spec: `docs/superpowers/specs/2026-08-28-part11-traceability-design.md`
 - Commit after every task. Conventional-commit titles, lowercase description, no trailing period, under 70 chars.
 - No `**` bold in any markdown file this plan creates or edits.
 
+## Relationship to PR #618 (the PDF report)
+
+This plan is written against `main`. PR #618 (`feat/report-pdf`) is open and
+restructures the report layer. Verified against its branch:
+
+- It does not touch `src/vip/reporting.py`, `src/vip/plugin.py` or
+  `src/vip/gherkin.py`. Tasks 1 through 6 — the entire evidence record and the
+  tagging work — are free of textual conflict with it.
+- It does collide with Tasks 10, 11 and 12: `src/vip/cli.py`,
+  `pyproject.toml`'s `force-include` block, and `AGENTS.md`.
+
+Line numbers below are given for `main`, with the #618 value alongside where
+they differ. If #618 merges before you reach Task 10, rebase and re-derive the
+three `cli.py` insertion points rather than trusting any number here:
+`_SCAFFOLD_TEMPLATES` moves 1087 -> 1139, `_scaffold_next_steps` 1136 -> 1188,
+and the `subcommand_parsers` map 1936 -> 1989.
+
+Rendering the traceability matrix into the PDF is deliberately not in this
+plan. See section 8.4 of the spec for why, and for the three constraints
+(#618's shared-content-layer rule, `_lit` escaping of customer-supplied control
+text, and `render_document`'s lack of any control-list input) that a follow-up
+would have to satisfy.
+
 ## Task ordering and shipping seams
 
 Tasks 1-4 (evidence record) are independent of 5-11 and ship value alone. Tasks 5-6 (tagging) are independent of 1-4. Task 7 onward consumes both. If this needs to be split across people, the seam is after Task 4 and after Task 6.
@@ -769,7 +792,7 @@ Interfaces:
 - Consumes: nothing
 - Produces: `gherkin.CONTROL_TAG_PREFIX: str` (value `"control-"`); `parse_feature_file()` return dict gains a `tags: list[str]` key holding every tag in the file, `@` stripped
 
-Why this comes before the plugin change: `gherkin.py` currently derives a feature's `marker` from the first token of the first tag line (`:56-57`), so `@control-x @connect` sets the marker to `control-x`. That value feeds the HTML report cards (`report_html.py:241`), `scripts/generate-test-catalog.py:46` and `scripts/generate-feature-matrix.py:142`. Task 6 also needs a tag list this parser does not currently return.
+Why this comes before the plugin change: `gherkin.py` currently derives a feature's `marker` from the first token of the first tag line (`:56-57`), so `@control-x @connect` sets the marker to `control-x`. That value feeds the report's Gherkin step lookup (`report_content.py:261` on pr-618, `report_html.py:241` on main), `scripts/generate-test-catalog.py:46` and `scripts/generate-feature-matrix.py:142`. Task 6 also needs a tag list this parser does not currently return.
 
 - [ ] Step 1: Write the failing test
 
@@ -2095,9 +2118,9 @@ git commit -m "feat(cli): add vip trace for compliance traceability matrices"
 
 Files:
 - Create: `examples/part11_validation/README.md`, `test_part11_validation.feature`, `test_part11_validation.py`, `conftest.py`, `controls.toml`
-- Modify: `src/vip/cli.py:1087-1096` (`_SCAFFOLD_TEMPLATES`), `src/vip/cli.py:1136-1138` (`_scaffold_next_steps`)
+- Modify: `src/vip/cli.py` `_SCAFFOLD_TEMPLATES` (`:1087` on main, `:1139` on pr-618) and `_scaffold_next_steps` (`:1136` on main, `:1188` on pr-618)
 - Modify: `src/vip/clients/connect.py` (three new audit-log/authz methods — none exist today)
-- Modify: `pyproject.toml:157-163` (`force-include`)
+- Modify: `pyproject.toml` `[tool.hatch.build.targets.wheel.force-include]` (`:157-163` on main, `:157-181` on pr-618, which adds the PDF template and vendored fonts)
 - Test: `selftests/test_part11_example.py` (create), `selftests/test_connect_audit_client.py` (create)
 
 Interfaces:

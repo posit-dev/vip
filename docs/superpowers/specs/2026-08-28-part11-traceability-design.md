@@ -13,24 +13,40 @@ test evidence. VIP already produces machine-readable per-check results
 (`report/results.json`, JUnit XML, SARIF), and its Gherkin feature files are
 already written as plain-language requirement statements.
 
-Be precise about what "timestamped, versioned" does and does not mean today,
-because the downstream PDF pipeline will build on this wording. Before the
-section 2 changes land, `results.json` carries a single run-level
-`generated_at` and no schema version at all: individual results have a
-`duration` but no start time. So the existing evidence is run-timestamped and
-unversioned, and a per-control row could not honestly claim a timestamp of its
-own. Section 2 is what makes per-check timestamping and a versioned schema
-true rather than aspirational.
 What's missing is a way to attach a control ID to a scenario, a way to turn
 that into an actual matrix, enough provenance on the evidence record to make a
 result attributable to a specific pipeline execution, and a worked example
 showing what real Part 11-flavored scenarios look like.
 
-PDF rendering of the final matrix is being handled by a separate team and is
-explicitly out of scope here. A historical/longitudinal evidence store across
-runs (needed for a true deviation log) was considered and explicitly dropped
-for this round — VIP already emits one timestamped file per run; whoever owns
-long-term archiving can accumulate those without any new VIP storage code.
+Be precise about what "timestamped, versioned" does and does not mean today,
+because a downstream renderer will build on this wording. Before the section 2
+changes land, `results.json` carries a single run-level `generated_at` and no
+schema version at all: individual results have a `duration` but no start time.
+So the existing evidence is run-timestamped and unversioned, and a per-control
+row could not honestly claim a timestamp of its own. Section 2 is what makes
+per-check timestamping and a versioned schema true rather than aspirational.
+
+A historical/longitudinal evidence store across runs (needed for a true
+deviation log) was considered and explicitly dropped for this round — VIP
+already emits one timestamped file per run; whoever owns long-term archiving
+can accumulate those without any new VIP storage code.
+
+### Superseded: the PDF non-goal
+
+The first two drafts of this spec said PDF rendering was owned by a separate
+team and out of scope, and pointed at AlcoaBase as the model for VIP producing
+machine-readable input that someone else renders. PR #618 changes that premise:
+VIP now renders its own PDF edition of the report, natively via Quarto/Typst
+(`src/vip/report_typst.py`, `report/vip-report.qmd`), and every
+`quarto render` produces `_output/vip-report.pdf`.
+
+So "a downstream PDF pipeline" is no longer hypothetical or external — it is in
+this repo. That does not by itself mean the traceability matrix belongs in the
+PDF, but it does mean the choice is now a live design decision rather than
+something ruled out by ownership. Section 8 records it. The CSV/JSON export
+remains the primary deliverable either way: a spreadsheet and an external
+qualification-protocol generator are both real consumers, and neither wants a
+PDF.
 
 ## Goals
 
@@ -48,7 +64,8 @@ long-term archiving can accumulate those without any new VIP storage code.
 
 ## Non-goals
 
-- No PDF generation (a separate team owns that).
+- No new PDF *engine*. PR #618 already added one; whether the matrix becomes a
+  section inside it is an open decision (section 8), not a goal assumed here.
 - No historical/deviation tracking across multiple runs.
 - No VIP-shipped canonical CFR Part 11 control taxonomy. The control list is
   supplied by whoever owns the regulatory mapping; VIP stays
@@ -127,7 +144,8 @@ Three corrections to the original draft of this section:
 - Tag ordering in a feature file matters. `gherkin.py:52-57` derives a
   feature's `"marker"` from the first token of the first tag line in the file.
   A `@control-*` tag written before `@connect` hijacks that value, which feeds
-  the report cards (`report_html.py:241`), `generate-test-catalog.py:46`, and
+  the report's Gherkin step lookup (`report_content.py:261` after #618,
+  `report_html.py:241` before it), `generate-test-catalog.py:46`, and
   `generate-feature-matrix.py:142`. Fix `gherkin.py` to skip tags matching the
   control prefix when deriving the marker, rather than relying on authors to
   order tags correctly.
@@ -370,7 +388,8 @@ which is retained precisely because it does.
 
 New subcommand in `src/vip/cli.py`, following the existing argparse +
 `set_defaults(func=...)` pattern used by the nine current subcommands, and
-added to the `subcommand_parsers` help map at `cli.py:1936`:
+added to the `subcommand_parsers` help map (`cli.py:1936` on main,
+`cli.py:1989-1999` after #618):
 
 ```
 vip trace --results report/results.json --controls path/to/controls.toml \
@@ -621,6 +640,78 @@ and document-management layer. The right division of labour is for VIP to
 produce clean, deterministic, well-provenanced machine-readable input and for
 that layer to render it.
 
+## 8. Interaction with PR #618 (the PDF report)
+
+PR #618 (`feat/report-pdf`) adds a native Quarto/Typst PDF edition of the
+report. Verified against the PR branch, here is exactly how it touches this
+work.
+
+### 8.1 What it does not touch
+
+`src/vip/reporting.py`, `src/vip/plugin.py` and `src/vip/gherkin.py` do not
+appear in its diff at all. Every one of section 2's evidence-record changes and
+section 1's tagging changes is therefore free of textual conflict with it. #618
+*consumes* those modules (`report_content.py` imports `parse_feature_file`,
+`ReportData`, `TestResult`; `vip-report.qmd` imports `load_results`), so adding
+fields or dict keys is a semantic change it inherits, not a collision.
+
+### 8.2 What it moves
+
+The report layer was restructured: content decisions extracted into a new
+`src/vip/report_content.py`, with `report_html.py` reduced to markup only and a
+new `report_typst.py` beside it. Two references in this spec moved:
+
+- the Gherkin step lookup that consumes a feature's derived marker:
+  `report_html.py:241` -> `report_content.py:261`
+- provenance rendering: the old single `report_html.py:663-689` is now
+  `provenance_rows` in `report_content.py:367-388` (data) plus a renderer in
+  each backend (`report_html.py:401-413`, `report_typst.py:423-437`)
+
+### 8.3 Where it collides
+
+Textual conflicts to expect when this work is implemented on top of #618:
+`src/vip/cli.py` (both add subcommand plumbing and constants near
+`_REPORT_TEMPLATE_FILES`), `pyproject.toml` (both extend the
+`force-include` block), and `AGENTS.md`. Section 4's scaffold registry moved
+from `cli.py:1087` to `cli.py:1139`, and the `subcommand_parsers` help map from
+`cli.py:1936` to `cli.py:1989`.
+
+One trap worth naming: `selftests/test_cli_report.py` has a test keeping the
+force-include block in sync with `_REPORT_TEMPLATE_FILES`, but it filters on
+`vip/_report/`. A scaffold template maps to `vip/_scaffold/` and is silently
+outside that filter, so it provides no coverage for section 4's new entry —
+which is why the plan asserts the scaffold entry directly instead of assuming
+the existing guard catches it.
+
+### 8.4 The open decision: matrix as a PDF section
+
+#618 makes it possible to render the traceability matrix into the archivable
+PDF alongside the summary and per-check listing. That is attractive for this
+audience — a validation lead wants one signed, archivable artifact, not a CSV
+they must paste into a document — but it is a scope increase and is not
+required by anything in sections 1-6.
+
+If it is taken up, three constraints apply, all from #618 itself:
+
+- AGENTS.md on that branch states that visual changes must land in
+  `report_content` and `styles.css` in the same commit so the HTML and PDF
+  editions stay identical. So the matrix cannot be a Typst-only section: it
+  needs a shared content layer plus both backends.
+- Every dynamic value must pass through `report_typst._lit`. A control
+  description containing `#`, `*`, `_` or `$` is live Typst markup otherwise,
+  and control descriptions are customer-supplied free text — this is an
+  injection surface, not a cosmetic concern.
+- `render_document(data, hints)` currently takes only what `results.json`
+  provides. A matrix additionally needs a `controls.toml`, which the report
+  pipeline has no notion of today, so either `vip-report.qmd` grows a control-
+  list load with a sensible "no control list configured, skip the section"
+  path, or `render_document` grows a parameter. The first is less invasive.
+
+Recommended: ship sections 1-6 first (CSV/JSON export, which serves the
+spreadsheet and external-generator consumers), and treat the PDF section as a
+follow-up once the matrix data model has settled. Rendering an unstable data
+model into two backends doubles the cost of every change to it.
+
 ## Open questions for implementation
 
 - Resolved. `clients/connect.py` exposes only domain methods and no generic
@@ -634,7 +725,10 @@ that layer to render it.
 - Whether `examples/part11_validation` should be a third example or a
   control-tagged extension of `examples/cross_product_validation` (section 4).
 - Whether the `execution` block should also be surfaced in the HTML report's
-  provenance table (`report_html.py:663-689`), which today shows six fields and
-  renders `None` as "not recorded". Cheap, and it would make the same
+  provenance rows, which today show six fields and render `None` as "not
+  recorded". After #618 this is no longer one function: the row data lives in
+  `report_content.py:367-388` (`provenance_rows`) and each backend renders it
+  separately (`report_html.py:401-413`, `report_typst.py:423-437`), so adding a
+  row means touching the shared layer and both backends together. Cheap, and it would make the same
   attribution visible to a human reader, but it widens the diff beyond the
   machine-readable path this spec is scoped to.
