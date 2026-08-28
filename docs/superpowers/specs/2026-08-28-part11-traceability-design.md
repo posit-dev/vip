@@ -438,6 +438,14 @@ subprocess run produces a real `results.json`:
   raises on a deliberately corrupted `results.json`.
 - `schema_version` is present; `vip trace` accepts an unknown minor and
   refuses an unknown major.
+- A pre-1.0 `results.json` — no `schema_version`, no `started_at`, no
+  `execution` block — still loads and traces, with the absent fields rendered
+  as null rather than raising. This is the common case in practice, not the
+  unknown-major case: anyone with an archived results file from before this
+  work lands hits it. `load_results` (`reporting.py:176-190`) already uses
+  `.get()` with defaults for every optional field, so the new fields must
+  follow that existing pattern and carry dataclass defaults rather than being
+  required constructor arguments.
 
 Plus: `examples/part11_validation` collected via `--collect-only` in CI, the
 same way `cross_product_validation` already is; and
