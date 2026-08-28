@@ -66,3 +66,36 @@ def test_missing_controls_table_is_an_error(tmp_path):
     p.write_text('title = "wrong shape"\n')
     with pytest.raises(ControlListError, match="controls"):
         load_controls(p)
+
+
+def test_numeric_description_is_an_error(tmp_path):
+    p = tmp_path / "controls.toml"
+    p.write_text("[controls.x]\ndescription = 5\n")
+    with pytest.raises(ControlListError, match="x.*expected a string"):
+        load_controls(p)
+
+
+def test_list_description_is_an_error(tmp_path):
+    p = tmp_path / "controls.toml"
+    p.write_text('[controls.y]\ndescription = ["a", "b"]\n')
+    with pytest.raises(ControlListError, match="y.*expected a string"):
+        load_controls(p)
+
+
+def test_empty_description_is_an_error(tmp_path):
+    p = tmp_path / "controls.toml"
+    p.write_text('[controls.z]\ndescription = ""\n')
+    with pytest.raises(ControlListError, match="empty"):
+        load_controls(p)
+
+
+def test_directory_path_is_an_error(tmp_path):
+    with pytest.raises(ControlListError, match="not a file"):
+        load_controls(tmp_path)
+
+
+def test_empty_controls_table_is_an_error(tmp_path):
+    p = tmp_path / "controls.toml"
+    p.write_text("[controls]\n")
+    with pytest.raises(ControlListError, match="empty"):
+        load_controls(p)
