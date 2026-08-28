@@ -17,6 +17,13 @@ else:
 
 VALID_FORMATS = frozenset({"json", "junit", "sarif"})
 
+# results.json schema version. Bump the minor for additive changes (a new
+# field); bump the major for a removal, a rename, or a change in the meaning
+# of an existing field. Consumers accept an unknown minor and refuse an
+# unknown major. A file with no schema_version at all predates versioning
+# and is treated as "pre-1.0".
+RESULTS_SCHEMA_VERSION = "1.0"
+
 
 @dataclass
 class TestResult:
@@ -117,6 +124,7 @@ class ReportData:
     # concrete-looking value (e.g. 0.0 or "unknown") so an older results.json
     # written before these fields existed loads as "not recorded" instead of
     # silently claiming a value that was never measured.
+    schema_version: str | None = None
     vip_version: str | None = None
     run_duration_seconds: float | None = None
     python_version: str | None = None
@@ -207,6 +215,7 @@ def load_results(path: str | Path) -> ReportData:
         exit_status=raw.get("exit_status", 0),
         products=products,
         results=results,
+        schema_version=raw.get("schema_version"),
         vip_version=raw.get("vip_version"),
         run_duration_seconds=raw.get("run_duration_seconds"),
         python_version=raw.get("python_version"),

@@ -32,6 +32,7 @@ from typing import Any
 import pytest
 
 from vip.config import VIPConfig, load_config
+from vip.reporting import RESULTS_SCHEMA_VERSION
 from vip.version import ProductVersion
 
 # ---------------------------------------------------------------------------
@@ -1297,6 +1298,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     basic_mode = "not slow" in (session.config.getoption("markexpr", default="") or "")
 
     payload = {
+        "schema_version": RESULTS_SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "deployment_name": cfg.deployment_name,
         "exit_status": exitstatus,
