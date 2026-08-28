@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -190,6 +191,18 @@ def load_results(path: str | Path) -> ReportData:
         return ReportData()
 
     raw = json.loads(p.read_text())
+
+    schema_version = raw.get("schema_version")
+    if schema_version:
+        theirs = schema_version.split(".", 1)[0]
+        if theirs != RESULTS_SCHEMA_VERSION.split(".", 1)[0]:
+            warnings.warn(
+                f"results.json schema version {schema_version} is newer than this vip "
+                f"understands ({RESULTS_SCHEMA_VERSION}); some fields may be missing "
+                "or misinterpreted",
+                stacklevel=2,
+            )
+
     results = [
         TestResult(
             nodeid=r["nodeid"],

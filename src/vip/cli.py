@@ -1491,6 +1491,53 @@ def run_version(args: argparse.Namespace) -> None:
     print(_format_version_details())
 
 
+def run_trace(args: argparse.Namespace) -> None:
+    """Join a results.json against a control list and emit a traceability matrix."""
+    from vip.reporting import load_results
+    from vip.traceability import (
+        ControlListError,
+        ResultsIntegrityError,
+        build_traceability_matrix,
+        check_results_schema,
+        load_controls,
+        render_csv,
+        render_json,
+        verify_results_checksum,
+    )
+
+    results_path = Path(args.results)
+    if not results_path.is_file():
+        print(f"Error: results file not found: {results_path}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        verify_results_checksum(results_path)
+        data = load_results(results_path)
+        check_results_schema(data.schema_version)
+        controls = load_controls(args.controls)
+    except (ResultsIntegrityError, ControlListError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    matrix = build_traceability_matrix(data, controls, tag_prefix=args.tag_prefix)
+
+    if matrix.unrecognized_tags:
+        joined = ", ".join(matrix.unrecognized_tags)
+        print(
+            f"Warning: control tags present in results but absent from the control list: {joined}",
+            file=sys.stderr,
+        )
+
+    rendered = render_json(matrix) if args.format == "json" else render_csv(matrix)
+    if args.output:
+        out = Path(args.output)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(rendered)
+        print(f"Wrote {out} ({len(matrix.entries)} controls, {matrix.gap_count} gaps)")
+    else:
+        sys.stdout.write(rendered)
+
+
 def main() -> None:
     """Main entry point for the VIP CLI."""
     from vip import __version__
@@ -1933,6 +1980,39 @@ def main() -> None:
     )
     scaffold_parser.set_defaults(func=run_scaffold)
 
+    # vip trace
+    trace_parser = subparsers.add_parser(
+        "trace",
+        help="Generate a compliance traceability matrix from test results",
+        description=(
+            "Join a results.json against a control list (controls.toml) and emit a "
+            "control-to-scenario traceability matrix as CSV or JSON.\n\n"
+            "Scenarios declare the control they satisfy with an @control-<slug> "
+            "Gherkin tag. Controls with no matching scenario are reported as coverage "
+            'gaps, except those marked verification = "manual" or "procedural", '
+            "which are reported as not verifiable by automated test."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    trace_parser.add_argument(
+        "--results",
+        default="report/results.json",
+        help="Path to results.json (default: report/results.json)",
+    )
+    trace_parser.add_argument(
+        "--controls", required=True, help="Path to the controls.toml control list"
+    )
+    trace_parser.add_argument(
+        "--tag-prefix",
+        default="control-",
+        help="Gherkin tag prefix identifying control tags (default: control-)",
+    )
+    trace_parser.add_argument(
+        "--format", choices=("csv", "json"), default="csv", help="Output format (default: csv)"
+    )
+    trace_parser.add_argument("--output", default=None, help="Write to this path instead of stdout")
+    trace_parser.set_defaults(func=run_trace)
+
     # Map command names to their parsers for context-appropriate help
     subcommand_parsers = {
         "version": version_parser,
@@ -1944,6 +2024,7 @@ def main() -> None:
         "report": report_parser,
         "status": status_parser,
         "scaffold": scaffold_parser,
+        "trace": trace_parser,
     }
 
     argv = _reorder_help_args(sys.argv[1:], set(subcommand_parsers))

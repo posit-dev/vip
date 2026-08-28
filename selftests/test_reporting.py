@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import warnings
 import xml.etree.ElementTree as ET
+
+import pytest
 
 from vip.reporting import (
     ProductInfo,
@@ -830,3 +833,44 @@ class TestWriteSarif:
         doc = json.loads(out.read_text())
         result = doc["runs"][0]["results"][0]
         assert result["message"]["text"] == "N/A for this product version"
+
+
+class TestLoadResultsSchemaVersionWarning:
+    def test_unknown_major_schema_warns_but_still_returns_data(self, tmp_path):
+        # load_results only warns on an unknown schema major -- it's called
+        # from index.qmd, details.qmd and `vip report`, where raising would
+        # surface as an unreadable traceback inside a Quarto notebook cell.
+        # `vip trace` is the one place that hard-errors on this condition.
+        data = {
+            "schema_version": "2.0",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "exit_status": 0,
+            "products": {},
+            "results": [
+                {
+                    "nodeid": "tests/connect/test_a.py::test_x",
+                    "outcome": "passed",
+                    "markers": ["connect"],
+                },
+            ],
+        }
+        p = tmp_path / "results.json"
+        p.write_text(json.dumps(data))
+        with pytest.warns(UserWarning, match="2.0"):
+            rd = load_results(p)
+        assert rd.schema_version == "2.0"
+        assert len(rd.results) == 1
+
+    def test_known_schema_version_does_not_warn(self, tmp_path):
+        data = {
+            "schema_version": "1.0",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+            "exit_status": 0,
+            "products": {},
+            "results": [],
+        }
+        p = tmp_path / "results.json"
+        p.write_text(json.dumps(data))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            load_results(p)

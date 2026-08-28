@@ -8,13 +8,14 @@ regulatory mapping; nothing here interprets ``reference``, ``risk`` or
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from vip.reporting import ReportData
+from vip.reporting import RESULTS_SCHEMA_VERSION, ReportData
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -326,3 +327,47 @@ def render_json(matrix: TraceabilityMatrix) -> str:
         ],
     }
     return json.dumps(payload, indent=2, sort_keys=False, ensure_ascii=False) + "\n"
+
+
+class ResultsIntegrityError(Exception):
+    """Raised when a results file fails checksum or schema validation."""
+
+
+def verify_results_checksum(path: str | Path) -> str | None:
+    """Verify a results file against its .sha256 sidecar.
+
+    Returns the digest of the file. Raises if a sidecar exists and disagrees.
+    A missing sidecar is not an error: results files written before the
+    sidecar existed have none.
+
+    This is tamper-evidence within a trusted pipeline, not tamper-proofing --
+    anyone who can edit the results file can regenerate the sidecar. It catches
+    corruption, truncated uploads and casual editing.
+    """
+    p = Path(path)
+    digest = hashlib.sha256(p.read_bytes()).hexdigest()
+    sidecar = p.with_name(f"{p.name}.sha256")
+    if not sidecar.is_file():
+        return digest
+    recorded = sidecar.read_text().split()
+    if recorded and recorded[0] != digest:
+        raise ResultsIntegrityError(
+            f"checksum mismatch for {p}: sidecar records {recorded[0]}, file hashes to {digest}"
+        )
+    return digest
+
+
+def check_results_schema(schema_version: str | None) -> None:
+    """Refuse an unknown major schema version; accept an unknown minor.
+
+    A file with no schema_version predates versioning and is accepted.
+    """
+    if not schema_version:
+        return
+    theirs = schema_version.split(".", 1)[0]
+    ours = RESULTS_SCHEMA_VERSION.split(".", 1)[0]
+    if theirs != ours:
+        raise ResultsIntegrityError(
+            f"results.json schema version {schema_version} is not supported by this "
+            f"vip (understands {RESULTS_SCHEMA_VERSION}); upgrade vip or regenerate the results"
+        )
