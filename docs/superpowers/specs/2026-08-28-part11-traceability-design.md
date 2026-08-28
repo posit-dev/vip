@@ -410,8 +410,14 @@ customers don't have to guess which is the GxP starting point.
     (`@control-access-control-privileged-action`). Illustrative here, not a
     duplicate of `security/test_auth_policy.py` — the README points there
     for the fuller reference implementation.
-  - Audit-log non-deletability: a non-admin cannot delete or alter an
-    existing audit-trail entry via the API (`@control-record-retention`).
+  - Audit-log non-deletability: the audit log endpoint does not advertise a
+    deletion method (`@control-record-retention`). This is read-only by
+    construction — it reads the `Allow` header rather than attempting a
+    delete. Proving the audit trail is immutable must never destroy an audit
+    record: in a regulated deployment that record is the evidence, so the
+    obvious "try to delete one and assert it fails" shape would do the exact
+    harm the control exists to prevent, and would violate VIP's
+    non-destructive test contract.
 - `test_part11_validation.py` — thin step definitions; logic pushed into
   `clients/connect.py` (extended only if a needed method doesn't already
   exist). Every `@scenario` function also carries a literal
@@ -617,9 +623,14 @@ that layer to render it.
 
 ## Open questions for implementation
 
-- Whether `clients/connect.py` already exposes what's needed to read an
-  audit-trail entry and attempt its deletion as a non-admin, or whether new
-  client methods are required.
+- Resolved. `clients/connect.py` exposes only domain methods and no generic
+  `get`/`delete`/`options`, so the example needs three new ones:
+  `list_audit_logs`, `audit_log_allowed_methods`, and
+  `unauthenticated_status`. They are domain methods rather than generic HTTP
+  verbs on purpose — a public `get(path)` would let any future step file drive
+  raw HTTP from the test layer, which is what the four-layer architecture
+  exists to prevent, and returning a method set rather than a response object
+  is what makes the destructive-delete shape inexpressible at the step layer.
 - Whether `examples/part11_validation` should be a third example or a
   control-tagged extension of `examples/cross_product_validation` (section 4).
 - Whether the `execution` block should also be surfaced in the HTML report's

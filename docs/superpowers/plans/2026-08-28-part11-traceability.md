@@ -373,6 +373,8 @@ def test_env_sha_takes_precedence_over_subprocess(tmp_path):
         ("https://user:pw@example.com:8443/o/r.git", "https://example.com:8443/o/r.git"),
         ("https://github.com/o/r", "https://github.com/o/r"),
         ("git@github.com:o/r.git", "github.com:o/r.git"),
+        # urlsplit accepts this and only raises when .port is read.
+        ("https://example.com:bad/repo", None),
         ("", None),
         (None, None),
     ],
@@ -437,13 +439,17 @@ def redact_userinfo(url: str | None) -> str | None:
         return url.split("@", 1)[-1] if "@" in url else url
     try:
         parts = urlsplit(url)
+        hostname = parts.hostname
+        # urlsplit is lazy: it accepts "https://host:bad/x" and only raises
+        # when .port parses. Both accesses must sit inside the guard, or a
+        # malformed remote escapes the never-fail contract and takes down
+        # report writing at the end of an otherwise good run.
+        port = parts.port
     except ValueError:
         return None
-    if not parts.hostname:
+    if not hostname:
         return None
-    netloc = parts.hostname
-    if parts.port:
-        netloc = f"{netloc}:{parts.port}"
+    netloc = f"{hostname}:{port}" if port else hostname
     return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
@@ -2090,12 +2096,13 @@ git commit -m "feat(cli): add vip trace for compliance traceability matrices"
 Files:
 - Create: `examples/part11_validation/README.md`, `test_part11_validation.feature`, `test_part11_validation.py`, `conftest.py`, `controls.toml`
 - Modify: `src/vip/cli.py:1087-1096` (`_SCAFFOLD_TEMPLATES`), `src/vip/cli.py:1136-1138` (`_scaffold_next_steps`)
+- Modify: `src/vip/clients/connect.py` (three new audit-log/authz methods — none exist today)
 - Modify: `pyproject.toml:157-163` (`force-include`)
-- Test: `selftests/test_part11_example.py` (create)
+- Test: `selftests/test_part11_example.py` (create), `selftests/test_connect_audit_client.py` (create)
 
 Interfaces:
 - Consumes: the `@control-*` convention (Tasks 5-6), `vip trace` (Task 10)
-- Produces: `vip scaffold --template part11-validation --output DIR`
+- Produces: `vip scaffold --template part11-validation --output DIR`; `ConnectClient.list_audit_logs(*, limit: int = 20) -> list[dict] | None`, `ConnectClient.audit_log_allowed_methods() -> set[str] | None`, `ConnectClient.unauthenticated_status(path: str) -> int`
 
 Two things that are easy to miss. The wheel embeds scaffold sources via `[tool.hatch.build.targets.wheel.force-include]` in `pyproject.toml` — without a new entry there, the template works from a source checkout and breaks from an installed wheel. And per CLAUDE.md every `@scenario` function needs a literal `@pytest.mark.connect` decorator: feature-level Gherkin tags alone do not drive auto-skip in extension directories.
 
@@ -2260,11 +2267,19 @@ Feature: Part 11 flavoured controls
     Then the request is refused
 
   @control-record-retention
-  Scenario: Audit log entries cannot be deleted through the API
+  Scenario: The audit log does not offer a deletion method
     Given Connect is accessible at the configured URL
-    When I attempt to delete an audit log entry
-    Then the deletion is refused
+    When I ask which methods the audit log endpoint allows
+    Then deletion is not among them
 ```
+
+Note on that third scenario. An earlier draft issued a real
+`DELETE /v1/audit_logs/1`. That is exactly backwards: in a regulated
+deployment the audit trail is the evidence, so a test that destroys an entry
+to prove entries cannot be destroyed has done the precise harm the control
+exists to prevent — and it would have done it against a hard-coded, real ID.
+VIP tests are non-destructive (CLAUDE.md), so the scenario reads the
+advertised method set instead and never issues a mutating request.
 
 `examples/part11_validation/conftest.py`:
 
@@ -2282,13 +2297,12 @@ import pytest
 def privileged_endpoint() -> str:
     """An administrative endpoint that must refuse an unauthenticated caller."""
     return "/__api__/v1/users"
-
-
-@pytest.fixture
-def audit_log_endpoint() -> str:
-    """The audit log collection endpoint."""
-    return "/__api__/v1/audit_logs"
 ```
+
+The audit log path is deliberately not a fixture here: it lives in
+`ConnectClient` so the step layer never names a URL. Only the privileged
+endpoint is overridable, because which action counts as privileged genuinely
+varies by deployment.
 
 `examples/part11_validation/test_part11_validation.py`:
 
@@ -2330,12 +2344,11 @@ def connect_accessible(connect_client):
 
 
 @when("I list recent audit log entries", target_fixture="audit_entries")
-def list_audit_entries(connect_client, audit_log_endpoint):
-    response = connect_client.get(audit_log_endpoint)
-    if response.status_code == 404:
+def list_audit_entries(connect_client):
+    entries = connect_client.list_audit_logs()
+    if entries is None:
         pytest.skip("this deployment does not expose an audit log endpoint")
-    payload = response.json()
-    return payload.get("results", payload) if isinstance(payload, dict) else payload
+    return entries
 
 
 @then("each entry records an actor and a timestamp")
@@ -2352,31 +2365,150 @@ def entries_have_actor_and_timestamp(audit_entries):
 
 
 @when("I request a privileged administrative endpoint without credentials",
-      target_fixture="unauthenticated_response")
+      target_fixture="unauthenticated_status")
 def request_privileged_endpoint(connect_client, privileged_endpoint):
-    return connect_client.get_unauthenticated(privileged_endpoint)
+    return connect_client.unauthenticated_status(privileged_endpoint)
 
 
 @then("the request is refused")
-def request_refused(unauthenticated_response):
-    assert unauthenticated_response.status_code in (401, 403), (
-        f"expected 401/403, got {unauthenticated_response.status_code}"
+def request_refused(unauthenticated_status):
+    assert unauthenticated_status in (401, 403), (
+        f"expected 401/403, got {unauthenticated_status}"
     )
 
 
-@when("I attempt to delete an audit log entry", target_fixture="delete_response")
-def delete_audit_entry(connect_client, audit_log_endpoint):
-    return connect_client.delete(f"{audit_log_endpoint}/1")
+@when("I ask which methods the audit log endpoint allows", target_fixture="allowed_methods")
+def audit_log_allowed_methods(connect_client):
+    """Read the advertised method set. Never issue a mutating request.
+
+    This scenario must not DELETE a real audit record to prove records cannot
+    be deleted -- in a regulated deployment that record is the evidence, and
+    destroying it is the exact harm this control exists to prevent.
+    """
+    methods = connect_client.audit_log_allowed_methods()
+    if methods is None:
+        pytest.skip("this deployment does not advertise allowed methods for the audit log")
+    return methods
 
 
-@then("the deletion is refused")
-def deletion_refused(delete_response):
-    assert delete_response.status_code in (401, 403, 404, 405), (
-        f"audit log deletion was not refused: {delete_response.status_code}"
+@then("deletion is not among them")
+def deletion_not_offered(allowed_methods):
+    assert "DELETE" not in allowed_methods, (
+        f"audit log endpoint advertises DELETE; allowed methods: {sorted(allowed_methods)}"
     )
 ```
 
-Note for the implementer: `connect_client.get_unauthenticated` and `.delete` may not exist on `src/vip/clients/connect.py`. This is the spec's stated open question. Check first; if either is missing, add it there following the existing method style (raw httpx, returns the response, no product SDK) as part of this task, with a selftest for the new client method. Do not inline httpx calls in the step file — that violates the four-layer architecture.
+This resolves the spec's open question about the Connect client. Verified against `src/vip/clients/connect.py` on main: it exposes only domain methods (`server_settings`, `list_users`, `delete_content`, `get_content`, ...) and no generic `get`, `delete`, `options`, or `get_unauthenticated`. All three methods the steps above call are new and must be added in this task.
+
+They are deliberately domain methods rather than generic HTTP verbs. Adding a public `get(path)` to `ConnectClient` would let any future step file drive raw HTTP from the test layer, which is what the four-layer architecture exists to prevent. `audit_log_allowed_methods()` returning a set is also what keeps the destructive-DELETE mistake from being expressible at the step layer at all.
+
+Add to `src/vip/clients/connect.py`, following the surrounding style (`self._client`, `raise_for_status()`, return dicts):
+
+```python
+    # -- Audit log ----------------------------------------------------------
+
+    def list_audit_logs(self, *, limit: int = 20) -> list[dict[str, Any]] | None:
+        """Return recent audit log entries, or None if unavailable.
+
+        None (rather than an exception) for 404/403 so a caller can skip on a
+        deployment that does not expose the endpoint or a key that cannot read
+        it, without conflating that with an empty log.
+        """
+        resp = self._client.get("/v1/audit_logs", params={"limit": limit})
+        if resp.status_code in (403, 404):
+            return None
+        resp.raise_for_status()
+        payload = resp.json()
+        return payload.get("results", []) if isinstance(payload, dict) else payload
+
+    def audit_log_allowed_methods(self) -> set[str] | None:
+        """Return the HTTP methods the audit log endpoint advertises, or None.
+
+        Reads the Allow header from an OPTIONS request. Deliberately
+        read-only: proving the audit trail is immutable must never involve
+        deleting an audit record, which in a regulated deployment destroys the
+        very evidence the control protects.
+        """
+        resp = self._client.request("OPTIONS", "/v1/audit_logs")
+        if resp.status_code in (401, 403, 404, 405, 501):
+            return None
+        allow = resp.headers.get("allow", "")
+        if not allow:
+            return None
+        return {m.strip().upper() for m in allow.split(",") if m.strip()}
+
+    def unauthenticated_status(self, path: str) -> int:
+        """Return the status code for `path` requested with no credentials.
+
+        Uses a separate short-lived client so the configured API key and
+        cookies are not sent. Routes through the same proxy map as every other
+        egress path (see the proxy notes in CLAUDE.md); never relies on httpx's
+        ambient env pickup.
+        """
+        url = f"{self.base_url.rstrip('/')}{path}"
+        with httpx.Client(
+            verify=self.verify,
+            proxy=proxy_for_url(url, self.proxy_map),
+            trust_env=False,
+            timeout=30.0,
+        ) as client:
+            return client.get(url).status_code
+```
+
+Add `from vip.proxy import proxy_for_url` to the imports if it is not already there.
+
+Add `selftests/test_connect_audit_client.py` covering all three against a stubbed transport:
+
+```python
+import httpx
+import pytest
+
+from vip.clients.connect import ConnectClient
+
+
+def _client(handler):
+    c = ConnectClient(base_url="https://connect.example.com", api_key="k")
+    c._client = httpx.Client(
+        transport=httpx.MockTransport(handler), base_url="https://connect.example.com"
+    )
+    return c
+
+
+def test_list_audit_logs_returns_results():
+    def handler(request):
+        assert request.url.path == "/v1/audit_logs"
+        return httpx.Response(200, json={"results": [{"user_id": 1, "time": "t"}]})
+
+    assert _client(handler).list_audit_logs() == [{"user_id": 1, "time": "t"}]
+
+
+@pytest.mark.parametrize("status", [403, 404])
+def test_list_audit_logs_returns_none_when_unavailable(status):
+    assert _client(lambda r: httpx.Response(status)).list_audit_logs() is None
+
+
+def test_allowed_methods_parses_the_allow_header():
+    handler = lambda r: httpx.Response(200, headers={"Allow": "GET, HEAD, OPTIONS"})  # noqa: E731
+    assert _client(handler).audit_log_allowed_methods() == {"GET", "HEAD", "OPTIONS"}
+
+
+def test_allowed_methods_returns_none_without_an_allow_header():
+    assert _client(lambda r: httpx.Response(200)).audit_log_allowed_methods() is None
+
+
+def test_allowed_methods_never_issues_a_mutating_request():
+    """Regression guard for the non-destructive contract."""
+    seen = []
+
+    def handler(request):
+        seen.append(request.method)
+        return httpx.Response(200, headers={"Allow": "GET"})
+
+    _client(handler).audit_log_allowed_methods()
+    assert seen == ["OPTIONS"]
+```
+
+If `/v1/audit_logs` turns out not to be the endpoint this deployment exposes, adjust the path in the client — not in the step file.
 
 `examples/part11_validation/README.md`:
 
