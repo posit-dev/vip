@@ -1,52 +1,17 @@
-"""Tests for vip.report_html — the HTML rendering sibling of vip.reporting.
+"""Tests for vip.report_html — the HTML backend of the VIP report.
 
 Covers escaping (the security property that matters most, since this
-renders into a publicly published report), card rendering per outcome
-including the skip-reason/na_version paths, per-product counts, the
-``<param>`` substitution, graceful handling of ``None`` provenance, and
-empty results.
+renders into a publicly published report), card markup per outcome
+including the skip-reason/na_version paths, the tables, and empty results.
+
+Content decisions shared with the PDF — titles, grouping, skip wording,
+provenance rows — are tested once in ``test_report_content.py`` instead.
 """
 
 from __future__ import annotations
 
 from vip import report_html
 from vip.reporting import ProductInfo, ReportData, TestResult
-
-# ---------------------------------------------------------------------------
-# <param> placeholder substitution
-# ---------------------------------------------------------------------------
-
-
-class TestSubstituteParamPlaceholders:
-    def test_no_placeholder_returns_title_unchanged(self):
-        assert report_html.substitute_param_placeholders("a.py::test_x", "Plain title") == (
-            "Plain title"
-        )
-
-    def test_substitutes_placeholder_from_nodeid_suffix(self):
-        title = report_html.substitute_param_placeholders(
-            "test_pkg.py::test_install[cran]", "Install <repo> package"
-        )
-        assert title == "Install cran package"
-
-    def test_no_param_suffix_leaves_placeholder(self):
-        title = report_html.substitute_param_placeholders(
-            "test_pkg.py::test_install", "Install <repo> package"
-        )
-        assert title == "Install <repo> package"
-
-    def test_display_title_falls_back_to_bare_function_name(self):
-        item = TestResult(nodeid="src/vip_tests/connect/test_x.py::test_login", outcome="passed")
-        assert report_html.display_title(item) == "test_login"
-
-    def test_display_title_prefers_scenario_title(self):
-        item = TestResult(
-            nodeid="a.py::test_x[cran]",
-            outcome="passed",
-            scenario_title="Install <repo> package",
-        )
-        assert report_html.display_title(item) == "Install cran package"
-
 
 # ---------------------------------------------------------------------------
 # Escaping — the security property
@@ -272,18 +237,8 @@ class TestRenderCard:
 # ---------------------------------------------------------------------------
 
 
-class TestDominantFeatureDescription:
-    def test_majority_value_is_dominant(self):
-        results = [
-            TestResult(nodeid="a", outcome="passed", feature_description="As a Posit Team admin"),
-            TestResult(nodeid="b", outcome="passed", feature_description="As a Posit Team admin"),
-            TestResult(nodeid="c", outcome="passed", feature_description="As a VIP user"),
-        ]
-        assert report_html.dominant_feature_description(results) == "As a Posit Team admin"
-
-    def test_no_descriptions_returns_none(self):
-        results = [TestResult(nodeid="a", outcome="passed")]
-        assert report_html.dominant_feature_description(results) is None
+class TestDescriptionHtml:
+    """Which description shows is report_content's call; this covers the markup."""
 
     def test_dominant_description_is_suppressed_on_card(self):
         item = TestResult(nodeid="a", outcome="passed", feature_description="As a Posit admin")
@@ -350,45 +305,6 @@ class TestMarkerBadges:
         assert "badge-workbench" in html
         assert "badge-connect" in html
         assert "badge-slow" in html
-
-
-# ---------------------------------------------------------------------------
-# category_for / group_by_category
-# ---------------------------------------------------------------------------
-
-
-class TestCategoryFor:
-    """category_for prefers a scenario's own marker over the directory it
-    lives in, falling back to TestResult.category (which derives the category
-    from the nodeid path)."""
-
-    def test_real_nodeid_shape_resolves_to_directory(self):
-        item = TestResult(nodeid="src/vip_tests/connect/test_auth.py::test_login", outcome="passed")
-        assert item.category == "connect"
-        assert report_html.category_for(item) == "connect"
-
-    def test_marker_match_takes_priority_over_path_scan(self):
-        # A cross-cutting test physically under workbench/ but tagged @connect.
-        item = TestResult(
-            nodeid="src/vip_tests/workbench/test_publish.py::test_x",
-            outcome="passed",
-            markers=["connect"],
-        )
-        assert report_html.category_for(item) == "connect"
-
-    def test_no_marker_and_no_known_path_segment_falls_back_to_category(self):
-        item = TestResult(nodeid="tests/unknown/test_x.py::test_y", outcome="passed")
-        assert report_html.category_for(item) == item.category
-
-    def test_group_by_category_buckets_correctly(self):
-        results = [
-            TestResult(nodeid="src/vip_tests/connect/test_a.py::t1", outcome="passed"),
-            TestResult(nodeid="src/vip_tests/workbench/test_b.py::t2", outcome="passed"),
-            TestResult(nodeid="src/vip_tests/connect/test_c.py::t3", outcome="failed"),
-        ]
-        groups = report_html.group_by_category(results)
-        assert len(groups["connect"]) == 2
-        assert len(groups["workbench"]) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -632,21 +548,11 @@ class TestPageOrchestration:
 
 
 # ---------------------------------------------------------------------------
-# Steps lookup (feature file resolution)
+# Steps markup (the lookup itself is report_content's)
 # ---------------------------------------------------------------------------
 
 
-class TestFeatureStepIndex:
-    def test_missing_feature_file_returns_empty_list(self):
-        index = report_html.FeatureStepIndex()
-        item = TestResult(nodeid="vip_tests/nope/test_missing.py::test_x", outcome="passed")
-        assert index.steps_for(item) == []
-
-    def test_no_scenario_title_returns_empty_list(self):
-        index = report_html.FeatureStepIndex()
-        item = TestResult(nodeid="a.py::test_x", outcome="passed", scenario_title=None)
-        assert index.steps_for(item) == []
-
+class TestStepsHtml:
     def test_steps_html_empty_for_no_steps(self):
         assert report_html.steps_html([]) == ""
 

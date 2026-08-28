@@ -11,6 +11,13 @@ project:
   render:
     - index.qmd
     - details.qmd
+    # The PDF edition. It must be listed here even though `vip report`
+    # renders each document with its own `quarto render <doc>` call (HTML
+    # fatal, PDF degrading to a warning on a Typst-less Quarto): Quarto
+    # treats a file outside a project's render list as a standalone document
+    # and ignores `output-dir`, so an unlisted `quarto render vip-report.qmd`
+    # drops vip-report.pdf next to the .qmd instead of into _output/.
+    - vip-report.qmd
 
 website:
   title: "VIP - Verified Installation of Posit"

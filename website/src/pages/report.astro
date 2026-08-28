@@ -27,14 +27,23 @@ const base = import.meta.env.BASE_URL;
         Note: <code>vip report</code> runs Quarto under the hood, so you must
         have the <a href="https://quarto.org/docs/download/">quarto CLI</a> installed.
       </p>
-      <a
-        href={`${base}example-report/`}
-        class="open-link"
-        target="_blank"
-        rel="noopener"
-      >
-        Open in new tab &#8599;
-      </a>
+      <div class="report-actions">
+        <a href={`${base}example-report/vip-report.pdf`} class="pdf-button" download>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M8 1a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V1.75A.75.75 0 0 1 8 1Z"></path>
+            <path d="M2 11.75a.75.75 0 0 1 1.5 0v1.5c0 .14.11.25.25.25h8.5c.14 0 .25-.11.25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25v-1.5Z"></path>
+          </svg>
+          Download PDF report
+        </a>
+        <a
+          href={`${base}example-report/`}
+          class="open-link"
+          target="_blank"
+          rel="noopener"
+        >
+          Open in new tab &#8599;
+        </a>
+      </div>
     </div>
   </div>
 
@@ -77,6 +86,31 @@ const base = import.meta.env.BASE_URL;
   .container {
     max-width: var(--max-width);
     margin: 0 auto;
+  }
+
+  .report-actions {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    margin-top: 0.5rem;
+  }
+
+  .pdf-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--posit-blue);
+    color: white;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    padding: 0.625rem 1.25rem;
+    border-radius: var(--radius);
+    transition: background 0.15s;
+  }
+
+  .pdf-button:hover {
+    background: var(--posit-link-hover);
+    color: white;
   }
 
   .open-link {
