@@ -118,6 +118,13 @@ In `src/vip/reporting.py`, below `VALID_FORMATS`:
 # of an existing field. Consumers accept an unknown minor and refuse an
 # unknown major. A file with no schema_version at all predates versioning
 # and is treated as "pre-1.0".
+#
+# One version covers everything introduced alongside it. "1.0" is the whole
+# of this work -- schema_version, the per-test timestamps, the execution
+# block and the checksum sidecar landed together, across several commits but
+# in one release. Do not bump per commit: that publishes intermediate
+# versions no release ever emitted. The next bump is for the next change
+# AFTER this ships.
 RESULTS_SCHEMA_VERSION = "1.0"
 ```
 
@@ -2006,13 +2013,15 @@ so the report pipeline is not silently misled by a file it cannot represent:
 
 ```python
     schema_version = raw.get("schema_version")
-    if schema_version and schema_version.split(".", 1)[0] != RESULTS_SCHEMA_VERSION.split(".", 1)[0]:
-        warnings.warn(
-            f"results.json schema version {schema_version} is newer than this vip "
-            f"understands ({RESULTS_SCHEMA_VERSION}); some fields may be missing or "
-            "misinterpreted",
-            stacklevel=2,
-        )
+    if schema_version:
+        theirs = schema_version.split(".", 1)[0]
+        if theirs != RESULTS_SCHEMA_VERSION.split(".", 1)[0]:
+            warnings.warn(
+                f"results.json schema version {schema_version} is newer than this vip "
+                f"understands ({RESULTS_SCHEMA_VERSION}); some fields may be missing "
+                "or misinterpreted",
+                stacklevel=2,
+            )
 ```
 
 Warn rather than raise, and only here. `load_results` is called from
@@ -2026,9 +2035,6 @@ makes `vip trace` exit non-zero.
 
 Note this requires `import warnings` in `reporting.py` — Task 13 also adds it,
 whichever lands first.
-
-```python
-```
 
 Add the import of the results schema constant at the top of `traceability.py`:
 
