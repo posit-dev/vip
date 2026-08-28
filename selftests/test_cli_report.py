@@ -58,6 +58,7 @@ def _fake_bundled_templates(monkeypatch, tmp_path) -> Path:
     bundled = pkg_root / "_report"
     bundled.mkdir(parents=True)
     for name in _REPORT_TEMPLATE_FILES:
+        (bundled / name).parent.mkdir(parents=True, exist_ok=True)
         (bundled / name).write_text(f"packaged {name}\n")
     monkeypatch.setattr(importlib.resources, "files", lambda pkg: pkg_root)
     return bundled
@@ -95,6 +96,7 @@ class TestEnsureReportTemplates:
         assert _has_all_report_templates(report_dir) is False
 
         for name in _REPORT_TEMPLATE_FILES:
+            (report_dir / name).parent.mkdir(parents=True, exist_ok=True)
             (report_dir / name).write_text("x")
         assert _has_all_report_templates(report_dir) is True
 

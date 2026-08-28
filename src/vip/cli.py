@@ -631,8 +631,24 @@ def run_verify(args: argparse.Namespace) -> None:
 
 
 # Quarto report template files copied into the working report/ directory.
-# Keep in sync with the force-include block in pyproject.toml.
-_REPORT_TEMPLATE_FILES = ("index.qmd", "details.qmd", "_quarto.yml", "styles.css")
+# Keep in sync with the force-include block in pyproject.toml. The fonts are
+# part of the template set: vip-report.qmd resolves them via a relative
+# `font-paths: fonts`, so a working report directory without them falls back
+# to whatever faces the host has and renders a different-looking PDF.
+_REPORT_TEMPLATE_FILES = (
+    "index.qmd",
+    "details.qmd",
+    "vip-report.qmd",
+    "_quarto.yml",
+    "styles.css",
+    "fonts/SourceSans3-Regular.otf",
+    "fonts/SourceSans3-It.otf",
+    "fonts/SourceSans3-Semibold.otf",
+    "fonts/SourceSans3-Bold.otf",
+    "fonts/SourceCodePro-Regular.otf",
+    "fonts/LICENSE-SourceSans3.md",
+    "fonts/LICENSE-SourceCodePro.md",
+)
 
 
 def _has_all_report_templates(directory: Path) -> bool:
@@ -659,6 +675,7 @@ def _copy_report_templates(src: Path, report_dir: Path) -> list[str]:
             if dest.read_bytes() == candidate.read_bytes():
                 continue
             replaced.append(name)
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(candidate, dest)
     return replaced
 
@@ -795,6 +812,21 @@ def run_report(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     print(f"Report generated: {output}")
+
+    # The PDF edition (report/vip-report.qmd) is part of the same render, so a
+    # missing one means Quarto compiled the HTML pages and then failed on the
+    # Typst document. Say so instead of staying silent: the PDF is the copy
+    # customers archive, and `quarto render` exits 0 either way.
+    pdf = report_dir / "_output" / "vip-report.pdf"
+    if pdf.exists():
+        print(f"PDF generated: {pdf}")
+    else:
+        print(
+            f"Warning: the HTML report rendered but {pdf} did not. "
+            "Quarto compiles it with Typst, which ships with Quarto 1.4 and later.",
+            file=sys.stderr,
+        )
+
     if args.open:
         webbrowser.open(output.resolve().as_uri())
 
