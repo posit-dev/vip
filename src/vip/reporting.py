@@ -190,14 +190,29 @@ def load_results(path: str | Path) -> ReportData:
     if not p.exists():
         return ReportData()
 
-    raw = json.loads(p.read_text())
+    raw = json.loads(p.read_text(encoding="utf-8"))
 
+    # Guard the type before splitting. This loader's documented contract is to
+    # warn and carry on, never to raise: it runs inside the Quarto notebook
+    # cells (report/index.qmd, details.qmd, vip-report.qmd) where an exception
+    # renders as an unreadable traceback instead of a report. A hand-edited or
+    # third-party results.json carrying `"schema_version": 1.0` as a JSON
+    # number would otherwise raise AttributeError here.
     schema_version = raw.get("schema_version")
+    if schema_version is not None and not isinstance(schema_version, str):
+        warnings.warn(
+            f"results.json schema_version is {schema_version!r}, not a string; "
+            "treating it as unversioned",
+            stacklevel=2,
+        )
+        schema_version = None
     if schema_version:
         theirs = schema_version.split(".", 1)[0]
-        if theirs != RESULTS_SCHEMA_VERSION.split(".", 1)[0]:
+        ours = RESULTS_SCHEMA_VERSION.split(".", 1)[0]
+        if theirs != ours:
+            direction = "newer than" if theirs > ours else "older than"
             warnings.warn(
-                f"results.json schema version {schema_version} is newer than this vip "
+                f"results.json schema version {schema_version} is {direction} this vip "
                 f"understands ({RESULTS_SCHEMA_VERSION}); some fields may be missing "
                 "or misinterpreted",
                 stacklevel=2,
@@ -210,7 +225,10 @@ def load_results(path: str | Path) -> ReportData:
             duration=r.get("duration") or 0.0,
             longrepr=r.get("longrepr"),
             concise_error=r.get("concise_error"),
-            markers=r.get("markers", []),
+            # `or []` as well as the default: an explicit JSON null passes
+            # through .get() untouched and would reach every consumer as a
+            # None to iterate over.
+            markers=r.get("markers") or [],
             scenario_title=r.get("scenario_title"),
             feature_description=r.get("feature_description"),
             na_version=r.get("na_version", False),
@@ -239,7 +257,7 @@ def load_results(path: str | Path) -> ReportData:
         exit_status=raw.get("exit_status", 0),
         products=products,
         results=results,
-        schema_version=raw.get("schema_version"),
+        schema_version=schema_version,
         vip_version=raw.get("vip_version"),
         run_duration_seconds=raw.get("run_duration_seconds"),
         python_version=raw.get("python_version"),

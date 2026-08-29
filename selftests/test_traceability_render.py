@@ -25,6 +25,10 @@ CSV_COLUMNS = [
     "finished_at",
     "detail",
     "notes",
+    "generated_at",
+    "vip_version",
+    "results_sha256",
+    "exit_status",
 ]
 
 

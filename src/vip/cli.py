@@ -1577,6 +1577,26 @@ def run_version(args: argparse.Namespace) -> None:
     print(_format_version_details())
 
 
+def _resolve_trace_format(explicit: str | None, out: Path | None) -> str:
+    """Pick the matrix output format: explicit flag, then --output suffix, then csv.
+
+    Inferring from the suffix is what stops `--output matrix.json` writing CSV
+    bytes into a .json file and reporting success -- the archived artifact then
+    fails to parse in whatever downstream consumer reads it, and unlike the
+    stdout case the caller never sees the bytes to notice.
+    """
+    inferred = {".json": "json", ".csv": "csv"}.get(out.suffix.lower()) if out else None
+    if explicit is None:
+        return inferred or "csv"
+    if inferred and inferred != explicit:
+        print(
+            f"Warning: --format {explicit} does not match the {out.suffix} extension of "
+            f"{out}; writing {explicit}.",
+            file=sys.stderr,
+        )
+    return explicit
+
+
 def _rehome_sidecar(src: Path, dest: Path, src_name: str, dest_name: str) -> None:
     """Move a checksum sidecar alongside a copied results file.
 
@@ -1662,13 +1682,25 @@ def run_trace(args: argparse.Namespace) -> None:
         print(f"Error: could not read results file {results_path}: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    matrix = build_traceability_matrix(
-        data,
-        controls,
-        tag_prefix=args.tag_prefix,
-        results_sha256=results_sha256,
-        results_sha256_sidecar_verified=sidecar_present or None,
-    )
+    out = Path(args.output) if args.output else None
+    fmt = _resolve_trace_format(args.format, out)
+
+    try:
+        matrix = build_traceability_matrix(
+            data,
+            controls,
+            results_sha256=results_sha256,
+            results_sha256_sidecar_verified=sidecar_present or None,
+        )
+        rendered = render_json(matrix) if fmt == "json" else render_csv(matrix)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        # Inside the guard, not outside it: a results.json can pass the
+        # checksum, the schema gate and load_results and still be structurally
+        # wrong in a way that only surfaces here -- an explicit `"markers":
+        # null`, say. A compliance tool reporting that as a raw traceback is
+        # the one presentation that tells an operator nothing.
+        print(f"Error: could not build the matrix from {results_path}: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     if matrix.unrecognized_tags:
         joined = ", ".join(matrix.unrecognized_tags)
@@ -1677,14 +1709,35 @@ def run_trace(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
 
-    rendered = render_json(matrix) if args.format == "json" else render_csv(matrix)
-    if args.output:
-        out = Path(args.output)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(rendered)
-        print(f"Wrote {out} ({len(matrix.entries)} controls, {matrix.gap_count} gaps)")
-    else:
+    # A covered control whose every scenario was skipped still counts toward
+    # "0 gaps". True, and on its own misleading: an unconfigured product
+    # auto-skips all of its scenarios, so the greenest matrix this tool can
+    # print is the one produced by verifying nothing.
+    unexecuted = matrix.covered_without_execution
+    if unexecuted:
+        print(
+            f"Warning: {len(unexecuted)} covered control(s) have no scenario that ran "
+            f"(all skipped): {', '.join(unexecuted)}. Coverage records that a scenario "
+            "is tagged, not that it was executed.",
+            file=sys.stderr,
+        )
+
+    if out is None:
         sys.stdout.write(rendered)
+        return
+
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        # Write via a temp file in the destination directory, then replace.
+        # `write_text` truncates before it encodes, so a UnicodeEncodeError or
+        # a full disk would destroy a previously good matrix at this path.
+        tmp = out.with_name(f"{out.name}.tmp")
+        tmp.write_text(rendered, encoding="utf-8")
+        os.replace(tmp, out)
+    except (OSError, UnicodeError) as exc:
+        print(f"Error: could not write {out}: {exc}", file=sys.stderr)
+        sys.exit(1)
+    print(f"Wrote {out} ({len(matrix.entries)} controls, {matrix.gap_count} gaps)")
 
 
 def main() -> None:
@@ -2152,12 +2205,10 @@ def main() -> None:
         "--controls", required=True, help="Path to the controls.toml control list"
     )
     trace_parser.add_argument(
-        "--tag-prefix",
-        default="control-",
-        help="Gherkin tag prefix identifying control tags (default: control-)",
-    )
-    trace_parser.add_argument(
-        "--format", choices=("csv", "json"), default="csv", help="Output format (default: csv)"
+        "--format",
+        choices=("csv", "json"),
+        default=None,
+        help="Output format (default: inferred from --output's extension, else csv)",
     )
     trace_parser.add_argument("--output", default=None, help="Write to this path instead of stdout")
     trace_parser.set_defaults(func=run_trace)

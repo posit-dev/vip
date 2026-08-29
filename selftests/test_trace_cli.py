@@ -1,4 +1,6 @@
+import csv
 import hashlib
+import io
 import json
 import subprocess
 import sys
@@ -216,3 +218,143 @@ def test_unknown_major_schema_does_not_print_raw_warning(tmp_path):
     assert proc.returncode != 0
     assert "Error:" in proc.stderr
     assert "UserWarning" not in proc.stderr
+
+
+def _write_controls(tmp_path, text):
+    c = tmp_path / "c.toml"
+    c.write_text(text, encoding="utf-8")
+    return c
+
+
+def _run_trace(results, controls, *extra):
+    return _run("--results", str(results), "--controls", str(controls), *extra)
+
+
+def _skipped_results(tmp_path, outcome="skipped"):
+    p = tmp_path / "results.json"
+    p.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "results": [
+                    {
+                        "nodeid": "t.py::a",
+                        "outcome": outcome,
+                        "markers": ["connect", "control-x"],
+                        "skip_reason": "Connect is not configured",
+                        "scenario_title": "S",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return p
+
+
+class TestCoveredButNotExecuted:
+    """A green matrix from a run that verified nothing must say so."""
+
+    def test_skipped_only_control_warns_on_stderr(self, tmp_path):
+        results = _skipped_results(tmp_path)
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        r = _run_trace(results, controls)
+        assert r.returncode == 0
+        assert "no scenario that ran" in r.stderr
+        assert "control-x" in r.stderr or "x" in r.stderr
+
+    def test_json_summary_separates_executed_from_covered(self, tmp_path):
+        results = _skipped_results(tmp_path)
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        payload = json.loads(_run_trace(results, controls, "--format", "json").stdout)
+        assert payload["summary"]["covered"] == 1
+        assert payload["summary"]["gaps"] == 0
+        assert payload["summary"]["covered_and_executed"] == 0
+        assert payload["summary"]["covered_not_executed"] == 1
+        assert payload["covered_without_execution"] == ["x"]
+
+    def test_na_version_counts_as_not_executed(self, tmp_path):
+        results = _skipped_results(tmp_path, outcome="skipped")
+        raw = json.loads(results.read_text())
+        raw["results"][0]["na_version"] = True
+        results.write_text(json.dumps(raw), encoding="utf-8")
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        payload = json.loads(_run_trace(results, controls, "--format", "json").stdout)
+        assert payload["summary"]["covered_not_executed"] == 1
+
+    def test_an_executed_control_does_not_warn(self, tmp_path):
+        results = _skipped_results(tmp_path, outcome="passed")
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        r = _run_trace(results, controls)
+        assert "no scenario that ran" not in r.stderr
+
+
+class TestOutputFormatResolution:
+    def test_json_extension_infers_json(self, tmp_path):
+        results = _skipped_results(tmp_path)
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        out = tmp_path / "matrix.json"
+        assert _run_trace(results, controls, "--output", str(out)).returncode == 0
+        json.loads(out.read_text())  # would raise if CSV had been written
+
+    def test_explicit_format_wins_and_warns_on_a_mismatch(self, tmp_path):
+        results = _skipped_results(tmp_path)
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        out = tmp_path / "matrix.json"
+        r = _run_trace(results, controls, "--output", str(out), "--format", "csv")
+        assert "does not match" in r.stderr
+        assert out.read_text().startswith("control_id,")
+
+    def test_unknown_extension_falls_back_to_csv(self, tmp_path):
+        results = _skipped_results(tmp_path)
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        out = tmp_path / "matrix.txt"
+        _run_trace(results, controls, "--output", str(out))
+        assert out.read_text().startswith("control_id,")
+
+
+class TestMalformedInputIsReportedNotRaised:
+    def test_null_markers_errors_cleanly(self, tmp_path):
+        p = tmp_path / "results.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1.0",
+                    "results": [{"nodeid": "a", "outcome": "passed", "markers": None}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        r = _run_trace(p, controls)
+        assert "Traceback" not in r.stderr
+
+    def test_toml_native_date_is_refused_by_both_formats(self, tmp_path):
+        results = _skipped_results(tmp_path)
+        controls = _write_controls(
+            tmp_path, '[controls.x]\ndescription = "d"\nreference = 2024-01-01\n'
+        )
+        for extra in ([], ["--format", "json"]):
+            r = _run_trace(results, controls, *extra)
+            assert r.returncode == 1
+            assert "Traceback" not in r.stderr
+            assert "expected a string" in r.stderr
+
+    def test_output_to_a_directory_errors_cleanly(self, tmp_path):
+        results = _skipped_results(tmp_path)
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        target = tmp_path / "adir"
+        target.mkdir()
+        r = _run_trace(results, controls, "--output", str(target))
+        assert r.returncode == 1
+        assert "Traceback" not in r.stderr
+        assert "could not write" in r.stderr
+
+
+class TestCsvProvenance:
+    def test_csv_rows_carry_the_results_digest(self, tmp_path):
+        results = _skipped_results(tmp_path)
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        rows = list(csv.DictReader(io.StringIO(_run_trace(results, controls).stdout)))
+        expected = hashlib.sha256(results.read_bytes()).hexdigest()
+        assert rows[0]["results_sha256"] == expected

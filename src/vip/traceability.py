@@ -87,14 +87,27 @@ def load_controls(path: str | Path) -> dict[str, ControlSpec]:
                 f"[controls.{control_id}] has verification={verification!r};"
                 f" expected one of {sorted(VERIFICATION_VALUES)}"
             )
+        # The pass-through fields are carried verbatim into both renderers, so
+        # they must be validated here rather than at render time. TOML has
+        # native date and integer types: `reference = 2024-01-01` parses to a
+        # datetime.date, which the CSV writer silently stringifies while the
+        # JSON encoder refuses outright. Rejecting it once, here, is what keeps
+        # the two formats agreeing on what counts as a valid control list.
+        optional = {}
+        for field_name in ("reference", "risk", "responsibility", "notes"):
+            value = body.get(field_name)
+            if value is not None and not isinstance(value, str):
+                raise ControlListError(
+                    f"[controls.{control_id}] has {field_name}={value!r} "
+                    f"({type(value).__name__}); expected a string. Quote it if it is a "
+                    "date or a number."
+                )
+            optional[field_name] = value
         controls[control_id] = ControlSpec(
             control_id=control_id,
             description=description,
-            reference=body.get("reference"),
-            risk=body.get("risk"),
             verification=verification,
-            responsibility=body.get("responsibility"),
-            notes=body.get("notes"),
+            **optional,
         )
     return controls
 
@@ -111,12 +124,31 @@ class ControlMatch:
     detail: str | None
 
 
+# Statuses that mean the check did not run. "na_version" is a
+# version-gated non-execution, so it counts here too: treating it as
+# executed would let a control gated off on an older product read as
+# evidenced by a scenario that never ran a single assertion.
+NON_EXECUTING_STATUSES = frozenset({"skipped", "na_version"})
+
+
 @dataclass
 class ControlEntry:
     control: ControlSpec
     matches: list[ControlMatch] = field(default_factory=list)
     # "covered" | "gap" | "not_automatable"
     coverage: str = "gap"
+
+    @property
+    def executed(self) -> bool:
+        """Whether any tagged scenario actually ran.
+
+        Coverage says a scenario is tagged for this control; this says one of
+        them produced a result. They come apart whenever a product is not
+        configured, because VIP auto-skips every one of its scenarios -- so a
+        run against an unconfigured deployment yields a matrix that is fully
+        covered and entirely unevidenced.
+        """
+        return any(m.status not in NON_EXECUTING_STATUSES for m in self.matches)
 
 
 @dataclass
@@ -133,6 +165,19 @@ class TraceabilityMatrix:
     @property
     def covered_count(self) -> int:
         return sum(1 for e in self.entries if e.coverage == "covered")
+
+    @property
+    def covered_without_execution(self) -> list[str]:
+        """Control ids that are covered but whose every scenario was skipped.
+
+        The headline summary reports these as covered with zero gaps, which
+        is true and, on its own, badly misleading: nothing was verified. The
+        caller surfaces this so a reader cannot take a green matrix from an
+        unconfigured run at face value.
+        """
+        return [
+            e.control.control_id for e in self.entries if e.coverage == "covered" and not e.executed
+        ]
 
 
 def _provenance(
@@ -248,6 +293,16 @@ CSV_COLUMNS = [
     "finished_at",
     "detail",
     "notes",
+    # Provenance, repeated on every row. CSV is the default format and the one
+    # that gets archived into a spreadsheet, so without these the artifact a
+    # reviewer actually holds has no link back to the results file it was
+    # derived from. results_sha256 is that link. The full block -- products
+    # under test, host, CI run -- is JSON only, because it does not flatten
+    # into columns.
+    "generated_at",
+    "vip_version",
+    "results_sha256",
+    "exit_status",
 ]
 
 
@@ -269,6 +324,16 @@ def _neutralize_formula(value: str) -> str:
     if value and value[0] in ("=", "+", "-", "@", "\t", "\r", "\n"):
         return "'" + value
     return value
+
+
+def _provenance_columns(matrix: TraceabilityMatrix) -> dict:
+    prov = matrix.provenance
+    return {
+        "generated_at": prov.get("generated_at") or "",
+        "vip_version": prov.get("vip_version") or "",
+        "results_sha256": prov.get("results_sha256") or "",
+        "exit_status": "" if prov.get("exit_status") is None else str(prov["exit_status"]),
+    }
 
 
 def _control_columns(entry: ControlEntry) -> dict:
@@ -294,6 +359,7 @@ def render_csv(matrix: TraceabilityMatrix) -> str:
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=CSV_COLUMNS, lineterminator="\n")
     writer.writeheader()
+    prov = _provenance_columns(matrix)
 
     def _neutralize_row(row: dict) -> dict:
         """Apply formula neutralization to all string values in the row."""
@@ -304,6 +370,7 @@ def render_csv(matrix: TraceabilityMatrix) -> str:
         if not entry.matches:
             row = {
                 **base,
+                **prov,
                 "scenario": "",
                 "nodeid": "",
                 "status": "",
@@ -316,6 +383,7 @@ def render_csv(matrix: TraceabilityMatrix) -> str:
         for match in entry.matches:
             row = {
                 **base,
+                **prov,
                 "scenario": match.scenario_title or "",
                 "nodeid": match.nodeid,
                 "status": match.status,
@@ -337,7 +405,16 @@ def render_json(matrix: TraceabilityMatrix) -> str:
             "covered": matrix.covered_count,
             "gaps": matrix.gap_count,
             "not_automatable": sum(1 for e in matrix.entries if e.coverage == "not_automatable"),
+            # Coverage counts controls that have a tagged scenario. This
+            # counts controls whose scenario actually ran. A run against an
+            # unconfigured product auto-skips everything, so the two diverge
+            # exactly when a green matrix means least.
+            "covered_and_executed": sum(
+                1 for e in matrix.entries if e.coverage == "covered" and e.executed
+            ),
+            "covered_not_executed": len(matrix.covered_without_execution),
         },
+        "covered_without_execution": matrix.covered_without_execution,
         "unrecognized_tags": matrix.unrecognized_tags,
         "controls": [
             {
