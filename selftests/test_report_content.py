@@ -18,6 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from conftest import matrix_from_statuses
 from vip import report_content
 from vip.reporting import ReportData, TestResult
 
@@ -365,3 +366,22 @@ class TestFailedControlDisplay:
 
     def test_every_coverage_value_has_a_style_and_a_label(self):
         assert set(report_content.COVERAGE_STYLE_KEY) == set(report_content.COVERAGE_LABELS)
+
+    def test_a_real_mixed_pass_and_failure_control_displays_as_failed(self):
+        """End to end through a real matrix, not a stub.
+
+        The stub tests above assert display_coverage's branching. This asserts
+        the decision the branching exists to implement: one failing scenario
+        demotes a control that also has a passing one.
+        """
+        matrix = matrix_from_statuses({"c1": ["passed", "failed"]})
+        entry = matrix.entries[0]
+        assert entry.coverage == "covered"
+        assert report_content.display_coverage(entry) == "covered_failed"
+
+    def test_a_real_mixed_control_is_counted_in_the_summary(self):
+        """The summary row reads the display value, so the count must follow."""
+        matrix = matrix_from_statuses({"c1": ["passed", "failed"], "c2": ["passed"]})
+        rows = dict(report_content.traceability_summary_rows(matrix))
+        assert rows["Covered, failing"] == "1"
+        assert rows["Covered and executed"] == "1"
