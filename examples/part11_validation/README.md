@@ -32,9 +32,12 @@ A scenario declares the control it satisfies with a Gherkin tag:
 Scenario: Publishing content is recorded with an actor and a timestamp
 ```
 
-Write the product tag (`@connect`, `@workbench`) first -- VIP derives the
-feature's marker from the first non-control tag, and that value feeds the HTML
-report and the generated test catalog.
+Tag order does not matter -- VIP derives the feature's marker from the first
+non-control tag it finds, skipping `@control-<slug>` tags entirely. What
+matters is that a product tag (`@connect`, `@workbench`) is present somewhere:
+the derived marker feeds the HTML report's per-feature grouping and the
+generated test catalog and feature matrix, while the product markers
+themselves drive auto-skip when a product is not configured.
 
 `controls.toml` names each control and carries whatever metadata your
 regulatory mapping uses. Only `description` is required.

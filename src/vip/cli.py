@@ -1578,7 +1578,7 @@ def run_trace(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        verify_results_checksum(results_path)
+        results_sha256, sidecar_present = verify_results_checksum(results_path)
         # Read and validate the schema version BEFORE load_results ever
         # indexes into the results list. load_results assumes current-shape
         # rows (r["nodeid"], r["outcome"], ...) and raises KeyError on
@@ -1612,7 +1612,13 @@ def run_trace(args: argparse.Namespace) -> None:
         print(f"Error: could not read results file {results_path}: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    matrix = build_traceability_matrix(data, controls, tag_prefix=args.tag_prefix)
+    matrix = build_traceability_matrix(
+        data,
+        controls,
+        tag_prefix=args.tag_prefix,
+        results_sha256=results_sha256,
+        results_sha256_sidecar_verified=sidecar_present or None,
+    )
 
     if matrix.unrecognized_tags:
         joined = ", ".join(matrix.unrecognized_tags)

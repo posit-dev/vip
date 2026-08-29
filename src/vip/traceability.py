@@ -135,7 +135,11 @@ class TraceabilityMatrix:
         return sum(1 for e in self.entries if e.coverage == "covered")
 
 
-def _provenance(data: ReportData) -> dict:
+def _provenance(
+    data: ReportData,
+    results_sha256: str | None = None,
+    results_sha256_sidecar_verified: bool | None = None,
+) -> dict:
     products = {
         p.name: {"url": p.url, "version": p.version, "configured": p.configured}
         for p in data.products
@@ -156,6 +160,19 @@ def _provenance(data: ReportData) -> dict:
         "runner_python_version": data.python_version,
         "runner_platform": data.platform,
         "products": products,
+        # The digest `vip trace` computed over the results.json bytes it
+        # actually read -- the in-band link between this matrix and the exact
+        # evidence file it was derived from. None when the matrix was built
+        # without a file on disk (e.g. directly from a ReportData in tests).
+        "results_sha256": results_sha256,
+        # Tri-state, not a plain bool: True means a `.sha256` sidecar was
+        # present and matched (see verify_results_checksum); None means no
+        # sidecar existed to check, which is a legal, expected condition for
+        # results files written before the sidecar existed -- not a failure.
+        # False would mean the sidecar disagreed, but that raises
+        # ResultsIntegrityError before a matrix is ever built, so it can
+        # never actually appear here.
+        "results_sha256_sidecar_verified": results_sha256_sidecar_verified,
     }
 
 
@@ -163,12 +180,20 @@ def build_traceability_matrix(
     data: ReportData,
     controls: dict[str, ControlSpec],
     tag_prefix: str = "control-",
+    results_sha256: str | None = None,
+    results_sha256_sidecar_verified: bool | None = None,
 ) -> TraceabilityMatrix:
     """Join control definitions against tagged test results.
 
     Sorted deterministically -- by control id, then by nodeid within a control
     -- so the same results.json and control list always produce byte-identical
     output for a downstream renderer to diff.
+
+    ``results_sha256`` / ``results_sha256_sidecar_verified`` carry the
+    tamper-evidence digest ``vip trace`` already computed over the results
+    file (see ``verify_results_checksum``) into the matrix provenance. Both
+    default to ``None`` so a matrix built directly from a ``ReportData`` --
+    with no results file on disk, as most tests do -- still works.
     """
     by_tag: dict[str, list[ControlMatch]] = {}
     seen_tags: set[str] = set()
@@ -204,7 +229,7 @@ def build_traceability_matrix(
     return TraceabilityMatrix(
         entries=entries,
         unrecognized_tags=sorted(seen_tags - known),
-        provenance=_provenance(data),
+        provenance=_provenance(data, results_sha256, results_sha256_sidecar_verified),
     )
 
 
@@ -339,12 +364,15 @@ class ResultsIntegrityError(Exception):
     """Raised when a results file fails checksum or schema validation."""
 
 
-def verify_results_checksum(path: str | Path) -> str | None:
+def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
     """Verify a results file against its .sha256 sidecar.
 
-    Returns the digest of the file. Raises if a sidecar exists and disagrees.
-    A missing sidecar is not an error: results files written before the
-    sidecar existed have none.
+    Returns ``(digest, sidecar_present)`` -- the sha256 of the file, and
+    whether a `.sha256` sidecar was found to check it against. Raises if a
+    sidecar exists and disagrees. A missing sidecar is not an error: results
+    files written before the sidecar existed have none, and callers use
+    ``sidecar_present`` to distinguish "verified" from "nothing to verify"
+    rather than treating both as the same success.
 
     This is tamper-evidence within a trusted pipeline, not tamper-proofing --
     anyone who can edit the results file can regenerate the sidecar. It catches
@@ -354,13 +382,13 @@ def verify_results_checksum(path: str | Path) -> str | None:
     digest = hashlib.sha256(p.read_bytes()).hexdigest()
     sidecar = p.with_name(f"{p.name}.sha256")
     if not sidecar.is_file():
-        return digest
+        return digest, False
     recorded = sidecar.read_text().split()
     if recorded and recorded[0] != digest:
         raise ResultsIntegrityError(
             f"checksum mismatch for {p}: sidecar records {recorded[0]}, file hashes to {digest}"
         )
-    return digest
+    return digest, True
 
 
 def read_results_schema_version(path: str | Path) -> str | None:

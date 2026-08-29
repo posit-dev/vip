@@ -1,5 +1,7 @@
+import hashlib
+
 from vip.reporting import ReportData, TestResult
-from vip.traceability import ControlSpec, build_traceability_matrix
+from vip.traceability import ControlSpec, build_traceability_matrix, verify_results_checksum
 
 
 def _result(nodeid, markers, outcome="passed", **kw):
@@ -130,3 +132,63 @@ def test_provenance_is_carried_from_the_report():
     assert prov["basic_mode"] is True
     assert prov["execution"]["hostname"] == "runner-1"
     assert prov["results_schema_version"] == "1.0"
+
+
+def test_verify_results_checksum_reports_sidecar_presence(tmp_path):
+    results = tmp_path / "results.json"
+    data = b'{"results": []}'
+    results.write_bytes(data)
+    expected_digest = hashlib.sha256(data).hexdigest()
+    results.with_name("results.json.sha256").write_text(f"{expected_digest}  results.json\n")
+
+    digest, sidecar_present = verify_results_checksum(results)
+    assert digest == expected_digest
+    assert sidecar_present is True
+
+
+def test_verify_results_checksum_reports_missing_sidecar(tmp_path):
+    results = tmp_path / "results.json"
+    data = b'{"results": []}'
+    results.write_bytes(data)
+    expected_digest = hashlib.sha256(data).hexdigest()
+
+    digest, sidecar_present = verify_results_checksum(results)
+    assert digest == expected_digest
+    assert sidecar_present is False
+
+
+def test_provenance_defaults_checksum_fields_to_none():
+    # A matrix built directly from a ReportData -- as every test above does,
+    # with no results file on disk -- must still work with no digest to carry.
+    prov = build_traceability_matrix(ReportData(results=[]), _controls(x={})).provenance
+    assert prov["results_sha256"] is None
+    assert prov["results_sha256_sidecar_verified"] is None
+
+
+def test_provenance_carries_results_sha256_when_supplied():
+    prov = build_traceability_matrix(
+        ReportData(results=[]),
+        _controls(x={}),
+        results_sha256="deadbeef",
+        results_sha256_sidecar_verified=True,
+    ).provenance
+    assert prov["results_sha256"] == "deadbeef"
+    assert prov["results_sha256_sidecar_verified"] is True
+
+
+def test_provenance_distinguishes_sidecar_absent_from_verified():
+    verified = build_traceability_matrix(
+        ReportData(results=[]),
+        _controls(x={}),
+        results_sha256="deadbeef",
+        results_sha256_sidecar_verified=True,
+    ).provenance
+    absent = build_traceability_matrix(
+        ReportData(results=[]),
+        _controls(x={}),
+        results_sha256="deadbeef",
+        results_sha256_sidecar_verified=None,
+    ).provenance
+    assert verified["results_sha256_sidecar_verified"] is True
+    assert absent["results_sha256_sidecar_verified"] is None
+    assert verified["results_sha256_sidecar_verified"] != absent["results_sha256_sidecar_verified"]

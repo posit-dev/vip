@@ -91,6 +91,26 @@ def test_missing_sidecar_is_allowed(tmp_path):
     assert _run("--results", str(results), "--controls", str(controls)).returncode == 0
 
 
+def test_provenance_carries_results_sha256_with_sidecar(tmp_path):
+    results, controls = _results(tmp_path, write_sidecar=True)
+    proc = _run("--results", str(results), "--controls", str(controls), "--format", "json")
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    expected_digest = hashlib.sha256(results.read_bytes()).hexdigest()
+    assert payload["provenance"]["results_sha256"] == expected_digest
+    assert payload["provenance"]["results_sha256_sidecar_verified"] is True
+
+
+def test_provenance_carries_results_sha256_without_sidecar(tmp_path):
+    results, controls = _results(tmp_path, write_sidecar=False)
+    proc = _run("--results", str(results), "--controls", str(controls), "--format", "json")
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    expected_digest = hashlib.sha256(results.read_bytes()).hexdigest()
+    assert payload["provenance"]["results_sha256"] == expected_digest
+    assert payload["provenance"]["results_sha256_sidecar_verified"] is None
+
+
 def test_pre_1_0_results_are_accepted(tmp_path):
     results, controls = _results(tmp_path, schema_version=None)
     assert _run("--results", str(results), "--controls", str(controls)).returncode == 0
