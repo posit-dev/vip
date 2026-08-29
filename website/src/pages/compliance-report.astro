@@ -13,16 +13,19 @@ const base = import.meta.env.BASE_URL;
     <div class="container">
       <h1>Compliance Traceability Report</h1>
       <p>
-        The same report, rendered with a control list attached. VIP ran the 21 CFR
-        Part 11 example extension against the CI Connect deployment, then joined the
-        results against that example&rsquo;s <code>controls.toml</code>. The result is
-        the Compliance Traceability section: every control, the
-        scenarios that verify it, their outcome, and the timestamp each check ran.
+        A second, narrower run against the same CI Connect deployment: only the
+        21 CFR Part 11 example extension that ships with VIP, joined against that
+        example&rsquo;s <code>controls.toml</code>. The Compliance Traceability
+        section is the point &mdash; every control, the scenarios that verify it,
+        their outcome, and the timestamp each check ran.
       </p>
       <p class="how-to">
-        The <a href={`${base}report/`}>standard example report</a> is the same
-        document without that section. Compare the two to see exactly what attaching
-        a control list adds.
+        The <a href={`${base}report/`}>standard example report</a> is a broad smoke
+        run across Connect, Workbench and Package Manager with no control list
+        attached, so it has no such section and its summary counts many more
+        scenarios. The two differ in scope, not in machinery: both are rendered by
+        the same <code>vip report</code>, and any VIP run can carry a matrix by
+        attaching a control list.
       </p>
       <p class="how-to">
         Generate your own: run
