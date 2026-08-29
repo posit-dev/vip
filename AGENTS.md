@@ -155,7 +155,9 @@ Key principles:
 | `src/vip/version.py` | `ProductVersion` parsing/comparison for `min_version` gating; `MINIMUM_SUPPORTED_POSIT_TEAM` support floor (powers `vip version`) |
 | `src/vip/workbench_ui.py` | Browser-driven Workbench session-cleanup sweep (`quit_vip_sessions_via_ui`), shared by the per-test cleanup fixture and `vip cleanup --workbench-url`; takes an `owner` so a per-test sweep only quits its own xdist worker's sessions |
 | `src/vip/reporting.py` | Report data model for Quarto templates; owns `RESULTS_SCHEMA_VERSION` and `load_results`, which warns (not raises) on an unknown schema major |
-| `src/vip/report_html.py` | HTML rendering for the Quarto report (cards, badges, provenance/rollup tables) — `reporting.py`'s testable rendering sibling; `index.qmd`/`details.qmd` are thin callers |
+| `src/vip/report_content.py` | Format-neutral report content shared by both rendering backends: titles, outcome/badge styling (colors drift-guarded against `styles.css` by `selftests/test_report_content.py`), grouping, skip wording, provenance rows |
+| `src/vip/report_html.py` | HTML backend: renders `report_content` into the fragments `index.qmd`/`details.qmd` display |
+| `src/vip/report_typst.py` | Typst backend: renders the same content as Typst markup for `report/vip-report.qmd` → `_output/vip-report.pdf`; every dynamic value passes through `_lit` (Typst-injection escaping) |
 | `src/vip/attribution.py` | Collects the `execution` block written into `results.json` — hostname, git (commit/branch/dirty/remote, with any userinfo redacted from the remote URL), and CI (provider/run_id/run_url/job for GitHub Actions, GitLab CI, Jenkins). Every probe degrades to `None` rather than failing or warning; omitted entirely with `--vip-no-attribution` |
 | `src/vip/traceability.py` | Control list model (`ControlSpec`, loaded from `controls.toml`) and `build_traceability_matrix`, which joins controls against `@control-<slug>`-tagged scenarios in a loaded `results.json`; CSV (`render_csv`, apostrophe-neutralizes formula-leading cells) and JSON (`render_json`) renderers; `verify_results_checksum` and the schema-version gate (`check_results_schema` hard-errors on an unknown major, unlike `reporting.load_results`, which only warns) — powers `vip trace` |
 | `src/vip/clients/connect.py` | httpx client for Connect API |
@@ -170,6 +172,7 @@ Key principles:
 | `src/vip_tests/conftest.py` | Directory-scoped warning filter (kept out of the global plugin deliberately) plus the three autouse Connect content-cleanup fixtures — see that file's docstring for why those stay directory-scoped instead of moving to `src/vip/fixtures.py` |
 | `report/index.qmd` | Quarto summary page |
 | `report/details.qmd` | Quarto detailed results page |
+| `report/vip-report.qmd` | Quarto/Typst PDF edition (summary + full listing in one archivable file) |
 
 ## Extension examples
 
@@ -300,6 +303,8 @@ Rules for cleanup code:
 ## Quarto report
 
 The report lives in `report/` and reads `report/results.json` (written by pytest by default). The `.qmd` files use `IPython.display.Markdown` with `display()` to render content. Always wrap `Markdown()` calls with `display()` -- bare expressions are silently swallowed inside conditionals.
+
+Every render also produces `_output/vip-report.pdf` from `report/vip-report.qmd` -- a native Quarto/Typst document, deliberately not a browser print, because the report exists partly to show off Quarto. `vip report` renders each document with its own `quarto render <doc>` call so a Quarto older than 1.4 (no Typst) still hands over the HTML report and only warns about the PDF. It cannot reuse the HTML pages (pandoc drops `IPython.display.HTML` content to its repr when targeting Typst), so `src/vip/report_typst.py` renders the same `report_content` as Typst markup. Two invariants when touching it: every dynamic value must go through `_lit` (a `#`/`*`/`$` in test output is live Typst markup otherwise), and visual changes must land in `report_content`/`styles.css` in the same commit so the HTML and PDF editions stay identical -- `selftests/test_report_content.py` guards the colors. The faces (Source Sans 3, Source Code Pro; both OFL) are vendored in `report/fonts/` so renders match across laptops, CI, and air-gapped hosts; the font files are part of `_REPORT_TEMPLATE_FILES` and the pyproject force-include block, which `selftests/test_cli_report.py` keeps in sync.
 
 ## CI workflows
 

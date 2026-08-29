@@ -1,0 +1,49 @@
+---
+format:
+  typst:
+    papersize: us-letter
+    margin:
+      x: 1.7cm
+      y: 2cm
+    fontsize: 10pt
+    mainfont: "Source Sans 3"
+    font-paths: fonts
+jupyter: python3
+---
+
+<!--
+The PDF edition of the report: one native Quarto/Typst document carrying the
+summary that index.qmd shows plus the full listing from details.qmd.
+
+Quarto cannot render those two pages to PDF directly. They hand it raw HTML
+through IPython.display.HTML(), and pandoc drops all but plain <table> markup
+when it targets Typst, printing "<IPython.core.display.HTML object>" in place
+of every result card. vip.report_typst renders the same content as Typst
+markup instead — see that module's docstring, including why the fonts under
+fonts/ are vendored.
+
+There is no title in the front matter on purpose: Quarto's Typst template
+centers a front-matter title, and the report's own left-aligned heading comes
+from render_document, matching index.qmd.
+
+The cell fence is four backticks so the three-backtick raw Typst block it
+prints survives inside it.
+-->
+
+````{python}
+#| echo: false
+#| output: asis
+
+from pathlib import Path
+
+from vip import report_typst
+from vip.reporting import load_results, load_troubleshooting, troubleshooting_path
+
+data = load_results(Path("results.json"))
+_troubleshooting_path = troubleshooting_path()
+hints = load_troubleshooting(_troubleshooting_path) if _troubleshooting_path else {}
+
+print("```{=typst}")
+print(report_typst.render_document(data, hints))
+print("```")
+````

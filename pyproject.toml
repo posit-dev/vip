@@ -167,6 +167,17 @@ packages = ["src/vip", "src/vip_tests"]
 # run_report(). Keep this list in sync with cli._REPORT_TEMPLATE_FILES.
 "report/index.qmd" = "vip/_report/index.qmd"
 "report/details.qmd" = "vip/_report/details.qmd"
+"report/vip-report.qmd" = "vip/_report/vip-report.qmd"
+# The PDF's vendored faces (Source Sans 3 / Source Code Pro, both OFL — the
+# licenses ride along in the same directory). Vendored so the Typst render is
+# identical on a laptop, in CI, and on an air-gapped host.
+"report/fonts/SourceSans3-Regular.otf" = "vip/_report/fonts/SourceSans3-Regular.otf"
+"report/fonts/SourceSans3-It.otf" = "vip/_report/fonts/SourceSans3-It.otf"
+"report/fonts/SourceSans3-Semibold.otf" = "vip/_report/fonts/SourceSans3-Semibold.otf"
+"report/fonts/SourceSans3-Bold.otf" = "vip/_report/fonts/SourceSans3-Bold.otf"
+"report/fonts/SourceCodePro-Regular.otf" = "vip/_report/fonts/SourceCodePro-Regular.otf"
+"report/fonts/LICENSE-SourceSans3.md" = "vip/_report/fonts/LICENSE-SourceSans3.md"
+"report/fonts/LICENSE-SourceCodePro.md" = "vip/_report/fonts/LICENSE-SourceCodePro.md"
 "report/_quarto.yml" = "vip/_report/_quarto.yml"
 "report/styles.css" = "vip/_report/styles.css"
 
