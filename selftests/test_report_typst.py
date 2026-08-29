@@ -13,6 +13,7 @@ compiles the real document end to end.
 
 from __future__ import annotations
 
+from conftest import matrix_from_statuses
 from vip import report_typst
 from vip.report_content import NA_VERSION_EXPLANATION
 from vip.reporting import ReportData, TestResult
@@ -212,3 +213,12 @@ class TestDocument:
         data = ReportData(results=[TestResult(nodeid="a.py::t", outcome="passed")])
         markup = report_typst.render_document(data, {})
         assert '"not recorded"' in markup
+
+
+class TestCoverageBadge:
+    def test_coverage_badge_uses_the_same_chip_as_an_outcome(self):
+        """vip-pill is a saturated fill with white text; the HTML edition is a chip."""
+        matrix = matrix_from_statuses(statuses={"c1": ["passed"]})
+        out = report_typst.render_traceability(matrix)
+        assert "vip-chip" in out
+        assert "vip-pill" not in out

@@ -579,7 +579,15 @@ def render_traceability(matrix) -> str:  # noqa: ANN001 - TraceabilityMatrix
             [
                 _stacked(control_parts),
                 _text(row.description, size="9pt"),
-                _call("vip-pill", _lit(COVERAGE_LABELS[row.coverage]), _lit(style.color)),
+                # vip-chip, not vip-pill: the HTML edition renders dark text on
+                # a pale fill (outcome_badge_html), and vip-pill is a saturated
+                # fill with white text. The two editions must match.
+                _call(
+                    "vip-chip",
+                    _lit(COVERAGE_LABELS[row.coverage]),
+                    _lit(style.color),
+                    _lit(style.background),
+                ),
                 evidence,
             ]
         )

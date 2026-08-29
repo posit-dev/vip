@@ -441,7 +441,7 @@ def render_traceability(matrix) -> str:  # noqa: ANN001 - vip.traceability.Trace
     for row in control_rows(matrix):
         style = outcome_style(COVERAGE_STYLE_KEY[row.coverage])
         badge = (
-            f"<span class='badge' style='color:{style.color};"
+            f"<span class='vip-badge' style='color:{style.color};"
             f"background:{style.background}'>{_esc(COVERAGE_LABELS[row.coverage])}</span>"
         )
         if row.scenarios:

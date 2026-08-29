@@ -8,8 +8,11 @@ output, so a reader of the PDF saw none of it.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from conftest import matrix_from_statuses
 from vip import report_html, report_typst
 from vip.report_content import (
     COVERAGE_LABELS,
@@ -144,3 +147,15 @@ class TestTypstBackend:
         doc = report_typst.render_document(data, {}, _matrix())
         assert "Compliance Traceability" in doc
         assert "NOT RUN" in doc
+
+
+class TestCoverageBadge:
+    def test_html_coverage_badge_uses_a_class_that_exists_in_styles_css(self):
+        css = (Path(__file__).parent.parent / "report" / "styles.css").read_text()
+        matrix = matrix_from_statuses(statuses={"c1": ["passed"]})
+        html = report_html.render_traceability(matrix)
+        for cls in ("vip-badge", "trace-caveat", "trace-warning"):
+            assert f".{cls}" in css, (
+                f"{cls} is referenced by the renderer but absent from styles.css"
+            )
+        assert "class='badge'" not in html

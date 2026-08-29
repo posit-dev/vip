@@ -140,6 +140,20 @@
   letter-spacing: 0.03em;
 }
 
+/* Compliance traceability section (see report_html.render_traceability). The
+   Typst edition renders the caveat italic and the warning as a plain
+   paragraph, so these keep the two editions matched. */
+.trace-caveat {
+  font-style: italic;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.trace-warning {
+  font-size: 0.875rem;
+  color: #b91c1c;
+}
+
 .vip-test-meta {
   font-size: 0.75rem;
   color: #9ca3af;
