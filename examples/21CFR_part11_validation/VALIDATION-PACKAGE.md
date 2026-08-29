@@ -134,9 +134,10 @@ validation exercise that you own.
 
 ## See also
 
-- `docs/reporting.md` for the machine-readable outputs, the `vip trace` export,
-  and the checksum sidecar
-- `docs/test-architecture.md` for control tagging and the four-layer test
-  architecture
-- `examples/21CFR_part11_validation/` for a worked control list and tagged
+- `README.md`, next to this file, for the worked control list and tagged
   scenarios, including the scope limits specific to 21 CFR Part 11
+- [the reporting guide](https://github.com/posit-dev/vip/blob/main/docs/reporting.md)
+  for the machine-readable outputs, the `vip trace` export, and the checksum
+  sidecar
+- [the test architecture guide](https://github.com/posit-dev/vip/blob/main/docs/test-architecture.md)
+  for control tagging and the four-layer test architecture

@@ -3,6 +3,11 @@
 A worked example of mapping regulatory controls to automated tests, and
 exporting the result as a traceability matrix with `vip trace`.
 
+`VALIDATION-PACKAGE.md`, next to this file, is the wider context: which
+documents in a GxP validation package VIP produces, which ones you author, and
+which ones no test tool can produce. Read it before deciding what this example
+is worth in your process.
+
 ## What this is not
 
 This is a template, not a certified Part 11 test set. A fully green matrix is

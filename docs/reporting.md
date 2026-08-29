@@ -243,7 +243,8 @@ set by hand.
 The section repeats the same caveat the CSV and JSON exports carry, because the
 report is the artifact that gets archived and handed on: coverage records that a
 scenario is tagged, and a control shown as NOT RUN has a tagged scenario that was
-skipped. See `docs/validation-package.md` for how these outputs map onto a GxP
+skipped. See `examples/21CFR_part11_validation/VALIDATION-PACKAGE.md` for how these
+outputs map onto a GxP
 validation package, and which parts of one VIP cannot supply.
 
 `vip scaffold --template 21cfr-part11-validation --output DIR` generates a starting point
