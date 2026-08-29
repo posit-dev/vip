@@ -384,7 +384,17 @@ def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
     if not sidecar.is_file():
         return digest, False
     recorded = sidecar.read_text().split()
-    if recorded and recorded[0] != digest:
+    if not recorded:
+        # An empty or whitespace-only sidecar is itself the truncated-upload
+        # case this function advertises catching. Returning True here would put
+        # `results_sha256_sidecar_verified: true` in the provenance block while
+        # nothing had actually been compared -- a false attestation in the one
+        # field whose entire purpose is attesting that the check happened.
+        raise ResultsIntegrityError(
+            f"checksum sidecar for {p} is empty; expected a sha256 digest. "
+            "Delete it to proceed without verification, or regenerate it."
+        )
+    if recorded[0] != digest:
         raise ResultsIntegrityError(
             f"checksum mismatch for {p}: sidecar records {recorded[0]}, file hashes to {digest}"
         )

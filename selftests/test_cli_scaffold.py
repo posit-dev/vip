@@ -268,3 +268,39 @@ class TestScaffoldCLI:
         )
         assert result.returncode == 0
         assert "--output" in result.stdout
+
+
+class TestScaffoldExcludesBuildArtifacts:
+    """A scaffolded directory must not carry the source checkout's detritus."""
+
+    def test_no_pycache_in_scaffolded_output(self, tmp_path):
+        """A checkout that has run the examples must not leak __pycache__.
+
+        Running the bundled examples locally leaves __pycache__ beside them, and
+        copytree without an ignore= copied it straight into the customer's brand
+        new extension directory -- making the scaffold output depend on whether
+        the VIP checkout happened to have run its own tests.
+        """
+        from vip.cli import run_scaffold
+
+        dest = tmp_path / "scaffolded"
+        run_scaffold(_make_args(template="21cfr-part11-validation", output=str(dest)))
+
+        leaked = [p for p in dest.rglob("*") if p.name == "__pycache__" or p.suffix == ".pyc"]
+        assert leaked == [], f"scaffold leaked build artifacts: {leaked}"
+
+    def test_scaffold_still_copies_the_real_files(self, tmp_path):
+        """Guard the ignore pattern against over-matching."""
+        from vip.cli import run_scaffold
+
+        dest = tmp_path / "scaffolded"
+        run_scaffold(_make_args(template="21cfr-part11-validation", output=str(dest)))
+
+        for name in (
+            "README.md",
+            "conftest.py",
+            "controls.toml",
+            "test_21CFR_part11_validation.feature",
+            "test_21CFR_part11_validation.py",
+        ):
+            assert (dest / name).is_file(), f"{name} missing from scaffold output"

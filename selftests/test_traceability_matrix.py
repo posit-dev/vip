@@ -1,7 +1,14 @@
 import hashlib
 
+import pytest
+
 from vip.reporting import ReportData, TestResult
-from vip.traceability import ControlSpec, build_traceability_matrix, verify_results_checksum
+from vip.traceability import (
+    ControlSpec,
+    ResultsIntegrityError,
+    build_traceability_matrix,
+    verify_results_checksum,
+)
 
 
 def _result(nodeid, markers, outcome="passed", **kw):
@@ -155,6 +162,23 @@ def test_verify_results_checksum_reports_missing_sidecar(tmp_path):
     digest, sidecar_present = verify_results_checksum(results)
     assert digest == expected_digest
     assert sidecar_present is False
+
+
+@pytest.mark.parametrize("body", ["", "   ", "\n", "\t\n "])
+def test_verify_results_checksum_rejects_an_empty_sidecar(tmp_path, body):
+    """An empty sidecar must not report as verified.
+
+    It is the truncated-upload case this function advertises catching, and
+    returning True would write `results_sha256_sidecar_verified: true` into the
+    provenance block while nothing had been compared -- a false attestation in
+    the one field whose purpose is attesting the check happened.
+    """
+    results = tmp_path / "results.json"
+    results.write_bytes(b'{"results": []}')
+    results.with_name("results.json.sha256").write_text(body)
+
+    with pytest.raises(ResultsIntegrityError, match="empty"):
+        verify_results_checksum(results)
 
 
 def test_provenance_defaults_checksum_fields_to_none():

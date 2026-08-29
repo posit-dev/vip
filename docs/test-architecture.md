@@ -96,17 +96,19 @@ Feature: Part 11 flavoured controls
     Then each entry records an actor and a timestamp
 ```
 
-Tag order does not matter. `src/vip/gherkin.py` derives a feature's pytest marker
-from the first non-control tag it finds, skipping `@control-<slug>` tags entirely, so
-`@control-audit-trail @connect` and `@connect @control-audit-trail` both yield the
-marker `connect`.
+Control tags do not affect the derived marker. `src/vip/gherkin.py` derives a
+feature's pytest marker from the first non-control tag it finds, skipping
+`@control-<slug>` entirely, so `@control-audit-trail @connect` and
+`@connect @control-audit-trail` both yield the marker `connect`.
 
-What does matter is that a product tag is present somewhere. The derived marker feeds
-the HTML report's per-feature grouping and the generated test catalog and feature
-matrix, and the product markers (`@connect`, `@workbench`, `@package_manager`) drive
-auto-skip when a product is not configured. A feature file carrying only control tags
-has no product marker to derive, which mislabels it in those outputs rather than
-raising an error.
+The product tag should still be the first tag that is not a control tag. Only control
+tags are skipped, so any other tag ahead of the product tag becomes the marker instead
+-- `@slow @connect` derives `slow`, not `connect`. The derived marker feeds the HTML
+report's per-feature grouping and the generated test catalog and feature matrix, and
+the product markers (`@connect`, `@workbench`, `@package_manager`) separately drive
+auto-skip when a product is not configured. Getting this wrong mislabels the feature
+in those outputs rather than raising an error, so it is worth a glance when adding a
+tag.
 
 Control tags become registered pytest markers automatically. `vip.plugin` pre-scans
 the feature files about to be collected and registers every `@control-<slug>` tag it

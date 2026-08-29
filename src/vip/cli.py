@@ -1268,7 +1268,16 @@ def run_scaffold(args: argparse.Namespace) -> None:
             else:
                 dest.unlink()
 
-        shutil.copytree(src, dest)
+        # Skip build/test detritus. A source checkout that has run the example
+        # accumulates __pycache__ and .pytest_cache beside it, and without this
+        # they land in the customer's brand-new extension directory. Harmless
+        # but scruffy, and it makes the scaffold output differ depending on
+        # whether the VIP checkout happened to have run its own tests.
+        shutil.copytree(
+            src,
+            dest,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", ".pytest_cache"),
+        )
 
         # AGENTS.md is shared across every template (single source of truth), so
         # it's copied in separately rather than living inside each template dir.
