@@ -142,12 +142,19 @@ class TestSidecarParsing:
         assert verify_results_checksum(p) == (digest, True)
 
     def test_exact_match_still_wins_over_a_basename_collision(self, tmp_path):
-        """A sidecar naming this file exactly never reaches the fallback."""
+        """Exact match is the primary key: a basename fallback must not widen it.
+
+        The exact-name line carries a wrong digest and the path-qualified line
+        carries the right one. Correct behaviour stops at the exact match and
+        reports a mismatch. An implementation that ran the fallback
+        unconditionally would union both digests and wrongly verify.
+        """
         p, digest = self._results(tmp_path)
         p.with_name("results.json.sha256").write_text(
-            f"{'0' * 64}  archive/results.json\n{digest}  results.json\n"
+            f"{'0' * 64}  results.json\n{digest}  archive/results.json\n"
         )
-        assert verify_results_checksum(p) == (digest, True)
+        with pytest.raises(ResultsIntegrityError, match="checksum mismatch"):
+            verify_results_checksum(p)
 
 
 class TestStaleSidecarInvalidation:
