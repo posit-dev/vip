@@ -115,7 +115,7 @@ finds via `config.addinivalue_line("markers", ...)`, so a run under `--strict-ma
 
 Control tags flow into `results.json` only, as entries in a test's `markers` list.
 They do not appear in the `junit.xml` or `results.sarif` outputs produced by
-`--vip-format` — those formats predate control tagging and were not extended to
+`--format` — those formats predate control tagging and were not extended to
 carry it. If you need traceability evidence in CI artifacts beyond `results.json`,
 consume it via `vip trace` (see `docs/reporting.md`), not by expecting it in JUnit
 or SARIF.
@@ -366,12 +366,14 @@ vip scaffold --template cross-product --output ./my-custom-tests
 ```
 
 `--template` defaults to `cross-product` (the pre-existing behavior of `vip scaffold --output DIR`
-is unchanged). Two canonical templates ship with VIP:
+is unchanged). Three canonical templates ship with VIP:
 
 - `minimal` (`examples/custom_tests/`) — a single-scenario HTTP health check against your own
   configured product; the best starting point for a new extension
 - `cross-product` (`examples/cross_product_validation/`) — a full GxP validation example that
   verifies R/Python runtime versions and package installability across Connect and Workbench
+- `part11-validation` (`examples/part11_validation/`) — compliance control tagging plus a
+  `controls.toml`, the worked starting point for a `vip trace` traceability matrix
 
 Both follow the same four-layer architecture as the built-in suite. Every scaffolded directory
 also gets an `AGENTS.md`, generated from a single shared source (`examples/_shared/AGENTS.md`),

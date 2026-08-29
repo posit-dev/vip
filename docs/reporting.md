@@ -10,9 +10,12 @@ top of `results.json`.
 
 ## Machine-readable outputs
 
-Every `vip verify` run writes `report/results.json` by default (override the path
-with `--report`, or pass an empty string to disable it). `--format` selects
-which additional formats are written alongside it:
+Every `vip verify` run writes `report/results.json` by default; override the path
+with `--report`. Note that `--report ''` does NOT disable the report -- `vip verify`
+only forwards the option when it is non-empty, so an empty value falls back to the
+default path. To suppress the file entirely, pass the pytest-level option through:
+`vip verify --config vip.toml -- --vip-report=`. `--format` selects which additional
+formats are written alongside it:
 
 ```bash
 vip verify --config vip.toml --format json,junit,sarif
