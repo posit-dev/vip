@@ -175,10 +175,11 @@ A control's row in the matrix gets one of three `coverage` values:
 
 ### Covered is not the same as executed
 
-VIP auto-skips every scenario belonging to a product that is not configured. A
-control tagged only by skipped scenarios is therefore still `covered`, and a run
-against an unconfigured deployment produces a matrix reading `covered: 3,
-gaps: 0` in which nothing was verified at all. That is the most misleading thing
+A scenario can run and skip itself -- the endpoint it probes is absent from this
+deployment, there is no data to inspect, a version gate excludes it -- and it
+still carries its control tag into the results file. A control tagged only by
+such scenarios is therefore `covered`, and a matrix can read `covered: 3,
+gaps: 0` while nothing was verified at all. That is the most misleading thing
 this export can do, so it is reported three ways rather than left implicit:
 
 - `vip trace` warns on stderr, naming the affected control ids.
@@ -188,6 +189,15 @@ this export can do, so it is reported three ways rather than left implicit:
 
 A version-gated scenario (`na_version`) counts as not executed too, for the same
 reason: it ran no assertions.
+
+An unconfigured product is a different case, and it fails the opposite way.
+Those scenarios are deselected rather than skipped -- excluded from the run
+entirely, so they never reach `results.json` -- and a control tagged only by
+them has nothing to join against, so it reports as a `gap`. An underconfigured
+run therefore understates coverage rather than overstating it, which is the
+safer direction, but a reader who takes the gap at face value concludes the
+suite lacks a check it has. The `products` block records what was actually
+under test; read it alongside the gaps.
 
 Read `gaps: 0` together with `covered_not_executed`. Zero gaps and a non-zero
 `covered_not_executed` means the controls are mapped and the evidence is missing.
@@ -242,8 +252,8 @@ set by hand.
 
 The section repeats the same caveat the CSV and JSON exports carry, because the
 report is the artifact that gets archived and handed on: coverage records that a
-scenario is tagged, and a control shown as NOT RUN has a tagged scenario that was
-skipped. See `examples/21CFR_part11_validation/VALIDATION-PACKAGE.md` for how these
+scenario is tagged, and a control shown as NOT RUN has a tagged scenario that ran
+and skipped itself. See `examples/21CFR_part11_validation/VALIDATION-PACKAGE.md` for how these
 outputs map onto a GxP
 validation package, and which parts of one VIP cannot supply.
 

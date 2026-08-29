@@ -117,14 +117,23 @@ results.
 A fully green matrix evidences the controls you chose to automate, on the
 deployment you pointed it at, at the time it ran. That is all it claims.
 
-Three specific ways it can mislead if read carelessly:
+Four specific ways it can mislead if read carelessly:
 
 Coverage is not execution. A control counts as covered when a scenario is
-tagged for it. VIP skips every scenario belonging to a product that is not
-configured, so a run against an unconfigured deployment produces a matrix that
-is fully covered and entirely unevidenced. The report shows those controls as
-NOT RUN, `vip trace` warns on stderr, and the JSON summary counts them under
-`covered_not_executed`. Read `gaps: 0` together with that number.
+tagged for it, whether or not that scenario reached an assertion. A scenario
+that ran and skipped itself still covers its control: the endpoint it probes is
+absent from this deployment, there was no data to inspect, or a version gate
+excluded it. The report shows those controls as NOT RUN, `vip trace` warns on
+stderr, and the JSON summary counts them under `covered_not_executed`. Read
+`gaps: 0` together with that number.
+
+A gap can be an artifact of the run rather than of your suite. Scenarios
+belonging to a product you did not configure are deselected, not skipped, so
+they never appear in the results file at all, and a control tagged only by them
+reports as a gap. This errs toward understating your coverage, which is the
+safer direction, but the reading is still wrong: the suite has the check, the
+run did not exercise it. Check the products the report says were under test
+before you conclude a control has no automated evidence.
 
 Coverage is not completeness. The matrix reports on the controls in your
 control list. A control you never wrote down cannot appear as a gap.

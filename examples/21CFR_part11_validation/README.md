@@ -28,13 +28,20 @@ two such controls so you can see how a non-automatable control appears in the
 matrix: as "not verifiable by automated test", which is deliberately distinct
 from "coverage gap".
 
-A green matrix is also not evidence that the tests ran. VIP skips every scenario
-belonging to a product you have not configured, and a skipped scenario still
-counts as covering its control. Run this against an unconfigured deployment and
-you get a matrix reading "covered, 0 gaps" in which nothing was checked. `vip
-trace` warns when that happens and the JSON summary reports
+A green matrix is also not evidence that the tests ran. A scenario that ran and
+skipped itself -- the endpoint it probes is absent here, there was no data to
+inspect, a version gate excluded it -- still counts as covering its control.
+`vip trace` warns when that happens and the JSON summary reports
 `covered_not_executed` separately, but the CSV `coverage` column alone will not
 tell you. Read the `status` column with it.
+
+A gap can also mean the run rather than the suite. Scenarios belonging to a
+product you have not configured are deselected rather than skipped, so they
+never reach the results file, and a control tagged only by them reports as a
+gap. Run this example against a deployment with no Connect configured and all
+three automated controls report as gaps, not as covered. That understates your
+coverage rather than overstating it, but it is still a misreading: check which
+products the run actually tested first.
 
 ## How it works
 

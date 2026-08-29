@@ -488,9 +488,12 @@ def traceability_summary_rows(matrix) -> list[tuple[str, str]]:  # noqa: ANN001
 TRACEABILITY_CAVEAT = (
     "Coverage records that a scenario is tagged for a control, not that the "
     "scenario passed or even ran. A control shown as NOT RUN has a tagged "
-    "scenario that was skipped, which is what happens when the product it "
-    "targets is not configured. This section evidences the controls chosen "
-    "for automation. It is not an attestation of regulatory compliance."
+    "scenario that ran and skipped itself, because this deployment does not "
+    "expose what it probes or a version gate excluded it. A control shown as "
+    "a GAP may instead belong to a product this run did not test, since those "
+    "scenarios are excluded from the run and reach no result at all. This "
+    "section evidences the controls chosen for automation. It is not an "
+    "attestation of regulatory compliance."
 )
 
 

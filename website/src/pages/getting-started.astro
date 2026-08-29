@@ -502,7 +502,10 @@ vip trace --results report/results.json --controls ./my-tests/controls.toml</cod
           </p>
           <ul>
             <li><code>covered</code> &mdash; at least one scenario is tagged for it</li>
-            <li><code>gap</code> &mdash; nothing tests it, and something should</li>
+            <li>
+              <code>gap</code> &mdash; no scenario in this run carries the tag, and
+              the control is marked <code>automated</code>
+            </li>
             <li>
               <code>not_automatable</code> &mdash; you marked it
               <code>manual</code> or <code>procedural</code>, so no automated test is
@@ -513,11 +516,19 @@ vip trace --results report/results.json --controls ./my-tests/controls.toml</cod
           <p>
             Coverage is separate from outcome: a control is covered when a scenario
             is tagged for it, and that scenario&rsquo;s pass or fail is reported
-            alongside. Because VIP skips every scenario of a product you did not
-            configure, a control can be covered by scenarios that never ran, so
-            <code>vip trace</code> warns about those and the JSON summary counts
-            them separately. Read <code>gaps: 0</code> together with
-            <code>covered_not_executed</code>.
+            alongside. A scenario can run and skip itself, when the deployment does
+            not expose what it probes or a version gate excludes it, and it covers
+            its control all the same. <code>vip trace</code> warns about those and
+            the JSON summary counts them separately, so read <code>gaps: 0</code>
+            together with <code>covered_not_executed</code>.
+          </p>
+          <p>
+            Read a gap the same way. Scenarios belonging to a product you did not
+            configure are excluded from the run entirely rather than skipped, so
+            they reach no result and a control tagged only by them reports as a gap.
+            That understates your coverage rather than overstating it, but the
+            conclusion &mdash; that your suite has no check for the control &mdash;
+            is still wrong. Check which products the run tested first.
           </p>
           <p>
             Both formats carry a SHA-256 of the results file the matrix was derived
