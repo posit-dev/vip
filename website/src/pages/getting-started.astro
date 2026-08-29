@@ -25,6 +25,7 @@ import Footer from "../components/Footer.astro";
           <li><a href="#configuration-file">Configuration file</a></li>
           <li><a href="#outbound-proxy">Running behind a proxy</a></li>
           <li><a href="#generating-reports">Generating reports</a></li>
+          <li><a href="#compliance-traceability">Compliance traceability</a></li>
           <li><a href="#extending-vip">Extending VIP</a></li>
           <li><a href="#uninstalling">Uninstalling</a></li>
         </ul>
@@ -466,6 +467,67 @@ quarto publish connect --server https://connect.example.com</code></pre>
           </p>
         </section>
 
+        <section id="compliance-traceability">
+          <h2>Compliance traceability</h2>
+          <p>
+            In a regulated environment the question is rarely &ldquo;did the tests
+            pass&rdquo; but &ldquo;which control does each test evidence, and when did
+            it run&rdquo;. A scenario can declare the control it verifies with an
+            <code>@control-&lt;slug&gt;</code> Gherkin tag:
+          </p>
+          <pre><code>@connect
+Feature: Part 11 flavoured controls
+
+  @control-audit-trail-publish
+  Scenario: Publishing content is recorded with an actor and a timestamp
+    Given Connect is accessible at the configured URL
+    When I list recent audit log entries
+    Then each entry records an actor and a timestamp</code></pre>
+          <p>
+            Name the controls in a <code>controls.toml</code> of your own &mdash; VIP
+            stays regulation-agnostic and carries your reference, risk and
+            responsibility fields through untouched. Then join the two:
+          </p>
+          <pre><code>vip verify --connect-url https://connect.example.com --extensions ./my-tests
+vip trace --results report/results.json --controls ./my-tests/controls.toml</code></pre>
+          <p>
+            The result is a matrix in CSV (for a spreadsheet or a downstream
+            qualification-protocol generator) or JSON, carrying each control, the
+            scenarios that verify it, their outcome, and the timestamp each check
+            ran. Every control gets one of three coverage values, and the third
+            exists because collapsing it into the second would overstate your
+            coverage:
+          </p>
+          <ul>
+            <li><code>covered</code> &mdash; at least one tagged scenario ran for it</li>
+            <li><code>gap</code> &mdash; nothing tests it, and something should</li>
+            <li>
+              <code>not_automatable</code> &mdash; you marked it
+              <code>manual</code> or <code>procedural</code>, so no automated test is
+              expected. This is not a gap, and a matrix that showed it as one would
+              understate how complete your coverage is
+            </li>
+          </ul>
+          <p>
+            Coverage is separate from outcome: a control is covered when a scenario
+            is tagged for it, and that scenario&rsquo;s pass or fail is reported
+            alongside. The export also carries provenance &mdash; the VIP version,
+            the products and versions under test, the host and CI run that produced
+            it, and a SHA-256 of the results file it was derived from.
+          </p>
+          <p>
+            A worked example ships with VIP. Generate it with
+            <code>vip scaffold --template 21cfr-part11-validation --output ./my-tests</code>,
+            then read its <code>README.md</code>: it is a template to edit, and it is
+            explicit about what a matrix like this can and cannot claim. Posit Team
+            does not implement electronic signatures, so a green matrix evidences the
+            controls you chose to automate &mdash; it is not an attestation of
+            21 CFR Part 11 compliance. The
+            <a href="https://github.com/posit-dev/vip/blob/main/docs/reporting.md">reporting guide</a>
+            covers the full field inventory.
+          </p>
+        </section>
+
         <section id="extending-vip">
           <h2>Extending VIP</h2>
           <p>
@@ -475,7 +537,7 @@ quarto publish connect --server https://connect.example.com</code></pre>
           </p>
           <pre><code>vip scaffold --list
 vip scaffold --template minimal --output ./my-tests</code></pre>
-          <p>Two templates ship with VIP:</p>
+          <p>Three templates ship with VIP:</p>
           <ul>
             <li>
               <code>minimal</code> &mdash; a single-scenario health check against a
@@ -485,6 +547,12 @@ vip scaffold --template minimal --output ./my-tests</code></pre>
               <code>cross-product</code> &mdash; R and Python runtime version checks
               plus package installability across Connect and Workbench, the pattern
               regulated environments tend to need. This is the default.
+            </li>
+            <li>
+              <code>21cfr-part11-validation</code> &mdash; scenarios tagged with the
+              compliance controls they verify, plus a <code>controls.toml</code> to
+              feed <a href="#compliance-traceability">the traceability matrix</a>.
+              A starting point to edit, not a certified test set.
             </li>
           </ul>
           <p>
