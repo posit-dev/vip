@@ -35,7 +35,10 @@ def redact_userinfo(url: str | None) -> str | None:
     if "://" not in url:
         # scp-style (git@host:org/repo.git). No password component, but drop
         # the user anyway so there is exactly one rule to reason about.
-        return url.split("@", 1)[-1] if "@" in url else url
+        # Userinfo cannot contain a slash, so a "@" that follows one is part
+        # of a path, not a credential: /srv/git/repo@2.git keeps its name.
+        user, sep, rest = url.partition("@")
+        return rest if sep and "/" not in user else url
     try:
         parts = urlsplit(url)
         hostname = parts.hostname
@@ -44,11 +47,23 @@ def redact_userinfo(url: str | None) -> str | None:
         # malformed remote escapes the never-fail contract and takes down
         # report writing at the end of an otherwise good run.
         port = parts.port
+        has_userinfo = parts.username is not None or parts.password is not None
     except ValueError:
         return None
+    # Nothing to redact means nothing to rebuild. Returning the URL untouched
+    # is what keeps a host-less remote intact: file:///srv/git/repo.git has no
+    # hostname, and rebuilding it from the decomposed parts would drop it to
+    # None -- deleting provenance from an evidence record to strip a
+    # credential that was never there.
+    if not has_userinfo:
+        return url
     if not hostname:
         return None
-    netloc = f"{hostname}:{port}" if port else hostname
+    # An IPv6 literal must keep its brackets or the port fuses into the
+    # address: [2001:db8::1]:8443 would otherwise rebuild as 2001:db8::1:8443,
+    # which no longer parses back to a host.
+    host = f"[{hostname}]" if ":" in hostname else hostname
+    netloc = f"{host}:{port}" if port else host
     return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
@@ -64,7 +79,14 @@ def _git(args: list[str], cwd: Path) -> str | None:
             ["git", *args],
             cwd=cwd,
             capture_output=True,
-            text=True,
+            # Decode explicitly rather than via text=True, which uses the
+            # locale codec with errors="strict". Branch names and remote URLs
+            # come out of git config as raw bytes, so a non-ASCII one on a
+            # cp1252/cp932 host raises UnicodeDecodeError -- a ValueError, not
+            # caught below, which would escape this module's never-fail
+            # contract and take the whole report write down with it.
+            encoding="utf-8",
+            errors="replace",
             timeout=_GIT_TIMEOUT_SECONDS,
             check=False,
         )
@@ -129,9 +151,21 @@ def collect_execution_metadata(
     rendering it must label it that way.
     """
     resolved_env = os.environ if env is None else env
-    resolved_cwd = Path.cwd() if cwd is None else cwd
+    if cwd is None:
+        # Path.cwd() raises FileNotFoundError when the working directory has
+        # been removed underneath the process -- a fixture that deletes its own
+        # cwd, or a CI step unmounting the workspace. Unguarded it escapes this
+        # module's never-fail contract.
+        try:
+            resolved_cwd: Path | None = Path.cwd()
+        except OSError:
+            resolved_cwd = None
+    else:
+        resolved_cwd = cwd
     return {
         "hostname": platform.node() or None,
-        "git": _git_metadata(resolved_cwd, resolved_env),
+        # No cwd means no directory to resolve a repository against, so skip
+        # git rather than hand subprocess a None it would reject.
+        "git": _git_metadata(resolved_cwd, resolved_env) if resolved_cwd is not None else None,
         "ci": _ci_metadata(resolved_env),
     }

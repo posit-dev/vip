@@ -22,6 +22,23 @@ _STEP_PREFIXES = ("Given ", "When ", "Then ", "And ", "But ")
 CONTROL_TAG_PREFIX = "control-"
 
 
+def read_feature_tags(path: Path) -> list[str]:
+    """Every Gherkin tag in a feature file, feature-level and scenario-level.
+
+    A tags-only reader, deliberately separate from :func:`parse_feature_file`:
+    the marker pre-scan in ``vip.plugin`` runs on every pytest invocation in
+    any environment where VIP is installed, and building the full scenario and
+    step model just to read the tag lines is most of that cost.
+    """
+    tags: list[str] = []
+    with path.open(encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.strip()
+            if line.startswith("@"):
+                tags.extend(tok.lstrip("@") for tok in line.split() if tok.startswith("@"))
+    return tags
+
+
 def parse_feature_file(path: Path, *, relative_to: Path | None = None) -> dict:
     """Parse a ``.feature`` file and return a structured dict.
 

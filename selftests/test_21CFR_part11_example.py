@@ -2,7 +2,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-import tomllib
+# tomllib is stdlib only from 3.11; tomli backfills it on 3.10, which CI runs.
+# Same guard as src/vip/traceability.py.
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 REPO = Path(__file__).resolve().parent.parent
 EXAMPLE = REPO / "examples" / "21CFR_part11_validation"

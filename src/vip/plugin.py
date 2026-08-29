@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
 import re
 import sys
@@ -27,6 +28,7 @@ import time
 import warnings
 from collections.abc import Generator
 from datetime import datetime, timezone
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +36,7 @@ import pytest
 
 from vip.attribution import collect_execution_metadata
 from vip.config import VIPConfig, load_config
-from vip.gherkin import CONTROL_TAG_PREFIX, parse_feature_file
+from vip.gherkin import CONTROL_TAG_PREFIX, read_feature_tags
 from vip.reporting import RESULTS_SCHEMA_VERSION
 from vip.version import ProductVersion
 
@@ -88,18 +90,61 @@ def _feature_roots(config: pytest.Config) -> list[Path]:
     ``--vip-extensions``), not by re-reading the CLI option alone -- callers
     must run this after ``config.stash[_ext_dirs_key]`` is populated in
     ``pytest_configure``.
+
+    Relative args resolve against ``config.invocation_params.dir`` -- the
+    directory pytest itself resolves them against -- NOT ``config.rootpath``.
+    The two differ whenever pytest is invoked from a subdirectory, and
+    resolving against rootpath there produces a path that does not exist.
+    ``rglob`` on a missing path yields nothing silently, so no control marker
+    gets registered and ``--strict-markers`` aborts collection: the exact
+    failure this pre-scan exists to prevent.
     """
+    invocation_dir = Path(config.invocation_params.dir)
     roots: list[Path] = []
     for arg in config.args:
         candidate = Path(str(arg).split("::")[0])
-        roots.append(candidate if candidate.is_absolute() else Path(config.rootpath) / candidate)
+        roots.append(candidate if candidate.is_absolute() else invocation_dir / candidate)
     roots.extend(Path(d) for d in config.stash.get(_ext_dirs_key, []))
-    return roots or [Path(config.rootpath)]
+    if not roots:
+        roots = [Path(config.rootpath)]
+    # Deduplicate on the resolved path: a targeted run can pass many step
+    # files from one directory (connect-smoke.yml passes 14 paths, 9 of them
+    # siblings), and without this each one re-reads the same feature files.
+    seen: dict[Path, Path] = {}
+    for root in roots:
+        try:
+            key = root.resolve()
+        except OSError:
+            key = root
+        seen.setdefault(key, root)
+    return list(seen.values())
+
+
+def _walk_features(root: Path, ignore: list[str]) -> list[Path]:
+    """Every ``.feature`` file under *root*, skipping ``norecursedirs`` matches.
+
+    ``os.walk`` rather than ``rglob`` because only walk can prune a directory
+    before descending into it. Without pruning this descends into ``.venv``
+    (which ``uv`` puts inside the project by default), ``.git`` and
+    ``.worktrees`` on every pytest run in any environment where VIP is
+    installed -- thousands of files walked to find feature files that could
+    never be collected.
+    """
+    features: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root, onerror=lambda _: None):
+        dirnames[:] = [d for d in dirnames if not any(fnmatch(d, pat) for pat in ignore)]
+        features.extend(Path(dirpath) / f for f in filenames if f.endswith(".feature"))
+    return sorted(features)
 
 
 def _discover_control_tags(config: pytest.Config) -> set[str]:
     """Collect every @control-* tag from the feature files about to be collected."""
+    try:
+        ignore = list(config.getini("norecursedirs") or [])
+    except (ValueError, KeyError):
+        ignore = []
     tags: set[str] = set()
+    seen_files: set[Path] = set()
     for root in _feature_roots(config):
         try:
             if root.is_file():
@@ -112,16 +157,28 @@ def _discover_control_tags(config: pytest.Config) -> set[str]:
                     # containing directory; do not walk upward or widen.
                     features = sorted(root.parent.glob("*.feature"))
             else:
-                features = sorted(root.rglob("*.feature"))
+                features = _walk_features(root, ignore)
         except OSError:
             continue
         for feature in features:
+            if feature in seen_files:
+                continue
+            seen_files.add(feature)
             try:
-                parsed = parse_feature_file(feature)
+                found = read_feature_tags(feature)
             except (OSError, UnicodeDecodeError):
                 continue
-            tags.update(t for t in parsed["tags"] if t.startswith(CONTROL_TAG_PREFIX))
+            tags.update(t for t in found if t.startswith(CONTROL_TAG_PREFIX))
     return tags
+
+
+# pytest derives a registered marker's name with
+# ``line.split(":")[0].split("(")[0].strip()``, so either character truncates
+# the name it registers under. Registering the truncated name is worse than
+# not registering at all: pytest-bdd still applies the full tag, and
+# --strict-markers then aborts collection against a marker list that looks
+# like it should have matched.
+_UNREGISTRABLE_TAG_CHARS = (":", "(")
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -311,6 +368,16 @@ def pytest_configure(config: pytest.Config) -> None:
     # (config-file [general] extension_dirs and --vip-extensions), and still
     # well before collection starts.
     for tag in sorted(_discover_control_tags(config)):
+        bad = [c for c in _UNREGISTRABLE_TAG_CHARS if c in tag]
+        if bad:
+            warnings.warn(
+                f"VIP: control tag @{tag} contains {' and '.join(repr(c) for c in bad)}, "
+                "which pytest cannot register as a marker name. Rename the control id "
+                "to use only letters, digits, '-', '.' and '_' (e.g. @control-11-10-a); "
+                "otherwise this scenario will fail collection under --strict-markers.",
+                stacklevel=1,
+            )
+            continue
         config.addinivalue_line("markers", f"{tag}: compliance control tag")
 
     _any_product_configured = any(
@@ -1032,6 +1099,27 @@ def _extract_skip_reason(longrepr: object) -> str | None:
     return message.strip() or None
 
 
+def _safe_execution_metadata(config: pytest.Config) -> dict[str, Any] | None:
+    """Attribution for results.json, or None if it was disabled or failed.
+
+    ``collect_execution_metadata`` promises never to fail a run, and its own
+    probes are individually guarded. This is the belt-and-braces at the call
+    site: it is evaluated while building the results payload, which sits
+    ABOVE the try/except that writes the file, so anything escaping it takes
+    down results.json, the checksum sidecar, junit.xml, results.sarif and
+    failures.json together -- every artifact of an otherwise successful
+    verification run, lost for a provenance field. Provenance is never worth
+    that, so the catch here is deliberately broad.
+    """
+    if config.getoption("--vip-no-attribution", default=False):
+        return None
+    try:
+        return collect_execution_metadata()
+    except Exception as exc:  # noqa: BLE001 - see docstring
+        warnings.warn(f"VIP: could not collect execution attribution: {exc}", stacklevel=1)
+        return None
+
+
 def _epoch_to_iso(value: float | None) -> str | None:
     """Convert a pytest report epoch float to a UTC ISO 8601 string.
 
@@ -1392,16 +1480,28 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         "basic_mode": basic_mode,
         "products": products,
         "results": results,
-        "execution": (
-            None
-            if session.config.getoption("--vip-no-attribution", default=False)
-            else collect_execution_metadata()
-        ),
+        "execution": _safe_execution_metadata(session.config),
     }
 
     try:
         p = Path(report_path)
         p.parent.mkdir(parents=True, exist_ok=True)
+        # Invalidate any sidecar from a previous run BEFORE overwriting the
+        # results it describes. Otherwise a sidecar write that fails below
+        # leaves the old digest next to the new file, and the next `vip trace`
+        # reports a checksum mismatch -- a tamper alarm on a file the pipeline
+        # legitimately produced. No sidecar is a documented, benign state; a
+        # wrong one is not.
+        #
+        # Guarded separately from the results write: the sidecar path may be
+        # unremovable (a directory, a read-only mount), and results.json is
+        # what the user actually asked for. Letting an unlink failure abort
+        # the write would trade the whole evidence file for a checksum.
+        sidecar = p.with_name(f"{p.name}.sha256")
+        try:
+            sidecar.unlink(missing_ok=True)
+        except OSError:
+            pass
         # Hash the exact bytes written, not a re-serialization: the sidecar is
         # only useful if it verifies against the file actually on disk.
         data = json.dumps(payload, indent=2).encode("utf-8")
@@ -1414,7 +1514,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     # user actually asked for (junit/sarif via --vip-format, and failures.json).
     try:
         digest = hashlib.sha256(data).hexdigest()
-        p.with_name(f"{p.name}.sha256").write_text(f"{digest}  {p.name}\n")
+        sidecar.write_text(f"{digest}  {p.name}\n", encoding="utf-8")
     except OSError as exc:
         warnings.warn(f"VIP: could not write checksum sidecar for {p}: {exc}", stacklevel=1)
 

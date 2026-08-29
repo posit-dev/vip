@@ -1,9 +1,11 @@
 import json
 import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
-from vip.attribution import collect_execution_metadata
+from vip.attribution import _git, collect_execution_metadata, redact_userinfo
 
 
 def _init_repo(path):
@@ -135,3 +137,57 @@ def test_credential_in_remote_never_reaches_the_file(pytester, monkeypatch):
     report = pytester.path / "results.json"
     pytester.runpytest_subprocess("--vip-report", str(report), "-p", "no:cacheprovider")
     assert secret not in report.read_text()
+
+
+class TestNeverFails:
+    """The module's contract: a probe failure must never break a run.
+
+    These sit at the top of a chain that ends in results.json, junit.xml,
+    results.sarif and failures.json all going unwritten -- attribution is
+    collected while building the payload, above the try/except that writes it.
+    """
+
+    def test_deleted_working_directory_degrades_instead_of_raising(self, tmp_path, monkeypatch):
+        def boom():
+            raise FileNotFoundError(2, "No such file or directory")
+
+        monkeypatch.setattr(Path, "cwd", staticmethod(boom))
+        meta = collect_execution_metadata(env={})
+        assert meta["git"] is None
+        assert meta["hostname"] is not None
+
+    def test_undecodable_git_output_does_not_raise(self, tmp_path, monkeypatch):
+        """text=True would decode with the locale codec and errors='strict'."""
+        import subprocess
+
+        real_run = subprocess.run
+
+        def fake_run(args, **kwargs):
+            assert kwargs.get("encoding") == "utf-8"
+            assert kwargs.get("errors") == "replace"
+            return real_run([sys.executable, "-c", "print('ok')"], **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        assert _git(["rev-parse", "HEAD"], tmp_path) == "ok"
+
+
+class TestRedactUserinfoEdgeCases:
+    def test_ipv6_host_keeps_its_brackets(self):
+        assert redact_userinfo("https://u:p@[2001:db8::1]:8443/o/r.git") == (
+            "https://[2001:db8::1]:8443/o/r.git"
+        )
+
+    def test_hostless_remote_is_preserved(self):
+        """file:// has no hostname and no credential; dropping it deletes provenance."""
+        assert redact_userinfo("file:///srv/git/repo.git") == "file:///srv/git/repo.git"
+
+    def test_path_containing_an_at_sign_is_not_truncated(self):
+        assert redact_userinfo("/srv/git/repo@2.git") == "/srv/git/repo@2.git"
+
+    def test_scp_style_still_strips_the_user(self):
+        assert redact_userinfo("git@github.com:org/repo.git") == "github.com:org/repo.git"
+
+    def test_credentialless_url_is_returned_unchanged(self):
+        assert redact_userinfo("https://github.com/org/repo.git") == (
+            "https://github.com/org/repo.git"
+        )
