@@ -766,6 +766,19 @@ def run_report(args: argparse.Namespace) -> None:
             print(f"Error: results file not found: {results_src}", file=sys.stderr)
             sys.exit(1)
         shutil.copy2(results_src, results_dest)
+        # Keep the checksum sidecar with the results it describes. Copying a
+        # results.json from a CI artifact over the local one leaves the
+        # previous run's sidecar in place, and the next `vip trace` then
+        # reports a checksum mismatch on a file nobody tampered with. Carry
+        # the source's sidecar across when it has one; otherwise remove the
+        # stale local one, because no sidecar is a documented benign state
+        # and a wrong one is a false tamper alarm.
+        src_sidecar = results_src.with_name(f"{results_src.name}.sha256")
+        dest_sidecar = results_dest.with_name(f"{results_dest.name}.sha256")
+        try:
+            _rehome_sidecar(src_sidecar, dest_sidecar, results_src.name, results_dest.name)
+        except OSError as exc:
+            print(f"Warning: could not update {dest_sidecar}: {exc}", file=sys.stderr)
     elif not results_dest.exists():
         print(
             f"Error: no results found at {results_dest}. "
@@ -1562,6 +1575,34 @@ def _format_version_details() -> str:
 def run_version(args: argparse.Namespace) -> None:
     """Print the vip version and the minimum supported Posit Team version."""
     print(_format_version_details())
+
+
+def _rehome_sidecar(src: Path, dest: Path, src_name: str, dest_name: str) -> None:
+    """Move a checksum sidecar alongside a copied results file.
+
+    The digest is carried across unchanged -- recomputing it from the copy
+    would launder a tampered file into a verified one, which is the opposite
+    of what the sidecar is for. Only the recorded filename is rewritten, so a
+    source named run-42.json still verifies once copied to results.json.
+
+    No source sidecar means the stale destination one is removed rather than
+    left behind: no sidecar is a documented benign state, a wrong one is a
+    false tamper alarm.
+    """
+    if not src.is_file():
+        dest.unlink(missing_ok=True)
+        return
+    lines = []
+    for line in src.read_text(encoding="utf-8-sig").splitlines():
+        parts = line.split(None, 1)
+        if not parts:
+            continue
+        recorded = parts[1].strip().lstrip("*") if len(parts) > 1 else None
+        if recorded in (None, src_name):
+            lines.append(f"{parts[0]}  {dest_name}")
+        else:
+            lines.append(line)
+    dest.write_text("\n".join(lines) + "\n" if lines else "", encoding="utf-8")
 
 
 def run_trace(args: argparse.Namespace) -> None:

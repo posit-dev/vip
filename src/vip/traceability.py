@@ -383,8 +383,13 @@ def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
     sidecar = p.with_name(f"{p.name}.sha256")
     if not sidecar.is_file():
         return digest, False
-    recorded = sidecar.read_text().split()
-    if not recorded:
+    try:
+        text = sidecar.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ResultsIntegrityError(f"could not read checksum sidecar {sidecar}: {exc}") from exc
+
+    entries = _parse_sidecar(text)
+    if not entries:
         # An empty or whitespace-only sidecar is itself the truncated-upload
         # case this function advertises catching. Returning True here would put
         # `results_sha256_sidecar_verified: true` in the provenance block while
@@ -394,11 +399,55 @@ def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
             f"checksum sidecar for {p} is empty; expected a sha256 digest. "
             "Delete it to proceed without verification, or regenerate it."
         )
-    if recorded[0] != digest:
+
+    # Match on the recorded filename rather than taking the first line. A
+    # sidecar may legitimately cover several files (`shasum -a 256 a b > s`),
+    # and without this the first line's digest is compared against a file it
+    # does not describe -- a mismatch on a good file, or, when the digests
+    # happen to agree, `results_sha256_sidecar_verified: true` attesting to a
+    # comparison against some other file entirely.
+    named = [d for d, name in entries if name == p.name]
+    if not named:
+        if len(entries) == 1 and entries[0][1] is None:
+            # A bare digest with no filename: nothing to disagree with.
+            named = [entries[0][0]]
+        else:
+            recorded_names = ", ".join(sorted({n or "<unnamed>" for _, n in entries}))
+            raise ResultsIntegrityError(
+                f"checksum sidecar {sidecar} does not record an entry for {p.name}; "
+                f"it names {recorded_names}. Regenerate it, or delete it to proceed "
+                "without verification."
+            )
+
+    # Case-insensitive: hex is hex. PowerShell's Get-FileHash and 7-Zip emit
+    # uppercase, and rejecting those as a mismatch reads to an operator as
+    # "this evidence file was tampered with" over nothing but letter case.
+    if not any(d.lower() == digest for d in named):
         raise ResultsIntegrityError(
-            f"checksum mismatch for {p}: sidecar records {recorded[0]}, file hashes to {digest}"
+            f"checksum mismatch for {p}: sidecar records {named[0]}, file hashes to {digest}"
         )
     return digest, True
+
+
+def _parse_sidecar(text: str) -> list[tuple[str, str | None]]:
+    """Parse shasum-format lines into ``(digest, filename or None)`` pairs.
+
+    One entry per line, not a flat ``.split()`` over the whole file: a
+    multi-file sidecar flattened that way puts the second file's digest where
+    a filename belongs and compares the wrong pair.
+    """
+    entries: list[tuple[str, str | None]] = []
+    for line in text.splitlines():
+        parts = line.split(None, 1)
+        if not parts:
+            continue
+        digest = parts[0]
+        name = parts[1].strip() if len(parts) > 1 else None
+        # shasum marks binary-mode entries with a leading '*' on the filename.
+        if name:
+            name = name.lstrip("*")
+        entries.append((digest, name or None))
+    return entries
 
 
 def read_results_schema_version(path: str | Path) -> str | None:
