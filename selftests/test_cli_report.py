@@ -575,3 +575,55 @@ class TestReportControls:
 
         assert envs == [None, None, None]
         assert "controls" not in capsys.readouterr().out.lower()
+
+    def test_report_with_controls_refuses_a_mismatched_sidecar(
+        self, cli, tmp_path, monkeypatch, capsys
+    ):
+        """--controls makes this a compliance artifact; it inherits trace's strictness.
+
+        `vip trace` already refuses a results.json whose sidecar disagrees
+        (`verify_results_checksum`); a compliance render must refuse the same
+        way rather than silently rendering a matrix built from evidence that
+        does not match its own attestation.
+        """
+        monkeypatch.chdir(tmp_path)
+        controls = tmp_path / "c.toml"
+        controls.write_text('[controls.x]\ndescription = "d"\n', encoding="utf-8")
+        results = self._results(tmp_path, '{"schema_version": "1.0", "results": []}')
+        results.with_name("results.json.sha256").write_text(f"{'a' * 64}  results.json\n")
+
+        called = []
+        monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
+        args = argparse.Namespace(
+            results=str(results), controls=str(controls), open=False, output=None
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli.run_report(args)
+
+        assert exc.value.code == 1
+        assert called == []
+        assert "checksum mismatch" in capsys.readouterr().err
+
+    def test_report_without_controls_ignores_a_mismatched_sidecar(self, cli, tmp_path, monkeypatch):
+        """Plain vip report stays lenient: a report must render regardless.
+
+        This is the other half of the asymmetry: the checksum gate must live
+        inside the `if args.controls` block, not ahead of it, or a plain
+        render would refuse to produce anything from a perfectly good local
+        results.json just because its stale sidecar disagrees.
+        """
+        monkeypatch.chdir(tmp_path)
+        results = self._results(tmp_path, '{"schema_version": "1.0", "results": []}')
+        results.with_name("results.json.sha256").write_text(f"{'a' * 64}  results.json\n")
+
+        envs = []
+        monkeypatch.setattr(cli, "_quarto_render", self._fake_render(envs))
+        args = argparse.Namespace(results=str(results), controls=None, open=False, output=None)
+
+        cli.run_report(args)
+
+        assert [document for document, _ in envs] == [
+            "index.qmd",
+            "details.qmd",
+            "vip-report.qmd",
+        ]

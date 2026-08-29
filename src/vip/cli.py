@@ -823,6 +823,7 @@ def run_report(args: argparse.Namespace) -> None:
             check_results_schema,
             load_controls,
             read_results_schema_version,
+            verify_results_checksum,
         )
 
         controls_path = Path(args.controls).resolve()
@@ -841,6 +842,10 @@ def run_report(args: argparse.Namespace) -> None:
             # runs first, because the row check assumes current-shape rows.
             check_results_schema(read_results_schema_version(results_dest))
             check_results_rows(results_dest)
+            # The sidecar too, not only the schema and the rows. A compliance
+            # render is an evidence artifact, so it inherits `vip trace`'s
+            # strictness in full rather than in part.
+            verify_results_checksum(results_dest)
             load_controls(controls_path)
         except (ResultsIntegrityError, ControlListError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
