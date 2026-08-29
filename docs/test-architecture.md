@@ -80,6 +80,42 @@ VIP supports running the same scenario through different channels using product 
 
 Every feature file **must** have a product marker tag (`@connect`, `@workbench`, or `@package_manager`). The tag controls auto-skip: when a product is not configured, all scenarios with its tag are skipped automatically. Forgetting the tag breaks this mechanism and causes confusing failures.
 
+### Compliance control tagging
+
+A scenario can declare which regulatory or compliance control it verifies with an
+`@control-<slug>` Gherkin tag:
+
+```gherkin
+@connect
+Feature: Part 11 flavoured controls
+
+  @control-audit-trail-publish
+  Scenario: Publishing content is recorded with an actor and a timestamp
+    Given Connect is accessible at the configured URL
+    When I list recent audit log entries
+    Then each entry records an actor and a timestamp
+```
+
+The product tag goes first, on the `Feature:` line, and the control tag goes on the
+`Scenario:` line. This order is not stylistic. `src/vip/gherkin.py` derives a
+feature's pytest marker from its first non-control tag; if `@control-<slug>` were
+written before `@connect`, the control tag would be picked up as the marker instead,
+and that value feeds both the HTML report's per-feature grouping and the generated
+test catalog/feature matrix. Getting the order wrong silently mislabels the feature
+rather than raising an error, so it is worth getting right the first time.
+
+Control tags become registered pytest markers automatically. `vip.plugin` pre-scans
+the feature files about to be collected and registers every `@control-<slug>` tag it
+finds via `config.addinivalue_line("markers", ...)`, so a run under `--strict-markers`
+(which regulated CI is likely to enable) does not fail on an unrecognized marker.
+
+Control tags flow into `results.json` only, as entries in a test's `markers` list.
+They do not appear in the `junit.xml` or `results.sarif` outputs produced by
+`--vip-format` — those formats predate control tagging and were not extended to
+carry it. If you need traceability evidence in CI artifacts beyond `results.json`,
+consume it via `vip trace` (see `docs/reporting.md`), not by expecting it in JUnit
+or SARIF.
+
 ### Version gating
 
 Use the `min_version` marker for features that only exist in certain product versions:
