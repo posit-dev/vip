@@ -210,7 +210,16 @@ def load_results(path: str | Path) -> ReportData:
         theirs = schema_version.split(".", 1)[0]
         ours = RESULTS_SCHEMA_VERSION.split(".", 1)[0]
         if theirs != ours:
-            direction = "newer than" if theirs > ours else "older than"
+            # int, not string: "9" > "10" lexicographically, so a string
+            # compare misreports the direction once either major reaches two
+            # digits. A non-numeric major is possible in a hand-edited file,
+            # so fall back to the string compare rather than raising inside a
+            # loader whose contract is to warn and carry on.
+            try:
+                newer = int(theirs) > int(ours)
+            except ValueError:
+                newer = theirs > ours
+            direction = "newer than" if newer else "older than"
             warnings.warn(
                 f"results.json schema version {schema_version} is {direction} this vip "
                 f"understands ({RESULTS_SCHEMA_VERSION}); some fields may be missing "
