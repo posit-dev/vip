@@ -214,6 +214,25 @@ class TestDocument:
         markup = report_typst.render_document(data, {})
         assert '"not recorded"' in markup
 
+    def test_render_document_shows_a_trace_error_instead_of_dropping_the_section(self):
+        out = report_typst.render_document(ReportData(), {}, matrix=None, trace_error="boom")
+        assert "boom" in out
+
+    def test_a_trace_error_is_escaped_for_typst(self):
+        """An exception message can carry #, * or $, which are live Typst markup.
+
+        HOSTILE (module-level, shared with TestEscaping) carries a `#panic(...)`
+        call, math, emphasis, and an unescaped quote. The live-markup form must
+        never appear, and the text must land inside an escaped string literal --
+        the same invariant TestEscaping checks for card content.
+        """
+        out = report_typst.render_document(ReportData(), {}, matrix=None, trace_error=HOSTILE)
+        assert '#panic("owned")' not in out
+        assert '\\"owned\\"' in out
+        # Both branches emit the same heading, so a PDF reader sees the section
+        # start whether the matrix built or the render failed.
+        assert report_typst._lit("Compliance Traceability") in out
+
 
 class TestCoverageBadge:
     def test_coverage_badge_uses_the_same_chip_as_an_outcome(self):

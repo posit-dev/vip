@@ -46,6 +46,7 @@ from vip.report_content import (
     SECONDARY_BADGE_BACKGROUND,
     SECONDARY_BADGE_BORDER,
     TRACEABILITY_CAVEAT,
+    TRACEABILITY_RENDER_FAILURE,
     Badge,
     FeatureStepIndex,
     category_label,
@@ -611,13 +612,32 @@ def render_traceability(matrix) -> str:  # noqa: ANN001 - TraceabilityMatrix
     return "".join(parts)
 
 
-def render_document(data: ReportData, hints: dict[str, dict], matrix=None) -> str:  # noqa: ANN001
+def render_document(data: ReportData, hints: dict[str, dict], matrix=None, trace_error=None) -> str:  # noqa: ANN001
     """The whole PDF body, preamble included, ready to emit as a ``{=typst}`` block.
 
     ``matrix`` is a ``vip.traceability.TraceabilityMatrix`` or ``None``. When
     it is ``None`` -- every run without a control list, which is nearly all of
     them -- the output is byte-identical to before the section existed.
+
+    ``trace_error`` names why the section could not be built at all (a
+    missing/malformed control list, a results checksum mismatch). It renders
+    through ``_paragraph``, which routes the text through ``_lit``, so a
+    ``#``, ``*`` or ``$`` in an exception message is escaped rather than
+    executed. A dropped section is invisible to a regulated reader, so this
+    is a visible marker in both editions rather than a silent skip.
     """
+    # The error branch and the matrix branch emit the same heading, so a
+    # reader of the PDF sees the section start either way instead of the
+    # section silently disappearing.
+    if trace_error:
+        trace_section = _heading("Compliance Traceability", 2) + _paragraph(
+            TRACEABILITY_RENDER_FAILURE.format(error=trace_error)
+        )
+    elif matrix is not None:
+        trace_section = _heading("Compliance Traceability", 2) + render_traceability(matrix)
+    else:
+        trace_section = ""
+
     if data.total == 0:
         empty = PREAMBLE + _paragraph("No results found. Run vip verify to generate results.")
         # The HTML cell renders the section whenever a control list is set,
@@ -625,9 +645,7 @@ def render_document(data: ReportData, hints: dict[str, dict], matrix=None) -> st
         # and manual controls. Returning early here would drop it from the
         # PDF alone and split the two editions on exactly the run a reader is
         # most likely to misread.
-        if matrix is not None:
-            empty += _heading("Compliance Traceability", 2) + render_traceability(matrix)
-        return empty
+        return empty + trace_section
     parts = [
         PREAMBLE,
         _heading("VIP Validation Report", 1),
@@ -639,11 +657,7 @@ def render_document(data: ReportData, hints: dict[str, dict], matrix=None) -> st
         render_summary_table(data),
         _heading("Provenance", 2),
         render_provenance_table(data),
-        *(
-            [_heading("Compliance Traceability", 2), render_traceability(matrix)]
-            if matrix is not None
-            else []
-        ),
+        trace_section,
         _heading("Failures & Skips", 2),
         _paragraph(
             "Every check that did not pass, in full. Passing checks are counted above, "

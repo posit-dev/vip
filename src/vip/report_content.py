@@ -504,6 +504,11 @@ TRACEABILITY_CAVEAT = (
     "attestation of regulatory compliance."
 )
 
+# Both editions render this identically when the section cannot be built. A
+# compliance report that drops the section without saying so is the one
+# outcome a regulated reader cannot detect.
+TRACEABILITY_RENDER_FAILURE = "Could not render the traceability section: {error}"
+
 
 def traceability_warnings(matrix) -> list[str]:  # noqa: ANN001
     """Lines naming controls that look covered but are not evidence.

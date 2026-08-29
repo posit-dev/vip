@@ -400,3 +400,10 @@ class TestTraceabilityWarnings:
     def test_a_clean_matrix_produces_none(self):
         matrix = SimpleNamespace(covered_without_execution=[], covered_with_failure=[])
         assert report_content.traceability_warnings(matrix) == []
+
+
+class TestRenderFailureMessage:
+    def test_render_failure_message_names_the_error(self):
+        msg = report_content.TRACEABILITY_RENDER_FAILURE.format(error="boom")
+        assert "boom" in msg
+        assert "traceability" in msg.lower()

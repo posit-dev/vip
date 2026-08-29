@@ -34,7 +34,6 @@ prints survives inside it.
 #| echo: false
 #| output: asis
 
-import hashlib
 import os
 from pathlib import Path
 
@@ -48,20 +47,28 @@ hints = load_troubleshooting(_troubleshooting_path) if _troubleshooting_path els
 # See index.qmd for why the control list arrives by environment variable and
 # why nothing in this cell may raise.
 matrix = None
+trace_error = None
 _controls = os.environ.get("VIP_CONTROLS")
 if _controls:
     try:
-        from vip.traceability import build_traceability_matrix, load_controls
+        from vip.traceability import (
+            build_traceability_matrix,
+            load_controls,
+            verify_results_checksum,
+        )
 
+        _digest, _verified = verify_results_checksum(Path("results.json"))
         matrix = build_traceability_matrix(
             data,
             load_controls(_controls),
-            results_sha256=hashlib.sha256(Path("results.json").read_bytes()).hexdigest(),
+            results_sha256=_digest,
+            results_sha256_sidecar_verified=_verified or None,
         )
-    except Exception:  # noqa: BLE001 - a report must render regardless
+    except Exception as exc:  # noqa: BLE001 - a report must render regardless
         matrix = None
+        trace_error = str(exc)
 
 print("```{=typst}")
-print(report_typst.render_document(data, hints, matrix))
+print(report_typst.render_document(data, hints, matrix, trace_error))
 print("```")
 ````
