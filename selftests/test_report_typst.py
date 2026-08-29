@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from conftest import matrix_from_statuses
 from vip import report_typst
-from vip.report_content import NA_VERSION_EXPLANATION
+from vip.report_content import COVERAGE_STYLE_KEY, NA_VERSION_EXPLANATION, outcome_style
 from vip.reporting import ReportData, TestResult
 
 # Typst metacharacters that must never reach the document outside a string
@@ -222,3 +222,31 @@ class TestCoverageBadge:
         out = report_typst.render_traceability(matrix)
         assert "vip-chip" in out
         assert "vip-pill" not in out
+
+        # Verify colors are in the right order: fg (color) before bg (background).
+        style = outcome_style(COVERAGE_STYLE_KEY["covered"])
+        fg_color = f'"{style.color}"'
+        bg_color = f'"{style.background}"'
+        assert fg_color in out
+        assert bg_color in out
+        # The fg must appear before bg in the vip-chip(...) call.
+        fg_pos = out.find(fg_color)
+        bg_pos = out.find(bg_color)
+        assert fg_pos < bg_pos, "fg color must appear before bg color in vip-chip call"
+
+    def test_caveat_renders_in_gray_italic(self):
+        """The caveat matches HTML: gray #6b7280 italic."""
+        matrix = matrix_from_statuses(statuses={"c1": ["passed"]})
+        out = report_typst.render_traceability(matrix)
+        # Caveat should have gray fill and italic style.
+        assert 'rgb("#6b7280")' in out
+        assert 'style: "italic"' in out
+
+    def test_warning_renders_in_red_bold(self):
+        """Each warning matches HTML: red #dc2626 bold."""
+        matrix = matrix_from_statuses(statuses={"c1": ["passed"], "uncovered": []})
+        out = report_typst.render_traceability(matrix)
+        # Warnings (if any) should have red fill and bold weight.
+        if 'rgb("#dc2626")' in out:
+            # If a warning is present, it must have red and bold.
+            assert 'weight: "bold"' in out

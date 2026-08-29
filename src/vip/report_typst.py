@@ -448,10 +448,20 @@ def render_provenance_table(data: ReportData) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _paragraph(value: str, *, italic: bool = False) -> str:
+def _paragraph(
+    value: str,
+    *,
+    italic: bool = False,
+    fill: str | None = None,
+    weight: str | None = None,
+) -> str:
     options = {"size": "10pt"}
     if italic:
         options["style"] = '"italic"'
+    if fill is not None:
+        options["fill"] = fill
+    if weight is not None:
+        options["weight"] = weight
     return _block(f"#{_text(value, **options)}", above="6pt", below="6pt")
 
 
@@ -552,7 +562,7 @@ def render_traceability(matrix) -> str:  # noqa: ANN001 - TraceabilityMatrix
     reach this backend.
     """
     parts = [
-        _paragraph(TRACEABILITY_CAVEAT, italic=True),
+        _paragraph(TRACEABILITY_CAVEAT, italic=True, fill='rgb("#6b7280")'),
         _kv_table(
             [
                 (label, _text(value, size="9pt"))
@@ -561,7 +571,7 @@ def render_traceability(matrix) -> str:  # noqa: ANN001 - TraceabilityMatrix
         ),
     ]
     for warning in traceability_warnings(matrix):
-        parts.append(_paragraph(warning))
+        parts.append(_paragraph(warning, fill='rgb("#dc2626")', weight='"bold"'))
 
     rows = []
     for row in control_rows(matrix):
