@@ -192,3 +192,30 @@ def sample_results_json(tmp_path: Path) -> Path:
     p = tmp_path / "results.json"
     p.write_text(json.dumps(data))
     return p
+
+
+def matrix_from_statuses(statuses: dict[str, list[str]]):
+    """Build a TraceabilityMatrix from {control_id: [scenario status, ...]}.
+
+    One TestResult per status, tagged `control-<id>`. A status of "na_version"
+    is written as a version-gated skip, which is how the plugin records it.
+    """
+    from vip.reporting import ReportData, TestResult
+    from vip.traceability import ControlSpec, build_traceability_matrix
+
+    results = []
+    for control_id, control_statuses in statuses.items():
+        for i, status in enumerate(control_statuses):
+            results.append(
+                TestResult(
+                    nodeid=f"test_{control_id}.py::test_{i}",
+                    outcome="skipped" if status == "na_version" else status,
+                    na_version=status == "na_version",
+                    markers=[f"control-{control_id}"],
+                )
+            )
+    controls = {
+        cid: ControlSpec(control_id=cid, description=f"control {cid}", verification="automated")
+        for cid in statuses
+    }
+    return build_traceability_matrix(ReportData(results=results), controls)

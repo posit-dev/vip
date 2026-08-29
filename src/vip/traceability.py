@@ -154,6 +154,25 @@ class ControlEntry:
         """
         return any(m.status not in NON_EXECUTING_STATUSES for m in self.matches)
 
+    @property
+    def failing(self) -> bool:
+        """Whether any tagged scenario produced a result that was not a pass.
+
+        The third fact about a control, after "a scenario is tagged"
+        (``coverage``) and "a scenario ran" (``executed``). Without it a
+        control whose only scenario failed reports as covered and executed,
+        which is true and reads as evidence.
+
+        Defined by exclusion rather than by enumerating failure statuses:
+        ``error`` is a reachable outcome alongside ``failed``, and an
+        enumerated list would let an errored control read as evidenced.
+        Non-executing statuses are excluded via ``NON_EXECUTING_STATUSES``, so
+        a skip alongside a pass never counts against a control.
+        """
+        return any(
+            m.status not in NON_EXECUTING_STATUSES and m.status != "passed" for m in self.matches
+        )
+
 
 @dataclass
 class TraceabilityMatrix:
@@ -182,6 +201,19 @@ class TraceabilityMatrix:
         return [
             e.control.control_id for e in self.entries if e.coverage == "covered" and not e.executed
         ]
+
+    @property
+    def covered_with_failure(self) -> list[str]:
+        """Control ids that are covered but whose scenarios did not all pass.
+
+        The mirror of ``covered_without_execution``. That one catches a matrix
+        that is green because nothing ran; this one catches a matrix that is
+        green because a run that did happen was not a success. Any failing
+        scenario qualifies the control, not only an all-failed one: a green
+        badge above a visible failing scenario row is the misreading this
+        exists to prevent.
+        """
+        return [e.control.control_id for e in self.entries if e.coverage == "covered" and e.failing]
 
 
 def _provenance(

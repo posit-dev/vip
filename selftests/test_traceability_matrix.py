@@ -2,6 +2,7 @@ import hashlib
 
 import pytest
 
+from conftest import matrix_from_statuses
 from vip.reporting import ReportData, TestResult
 from vip.traceability import (
     ControlSpec,
@@ -216,3 +217,41 @@ def test_provenance_distinguishes_sidecar_absent_from_verified():
     assert verified["results_sha256_sidecar_verified"] is True
     assert absent["results_sha256_sidecar_verified"] is None
     assert verified["results_sha256_sidecar_verified"] != absent["results_sha256_sidecar_verified"]
+
+
+class TestFailingControls:
+    """A control whose scenarios ran and did not pass is not evidence."""
+
+    def test_a_failed_scenario_marks_the_control_failing(self):
+        matrix = matrix_from_statuses(statuses={"c1": ["failed"]})
+        entry = matrix.entries[0]
+        assert entry.coverage == "covered"
+        assert entry.executed is True
+        assert entry.failing is True
+        assert matrix.covered_with_failure == ["c1"]
+
+    def test_an_errored_scenario_marks_the_control_failing(self):
+        """`error` is a reachable outcome; enumerating only "failed" would miss it."""
+        matrix = matrix_from_statuses(statuses={"c1": ["error"]})
+        assert matrix.entries[0].failing is True
+
+    def test_a_mixed_pass_and_failure_marks_the_control_failing(self):
+        matrix = matrix_from_statuses(statuses={"c1": ["passed", "failed"]})
+        assert matrix.entries[0].failing is True
+        assert matrix.covered_with_failure == ["c1"]
+
+    def test_a_pass_beside_a_skip_is_not_failing(self):
+        matrix = matrix_from_statuses(statuses={"c1": ["passed", "skipped"]})
+        assert matrix.entries[0].failing is False
+        assert matrix.covered_with_failure == []
+
+    def test_an_all_skipped_control_is_not_failing(self):
+        """Not executed and not failing are different states."""
+        matrix = matrix_from_statuses(statuses={"c1": ["skipped"]})
+        entry = matrix.entries[0]
+        assert entry.executed is False
+        assert entry.failing is False
+
+    def test_a_version_gated_control_is_not_failing(self):
+        matrix = matrix_from_statuses(statuses={"c1": ["na_version"]})
+        assert matrix.entries[0].failing is False
