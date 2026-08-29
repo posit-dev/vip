@@ -11,14 +11,14 @@ top of `results.json`.
 ## Machine-readable outputs
 
 Every `vip verify` run writes `report/results.json` by default (override the path
-with `--vip-report`, or pass an empty string to disable it). `--vip-format` selects
+with `--report`, or pass an empty string to disable it). `--format` selects
 which additional formats are written alongside it:
 
 ```bash
-vip verify --config vip.toml --vip-format json,junit,sarif
+vip verify --config vip.toml --format json,junit,sarif
 ```
 
-`json` (`results.json`) is always written regardless of `--vip-format`; `junit` and
+`json` (`results.json`) is always written regardless of `--format`; `junit` and
 `sarif` are added as sibling files in the same directory when requested. `--ci` is a
 preset that turns on `json,junit,sarif` together with concise tracebacks.
 
@@ -35,7 +35,10 @@ preset that turns on `json,junit,sarif` together with concise tracebacks.
   "python_version": "3.12.4",
   "platform": "macOS-14.5-arm64-...",
   "basic_mode": false,
-  "products": [ { "name": "connect", "url": "...", "version": "...", "configured": true } ],
+  "products": {
+    "connect": {"enabled": true, "url": "...", "version": null, "configured": true},
+    "workbench": {"enabled": true, "url": "", "version": null, "configured": false}
+  },
   "results": [
     {
       "nodeid": "...",
@@ -64,9 +67,10 @@ preset that turns on `json,junit,sarif` together with concise tracebacks.
 - `execution` -- attribution for the run that produced this evidence: which host ran
   it, which git commit/branch it ran from (dirty flag, remote with any credential
   stripped out of the URL), and which CI job (GitHub Actions, GitLab CI, or Jenkins)
-  ran it, if any. Pass `--vip-no-attribution` to omit this block entirely --
-  useful if a deployment's policy is not to record hostnames or CI identifiers in an
-  archived artifact.
+  ran it, if any. To omit this block entirely, pass the pytest-level option after
+  `--`: `vip verify --config vip.toml -- --vip-no-attribution`. There is no
+  `vip verify` flag of its own for this. Useful if a deployment's policy is not to
+  record hostnames or CI identifiers in an archived artifact.
 
 Be precise about what `python_version`, `platform`, and `execution.hostname`
 describe: they are properties of the machine that ran `vip verify` -- the VIP

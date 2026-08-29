@@ -3,6 +3,8 @@ vip.toml
 report/results.json
 report/results.json.sha256
 report/failures.json
+report/junit.xml
+report/results.sarif
 report/connect_system_checks.json
 .vip-auth-cache.json
 .vip-auth-cache.meta.json

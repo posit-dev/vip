@@ -96,13 +96,17 @@ Feature: Part 11 flavoured controls
     Then each entry records an actor and a timestamp
 ```
 
-The product tag goes first, on the `Feature:` line, and the control tag goes on the
-`Scenario:` line. This order is not stylistic. `src/vip/gherkin.py` derives a
-feature's pytest marker from its first non-control tag; if `@control-<slug>` were
-written before `@connect`, the control tag would be picked up as the marker instead,
-and that value feeds both the HTML report's per-feature grouping and the generated
-test catalog/feature matrix. Getting the order wrong silently mislabels the feature
-rather than raising an error, so it is worth getting right the first time.
+Tag order does not matter. `src/vip/gherkin.py` derives a feature's pytest marker
+from the first non-control tag it finds, skipping `@control-<slug>` tags entirely, so
+`@control-audit-trail @connect` and `@connect @control-audit-trail` both yield the
+marker `connect`.
+
+What does matter is that a product tag is present somewhere. The derived marker feeds
+the HTML report's per-feature grouping and the generated test catalog and feature
+matrix, and the product markers (`@connect`, `@workbench`, `@package_manager`) drive
+auto-skip when a product is not configured. A feature file carrying only control tags
+has no product marker to derive, which mislabels it in those outputs rather than
+raising an error.
 
 Control tags become registered pytest markers automatically. `vip.plugin` pre-scans
 the feature files about to be collected and registers every `@control-<slug>` tag it
