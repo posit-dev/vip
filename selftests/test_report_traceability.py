@@ -17,7 +17,7 @@ from vip.report_content import (
     control_rows,
     display_coverage,
     traceability_summary_rows,
-    traceability_warning,
+    traceability_warnings,
 )
 from vip.reporting import ReportData, TestResult
 from vip.traceability import ControlSpec, build_traceability_matrix
@@ -54,18 +54,18 @@ def _matrix():
 
 
 class TestCoverageDisplay:
-    def test_all_four_states_are_distinguishable(self):
+    def test_all_five_states_are_distinguishable(self):
         by_id = {r.control_id: r.coverage for r in control_rows(_matrix())}
         assert by_id["ok"] == "covered"
-        assert by_id["failing"] == "covered"
+        assert by_id["failing"] == "covered_failed"
         assert by_id["skipped-only"] == "covered_not_executed"
         assert by_id["missing"] == "gap"
         assert by_id["manual"] == "not_automatable"
 
-    def test_a_failed_scenario_still_counts_as_covered(self):
-        """Coverage is separate from outcome; only non-execution is folded in."""
+    def test_a_failed_scenario_displays_as_covered_failed(self):
+        """Coverage folds in outcome: a failing scenario is not evidence."""
         row = next(r for r in control_rows(_matrix()) if r.control_id == "failing")
-        assert row.coverage == "covered"
+        assert row.coverage == "covered_failed"
         assert row.scenarios[0][1] == "failed"
 
     def test_every_coverage_value_has_a_label_and_a_style(self):
@@ -79,18 +79,19 @@ class TestCoverageDisplay:
     def test_summary_counts_split_executed_from_covered(self):
         rows = dict(traceability_summary_rows(_matrix()))
         assert rows["Controls"] == "5"
-        assert rows["Covered and executed"] == "2"
+        assert rows["Covered and executed"] == "1"
         assert rows["Covered, not executed"] == "1"
+        assert rows["Covered, failing"] == "1"
         assert rows["Gaps"] == "1"
         assert rows["Not automatable"] == "1"
 
     def test_warning_names_the_unexecuted_control(self):
-        assert "skipped-only" in traceability_warning(_matrix())
+        assert any("skipped-only" in w for w in traceability_warnings(_matrix()))
 
     def test_no_warning_when_everything_ran(self):
         data = ReportData(results=[_result("t.py::ok", "ok")])
         matrix = build_traceability_matrix(data, {"ok": ControlSpec("ok", "d")})
-        assert traceability_warning(matrix) == ""
+        assert traceability_warnings(matrix) == []
 
 
 class TestHtmlBackend:

@@ -505,12 +505,24 @@ TRACEABILITY_CAVEAT = (
 )
 
 
-def traceability_warning(matrix) -> str:  # noqa: ANN001
-    """A line naming the controls that look covered but were never exercised, or ""."""
+def traceability_warnings(matrix) -> list[str]:  # noqa: ANN001
+    """Lines naming controls that look covered but are not evidence.
+
+    Two independent conditions, so two lines rather than one combined
+    sentence: a control can be counted as covered because nothing ran, or
+    because what ran did not pass, and a reader needs to know which.
+    """
+    lines = []
+    failing = matrix.covered_with_failure
+    if failing:
+        lines.append(
+            f"{pluralize(len(failing), 'control')} counted as covered but had a "
+            f"scenario that did not pass: {', '.join(failing)}."
+        )
     unexecuted = matrix.covered_without_execution
-    if not unexecuted:
-        return ""
-    return (
-        f"{pluralize(len(unexecuted), 'control')} counted as covered but had no "
-        f"scenario that ran: {', '.join(unexecuted)}."
-    )
+    if unexecuted:
+        lines.append(
+            f"{pluralize(len(unexecuted), 'control')} counted as covered but had no "
+            f"scenario that ran: {', '.join(unexecuted)}."
+        )
+    return lines

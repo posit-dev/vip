@@ -1,3 +1,4 @@
+import argparse
 import csv
 import hashlib
 import io
@@ -6,6 +7,8 @@ import subprocess
 import sys
 
 import pytest
+
+from vip.cli import run_trace
 
 CONTROLS = """
 [controls.x]
@@ -289,6 +292,41 @@ class TestCoveredButNotExecuted:
         controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
         r = _run_trace(results, controls)
         assert "no scenario that ran" not in r.stderr
+
+
+class TestCoveredButFailing:
+    """The mirror of the covered-not-executed warning."""
+
+    def test_trace_warns_when_a_covered_control_failed(self, tmp_path, capsys):
+        results = tmp_path / "results.json"
+        results.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1.0",
+                    "results": [
+                        {
+                            "nodeid": "t.py::test_a",
+                            "outcome": "failed",
+                            "markers": ["control-c1"],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        controls = tmp_path / "controls.toml"
+        controls.write_text(
+            '[controls.c1]\ndescription = "a control"\nverification = "automated"\n',
+            encoding="utf-8",
+        )
+        run_trace(
+            argparse.Namespace(
+                results=str(results), controls=str(controls), format="json", output=None
+            )
+        )
+        captured = capsys.readouterr()
+        assert "did not pass" in captured.err
+        assert "c1" in captured.err
 
 
 class TestOutputFormatResolution:

@@ -449,6 +449,9 @@ def render_json(matrix: TraceabilityMatrix) -> str:
                 1 for e in matrix.entries if e.coverage == "covered" and e.executed
             ),
             "covered_not_executed": len(matrix.covered_without_execution),
+            # Covered and executed, but not a success. The third way a green
+            # matrix can mislead, after "nothing is tagged" and "nothing ran".
+            "covered_failed": len(matrix.covered_with_failure),
         },
         "covered_without_execution": matrix.covered_without_execution,
         "unrecognized_tags": matrix.unrecognized_tags,

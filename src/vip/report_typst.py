@@ -64,7 +64,7 @@ from vip.report_content import (
     skip_reason_parts,
     summary_status,
     traceability_summary_rows,
-    traceability_warning,
+    traceability_warnings,
 )
 from vip.reporting import ReportData, TestResult
 
@@ -560,8 +560,7 @@ def render_traceability(matrix) -> str:  # noqa: ANN001 - TraceabilityMatrix
             ]
         ),
     ]
-    warning = traceability_warning(matrix)
-    if warning:
+    for warning in traceability_warnings(matrix):
         parts.append(_paragraph(warning))
 
     rows = []

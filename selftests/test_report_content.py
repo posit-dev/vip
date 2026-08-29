@@ -367,6 +367,21 @@ class TestFailedControlDisplay:
     def test_every_coverage_value_has_a_style_and_a_label(self):
         assert set(report_content.COVERAGE_STYLE_KEY) == set(report_content.COVERAGE_LABELS)
 
+
+class TestTraceabilityWarnings:
+    def test_a_failing_control_produces_a_warning(self):
+        matrix = SimpleNamespace(covered_without_execution=[], covered_with_failure=["c1"])
+        warnings_out = report_content.traceability_warnings(matrix)
+        assert any("did not pass" in w and "c1" in w for w in warnings_out)
+
+    def test_both_conditions_produce_two_warnings(self):
+        matrix = SimpleNamespace(covered_without_execution=["c2"], covered_with_failure=["c1"])
+        assert len(report_content.traceability_warnings(matrix)) == 2
+
+    def test_a_clean_matrix_produces_none(self):
+        matrix = SimpleNamespace(covered_without_execution=[], covered_with_failure=[])
+        assert report_content.traceability_warnings(matrix) == []
+
     def test_a_real_mixed_pass_and_failure_control_displays_as_failed(self):
         """End to end through a real matrix, not a stub.
 

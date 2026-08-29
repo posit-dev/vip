@@ -2,6 +2,7 @@ import csv
 import io
 import json
 
+from conftest import matrix_from_statuses
 from vip.reporting import ReportData, TestResult
 from vip.traceability import (
     ControlSpec,
@@ -86,6 +87,13 @@ def test_json_carries_provenance_and_schema_version():
     assert payload["summary"]["gaps"] == 0
     assert payload["summary"]["covered"] == 1
     assert payload["summary"]["not_automatable"] == 1
+
+
+def test_json_summary_counts_failing_controls():
+    matrix = matrix_from_statuses(statuses={"c1": ["failed"], "c2": ["passed"]})
+    summary = json.loads(render_json(matrix))["summary"]
+    assert summary["covered_failed"] == 1
+    assert summary["covered_and_executed"] == 2
 
 
 def test_json_is_byte_identical_across_invocations():

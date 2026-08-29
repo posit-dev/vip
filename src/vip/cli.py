@@ -1778,6 +1778,19 @@ def run_trace(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
 
+    # A covered control whose scenarios ran and failed also counts toward
+    # "0 gaps". Coverage records that a scenario ran, not that it passed, and
+    # a compliance matrix that stays silent here is the more expensive of the
+    # two ways this tool can mislead.
+    failing = matrix.covered_with_failure
+    if failing:
+        print(
+            f"Warning: {len(failing)} covered control(s) had a scenario that did not "
+            f"pass: {', '.join(failing)}. Coverage records that a scenario ran, not "
+            "that it passed.",
+            file=sys.stderr,
+        )
+
     # A covered control whose every scenario was skipped still counts toward
     # "0 gaps". True, and on its own misleading: a scenario that runs and
     # skips itself still counts as covering its control, so the greenest
@@ -1806,7 +1819,10 @@ def run_trace(args: argparse.Namespace) -> None:
     except (OSError, UnicodeError) as exc:
         print(f"Error: could not write {out}: {exc}", file=sys.stderr)
         sys.exit(1)
-    print(f"Wrote {out} ({len(matrix.entries)} controls, {matrix.gap_count} gaps)")
+    print(
+        f"Wrote {out} ({len(matrix.entries)} controls, {matrix.gap_count} gaps, "
+        f"{len(matrix.covered_with_failure)} failing)"
+    )
 
 
 def main() -> None:
