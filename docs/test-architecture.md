@@ -375,7 +375,7 @@ is unchanged). Three canonical templates ship with VIP:
 - `part11-validation` (`examples/part11_validation/`) — compliance control tagging plus a
   `controls.toml`, the worked starting point for a `vip trace` traceability matrix
 
-Both follow the same four-layer architecture as the built-in suite. Every scaffolded directory
+All three follow the same four-layer architecture as the built-in suite. Every scaffolded directory
 also gets an `AGENTS.md`, generated from a single shared source (`examples/_shared/AGENTS.md`),
 documenting the extension contract: the auto-skip rules, `min_version` gating, and an enumerated
 inventory of the public fixtures, registered markers, and client entry points an extension may
