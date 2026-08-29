@@ -28,11 +28,11 @@ import time
 import warnings
 from collections.abc import Generator
 from datetime import datetime, timezone
-from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
 import pytest
+from _pytest.pathlib import fnmatch_ex
 
 from vip.attribution import collect_execution_metadata
 from vip.config import VIPConfig, load_config
@@ -132,9 +132,27 @@ def _walk_features(root: Path, ignore: list[str]) -> list[Path]:
     """
     features: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root, onerror=lambda _: None):
-        dirnames[:] = [d for d in dirnames if not any(fnmatch(d, pat) for pat in ignore)]
+        dirnames[:] = [d for d in dirnames if not _is_ignored(Path(dirpath) / d, ignore)]
         features.extend(Path(dirpath) / f for f in filenames if f.endswith(".feature"))
     return sorted(features)
+
+
+def _is_ignored(path: Path, patterns: list[str]) -> bool:
+    """Whether *path* matches a ``norecursedirs`` pattern, the way pytest matches it.
+
+    Delegates to pytest's own ``fnmatch_ex`` so the two cannot drift: a pattern
+    containing a path separator matches against the whole path, while a bare
+    one matches the basename only. Matching the basename in both cases would
+    scan a directory pytest itself would never collect, which is how a control
+    tag from an ignored feature file ends up registered or warned about.
+    """
+    for pattern in patterns:
+        try:
+            if fnmatch_ex(pattern, path):
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
 
 
 def _discover_control_tags(config: pytest.Config) -> set[str]:

@@ -35,10 +35,18 @@ def redact_userinfo(url: str | None) -> str | None:
     if "://" not in url:
         # scp-style (git@host:org/repo.git). No password component, but drop
         # the user anyway so there is exactly one rule to reason about.
-        # Userinfo cannot contain a slash, so a "@" that follows one is part
-        # of a path, not a credential: /srv/git/repo@2.git keeps its name.
+        #
+        # Require the full scp shape rather than just an "@": a local path may
+        # legitimately contain one, and stripping on the "@" alone rewrites
+        # repo@2.git to 2.git and releases@2026/repo.git to 2026/repo.git,
+        # corrupting a provenance remote to remove a credential that was never
+        # there. scp syntax is user@host:path, so the host part must carry a
+        # colon before any slash.
         user, sep, rest = url.partition("@")
-        return rest if sep and "/" not in user else url
+        if not sep or "/" in user:
+            return url
+        host = rest.split("/", 1)[0]
+        return rest if ":" in host else url
     try:
         parts = urlsplit(url)
         hostname = parts.hostname

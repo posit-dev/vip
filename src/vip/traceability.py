@@ -553,6 +553,43 @@ def read_results_schema_version(path: str | Path) -> str | None:
     return schema_version
 
 
+def check_results_rows(path: str | Path) -> None:
+    """Refuse a results file whose rows are structurally wrong.
+
+    ``reporting.load_results`` normalizes a malformed ``markers`` value to an
+    empty list, because it renders the HTML and PDF reports from inside Quarto
+    notebook cells where raising is an unreadable traceback. That leniency is
+    wrong for a traceability matrix: a row whose ``markers`` is a JSON null or
+    a string reads as carrying no control tags, so the control it was tagged
+    for is reported as a GAP that does not exist -- the matrix asserting the
+    suite is missing a check it actually has. Refuse the input instead.
+    """
+    p = Path(path)
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        raise ResultsIntegrityError(f"could not read results file {p}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ResultsIntegrityError(f"could not read results file {p}: not a JSON object")
+
+    results = raw.get("results", [])
+    if not isinstance(results, list):
+        raise ResultsIntegrityError(f"{p} has results={type(results).__name__}; expected a list")
+    for index, row in enumerate(results):
+        if not isinstance(row, dict):
+            raise ResultsIntegrityError(
+                f"{p} results[{index}] is a {type(row).__name__}; expected an object"
+            )
+        markers = row.get("markers", [])
+        if not isinstance(markers, list):
+            nodeid = row.get("nodeid", f"results[{index}]")
+            raise ResultsIntegrityError(
+                f"{p}: {nodeid} has markers={markers!r} ({type(markers).__name__}); "
+                "expected a list. Control tags cannot be read from this file, so the "
+                "matrix would report gaps that may not exist."
+            )
+
+
 def check_results_schema(schema_version: str | None) -> None:
     """Refuse an unknown major schema version; accept an unknown minor.
 

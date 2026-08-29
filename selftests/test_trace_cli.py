@@ -5,6 +5,8 @@ import json
 import subprocess
 import sys
 
+import pytest
+
 CONTROLS = """
 [controls.x]
 description = "Audit trail"
@@ -314,20 +316,45 @@ class TestOutputFormatResolution:
 
 
 class TestMalformedInputIsReportedNotRaised:
-    def test_null_markers_errors_cleanly(self, tmp_path):
+    @pytest.mark.parametrize("markers", [None, "control-x", 7, {"a": 1}])
+    def test_non_list_markers_is_refused(self, tmp_path, markers):
+        """Reading it as untagged would report a gap the suite does not have."""
         p = tmp_path / "results.json"
         p.write_text(
             json.dumps(
                 {
                     "schema_version": "1.0",
-                    "results": [{"nodeid": "a", "outcome": "passed", "markers": None}],
+                    "results": [{"nodeid": "t.py::a", "outcome": "passed", "markers": markers}],
                 }
             ),
             encoding="utf-8",
         )
         controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
         r = _run_trace(p, controls)
+        assert r.returncode == 1
         assert "Traceback" not in r.stderr
+        assert "expected a list" in r.stderr
+        assert "t.py::a" in r.stderr
+
+    def test_a_row_that_is_not_an_object_is_refused(self, tmp_path):
+        p = tmp_path / "results.json"
+        p.write_text(json.dumps({"schema_version": "1.0", "results": ["nope"]}), encoding="utf-8")
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        r = _run_trace(p, controls)
+        assert r.returncode == 1
+        assert "expected an object" in r.stderr
+
+    def test_absent_markers_is_still_accepted(self, tmp_path):
+        """Omitting the key is legal; only a wrong type is refused."""
+        p = tmp_path / "results.json"
+        p.write_text(
+            json.dumps(
+                {"schema_version": "1.0", "results": [{"nodeid": "a", "outcome": "passed"}]}
+            ),
+            encoding="utf-8",
+        )
+        controls = _write_controls(tmp_path, '[controls.x]\ndescription = "d"\n')
+        assert _run_trace(p, controls).returncode == 0
 
     def test_toml_native_date_is_refused_by_both_formats(self, tmp_path):
         results = _skipped_results(tmp_path)

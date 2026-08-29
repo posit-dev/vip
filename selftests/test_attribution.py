@@ -181,8 +181,19 @@ class TestRedactUserinfoEdgeCases:
         """file:// has no hostname and no credential; dropping it deletes provenance."""
         assert redact_userinfo("file:///srv/git/repo.git") == "file:///srv/git/repo.git"
 
-    def test_path_containing_an_at_sign_is_not_truncated(self):
-        assert redact_userinfo("/srv/git/repo@2.git") == "/srv/git/repo@2.git"
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "/srv/git/repo@2.git",
+            # Relative local paths: an "@" alone is not userinfo. scp syntax is
+            # user@host:path, so without a colon in the host there is nothing
+            # to strip.
+            "repo@2.git",
+            "releases@2026/repo.git",
+        ],
+    )
+    def test_path_containing_an_at_sign_is_not_truncated(self, url):
+        assert redact_userinfo(url) == url
 
     def test_scp_style_still_strips_the_user(self):
         assert redact_userinfo("git@github.com:org/repo.git") == "github.com:org/repo.git"

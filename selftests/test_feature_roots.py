@@ -121,3 +121,44 @@ def test_norecursedirs_are_pruned(tmp_path, ignored):
 
     unpruned = _config(args=[str(tmp_path)], rootpath=tmp_path, invocation_dir=tmp_path)
     assert _discover_control_tags(unpruned) == {"control-audit-trail"}
+
+
+def test_norecursedirs_pattern_with_a_separator_matches_the_full_path(tmp_path):
+    """pytest matches a pattern containing a separator against the whole path.
+
+    Matching the basename only would scan a directory pytest itself would never
+    collect, registering a control tag from a feature file that cannot run.
+    """
+    buried = tmp_path / "generated" / "pkg"
+    buried.mkdir(parents=True)
+    (buried / "t.feature").write_text(FEATURE, encoding="utf-8")
+
+    cfg = _config(
+        args=[str(tmp_path)],
+        rootpath=tmp_path,
+        invocation_dir=tmp_path,
+        norecursedirs=[f"{tmp_path}/generated"],
+    )
+    assert _discover_control_tags(cfg) == set()
+
+
+def test_a_bare_pattern_still_matches_by_basename(tmp_path):
+    buried = tmp_path / "build" / "pkg"
+    buried.mkdir(parents=True)
+    (buried / "t.feature").write_text(FEATURE, encoding="utf-8")
+
+    cfg = _config(
+        args=[str(tmp_path)], rootpath=tmp_path, invocation_dir=tmp_path, norecursedirs=["build"]
+    )
+    assert _discover_control_tags(cfg) == set()
+
+
+def test_a_non_matching_pattern_does_not_prune(tmp_path):
+    kept = tmp_path / "generated" / "pkg"
+    kept.mkdir(parents=True)
+    (kept / "t.feature").write_text(FEATURE, encoding="utf-8")
+
+    cfg = _config(
+        args=[str(tmp_path)], rootpath=tmp_path, invocation_dir=tmp_path, norecursedirs=["build"]
+    )
+    assert _discover_control_tags(cfg) == {"control-audit-trail"}

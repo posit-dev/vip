@@ -227,7 +227,12 @@ def load_results(path: str | Path) -> ReportData:
             concise_error=r.get("concise_error"),
             # `or []` as well as the default: an explicit JSON null passes
             # through .get() untouched and would reach every consumer as a
-            # None to iterate over.
+            # None to iterate over. This loader is deliberately lenient --
+            # it renders a report and must not raise inside a notebook cell.
+            # `vip trace` refuses the same input instead, via
+            # traceability.check_results_rows: silently reading a malformed
+            # row as untagged would drop its control tags and report a gap
+            # that does not exist.
             markers=r.get("markers") or [],
             scenario_title=r.get("scenario_title"),
             feature_description=r.get("feature_description"),

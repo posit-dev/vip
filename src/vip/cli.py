@@ -1634,6 +1634,7 @@ def run_trace(args: argparse.Namespace) -> None:
         ControlListError,
         ResultsIntegrityError,
         build_traceability_matrix,
+        check_results_rows,
         check_results_schema,
         load_controls,
         read_results_schema_version,
@@ -1656,6 +1657,11 @@ def run_trace(args: argparse.Namespace) -> None:
         # incompatible/malformed file crashes before it can be refused
         # cleanly.
         check_results_schema(read_results_schema_version(results_path))
+        # Structural validation before load_results normalizes the problem
+        # away. load_results turns a malformed `markers` into an empty list so
+        # the Quarto report still renders; for a matrix that silently converts
+        # a tagged scenario into a coverage gap.
+        check_results_rows(results_path)
         # load_results only warns (not raises) on an unknown schema major --
         # it's also called from index.qmd/details.qmd/`vip report`, where that
         # warning is the point. The check above already hard-errors on the
