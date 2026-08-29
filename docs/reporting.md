@@ -112,6 +112,12 @@ Verify it with:
 shasum -a 256 -c results.json.sha256
 ```
 
+The recorded filename is matched on its exact value first, then on its basename.
+A sidecar generated from a directory above the results file records the path it
+was given (`<digest>  report/results.json`) and still verifies. A multi-file
+sidecar that names the file exactly keeps the stricter exact match, so it cannot
+be satisfied by a same-named file in another directory.
+
 This is tamper-evidence within a trusted pipeline, not tamper-proofing. Anyone who
 can edit `results.json` can also regenerate the sidecar to match, so it does not
 resist a motivated forger. What it does catch is the class of accidents that
@@ -172,6 +178,20 @@ A control's row in the matrix gets one of three `coverage` values:
   every real gap alongside it. Distinguishing the two is why `verification` exists
   at all -- collapsing `not_automatable` into `gap` would make the matrix useless
   for exactly the controls that need a human process instead of a test.
+
+### Coverage display states
+
+The rendered report displays coverage as `COVERED`, `FAILED`, `NOT RUN`, `GAP`, or
+`N/A (manual)`:
+
+- `COVERED` -- at least one tagged scenario ran and passed.
+- `FAILED` -- a covered control with at least one tagged scenario that ran and did
+  not pass.
+- `NOT RUN` -- at least one tagged scenario is present, but all of them skipped or
+  were not executed.
+- `GAP` -- no tagged scenario is present and `verification = "automated"`.
+- `N/A (manual)` -- no tagged scenario is present but `verification` is `"manual"`
+  or `"procedural"`.
 
 ### Covered is not the same as executed
 
