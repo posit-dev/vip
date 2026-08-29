@@ -23,6 +23,14 @@ two such controls so you can see how a non-automatable control appears in the
 matrix: as "not verifiable by automated test", which is deliberately distinct
 from "coverage gap".
 
+A green matrix is also not evidence that the tests ran. VIP skips every scenario
+belonging to a product you have not configured, and a skipped scenario still
+counts as covering its control. Run this against an unconfigured deployment and
+you get a matrix reading "covered, 0 gaps" in which nothing was checked. `vip
+trace` warns when that happens and the JSON summary reports
+`covered_not_executed` separately, but the CSV `coverage` column alone will not
+tell you. Read the `status` column with it.
+
 ## How it works
 
 A scenario declares the control it satisfies with a Gherkin tag:
@@ -42,7 +50,13 @@ test catalog and feature matrix, while the product markers themselves
 separately drive auto-skip when a product is not configured.
 
 `controls.toml` names each control and carries whatever metadata your
-regulatory mapping uses. Only `description` is required.
+regulatory mapping uses. Only `description` is required, and every field must be
+a quoted string -- TOML would otherwise read `reference = 2024-01-01` as a date,
+which the JSON export cannot serialise.
+
+Control ids become pytest marker names, so use only letters, digits, `-`, `.`
+and `_`. Write `11-10-a`, not `11.10(a)`: a `:` or `(` truncates the marker name
+pytest registers and breaks collection under `--strict-markers`.
 
 ## Running it
 

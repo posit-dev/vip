@@ -157,8 +157,11 @@ references with `@control-<id>` (with the `control-` tag prefix stripped).
 
 A control's row in the matrix gets one of three `coverage` values:
 
-- `covered` -- at least one scenario tagged `@control-<id>` ran and its result is
-  attached.
+- `covered` -- at least one scenario is tagged `@control-<id>`, and its result is
+  attached. Coverage records that a scenario is tagged, not that it executed: a
+  skipped scenario still counts as covered, and its `skipped` status is reported
+  alongside. See "Covered is not the same as executed" below, which matters more
+  than it sounds like it should.
 - `gap` -- no scenario carries the tag, and `verification = "automated"` (the
   default). This is the one that should worry you.
 - `not_automatable` -- no scenario carries the tag, but `verification` is
@@ -170,6 +173,25 @@ A control's row in the matrix gets one of three `coverage` values:
   at all -- collapsing `not_automatable` into `gap` would make the matrix useless
   for exactly the controls that need a human process instead of a test.
 
+### Covered is not the same as executed
+
+VIP auto-skips every scenario belonging to a product that is not configured. A
+control tagged only by skipped scenarios is therefore still `covered`, and a run
+against an unconfigured deployment produces a matrix reading `covered: 3,
+gaps: 0` in which nothing was verified at all. That is the most misleading thing
+this export can do, so it is reported three ways rather than left implicit:
+
+- `vip trace` warns on stderr, naming the affected control ids.
+- The JSON `summary` splits `covered` into `covered_and_executed` and
+  `covered_not_executed`.
+- The JSON carries a `covered_without_execution` list of control ids.
+
+A version-gated scenario (`na_version`) counts as not executed too, for the same
+reason: it ran no assertions.
+
+Read `gaps: 0` together with `covered_not_executed`. Zero gaps and a non-zero
+`covered_not_executed` means the controls are mapped and the evidence is missing.
+
 ### Worked example
 
 ```bash
@@ -177,14 +199,27 @@ vip verify --config vip.toml --extensions ./examples/21CFR_part11_validation
 vip trace --results report/results.json --controls ./examples/21CFR_part11_validation/controls.toml
 ```
 
-`vip trace` defaults to CSV on stdout; pass `--format json` for full fidelity output
+`vip trace` defaults to CSV on stdout. Pass `--format json` for full fidelity output
 (including nested match details), or `--output matrix.csv` / `--output matrix.json`
-to write to a file instead. CSV is the more portable format for spreadsheet tools,
+to write to a file instead. With `--output` and no `--format`, the format is taken
+from the file extension, so `--output matrix.json` writes JSON. An explicit
+`--format` always wins and warns when it disagrees with the extension.
+
+Both formats carry the results digest. CSV repeats `generated_at`, `vip_version`,
+`results_sha256` and `exit_status` on every row, which is enough to tie the
+archived spreadsheet back to the exact `results.json` it came from. The full
+provenance block -- the products and versions under test, the runner host, the CI
+run -- is JSON only, because it does not flatten into columns. CSV is the more portable format for spreadsheet tools,
 but it alters what a non-Excel reader sees: any cell whose value begins with
 `= + - @` or a leading tab/carriage-return/newline is apostrophe-prefixed
 (`'=SUM(...)` instead of `=SUM(...)`) to stop it from being evaluated as a formula
 when opened in Excel. JSON output is not altered this way -- use it when exact
 fidelity to the underlying value matters more than spreadsheet safety.
+
+Control ids become pytest marker names, so they may use only letters, digits,
+`-`, `.` and `_`. A `:` or `(` in an id (`11.10(a)`, `iso:27001`) truncates the
+name pytest registers, which aborts collection under `--strict-markers`; VIP
+warns and skips registering such a tag. Write `11-10-a` instead.
 
 `vip scaffold --template 21cfr-part11-validation --output DIR` generates a starting point
 with a worked `controls.toml`, a tagged feature file, and the client methods

@@ -115,6 +115,13 @@ the feature files about to be collected and registers every `@control-<slug>` ta
 finds via `config.addinivalue_line("markers", ...)`, so a run under `--strict-markers`
 (which regulated CI is likely to enable) does not fail on an unrecognized marker.
 
+Keep the slug to letters, digits, `-`, `.` and `_`. pytest derives a registered
+marker's name by cutting at the first `:` or `(`, so `@control-11.10(a)` would
+register as `control-11.10` while pytest-bdd applies the full tag, and collection
+would then fail under `--strict-markers` against a marker list that looks like it
+should have matched. VIP warns and skips registering such a tag rather than
+registering the truncated name. Write `@control-11-10-a`.
+
 Control tags flow into `results.json` only, as entries in a test's `markers` list.
 They do not appear in the `junit.xml` or `results.sarif` outputs produced by
 `--format` — those formats predate control tagging and were not extended to
