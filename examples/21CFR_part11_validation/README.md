@@ -38,10 +38,38 @@ tell you. Read the `status` column with it.
 A gap can also mean the run rather than the suite. Scenarios belonging to a
 product you have not configured are deselected rather than skipped, so they
 never reach the results file, and a control tagged only by them reports as a
-gap. Run this example against a deployment with no Connect configured and all
-three automated controls report as gaps, not as covered. That understates your
+gap. This example spans all three products, so a partial run is the normal
+case: point it at a deployment with Connect alone and the four Package Manager
+and Workbench controls report as gaps, not as covered. That understates your
 coverage rather than overstating it, but it is still a misreading: check which
 products the run actually tested first.
+
+## What it covers
+
+Seven controls across the three products, chosen to show the range rather than
+to be complete:
+
+| Product | Control | Clause |
+|---|---|---|
+| Connect | Publishing is recorded with an actor and a timestamp | 11.10(e) |
+| Connect | A privileged action requires authorisation | 11.10(g) |
+| Connect | The audit log offers no deletion method | 11.10(e) |
+| Package Manager | A defined repository set is served | 11.10(a) |
+| Package Manager | A past package set can still be retrieved | 11.10(a) |
+| Workbench | An unauthenticated caller cannot reach the session API | 11.10(d) |
+| Workbench | An authorised caller can reach the session API | 11.10(d) |
+
+The two Workbench scenarios are one control read from both sides. Refusing an
+unauthenticated caller does not on its own evidence that access is limited to
+authorised individuals, because a deployment that refuses everybody passes that
+half too.
+
+Package Manager carries the reproducibility control because a dated snapshot
+URL is what lets you rebuild the package set an analysis ran against. Set
+`validated_repo_name` and `validated_snapshot` in `conftest.py` to a repository
+and date your deployment actually covers. An absent snapshot returns 404, which
+the scenario reports as a skip, and a skipped scenario still counts as
+coverage.
 
 ## How it works
 
@@ -82,7 +110,12 @@ block, or `--output matrix.csv` to write to a file.
 
 ## Extending it
 
-Replace `controls.toml` with your own mapping and tag your own scenarios. See
+Replace `controls.toml` with your own mapping and tag your own scenarios. One
+feature file per product, because the product tag is feature-level. The
+refusal assertion the Connect and Workbench scenarios share lives in
+`part11_refusal.py` rather than in either step file: one pytest-bdd step module
+cannot import another, since `@scenario` inspects the caller's frame at import
+time. See
 `security/test_auth_policy.py` in the VIP source for a fuller reference
 implementation of access-control testing, and
 `examples/cross_product_validation/` for the broader GxP starting point.

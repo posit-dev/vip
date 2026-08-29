@@ -133,7 +133,9 @@ they never appear in the results file at all, and a control tagged only by them
 reports as a gap. This errs toward understating your coverage, which is the
 safer direction, but the reading is still wrong: the suite has the check, the
 run did not exercise it. Check the products the report says were under test
-before you conclude a control has no automated evidence.
+before you conclude a control has no automated evidence. The worked example
+next to this file maps controls across Connect, Workbench and Package Manager,
+so a run covering one product shows gaps for the other two.
 
 Coverage is not completeness. The matrix reports on the controls in your
 control list. A control you never wrote down cannot appear as a gap.

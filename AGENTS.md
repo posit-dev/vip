@@ -170,6 +170,7 @@ Key principles:
 | `src/vip/install/plan.py` | Pure `build_install_plan` / `build_uninstall_plan` builders |
 | `src/vip/install/runner.py` | Plan executor: dry-run formatting + execute (system packages, Playwright, manifest writes) |
 | `src/vip_tests/conftest.py` | Directory-scoped warning filter (kept out of the global plugin deliberately) plus the three autouse Connect content-cleanup fixtures — see that file's docstring for why those stay directory-scoped instead of moving to `src/vip/fixtures.py` |
+| `examples/21CFR_part11_validation/` | Worked control-to-scenario mapping for `vip trace`, one feature file per product (`test_21CFR_part11_connect`, `_packagemanager`, `_workbench`) because the product tag is feature-level. The refusal assertion Connect and Workbench share sits in `part11_refusal.py`, not in a step file -- one pytest-bdd step module cannot import another. `conftest.py` holds the override points a customer edits: the two privileged endpoints, and the Package Manager repository and snapshot date the reproducibility scenario pins to |
 | `examples/21CFR_part11_validation/VALIDATION-PACKAGE.md` | What VIP supplies toward a GxP validation package, what the customer authors, and what nothing can automate. It lives beside the scaffold template rather than under `docs/` so that `vip scaffold --template 21cfr-part11-validation` copies it onto the customer's disk with the tests it describes. The reference for any regulated-customer conversation: it refuses the strong claims (tamper-evidence is not an immutable audit trail, a green matrix is not an attestation) and states the scenario-level evidence gap |
 | `report/index.qmd` | Quarto summary page |
 | `report/details.qmd` | Quarto detailed results page |
@@ -230,6 +231,7 @@ Clients live in `src/vip/clients/` and use plain httpx. Rules:
 -   Return dicts from JSON responses, not custom model objects.
 -   Add methods only when tests need them.
 -   All clients take a base URL and optional API key in their constructor.
+-   `BaseClient.unauthenticated_status(path)` is the shared credential-free probe behind every product's access-control scenario (Connect's user API, Workbench's session API). It lives on the base class rather than on one product client so a new access-control test never reaches for a raw `httpx.get` that would bypass the proxy and the CA overrides.
 -   `BaseClient` needs a custom `transport=` (for `retries` and transport-level `verify`), which makes httpx ignore env proxies. It therefore resolves the proxy itself via `vip.proxy` and passes per-scheme `mounts=`. Any new ad-hoc `httpx.get`/`httpx.Client` in the client layer must route through the same proxy — pass `proxy=proxy_for_url(url, self._proxy_map)` (see `fetch_content`), never rely on httpx's ambient env pickup, so an explicit `[proxy]` config applies uniformly. See "Outbound proxy support" below.
 
 ## Configuration

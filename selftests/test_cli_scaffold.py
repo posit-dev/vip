@@ -300,7 +300,12 @@ class TestScaffoldExcludesBuildArtifacts:
             "README.md",
             "conftest.py",
             "controls.toml",
-            "test_21CFR_part11_validation.feature",
-            "test_21CFR_part11_validation.py",
+            "part11_refusal.py",
+            "test_21CFR_part11_connect.feature",
+            "test_21CFR_part11_connect.py",
+            "test_21CFR_part11_packagemanager.feature",
+            "test_21CFR_part11_packagemanager.py",
+            "test_21CFR_part11_workbench.feature",
+            "test_21CFR_part11_workbench.py",
         ):
             assert (dest / name).is_file(), f"{name} missing from scaffold output"

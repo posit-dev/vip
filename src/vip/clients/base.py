@@ -192,6 +192,38 @@ class BaseClient:
         """
         return self._cookies
 
+    def unauthenticated_status(self, path: str) -> int:
+        """Return the status code for `path` requested with no credentials.
+
+        Uses a separate short-lived client so the configured API key and
+        cookies are not sent -- sending them would make the scenario assert
+        nothing at all, since an authorised caller is *supposed* to get 200.
+
+        Lives on the base class because every product's access-control
+        scenario needs the same probe: the Part 11 example asserts it against
+        Connect's user API and Workbench's session API alike.
+
+        Mirrors the ad-hoc-request contract that
+        :meth:`~vip.clients.connect.ConnectClient.fetch_content` follows:
+        route through the proxy the pooled client already resolved and pin
+        ``trust_env=False`` so that decision is authoritative, then fold the CA
+        env overrides back in by hand. ``trust_env=False`` disables httpx's own reading of
+        ``SSL_CERT_FILE``/``SSL_CERT_DIR`` along with the proxy vars, so
+        without ``verify_with_env_ca`` this probe would fail TLS against a
+        corporate CA that the pooled client verifies fine -- surfacing as a
+        Part 11 scenario erroring on a deployment that is actually healthy.
+        """
+        from vip.proxy import proxy_for_url, verify_with_env_ca
+
+        url = f"{self.base_url.rstrip('/')}{path}"
+        with httpx.Client(
+            verify=verify_with_env_ca(self._verify),
+            proxy=proxy_for_url(url, self._proxy_map),
+            trust_env=False,
+            timeout=30.0,
+        ) as client:
+            return client.get(url).status_code
+
     def close(self) -> None:
         """Close the underlying httpx client."""
         self._client.close()

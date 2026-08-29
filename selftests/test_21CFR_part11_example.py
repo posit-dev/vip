@@ -13,9 +13,14 @@ REPO = Path(__file__).resolve().parent.parent
 EXAMPLE = REPO / "examples" / "21CFR_part11_validation"
 
 
+PRODUCTS = ("connect", "packagemanager", "workbench")
+
+
 def test_example_directory_exists():
-    assert (EXAMPLE / "test_21CFR_part11_validation.feature").is_file()
-    assert (EXAMPLE / "test_21CFR_part11_validation.py").is_file()
+    for product in PRODUCTS:
+        assert (EXAMPLE / f"test_21CFR_part11_{product}.feature").is_file()
+        assert (EXAMPLE / f"test_21CFR_part11_{product}.py").is_file()
+    assert (EXAMPLE / "part11_refusal.py").is_file()
     assert (EXAMPLE / "controls.toml").is_file()
     assert (EXAMPLE / "README.md").is_file()
 
@@ -35,13 +40,14 @@ def test_template_is_bundled_into_the_wheel():
 
 
 def test_every_control_tag_is_defined_in_controls_toml():
-    feature = (EXAMPLE / "test_21CFR_part11_validation.feature").read_text()
     tags = {
         tok.lstrip("@")
-        for line in feature.splitlines()
+        for path in EXAMPLE.glob("test_21CFR_part11_*.feature")
+        for line in path.read_text().splitlines()
         for tok in line.split()
         if tok.startswith("@control-")
     }
+    assert tags, "no control tags found -- the glob stopped matching the feature files"
     controls = tomllib.loads((EXAMPLE / "controls.toml").read_text())["controls"]
     for tag in tags:
         assert tag.removeprefix("control-") in controls, f"{tag} missing from controls.toml"
@@ -63,13 +69,43 @@ def test_readme_states_it_is_not_an_attestation():
 
 
 def test_scenarios_carry_literal_product_markers():
-    """Feature-level Gherkin tags alone do not drive auto-skip in extensions."""
-    steps = (EXAMPLE / "test_21CFR_part11_validation.py").read_text()
-    assert steps.count("@pytest.mark.connect") + steps.count("@pytest.mark.workbench") >= 3
+    """Feature-level Gherkin tags alone do not drive auto-skip in extensions.
+
+    Counts per file so a product whose step file forgot the decorator cannot
+    hide behind another product's total.
+    """
+    for product, marker in (
+        ("connect", "@pytest.mark.connect"),
+        ("packagemanager", "@pytest.mark.package_manager"),
+        ("workbench", "@pytest.mark.workbench"),
+    ):
+        path = EXAMPLE / f"test_21CFR_part11_{product}.py"
+        lines = [line.strip() for line in path.read_text().splitlines()]
+        # Decorator lines only -- a docstring naming the marker is not one.
+        markers = lines.count(marker)
+        scenarios = sum(1 for line in lines if line.startswith("@scenario("))
+        assert markers == scenarios, (
+            f"{path.name} has {scenarios} scenarios but {markers} {marker} decorators"
+        )
+
+
+def test_all_three_products_are_covered():
+    """The example maps controls for the whole of Posit Team, not just Connect."""
+    tags = {
+        line.split()[0]
+        for path in EXAMPLE.glob("test_21CFR_part11_*.feature")
+        for line in path.read_text().splitlines()
+        if line.startswith("@")
+    }
+    assert {"@connect", "@package_manager", "@workbench"} <= tags
 
 
 def test_request_refused_step(pytester):
-    """Unit-test ``request_refused`` at the step-function level, no live deployment.
+    """Unit-test ``assert_refused`` directly, no live deployment.
+
+    The logic lives in ``part11_refusal`` rather than a step file because
+    Connect and Workbench both use it, and one pytest-bdd step module cannot
+    import another (``@scenario`` inspects the caller's frame at import time).
 
     A correctly-secured deployment fronted by OIDC/SAML or a forward-auth
     gateway answers an unauthenticated call with a redirect (302/307), not a
@@ -84,20 +120,20 @@ def test_request_refused_step(pytester):
     pytester.makepyfile(
         test_refused="""
 import pytest
-from test_21CFR_part11_validation import request_refused
+from part11_refusal import assert_refused
 
 
 @pytest.mark.parametrize("status", [401, 403, 302, 307])
 def test_accepts_refusal_statuses(status):
-    request_refused(status)
+    assert_refused(status)
 
 
 def test_fails_when_access_is_granted():
-    request_refused(200)
+    assert_refused(200)
 
 
 def test_fails_on_server_error_rather_than_passing():
-    request_refused(500)
+    assert_refused(500)
 """
     )
     result = pytester.runpytest_subprocess("-p", "no:cacheprovider")
@@ -108,15 +144,19 @@ def test_fails_on_server_error_rather_than_passing():
 
 
 def test_example_collects(tmp_path):
-    """Collect with Connect "configured" so @connect scenarios aren't deselected.
+    """Collect with all three products "configured" so nothing is deselected.
 
-    Without a config naming Connect, the plugin's product-config gate
-    (``_should_deselect_for_product``) deselects every scenario here outright
+    Without a config naming a product, the plugin's product-config gate
+    (``_should_deselect_for_product``) deselects that product's scenarios outright
     -- "no test at all", not "collected but skipped" -- which pytest reports
     as exit code 5. See ``test_workbench_ordering.py`` for the same pattern.
     """
     config_path = tmp_path / "vip.toml"
-    config_path.write_text('[connect]\nurl = "https://connect.example.com"\n')
+    config_path.write_text(
+        '[connect]\nurl = "https://connect.example.com"\n'
+        '[workbench]\nurl = "https://workbench.example.com"\n'
+        '[package_manager]\nurl = "https://pm.example.com"\n'
+    )
     proc = subprocess.run(
         [
             sys.executable,

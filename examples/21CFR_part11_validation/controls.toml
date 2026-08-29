@@ -25,6 +25,50 @@ risk = "high"
 verification = "automated"
 responsibility = "shared"
 
+[controls.package-source-controlled]
+description = "Analyses install packages from a defined, served repository set"
+reference = "21 CFR 11.10(a)"
+risk = "medium"
+verification = "automated"
+responsibility = "shared"
+notes = """
+Evidences only that a repository set is served and named. Whether it holds the
+right packages at the right versions belongs in your own qualification tests.
+"""
+
+[controls.package-environment-reproducible]
+description = "A past package set can be retrieved so an analysis can be rebuilt"
+reference = "21 CFR 11.10(a)"
+risk = "high"
+verification = "automated"
+responsibility = "shared"
+notes = """
+Skips when the deployment has snapshots disabled or the pinned date predates
+the repository, and a skip still counts as coverage. Set validated_snapshot to
+a date your repository covers, then read the status column to confirm it ran.
+"""
+
+[controls.access-control-session-api]
+description = "An unauthenticated caller cannot reach the Workbench session API"
+reference = "21 CFR 11.10(d)"
+risk = "high"
+verification = "automated"
+responsibility = "shared"
+
+[controls.access-control-authorised-caller]
+description = "An authorised caller can reach the Workbench session API"
+reference = "21 CFR 11.10(d)"
+risk = "medium"
+verification = "automated"
+responsibility = "shared"
+notes = """
+The positive half of the control above: a deployment that refuses everyone
+passes the negative half alone. Weaker than its counterpart, because it can
+only pass or skip -- a run without --headless-auth or --interactive-auth
+carries no credentials, which is indistinguishable from credentials being
+rejected. Skips in that case rather than blaming the deployment.
+"""
+
 [controls.personnel-training]
 description = "Personnel have the education, training and experience to perform their tasks"
 reference = "21 CFR 11.10(i)"
