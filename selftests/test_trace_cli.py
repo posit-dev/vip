@@ -328,6 +328,46 @@ class TestCoveredButFailing:
         assert "did not pass" in captured.err
         assert "c1" in captured.err
 
+    def test_closing_line_reports_the_failing_count(self, tmp_path, capsys):
+        """The closing "Wrote ..." line only prints when writing to a real file.
+
+        One control (c1) is covered by a failed scenario; a second (c2) has no
+        tagged scenario at all, so it is a gap. matrix.entries therefore has 2
+        controls, matrix.gap_count is 1 (c2), and matrix.covered_with_failure
+        is ["c1"] (length 1) -- so the closing line must read
+        "(2 controls, 1 gaps, 1 failing)".
+        """
+        results = tmp_path / "results.json"
+        results.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1.0",
+                    "results": [
+                        {
+                            "nodeid": "t.py::test_a",
+                            "outcome": "failed",
+                            "markers": ["control-c1"],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        controls = tmp_path / "controls.toml"
+        controls.write_text(
+            '[controls.c1]\ndescription = "a control"\nverification = "automated"\n'
+            '[controls.c2]\ndescription = "an untested control"\nverification = "automated"\n',
+            encoding="utf-8",
+        )
+        out = tmp_path / "matrix.json"
+        run_trace(
+            argparse.Namespace(
+                results=str(results), controls=str(controls), format="json", output=str(out)
+            )
+        )
+        captured = capsys.readouterr()
+        assert f"Wrote {out} (2 controls, 1 gaps, 1 failing)" in captured.out
+
 
 class TestOutputFormatResolution:
     def test_json_extension_infers_json(self, tmp_path):
