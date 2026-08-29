@@ -70,6 +70,12 @@ jobs:
           name: example-report
           path: website/dist/example-report/
 
+      - name: Download compliance example report
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: example-compliance-report
+          path: website/dist/example-compliance-report/
+
       - uses: rossjrw/pr-preview-action@ffa7509e91a3ec8dfc2e5536c4d5c1acdf7a6de9 # v1
         with:
           source-dir: website/dist/

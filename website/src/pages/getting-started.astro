@@ -2,6 +2,8 @@
 import Layout from "../layouts/Layout.astro";
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
+
+const base = import.meta.env.BASE_URL;
 ---
 
 <Layout title="Getting Started - VIP">
@@ -524,6 +526,12 @@ vip trace --results report/results.json --controls ./my-tests/controls.toml</cod
             every row. The full provenance block, covering the products and
             versions under test plus the host and CI run, is in the JSON export,
             which does not have to flatten into columns.
+          </p>
+          <p>
+            A rendered example is published on this site. The
+            <a href={`${base}compliance-report/`}>compliance traceability report</a>
+            is a real VIP run against a CI Connect deployment with the matrix in it,
+            readable in the browser and downloadable as a PDF.
           </p>
           <p>
             A worked example ships with VIP. Generate it with

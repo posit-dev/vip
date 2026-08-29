@@ -394,6 +394,66 @@ jobs:
       - name: Render Quarto report
         run: cd report && uv run quarto render
 
+      # Both renders write report/_output and both runs write
+      # report/results.json, so the standard report has to move out of the way
+      # before the compliance pass starts. Everything below runs before the
+      # product containers stop, because the Part 11 scenarios need the same
+      # live Connect.
+      - name: Stage the standard report
+        run: |
+          mkdir -p _site
+          mv report/_output _site/example-report
+
+      # A Connect-only config on purpose. The Part 11 example scenarios use
+      # connect_client alone, and reusing vip.toml would print Workbench and
+      # Package Manager into the products table of a report in which no
+      # scenario touched either one.
+      - name: Configure VIP for the compliance example
+        run: |
+          cat > vip-compliance.toml << EOF
+          [general]
+          deployment_name = "CI Connect ${{ steps.version.outputs.resolved }} (21 CFR Part 11 example extension)"
+
+          [connect]
+          enabled = true
+          url = "${{ steps.connect.outputs.CONNECT_SERVER }}"
+          api_key = "${{ steps.connect.outputs.CONNECT_API_KEY }}"
+          version = "${{ steps.version.outputs.resolved }}"
+          EOF
+
+      # Same exit-code contract as the smoke run above: 0 and 1 mean pytest
+      # ran to completion, anything else means it did not. Exit code 5 (no
+      # tests collected) is the one that matters most here -- VIP deselects
+      # @connect scenarios when Connect is not configured, so a broken
+      # vip-compliance.toml would otherwise render an empty compliance report
+      # and publish it. VIP_ENABLE_EXPECTED_FAILURE_DEMO is deliberately unset:
+      # the by-design failing demo scenario reads as a broken deployment to the
+      # audience this report is for.
+      - name: Run the 21 CFR Part 11 example extension
+        run: |
+          set +e
+          uv run pytest examples/21CFR_part11_validation/ -v --vip-config=vip-compliance.toml
+          PYTEST_EXIT_CODE=$?
+          set -e
+          echo "pytest exited with code ${PYTEST_EXIT_CODE}"
+          if [ "${PYTEST_EXIT_CODE}" -eq 0 ] || [ "${PYTEST_EXIT_CODE}" -eq 1 ]; then
+            exit 0
+          fi
+          echo "::error::the Part 11 example extension exited with code ${PYTEST_EXIT_CODE} (collection, usage, or internal error rather than a test failure); see the log above for details."
+          exit 1
+
+      # VIP_CONTROLS must be absolute. Quarto renders with report/ as the
+      # working directory, and both index.qmd and vip-report.qmd swallow every
+      # exception by design, so a relative path would drop the traceability
+      # section silently and the job would still go green.
+      - name: Render the compliance report
+        env:
+          VIP_CONTROLS: ${{ github.workspace }}/examples/21CFR_part11_validation/controls.toml
+        run: cd report && uv run quarto render
+
+      - name: Stage the compliance report
+        run: mv report/_output _site/example-compliance-report
+
       # Stop Connect
       - name: Stop Connect
         if: always()
@@ -417,4 +477,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: example-report
-          path: report/_output/
+          path: _site/example-report/
+
+      - name: Upload compliance report artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: example-compliance-report
+          path: _site/example-compliance-report/
