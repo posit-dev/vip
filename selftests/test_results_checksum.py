@@ -130,6 +130,25 @@ class TestSidecarParsing:
         with pytest.raises(ResultsIntegrityError, match="checksum mismatch"):
             verify_results_checksum(p)
 
+    def test_path_qualified_sidecar_verifies(self, tmp_path):
+        """`shasum -a 256 report/results.json` from a parent directory."""
+        p, digest = self._results(tmp_path)
+        p.with_name("results.json.sha256").write_text(f"{digest}  report/results.json\n")
+        assert verify_results_checksum(p) == (digest, True)
+
+    def test_windows_path_qualified_sidecar_verifies(self, tmp_path):
+        p, digest = self._results(tmp_path)
+        p.with_name("results.json.sha256").write_text(f"{digest}  report\\results.json\n")
+        assert verify_results_checksum(p) == (digest, True)
+
+    def test_exact_match_still_wins_over_a_basename_collision(self, tmp_path):
+        """A sidecar naming this file exactly never reaches the fallback."""
+        p, digest = self._results(tmp_path)
+        p.with_name("results.json.sha256").write_text(
+            f"{'0' * 64}  archive/results.json\n{digest}  results.json\n"
+        )
+        assert verify_results_checksum(p) == (digest, True)
+
 
 class TestStaleSidecarInvalidation:
     def test_writing_results_removes_a_stale_sidecar_first(self, tmp_path, pytester):

@@ -13,7 +13,7 @@ import io
 import json
 import sys
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from vip.reporting import RESULTS_SCHEMA_VERSION, ReportData
 
@@ -489,6 +489,14 @@ def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
     # comparison against some other file entirely.
     named = [d for d, name in entries if name == p.name]
     if not named:
+        # Fall back to comparing basenames. `shasum -a 256 report/results.json`
+        # run from a directory above the file records the path it was given
+        # rather than the bare name, and refusing that sidecar reads to an
+        # operator as a tamper alarm on a file nobody touched. Exact match
+        # stays the primary key, so a multi-file sidecar that already names
+        # this file exactly never reaches here and keeps its strict behaviour.
+        named = [d for d, name in entries if name and sidecar_basename(name) == p.name]
+    if not named:
         if len(entries) == 1 and entries[0][1] is None:
             # A bare digest with no filename: nothing to disagree with.
             named = [entries[0][0]]
@@ -508,6 +516,16 @@ def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
             f"checksum mismatch for {p}: sidecar records {named[0]}, file hashes to {digest}"
         )
     return digest, True
+
+
+def sidecar_basename(name: str) -> str:
+    """The bare filename from a sidecar's recorded name.
+
+    Backslashes are normalized first: shasum under Git Bash or MSYS can record
+    a Windows-style path, and PurePosixPath would treat the whole thing as one
+    filename.
+    """
+    return PurePosixPath(name.replace("\\", "/")).name
 
 
 def _parse_sidecar(text: str) -> list[tuple[str, str | None]]:
