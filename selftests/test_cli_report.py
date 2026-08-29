@@ -411,3 +411,85 @@ class TestReportCLI:
         )
         assert result.returncode == 0
         assert "--results" in result.stdout
+
+
+class TestReportControls:
+    """`vip report --controls` scopes the control list to one render.
+
+    Copying controls.toml into the report directory was the alternative and is
+    wrong: that directory survives between runs, so one --controls invocation
+    would leave a file behind that every later plain `vip report` picks up,
+    growing a compliance section nobody asked for from a stale list.
+    """
+
+    @pytest.fixture
+    def cli(self):
+        from vip import cli
+
+        return cli
+
+    def _args(self, tmp_path, controls=None):
+        results = tmp_path / "results.json"
+        results.write_text('{"schema_version": "1.0", "results": []}', encoding="utf-8")
+        return argparse.Namespace(results=str(results), controls=controls, open=False, output=None)
+
+    def test_malformed_control_list_fails_before_quarto_starts(self, cli, tmp_path, monkeypatch):
+        """A notebook cell can only degrade to a warning, so validate out here."""
+        bad = tmp_path / "c.toml"
+        bad.write_text("[controls]\n", encoding="utf-8")
+
+        called = []
+        monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
+        with pytest.raises(SystemExit) as exc:
+            cli.run_report(self._args(tmp_path, str(bad)))
+        assert exc.value.code == 1
+        assert called == []
+
+    def test_missing_control_list_fails_before_quarto_starts(self, cli, tmp_path, monkeypatch):
+        called = []
+        monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
+        with pytest.raises(SystemExit):
+            cli.run_report(self._args(tmp_path, str(tmp_path / "absent.toml")))
+        assert called == []
+
+    def test_controls_reach_both_renders_through_the_environment(self, cli, tmp_path, monkeypatch):
+        """The HTML pages and the PDF are separate quarto invocations."""
+        controls = tmp_path / "c.toml"
+        controls.write_text('[controls.x]\ndescription = "d"\n', encoding="utf-8")
+
+        envs = []
+
+        def fake_render(document, report_dir, env):
+            envs.append((document, env.get("VIP_CONTROLS")))
+            out = report_dir / "_output"
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "index.html").write_text("<html></html>")
+            (out / "vip-report.pdf").write_bytes(b"%PDF-")
+            return 0
+
+        monkeypatch.setattr(cli, "_quarto_render", fake_render)
+        cli.run_report(self._args(tmp_path, str(controls)))
+
+        rendered = dict(envs)
+        assert rendered["index.qmd"] == str(controls.resolve())
+        assert rendered["vip-report.qmd"] == str(controls.resolve())
+
+    def test_without_controls_the_variable_is_absent_and_nothing_warns(
+        self, cli, tmp_path, monkeypatch, capsys
+    ):
+        """The overwhelmingly common path: no control list, no section, no noise."""
+        envs = []
+
+        def fake_render(document, report_dir, env):
+            envs.append(env.get("VIP_CONTROLS"))
+            out = report_dir / "_output"
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "index.html").write_text("<html></html>")
+            (out / "vip-report.pdf").write_bytes(b"%PDF-")
+            return 0
+
+        monkeypatch.setattr(cli, "_quarto_render", fake_render)
+        cli.run_report(self._args(tmp_path, None))
+
+        assert envs == [None, None, None]
+        assert "controls" not in capsys.readouterr().out.lower()

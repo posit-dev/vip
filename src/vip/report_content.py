@@ -391,3 +391,115 @@ def provenance_rows(data: ReportData) -> list[tuple[str, str | None]]:
 def summary_status(data: ReportData) -> str:
     """The run's overall verdict: "FAIL" when anything failed, else "PASS"."""
     return "FAIL" if data.failed else "PASS"
+
+
+# ---------------------------------------------------------------------------
+# Compliance traceability section
+# ---------------------------------------------------------------------------
+
+# Coverage values reuse the outcome palette rather than introducing new colors,
+# so `selftests/test_report_content.py`'s drift guard against styles.css keeps
+# working unchanged. The mapping is the honest one: a gap reads like a failure,
+# an executed covered control like a pass, a control with no automated test to
+# point at like a skip, and a covered control whose scenarios never ran like
+# na_version -- amber, because it is the state most likely to be misread as
+# evidence.
+COVERAGE_STYLE_KEY = {
+    "covered": "passed",
+    "covered_not_executed": "na_version",
+    "gap": "failed",
+    "not_automatable": "skipped",
+}
+
+COVERAGE_LABELS = {
+    "covered": "COVERED",
+    "covered_not_executed": "NOT RUN",
+    "gap": "GAP",
+    "not_automatable": "N/A (manual)",
+}
+
+
+@dataclass(frozen=True)
+class ControlRow:
+    """One control's line in the rendered traceability section."""
+
+    control_id: str
+    description: str
+    reference: str
+    coverage: str
+    """"covered" | "covered_not_executed" | "gap" | "not_automatable".
+
+    Distinct from ``ControlEntry.coverage``, which has no
+    ``covered_not_executed`` value: the matrix keeps coverage and execution as
+    separate facts, and this flattens them for display because a reader
+    scanning one column must not read an all-skipped control as evidenced.
+    """
+    scenarios: list[tuple[str, str, str]]
+    """``(scenario title, status, when it ran)`` for each matched scenario."""
+
+
+def display_coverage(entry) -> str:  # noqa: ANN001 - vip.traceability.ControlEntry
+    """Flatten coverage and execution into the one value the report shows."""
+    if entry.coverage == "covered" and not entry.executed:
+        return "covered_not_executed"
+    return entry.coverage
+
+
+def control_rows(matrix) -> list[ControlRow]:  # noqa: ANN001 - TraceabilityMatrix
+    """Every control in the matrix, ready for a backend to render as a table."""
+    rows = []
+    for entry in matrix.entries:
+        scenarios = [
+            (
+                m.scenario_title or m.nodeid,
+                m.status,
+                (m.started_at or "").replace("T", " ")[:19] or NOT_RECORDED,
+            )
+            for m in entry.matches
+        ]
+        rows.append(
+            ControlRow(
+                control_id=entry.control.control_id,
+                description=entry.control.description,
+                reference=entry.control.reference or "",
+                coverage=display_coverage(entry),
+                scenarios=scenarios,
+            )
+        )
+    return rows
+
+
+def traceability_summary_rows(matrix) -> list[tuple[str, str]]:  # noqa: ANN001
+    """Label/value counts for the section's summary table."""
+    rows = control_rows(matrix)
+    counts = Counter(r.coverage for r in rows)
+    return [
+        ("Controls", str(len(rows))),
+        ("Covered and executed", str(counts.get("covered", 0))),
+        ("Covered, not executed", str(counts.get("covered_not_executed", 0))),
+        ("Gaps", str(counts.get("gap", 0))),
+        ("Not automatable", str(counts.get("not_automatable", 0))),
+    ]
+
+
+# Shown under the section heading in both backends. The report is the artifact
+# a customer archives, so the limits of the claim travel with it rather than
+# living only in the docs they may never read.
+TRACEABILITY_CAVEAT = (
+    "Coverage records that a scenario is tagged for a control, not that the "
+    "scenario passed or even ran. A control shown as NOT RUN has a tagged "
+    "scenario that was skipped, which is what happens when the product it "
+    "targets is not configured. This section evidences the controls chosen "
+    "for automation. It is not an attestation of regulatory compliance."
+)
+
+
+def traceability_warning(matrix) -> str:  # noqa: ANN001
+    """A line naming the controls that look covered but were never exercised, or ""."""
+    unexecuted = matrix.covered_without_execution
+    if not unexecuted:
+        return ""
+    return (
+        f"{pluralize(len(unexecuted), 'control')} counted as covered but had no "
+        f"scenario that ran: {', '.join(unexecuted)}."
+    )

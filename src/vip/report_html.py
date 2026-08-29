@@ -24,12 +24,16 @@ from __future__ import annotations
 from html import escape as _esc
 
 from vip.report_content import (
+    COVERAGE_LABELS,
+    COVERAGE_STYLE_KEY,
     NOT_RECORDED,
     OUTCOME_LABELS,
     OUTCOME_ORDER,
+    TRACEABILITY_CAVEAT,
     Badge,
     FeatureStepIndex,
     category_label,
+    control_rows,
     description_line,
     display_title,
     dominant_feature_description,
@@ -43,6 +47,8 @@ from vip.report_content import (
     secondary_badges_for,
     skip_reason_parts,
     summary_status,
+    traceability_summary_rows,
+    traceability_warning,
 )
 from vip.reporting import ReportData, TestResult
 
@@ -411,3 +417,46 @@ def render_provenance_table(data: ReportData) -> str:
         for label, value in provenance_rows(data)
     )
     return f"<table><tbody>{body}</tbody></table>"
+
+
+def render_traceability(matrix) -> str:  # noqa: ANN001 - vip.traceability.TraceabilityMatrix
+    """The compliance traceability section: summary counts, then one row per control.
+
+    Every customer-supplied value goes through ``_esc``. A control list is
+    authored outside VIP entirely, so its descriptions and references are the
+    first fully untrusted text this backend renders.
+    """
+    summary = "".join(
+        f"<tr><th>{_esc(label)}</th><td>{_esc(value)}</td></tr>"
+        for label, value in traceability_summary_rows(matrix)
+    )
+    parts = [
+        f"<p class='trace-caveat'>{_esc(TRACEABILITY_CAVEAT)}</p>",
+        f"<table><tbody>{summary}</tbody></table>",
+    ]
+    warning = traceability_warning(matrix)
+    if warning:
+        parts.append(f"<p class='trace-warning'><strong>{_esc(warning)}</strong></p>")
+
+    rows = []
+    for row in control_rows(matrix):
+        style = outcome_style(COVERAGE_STYLE_KEY[row.coverage])
+        badge = (
+            f"<span class='badge' style='color:{style.color};"
+            f"background:{style.background}'>{_esc(COVERAGE_LABELS[row.coverage])}</span>"
+        )
+        if row.scenarios:
+            evidence = "<br>".join(
+                f"{_esc(title)} &mdash; {_esc(status)} at {_esc(when)}"
+                for title, status, when in row.scenarios
+            )
+        else:
+            evidence = "<em>no tagged scenario</em>"
+        reference = f"<br><small>{_esc(row.reference)}</small>" if row.reference else ""
+        rows.append(
+            f"<tr><td><code>{_esc(row.control_id)}</code>{reference}</td>"
+            f"<td>{_esc(row.description)}</td><td>{badge}</td><td>{evidence}</td></tr>"
+        )
+    header = "<tr><th>Control</th><th>Description</th><th>Coverage</th><th>Evidence</th></tr>"
+    parts.append(f"<table><thead>{header}</thead><tbody>{''.join(rows)}</tbody></table>")
+    return "".join(parts)

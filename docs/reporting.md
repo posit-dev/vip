@@ -221,6 +221,31 @@ Control ids become pytest marker names, so they may use only letters, digits,
 name pytest registers, which aborts collection under `--strict-markers`; VIP
 warns and skips registering such a tag. Write `11-10-a` instead.
 
+### In the rendered report
+
+`vip report --controls PATH` adds a Compliance Traceability section to both the
+HTML report and the PDF, carrying the summary counts, the per-control coverage,
+and the scenario and timestamp evidencing each one. Without `--controls` there is
+no section and nothing changes, which is the case for every run that has no
+control list.
+
+```bash
+vip report --results report/results.json --controls ./my-tests/controls.toml
+```
+
+The control list is scoped to that one render, passed to Quarto as `VIP_CONTROLS`
+rather than copied into the report directory. That directory survives between
+runs, so a copied file would make every later plain `vip report` sprout a
+compliance section nobody asked for, built from a stale list. Rendering the
+report documents directly with `quarto render` therefore needs `VIP_CONTROLS`
+set by hand.
+
+The section repeats the same caveat the CSV and JSON exports carry, because the
+report is the artifact that gets archived and handed on: coverage records that a
+scenario is tagged, and a control shown as NOT RUN has a tagged scenario that was
+skipped. See `docs/validation-package.md` for how these outputs map onto a GxP
+validation package, and which parts of one VIP cannot supply.
+
 `vip scaffold --template 21cfr-part11-validation --output DIR` generates a starting point
 with a worked `controls.toml`, a tagged feature file, and the client methods
 (`list_audit_logs`, `audit_log_allowed_methods`, `unauthenticated_status`) the

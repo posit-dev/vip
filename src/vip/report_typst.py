@@ -38,14 +38,18 @@ from __future__ import annotations
 import textwrap
 
 from vip.report_content import (
+    COVERAGE_LABELS,
+    COVERAGE_STYLE_KEY,
     NOT_RECORDED,
     OUTCOME_LABELS,
     OUTCOME_ORDER,
     SECONDARY_BADGE_BACKGROUND,
     SECONDARY_BADGE_BORDER,
+    TRACEABILITY_CAVEAT,
     Badge,
     FeatureStepIndex,
     category_label,
+    control_rows,
     description_line,
     display_title,
     dominant_feature_description,
@@ -59,6 +63,8 @@ from vip.report_content import (
     secondary_badges_for,
     skip_reason_parts,
     summary_status,
+    traceability_summary_rows,
+    traceability_warning,
 )
 from vip.reporting import ReportData, TestResult
 
@@ -524,8 +530,77 @@ def render_details(data: ReportData, hints: dict[str, dict]) -> str:
     return "".join(parts)
 
 
-def render_document(data: ReportData, hints: dict[str, dict]) -> str:
-    """The whole PDF body, preamble included, ready to emit as a ``{=typst}`` block."""
+def _stacked(parts: list[str]) -> str:
+    """Several Typst expressions as one table cell, separated by line breaks.
+
+    A table cell must be a single expression, so multi-line content needs a
+    content block rather than concatenated ``#`` calls -- which is what
+    ``text(...)#block(...)`` produced, and Typst rejected.
+    """
+    if len(parts) == 1:
+        return parts[0]
+    return "[" + "#linebreak()".join(f"#{part}" for part in parts) + "]"
+
+
+def render_traceability(matrix) -> str:  # noqa: ANN001 - TraceabilityMatrix
+    """The compliance traceability section as Typst markup.
+
+    Every customer-supplied value passes through ``_lit`` (this module's
+    standing invariant). A control list is authored outside VIP, so a
+    description containing ``#``, ``*`` or ``$`` is live Typst markup
+    otherwise -- and these are the first fully customer-authored strings to
+    reach this backend.
+    """
+    parts = [
+        _paragraph(TRACEABILITY_CAVEAT, italic=True),
+        _kv_table(
+            [
+                (label, _text(value, size="9pt"))
+                for label, value in traceability_summary_rows(matrix)
+            ]
+        ),
+    ]
+    warning = traceability_warning(matrix)
+    if warning:
+        parts.append(_paragraph(warning))
+
+    rows = []
+    for row in control_rows(matrix):
+        style = outcome_style(COVERAGE_STYLE_KEY[row.coverage])
+        control_parts = [_text(row.control_id, size="9pt")]
+        if row.reference:
+            control_parts.append(_text(row.reference, size="8pt", fill='rgb("#6b7280")'))
+        if row.scenarios:
+            evidence = _stacked(
+                [_text(f"{t} - {s} at {w}", size="8.5pt") for t, s, w in row.scenarios]
+            )
+        else:
+            evidence = _text("no tagged scenario", size="8.5pt", style='"italic"')
+        rows.append(
+            [
+                _stacked(control_parts),
+                _text(row.description, size="9pt"),
+                _call("vip-pill", _lit(COVERAGE_LABELS[row.coverage]), _lit(style.color)),
+                evidence,
+            ]
+        )
+    parts.append(
+        _table(
+            "(auto, 1fr, auto, 1.2fr)",
+            ["Control", "Description", "Coverage", "Evidence"],
+            rows,
+        )
+    )
+    return "".join(parts)
+
+
+def render_document(data: ReportData, hints: dict[str, dict], matrix=None) -> str:  # noqa: ANN001
+    """The whole PDF body, preamble included, ready to emit as a ``{=typst}`` block.
+
+    ``matrix`` is a ``vip.traceability.TraceabilityMatrix`` or ``None``. When
+    it is ``None`` -- every run without a control list, which is nearly all of
+    them -- the output is byte-identical to before the section existed.
+    """
     if data.total == 0:
         return PREAMBLE + _paragraph("No results found. Run vip verify to generate results.")
     parts = [
@@ -539,6 +614,11 @@ def render_document(data: ReportData, hints: dict[str, dict]) -> str:
         render_summary_table(data),
         _heading("Provenance", 2),
         render_provenance_table(data),
+        *(
+            [_heading("Compliance Traceability", 2), render_traceability(matrix)]
+            if matrix is not None
+            else []
+        ),
         _heading("Failures & Skips", 2),
         _paragraph(
             "Every check that did not pass, in full. Passing checks are counted above, "

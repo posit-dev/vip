@@ -803,6 +803,25 @@ def run_report(args: argparse.Namespace) -> None:
     # is the vip install itself, which always has both. See issue #554.
     env = {**os.environ, "QUARTO_PYTHON": sys.executable}
 
+    # Scope the control list to this render via the environment. Copying
+    # controls.toml into the report directory was the obvious alternative and
+    # is wrong: that directory survives between runs, so one
+    # `vip report --controls ...` would leave a file behind that every later
+    # plain `vip report` silently picks up, growing a compliance section
+    # nobody asked for out of a stale list. Validate it here so a malformed
+    # file fails before Quarto starts, rather than inside a notebook cell
+    # where the .qmd can only degrade to a warning.
+    if getattr(args, "controls", None):
+        from vip.traceability import ControlListError, load_controls
+
+        controls_path = Path(args.controls).resolve()
+        try:
+            load_controls(controls_path)
+        except ControlListError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        env["VIP_CONTROLS"] = str(controls_path)
+
     # The HTML pages and the PDF render as separate quarto invocations on
     # purpose. One combined `quarto render` ties their fates together: on a
     # Quarto too old to know Typst (pre-1.4), the PDF document fails the
@@ -2116,6 +2135,14 @@ def main() -> None:
         "--results",
         default="report/results.json",
         help="Path to results.json (default: report/results.json)",
+    )
+    report_parser.add_argument(
+        "--controls",
+        default=None,
+        help=(
+            "Path to a controls.toml control list. Adds a compliance traceability "
+            "section to the HTML report and the PDF. Applies to this render only."
+        ),
     )
     report_parser.add_argument(
         "--open",
