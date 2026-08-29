@@ -621,9 +621,12 @@ def render_document(data: ReportData, hints: dict[str, dict], matrix=None, trace
 
     ``trace_error`` names why the section could not be built at all (a
     missing/malformed control list, a results checksum mismatch). It renders
-    through ``_paragraph``, which routes the text through ``_lit``, so a
-    ``#``, ``*`` or ``$`` in an exception message is escaped rather than
-    executed. A dropped section is invisible to a regulated reader, so this
+    through ``_paragraph``, which routes the text through ``_text`` to
+    ``_lit``. An exception message is arbitrary text, and ``_lit`` escapes
+    the characters that could terminate the string literal early -- the
+    quote in particular, plus backslash -- so the message lands as inert
+    literal text inside the quotes rather than breaking out into live
+    markup. A dropped section is invisible to a regulated reader, so this
     is a visible marker in both editions rather than a silent skip.
     """
     # The error branch and the matrix branch emit the same heading, so a
