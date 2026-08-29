@@ -70,9 +70,10 @@ def snapshot_index_served(snapshot_result, validated_repo_name, validated_snapsh
     """Separate "this deployment cannot answer" from "this deployment answered wrong".
 
     A 404 means snapshots are switched off, or that date predates the
-    repository -- a configuration fact about the deployment, not a failed
-    control, so the scenario skips. A 5xx means the server broke while
-    answering, which fails. Read the skip in the matrix as
+    repository. A 401/403 means the repository is an authenticated one and this
+    run carried no token. Both are configuration facts about the deployment or
+    the run rather than failed controls, so the scenario skips. A 5xx means the
+    server broke while answering, which fails. Read either skip in the matrix as
     covered-not-executed: it is not evidence the control holds.
     """
     found, status = snapshot_result
@@ -82,6 +83,11 @@ def snapshot_index_served(snapshot_result, validated_repo_name, validated_snapsh
         pytest.skip(
             f"no snapshot {validated_snapshot} for repository {validated_repo_name}; "
             "snapshots may be disabled, or the date may predate the repository"
+        )
+    if status in (401, 403):
+        pytest.skip(
+            f"repository {validated_repo_name} requires a token this run did not carry; "
+            "set VIP_PACKAGE_MANAGER_TOKEN, or point validated_repo_name at an open repository"
         )
     assert found, (
         f"snapshot {validated_snapshot} of repository {validated_repo_name} "

@@ -2,6 +2,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+from _pytest.outcomes import Skipped
+
 # tomllib is stdlib only from 3.11; tomli backfills it on 3.10, which CI runs.
 # Same guard as src/vip/traceability.py.
 if sys.version_info >= (3, 11):
@@ -112,7 +115,9 @@ def test_request_refused_step(pytester):
     bare 401/403 -- that must still count as a refusal. Only a 2xx (access
     actually granted) is a real control failure. A 5xx is a broken
     deployment, not evidence either way, so it fails with its own distinct
-    message rather than being silently accepted as a refusal.
+    message rather than being silently accepted as a refusal. A 404 is neither:
+    it is what both refusal-by-hiding and a mistyped endpoint fixture return,
+    so it skips rather than claiming evidence the run does not have.
     """
     (pytester.path / "conftest.py").write_text(
         f"import sys\nsys.path.insert(0, {str(EXAMPLE)!r})\n"
@@ -134,13 +139,36 @@ def test_fails_when_access_is_granted():
 
 def test_fails_on_server_error_rather_than_passing():
     assert_refused(500)
+
+
+def test_skips_on_404_rather_than_passing_or_failing():
+    assert_refused(404)
 """
     )
-    result = pytester.runpytest_subprocess("-p", "no:cacheprovider")
-    result.assert_outcomes(passed=4, failed=2)
+    result = pytester.runpytest_subprocess("-p", "no:cacheprovider", "-rs")
+    result.assert_outcomes(passed=4, failed=2, skipped=1)
     output = result.stdout.str()
     assert "access control is not enforced" in output
     assert "not evidence of a working access control" in output
+
+
+def test_refusal_404_skip_explains_both_readings(monkeypatch):
+    """The 404 skip must say why it is not a pass, in-process.
+
+    Asserted here rather than in the subprocess above because VIP's plugin owns
+    the terminal reporter, which drops skip reasons from the log even under
+    ``-rs``. Importing ``part11_refusal`` directly is safe -- it holds no
+    ``@scenario``, which is the whole reason the assertion lives in its own
+    module.
+    """
+    monkeypatch.syspath_prepend(str(EXAMPLE))
+    import part11_refusal
+
+    with pytest.raises(Skipped) as excinfo:
+        part11_refusal.assert_refused(404)
+    message = str(excinfo.value)
+    assert "refusal-by-hiding" in message
+    assert "cannot tell them apart" in message
 
 
 def test_example_collects(tmp_path):

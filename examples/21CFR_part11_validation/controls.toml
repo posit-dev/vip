@@ -54,6 +54,13 @@ reference = "21 CFR 11.10(d)"
 risk = "high"
 verification = "automated"
 responsibility = "shared"
+notes = """
+Reads a status code, so two deployment shapes need the endpoint fixture
+overridden. A session API that 404s to anonymous callers skips, because
+refusal-by-hiding and a wrong path look identical from here. One that answers
+a 200 login shell fails, because a status-only probe cannot tell that shell
+from session data.
+"""
 
 [controls.access-control-authorised-caller]
 description = "An authorised caller can reach the Workbench session API"

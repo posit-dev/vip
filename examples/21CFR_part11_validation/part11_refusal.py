@@ -30,6 +30,22 @@ def assert_refused(status: int) -> None:
     with a message that says so rather than passing silently. Anything else
     unrecognized also fails explicitly, so a new status code shows up as a
     named failure instead of a silent pass.
+
+    A 404 is the one status that neither passes nor fails. Hiding a privileged
+    endpoint from anonymous callers is a real pattern, and Workbench's session
+    API 404s that way on deployments that serve an SPA fallback -- so failing
+    would paint a red row on a correctly secured deployment. But a 404 is also
+    what a mistyped endpoint fixture returns, and accepting it would pass a
+    scenario that probed nothing. Skipping refuses both readings: the matrix
+    shows the control as covered-not-executed, which is what this run actually
+    established. Point the fixture at an endpoint your deployment serves to
+    turn it into evidence.
+
+    A 200 carrying an HTML login shell is the remaining blind spot. A
+    status-only probe reads it as access granted and fails, which overclaims --
+    the shell is not session data. That failure stands rather than being
+    softened, because a wrong red on an unusual deployment shape is safer here
+    than a wrong green, and overriding the endpoint fixture resolves it.
     """
     if 200 <= status < 300:
         pytest.fail(
@@ -37,6 +53,12 @@ def assert_refused(status: int) -> None:
         )
     if status in (401, 403) or 300 <= status < 400:
         return
+    if status == 404:
+        pytest.skip(
+            "the endpoint answered 404 to an unauthenticated caller; that may be "
+            "refusal-by-hiding or a path this deployment does not serve, and this "
+            "probe cannot tell them apart"
+        )
     if 500 <= status < 600:
         pytest.fail(
             f"deployment returned {status} for an unauthenticated request; a server "

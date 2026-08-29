@@ -20,6 +20,15 @@ const base = import.meta.env.BASE_URL;
         their outcome, and the timestamp each check ran.
       </p>
       <p class="how-to">
+        The four Workbench and Package Manager controls report as gaps here, and
+        that is worth reading rather than skipping past. This run configures Connect
+        alone, VIP deselects an unconfigured product&rsquo;s scenarios rather than
+        skipping them, so those scenarios never reach the results file and the
+        controls they carry read as gaps. The suite has the checks; this run did not
+        exercise them. Confirm which products a run covered before you conclude a
+        control has no automated evidence.
+      </p>
+      <p class="how-to">
         The <a href={`${base}report/`}>standard example report</a> is a broad smoke
         run across Connect, Workbench and Package Manager with no control list
         attached, so it has no such section and its summary counts many more
@@ -37,13 +46,14 @@ const base = import.meta.env.BASE_URL;
         exports to CSV or JSON with <code>vip trace</code>.
       </p>
       <p class="how-to">
-        Read the matrix carefully. This example uses a five-control list, three of
-        them automated. Controls you mark <code>manual</code> or
-        <code>procedural</code> are reported as not verifiable by automated test,
-        which is deliberately distinct from a coverage gap, and a control whose
-        scenario was skipped is reported as covered but not executed. A green matrix
-        evidences the controls you chose to automate, on the deployment you pointed
-        VIP at, at the time it ran. It is not an attestation of compliance.
+        Read the matrix carefully. This example uses a nine-control list, seven of
+        them automated across Connect, Workbench and Package Manager. Controls you
+        mark <code>manual</code> or <code>procedural</code> are reported as not
+        verifiable by automated test, which is deliberately distinct from a coverage
+        gap, and a control whose scenario was skipped is reported as covered but not
+        executed. A green matrix evidences the controls you chose to automate, on the
+        deployment you pointed VIP at, at the time it ran. It is not an attestation
+        of compliance.
       </p>
       <div class="report-actions">
         <a

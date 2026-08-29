@@ -20,6 +20,12 @@ def workbench_privileged_endpoint() -> str:
     The session API, not ``/health-check`` -- the health endpoint answers
     anonymously by design, so a refusal scenario against it would assert
     nothing about access control.
+
+    Override this if your deployment serves an SPA fallback here. Such a
+    deployment answers an anonymous GET with a 200 carrying a login shell, and
+    a status-only probe reads that as access granted and fails the scenario.
+    An endpoint that answers 401, 403 or a redirect gives the control real
+    evidence instead.
     """
     return "/api/sessions"
 

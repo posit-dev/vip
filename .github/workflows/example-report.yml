@@ -404,10 +404,17 @@ jobs:
           mkdir -p _site
           mv report/_output _site/example-report
 
-      # A Connect-only config on purpose. The Part 11 example scenarios use
-      # connect_client alone, and reusing vip.toml would print Workbench and
-      # Package Manager into the products table of a report in which no
-      # scenario touched either one.
+      # A Connect-only config on purpose. The Part 11 example also maps
+      # Workbench and Package Manager controls, but this job stands up Connect
+      # for the compliance pass, and reusing vip.toml would print the other two
+      # into the products table of a report in which no scenario touched them.
+      #
+      # The published matrix therefore shows the four Workbench and Package
+      # Manager controls as gaps. That is the intended demonstration: VIP
+      # deselects an unconfigured product's scenarios rather than skipping
+      # them, so they never reach results.json and their controls read as gaps
+      # rather than as covered. The example README explains the same thing in
+      # prose; here a reader sees it in the artifact.
       - name: Configure VIP for the compliance example
         run: |
           cat > vip-compliance.toml << EOF
