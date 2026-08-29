@@ -149,7 +149,8 @@ class ControlEntry:
         matrix reads covered for a check that verified nothing. An
         unconfigured product is the opposite case:
         ``plugin.pytest_collection_modifyitems`` deselects those scenarios, so
-        they never reach ``results.json`` and their control reports as a gap.
+        they never reach ``results.json`` and a control tagged *only* by them
+        reports as a gap.
         """
         return any(m.status not in NON_EXECUTING_STATUSES for m in self.matches)
 
