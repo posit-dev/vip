@@ -1761,9 +1761,9 @@ def run_trace(args: argparse.Namespace) -> None:
         )
 
     # A covered control whose every scenario was skipped still counts toward
-    # "0 gaps". True, and on its own misleading: an unconfigured product
-    # auto-skips all of its scenarios, so the greenest matrix this tool can
-    # print is the one produced by verifying nothing.
+    # "0 gaps". True, and on its own misleading: a scenario that runs and
+    # skips itself still counts as covering its control, so the greenest
+    # matrix this tool can print is one produced by verifying nothing.
     unexecuted = matrix.covered_without_execution
     if unexecuted:
         print(

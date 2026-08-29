@@ -142,11 +142,14 @@ class ControlEntry:
     def executed(self) -> bool:
         """Whether any tagged scenario actually ran.
 
-        Coverage says a scenario is tagged for this control; this says one of
-        them produced a result. They come apart whenever a product is not
-        configured, because VIP auto-skips every one of its scenarios -- so a
-        run against an unconfigured deployment yields a matrix that is fully
-        covered and entirely unevidenced.
+        Coverage says a scenario is tagged for this control. This says one of
+        them produced a result. The two come apart when a scenario runs and
+        skips itself (an absent endpoint, no data to inspect, a version gate),
+        because the result row it writes still lists its control tag, so a
+        matrix reads covered for a check that verified nothing. An
+        unconfigured product is the opposite case:
+        ``plugin.pytest_collection_modifyitems`` deselects those scenarios, so
+        they never reach ``results.json`` and their control reports as a gap.
         """
         return any(m.status not in NON_EXECUTING_STATUSES for m in self.matches)
 
@@ -172,8 +175,8 @@ class TraceabilityMatrix:
 
         The headline summary reports these as covered with zero gaps, which
         is true and, on its own, badly misleading: nothing was verified. The
-        caller surfaces this so a reader cannot take a green matrix from an
-        unconfigured run at face value.
+        caller surfaces this so a reader cannot take a green matrix at face
+        value when every scenario behind it ran and skipped itself.
         """
         return [
             e.control.control_id for e in self.entries if e.coverage == "covered" and not e.executed
@@ -406,9 +409,9 @@ def render_json(matrix: TraceabilityMatrix) -> str:
             "gaps": matrix.gap_count,
             "not_automatable": sum(1 for e in matrix.entries if e.coverage == "not_automatable"),
             # Coverage counts controls that have a tagged scenario. This
-            # counts controls whose scenario actually ran. A run against an
-            # unconfigured product auto-skips everything, so the two diverge
-            # exactly when a green matrix means least.
+            # counts controls whose scenario actually ran. The two diverge
+            # when a tagged scenario runs and skips itself, which is exactly
+            # when a green matrix means least.
             "covered_and_executed": sum(
                 1 for e in matrix.entries if e.coverage == "covered" and e.executed
             ),
