@@ -13,7 +13,7 @@ examples/*
 # selftests/test_dockerignore_force_includes.py fails if one is missing.
 !examples/cross_product_validation
 !examples/custom_tests
-!examples/part11_validation
+!examples/21CFR_part11_validation
 !examples/_shared
 .gitignore
 .gitattributes

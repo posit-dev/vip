@@ -45,8 +45,8 @@ regulatory mapping uses. Only `description` is required.
 ## Running it
 
 ```bash
-vip verify --config vip.toml --extensions ./part11_validation
-vip trace --results report/results.json --controls ./part11_validation/controls.toml
+vip verify --config vip.toml --extensions ./21CFR_part11_validation
+vip trace --results report/results.json --controls ./21CFR_part11_validation/controls.toml
 ```
 
 Add `--format json` for a machine-readable matrix carrying the full provenance

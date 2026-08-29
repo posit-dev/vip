@@ -173,8 +173,8 @@ A control's row in the matrix gets one of three `coverage` values:
 ### Worked example
 
 ```bash
-vip verify --config vip.toml --extensions ./examples/part11_validation
-vip trace --results report/results.json --controls ./examples/part11_validation/controls.toml
+vip verify --config vip.toml --extensions ./examples/21CFR_part11_validation
+vip trace --results report/results.json --controls ./examples/21CFR_part11_validation/controls.toml
 ```
 
 `vip trace` defaults to CSV on stdout; pass `--format json` for full fidelity output
@@ -186,7 +186,7 @@ but it alters what a non-Excel reader sees: any cell whose value begins with
 when opened in Excel. JSON output is not altered this way -- use it when exact
 fidelity to the underlying value matters more than spreadsheet safety.
 
-`vip scaffold --template part11-validation --output DIR` generates a starting point
+`vip scaffold --template 21cfr-part11-validation --output DIR` generates a starting point
 with a worked `controls.toml`, a tagged feature file, and the client methods
 (`list_audit_logs`, `audit_log_allowed_methods`, `unauthenticated_status`) the
 example scenarios use.

@@ -5,12 +5,12 @@ from pathlib import Path
 import tomllib
 
 REPO = Path(__file__).resolve().parent.parent
-EXAMPLE = REPO / "examples" / "part11_validation"
+EXAMPLE = REPO / "examples" / "21CFR_part11_validation"
 
 
 def test_example_directory_exists():
-    assert (EXAMPLE / "test_part11_validation.feature").is_file()
-    assert (EXAMPLE / "test_part11_validation.py").is_file()
+    assert (EXAMPLE / "test_21CFR_part11_validation.feature").is_file()
+    assert (EXAMPLE / "test_21CFR_part11_validation.py").is_file()
     assert (EXAMPLE / "controls.toml").is_file()
     assert (EXAMPLE / "README.md").is_file()
 
@@ -18,19 +18,19 @@ def test_example_directory_exists():
 def test_template_is_registered():
     from vip.cli import _SCAFFOLD_TEMPLATES
 
-    assert "part11-validation" in _SCAFFOLD_TEMPLATES
-    assert _SCAFFOLD_TEMPLATES["part11-validation"][0] == "part11_validation"
+    assert "21cfr-part11-validation" in _SCAFFOLD_TEMPLATES
+    assert _SCAFFOLD_TEMPLATES["21cfr-part11-validation"][0] == "21CFR_part11_validation"
 
 
 def test_template_is_bundled_into_the_wheel():
     """A template missing from force-include works in-repo and breaks when installed."""
     config = tomllib.loads((REPO / "pyproject.toml").read_text())
     includes = config["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
-    assert includes["examples/part11_validation"] == "vip/_scaffold/part11_validation"
+    assert includes["examples/21CFR_part11_validation"] == "vip/_scaffold/21CFR_part11_validation"
 
 
 def test_every_control_tag_is_defined_in_controls_toml():
-    feature = (EXAMPLE / "test_part11_validation.feature").read_text()
+    feature = (EXAMPLE / "test_21CFR_part11_validation.feature").read_text()
     tags = {
         tok.lstrip("@")
         for line in feature.splitlines()
@@ -59,7 +59,7 @@ def test_readme_states_it_is_not_an_attestation():
 
 def test_scenarios_carry_literal_product_markers():
     """Feature-level Gherkin tags alone do not drive auto-skip in extensions."""
-    steps = (EXAMPLE / "test_part11_validation.py").read_text()
+    steps = (EXAMPLE / "test_21CFR_part11_validation.py").read_text()
     assert steps.count("@pytest.mark.connect") + steps.count("@pytest.mark.workbench") >= 3
 
 
@@ -79,7 +79,7 @@ def test_request_refused_step(pytester):
     pytester.makepyfile(
         test_refused="""
 import pytest
-from test_part11_validation import request_refused
+from test_21CFR_part11_validation import request_refused
 
 
 @pytest.mark.parametrize("status", [401, 403, 302, 307])

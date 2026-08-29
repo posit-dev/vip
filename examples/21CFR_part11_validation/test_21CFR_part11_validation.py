@@ -11,7 +11,7 @@ from pytest_bdd import given, scenario, then, when
 
 @pytest.mark.connect
 @scenario(
-    "test_part11_validation.feature",
+    "test_21CFR_part11_validation.feature",
     "Publishing content is recorded with an actor and a timestamp",
 )
 def test_audit_trail_publish():
@@ -19,13 +19,13 @@ def test_audit_trail_publish():
 
 
 @pytest.mark.connect
-@scenario("test_part11_validation.feature", "A privileged action requires authorisation")
+@scenario("test_21CFR_part11_validation.feature", "A privileged action requires authorisation")
 def test_privileged_action_denied():
     pass
 
 
 @pytest.mark.connect
-@scenario("test_part11_validation.feature", "The audit log does not offer a deletion method")
+@scenario("test_21CFR_part11_validation.feature", "The audit log does not offer a deletion method")
 def test_audit_log_not_deletable():
     pass
 

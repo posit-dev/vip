@@ -1145,8 +1145,8 @@ _SCAFFOLD_TEMPLATES: dict[str, tuple[str, str]] = {
         "cross_product_validation",
         "R/Python runtime versions and package installability across Connect and Workbench",
     ),
-    "part11-validation": (
-        "part11_validation",
+    "21cfr-part11-validation": (
+        "21CFR_part11_validation",
         "Compliance control tagging plus a controls.toml for `vip trace`",
     ),
 }
@@ -1203,7 +1203,7 @@ def _scaffold_next_steps(template: str, dest: Path) -> str:
             f"       vip verify --config vip.toml --extensions {dest}\n"
             f"\nSee {dest / 'README.md'} for full customization instructions."
         )
-    if template == "part11-validation":
+    if template == "21cfr-part11-validation":
         return (
             f"\nNext steps:\n"
             f"  1. Replace {dest / 'controls.toml'} with your own control list.\n"

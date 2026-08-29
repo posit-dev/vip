@@ -372,7 +372,7 @@ is unchanged). Three canonical templates ship with VIP:
   configured product; the best starting point for a new extension
 - `cross-product` (`examples/cross_product_validation/`) — a full GxP validation example that
   verifies R/Python runtime versions and package installability across Connect and Workbench
-- `part11-validation` (`examples/part11_validation/`) — compliance control tagging plus a
+- `21cfr-part11-validation` (`examples/21CFR_part11_validation/`) — compliance control tagging plus a
   `controls.toml`, the worked starting point for a `vip trace` traceability matrix
 
 All three follow the same four-layer architecture as the built-in suite. Every scaffolded directory
