@@ -403,10 +403,12 @@ def summary_status(data: ReportData) -> str:
 # an executed covered control like a pass, a control with no automated test to
 # point at like a skip, and a covered control whose scenarios never ran like
 # na_version -- amber, because it is the state most likely to be misread as
-# evidence.
+# evidence. A covered control whose scenarios ran without passing uses the red
+# of a gap, because both mean the control is not evidenced.
 COVERAGE_STYLE_KEY = {
     "covered": "passed",
     "covered_not_executed": "na_version",
+    "covered_failed": "failed",
     "gap": "failed",
     "not_automatable": "skipped",
 }
@@ -414,6 +416,7 @@ COVERAGE_STYLE_KEY = {
 COVERAGE_LABELS = {
     "covered": "COVERED",
     "covered_not_executed": "NOT RUN",
+    "covered_failed": "FAILED",
     "gap": "GAP",
     "not_automatable": "N/A (manual)",
 }
@@ -439,7 +442,9 @@ class ControlRow:
 
 
 def display_coverage(entry) -> str:  # noqa: ANN001 - vip.traceability.ControlEntry
-    """Flatten coverage and execution into the one value the report shows."""
+    """Flatten coverage, execution and outcome into the one value the report shows."""
+    if entry.coverage == "covered" and entry.failing:
+        return "covered_failed"
     if entry.coverage == "covered" and not entry.executed:
         return "covered_not_executed"
     return entry.coverage
@@ -477,6 +482,7 @@ def traceability_summary_rows(matrix) -> list[tuple[str, str]]:  # noqa: ANN001
         ("Controls", str(len(rows))),
         ("Covered and executed", str(counts.get("covered", 0))),
         ("Covered, not executed", str(counts.get("covered_not_executed", 0))),
+        ("Covered, failing", str(counts.get("covered_failed", 0))),
         ("Gaps", str(counts.get("gap", 0))),
         ("Not automatable", str(counts.get("not_automatable", 0))),
     ]
@@ -491,7 +497,9 @@ TRACEABILITY_CAVEAT = (
     "scenario that ran and skipped itself, because this deployment does not "
     "expose what it probes or a version gate excluded it. A control shown as "
     "a GAP may instead belong to a product this run did not test, since those "
-    "scenarios are excluded from the run and reach no result at all. This "
+    "scenarios are excluded from the run and reach no result at all. "
+    "A control shown as FAILED has a tagged scenario that ran and did not pass, "
+    "so the control is not evidenced by this run. This "
     "section evidences the controls chosen for automation. It is not an "
     "attestation of regulatory compliance."
 )

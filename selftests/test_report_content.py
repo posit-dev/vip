@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -331,3 +332,36 @@ class TestFeatureStepIndex:
         index = report_content.FeatureStepIndex()
         item = TestResult(nodeid="a.py::test_x", outcome="passed", scenario_title=None)
         assert index.steps_for(item) == []
+
+
+# ---------------------------------------------------------------------------
+# Coverage display (failing controls)
+# ---------------------------------------------------------------------------
+
+
+class TestFailedControlDisplay:
+    def test_a_failing_control_displays_as_covered_failed(self):
+        entry = SimpleNamespace(coverage="covered", executed=True, failing=True)
+        assert report_content.display_coverage(entry) == "covered_failed"
+
+    def test_a_failing_control_uses_the_failed_style(self):
+        """Reuses the outcome palette so the styles.css drift guard still holds."""
+        assert report_content.COVERAGE_STYLE_KEY["covered_failed"] == "failed"
+
+    def test_a_failing_control_is_labelled_failed(self):
+        assert report_content.COVERAGE_LABELS["covered_failed"] == "FAILED"
+
+    def test_a_passing_control_still_displays_as_covered(self):
+        entry = SimpleNamespace(coverage="covered", executed=True, failing=False)
+        assert report_content.display_coverage(entry) == "covered"
+
+    def test_an_all_skipped_control_still_displays_as_not_executed(self):
+        entry = SimpleNamespace(coverage="covered", executed=False, failing=False)
+        assert report_content.display_coverage(entry) == "covered_not_executed"
+
+    def test_a_gap_is_unaffected(self):
+        entry = SimpleNamespace(coverage="gap", executed=False, failing=False)
+        assert report_content.display_coverage(entry) == "gap"
+
+    def test_every_coverage_value_has_a_style_and_a_label(self):
+        assert set(report_content.COVERAGE_STYLE_KEY) == set(report_content.COVERAGE_LABELS)
