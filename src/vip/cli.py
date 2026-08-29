@@ -812,13 +812,39 @@ def run_report(args: argparse.Namespace) -> None:
     # file fails before Quarto starts, rather than inside a notebook cell
     # where the .qmd can only degrade to a warning.
     if getattr(args, "controls", None):
-        from vip.traceability import ControlListError, load_controls
+        from vip.traceability import (
+            ControlListError,
+            ResultsIntegrityError,
+            check_results_rows,
+            check_results_schema,
+            load_controls,
+            read_results_schema_version,
+        )
 
         controls_path = Path(args.controls).resolve()
         try:
+            # --controls turns the report into a compliance artifact, so it
+            # inherits `vip trace`'s strictness about its evidence. Plain
+            # `vip report` stays lenient on purpose: `load_results` normalizes
+            # a malformed `markers` to an empty list and only warns on an
+            # unknown schema major, because a report must render regardless.
+            # That leniency is wrong here for one specific reason -- a row
+            # whose markers cannot be read looks untagged, so the control it
+            # was tagged for is printed as a GAP that does not exist, and the
+            # matrix claims the suite is missing a check it actually has.
+            # Refuse the file rather than render a compliance section that
+            # understates coverage. Same order as run_trace: the schema gate
+            # runs first, because the row check assumes current-shape rows.
+            check_results_schema(read_results_schema_version(results_dest))
+            check_results_rows(results_dest)
             load_controls(controls_path)
-        except ControlListError as exc:
+        except (ResultsIntegrityError, ControlListError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+            # read_results_schema_version raises these raw. A malformed
+            # results.json must not reach the user as a traceback.
+            print(f"Error: could not read results file {results_dest}: {exc}", file=sys.stderr)
             sys.exit(1)
         env["VIP_CONTROLS"] = str(controls_path)
 

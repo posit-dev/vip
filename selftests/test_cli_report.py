@@ -474,6 +474,88 @@ class TestReportControls:
         assert rendered["index.qmd"] == str(controls.resolve())
         assert rendered["vip-report.qmd"] == str(controls.resolve())
 
+    def _results(self, tmp_path, body):
+        results = tmp_path / "results.json"
+        results.write_text(body, encoding="utf-8")
+        return results
+
+    def _fake_render(self, envs):
+        def render(document, report_dir, env):
+            envs.append((document, env.get("VIP_CONTROLS")))
+            out = report_dir / "_output"
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "index.html").write_text("<html></html>")
+            (out / "vip-report.pdf").write_bytes(b"%PDF-")
+            return 0
+
+        return render
+
+    _UNREADABLE_MARKERS = (
+        '{"schema_version": "1.0", "results": '
+        '[{"nodeid": "t", "outcome": "passed", "markers": null}]}'
+    )
+
+    def test_unreadable_markers_are_refused_on_a_compliance_render(
+        self, cli, tmp_path, monkeypatch
+    ):
+        """A row whose markers cannot be read would print a GAP that does not exist.
+
+        `load_results` normalizes a malformed `markers` to an empty list so the
+        plain report still renders. Under --controls that turns a tagged
+        scenario into a coverage gap, so the matrix claims the suite is missing
+        a check it actually has. Refuse the file instead, the way `vip trace`
+        does.
+        """
+        monkeypatch.chdir(tmp_path)
+        controls = tmp_path / "c.toml"
+        controls.write_text('[controls.x]\ndescription = "d"\n', encoding="utf-8")
+        results = self._results(tmp_path, self._UNREADABLE_MARKERS)
+
+        called = []
+        monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
+        args = argparse.Namespace(
+            results=str(results), controls=str(controls), open=False, output=None
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli.run_report(args)
+        assert exc.value.code == 1
+        assert called == []
+
+    def test_unknown_schema_major_is_refused_on_a_compliance_render(
+        self, cli, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        controls = tmp_path / "c.toml"
+        controls.write_text('[controls.x]\ndescription = "d"\n', encoding="utf-8")
+        results = self._results(tmp_path, '{"schema_version": "99.0", "results": []}')
+
+        called = []
+        monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
+        args = argparse.Namespace(
+            results=str(results), controls=str(controls), open=False, output=None
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli.run_report(args)
+        assert exc.value.code == 1
+        assert called == []
+
+    def test_the_same_file_still_renders_without_controls(self, cli, tmp_path, monkeypatch):
+        """The asymmetry is the design, not an oversight.
+
+        Without a control list the report is a pass/fail document and must
+        render regardless -- the strictness above belongs to the compliance
+        artifact, not to every render.
+        """
+        monkeypatch.chdir(tmp_path)
+        results = self._results(tmp_path, self._UNREADABLE_MARKERS)
+
+        envs = []
+        monkeypatch.setattr(cli, "_quarto_render", self._fake_render(envs))
+        args = argparse.Namespace(results=str(results), controls=None, open=False, output=None)
+        cli.run_report(args)
+
+        assert [document for document, _ in envs] == ["index.qmd", "details.qmd", "vip-report.qmd"]
+
     def test_without_controls_the_variable_is_absent_and_nothing_warns(
         self, cli, tmp_path, monkeypatch, capsys
     ):

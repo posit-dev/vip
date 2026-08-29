@@ -602,7 +602,15 @@ def render_document(data: ReportData, hints: dict[str, dict], matrix=None) -> st
     them -- the output is byte-identical to before the section existed.
     """
     if data.total == 0:
-        return PREAMBLE + _paragraph("No results found. Run vip verify to generate results.")
+        empty = PREAMBLE + _paragraph("No results found. Run vip verify to generate results.")
+        # The HTML cell renders the section whenever a control list is set,
+        # including over an empty results file, where the matrix is all gaps
+        # and manual controls. Returning early here would drop it from the
+        # PDF alone and split the two editions on exactly the run a reader is
+        # most likely to misread.
+        if matrix is not None:
+            empty += _heading("Compliance Traceability", 2) + render_traceability(matrix)
+        return empty
     parts = [
         PREAMBLE,
         _heading("VIP Validation Report", 1),

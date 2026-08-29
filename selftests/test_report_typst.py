@@ -161,6 +161,28 @@ class TestDocument:
         assert "No results found" in markup
         assert markup.startswith(report_typst.PREAMBLE)
 
+    def test_empty_results_still_carry_the_matrix_when_one_was_asked_for(self):
+        """index.qmd renders the section at zero results, so the PDF must too.
+
+        Returning early on an empty results file dropped the section from the
+        PDF alone, splitting the two editions on exactly the run a reader is
+        most likely to misread -- one where every automated control is a gap.
+        """
+        from vip.traceability import ControlSpec, build_traceability_matrix
+
+        matrix = build_traceability_matrix(
+            ReportData(), {"audit-trail": ControlSpec("audit-trail", "An audit trail exists")}
+        )
+        markup = report_typst.render_document(ReportData(), {}, matrix)
+        assert "No results found" in markup
+        assert report_typst._lit("Compliance Traceability") in markup
+        assert report_typst._lit("audit-trail") in markup
+
+    def test_empty_results_without_a_matrix_are_unchanged(self):
+        assert report_typst.render_document(ReportData(), {}, None) == (
+            report_typst.render_document(ReportData(), {})
+        )
+
     def test_document_carries_every_section(self):
         data = ReportData(
             deployment_name="Acme",
