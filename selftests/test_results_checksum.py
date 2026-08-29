@@ -220,3 +220,45 @@ class TestReportSidecarRehoming:
         assert not self._sidecar_for(dest).exists()
         _, present = verify_results_checksum(dest)
         assert present is False
+
+    def test_path_qualified_source_line_is_rehomed(self, tmp_path):
+        """A recorded path must be rewritten, not copied through verbatim."""
+        src = tmp_path / "results.json"
+        src.write_text('{"results": []}', encoding="utf-8")
+        digest = hashlib.sha256(src.read_bytes()).hexdigest()
+        self._sidecar_for(src).write_text(f"{digest}  report/results.json\n", encoding="utf-8")
+
+        dest = tmp_path / "out" / "results.json"
+        dest.parent.mkdir()
+        shutil.copy2(src, dest)
+        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
+
+        assert self._sidecar_for(dest).read_text().split()[1] == "results.json"
+        assert verify_results_checksum(dest) == (digest, True)
+
+    def test_whitespace_only_source_removes_the_destination(self, tmp_path):
+        """An empty sidecar is the truncated-upload case; do not manufacture one."""
+        src = tmp_path / "results.json"
+        src.write_text('{"results": []}', encoding="utf-8")
+        self._sidecar_for(src).write_text("   \n\n", encoding="utf-8")
+
+        dest = tmp_path / "out" / "results.json"
+        dest.parent.mkdir()
+        shutil.copy2(src, dest)
+        self._sidecar_for(dest).write_text(f"{'0' * 64}  results.json\n", encoding="utf-8")
+        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
+
+        assert not self._sidecar_for(dest).exists()
+        _, present = verify_results_checksum(dest)
+        assert present is False
+
+    def test_undecodable_source_raises_unicode_error_for_the_caller(self, tmp_path):
+        """The call site catches this; it must not escape as a bare traceback."""
+        src = tmp_path / "results.json"
+        src.write_text('{"results": []}', encoding="utf-8")
+        self._sidecar_for(src).write_bytes(b"\xff\xfe\x00\x00 not utf-8")
+
+        dest = tmp_path / "out" / "results.json"
+        dest.parent.mkdir()
+        with pytest.raises(UnicodeDecodeError):
+            _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)

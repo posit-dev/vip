@@ -777,7 +777,11 @@ def run_report(args: argparse.Namespace) -> None:
         dest_sidecar = results_dest.with_name(f"{results_dest.name}.sha256")
         try:
             _rehome_sidecar(src_sidecar, dest_sidecar, results_src.name, results_dest.name)
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
+            # UnicodeDecodeError as well as OSError: _rehome_sidecar reads with
+            # encoding="utf-8-sig" and a corrupt sidecar would otherwise reach the
+            # user as a traceback. verify_results_checksum already catches both on
+            # the identical read, and the two paths should agree.
             print(f"Warning: could not update {dest_sidecar}: {exc}", file=sys.stderr)
     elif not results_dest.exists():
         print(
@@ -1654,6 +1658,8 @@ def _rehome_sidecar(src: Path, dest: Path, src_name: str, dest_name: str) -> Non
     left behind: no sidecar is a documented benign state, a wrong one is a
     false tamper alarm.
     """
+    from vip.traceability import sidecar_basename
+
     if not src.is_file():
         dest.unlink(missing_ok=True)
         return
@@ -1663,11 +1669,23 @@ def _rehome_sidecar(src: Path, dest: Path, src_name: str, dest_name: str) -> Non
         if not parts:
             continue
         recorded = parts[1].strip().lstrip("*") if len(parts) > 1 else None
-        if recorded in (None, src_name):
+        # Compare basenames, not the raw recorded name. A sidecar generated
+        # from a parent directory records a path, and copying that line
+        # through verbatim produces a rehomed sidecar that then fails
+        # verification at the destination -- the false tamper alarm this
+        # function exists to prevent.
+        if recorded is None or sidecar_basename(recorded) == sidecar_basename(src_name):
             lines.append(f"{parts[0]}  {dest_name}")
         else:
             lines.append(line)
-    dest.write_text("\n".join(lines) + "\n" if lines else "", encoding="utf-8")
+    if not lines:
+        # A source that parses to zero entries (whitespace-only, truncated)
+        # would otherwise produce an empty destination sidecar, which
+        # verify_results_checksum refuses as the truncated-upload case. No
+        # sidecar is the documented benign state, so produce that instead.
+        dest.unlink(missing_ok=True)
+        return
+    dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def run_trace(args: argparse.Namespace) -> None:
