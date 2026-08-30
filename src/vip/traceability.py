@@ -490,6 +490,11 @@ def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
     ``sidecar_present`` to distinguish "verified" from "nothing to verify"
     rather than treating both as the same success.
 
+    Also raises when the entries selected for this file disagree with each
+    other: a sidecar that records two different digests under the same name
+    cannot attest to anything, so accepting the file because one of them
+    happens to match would be a false attestation.
+
     This is tamper-evidence within a trusted pipeline, not tamper-proofing --
     anyone who can edit the results file can regenerate the sidecar. It catches
     corruption, truncated uploads and casual editing.
@@ -542,6 +547,25 @@ def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
                 f"it names {recorded_names}. Regenerate it, or delete it to proceed "
                 "without verification."
             )
+
+    # A sidecar must never say two different things about one file. Several
+    # selected entries carrying *different* digests means one of them is
+    # describing some other artifact, and accepting the file because *any* of
+    # them agrees turns the sidecar into an attestation about a file it does
+    # not describe -- the exact false attestation the recorded-name match
+    # above exists to prevent, reintroduced through the basename fallback (or
+    # through a rehomed sidecar that ended up with two same-named lines).
+    # Several entries agreeing on one digest is not ambiguous and still
+    # verifies: `shasum` run twice, or a rehomed line beside its original,
+    # says the same thing twice.
+    distinct = {d.lower() for d in named}
+    if len(distinct) > 1:
+        listed = ", ".join(sorted(distinct))
+        raise ResultsIntegrityError(
+            f"checksum sidecar {sidecar} records {len(distinct)} different digests for "
+            f"{p.name} ({listed}); it cannot say which one describes this file. "
+            "Regenerate it, or delete it to proceed without verification."
+        )
 
     # Case-insensitive: hex is hex. PowerShell's Get-FileHash and 7-Zip emit
     # uppercase, and rejecting those as a mismatch reads to an operator as

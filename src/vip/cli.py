@@ -1662,27 +1662,48 @@ def _rehome_sidecar(src: Path, dest: Path, src_name: str, dest_name: str) -> Non
     No source sidecar means the stale destination one is removed rather than
     left behind: no sidecar is a documented benign state, a wrong one is a
     false tamper alarm.
+
+    Exact-name precedence is preserved across the rehome, because the
+    destination sidecar must never record two different digests under the
+    destination name. A source that names both ``results.json`` and
+    ``archive/results.json`` used to rewrite *both* lines, so the copy said
+    two things about one file and ``verify_results_checksum`` picked whichever
+    one agreed. Rewrite the exact matches when there are any; fall back to the
+    basename only when there is exactly one candidate to be unambiguous about.
+    Several basename matches with no exact entry are left alone -- the source
+    never had the authority to say which one describes the destination, so the
+    copy does not invent it, and verification reports that rather than
+    guessing.
     """
     from vip.traceability import sidecar_basename
 
     if not src.is_file():
         dest.unlink(missing_ok=True)
         return
-    lines = []
+    parsed: list[tuple[str, str, str | None]] = []
     for line in src.read_text(encoding="utf-8-sig").splitlines():
         parts = line.split(None, 1)
         if not parts:
             continue
         recorded = parts[1].strip().lstrip("*") if len(parts) > 1 else None
+        parsed.append((line, parts[0], recorded))
+
+    # A bare digest counts as an exact entry: it names no other file, so it
+    # can only be describing the one being copied.
+    rewrite = {i for i, (_, _, r) in enumerate(parsed) if r is None or r == src_name}
+    if not rewrite:
         # Compare basenames, not the raw recorded name. A sidecar generated
         # from a parent directory records a path, and copying that line
         # through verbatim produces a rehomed sidecar that then fails
         # verification at the destination -- the false tamper alarm this
         # function exists to prevent.
-        if recorded is None or sidecar_basename(recorded) == sidecar_basename(src_name):
-            lines.append(f"{parts[0]}  {dest_name}")
-        else:
-            lines.append(line)
+        src_base = sidecar_basename(src_name)
+        matches = [i for i, (_, _, r) in enumerate(parsed) if r and sidecar_basename(r) == src_base]
+        rewrite = set(matches) if len(matches) == 1 else set()
+    lines = [
+        f"{digest}  {dest_name}" if i in rewrite else raw
+        for i, (raw, digest, _) in enumerate(parsed)
+    ]
     if not lines:
         # A source that parses to zero entries (whitespace-only, truncated)
         # would otherwise produce an empty destination sidecar, which
