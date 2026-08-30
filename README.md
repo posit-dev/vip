@@ -102,11 +102,57 @@ content from Connect.
 | `vip status` | Quick health check for each configured product |
 | `vip cleanup` | Delete VIP `_vip_test` content from Connect |
 | `vip report` | Render the HTML report from test results (requires [Quarto CLI](https://quarto.org/docs/download/)) |
+| `vip scaffold` | Generate a ready-to-run custom test extension from a template |
+| `vip trace` | Build a compliance traceability matrix from test results and a control list |
 | `vip auth` | Authentication tools (e.g. mint Connect API keys) |
 | `vip version` | Print the vip version and the minimum supported Posit Team version |
 | `vip --version` | Print the installed vip version |
 
 Run `vip --help` or `vip <command> --help` for full usage details.
+
+## Writing your own tests
+
+VIP is extensible without changing its source. You point `vip verify` at a
+directory of your own tests, and they run alongside the built-in suite and land
+in the same report. `vip scaffold` writes a working starting point:
+
+```bash
+vip scaffold --list
+vip scaffold --template minimal --output ./my-tests
+vip verify --config vip.toml --extensions ./my-tests
+```
+
+| Template | What it shows |
+|---|---|
+| `minimal` | A single HTTP health-check scenario. Start here. |
+| `cross-product` | R and Python runtime versions, and package installability across Connect and Workbench. The GxP starting point. |
+| `21cfr-part11-validation` | Regulatory control tagging plus a `controls.toml` for `vip trace`. |
+
+Every scaffolded directory runs as-is against your deployment, and each one
+carries an `AGENTS.md` describing the extension contract, so a coding agent
+picking up the directory knows the auto-skip rules and which fixtures and
+markers it may use.
+
+### The 21 CFR Part 11 example
+
+The compliance template is the one worth reading even if you never run it. Each
+scenario declares the control it evidences with an `@control-<slug>` tag,
+`controls.toml` holds your regulatory mapping, and `vip trace` joins the two
+into a traceability matrix as CSV or JSON:
+
+```bash
+vip trace --results report/results.json --controls ./my-tests/controls.toml
+```
+
+`vip report --controls` renders the same matrix into the HTML report and the
+archivable PDF, so the artifact you hand an auditor carries the join from a
+control to its evidence rather than only a list of passing tests.
+
+It ships with `VALIDATION-PACKAGE.md`, which is the honest version of what this
+is worth: which documents in a GxP validation package VIP produces, which you
+author, and which nothing can automate. Most of 21 CFR Part 11 cannot be
+evidenced by testing a platform, and a green matrix is not an attestation of
+compliance. Read that file before taking the example into a validation meeting.
 
 ## CI / pipeline integration
 
