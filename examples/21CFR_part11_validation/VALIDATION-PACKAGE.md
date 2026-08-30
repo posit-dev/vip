@@ -60,30 +60,43 @@ resist a motivated forger, and it must never be presented as though it does.
 FDA finalised [Computer Software Assurance for Production and Quality
 Management System
 Software](https://www.fda.gov/regulatory-information/search-fda-guidance-documents/computer-software-assurance-production-and-quality-management-system-software)
-in September 2025 and updated it in February 2026. Two of its positions matter
-for anyone deciding what VIP is worth.
+in September 2025 and updated it in February 2026. Two passages in section
+V.A.6, "Establishing the Appropriate Record", matter for anyone deciding what
+VIP is worth.
 
-The guidance recommends "incorporating the use of digital records, such as
+The first describes what VIP produces almost by name. Advances in digital
+technology, the guidance says, "may allow for manufacturers to leverage
+digital retention of results, automated traceability, automated testing, and
+electronic capture of work performed as objective evidence, reducing the need
+for manual or paper-based documentation." It then recommends, as the
+least-burdensome approach, "incorporating the use of digital records, such as
 system logs, audit trails, and other data generated and maintained by the
 software, as opposed to paper documentation, screenshots, or duplicating
-results already digitally retained." A machine-generated results file with
-per-scenario timestamps and execution provenance is the artifact that sentence
-describes. Screenshots pasted into a Word protocol are what it discourages.
+results already digitally retained by the software when establishing the
+record associated with the assurance activities." A machine-generated results
+file with per-scenario timestamps and execution provenance is the artifact
+those sentences describe. Screenshots pasted into a Word protocol are what
+they discourage.
 
-The guidance also lists what the record of an assurance activity should
-contain. VIP supplies four of the five: a description of the testing and its
-results, the record of who performed it and when, the result of your
-risk-based analysis (carried through from `controls.toml` and rendered in the
-matrix), and the intended use of what was tested, insofar as your control
-descriptions state it. The fifth is the established review and approval, which
-is yours by design and covered under "What you author" below. Two further
-items are only partly covered: VIP records issues found as failed and skipped
-scenarios, but keeps no resolution or disposition against them, and it writes
-no conclusion statement declaring acceptability. Declaring acceptability is a
-judgement, not a test result.
+The second is the list of what the record should include. VIP covers, in whole
+or in part:
+
+- the intended use of the feature or function, insofar as your control
+  descriptions state it
+- the result of your risk-based analysis, carried through from `controls.toml`
+  and rendered in the matrix
+- a description of the testing conducted, as the tagged scenario and its steps
+- issues found during testing, as failed and skipped scenarios
+- who performed the testing and the date it was performed
+
+Two items are yours. VIP writes no conclusion statement declaring
+acceptability, and it carries no resolution against the issues it records:
+both are judgements, not test results. Neither is there any review and
+approval signature, which the guidance asks for "when appropriate" and which
+belongs in your quality system.
 
 None of this makes a VIP run a computer software assurance activity on its
-own. The guidance is risk-based, and the risk analysis that decides how much
+own. The approach is risk-based, and the risk analysis that decides how much
 assurance a function needs is yours.
 
 ## What you author
