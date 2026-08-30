@@ -1662,7 +1662,7 @@ def _resolve_trace_format(explicit: str | None, out: Path | None) -> str:
     inferred = {".json": "json", ".csv": "csv"}.get(out.suffix.lower()) if out else None
     if explicit is None:
         return inferred or "csv"
-    if inferred and inferred != explicit:
+    if out is not None and inferred and inferred != explicit:
         print(
             f"Warning: --format {explicit} does not match the {out.suffix} extension of "
             f"{out}; writing {explicit}.",
