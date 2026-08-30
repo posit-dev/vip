@@ -96,6 +96,25 @@ regulatory mapping uses. Only `description` is required, and every field must be
 a quoted string -- TOML would otherwise read `reference = 2024-01-01` as a date,
 which the JSON export cannot serialise.
 
+The recognised keys are `description`, `reference`, `risk`, `verification`,
+`responsibility` and `notes`. Anything else is an error rather than a silent
+drop, which is what catches `referance` before it disappears from the matrix a
+reviewer reads. Your own fields go in an `extra` table:
+
+```toml
+[controls.audit-trail-publish]
+description = "Deployment of content is recorded with actor and timestamp"
+reference = "21 CFR 11.10(e)"
+
+[controls.audit-trail-publish.extra]
+phase = "OQ"
+sop = "SOP-QA-014"
+```
+
+Those become trailing columns in the CSV export, and an `extra` object per
+control in the JSON. VIP does not interpret them and the report does not render
+them -- its table has no width for a variable number of columns.
+
 Control ids become pytest marker names, so use only letters, digits, `-`, `.`
 and `_`. Write `11-10-a`, not `11.10(a)`: a `:` or `(` truncates the marker name
 pytest registers and breaks collection under `--strict-markers`.

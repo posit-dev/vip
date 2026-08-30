@@ -44,6 +44,55 @@ class ControlSpec:
     verification: str = "automated"
     responsibility: str | None = None
     notes: str | None = None
+    # Free-form pass-through columns from [controls.<id>.extra]. A regulated
+    # customer's control list is their own regulatory mapping, and the fields
+    # above cannot anticipate it -- IQ/OQ/PQ phase, a SOP reference, a control
+    # owner. These reach the CSV and JSON exports verbatim and are not
+    # rendered in the report, whose table has no width for a variable number
+    # of columns. Nothing here is interpreted.
+    extra: dict[str, str] = field(default_factory=dict)
+
+
+# Every key a [controls.<id>] table may carry. Anything else is rejected
+# rather than ignored -- see the error raised in load_controls for why.
+_KNOWN_CONTROL_KEYS = frozenset(
+    {"description", "reference", "risk", "verification", "responsibility", "notes", "extra"}
+)
+
+
+def _load_extra(control_id: str, body: dict) -> dict[str, str]:
+    """Validate and return the [controls.<id>.extra] pass-through table.
+
+    Values must be strings for the same reason the built-in pass-through
+    fields must: TOML has native date and integer types, and a bare
+    ``2024-01-01`` becomes a ``datetime.date`` that the CSV writer silently
+    stringifies while the JSON encoder refuses outright.
+
+    A key that collides with a built-in column is rejected rather than
+    silently shadowed or duplicated: ``extra.risk`` would otherwise emit two
+    ``risk`` columns in the CSV, and a spreadsheet reader would take whichever
+    it saw last.
+    """
+    raw = body.get("extra")
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ControlListError(f"[controls.{control_id}.extra] must be a table")
+    extra: dict[str, str] = {}
+    for key, value in raw.items():
+        if key in CSV_COLUMNS:
+            raise ControlListError(
+                f"[controls.{control_id}.extra] has key {key!r}, which is already a "
+                "column in the exported matrix. Choose another name."
+            )
+        if not isinstance(value, str):
+            raise ControlListError(
+                f"[controls.{control_id}.extra] has {key}={value!r} "
+                f"({type(value).__name__}); expected a string. Quote it if it is a "
+                "date or a number."
+            )
+        extra[key] = value
+    return extra
 
 
 def load_controls(path: str | Path) -> dict[str, ControlSpec]:
@@ -103,7 +152,22 @@ def load_controls(path: str | Path) -> dict[str, ControlSpec]:
                     "date or a number."
                 )
             optional[field_name] = value
+        extra = _load_extra(control_id, body)
+        unknown = set(body) - _KNOWN_CONTROL_KEYS
+        if unknown:
+            # Silently dropping these was worse than either alternative: a
+            # customer who wrote `phase = "OQ"` got no error and no column, and
+            # a typo like `referance` vanished the same way -- from a file
+            # whose whole job is to be the regulatory mapping of record.
+            raise ControlListError(
+                f"[controls.{control_id}] has unknown "
+                f"{'keys' if len(unknown) > 1 else 'key'} {', '.join(sorted(unknown))}. "
+                f"Known keys are {', '.join(sorted(_KNOWN_CONTROL_KEYS))}. "
+                f"Put your own fields in [controls.{control_id}.extra]; they are "
+                "carried into the CSV and JSON exports untouched."
+            )
         controls[control_id] = ControlSpec(
+            extra=extra,
             control_id=control_id,
             description=description,
             verification=verification,
@@ -393,16 +457,23 @@ def render_csv(matrix: TraceabilityMatrix) -> str:
     columns empty, so a coverage gap is visible rather than absent.
     """
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=CSV_COLUMNS, lineterminator="\n")
+    # Extra columns append after the fixed set rather than slotting in beside
+    # the control metadata they belong with: CSV_COLUMNS then stays an
+    # identical leading prefix across every customer's export, whatever their
+    # own control list carries. Union across all controls, sorted, so a
+    # control that omits a key gets an empty cell rather than a ragged row.
+    extra_columns = sorted({k for e in matrix.entries for k in e.control.extra})
+    writer = csv.DictWriter(buf, fieldnames=[*CSV_COLUMNS, *extra_columns], lineterminator="\n")
     writer.writeheader()
     prov = _provenance_columns(matrix)
+    blank_extra = dict.fromkeys(extra_columns, "")
 
     def _neutralize_row(row: dict) -> dict:
         """Apply formula neutralization to all string values in the row."""
         return {k: _neutralize_formula(v) if isinstance(v, str) else v for k, v in row.items()}
 
     for entry in matrix.entries:
-        base = _control_columns(entry)
+        base = {**_control_columns(entry), **blank_extra, **entry.control.extra}
         if not entry.matches:
             row = {
                 **base,
@@ -458,6 +529,7 @@ def render_json(matrix: TraceabilityMatrix) -> str:
         "controls": [
             {
                 **_control_columns(entry),
+                "extra": entry.control.extra,
                 "matches": [
                     {
                         "nodeid": m.nodeid,

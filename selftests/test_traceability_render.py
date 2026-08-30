@@ -233,3 +233,50 @@ def test_json_non_ascii_appears_literally():
     rendered = render_json(matrix)
     assert "Café français" in rendered
     assert "\\u" not in rendered
+
+
+class TestExtraColumns:
+    """[controls.<id>.extra] reaches both exports."""
+
+    @staticmethod
+    def _matrix(extras):
+        from vip.reporting import ReportData
+        from vip.traceability import ControlSpec, build_traceability_matrix
+
+        controls = {
+            cid: ControlSpec(control_id=cid, description=f"control {cid}", extra=extra)
+            for cid, extra in extras.items()
+        }
+        return build_traceability_matrix(ReportData(results=[]), controls)
+
+    def test_csv_appends_the_extra_columns_after_the_fixed_set(self):
+        csv_text = render_csv(self._matrix({"c1": {"phase": "OQ"}}))
+        header = csv_text.splitlines()[0].split(",")
+        assert header[: len(CSV_COLUMNS)] == CSV_COLUMNS
+        assert header[len(CSV_COLUMNS) :] == ["phase"]
+
+    def test_the_column_set_is_the_sorted_union_across_controls(self):
+        matrix = self._matrix({"c1": {"phase": "OQ"}, "c2": {"owner": "QA"}})
+        header = render_csv(matrix).splitlines()[0].split(",")
+        assert header[len(CSV_COLUMNS) :] == ["owner", "phase"]
+
+    def test_a_control_missing_an_extra_key_gets_an_empty_cell_not_a_ragged_row(self):
+        matrix = self._matrix({"c1": {"phase": "OQ"}, "c2": {"owner": "QA"}})
+        rows = list(csv.reader(io.StringIO(render_csv(matrix))))
+        assert all(len(r) == len(rows[0]) for r in rows)
+        by_id = {r[0]: dict(zip(rows[0], r)) for r in rows[1:]}
+        assert by_id["c1"]["owner"] == ""
+        assert by_id["c2"]["phase"] == ""
+
+    def test_an_extra_value_is_formula_neutralized_like_every_other_cell(self):
+        """A future column must inherit the CSV-injection protection."""
+        csv_text = render_csv(self._matrix({"c1": {"phase": "=SUM(1,2)"}}))
+        assert "'=SUM(1,2)" in csv_text
+
+    def test_json_nests_extra_under_each_control(self):
+        payload = json.loads(render_json(self._matrix({"c1": {"phase": "OQ"}})))
+        assert payload["controls"][0]["extra"] == {"phase": "OQ"}
+
+    def test_a_matrix_with_no_extras_keeps_the_exact_fixed_column_set(self):
+        header = render_csv(self._matrix({"c1": {}})).splitlines()[0].split(",")
+        assert header == CSV_COLUMNS

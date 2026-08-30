@@ -179,6 +179,24 @@ carries `reference`, `risk`, `responsibility`, and `notes` through to the output
 verbatim without interpreting them. The `[controls.<id>]` key is the id a scenario
 references with `@control-<id>` (with the `control-` tag prefix stripped).
 
+Those six keys plus `extra` are the whole recognised set, and any other key is an
+error. Rejecting rather than ignoring is what catches a misspelled `referance`
+before it vanishes from the matrix a reviewer reads. Carry your own fields in an
+`extra` table:
+
+``` toml
+[controls.audit-trail.extra]
+phase = "OQ"
+sop = "SOP-QA-014"
+```
+
+Its values must be strings, must not collide with an existing column name, and
+are carried through untouched: each becomes a trailing CSV column (appended after
+the fixed set, so `CSV_COLUMNS` stays an identical leading prefix across every
+customer's export) and an `extra` object per control in the JSON. Neither report
+edition renders them, because the table has no width for a variable number of
+columns.
+
 ### The three coverage outcomes
 
 A control's row in the matrix gets one of three `coverage` values:

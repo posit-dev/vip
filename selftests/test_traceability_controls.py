@@ -134,3 +134,60 @@ def test_whitespace_only_description_is_an_error(tmp_path):
     p.write_text('[controls.x]\ndescription = "   "\n')
     with pytest.raises(ControlListError, match="empty"):
         load_controls(p)
+
+
+class TestUnknownKeysAndExtras:
+    """A control list is the regulatory mapping of record, so a key that goes
+    nowhere is worse than a rejected one. Before this, `phase = "OQ"` produced
+    no error and no column, and so did a typo like `referance`.
+    """
+
+    @staticmethod
+    def _write(tmp_path, body):
+        p = tmp_path / "controls.toml"
+        p.write_text(f'[controls.c1]\ndescription = "A control"\n{body}\n', encoding="utf-8")
+        return p
+
+    def test_an_unknown_key_is_rejected_and_the_message_points_at_extra(self, tmp_path):
+        path = self._write(tmp_path, 'phase = "OQ"')
+        with pytest.raises(ControlListError) as exc:
+            load_controls(path)
+        assert "unknown key phase" in str(exc.value)
+        assert "[controls.c1.extra]" in str(exc.value)
+
+    def test_a_misspelled_known_key_is_caught_rather_than_dropped(self, tmp_path):
+        """The failure this actually prevents: a reference that silently
+        vanishes from the matrix a reviewer reads."""
+        path = self._write(tmp_path, 'referance = "21 CFR 11.10(e)"')
+        with pytest.raises(ControlListError, match="unknown key referance"):
+            load_controls(path)
+
+    def test_several_unknown_keys_are_listed_together(self, tmp_path):
+        path = self._write(tmp_path, 'phase = "OQ"\nowner = "QA"')
+        with pytest.raises(ControlListError, match="unknown keys owner, phase"):
+            load_controls(path)
+
+    def test_an_extra_table_is_carried_through_verbatim(self, tmp_path):
+        path = self._write(tmp_path, '[controls.c1.extra]\nphase = "OQ"\nsop = "SOP-QA-014"')
+        assert load_controls(path)["c1"].extra == {"phase": "OQ", "sop": "SOP-QA-014"}
+
+    def test_a_control_with_no_extra_table_gets_an_empty_dict(self, tmp_path):
+        assert load_controls(self._write(tmp_path, "")).get("c1").extra == {}
+
+    def test_a_non_string_extra_value_is_rejected_like_the_built_ins(self, tmp_path):
+        """TOML reads a bare date as datetime.date, which the JSON encoder
+        refuses and the CSV writer silently stringifies."""
+        path = self._write(tmp_path, "[controls.c1.extra]\nqualified = 2024-01-01")
+        with pytest.raises(ControlListError, match="expected a string"):
+            load_controls(path)
+
+    def test_an_extra_key_colliding_with_a_column_is_rejected(self, tmp_path):
+        """Two `risk` columns in one CSV, and a spreadsheet takes the last."""
+        path = self._write(tmp_path, '[controls.c1.extra]\nrisk = "high"')
+        with pytest.raises(ControlListError, match="already a column"):
+            load_controls(path)
+
+    def test_an_extra_that_is_not_a_table_is_rejected(self, tmp_path):
+        path = self._write(tmp_path, 'extra = "OQ"')
+        with pytest.raises(ControlListError, match=r"\[controls.c1.extra\] must be a table"):
+            load_controls(path)
