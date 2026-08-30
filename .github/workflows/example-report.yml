@@ -452,9 +452,11 @@ jobs:
       # VIP_CONTROLS must be absolute. Quarto renders with report/ as the
       # working directory, so a relative path resolves against report/ and the
       # control list is not found. Both documents now print a visible "could
-      # not render the traceability section" marker instead of dropping it, so
-      # this fails loudly rather than going green with the section missing --
-      # but an absolute path is still what makes it work.
+      # not render the traceability section" marker instead of dropping it
+      # silently -- but quarto render still exits 0 and this job still goes
+      # green either way, so the marker only shows up in the rendered
+      # artifact, not in this job's status. An absolute path is still what
+      # makes it work.
       - name: Render the compliance report
         env:
           VIP_CONTROLS: ${{ github.workspace }}/examples/21CFR_part11_validation/controls.toml

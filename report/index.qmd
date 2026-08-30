@@ -78,7 +78,6 @@ from vip import report_content
 
 _controls = os.environ.get("VIP_CONTROLS")
 if _controls:
-    _trace_error = None
     try:
         from vip.traceability import (
             build_traceability_matrix,

@@ -203,8 +203,16 @@ gaps: 0` while nothing was verified at all. That is the most misleading thing
 this export can do, so it is reported three ways rather than left implicit:
 
 - `vip trace` warns on stderr, naming the affected control ids.
-- The JSON `summary` splits `covered` into `covered_and_executed` and
-  `covered_not_executed`.
+- The JSON `summary` reports `covered_and_executed` (a tagged scenario ran,
+  whether or not it passed), `covered_not_executed` (a tagged scenario is
+  present but none ran), and `covered_failed` (a tagged scenario ran and did
+  not pass). These are not a three-way partition: a failing control counts
+  toward both `covered_and_executed` and `covered_failed`, since it did run
+  and it did not pass. The rendered report's own summary table partitions
+  differently -- it splits the display value into three mutually exclusive
+  rows, `Covered, executed and passing`, `Covered, not executed` and
+  `Covered, failing`, so a failing control is counted once. Do not expect the
+  report table and the JSON `summary` to add up the same way.
 - The JSON carries a `covered_without_execution` list of control ids.
 
 A version-gated scenario (`na_version`) counts as not executed too, for the same
