@@ -10,20 +10,21 @@ top of `results.json`.
 
 ## Machine-readable outputs
 
-Every `vip verify` run writes `report/results.json` by default; override the path
-with `--report`. Note that `--report ''` does NOT disable the report -- `vip verify`
-only forwards the option when it is non-empty, so an empty value falls back to the
-default path. To suppress the file entirely, pass the pytest-level option through:
-`vip verify --config vip.toml -- --vip-report=`. `--format` selects which additional
-formats are written alongside it:
+Every `vip verify` run writes `report/results.json` by default. Override the path
+with `--report`, or pass `--report ''` to write no results file at all. `--format`
+selects which additional formats are written alongside it:
 
 ```bash
 vip verify --config vip.toml --format json,junit,sarif
 ```
 
-`json` (`results.json`) is always written regardless of `--format`; `junit` and
-`sarif` are added as sibling files in the same directory when requested. `--ci` is a
-preset that turns on `json,junit,sarif` together with concise tracebacks.
+`json` (`results.json`) is always written unless `--report ''` turns it off. `junit`
+and `sarif` are added as sibling files in the same directory when requested, and
+they are built by reloading `results.json`, so they cannot outlive it: asking for
+either while disabling the results file is refused up front rather than after a
+full run that would produce nothing. `--ci` is a preset that turns on
+`json,junit,sarif` together with concise tracebacks, so it conflicts with
+`--report ''` for the same reason.
 
 ### `results.json` field inventory
 

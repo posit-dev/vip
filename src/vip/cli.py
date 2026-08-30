@@ -535,8 +535,13 @@ def run_verify(args: argparse.Namespace) -> None:
 
     if config_path:
         cmd.append(f"--vip-config={config_path}")
-    if args.report:
-        cmd.append(f"--vip-report={args.report}")
+    # Forward even an empty value. `--vip-report=` is how the plugin is told to
+    # write no report at all, and skipping the flag instead left the plugin on
+    # its own default -- so `vip verify --report ''` wrote report/results.json,
+    # the one thing it was asked not to do. Nothing else reads args.report, and
+    # argparse's default is a non-empty path, so the empty string is the only
+    # invocation whose behavior changes.
+    cmd.append(f"--vip-report={args.report}")
 
     fmt = "json,junit,sarif" if getattr(args, "ci", False) else getattr(args, "format", "json")
     requested = [f.strip().lower() for f in fmt.split(",") if f.strip()]
@@ -545,6 +550,21 @@ def run_verify(args: argparse.Namespace) -> None:
         print(
             f"Error: unknown --format value(s): {', '.join(unknown)}. "
             f"Valid: {', '.join(sorted(VALID_FORMATS))}.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    # junit.xml and results.sarif are written as siblings of results.json and
+    # are built by reloading it, so they cannot exist without it. Before
+    # --report '' was honored the two flags could be combined and junit still
+    # appeared; now the combination would run the whole suite and produce
+    # nothing. Refuse it up front instead.
+    siblings = [f for f in requested if f != "json"]
+    if not args.report and siblings:
+        source = "--ci" if getattr(args, "ci", False) else "--format"
+        print(
+            f"Error: --report '' disables the results file, but {source} asks for "
+            f"{', '.join(siblings)}, which {'are' if len(siblings) > 1 else 'is'} "
+            "written from it. Drop one of the two.",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -2096,7 +2116,9 @@ def main() -> None:
     verify_parser.add_argument(
         "--report",
         default="report/results.json",
-        help="Write JSON results to this path for Quarto report generation"
+        help="Write JSON results to this path for Quarto report generation."
+        " Pass an empty string to write no results file, which also rules out"
+        " the junit/sarif siblings built from it."
         " (default: report/results.json)",
     )
     verify_parser.add_argument(
