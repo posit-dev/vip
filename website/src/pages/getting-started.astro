@@ -212,6 +212,10 @@ vip verify --connect-url https://connect.example.com --no-interactive-auth</code
                   <td><code>VIP_TEST_TOTP_SECRET</code></td>
                   <td>Base32 TOTP seed for the test service account. Optional; only used by <code>--headless-auth</code> when the IdP issues an MFA challenge.</td>
                 </tr>
+                <tr>
+                  <td><code>VIP_PERFORMED_BY</code></td>
+                  <td>Names the person the run is attributable to, recorded in the results file and shown in both report editions. Optional; VIP otherwise reads the CI system's actor, then the local login. Not a secret.</td>
+                </tr>
               </tbody>
             </table>
           </div>

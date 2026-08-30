@@ -55,7 +55,8 @@ preset that turns on `json,junit,sarif` together with concise tracebacks.
   "execution": {
     "hostname": "ci-runner-01",
     "git": { "commit": "...", "branch": "...", "dirty": false, "remote": "https://github.com/org/repo" },
-    "ci": { "provider": "github", "run_id": "...", "run_url": "...", "job": "verify" }
+    "ci": { "provider": "github", "run_id": "...", "run_url": "...", "job": "verify" },
+    "performed_by": { "identity": "octocat", "source": "github" }
   }
 }
 ```
@@ -69,11 +70,25 @@ preset that turns on `json,junit,sarif` together with concise tracebacks.
   start). `None` for a `results.json` written before these fields existed.
 - `execution` -- attribution for the run that produced this evidence: which host ran
   it, which git commit/branch it ran from (dirty flag, remote with any credential
-  stripped out of the URL), and which CI job (GitHub Actions, GitLab CI, or Jenkins)
-  ran it, if any. To omit this block entirely, pass the pytest-level option after
-  `--`: `vip verify --config vip.toml -- --vip-no-attribution`. There is no
-  `vip verify` flag of its own for this. Useful if a deployment's policy is not to
-  record hostnames or CI identifiers in an archived artifact.
+  stripped out of the URL), which CI job (GitHub Actions, GitLab CI, or Jenkins)
+  ran it, if any, and who performed it. To omit this block entirely, pass the
+  pytest-level option after `--`: `vip verify --config vip.toml --
+  --vip-no-attribution`. There is no `vip verify` flag of its own for this. Useful
+  if a deployment's policy is not to record hostnames, CI identifiers or an
+  operator identity in an archived artifact.
+- `execution.performed_by` -- the operator the run is attributable to, and `source`
+  says where that value came from. Set `VIP_PERFORMED_BY` to name the person
+  accountable for the run (`source: "explicit"`); otherwise VIP reads the CI
+  system's own actor (`GITHUB_ACTOR`, `GITLAB_USER_LOGIN`, `BUILD_USER_ID`), then
+  falls back to the local login (`source: "login"`). `source` travels with the
+  value because a reader seeing a service-account name needs to know whether a
+  human typed it. FDA's Computer Software Assurance guidance asks the record of an
+  assurance activity to carry who performed the testing alongside the date, which
+  is why this exists; the rest of the block identifies a machine, not a person.
+
+The whole block is rendered into the HTML report and the PDF as well, so the
+archived artifact carries the attribution rather than only the machine-readable
+output.
 
 Be precise about what `python_version`, `platform`, and `execution.hostname`
 describe: they are properties of the machine that ran `vip verify` -- the VIP
