@@ -1,4 +1,4 @@
-# Part 11 validation example
+# 21 CFR Part 11 validation example
 
 A worked example of mapping regulatory controls to automated tests, and
 exporting the result as a traceability matrix with `vip trace`.
@@ -10,15 +10,17 @@ is worth in your process.
 
 ## What this is not
 
-This is a template, not a certified Part 11 test set. A fully green matrix is
-evidence for the subset of controls you chose to automate. It is not an
-attestation of 21 CFR Part 11 compliance, and nobody should present it as one.
+This is a template, not a certified 21 CFR Part 11 test set. A fully green
+matrix is evidence for the subset of controls you chose to automate. It is not
+an attestation of 21 CFR Part 11 compliance, and nobody should present it as
+one.
 
-Most of Part 11 cannot be evidenced by an automated test against Posit Team.
-Roughly six clauses are genuinely testable against a deployment -- 11.10(a),
-11.10(d), 11.10(e), 11.10(g), 11.30, and partly 11.10(b). Several more are
-shared with your own procedures. The rest are either procedural (11.10(i),
-11.10(j)) or properties of the application you build on top of Posit Team.
+Most of 21 CFR Part 11 cannot be evidenced by an automated test against Posit
+Team. Roughly six clauses are genuinely testable against a deployment --
+11.10(a), 11.10(d), 11.10(e), 11.10(g), 11.30, and partly 11.10(b). Several
+more are shared with your own procedures. The rest are either procedural
+(11.10(i), 11.10(j)) or properties of the application you build on top of
+Posit Team.
 
 In particular, Posit Team does not implement electronic signatures. Clause
 11.50 (signature manifestations), 11.70 (signature/record linking) and all of
