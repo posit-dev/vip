@@ -191,7 +191,10 @@ phase = "OQ"
 sop = "SOP-QA-014"
 ```
 
-Its values must be strings, must not collide with an existing column name, and
+Its keys must not start with a character a spreadsheet evaluates as a formula,
+since a key becomes a CSV header cell and TOML permits a quoted key like
+`"=HYPERLINK(...)"`. Its values must be strings, must not collide with an
+existing column name, and
 are carried through untouched: each becomes a trailing CSV column (appended after
 the fixed set, so `CSV_COLUMNS` stays an identical leading prefix across every
 customer's export) and an `extra` object per control in the JSON. Neither report

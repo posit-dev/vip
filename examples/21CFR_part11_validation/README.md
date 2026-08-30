@@ -113,7 +113,9 @@ sop = "SOP-QA-014"
 
 Those become trailing columns in the CSV export, and an `extra` object per
 control in the JSON. VIP does not interpret them and the report does not render
-them -- its table has no width for a variable number of columns.
+them -- its table has no width for a variable number of columns. A key may not
+start with `=`, `+`, `-` or `@`, because the key becomes a CSV header cell and
+a spreadsheet would evaluate it.
 
 Control ids become pytest marker names, so use only letters, digits, `-`, `.`
 and `_`. Write `11-10-a`, not `11.10(a)`: a `:` or `(` truncates the marker name

@@ -80,6 +80,18 @@ def _load_extra(control_id: str, body: dict) -> dict[str, str]:
         raise ControlListError(f"[controls.{control_id}.extra] must be a table")
     extra: dict[str, str] = {}
     for key, value in raw.items():
+        if key and key[0] in _FORMULA_PREFIXES:
+            # TOML allows a quoted key, so `"=HYPERLINK(...)" = "x"` is a legal
+            # control list. That key becomes a CSV *header* cell, which the
+            # formula neutralization below applies to as a backstop -- but a
+            # column named after a formula is never a legitimate regulatory
+            # field, and rejecting it here keeps the CSV header and the JSON
+            # key identical rather than making one of them sprout an
+            # apostrophe.
+            raise ControlListError(
+                f"[controls.{control_id}.extra] has key {key!r}, which starts with a "
+                "character a spreadsheet reads as a formula. Rename the field."
+            )
         if key in CSV_COLUMNS:
             raise ControlListError(
                 f"[controls.{control_id}.extra] has key {key!r}, which is already a "
@@ -406,6 +418,12 @@ CSV_COLUMNS = [
 ]
 
 
+# Leading characters a spreadsheet evaluates rather than displays. Named once
+# because both the row values and the (now customer-supplied) header cells have
+# to be checked against the same set.
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+
 def _neutralize_formula(value: str) -> str:
     """Prefix leading formula characters with apostrophe to prevent Excel evaluation.
 
@@ -421,7 +439,7 @@ def _neutralize_formula(value: str) -> str:
     reach the sheet as an unescaped formula (OWASP's CSV-injection guidance
     treats these control characters the same as the leading =/+/-/@).
     """
-    if value and value[0] in ("=", "+", "-", "@", "\t", "\r", "\n"):
+    if value and value[0] in _FORMULA_PREFIXES:
         return "'" + value
     return value
 
@@ -463,8 +481,13 @@ def render_csv(matrix: TraceabilityMatrix) -> str:
     # own control list carries. Union across all controls, sorted, so a
     # control that omits a key gets an empty cell rather than a ragged row.
     extra_columns = sorted({k for e in matrix.entries for k in e.control.extra})
-    writer = csv.DictWriter(buf, fieldnames=[*CSV_COLUMNS, *extra_columns], lineterminator="\n")
-    writer.writeheader()
+    fieldnames = [*CSV_COLUMNS, *extra_columns]
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, lineterminator="\n")
+    # Not writer.writeheader(): the extra columns are customer-supplied, so a
+    # header cell is user-controlled data now and needs the same neutralization
+    # every row value gets. load_controls rejects such a key outright, so this
+    # only fires for a ControlSpec built in code rather than loaded from TOML.
+    writer.writerow({name: _neutralize_formula(name) for name in fieldnames})
     prov = _provenance_columns(matrix)
     blank_extra = dict.fromkeys(extra_columns, "")
 

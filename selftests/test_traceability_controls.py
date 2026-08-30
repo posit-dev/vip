@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from vip.traceability import ControlListError, load_controls
@@ -186,6 +188,25 @@ class TestUnknownKeysAndExtras:
         path = self._write(tmp_path, '[controls.c1.extra]\nrisk = "high"')
         with pytest.raises(ControlListError, match="already a column"):
             load_controls(path)
+
+    # As written in the TOML source. The control characters go in as escape
+    # sequences because TOML rejects a raw newline or tab inside a key, which
+    # is a second gate rather than the one under test here.
+    @pytest.mark.parametrize("prefix", ["=", "+", "-", "@", "\\t", "\\r", "\\n"])
+    def test_a_formula_leading_extra_key_is_rejected(self, tmp_path, prefix):
+        """TOML allows a quoted key, so the column *name* is attacker-reachable
+        and lands in the CSV header, which row-value neutralization misses."""
+        path = self._write(tmp_path, f'[controls.c1.extra]\n"{prefix}HYPERLINK(1)" = "v"')
+        with pytest.raises(ControlListError, match="reads as a formula"):
+            load_controls(path)
+
+    def test_a_key_merely_containing_a_formula_character_is_allowed(self):
+        """Only the leading character matters to a spreadsheet."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(Path(d), '[controls.c1.extra]\n"risk-tier" = "2"')
+            assert load_controls(path)["c1"].extra == {"risk-tier": "2"}
 
     def test_an_extra_that_is_not_a_table_is_rejected(self, tmp_path):
         path = self._write(tmp_path, 'extra = "OQ"')

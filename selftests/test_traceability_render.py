@@ -273,6 +273,18 @@ class TestExtraColumns:
         csv_text = render_csv(self._matrix({"c1": {"phase": "=SUM(1,2)"}}))
         assert "'=SUM(1,2)" in csv_text
 
+    def test_a_formula_leading_header_cell_is_neutralized(self):
+        """load_controls rejects such a key, so this covers the other door: a
+        ControlSpec built in code rather than loaded from TOML."""
+        csv_text = render_csv(self._matrix({"c1": {"=HYPERLINK(1)": "v"}}))
+        header = next(csv.reader(io.StringIO(csv_text)))
+        assert header[-1] == "'=HYPERLINK(1)"
+
+    def test_ordinary_header_cells_are_untouched(self):
+        header = next(csv.reader(io.StringIO(render_csv(self._matrix({"c1": {"phase": "OQ"}})))))
+        assert header[: len(CSV_COLUMNS)] == CSV_COLUMNS
+        assert header[-1] == "phase"
+
     def test_json_nests_extra_under_each_control(self):
         payload = json.loads(render_json(self._matrix({"c1": {"phase": "OQ"}})))
         assert payload["controls"][0]["extra"] == {"phase": "OQ"}
