@@ -1,5 +1,5 @@
 @workbench
-Feature: Part 11 flavoured controls for Workbench
+Feature: 21 CFR Part 11 flavoured controls for Workbench
   As a validation lead in a regulated environment
   I want evidence that interactive analysis is limited to authorised individuals
   So that the work behind a record can be attributed to an account

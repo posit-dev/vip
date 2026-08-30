@@ -1,5 +1,5 @@
 @package_manager
-Feature: Part 11 flavoured controls for Package Manager
+Feature: 21 CFR Part 11 flavoured controls for Package Manager
   As a validation lead in a regulated environment
   I want evidence that analyses draw on a controlled, reconstructable package set
   So that a record can be traced back to the software that produced it

@@ -1,4 +1,4 @@
-"""Step definitions for the Part 11 example's Workbench scenarios.
+"""Step definitions for the 21 CFR Part 11 example's Workbench scenarios.
 
 The two scenarios are one control read from both sides. Refusing an
 unauthenticated caller is not on its own evidence that access is limited to

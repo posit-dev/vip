@@ -87,7 +87,7 @@ A scenario can declare which regulatory or compliance control it verifies with a
 
 ```gherkin
 @connect
-Feature: Part 11 flavoured controls
+Feature: 21 CFR Part 11 flavoured controls
 
   @control-audit-trail-publish
   Scenario: Publishing content is recorded with an actor and a timestamp

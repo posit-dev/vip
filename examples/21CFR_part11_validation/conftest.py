@@ -1,4 +1,4 @@
-"""Override points for the Part 11 example.
+"""Override points for the 21 CFR Part 11 example.
 
 Redefine these fixtures in your own conftest.py to point the scenarios at the
 endpoints, repositories and snapshot dates your deployment exposes.

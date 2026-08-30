@@ -1,4 +1,4 @@
-"""Step definitions for the Part 11 example's Connect scenarios.
+"""Step definitions for the 21 CFR Part 11 example's Connect scenarios.
 
 Every @scenario function carries a literal @pytest.mark.connect decorator:
 feature-level Gherkin tags alone do not drive VIP's auto-skip in extension

@@ -1,5 +1,5 @@
 @connect
-Feature: Part 11 flavoured controls
+Feature: 21 CFR Part 11 flavoured controls
   As a validation lead in a regulated environment
   I want automated evidence for the controls that can be automated
   So that my traceability matrix is generated rather than hand-maintained

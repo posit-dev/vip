@@ -1,4 +1,5 @@
-"""Step definitions for the Part 11 example's Package Manager scenarios.
+"""Step definitions for the 21 CFR Part 11 example's Package Manager
+scenarios.
 
 Every @scenario function carries a literal @pytest.mark.package_manager
 decorator: feature-level Gherkin tags alone do not drive VIP's auto-skip in
