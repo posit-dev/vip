@@ -384,7 +384,7 @@ class TestFailedControlDisplay:
         matrix = matrix_from_statuses({"c1": ["passed", "failed"], "c2": ["passed"]})
         rows = dict(report_content.traceability_summary_rows(matrix))
         assert rows["Covered, failing"] == "1"
-        assert rows["Covered and executed"] == "1"
+        assert rows["Covered, executed and passing"] == "1"
 
 
 class TestTraceabilityWarnings:

@@ -82,7 +82,7 @@ class TestCoverageDisplay:
     def test_summary_counts_split_executed_from_covered(self):
         rows = dict(traceability_summary_rows(_matrix()))
         assert rows["Controls"] == "5"
-        assert rows["Covered and executed"] == "1"
+        assert rows["Covered, executed and passing"] == "1"
         assert rows["Covered, not executed"] == "1"
         assert rows["Covered, failing"] == "1"
         assert rows["Gaps"] == "1"

@@ -430,12 +430,14 @@ class ControlRow:
     description: str
     reference: str
     coverage: str
-    """"covered" | "covered_not_executed" | "gap" | "not_automatable".
+    """"covered" | "covered_not_executed" | "covered_failed" | "gap" |
+    "not_automatable".
 
     Distinct from ``ControlEntry.coverage``, which has no
-    ``covered_not_executed`` value: the matrix keeps coverage and execution as
-    separate facts, and this flattens them for display because a reader
-    scanning one column must not read an all-skipped control as evidenced.
+    ``covered_not_executed`` or ``covered_failed`` value: the matrix keeps
+    coverage, execution and outcome as separate facts, and this flattens them
+    for display because a reader scanning one column must not read an
+    all-skipped or all-failing control as evidenced.
     """
     scenarios: list[tuple[str, str, str]]
     """``(scenario title, status, when it ran)`` for each matched scenario."""
@@ -480,7 +482,7 @@ def traceability_summary_rows(matrix) -> list[tuple[str, str]]:  # noqa: ANN001
     counts = Counter(r.coverage for r in rows)
     return [
         ("Controls", str(len(rows))),
-        ("Covered and executed", str(counts.get("covered", 0))),
+        ("Covered, executed and passing", str(counts.get("covered", 0))),
         ("Covered, not executed", str(counts.get("covered_not_executed", 0))),
         ("Covered, failing", str(counts.get("covered_failed", 0))),
         ("Gaps", str(counts.get("gap", 0))),

@@ -263,9 +263,9 @@ class TestCoverageBadge:
 
     def test_warning_renders_in_red_bold(self):
         """Each warning matches HTML: red #dc2626 bold."""
-        matrix = matrix_from_statuses(statuses={"c1": ["passed"], "uncovered": []})
+        matrix = matrix_from_statuses(statuses={"c1": ["failed"]})
         out = report_typst.render_traceability(matrix)
-        # Warnings (if any) should have red fill and bold weight.
-        if 'rgb("#dc2626")' in out:
-            # If a warning is present, it must have red and bold.
-            assert 'weight: "bold"' in out
+        # A failing control produces a covered-but-not-passing warning, which
+        # must render in red and bold.
+        assert 'fill: rgb("#dc2626")' in out
+        assert 'weight: "bold"' in out
