@@ -74,8 +74,6 @@ display(HTML(report_html.render_actionable_cards(data, hints)))
 # dropping the section silently.
 import os
 
-from vip import report_content
-
 _controls = os.environ.get("VIP_CONTROLS")
 if _controls:
     try:
@@ -102,5 +100,10 @@ if _controls:
         display(HTML(report_html.render_traceability(_matrix)))
     except Exception as exc:  # noqa: BLE001 - a report must render regardless
         display(Markdown("## Compliance Traceability"))
-        display(Markdown(f"> {report_content.TRACEABILITY_RENDER_FAILURE.format(error=exc)}"))
+        # HTML, not Markdown: IPython.display.Markdown passes raw HTML
+        # through in Quarto, and this message carries the VIP_CONTROLS path
+        # and control ids out of a customer-authored controls.toml.
+        # render_traceability_error escapes it the way every other value
+        # report_html emits is escaped.
+        display(HTML(report_html.render_traceability_error(exc)))
 ```

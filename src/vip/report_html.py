@@ -30,6 +30,7 @@ from vip.report_content import (
     OUTCOME_LABELS,
     OUTCOME_ORDER,
     TRACEABILITY_CAVEAT,
+    TRACEABILITY_RENDER_FAILURE,
     Badge,
     FeatureStepIndex,
     category_label,
@@ -417,6 +418,27 @@ def render_provenance_table(data: ReportData) -> str:
         for label, value in provenance_rows(data)
     )
     return f"<table><tbody>{body}</tbody></table>"
+
+
+def render_traceability_error(error: object) -> str:
+    """The visible marker shown when the traceability section could not be built.
+
+    ``error`` is the exception that stopped it -- a missing or malformed
+    control list, a checksum that failed verification. Its message carries
+    the ``VIP_CONTROLS`` path and control ids read straight out of a
+    customer-authored ``controls.toml``, which makes it the same fully
+    untrusted text ``render_traceability`` describes, and it goes through
+    ``_esc`` for the same reason. ``IPython.display.Markdown`` passes raw
+    HTML through in Quarto, so rendering this message as Markdown put
+    customer-controlled markup into a publicly published page; the Typst
+    edition already routes the identical value through ``_lit``.
+
+    A dropped section is invisible to a regulated reader, so the failure is
+    a visible marker in both editions rather than a silent skip -- the
+    caller still emits the heading alongside this fragment.
+    """
+    message = TRACEABILITY_RENDER_FAILURE.format(error=_esc(str(error)))
+    return f"<p class='trace-warning'>{message}</p>"
 
 
 def render_traceability(matrix) -> str:  # noqa: ANN001 - vip.traceability.TraceabilityMatrix

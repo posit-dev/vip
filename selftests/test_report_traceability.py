@@ -118,6 +118,45 @@ class TestHtmlBackend:
         assert "&lt;script&gt;" in html
 
 
+class TestTraceabilityRenderFailure:
+    """The failure branch renders customer-controlled text and must escape it.
+
+    A ControlListError message embeds the VIP_CONTROLS path and control ids
+    read straight out of a customer-authored controls.toml, and the report is
+    published publicly. IPython.display.Markdown passes raw HTML through in
+    Quarto, so the old Markdown rendering of this message was a live
+    injection point.
+    """
+
+    HOSTILE = "<img src=x onerror=alert(1)> and <script>alert(2)</script>"
+
+    def test_hostile_error_text_is_escaped(self):
+        html = report_html.render_traceability_error(ValueError(self.HOSTILE))
+        assert "<img" not in html
+        assert "<script>" not in html
+        assert "&lt;img src=x onerror=alert(1)&gt;" in html
+        assert "&lt;script&gt;alert(2)&lt;/script&gt;" in html
+
+    def test_the_failure_is_still_visible(self):
+        html = report_html.render_traceability_error(ValueError("boom"))
+        assert "Could not render the traceability section" in html
+        assert "boom" in html
+
+    def test_index_qmd_routes_the_failure_through_the_escaping_helper(self):
+        """Drift guard on the cell itself, where the vulnerability lived.
+
+        The helper cannot escape a value the .qmd never hands it, so assert
+        the except branch calls it through HTML() and no longer formats the
+        message into Markdown.
+        """
+        qmd = (Path(__file__).parent.parent / "report" / "index.qmd").read_text()
+        assert "display(HTML(report_html.render_traceability_error(exc)))" in qmd
+        assert "TRACEABILITY_RENDER_FAILURE" not in qmd, (
+            "the .qmd must not format the failure message itself; "
+            "report_html.render_traceability_error owns the escaping"
+        )
+
+
 class TestTypstBackend:
     def test_renders_every_state(self):
         typ = report_typst.render_traceability(_matrix())
