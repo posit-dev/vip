@@ -407,3 +407,77 @@ class TestRenderFailureMessage:
         msg = report_content.TRACEABILITY_RENDER_FAILURE.format(error="boom")
         assert "boom" in msg
         assert "traceability" in msg.lower()
+
+
+class TestExecutionProvenanceRows:
+    """Attribution reaches the artifact the customer archives.
+
+    ``results.json`` has recorded the execution block since attribution
+    landed, but only ``vip trace --format json`` rendered it. A result that is
+    attributable in the machine-readable output and anonymous in the PDF is
+    attributable in the wrong place, because the PDF is what goes to an
+    auditor.
+    """
+
+    EXECUTION = {
+        "hostname": "runner-07",
+        "git": {
+            "commit": "a1b2c3d4e5f6",
+            "branch": "main",
+            "dirty": False,
+            "remote": "https://github.com/posit-dev/vip.git",
+        },
+        "ci": {"provider": "github", "run_url": "https://github.com/o/r/actions/runs/5"},
+        "performed_by": {"identity": "octocat", "source": "github"},
+    }
+
+    @staticmethod
+    def _rows(execution):
+        from vip.reporting import ReportData
+
+        return dict(report_content.provenance_rows(ReportData(results=[], execution=execution)))
+
+    def test_every_execution_field_reaches_the_report(self):
+        rows = self._rows(self.EXECUTION)
+        assert rows["Performed by"] == "octocat"
+        assert rows["Run host"] == "runner-07"
+        assert rows["Commit"] == "a1b2c3d4e5f6"
+        assert rows["Branch"] == "main"
+        assert rows["CI run"] == "https://github.com/o/r/actions/runs/5"
+
+    def test_an_absent_execution_block_omits_the_rows_entirely(self):
+        """``--vip-no-attribution`` asked for this; five "not recorded" rows
+        would read as a broken run rather than a deliberate one."""
+        rows = self._rows(None)
+        for label in ("Performed by", "Run host", "Commit", "Branch", "CI run"):
+            assert label not in rows
+
+    def test_the_pre_attribution_rows_still_render_without_an_execution_block(self):
+        assert "Exit status" in self._rows(None)
+
+    def test_a_dirty_tree_is_flagged_next_to_the_commit(self):
+        """Evidence from an uncommitted tree cannot be reproduced from the
+        commit alone, so the caveat belongs in the same cell."""
+        execution = {**self.EXECUTION, "git": {**self.EXECUTION["git"], "dirty": True}}
+        assert self._rows(execution)["Commit"] == "a1b2c3d4e5f6 (uncommitted changes present)"
+
+    def test_a_local_login_is_labelled_as_weaker_than_a_named_operator(self):
+        execution = {**self.EXECUTION, "performed_by": {"identity": "bd", "source": "login"}}
+        assert self._rows(execution)["Performed by"] == "bd (local login)"
+
+    def test_an_explicit_operator_is_not_labelled(self):
+        performer = {"identity": "QA Lead", "source": "explicit"}
+        execution = {**self.EXECUTION, "performed_by": performer}
+        assert self._rows(execution)["Performed by"] == "QA Lead"
+
+    def test_a_missing_field_inside_a_present_block_follows_the_none_contract(self):
+        """Present-but-partial is different from absent: the row stays, and the
+        backend renders NOT_RECORDED rather than a fabricated value."""
+        rows = self._rows({"hostname": "runner-07"})
+        assert rows["Run host"] == "runner-07"
+        assert rows["Performed by"] is None
+        assert rows["Commit"] is None
+
+    def test_a_ci_run_without_a_url_falls_back_to_the_run_id(self):
+        execution = {**self.EXECUTION, "ci": {"provider": "gitlab", "run_id": "4412"}}
+        assert self._rows(execution)["CI run"] == "4412"

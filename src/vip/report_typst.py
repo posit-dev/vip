@@ -580,6 +580,8 @@ def render_traceability(matrix) -> str:  # noqa: ANN001 - TraceabilityMatrix
         control_parts = [_text(row.control_id, size="9pt")]
         if row.reference:
             control_parts.append(_text(row.reference, size="8pt", fill='rgb("#6b7280")'))
+        if row.risk:
+            control_parts.append(_text(f"risk: {row.risk}", size="8pt", fill='rgb("#6b7280")'))
         if row.scenarios:
             evidence = _stacked(
                 [_text(f"{t} - {s} at {w}", size="8.5pt") for t, s, w in row.scenarios]

@@ -34,10 +34,17 @@ and the archivable PDF. The join is the deliverable: it is what lets a reviewer
 go from a control to the check that evidences it without a spreadsheet
 maintained by hand.
 
-Execution provenance. Each results file records which host ran the tests, which
-git commit and branch they came from, whether that tree was dirty, and which CI
-job produced them. This is what makes a result attributable to a pipeline
-execution rather than to an anonymous green tick.
+Execution provenance. Each results file records who ran the tests, which host
+they ran on, which git commit and branch they came from, whether that tree was
+dirty, and which CI job produced them. The same block is rendered into the HTML
+report and the PDF, so the archived artifact carries it rather than only the
+machine-readable output. This is what makes a result attributable to a named
+operator and a pipeline execution rather than to an anonymous green tick.
+
+Set `VIP_PERFORMED_BY` to record the person accountable for the run. Without
+it, VIP falls back to the CI system's actor, then to the local login, and
+labels which one it used. `--vip-no-attribution` omits the whole block for
+anyone who does not want an operator identity written into an archived file.
 
 Tamper-evidence. A `results.json.sha256` sidecar detects corruption in transit,
 a truncated upload, or a file edited after the fact and not re-checksummed.
@@ -47,6 +54,37 @@ not tamper-proofing and not an immutable audit trail. Anyone who can edit the
 results file can regenerate the sidecar to match. It catches accidents, which
 is the failure that actually happens to archived CI artifacts. It does not
 resist a motivated forger, and it must never be presented as though it does.
+
+## Where this sits in FDA's current thinking
+
+FDA finalised [Computer Software Assurance for Production and Quality
+Management System
+Software](https://www.fda.gov/regulatory-information/search-fda-guidance-documents/computer-software-assurance-production-and-quality-management-system-software)
+in September 2025 and updated it in February 2026. Two of its positions matter
+for anyone deciding what VIP is worth.
+
+The guidance recommends "incorporating the use of digital records, such as
+system logs, audit trails, and other data generated and maintained by the
+software, as opposed to paper documentation, screenshots, or duplicating
+results already digitally retained." A machine-generated results file with
+per-scenario timestamps and execution provenance is the artifact that sentence
+describes. Screenshots pasted into a Word protocol are what it discourages.
+
+The guidance also lists what the record of an assurance activity should
+contain. VIP supplies four of the five: a description of the testing and its
+results, the record of who performed it and when, the result of your
+risk-based analysis (carried through from `controls.toml` and rendered in the
+matrix), and the intended use of what was tested, insofar as your control
+descriptions state it. The fifth is the established review and approval, which
+is yours by design and covered under "What you author" below. Two further
+items are only partly covered: VIP records issues found as failed and skipped
+scenarios, but keeps no resolution or disposition against them, and it writes
+no conclusion statement declaring acceptability. Declaring acceptability is a
+judgement, not a test result.
+
+None of this makes a VIP run a computer software assurance activity on its
+own. The guidance is risk-based, and the risk analysis that decides how much
+assurance a function needs is yours.
 
 ## What you author
 
@@ -111,6 +149,14 @@ plan to record it another way for now.
 Two smaller absences worth stating: there is no cross-run deviation log, which
 would need history VIP does not keep, and there is no cryptographic signing of
 results.
+
+If you need results to resist a motivated forger rather than only to detect
+corruption, sign them in your pipeline rather than waiting for VIP to grow its
+own crypto. On GitHub Actions, `actions/attest-build-provenance` produces a
+Sigstore-backed attestation over `results.json` that is recorded in a public
+transparency log, and `gh attestation verify` checks it later. That gives you
+what the sha256 sidecar deliberately does not claim: a signature the producer
+cannot quietly regenerate.
 
 ## Reading a green report
 

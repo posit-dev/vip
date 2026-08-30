@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from vip.attribution import _git, collect_execution_metadata, redact_userinfo
+from vip.attribution import (
+    _git,
+    _performed_by,
+    collect_execution_metadata,
+    redact_userinfo,
+)
 
 
 def _init_repo(path):
@@ -202,3 +207,45 @@ class TestRedactUserinfoEdgeCases:
         assert redact_userinfo("https://github.com/org/repo.git") == (
             "https://github.com/org/repo.git"
         )
+
+
+class TestPerformedBy:
+    """Who ran the verification.
+
+    FDA's Computer Software Assurance guidance asks the record of an assurance
+    activity to carry who performed the testing alongside the date. Every other
+    field this module collects identifies a machine or a commit.
+    """
+
+    def test_explicit_override_wins_over_every_ci_actor(self):
+        env = {"VIP_PERFORMED_BY": "QA Lead", "GITHUB_ACTOR": "octocat"}
+        assert _performed_by(env) == {"identity": "QA Lead", "source": "explicit"}
+
+    def test_whitespace_only_override_falls_through(self):
+        """An empty variable exported by a shell must not shadow the real actor."""
+        env = {"VIP_PERFORMED_BY": "   ", "GITHUB_ACTOR": "octocat"}
+        assert _performed_by(env) == {"identity": "octocat", "source": "github"}
+
+    @pytest.mark.parametrize(
+        ("var", "source"),
+        [("GITHUB_ACTOR", "github"), ("GITLAB_USER_LOGIN", "gitlab"), ("BUILD_USER_ID", "jenkins")],
+    )
+    def test_each_ci_actor_is_recognized_with_its_source(self, var, source):
+        assert _performed_by({var: "runner"}) == {"identity": "runner", "source": source}
+
+    def test_local_login_is_the_last_resort_and_says_so(self, monkeypatch):
+        monkeypatch.setattr("vip.attribution.getpass.getuser", lambda: "bdeitte")
+        assert _performed_by({}) == {"identity": "bdeitte", "source": "login"}
+
+    def test_an_unresolvable_login_degrades_to_none(self, monkeypatch):
+        """No passwd entry and no LOGNAME/USER set -- a bare container."""
+
+        def boom():
+            raise KeyError("uid not found")
+
+        monkeypatch.setattr("vip.attribution.getpass.getuser", boom)
+        assert _performed_by({}) is None
+
+    def test_collect_execution_metadata_carries_the_performer(self, tmp_path):
+        meta = collect_execution_metadata(cwd=tmp_path, env={"VIP_PERFORMED_BY": "QA Lead"})
+        assert meta["performed_by"] == {"identity": "QA Lead", "source": "explicit"}

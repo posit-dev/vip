@@ -473,7 +473,15 @@ def render_traceability(matrix) -> str:  # noqa: ANN001 - vip.traceability.Trace
             )
         else:
             evidence = "<em>no tagged scenario</em>"
-        reference = f"<br><small>{_esc(row.reference)}</small>" if row.reference else ""
+        # Reference and risk sit under the control id as sublines rather than
+        # as their own columns: the Typst edition's table is already at its
+        # width budget with four columns, and the two editions must match.
+        sublines = "".join(
+            f"<br><small>{_esc(text)}</small>"
+            for text in (row.reference, f"risk: {row.risk}" if row.risk else "")
+            if text
+        )
+        reference = sublines
         rows.append(
             f"<tr><td><code>{_esc(row.control_id)}</code>{reference}</td>"
             f"<td>{_esc(row.description)}</td><td>{badge}</td><td>{evidence}</td></tr>"

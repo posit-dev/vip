@@ -10,6 +10,7 @@ warn a verification run; provenance is not worth breaking a run over.
 
 from __future__ import annotations
 
+import getpass
 import os
 import platform
 import subprocess
@@ -150,6 +151,42 @@ def _ci_metadata(env: Mapping[str, str]) -> dict[str, Any] | None:
     return None
 
 
+def _performed_by(env: Mapping[str, str]) -> dict[str, Any] | None:
+    """Who ran this verification.
+
+    FDA's Computer Software Assurance guidance asks for a record of who
+    performed the testing alongside the date. Every other field in this module
+    identifies a *machine* or a *commit*, which answers "which execution" but
+    not "which person is accountable for it".
+
+    Resolution order, most deliberate first: ``VIP_PERFORMED_BY`` names the
+    person on whose behalf the run happens, which is what a QA engineer
+    kicking off a scheduled pipeline needs to record; then the CI system's own
+    actor; then the local login. ``source`` travels with the value because an
+    auditor reading "svc-vip-runner" needs to know whether a human typed that
+    or a service account inherited it.
+    """
+    explicit = (env.get("VIP_PERFORMED_BY") or "").strip()
+    if explicit:
+        return {"identity": explicit, "source": "explicit"}
+    for var, source in (
+        ("GITHUB_ACTOR", "github"),
+        ("GITLAB_USER_LOGIN", "gitlab"),
+        ("BUILD_USER_ID", "jenkins"),
+    ):
+        value = (env.get(var) or "").strip()
+        if value:
+            return {"identity": value, "source": source}
+    try:
+        login = getpass.getuser().strip()
+    except Exception:
+        # getpass.getuser() raises on a container with no passwd entry and no
+        # LOGNAME/USER/LNAME/USERNAME set. Same never-fail contract as the rest
+        # of this module.
+        return None
+    return {"identity": login, "source": "login"} if login else None
+
+
 def collect_execution_metadata(
     *, cwd: Path | None = None, env: Mapping[str, str] | None = None
 ) -> dict[str, Any]:
@@ -157,6 +194,10 @@ def collect_execution_metadata(
 
     ``hostname`` is the VIP runner's host, not the system under test. Anything
     rendering it must label it that way.
+
+    ``performed_by`` records an operator identity, so the whole block is what
+    ``--vip-no-attribution`` exists to omit for anyone who does not want that
+    written into an archived artifact.
     """
     resolved_env = os.environ if env is None else env
     if cwd is None:
@@ -176,4 +217,5 @@ def collect_execution_metadata(
         # git rather than hand subprocess a None it would reject.
         "git": _git_metadata(resolved_cwd, resolved_env) if resolved_cwd is not None else None,
         "ci": _ci_metadata(resolved_env),
+        "performed_by": _performed_by(resolved_env),
     }

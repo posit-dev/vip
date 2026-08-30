@@ -364,8 +364,51 @@ EXIT_STATUS_LABELS = {
 NOT_RECORDED = "not recorded"
 
 
+def _execution_rows(execution: dict | None) -> list[tuple[str, str | None]]:
+    """Who ran this, on which host, from which commit, under which CI job.
+
+    ``results.json`` has recorded this block since attribution landed, but
+    until now only ``vip trace --format json`` rendered it. The report is the
+    artifact a customer archives and hands to an auditor, so a result that is
+    attributable in the machine-readable output and anonymous in the PDF is
+    attributable in the wrong place.
+
+    The whole block is omitted rather than shown as five ``NOT_RECORDED`` rows
+    when ``execution`` is absent: that is what ``--vip-no-attribution`` asked
+    for, and repeating "not recorded" five times reads as a broken run rather
+    than a deliberate one. Within a present block, an individual missing field
+    still follows the ``None`` contract above.
+    """
+    if not execution:
+        return []
+    git = execution.get("git") or {}
+    ci = execution.get("ci") or {}
+    performer = execution.get("performed_by") or {}
+
+    commit = git.get("commit")
+    if commit and git.get("dirty"):
+        # An uncommitted tree means the evidence cannot be reproduced from the
+        # commit alone. That belongs next to the commit, not in a footnote.
+        commit = f"{commit} (uncommitted changes present)"
+
+    identity = performer.get("identity")
+    if identity and performer.get("source") == "login":
+        # A local login is who was at the keyboard, which is weaker than a
+        # named operator or a CI actor. Say which one the reader is looking at.
+        identity = f"{identity} (local login)"
+
+    return [
+        ("Performed by", identity),
+        ("Run host", execution.get("hostname")),
+        ("Commit", commit),
+        ("Branch", git.get("branch")),
+        ("CI run", ci.get("run_url") or ci.get("run_id")),
+    ]
+
+
 def provenance_rows(data: ReportData) -> list[tuple[str, str | None]]:
-    """VIP version, run duration, interpreter/platform, mode, exit status (F9).
+    """VIP version, run duration, interpreter/platform, mode, exit status (F9),
+    then the execution attribution block when the run recorded one.
 
     A ``None`` value means the field is absent from this ``results.json`` and
     the backend must render ``NOT_RECORDED`` rather than a fabricated value.
@@ -385,6 +428,7 @@ def provenance_rows(data: ReportData) -> list[tuple[str, str | None]]:
         ("Platform", data.platform),
         ("Mode", mode),
         ("Exit status", f"{data.exit_status} ({exit_label})"),
+        *_execution_rows(data.execution),
     ]
 
 
@@ -429,6 +473,14 @@ class ControlRow:
     control_id: str
     description: str
     reference: str
+    risk: str
+    """The customer's own risk rating, carried through uninterpreted.
+
+    Rendered because FDA's Computer Software Assurance guidance asks the
+    record to carry the result of the risk-based analysis, and because a
+    reviewer triaging a matrix reads the high-risk gaps first. VIP does not
+    rank or validate the value -- ``risk = "banana"`` renders as "banana".
+    """
     coverage: str
     """"covered" | "covered_not_executed" | "covered_failed" | "gap" |
     "not_automatable".
@@ -469,6 +521,7 @@ def control_rows(matrix) -> list[ControlRow]:  # noqa: ANN001 - TraceabilityMatr
                 control_id=entry.control.control_id,
                 description=entry.control.description,
                 reference=entry.control.reference or "",
+                risk=entry.control.risk or "",
                 coverage=display_coverage(entry),
                 scenarios=scenarios,
             )

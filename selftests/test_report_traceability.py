@@ -198,3 +198,51 @@ class TestCoverageBadge:
                 f"{cls} is referenced by the renderer but absent from styles.css"
             )
         assert "class='badge'" not in html
+
+
+class TestRiskIsVisibleInBothEditions:
+    """The customer's risk rating, rendered rather than left in the CSV export.
+
+    `risk` reached `vip trace --format csv/json` from the day the control
+    loader carried it, but neither report edition showed it -- and the report
+    is what an auditor is handed. CSA is a risk-based framework, so a matrix
+    with no risk column reads as a flat checklist.
+    """
+
+    @staticmethod
+    def _matrix():
+        data = ReportData(results=[_result("t.py::ok", "ok", title="Audit trail is written")])
+        controls = {
+            "ok": ControlSpec(
+                "ok", "Audit trail recorded", reference="21 CFR 11.10(e)", risk="high"
+            ),
+            "unrated": ControlSpec("unrated", "No risk assigned"),
+        }
+        return build_traceability_matrix(data, controls)
+
+    def test_control_row_carries_the_risk_verbatim(self):
+        by_id = {r.control_id: r.risk for r in control_rows(self._matrix())}
+        assert by_id["ok"] == "high"
+        assert by_id["unrated"] == ""
+
+    def test_html_edition_shows_the_risk(self):
+        html = report_html.render_traceability(self._matrix())
+        assert "risk: high" in html
+
+    def test_typst_edition_shows_the_risk(self):
+        typst = report_typst.render_traceability(self._matrix())
+        assert "risk: high" in typst
+
+    @pytest.mark.parametrize("backend", [report_html, report_typst])
+    def test_an_unrated_control_renders_no_empty_risk_line(self, backend):
+        """An absent rating must not become a dangling "risk: " subline."""
+        rendered = backend.render_traceability(self._matrix())
+        assert rendered.count("risk: ") == 1
+
+    def test_a_risk_value_vip_does_not_recognize_is_still_rendered(self):
+        """VIP carries the rating through uninterpreted; it does not rank it."""
+        data = ReportData(results=[_result("t.py::ok", "ok")])
+        controls = {"ok": ControlSpec("ok", "Some control", risk="Class II / banana")}
+        matrix = build_traceability_matrix(data, controls)
+        assert "Class II / banana" in report_html.render_traceability(matrix)
+        assert "Class II / banana" in report_typst.render_traceability(matrix)
