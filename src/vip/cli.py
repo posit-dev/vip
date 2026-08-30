@@ -765,6 +765,26 @@ def run_report(args: argparse.Namespace) -> None:
         if not results_src.exists():
             print(f"Error: results file not found: {results_src}", file=sys.stderr)
             sys.exit(1)
+        if getattr(args, "controls", None):
+            # Verify the SOURCE before the copy, not only the destination
+            # after it. _rehome_sidecar is right to discard an empty or
+            # unreadable source sidecar rather than manufacture one at the
+            # destination -- but a missing destination sidecar is legal and
+            # benign, so the gate below would then wave through the very
+            # input `vip trace` refuses as a truncated attestation. The
+            # compliance render must never be more permissive than
+            # `vip trace` on identical bytes. A source with genuinely no
+            # sidecar stays benign here, exactly as it is for `vip trace`.
+            from vip.traceability import ResultsIntegrityError, verify_results_checksum
+
+            try:
+                verify_results_checksum(results_src)
+            except ResultsIntegrityError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                sys.exit(1)
+            except (OSError, UnicodeDecodeError) as exc:
+                print(f"Error: could not read results file {results_src}: {exc}", file=sys.stderr)
+                sys.exit(1)
         shutil.copy2(results_src, results_dest)
         # Keep the checksum sidecar with the results it describes. Copying a
         # results.json from a CI artifact over the local one leaves the
