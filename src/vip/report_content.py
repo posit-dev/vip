@@ -364,6 +364,38 @@ EXIT_STATUS_LABELS = {
 NOT_RECORDED = "not recorded"
 
 
+# How each `performed_by.source` reads in the report. `explicit` is the only
+# unlabelled state, because it is the only one where a human named the person
+# accountable for the run. Every other value was inherited from the
+# environment and must say so: `GITHUB_ACTOR` on a scheduled run is whoever
+# last touched the workflow, and a CI actor is often a service account, so an
+# unlabelled one would be indistinguishable from a named operator in the
+# archived artifact.
+PERFORMER_SOURCE_LABELS = {
+    "github": "GitHub actor",
+    "gitlab": "GitLab user",
+    "jenkins": "Jenkins build user",
+    "login": "local login",
+}
+
+
+def _performer_label(performer: dict) -> str | None:
+    """The operator identity as the report shows it, qualified by its source."""
+    identity = performer.get("identity")
+    source = performer.get("source")
+    if not identity or source == "explicit":
+        return identity
+    # An unrecognized source renders verbatim rather than bare: a value this
+    # version does not know about is still not an explicitly named operator,
+    # and rendering it unlabelled would promote it to one. Both backends
+    # escape the result, so an edited results.json cannot inject markup.
+    # A block carrying an identity but no source at all is malformed, and it
+    # gets the same treatment for the same reason -- never bare, and never the
+    # literal string "None".
+    label = PERFORMER_SOURCE_LABELS.get(source, source) if source else f"source {NOT_RECORDED}"
+    return f"{identity} ({label})"
+
+
 def _execution_rows(execution: dict | None) -> list[tuple[str, str | None]]:
     """Who ran this, on which host, from which commit, under which CI job.
 
@@ -391,11 +423,7 @@ def _execution_rows(execution: dict | None) -> list[tuple[str, str | None]]:
         # commit alone. That belongs next to the commit, not in a footnote.
         commit = f"{commit} (uncommitted changes present)"
 
-    identity = performer.get("identity")
-    if identity and performer.get("source") == "login":
-        # A local login is who was at the keyboard, which is weaker than a
-        # named operator or a CI actor. Say which one the reader is looking at.
-        identity = f"{identity} (local login)"
+    identity = _performer_label(performer)
 
     return [
         ("Performed by", identity),

@@ -36,15 +36,19 @@ maintained by hand.
 
 Execution provenance. Each results file records who ran the tests, which host
 they ran on, which git commit and branch they came from, whether that tree was
-dirty, and which CI job produced them. The same block is rendered into the HTML
-report and the PDF, so the archived artifact carries it rather than only the
+dirty, and which CI job produced them. The HTML report and the PDF render the
+attribution as well, so the archived artifact carries it rather than only the
 machine-readable output. This is what makes a result attributable to a named
 operator and a pipeline execution rather than to an anonymous green tick.
 
 Set `VIP_PERFORMED_BY` to record the person accountable for the run. Without
-it, VIP falls back to the CI system's actor, then to the local login, and
-labels which one it used. `--vip-no-attribution` omits the whole block for
-anyone who does not want an operator identity written into an archived file.
+it, VIP falls back to the CI system's actor, then to the local login, and the
+report qualifies the name with where it came from -- `octocat (GitHub actor)`
+rather than a bare `octocat`. An explicitly named operator is the only one
+that renders unqualified, because it is the only one a human chose. A CI actor
+is frequently a service account, and on a scheduled run it is whoever last
+edited the workflow. `--vip-no-attribution` omits the whole block for anyone
+who does not want an operator identity written into an archived file.
 
 Tamper-evidence. A `results.json.sha256` sidecar detects corruption in transit,
 a truncated upload, or a file edited after the fact and not re-checksummed.

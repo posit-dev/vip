@@ -86,9 +86,14 @@ preset that turns on `json,junit,sarif` together with concise tracebacks.
   assurance activity to carry who performed the testing alongside the date, which
   is why this exists; the rest of the block identifies a machine, not a person.
 
-The whole block is rendered into the HTML report and the PDF as well, so the
-archived artifact carries the attribution rather than only the machine-readable
-output.
+Both report editions render the attribution too, so the archived artifact
+carries it rather than only the machine-readable output. They render five of
+these fields -- `performed_by` (qualified by its `source` unless that source is
+`explicit`), `hostname`, `git.commit` (flagged when `dirty`), `git.branch`, and
+`ci.run_url` or `ci.run_id`. `git.remote`, `ci.provider` and `ci.job` stay in
+`results.json` only: the remote and the job name add table width without adding
+much a reviewer can act on, and the provider is already evident from the run
+URL. Read `results.json` itself if you need the full block.
 
 Be precise about what `python_version`, `platform`, and `execution.hostname`
 describe: they are properties of the machine that ran `vip verify` -- the VIP

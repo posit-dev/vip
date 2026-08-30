@@ -439,7 +439,7 @@ class TestExecutionProvenanceRows:
 
     def test_every_execution_field_reaches_the_report(self):
         rows = self._rows(self.EXECUTION)
-        assert rows["Performed by"] == "octocat"
+        assert rows["Performed by"] == "octocat (GitHub actor)"
         assert rows["Run host"] == "runner-07"
         assert rows["Commit"] == "a1b2c3d4e5f6"
         assert rows["Branch"] == "main"
@@ -461,9 +461,32 @@ class TestExecutionProvenanceRows:
         execution = {**self.EXECUTION, "git": {**self.EXECUTION["git"], "dirty": True}}
         assert self._rows(execution)["Commit"] == "a1b2c3d4e5f6 (uncommitted changes present)"
 
-    def test_a_local_login_is_labelled_as_weaker_than_a_named_operator(self):
-        execution = {**self.EXECUTION, "performed_by": {"identity": "bd", "source": "login"}}
-        assert self._rows(execution)["Performed by"] == "bd (local login)"
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("login", "bd (local login)"),
+            ("github", "bd (GitHub actor)"),
+            ("gitlab", "bd (GitLab user)"),
+            ("jenkins", "bd (Jenkins build user)"),
+        ],
+    )
+    def test_every_inherited_identity_says_where_it_came_from(self, source, expected):
+        """A CI actor is often a service account. Unlabelled, it would read in
+        the archived artifact exactly like a named accountable operator."""
+        execution = {**self.EXECUTION, "performed_by": {"identity": "bd", "source": source}}
+        assert self._rows(execution)["Performed by"] == expected
+
+    def test_an_identity_with_no_source_is_never_rendered_bare(self):
+        """A malformed block must not read as an explicitly named operator,
+        nor render the literal string "None"."""
+        execution = {**self.EXECUTION, "performed_by": {"identity": "bd"}}
+        assert self._rows(execution)["Performed by"] == "bd (source not recorded)"
+
+    def test_an_unrecognized_source_is_still_labelled(self):
+        """A source this version does not know about is not an explicitly named
+        operator, and must not be promoted to one by rendering it bare."""
+        execution = {**self.EXECUTION, "performed_by": {"identity": "bd", "source": "buildkite"}}
+        assert self._rows(execution)["Performed by"] == "bd (buildkite)"
 
     def test_an_explicit_operator_is_not_labelled(self):
         performer = {"identity": "QA Lead", "source": "explicit"}
