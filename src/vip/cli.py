@@ -1689,11 +1689,13 @@ def _rehome_sidecar(src: Path, dest: Path, src_name: str, dest_name: str) -> Non
     ``archive/results.json`` used to rewrite *both* lines, so the copy said
     two things about one file and ``verify_results_checksum`` picked whichever
     one agreed. Rewrite the exact matches when there are any; fall back to the
-    basename only when there is exactly one candidate to be unambiguous about.
-    Several basename matches with no exact entry are left alone -- the source
-    never had the authority to say which one describes the destination, so the
-    copy does not invent it, and verification reports that rather than
-    guessing.
+    basename otherwise, using the same distinct-digest rule
+    ``verify_results_checksum`` applies: several basename matches that all
+    carry the same digest (compared case-insensitively) are unambiguous and
+    are rewritten together, same as a single match. Basename matches that
+    disagree on the digest are left alone -- the source never had the
+    authority to say which one describes the destination, so the copy does
+    not invent it, and verification reports that rather than guessing.
     """
     from vip.traceability import sidecar_basename
 
@@ -1719,7 +1721,8 @@ def _rehome_sidecar(src: Path, dest: Path, src_name: str, dest_name: str) -> Non
         # function exists to prevent.
         src_base = sidecar_basename(src_name)
         matches = [i for i, (_, _, r) in enumerate(parsed) if r and sidecar_basename(r) == src_base]
-        rewrite = set(matches) if len(matches) == 1 else set()
+        distinct = {parsed[i][1].lower() for i in matches}
+        rewrite = set(matches) if len(distinct) == 1 else set()
     lines = [
         f"{digest}  {dest_name}" if i in rewrite else raw
         for i, (raw, digest, _) in enumerate(parsed)

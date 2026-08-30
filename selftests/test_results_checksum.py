@@ -359,6 +359,49 @@ class TestReportSidecarRehoming:
         with pytest.raises(ResultsIntegrityError, match="does not record an entry"):
             verify_results_checksum(dest)
 
+    def test_several_basename_matches_that_agree_are_rehomed(self, tmp_path):
+        """Several basename matches with the *same* digest are unambiguous.
+
+        This mirrors verify_results_checksum's distinct-digest rule: several
+        entries agreeing on one digest is not ambiguous, even though the
+        basename fallback found more than one match.
+        """
+        src = tmp_path / "run-42.json"
+        src.write_text('{"results": []}', encoding="utf-8")
+        digest = hashlib.sha256(src.read_bytes()).hexdigest()
+        self._sidecar_for(src).write_text(
+            f"{digest}  archive/run-42.json\n{digest}  nightly/run-42.json\n", encoding="utf-8"
+        )
+
+        dest = tmp_path / "out" / "results.json"
+        dest.parent.mkdir()
+        shutil.copy2(src, dest)
+        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
+
+        assert verify_results_checksum(dest) == (digest, True)
+
+    def test_several_basename_matches_that_agree_case_insensitively_are_rehomed(self, tmp_path):
+        """Digest comparison is case-insensitive, matching verify_results_checksum.
+
+        PowerShell's Get-FileHash and 7-Zip emit uppercase hex; a sidecar
+        mixing an uppercase and a lowercase rendering of the same digest must
+        not be treated as disagreement.
+        """
+        src = tmp_path / "run-42.json"
+        src.write_text('{"results": []}', encoding="utf-8")
+        digest = hashlib.sha256(src.read_bytes()).hexdigest()
+        self._sidecar_for(src).write_text(
+            f"{digest.upper()}  archive/run-42.json\n{digest}  nightly/run-42.json\n",
+            encoding="utf-8",
+        )
+
+        dest = tmp_path / "out" / "results.json"
+        dest.parent.mkdir()
+        shutil.copy2(src, dest)
+        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
+
+        assert verify_results_checksum(dest) == (digest, True)
+
     def test_undecodable_source_raises_unicode_error_for_the_caller(self, tmp_path):
         """The call site catches this; it must not escape as a bare traceback."""
         src = tmp_path / "results.json"
