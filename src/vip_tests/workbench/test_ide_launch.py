@@ -235,7 +235,7 @@ def _start_session(page: Page, ide_type: str, session_name: str):
 
 
 def _dismiss_dialog_and_skip(page: Page, reason: str) -> NoReturn:
-    """Best-effort cancel of the New Session dialog, then ``pytest.skip``.
+    """Best-effort cancel of the New Session dialog, then ``attest.not_applicable``.
 
     Uses a short timeout on the cancel click so a missing or unreachable
     cancel button does not mask the real skip reason with a 30-second

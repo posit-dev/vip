@@ -159,8 +159,10 @@ def start_rstudio_session_for_job(page: Page, job_context: dict):
             except Exception:
                 pass
         attest.unproven(
-            "RStudio Pro tab opened but Launch button did not appear — "
-            "the IDE may not be installed or fully available on this Workbench instance"
+            "RStudio Pro tab opened but its Launch button never appeared, so no "
+            "session could be started and the Background Jobs checks below never "
+            "ran. The tab opening means the IDE is present; this is a UI or "
+            "readiness problem, not a missing IDE."
         )
 
     page.fill(NewSessionDialog.SESSION_NAME, session_name)
