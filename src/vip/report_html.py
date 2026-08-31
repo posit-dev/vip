@@ -1,12 +1,15 @@
 """HTML rendering for the VIP Quarto report.
 
-``vip.reporting`` is the pure data layer (``TestResult``/``ReportData``, plus
-JSON/JUnit/SARIF I/O). This module is its rendering sibling: it turns that
-data into the HTML fragments ``report/index.qmd`` and ``report/details.qmd``
-hand to ``IPython.display.HTML()``. It exists so the rendering logic — card
-markup, badges, the ``<param>`` substitution, the copy-to-clipboard script —
-is plain, testable Python instead of duplicated inline in two Quarto chunks,
-where nothing can reach it with a test.
+``vip.report_content`` is the format-neutral layer: titles, outcome and
+marker styling, grouping, skip wording, provenance rows. This module is one
+of its two backends. It turns that content into the HTML fragments
+``report/index.qmd`` and ``report/details.qmd`` hand to
+``IPython.display.HTML()``. ``vip.report_typst`` is the other backend, and
+renders the same content as Typst markup for the PDF.
+
+Nothing here decides *what* the reader sees — only what markup says it. A
+change to wording, grouping, or color belongs in ``report_content`` so both
+outputs get it.
 
 Escaping is a security property here, not a style choice: the report is
 published publicly (https://posit-dev.github.io/vip/example-report/) and
@@ -18,97 +21,34 @@ interpolation that skips it.
 
 from __future__ import annotations
 
-import re
-from collections import Counter
-from dataclasses import dataclass
 from html import escape as _esc
 
-from vip.gherkin import parse_feature_file
-from vip.reporting import ReportData, TestResult, feature_file_for_nodeid
-
-# ---------------------------------------------------------------------------
-# <param> placeholder substitution
-# ---------------------------------------------------------------------------
-
-# A pytest-parametrize suffix on a nodeid, e.g. "...::test_x[cran]" -> "cran".
-_PARAM_SUFFIX_RE = re.compile(r"\[(.+)\]$")
-# A Gherkin Scenario Outline placeholder left in scenario_title, e.g. "<repo>".
-_PLACEHOLDER_RE = re.compile(r"<[^>]+>")
-
-
-def substitute_param_placeholders(nodeid: str, title: str) -> str:
-    """Replace Scenario Outline ``<placeholder>`` tokens with their pytest value.
-
-    pytest-bdd's Scenario Outline expansion leaves the Gherkin placeholder
-    syntax (e.g. "Install <package> from CRAN") in ``scenario_title`` and puts
-    the actual parametrize value in the nodeid's trailing ``[...]`` instead.
-    Hoisted out of the per-card loop both templates used to have — each did
-    ``import re as _re`` inside the loop (F13) — and shared, since both pages
-    need the identical substitution.
-    """
-    if "<" not in title:
-        return title
-    match = _PARAM_SUFFIX_RE.search(nodeid)
-    if not match:
-        return title
-    return _PLACEHOLDER_RE.sub(match.group(1), title)
-
-
-def display_title(item: TestResult) -> str:
-    """The card's title: the scenario title (or bare test name), placeholders resolved."""
-    raw = item.scenario_title or (
-        item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
-    )
-    return substitute_param_placeholders(item.nodeid, raw)
-
-
-def _pluralize(count: int, noun: str = "test") -> str:
-    """'1 test' vs '2 tests' (F13 — the live report showed '1 tests')."""
-    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
-
-
-# ---------------------------------------------------------------------------
-# Outcome styling (PASS/FAIL/SKIP/N-A badges, section colors)
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class OutcomeStyle:
-    label: str
-    color: str
-    background: str
-
-
-_OUTCOME_STYLES: dict[str, OutcomeStyle] = {
-    "passed": OutcomeStyle("PASS", "#16a34a", "#dcfce7"),
-    "failed": OutcomeStyle("FAIL", "#dc2626", "#fecaca"),
-    "skipped": OutcomeStyle("SKIP", "#6b7280", "#e5e7eb"),
-    "na_version": OutcomeStyle("N/A", "#d97706", "#fde68a"),
-    # Amber-red: not a failure, but not a pass either. Reads closer to FAIL
-    # than to SKIP on purpose -- an unverified check is the thing this report
-    # exists to make impossible to overlook.
-    "unproven": OutcomeStyle("UNPROVEN", "#b45309", "#fed7aa"),
-}
-_DEFAULT_OUTCOME_STYLE = OutcomeStyle("?", "#6b7280", "#e5e7eb")
-
-# Order and label for the outcome-grouped sections on index.qmd (failures are
-# the actionable ones, so they lead).
-OUTCOME_ORDER = ("failed", "unproven", "skipped", "na_version")
-OUTCOME_LABELS = {
-    "failed": "Failed",
-    "passed": "Passed",
-    "unproven": "Not verified",
-    "skipped": "Skipped",
-    "na_version": "N/A (version)",
-}
-
-
-def outcome_style(status: str) -> OutcomeStyle:
-    """Styling for a ``TestResult.status`` value; an unrecognized one degrades to grey."""
-    return _OUTCOME_STYLES.get(status, _DEFAULT_OUTCOME_STYLE)
+from vip.report_content import (
+    NOT_RECORDED,
+    OUTCOME_LABELS,
+    OUTCOME_ORDER,
+    Badge,
+    FeatureStepIndex,
+    category_label,
+    description_line,
+    display_title,
+    dominant_feature_description,
+    group_by_category,
+    outcome_counts_summary,
+    outcome_style,
+    pluralize,
+    primary_badges_for,
+    provenance_rows,
+    results_for_product,
+    secondary_badges_for,
+    skip_reason_parts,
+    summary_status,
+)
+from vip.reporting import ReportData, TestResult
 
 
 def outcome_badge_html(status: str) -> str:
+    """The PASS/FAIL/SKIP/N-A chip that opens a card."""
     style = outcome_style(status)
     return (
         f'<span class="vip-badge" style="color:{style.color};background:{style.background}">'
@@ -116,144 +56,19 @@ def outcome_badge_html(status: str) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# Marker badges (F8)
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Badge:
-    css_class: str
-    label: str
-
-
-# Primary badges: one loud, colored pill per matching marker on a card.
-# Every top-level test category (see AGENTS.md's four-layer architecture doc
-# / src/vip_tests/*) is covered, so a scenario carrying no *product* marker
-# at all — e.g. a performance/cross_product/config_hygiene scenario, none of
-# which are `@connect`/`@workbench`/`@package_manager` — still gets one
-# informative pill instead of no badge at all (F8: previously only 5 of
-# these were known, and cross_product/config_hygiene/performance cards were
-# indistinguishable from any other card in the same category section).
-_PRIMARY_BADGES: dict[str, Badge] = {
-    "connect": Badge("badge-connect", "Connect"),
-    "workbench": Badge("badge-workbench", "Workbench"),
-    "package_manager": Badge("badge-package-manager", "Package Manager"),
-    "security": Badge("badge-security", "Security"),
-    "prerequisites": Badge("badge-prerequisites", "Prerequisites"),
-    "cross_product": Badge("badge-cross-product", "Cross-Product"),
-    "config_hygiene": Badge("badge-config-hygiene", "Config Hygiene"),
-    "performance": Badge("badge-performance", "Performance"),
-}
-
-# Secondary badges: quiet, informational only, never drive grouping. Chosen
-# judiciously (F8) — not every one of pyproject.toml's 16 registered markers
-# earns a badge. The IDE markers tell a reader which IDE a Workbench card
-# exercised (previously invisible anywhere in the report). `slow` flags a
-# scenario that `vip verify --basic` skips, worth one small tag rather than
-# a second loud pill duplicating the card's product badge. Structural
-# markers (`min_version`, `if_applicable`, `api_auth`) describe *how* VIP
-# decided to run the test, not something a reader validating a deployment
-# needs to see, so they render nothing.
-_SECONDARY_BADGES: dict[str, Badge] = {
-    "rstudio": Badge("badge-ide", "RStudio"),
-    "vscode": Badge("badge-ide", "VS Code"),
-    "jupyter": Badge("badge-ide", "JupyterLab"),
-    "positron": Badge("badge-ide", "Positron"),
-    "slow": Badge("badge-slow", "Slow"),
-}
-
-
 def _badge_html(badge: Badge) -> str:
     return f'<span class="{badge.css_class}">{_esc(badge.label)}</span>'
 
 
 def secondary_badges_html(markers: list[str]) -> str:
-    return "".join(
-        _badge_html(badge) for marker, badge in _SECONDARY_BADGES.items() if marker in markers
-    )
+    return "".join(_badge_html(badge) for badge in secondary_badges_for(markers))
 
 
 def product_badges_html(item: TestResult) -> str:
     """Every primary badge present in ``item.markers`` (may be more than one),
     followed by any secondary (IDE/slow) badges."""
-    primary = "".join(_badge_html(_PRIMARY_BADGES[m]) for m in item.markers if m in _PRIMARY_BADGES)
+    primary = "".join(_badge_html(badge) for badge in primary_badges_for(item))
     return primary + secondary_badges_html(item.markers)
-
-
-def category_for(item: TestResult) -> str:
-    """The top-level test category used to group cards (F6) and roll up
-    per-product counts (F7).
-
-    Prefers the scenario's own marker (its ``@connect``/``@workbench``/...
-    tag) over the directory it happens to live in, because the marker is what
-    the scenario asserts about rather than an artefact of file layout: a
-    cross-product scenario filed under one product's directory still belongs
-    with the product it is tagged for. Falls back to ``TestResult.category``,
-    which derives the category from the nodeid path.
-    """
-    for marker in item.markers:
-        if marker in _PRIMARY_BADGES:
-            return marker
-    return item.category
-
-
-def results_for_product(results: list[TestResult], product: str) -> list[TestResult]:
-    """Every result that counts toward *product*'s row in the rollup (F7).
-
-    A result counts when it is tagged for the product *or* lives in the
-    product's directory. Deliberately broader than ``category_for``, which
-    assigns each result to exactly one bucket: a scenario tagged for two
-    products genuinely exercised both, so a single-bucket rule would silently
-    under-count one of them. The consequence is that the product rows do not
-    sum to the run total, which was already true (``prerequisites`` and
-    ``security`` results belong to no product row at all) and is why the
-    Summary table carries the authoritative totals.
-    """
-    return [r for r in results if product in r.markers or r.category == product]
-
-
-def group_by_category(results: list[TestResult]) -> dict[str, list[TestResult]]:
-    """Group results by ``category_for`` (see its docstring for why not
-    ``ReportData.by_category``), preserving each category's first-seen order."""
-    groups: dict[str, list[TestResult]] = {}
-    for item in results:
-        groups.setdefault(category_for(item), []).append(item)
-    return groups
-
-
-# ---------------------------------------------------------------------------
-# Feature-file step lookup (cached per page render)
-# ---------------------------------------------------------------------------
-
-
-class FeatureStepIndex:
-    """Caches parsed ``.feature`` files across one page render.
-
-    Both templates look up the Gherkin steps for potentially dozens of cards
-    backed by a handful of ``.feature`` files. Each Quarto page is a fresh
-    Python kernel, so an instance only needs to live as long as one page —
-    construct one per ``render_details_page``/``render_actionable_cards`` call.
-    """
-
-    def __init__(self) -> None:
-        self._cache: dict[str, dict] = {}
-
-    def _feature(self, nodeid: str) -> dict | None:
-        feature_file = feature_file_for_nodeid(nodeid)
-        key = str(feature_file) if feature_file else nodeid
-        if key not in self._cache:
-            self._cache[key] = parse_feature_file(feature_file) if feature_file else {}
-        return self._cache[key] or None
-
-    def steps_for(self, item: TestResult) -> list[str]:
-        feature = self._feature(item.nodeid)
-        if not feature or not feature.get("scenarios") or not item.scenario_title:
-            return []
-        for scenario in feature["scenarios"]:
-            if scenario["title"] == item.scenario_title and scenario.get("steps"):
-                return scenario["steps"]
-        return []
 
 
 def steps_html(steps: list[str]) -> str:
@@ -266,90 +81,27 @@ def steps_html(steps: list[str]) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# Feature description (F4)
-# ---------------------------------------------------------------------------
-
-
-def dominant_feature_description(results: list[TestResult]) -> str | None:
-    """The most common non-empty feature-description first line across a run.
-
-    Almost every VIP feature file opens with the same Gherkin user-story line
-    ("As a Posit Team administrator..."), so showing it on every card is pure
-    repetition (F4) — but a handful of files genuinely differ ("As a VIP
-    user...", "...running Workbench on Kubernetes"), and that difference is
-    worth surfacing. Rather than drop the field outright, compute the
-    majority value for the whole run and only render a card's description
-    when it differs from that majority — see ``description_html``.
-    """
-    first_lines = [
-        line
-        for r in results
-        if r.feature_description and (line := r.feature_description.split("\n")[0].strip())
-    ]
-    if not first_lines:
-        return None
-    return Counter(first_lines).most_common(1)[0][0]
-
-
 def description_html(item: TestResult, dominant: str | None) -> str:
-    if not item.feature_description:
+    """The card's feature-description line, when it differs from the run's dominant one."""
+    line = description_line(item, dominant)
+    if not line:
         return ""
-    first_line = item.feature_description.split("\n")[0].strip()
-    if not first_line or first_line == dominant:
-        return ""
-    return f'<div class="vip-test-description">{_esc(first_line)}</div>'
-
-
-# ---------------------------------------------------------------------------
-# Skip reason (F3)
-# ---------------------------------------------------------------------------
-
-_NA_VERSION_EXPLANATION = (
-    "Skipped because the product's version could not be determined, so VIP "
-    "could not tell whether this check applies."
-)
-
-
-_UNPROVEN_EXPLANATION = (
-    "This check was not verified. VIP was asked to run it and could not, so "
-    "this is not a statement that the deployment is healthy -- only that "
-    "nothing was checked here."
-)
+    return f'<div class="vip-test-description">{_esc(line)}</div>'
 
 
 def skip_reason_html(item: TestResult) -> str:
-    """An explanation for a skip card (F3).
+    """The explanation on a skip card, with any version-gate detail beneath it (F3).
 
-    ``na_version`` and ``unproven`` each read distinctly from an ordinary
-    skip (see ``TestResult.status``): they lead with plain-English wording,
-    because the
-    raw reason is phrased for whoever is debugging VIP rather than for whoever
-    is reading the report. It does *not* stop there. ``_skip_version_unknown``
-    records which product and which ``min_version`` expression it could not
-    evaluate, and that detail is the only actionable part of the card, so it
-    follows the explanation instead of being replaced by it.
-
-    An ordinary skip shows its ``skip_reason`` when the plugin recorded one,
-    and a neutral placeholder rather than silence when it did not (a
-    ``results.json`` written before the field existed, say).
+    See ``report_content.skip_reason_parts`` for why an ``na_version`` card
+    reads differently from an ordinary skip.
     """
-    if item.outcome != "skipped":
+    explanation, detail = skip_reason_parts(item)
+    if not explanation:
         return ""
-    if item.status in ("na_version", "unproven"):
-        explanation = (
-            _NA_VERSION_EXPLANATION if item.status == "na_version" else _UNPROVEN_EXPLANATION
-        )
-        parts = [_esc(explanation)]
-        if item.skip_reason and item.skip_reason.strip():
-            detail = _esc(item.skip_reason.strip())
-            parts.append(f'<span class="vip-skip-detail">{detail}</span>')
-        return f'<div class="vip-skip-reason">{"".join(parts)}</div>'
-    # ``.strip()`` guards a results.json written before the plugin started
-    # normalising this: a whitespace-only reason is truthy and would render as
-    # a blank line instead of the fallback wording.
-    reason = (item.skip_reason or "").strip() or "No reason recorded."
-    return f'<div class="vip-skip-reason">{_esc(reason)}</div>'
+    parts = [_esc(explanation)]
+    if detail:
+        parts.append(f'<span class="vip-skip-detail">{_esc(detail)}</span>')
+    return f'<div class="vip-skip-reason">{"".join(parts)}</div>'
 
 
 # ---------------------------------------------------------------------------
@@ -457,20 +209,6 @@ def render_card(
     )
 
 
-def _outcome_counts_summary(items: list[TestResult]) -> str:
-    """ "6 passed, 1 failed, 2 skipped" — used in category/group sub-headers."""
-    counts = Counter(i.status for i in items)
-    order = [
-        ("passed", "passed"),
-        ("failed", "failed"),
-        ("unproven", "unproven"),
-        ("skipped", "skipped"),
-        ("na_version", "N/A (version)"),
-    ]
-    parts = [f"{counts[key]} {label}" for key, label in order if counts.get(key)]
-    return ", ".join(parts)
-
-
 # Copy-to-clipboard behaviour for every "Copy" button on a page. Static and
 # shared by both templates; appended once per page after all cards.
 CLIPBOARD_SCRIPT = """
@@ -547,11 +285,11 @@ def render_details_page(data: ReportData, hints: dict[str, dict]) -> str:
     parts: list[str] = []
     index = 0
     for category, items in sorted(categories.items()):
-        label = category.replace("_", " ").title()
+        label = category_label(category)
         parts.append(
             f'<div class="vip-cat-section"><h2 class="vip-cat-header">{_esc(label)}</h2>'
-            f'<p class="vip-cat-counts">{_pluralize(len(items))} — '
-            f"{_esc(_outcome_counts_summary(items))}</p>"
+            f'<p class="vip-cat-counts">{pluralize(len(items))} — '
+            f"{_esc(outcome_counts_summary(items))}</p>"
         )
         for item in items:
             parts.append(
@@ -628,7 +366,7 @@ def render_products_table(data: ReportData) -> str:
         if not items:
             results_cell = "no results recorded"
         else:
-            results_cell = f"{_outcome_counts_summary(items)} ({_pluralize(len(items))})"
+            results_cell = f"{outcome_counts_summary(items)} ({pluralize(len(items))})"
         rows.append(
             f"<tr><td>{name}</td><td>{url}</td><td>{version}</td><td>{_esc(results_cell)}</td></tr>"
         )
@@ -643,14 +381,8 @@ def render_summary_table(data: ReportData) -> str:
     """The overall pass/fail/skip/status roll-up."""
     if data.total == 0:
         return "<p><em>No results found. Run <code>pytest</code> to generate results.</em></p>"
-    status, status_class = (
-        ("FAIL", "summary-status-fail")
-        if data.failed
-        else (
-            "PASS",
-            "summary-status-pass",
-        )
-    )
+    status = summary_status(data)
+    status_class = "summary-status-fail" if data.failed else "summary-status-pass"
     return (
         "<table><tbody>"
         f"<tr><th>Total</th><td>{data.total}</td></tr>"
@@ -662,42 +394,20 @@ def render_summary_table(data: ReportData) -> str:
     )
 
 
-# pytest's documented exit codes (https://docs.pytest.org/en/stable/reference/exit-codes.html).
-_EXIT_STATUS_LABELS = {
-    0: "OK — no failures",
-    1: "tests were collected and run, but some failed",
-    2: "run was interrupted by the user",
-    3: "an internal error occurred",
-    4: "pytest command line usage error",
-    5: "no tests were collected",
-}
-
-
 def _cell(value: str | None) -> str:
-    return _esc(value) if value is not None else "<em>not recorded</em>"
+    return _esc(value) if value is not None else f"<em>{_esc(NOT_RECORDED)}</em>"
 
 
 def render_provenance_table(data: ReportData) -> str:
     """VIP version, run duration, interpreter/platform, mode, exit status (F9).
 
-    Every provenance field but ``exit_status`` is ``None`` on a
-    ``results.json`` written before Phase 1 added them; each renders "not
-    recorded" for that case rather than a fabricated value — see
-    ``ReportData``'s own docstring for why that matters for an artifact a
-    customer archives as evidence.
+    A row whose value ``report_content.provenance_rows`` reports as ``None``
+    renders "not recorded" rather than a fabricated value — see that
+    function's docstring for why that matters for an artifact a customer
+    archives as evidence.
     """
-    duration = (
-        f"{data.run_duration_seconds:.1f}s" if data.run_duration_seconds is not None else None
+    body = "".join(
+        f"<tr><th>{_esc(label)}</th><td>{_cell(value)}</td></tr>"
+        for label, value in provenance_rows(data)
     )
-    mode = None if data.basic_mode is None else ("basic" if data.basic_mode else "full")
-    exit_label = _EXIT_STATUS_LABELS.get(data.exit_status, "unrecognized exit code")
-    rows = [
-        ("VIP version", _cell(data.vip_version)),
-        ("Run duration", _cell(duration)),
-        ("Python", _cell(data.python_version)),
-        ("Platform", _cell(data.platform)),
-        ("Mode", _cell(mode)),
-        ("Exit status", _esc(f"{data.exit_status} ({exit_label})")),
-    ]
-    body = "".join(f"<tr><th>{_esc(label)}</th><td>{value}</td></tr>" for label, value in rows)
     return f"<table><tbody>{body}</tbody></table>"
