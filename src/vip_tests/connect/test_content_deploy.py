@@ -15,6 +15,7 @@ import httpx
 import pytest
 from pytest_bdd import scenario, then, when
 
+from vip import attest
 from vip_tests.connect.bundles import _latest_version, build_shiny_bundle_files
 from vip_tests.connect.conftest import _make_tar_gz
 
@@ -190,7 +191,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
     if name == "vip-plumber-test":
         r_versions = connect_client.r_versions()
         if not r_versions:
-            pytest.skip("No R versions available on Connect — cannot deploy Plumber")
+            attest.not_applicable("No R versions available on Connect — cannot deploy Plumber")
         manifest = json.loads((pathlib.Path(__file__).parent / "plumber_manifest.json").read_text())
         manifest["platform"] = _latest_version(r_versions)
         return {
@@ -201,7 +202,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
     if name == "vip-quarto-test":
         quarto_versions = connect_client.quarto_versions()
         if not quarto_versions:
-            pytest.skip("No Quarto installations available on Connect")
+            attest.not_applicable("No Quarto installations available on Connect")
         r_versions = connect_client.r_versions()
         manifest: dict = {
             "version": 1,
@@ -226,13 +227,13 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
     if name == "vip-shiny-test":
         r_versions = connect_client.r_versions()
         if not r_versions:
-            pytest.skip("No R versions available on Connect — cannot deploy Shiny")
+            attest.not_applicable("No R versions available on Connect — cannot deploy Shiny")
         return build_shiny_bundle_files(r_versions)
 
     if name == "vip-dash-test":
         py_versions = connect_client.python_versions()
         if not py_versions:
-            pytest.skip("No Python versions available on Connect — cannot deploy Dash")
+            attest.not_applicable("No Python versions available on Connect — cannot deploy Dash")
         return {
             "app.py": (
                 'import dash\napp = dash.Dash(__name__)\napp.layout = dash.html.Div("VIP test")\n'
@@ -257,7 +258,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
     if name == "vip-rmarkdown-test":
         r_versions = connect_client.r_versions()
         if not r_versions:
-            pytest.skip("No R versions available on Connect — cannot deploy R Markdown")
+            attest.not_applicable("No R versions available on Connect — cannot deploy R Markdown")
         # Use the pre-built manifest with the full transitive dependency closure
         # (rmarkdown → knitr → evaluate/highr/xfun/yaml, bslib, stringr, etc.).
         # An incomplete ``packages`` block causes packrat-restore to fail with
@@ -278,7 +279,9 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
     if name == "vip-jupyter-test":
         py_versions = connect_client.python_versions()
         if not py_versions:
-            pytest.skip("No Python versions available on Connect — cannot deploy Jupyter Notebook")
+            attest.not_applicable(
+                "No Python versions available on Connect — cannot deploy Jupyter Notebook"
+            )
         notebook_content = json.dumps(
             {
                 "nbformat": 4,
@@ -347,7 +350,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
     if name == "vip-fastapi-test":
         py_versions = connect_client.python_versions()
         if not py_versions:
-            pytest.skip("No Python versions available on Connect — cannot deploy FastAPI")
+            attest.not_applicable("No Python versions available on Connect — cannot deploy FastAPI")
         return {
             "app.py": (
                 "from fastapi import FastAPI\n"
@@ -445,14 +448,16 @@ def upload_and_deploy(connect_client, deploy_state):
 def link_git_repository(connect_client, deploy_state):
     quarto_versions = connect_client.quarto_versions()
     if not quarto_versions:
-        pytest.skip("No Quarto on Connect — cannot deploy git-backed Quarto document")
+        attest.not_applicable("No Quarto on Connect — cannot deploy git-backed Quarto document")
     # Check that the remote repository is reachable before attempting to link.
     try:
         resp = httpx.head(_GIT_REPO_URL, follow_redirects=True, timeout=10)
         if resp.status_code >= 400:
-            pytest.skip(f"Git repository not reachable (HTTP {resp.status_code}): {_GIT_REPO_URL}")
+            attest.unproven(
+                f"Git repository not reachable (HTTP {resp.status_code}): {_GIT_REPO_URL}"
+            )
     except httpx.TransportError as exc:
-        pytest.skip(f"Git repository not reachable: {exc}")
+        attest.unproven(f"Git repository not reachable: {exc}")
     connect_client.set_repository(
         deploy_state["guid"], _GIT_REPO_URL, branch=_GIT_BRANCH, directory=_GIT_DIRECTORY
     )
@@ -623,7 +628,7 @@ def content_renders_expected_output(connect_client, deploy_state):
     content = connect_client.get_content(deploy_state["guid"])
     url = content.get("content_url", "")
     if not url:
-        pytest.skip("Content URL not available — skipping output verification")
+        attest.unproven("Content URL not available — skipping output verification")
 
     if expected["type"] == "json":
         # Plumber: append the route path and verify JSON response.
