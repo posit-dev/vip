@@ -504,3 +504,91 @@ class TestExecutionProvenanceRows:
     def test_a_ci_run_without_a_url_falls_back_to_the_run_id(self):
         execution = {**self.EXECUTION, "ci": {"provider": "gitlab", "run_id": "4412"}}
         assert self._rows(execution)["CI run"] == "4412"
+
+
+class TestUnprovenRendering:
+    """The report is the artifact an auditor reads; unproven must be visible.
+
+    These live here rather than under one backend because both the HTML report
+    and the archived PDF read every one of these decisions from this module.
+    """
+
+    def test_unproven_has_its_own_badge_style(self):
+        style = report_content._OUTCOME_STYLES.get("unproven")
+        assert style is not None, "unproven must not fall through to the '?' style"
+        assert style is not report_content._DEFAULT_OUTCOME_STYLE
+        assert style.label != report_content._OUTCOME_STYLES["skipped"].label
+
+    def test_unproven_is_grouped_ahead_of_ordinary_skips(self):
+        order = report_content.OUTCOME_ORDER
+        assert "unproven" in order
+        # Actionable outcomes lead: a failure, then a check that could not run,
+        # then the skips that were correct to skip.
+        assert order.index("unproven") < order.index("skipped")
+        assert order.index("failed") < order.index("unproven")
+
+    def test_unproven_has_a_label(self):
+        labels = report_content.OUTCOME_LABELS
+        assert labels.get("unproven")
+        assert labels["unproven"] != labels["skipped"]
+
+    def test_counts_summary_names_unproven_separately(self):
+        summary = report_content.outcome_counts_summary(
+            [
+                TestResult(nodeid="a", outcome="skipped", unproven=True),
+                TestResult(nodeid="b", outcome="skipped"),
+            ]
+        )
+        assert "1 skipped" in summary
+        assert summary.count("skipped") == 1
+        assert "unproven" in summary.lower()
+
+    def test_unproven_card_explains_itself(self):
+        explanation, detail = report_content.skip_reason_parts(
+            TestResult(
+                nodeid="a",
+                outcome="skipped",
+                unproven=True,
+                skip_reason="Workbench authentication did not complete",
+            )
+        )
+        # The operator needs both the plain-English meaning and the raw cause.
+        assert "not verified" in explanation.lower() or "could not" in explanation.lower()
+        assert detail == "Workbench authentication did not complete"
+
+    def test_ordinary_skip_card_is_unchanged(self):
+        explanation, detail = report_content.skip_reason_parts(
+            TestResult(nodeid="a", outcome="skipped", skip_reason="Connect is not configured")
+        )
+        assert explanation == "Connect is not configured"
+        assert detail == ""
+
+    def test_exit_code_six_is_named_in_provenance(self):
+        # Otherwise the report calls VIP's own exit status "unrecognized".
+        assert 6 in report_content.EXIT_STATUS_LABELS
+        assert "verif" in report_content.EXIT_STATUS_LABELS[6]
+
+    def test_summary_status_is_not_pass_when_nothing_was_verified(self):
+        unproven_run = ReportData(
+            results=[TestResult(nodeid="a", outcome="skipped", unproven=True)]
+        )
+        assert report_content.summary_status(unproven_run) == "UNPROVEN"
+
+    def test_summary_status_still_prefers_fail_over_unproven(self):
+        # A real failure is the stronger signal and must own the headline.
+        mixed = ReportData(
+            results=[
+                TestResult(nodeid="a", outcome="skipped", unproven=True),
+                TestResult(nodeid="b", outcome="failed"),
+            ]
+        )
+        assert report_content.summary_status(mixed) == "FAIL"
+
+    def test_summary_status_unchanged_for_a_clean_run(self):
+        clean = ReportData(
+            results=[
+                TestResult(nodeid="a", outcome="passed"),
+                TestResult(nodeid="b", outcome="skipped"),
+            ]
+        )
+        assert report_content.summary_status(clean) == "PASS"

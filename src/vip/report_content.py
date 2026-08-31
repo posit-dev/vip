@@ -89,15 +89,20 @@ _OUTCOME_STYLES: dict[str, OutcomeStyle] = {
     "failed": OutcomeStyle("FAIL", "#dc2626", "#fecaca"),
     "skipped": OutcomeStyle("SKIP", "#6b7280", "#e5e7eb"),
     "na_version": OutcomeStyle("N/A", "#d97706", "#fde68a"),
+    # Amber-red: not a failure, but not a pass either. Reads closer to FAIL
+    # than to SKIP on purpose -- an unverified check is the thing this report
+    # exists to make impossible to overlook.
+    "unproven": OutcomeStyle("UNPROVEN", "#b45309", "#fed7aa"),
 }
 _DEFAULT_OUTCOME_STYLE = OutcomeStyle("?", "#6b7280", "#e5e7eb")
 
 # Order and label for the outcome-grouped sections on index.qmd (failures are
 # the actionable ones, so they lead).
-OUTCOME_ORDER = ("failed", "skipped", "na_version")
+OUTCOME_ORDER = ("failed", "unproven", "skipped", "na_version")
 OUTCOME_LABELS = {
     "failed": "Failed",
     "passed": "Passed",
+    "unproven": "Not verified",
     "skipped": "Skipped",
     "na_version": "N/A (version)",
 }
@@ -230,6 +235,7 @@ def outcome_counts_summary(items: list[TestResult]) -> str:
     order = [
         ("passed", "passed"),
         ("failed", "failed"),
+        ("unproven", "unproven"),
         ("skipped", "skipped"),
         ("na_version", "N/A (version)"),
     ]
@@ -311,6 +317,12 @@ def description_line(item: TestResult, dominant: str | None) -> str:
 # Skip reason (F3)
 # ---------------------------------------------------------------------------
 
+UNPROVEN_EXPLANATION = (
+    "This check was not verified. VIP was asked to run it and could not, so "
+    "this is not a statement that the deployment is healthy -- only that "
+    "nothing was checked here."
+)
+
 NA_VERSION_EXPLANATION = (
     "Skipped because the product's version could not be determined, so VIP "
     "could not tell whether this check applies."
@@ -340,6 +352,8 @@ def skip_reason_parts(item: TestResult) -> tuple[str, str]:
         return "", ""
     if item.status == "na_version":
         return NA_VERSION_EXPLANATION, (item.skip_reason or "").strip()
+    if item.status == "unproven":
+        return UNPROVEN_EXPLANATION, (item.skip_reason or "").strip()
     # ``.strip()`` guards a results.json written before the plugin started
     # normalising this: a whitespace-only reason is truthy and would render as
     # a blank line instead of the fallback wording.
@@ -358,6 +372,8 @@ EXIT_STATUS_LABELS = {
     3: "an internal error occurred",
     4: "pytest command line usage error",
     5: "no tests were collected",
+    # VIP's own addition; see plugin.EXIT_UNPROVEN.
+    6: "checks could not be verified",
 }
 
 # Rendered in place of a provenance field that the run never recorded.
@@ -461,8 +477,18 @@ def provenance_rows(data: ReportData) -> list[tuple[str, str | None]]:
 
 
 def summary_status(data: ReportData) -> str:
-    """The run's overall verdict: "FAIL" when anything failed, else "PASS"."""
-    return "FAIL" if data.failed else "PASS"
+    """The run's overall verdict.
+
+    "FAIL" when anything failed, "UNPROVEN" when nothing failed but something
+    went unverified, else "PASS". The middle case is the whole point: a run
+    that could not check half of what it was asked to check has not passed,
+    and the headline is the one line of the report everybody reads.
+    """
+    if data.failed:
+        return "FAIL"
+    if data.unproven:
+        return "UNPROVEN"
+    return "PASS"
 
 
 # ---------------------------------------------------------------------------
