@@ -77,6 +77,11 @@ _PRODUCT_MARKERS = {
 #: parsing output. See ``vip.attest`` for what makes a check unproven.
 EXIT_UNPROVEN = 6
 
+#: Human-facing marker for an unproven skip. Mirrors ``reporting.UNPROVEN_PREFIX``
+#: so a reason reads the same whether it came from VIP's own emitters or from a
+#: reporter VIP does not control.
+UNPROVEN_DISPLAY_PREFIX = "UNPROVEN: "
+
 
 # ---------------------------------------------------------------------------
 # Plugin hooks
@@ -1214,6 +1219,31 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     if hasattr(_active_config, "workerinput"):
         return
 
+    # Classify the skip and rewrite its reason in place, before anything else
+    # reads it. Downstream reporters we do not own -- pytest's own --junitxml
+    # above all, which ci.yml and the smoke workflows pass directly -- render
+    # report.longrepr verbatim, so leaving the sentinel there would publish an
+    # internal transport detail into an uploaded artifact that AGENTS.md
+    # explicitly tells operators to read skip reasons out of. Rewriting to the
+    # display prefix instead means those reporters show the classification too.
+    #
+    # This runs after the worker guard on purpose: the sentinel is how the
+    # classification survives the trip from an xdist worker to the controller,
+    # since custom report attributes are not serialised across that boundary.
+    # Strip it once, here, where the JUnit XML is actually written.
+    if report.skipped:
+        _skip_reason, _unproven = _classify_skip_reason(_extract_skip_reason(report.longrepr))
+        report.vip_skip_reason = _skip_reason  # type: ignore[attr-defined]
+        report.vip_unproven = _unproven  # type: ignore[attr-defined]
+        if _unproven:
+            _display = f"{UNPROVEN_DISPLAY_PREFIX}{_skip_reason or 'could not verify'}"
+            # Keep pytest's 3-tuple shape: _pytest.junitxml asserts on it.
+            if isinstance(report.longrepr, tuple) and len(report.longrepr) == 3:
+                _path, _lineno, _ = report.longrepr
+                report.longrepr = (_path, _lineno, f"{_SKIPPED_PREFIX}{_display}")
+            else:
+                report.longrepr = _display
+
     # Capture this line's color for the progress-indicator recolor wrapper.
     # tryfirst ensures this runs before the terminal reporter renders the same
     # report, so the trailing ``[ x%]`` picks up this line's own outcome.
@@ -1232,7 +1262,10 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
                 exc_type, exc_message = _extract_exception_info(longrepr_str)
                 concise_error = _format_concise_error(report.nodeid, exc_type, exc_message)
             elif report.outcome == "skipped":
-                skip_reason, unproven = _classify_skip_reason(_extract_skip_reason(report.longrepr))
+                # Already classified above; re-parsing here would read back the
+                # rewritten reason and double-prefix it.
+                skip_reason = getattr(report, "vip_skip_reason", None)
+                unproven = getattr(report, "vip_unproven", False)
                 # Stringified longrepr is pytest's raw ``(path, lineno, "Skipped:
                 # ...")`` tuple and leaks the absolute path of the file that
                 # called skip() into results.json (an uploaded CI artifact).
@@ -1321,7 +1354,8 @@ def _apply_unproven_exit_status(session: pytest.Session, exitstatus: int) -> int
     print(
         f"\nVIP: {len(unproven)} check(s) could not be verified. Nothing failed, "
         f"but nothing was proven either:\n{reasons}\n"
-        "Pass --allow-unproven to treat these as an ordinary skip.",
+        "Pass --vip-allow-unproven (or --allow-unproven via `vip verify`) "
+        "to treat these as an ordinary skip.",
         file=sys.stderr,
     )
     return EXIT_UNPROVEN
