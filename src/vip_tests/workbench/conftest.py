@@ -14,6 +14,7 @@ import tempfile
 import time
 import warnings
 from pathlib import Path
+from typing import NoReturn
 from urllib.parse import urlparse
 
 import pytest
@@ -23,6 +24,7 @@ from playwright.sync_api import Locator, Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given
 
+from vip import attest
 from vip.auth import refresh_auth_cache_from_storage_state
 from vip.clients.workbench import WorkbenchClient
 from vip.plugin import _auth_session_key
@@ -415,6 +417,35 @@ def _normalised_netloc(parsed) -> str:
     if port is None or port == _DEFAULT_PORTS.get(parsed.scheme.lower()):
         return host
     return f"{host}:{port}"
+
+
+def _skip_workbench_session_unproven(
+    *,
+    auth_mode: str,
+    workbench_auth_error: str | None,
+    landed_url: str,
+    idp_host: str | None = None,
+) -> NoReturn:
+    """Skip because a configured Workbench session could never be established.
+
+    This is #596's case: the operator asked for Workbench explicitly, auth did
+    not complete, and every browser test fell away. Reporting that as an
+    ordinary skip is what let a fully unverified product exit 0, so it is
+    raised as *unproven* -- the run stays green only under --allow-unproven.
+
+    Contrast the ``sso_only`` skip further down ``_workbench_login``, which
+    stays an ordinary skip on purpose: an SSO deployment genuinely has no
+    password form to exercise, so that check is not applicable rather than
+    unverified, and flagging it would fail every SSO deployment's own run.
+    """
+    attest.unproven(
+        _workbench_session_skip_message(
+            auth_mode=auth_mode,
+            workbench_auth_error=workbench_auth_error,
+            landed_url=landed_url,
+            idp_host=idp_host,
+        )
+    )
 
 
 def _workbench_session_skip_message(
@@ -818,23 +849,19 @@ def workbench_login(
             # password-login test) — skip gracefully.  Recompute the IdP host: the
             # click above can navigate off-origin before timing out, so where we
             # ended up is only knowable now, not before the attempt.
-            pytest.skip(
-                _workbench_session_skip_message(
-                    auth_mode=auth_mode,
-                    workbench_auth_error=workbench_auth_error,
-                    landed_url=page.url,
-                    idp_host=_external_idp_host(page.url, workbench_url),
-                )
+            _skip_workbench_session_unproven(
+                auth_mode=auth_mode,
+                workbench_auth_error=workbench_auth_error,
+                landed_url=page.url,
+                idp_host=_external_idp_host(page.url, workbench_url),
             )
 
         if auth_provider != "password":
-            pytest.skip(
-                _workbench_session_skip_message(
-                    auth_mode=auth_mode,
-                    workbench_auth_error=workbench_auth_error,
-                    landed_url=page.url,
-                    idp_host=_external_idp_host(page.url, workbench_url),
-                )
+            _skip_workbench_session_unproven(
+                auth_mode=auth_mode,
+                workbench_auth_error=workbench_auth_error,
+                landed_url=page.url,
+                idp_host=_external_idp_host(page.url, workbench_url),
             )
         # Even when auth_provider is reported as "password", the deployment may
         # actually present an SSO/OIDC sign-in page (a "Sign in with ..." button

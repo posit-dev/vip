@@ -123,7 +123,12 @@ vip verify --format json,junit,sarif
 ```
 
 Skip messages in the JUnit and SARIF output carry the actual skip reason
-instead of a generic "skipped" label. `results.json` also records provenance
+instead of a generic "skipped" label. A check VIP was asked to run but could
+not -- a configured product whose authentication never completed, say -- is
+reported as **unproven** rather than as an ordinary skip: it carries an
+`UNPROVEN:` prefix in JUnit, SARIF level `warning`, and exits **6** so a
+pipeline can tell "the deployment is broken" (exit 1) from "the deployment
+could not be checked" (exit 6). Pass `--allow-unproven` to exit 0 anyway. `results.json` also records provenance
 for the run (VIP version, duration, Python version, platform, and whether the
 slow checks were excluded) so an archived report can be traced back to what
 produced it.
