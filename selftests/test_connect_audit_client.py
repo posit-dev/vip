@@ -113,6 +113,34 @@ def test_unauthenticated_status_sends_no_credentials(recording_client):
     assert "SECRET_KEY" not in repr(kwargs.get("headers", {}))
 
 
+def test_unauthenticated_status_accepts_a_path_without_a_leading_slash(recording_client):
+    """The two endpoints are customer-overridable in the Part 11 example's conftest.
+
+    Someone editing that override writes `__api__/v1/users` as readily as
+    `/__api__/v1/users`. Without normalization the two concatenate into
+    `https://connect.example.com__api__/v1/users`, which is a different host,
+    so the scenario fails on a deployment that is fine.
+    """
+    c = recording_client(api_key="k")
+    assert c.unauthenticated_status("__api__/v1/users") == 401
+    assert _RecordingClient.instances[0].requested == (
+        "https://connect.example.com/__api__/v1/users"
+    )
+
+
+def test_unauthenticated_status_uses_the_configured_timeout(recording_client):
+    """The ad-hoc client must not fall back to httpx's own default.
+
+    BaseClient scales its default timeout, and a caller can override it; a probe
+    that ignores both hangs for a different length of time than every other
+    request the same client makes.
+    """
+    c = recording_client(api_key="k", timeout=7.5)
+    c.unauthenticated_status("/__api__/v1/users")
+    assert _RecordingClient.instances[0].kwargs["timeout"] == 7.5
+    assert _RecordingClient.instances[0].kwargs["timeout"] == c._timeout
+
+
 def test_unauthenticated_status_pins_trust_env_and_keeps_env_ca(recording_client):
     """trust_env=False also disables SSL_CERT_FILE; verify_with_env_ca restores it.
 
