@@ -2,8 +2,6 @@
 import Layout from "../layouts/Layout.astro";
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
-
-const base = import.meta.env.BASE_URL;
 ---
 
 <Layout title="Getting Started - VIP">
@@ -543,13 +541,13 @@ vip trace --results report/results.json --controls ./my-tests/controls.toml</cod
             which does not have to flatten into columns.
           </p>
           <p>
-            A rendered example is published on this site. The
-            <a href={`${base}compliance-report/`}>compliance traceability report</a>
-            is a real VIP run against a CI Connect deployment with the matrix in it,
-            readable in the browser and downloadable as a PDF.
-          </p>
-          <p>
-            A worked example ships with VIP. Generate it with
+            A worked example ships with VIP:
+            <a
+              href="https://github.com/posit-dev/vip/tree/feat/part11-traceability/examples/21CFR_part11_validation"
+              >examples/21CFR_part11_validation</a
+            >
+            pairs a <code>controls.toml</code> with the tagged scenarios that satisfy
+            it. Generate your own copy with
             <code>vip scaffold --template 21cfr-part11-validation --output ./my-tests</code>,
             then read its <code>README.md</code>: it is a template to edit, and it is
             explicit about what a matrix like this can and cannot claim. Posit Team

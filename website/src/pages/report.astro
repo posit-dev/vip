@@ -22,10 +22,14 @@ const base = import.meta.env.BASE_URL;
         see every scenario that applies to your configuration.
       </p>
       <p class="how-to">
-        For a regulated environment, the
-        <a href={`${base}compliance-report/`}>compliance traceability report</a> is a
-        second example: a narrower run joined against a control list, so every
-        control links to the scenarios that verify it.
+        This same report format serves regulated environments too: attach a control
+        list with <code>vip report --controls</code> and the report gains a
+        traceability matrix joining each control to the scenarios that verify it. See
+        the worked
+        <a
+          href="https://github.com/posit-dev/vip/tree/feat/part11-traceability/examples/21CFR_part11_validation"
+          >21 CFR Part 11 example</a
+        >.
       </p>
       <p class="how-to">
         Generate your own: run <code>vip verify</code> to save test results to

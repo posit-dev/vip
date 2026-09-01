@@ -18,4 +18,4 @@ rules:
       - preview.yml:38:9
       - preview.yml:58:9
       - website-preview.yml:36:9
-      - website-preview.yml:109:9
+      - website-preview.yml:100:9
