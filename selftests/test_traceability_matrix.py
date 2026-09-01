@@ -255,3 +255,33 @@ class TestFailingControls:
     def test_a_version_gated_control_is_not_failing(self):
         matrix = matrix_from_statuses(statuses={"c1": ["na_version"]})
         assert matrix.entries[0].failing is False
+
+    def test_an_unproven_control_is_not_run_rather_than_failed(self):
+        """An unproven skip ran no assertion, so it is a non-execution.
+
+        Reporting it as failing would say the control was verified and came
+        back bad, when VIP never got to check it. The distinction is the whole
+        point of ``vip.attest.unproven``.
+        """
+        matrix = matrix_from_statuses(statuses={"c1": ["unproven"]})
+        entry = matrix.entries[0]
+        assert entry.coverage == "covered"
+        assert entry.executed is False
+        assert entry.failing is False
+        assert matrix.covered_without_execution == ["c1"]
+        assert matrix.covered_with_failure == []
+
+    def test_a_pass_beside_an_unproven_skip_reads_as_covered(self):
+        """The known cost of treating unproven as non-executing.
+
+        One scenario proved something and one could not be checked, and the
+        control's own summary buckets say only that it ran and passed. The
+        unproven scenario stays visible in the matrix's per-scenario status
+        column and still fails the run with exit code 6, so the signal is not
+        lost, only absent from the control-level rollup.
+        """
+        matrix = matrix_from_statuses(statuses={"c1": ["passed", "unproven"]})
+        entry = matrix.entries[0]
+        assert entry.executed is True
+        assert entry.failing is False
+        assert [m.status for m in entry.matches] == ["passed", "unproven"]

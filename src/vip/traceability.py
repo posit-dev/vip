@@ -203,8 +203,12 @@ class ControlMatch:
 # Statuses that mean the check did not run. "na_version" is a
 # version-gated non-execution, so it counts here too: treating it as
 # executed would let a control gated off on an older product read as
-# evidenced by a scenario that never ran a single assertion.
-NON_EXECUTING_STATUSES = frozenset({"skipped", "na_version"})
+# evidenced by a scenario that never ran a single assertion. "unproven" is
+# the same shape -- ``vip.attest.unproven`` skips a check VIP was asked to
+# run and could not, so no assertion ran there either. Its loudness lives in
+# the run's exit code 6 and in the per-scenario status column, not in
+# ``executed``, which answers only whether a result was produced.
+NON_EXECUTING_STATUSES = frozenset({"skipped", "na_version", "unproven"})
 
 
 @dataclass
@@ -243,7 +247,11 @@ class ControlEntry:
         ``error`` is a reachable outcome alongside ``failed``, and an
         enumerated list would let an errored control read as evidenced.
         Non-executing statuses are excluded via ``NON_EXECUTING_STATUSES``, so
-        a skip alongside a pass never counts against a control.
+        a skip alongside a pass never counts against a control. That includes
+        an ``unproven`` skip, which is the contentious member: it is a check
+        VIP could not run, so it belongs with the non-executing statuses
+        rather than here, where it would report a control that never ran as
+        one that ran and failed.
         """
         return any(
             m.status not in NON_EXECUTING_STATUSES and m.status != "passed" for m in self.matches
