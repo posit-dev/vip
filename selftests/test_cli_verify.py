@@ -1473,22 +1473,28 @@ class TestDisablingTheResultsFile:
             run_verify(args)
 
     @pytest.mark.parametrize("fmt", ["junit", "sarif", "json,junit"])
-    def test_asking_for_a_sibling_format_while_disabling_the_source_is_refused(self, fmt):
+    def test_asking_for_a_sibling_format_while_disabling_the_source_is_refused(self, tmp_path, fmt):
         """junit.xml and results.sarif are built by reloading results.json, so
         the combination would run the whole suite and produce nothing."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
         with pytest.raises(SystemExit) as exc:
-            self._run_for_real_exit(_make_args(report="", format=fmt))
+            self._run_for_real_exit(_make_args(config=str(cfg), report="", format=fmt))
         assert exc.value.code == 2
 
-    def test_the_refusal_names_the_flag_the_formats_came_from(self, capsys):
+    def test_the_refusal_names_the_flag_the_formats_came_from(self, tmp_path, capsys):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
         with pytest.raises(SystemExit):
-            self._run_for_real_exit(_make_args(report="", ci=True))
+            self._run_for_real_exit(_make_args(config=str(cfg), report="", ci=True))
         assert "--ci" in capsys.readouterr().err
 
-    def test_the_refusal_happens_before_the_suite_runs(self):
+    def test_the_refusal_happens_before_the_suite_runs(self, tmp_path):
         """A message after a full product run would be worse than no message."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
         with pytest.raises(SystemExit):
-            self._run_for_real_exit(_make_args(report="", format="junit"))
+            self._run_for_real_exit(_make_args(config=str(cfg), report="", format="junit"))
 
     def test_disabling_the_report_with_json_alone_is_allowed(self):
         """json *is* results.json, so there is no sibling left to strand."""
