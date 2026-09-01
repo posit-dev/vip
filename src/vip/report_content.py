@@ -584,11 +584,17 @@ def control_rows(matrix) -> list[ControlRow]:  # noqa: ANN001 - TraceabilityMatr
 
 
 def traceability_summary_rows(matrix) -> list[tuple[str, str]]:  # noqa: ANN001
-    """Label/value counts for the section's summary table."""
-    rows = control_rows(matrix)
-    counts = Counter(r.coverage for r in rows)
+    """Label/value counts for the section's summary table.
+
+    Counts straight from ``matrix.entries`` rather than via :func:`control_rows`,
+    which also builds each control's full scenario list -- both backends already
+    call :func:`control_rows` once for the table itself, so building it again
+    here would be a second, unused pass over every control just to count them.
+    """
+    entries = list(matrix.entries)
+    counts = Counter(display_coverage(entry) for entry in entries)
     return [
-        ("Controls", str(len(rows))),
+        ("Controls", str(len(entries))),
         ("Covered, executed and passing", str(counts.get("covered", 0))),
         ("Covered, not executed", str(counts.get("covered_not_executed", 0))),
         ("Covered, failing", str(counts.get("covered_failed", 0))),

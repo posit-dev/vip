@@ -132,6 +132,7 @@ class BaseClient:
         # None sentinel: scale the 30-second default. Callers that supply an
         # explicit value opt out of scaling (their choice is honored as-is).
         effective_timeout = scaled(30.0) if timeout is None else timeout
+        self._timeout = effective_timeout
         self._client = httpx.Client(
             base_url=f"{self._base_url}{api_prefix}",
             headers=headers,
@@ -215,12 +216,14 @@ class BaseClient:
         """
         from vip.proxy import proxy_for_url, verify_with_env_ca
 
-        url = f"{self.base_url.rstrip('/')}{path}"
+        if not path.startswith("/"):
+            path = f"/{path}"
+        url = f"{self.base_url}{path}"
         with httpx.Client(
             verify=verify_with_env_ca(self._verify),
             proxy=proxy_for_url(url, self._proxy_map),
             trust_env=False,
-            timeout=30.0,
+            timeout=self._timeout,
         ) as client:
             return client.get(url).status_code
 
