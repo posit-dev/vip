@@ -180,7 +180,7 @@ cannot quietly regenerate.
 A fully green matrix evidences the controls you chose to automate, on the
 deployment you pointed it at, at the time it ran. That is all it claims.
 
-Four specific ways it can mislead if read carelessly:
+Five specific ways it can mislead if read carelessly:
 
 Coverage is not execution. A control counts as covered when a scenario is
 tagged for it, whether or not that scenario reached an assertion. A scenario
@@ -189,6 +189,14 @@ absent from this deployment, there was no data to inspect, or a version gate
 excluded it. The report shows those controls as NOT RUN, `vip trace` warns on
 stderr, and the JSON summary counts them under `covered_not_executed`. Read
 `gaps: 0` together with that number.
+
+Execution is not verification either. A scenario can run, find that it cannot
+check what it was asked to check, and record that as unproven rather than as a
+pass. Such a control shows as UNPROVEN, warns on stderr, and is counted under
+`covered_unproven`. This is the one case the two numbers above miss entirely:
+a control with one passing scenario beside one unproven scenario is both
+executed and not failing, so it reads as fully evidenced from those two alone
+while part of the control went unchecked.
 
 A gap can be an artifact of the run rather than of your suite. Scenarios
 belonging to a product you did not configure are deselected, not skipped, so

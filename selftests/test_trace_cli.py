@@ -366,7 +366,55 @@ class TestCoveredButFailing:
             )
         )
         captured = capsys.readouterr()
-        assert f"Wrote {out} (2 controls, 1 gaps, 1 failing)" in captured.out
+        assert f"Wrote {out} (2 controls, 1 gaps, 1 failing, 0 not verified)" in captured.out
+
+
+class TestCoveredButUnproven:
+    """The third way a covered control is not evidence: VIP could not check it."""
+
+    def _run(self, tmp_path, statuses):
+        results = tmp_path / "results.json"
+        results.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1.0",
+                    "results": [
+                        {
+                            "nodeid": f"t.py::test_{i}",
+                            "outcome": "skipped" if status == "unproven" else status,
+                            "unproven": status == "unproven",
+                            "markers": ["control-c1"],
+                        }
+                        for i, status in enumerate(statuses)
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        controls = _write_controls(
+            tmp_path, '[controls.c1]\ndescription = "d"\nverification = "automated"\n'
+        )
+        return results, controls
+
+    def test_a_pass_beside_an_unproven_skip_warns(self, tmp_path):
+        """Neither of the other two warnings fires here, which is why this one exists."""
+        results, controls = self._run(tmp_path, ["passed", "unproven"])
+        r = _run_trace(results, controls)
+        assert r.returncode == 0
+        assert "could not verify" in r.stderr
+        assert "c1" in r.stderr
+        assert "did not pass" not in r.stderr
+        assert "no scenario that ran" not in r.stderr
+
+    def test_the_json_summary_counts_it(self, tmp_path):
+        results, controls = self._run(tmp_path, ["passed", "unproven"])
+        payload = json.loads(_run_trace(results, controls, "--format", "json").stdout)
+        assert payload["summary"]["covered_unproven"] == 1
+        assert payload["covered_with_unproven"] == ["c1"]
+
+    def test_a_clean_run_does_not_warn(self, tmp_path):
+        results, controls = self._run(tmp_path, ["passed"])
+        assert "could not verify" not in _run_trace(results, controls).stderr
 
 
 class TestOutputFormatResolution:

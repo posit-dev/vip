@@ -82,7 +82,7 @@ def test_csv_is_byte_identical_across_invocations():
 
 def test_json_carries_provenance_and_schema_version():
     payload = json.loads(render_json(_matrix()))
-    assert payload["schema_version"] == "1.0"
+    assert payload["schema_version"] == "1.1"
     assert payload["provenance"]["vip_version"] == "2026.8.3"
     assert payload["summary"]["gaps"] == 0
     assert payload["summary"]["covered"] == 1
@@ -94,6 +94,16 @@ def test_json_summary_counts_failing_controls():
     summary = json.loads(render_json(matrix))["summary"]
     assert summary["covered_failed"] == 1
     assert summary["covered_and_executed"] == 2
+
+
+def test_json_summary_counts_unproven_controls():
+    """Additive in 1.1: a control VIP could not check is neither a pass nor a failure."""
+    matrix = matrix_from_statuses(statuses={"c1": ["passed", "unproven"], "c2": ["passed"]})
+    payload = json.loads(render_json(matrix))
+    assert payload["summary"]["covered_unproven"] == 1
+    assert payload["summary"]["covered_failed"] == 0
+    assert payload["summary"]["covered_and_executed"] == 2
+    assert payload["covered_with_unproven"] == ["c1"]
 
 
 def test_json_is_byte_identical_across_invocations():

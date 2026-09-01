@@ -1875,6 +1875,20 @@ def run_trace(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
 
+    # The third condition, and the only one that catches a control whose
+    # scenarios ran and passed while part of the control went unchecked. The
+    # two warnings above stay silent on that case, because an unproven skip is
+    # neither an execution nor a failure.
+    unproven = matrix.covered_with_unproven
+    if unproven:
+        print(
+            f"Warning: {len(unproven)} covered control(s) had a scenario VIP "
+            f"could not verify: {', '.join(unproven)}. An unproven check was asked "
+            "for and could not be run, which is not the same as one that found "
+            "nothing to test.",
+            file=sys.stderr,
+        )
+
     if out is None:
         sys.stdout.write(rendered)
         return
@@ -1892,7 +1906,8 @@ def run_trace(args: argparse.Namespace) -> None:
         sys.exit(1)
     print(
         f"Wrote {out} ({len(matrix.entries)} controls, {matrix.gap_count} gaps, "
-        f"{len(matrix.covered_with_failure)} failing)"
+        f"{len(matrix.covered_with_failure)} failing, "
+        f"{len(matrix.covered_with_unproven)} not verified)"
     )
 
 

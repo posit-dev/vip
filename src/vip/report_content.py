@@ -507,6 +507,10 @@ COVERAGE_STYLE_KEY = {
     "covered": "passed",
     "covered_not_executed": "na_version",
     "covered_failed": "failed",
+    # Reuses the scenario-level "unproven" style, so a control that could not
+    # be verified is painted the same amber-red as the scenario rows beneath
+    # it and no new color enters the palette.
+    "covered_unproven": "unproven",
     "gap": "failed",
     "not_automatable": "skipped",
 }
@@ -515,6 +519,7 @@ COVERAGE_LABELS = {
     "covered": "COVERED",
     "covered_not_executed": "NOT RUN",
     "covered_failed": "FAILED",
+    "covered_unproven": "UNPROVEN",
     "gap": "GAP",
     "not_automatable": "N/A (manual)",
 }
@@ -536,8 +541,8 @@ class ControlRow:
     rank or validate the value -- ``risk = "banana"`` renders as "banana".
     """
     coverage: str
-    """"covered" | "covered_not_executed" | "covered_failed" | "gap" |
-    "not_automatable".
+    """"covered" | "covered_not_executed" | "covered_failed" |
+    "covered_unproven" | "gap" | "not_automatable".
 
     Distinct from ``ControlEntry.coverage``, which has no
     ``covered_not_executed`` or ``covered_failed`` value: the matrix keeps
@@ -550,10 +555,22 @@ class ControlRow:
 
 
 def display_coverage(entry) -> str:  # noqa: ANN001 - vip.traceability.ControlEntry
-    """Flatten coverage, execution and outcome into the one value the report shows."""
-    if entry.coverage == "covered" and entry.failing:
+    """Flatten coverage, execution and outcome into the one value the report shows.
+
+    Ordered by how loudly each fact demotes the control, because the matrix
+    keeps them as overlapping facts and one column can show only one. A
+    control that ran and failed is the strongest claim against it, so FAILED
+    wins over an unproven scenario on the same control. UNPROVEN then outranks
+    NOT RUN, which is the vaguer of the two: an all-unproven control is both,
+    and "VIP could not check this" tells the reader more than "nothing ran".
+    """
+    if entry.coverage != "covered":
+        return entry.coverage
+    if entry.failing:
         return "covered_failed"
-    if entry.coverage == "covered" and not entry.executed:
+    if entry.has_unproven:
+        return "covered_unproven"
+    if not entry.executed:
         return "covered_not_executed"
     return entry.coverage
 
@@ -598,6 +615,7 @@ def traceability_summary_rows(matrix) -> list[tuple[str, str]]:  # noqa: ANN001
         ("Covered, executed and passing", str(counts.get("covered", 0))),
         ("Covered, not executed", str(counts.get("covered_not_executed", 0))),
         ("Covered, failing", str(counts.get("covered_failed", 0))),
+        ("Covered, not verified", str(counts.get("covered_unproven", 0))),
         ("Gaps", str(counts.get("gap", 0))),
         ("Not automatable", str(counts.get("not_automatable", 0))),
     ]
@@ -614,7 +632,9 @@ TRACEABILITY_CAVEAT = (
     "a GAP may instead belong to a product this run did not test, since those "
     "scenarios are excluded from the run and reach no result at all. "
     "A control shown as FAILED has a tagged scenario that ran and did not pass, "
-    "so the control is not evidenced by this run. This "
+    "so the control is not evidenced by this run. A control shown as UNPROVEN "
+    "has a tagged scenario VIP was asked to run and could not, which is not the "
+    "same as a check that found nothing to test. This "
     "section evidences the controls chosen for automation. It is not an "
     "attestation of regulatory compliance."
 )
@@ -628,9 +648,11 @@ TRACEABILITY_RENDER_FAILURE = "Could not render the traceability section: {error
 def traceability_warnings(matrix) -> list[str]:  # noqa: ANN001
     """Lines naming controls that look covered but are not evidence.
 
-    Two independent conditions, so two lines rather than one combined
-    sentence: a control can be counted as covered because nothing ran, or
-    because what ran did not pass, and a reader needs to know which.
+    Three independent conditions, so three lines rather than one combined
+    sentence: a control can be counted as covered because nothing ran, because
+    what ran did not pass, or because VIP was asked to check it and could not,
+    and a reader needs to know which. The conditions overlap, so one control
+    can appear on more than one line.
     """
     lines = []
     failing = matrix.covered_with_failure
@@ -644,5 +666,11 @@ def traceability_warnings(matrix) -> list[str]:  # noqa: ANN001
         lines.append(
             f"{pluralize(len(unexecuted), 'control')} counted as covered but had no "
             f"scenario that ran: {', '.join(unexecuted)}."
+        )
+    unproven = matrix.covered_with_unproven
+    if unproven:
+        lines.append(
+            f"{pluralize(len(unproven), 'control')} counted as covered but had a "
+            f"scenario VIP could not verify: {', '.join(unproven)}."
         )
     return lines

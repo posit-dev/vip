@@ -271,17 +271,60 @@ class TestFailingControls:
         assert matrix.covered_without_execution == ["c1"]
         assert matrix.covered_with_failure == []
 
-    def test_a_pass_beside_an_unproven_skip_reads_as_covered(self):
-        """The known cost of treating unproven as non-executing.
+    def test_a_pass_beside_an_unproven_skip_is_not_failing(self):
+        """Treating unproven as non-executing means it cannot mark a control failing.
 
-        One scenario proved something and one could not be checked, and the
-        control's own summary buckets say only that it ran and passed. The
-        unproven scenario stays visible in the matrix's per-scenario status
-        column and still fails the run with exit code 6, so the signal is not
-        lost, only absent from the control-level rollup.
+        ``covered_with_unproven`` is what surfaces this control instead; see
+        ``TestUnprovenControls``.
         """
         matrix = matrix_from_statuses(statuses={"c1": ["passed", "unproven"]})
         entry = matrix.entries[0]
         assert entry.executed is True
         assert entry.failing is False
         assert [m.status for m in entry.matches] == ["passed", "unproven"]
+
+
+class TestUnprovenControls:
+    """A control VIP was asked to check and could not is its own fact.
+
+    Coverage, execution and outcome already fail to describe it: an unproven
+    skip runs no assertion, so it is not executed and not failing, and those
+    two alone leave a control with one pass and one unproven scenario reading
+    as fully evidenced.
+    """
+
+    def test_an_unproven_scenario_marks_the_control(self):
+        matrix = matrix_from_statuses(statuses={"c1": ["unproven"]})
+        entry = matrix.entries[0]
+        assert entry.has_unproven is True
+        assert matrix.covered_with_unproven == ["c1"]
+
+    def test_a_pass_beside_an_unproven_skip_is_surfaced(self):
+        """The case the third bucket exists for: the other two say nothing."""
+        matrix = matrix_from_statuses(statuses={"c1": ["passed", "unproven"]})
+        assert matrix.covered_with_unproven == ["c1"]
+        assert matrix.covered_without_execution == []
+        assert matrix.covered_with_failure == []
+
+    def test_the_three_lists_overlap_rather_than_partition(self):
+        """Not disjoint buckets, and deliberately so.
+
+        The matrix keeps coverage, execution and outcome as separate facts and
+        flattens them only for display. An unproven-only control did not run
+        *and* could not be checked, so it belongs in both lists; forcing a
+        single bucket would drop one of the two true statements.
+        """
+        matrix = matrix_from_statuses(statuses={"c1": ["unproven"], "c2": ["failed", "unproven"]})
+        assert matrix.covered_without_execution == ["c1"]
+        assert matrix.covered_with_failure == ["c2"]
+        assert matrix.covered_with_unproven == ["c1", "c2"]
+
+    def test_a_plain_skip_is_not_unproven(self):
+        """`skipped` says there was nothing to check; `unproven` says VIP could not."""
+        matrix = matrix_from_statuses(statuses={"c1": ["skipped"], "c2": ["na_version"]})
+        assert matrix.covered_with_unproven == []
+
+    def test_a_passing_control_is_not_unproven(self):
+        matrix = matrix_from_statuses(statuses={"c1": ["passed"]})
+        assert matrix.entries[0].has_unproven is False
+        assert matrix.covered_with_unproven == []

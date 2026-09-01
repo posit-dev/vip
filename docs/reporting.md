@@ -223,17 +223,25 @@ A control's row in the matrix gets one of three `coverage` values:
 
 ### Coverage display states
 
-The rendered report displays coverage as `COVERED`, `FAILED`, `NOT RUN`, `GAP`, or
-`N/A (manual)`:
+The rendered report displays coverage as `COVERED`, `FAILED`, `UNPROVEN`,
+`NOT RUN`, `GAP`, or `N/A (manual)`:
 
 - `COVERED` -- at least one tagged scenario ran and passed.
 - `FAILED` -- a covered control with at least one tagged scenario that ran and did
   not pass.
+- `UNPROVEN` -- a covered control with at least one tagged scenario that VIP was
+  asked to run and could not (`vip.attest.unproven`).
 - `NOT RUN` -- at least one tagged scenario is present, but all of them skipped or
   were not executed.
 - `GAP` -- no tagged scenario is present and `verification = "automated"`.
 - `N/A (manual)` -- no tagged scenario is present but `verification` is `"manual"`
   or `"procedural"`.
+
+A control can satisfy more than one of these at once, and the display column
+shows only the loudest. The order is `FAILED`, then `UNPROVEN`, then `NOT RUN`:
+a control that ran and failed is the strongest claim against it, and an
+all-unproven control is also not executed, where `UNPROVEN` is the more
+specific of the two. Read the per-scenario `status` column for the rest.
 
 ### Covered is not the same as executed
 
@@ -247,18 +255,25 @@ this export can do, so it is reported three ways rather than left implicit:
 - `vip trace` warns on stderr, naming the affected control ids.
 - The JSON `summary` reports `covered_and_executed` (a tagged scenario ran,
   whether or not it passed), `covered_not_executed` (a tagged scenario is
-  present but none ran), and `covered_failed` (a tagged scenario ran and did
-  not pass). These are not a three-way partition: a failing control counts
-  toward both `covered_and_executed` and `covered_failed`, since it did run
-  and it did not pass. The rendered report's own summary table partitions
-  differently -- it splits the display value into three mutually exclusive
-  rows, `Covered, executed and passing`, `Covered, not executed` and
-  `Covered, failing`, so a failing control is counted once. Do not expect the
-  report table and the JSON `summary` to add up the same way.
-- The JSON carries a `covered_without_execution` list of control ids.
+  present but none ran), `covered_failed` (a tagged scenario ran and did not
+  pass), and `covered_unproven` (a tagged scenario was a check VIP could not
+  run). These are not a partition: a failing control counts toward both
+  `covered_and_executed` and `covered_failed`, since it did run and it did not
+  pass, and an all-unproven control counts toward both `covered_not_executed`
+  and `covered_unproven`. The rendered report's own summary table partitions
+  differently -- it splits the display value into mutually exclusive rows,
+  `Covered, executed and passing`, `Covered, not executed`, `Covered, failing`
+  and `Covered, not verified`, so each control is counted once. Do not expect
+  the report table and the JSON `summary` to add up the same way.
+- The JSON carries a `covered_without_execution` list of control ids and a
+  `covered_with_unproven` list.
 
 A version-gated scenario (`na_version`) counts as not executed too, for the same
-reason: it ran no assertions.
+reason: it ran no assertions. So does an `unproven` one, which is the reason
+`covered_unproven` exists alongside the other counts: an unproven skip is
+neither an execution nor a failure, so a control with one passing scenario and
+one unproven scenario is invisible to `covered_not_executed` and
+`covered_failed` both, and part of the control still went unchecked.
 
 An unconfigured product is a different case, and it fails the opposite way.
 Those scenarios are deselected rather than skipped -- excluded from the run
@@ -269,8 +284,11 @@ safer direction, but a reader who takes the gap at face value concludes the
 suite lacks a check it has. The `products` block records what was actually
 under test; read it alongside the gaps.
 
-Read `gaps: 0` together with `covered_not_executed`. Zero gaps and a non-zero
-`covered_not_executed` means the controls are mapped and the evidence is missing.
+Read `gaps: 0` together with `covered_not_executed` and `covered_unproven`.
+Zero gaps and a non-zero `covered_not_executed` means the controls are mapped
+and the evidence is missing. A non-zero `covered_unproven` means VIP was asked
+for evidence it could not produce, which is the difference between a check with
+nothing to test and a check that never got to run.
 
 ### Worked example
 
@@ -322,8 +340,9 @@ set by hand.
 
 The section repeats the same caveat the CSV and JSON exports carry, because the
 report is the artifact that gets archived and handed on: coverage records that a
-scenario is tagged, and a control shown as NOT RUN has a tagged scenario that ran
-and skipped itself. See `examples/21CFR_part11_validation/VALIDATION-PACKAGE.md` for how these
+scenario is tagged, a control shown as NOT RUN has a tagged scenario that ran
+and skipped itself, and a control shown as UNPROVEN has one VIP was asked to run
+and could not. See `examples/21CFR_part11_validation/VALIDATION-PACKAGE.md` for how these
 outputs map onto a GxP
 validation package, and which parts of one VIP cannot supply.
 

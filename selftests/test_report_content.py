@@ -342,7 +342,7 @@ class TestFeatureStepIndex:
 
 class TestFailedControlDisplay:
     def test_a_failing_control_displays_as_covered_failed(self):
-        entry = SimpleNamespace(coverage="covered", executed=True, failing=True)
+        entry = SimpleNamespace(coverage="covered", executed=True, failing=True, has_unproven=False)
         assert report_content.display_coverage(entry) == "covered_failed"
 
     def test_a_failing_control_uses_the_failed_style(self):
@@ -353,15 +353,19 @@ class TestFailedControlDisplay:
         assert report_content.COVERAGE_LABELS["covered_failed"] == "FAILED"
 
     def test_a_passing_control_still_displays_as_covered(self):
-        entry = SimpleNamespace(coverage="covered", executed=True, failing=False)
+        entry = SimpleNamespace(
+            coverage="covered", executed=True, failing=False, has_unproven=False
+        )
         assert report_content.display_coverage(entry) == "covered"
 
     def test_an_all_skipped_control_still_displays_as_not_executed(self):
-        entry = SimpleNamespace(coverage="covered", executed=False, failing=False)
+        entry = SimpleNamespace(
+            coverage="covered", executed=False, failing=False, has_unproven=False
+        )
         assert report_content.display_coverage(entry) == "covered_not_executed"
 
     def test_a_gap_is_unaffected(self):
-        entry = SimpleNamespace(coverage="gap", executed=False, failing=False)
+        entry = SimpleNamespace(coverage="gap", executed=False, failing=False, has_unproven=False)
         assert report_content.display_coverage(entry) == "gap"
 
     def test_every_coverage_value_has_a_style_and_a_label(self):
@@ -386,20 +390,60 @@ class TestFailedControlDisplay:
         assert rows["Covered, failing"] == "1"
         assert rows["Covered, executed and passing"] == "1"
 
+    def test_a_pass_beside_an_unproven_skip_displays_as_unproven(self):
+        """Otherwise the badge reads COVERED and the unproven scenario is invisible."""
+        matrix = matrix_from_statuses({"c1": ["passed", "unproven"]})
+        assert report_content.display_coverage(matrix.entries[0]) == "covered_unproven"
+
+    def test_an_all_unproven_control_prefers_unproven_over_not_run(self):
+        """Both are true; UNPROVEN says which kind of non-execution it was."""
+        matrix = matrix_from_statuses({"c1": ["unproven"]})
+        entry = matrix.entries[0]
+        assert entry.executed is False
+        assert report_content.display_coverage(entry) == "covered_unproven"
+
+    def test_a_failure_outranks_an_unproven_skip(self):
+        """A control that ran and failed is the louder fact, so FAILED wins."""
+        matrix = matrix_from_statuses({"c1": ["failed", "unproven"]})
+        assert report_content.display_coverage(matrix.entries[0]) == "covered_failed"
+
+    def test_an_unproven_control_is_counted_in_the_summary(self):
+        matrix = matrix_from_statuses({"c1": ["passed", "unproven"], "c2": ["passed"]})
+        rows = dict(report_content.traceability_summary_rows(matrix))
+        assert rows["Covered, not verified"] == "1"
+        assert rows["Covered, executed and passing"] == "1"
+
+    def test_every_display_value_has_a_label_and_a_style(self):
+        """A display value with no entry in either dict renders as a blank badge."""
+        assert set(report_content.COVERAGE_LABELS) == set(report_content.COVERAGE_STYLE_KEY)
+        for key in report_content.COVERAGE_STYLE_KEY.values():
+            assert report_content.outcome_style(key).label != "?"
+
 
 class TestTraceabilityWarnings:
+    @staticmethod
+    def _matrix(unexecuted=(), failing=(), unproven=()):
+        return SimpleNamespace(
+            covered_without_execution=list(unexecuted),
+            covered_with_failure=list(failing),
+            covered_with_unproven=list(unproven),
+        )
+
     def test_a_failing_control_produces_a_warning(self):
-        matrix = SimpleNamespace(covered_without_execution=[], covered_with_failure=["c1"])
-        warnings_out = report_content.traceability_warnings(matrix)
+        warnings_out = report_content.traceability_warnings(self._matrix(failing=["c1"]))
         assert any("did not pass" in w and "c1" in w for w in warnings_out)
 
-    def test_both_conditions_produce_two_warnings(self):
-        matrix = SimpleNamespace(covered_without_execution=["c2"], covered_with_failure=["c1"])
-        assert len(report_content.traceability_warnings(matrix)) == 2
+    def test_an_unproven_control_produces_a_warning(self):
+        warnings_out = report_content.traceability_warnings(self._matrix(unproven=["c1"]))
+        assert any("could not verify" in w and "c1" in w for w in warnings_out)
+
+    def test_each_condition_gets_its_own_line(self):
+        """Three independent conditions, so three lines: a reader needs to know which."""
+        matrix = self._matrix(unexecuted=["c2"], failing=["c1"], unproven=["c3"])
+        assert len(report_content.traceability_warnings(matrix)) == 3
 
     def test_a_clean_matrix_produces_none(self):
-        matrix = SimpleNamespace(covered_without_execution=[], covered_with_failure=[])
-        assert report_content.traceability_warnings(matrix) == []
+        assert report_content.traceability_warnings(self._matrix()) == []
 
 
 class TestRenderFailureMessage:

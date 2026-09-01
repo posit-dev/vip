@@ -23,7 +23,7 @@ else:
     import tomli as tomllib
 
 # Matrix output schema, versioned independently of results.json.
-MATRIX_SCHEMA_VERSION = "1.0"
+MATRIX_SCHEMA_VERSION = "1.1"
 
 VERIFICATION_VALUES = frozenset({"automated", "manual", "procedural"})
 
@@ -257,6 +257,22 @@ class ControlEntry:
             m.status not in NON_EXECUTING_STATUSES and m.status != "passed" for m in self.matches
         )
 
+    @property
+    def has_unproven(self) -> bool:
+        """Whether any tagged scenario was a check VIP could not run.
+
+        The fourth fact, and the one the other three cannot state. An
+        ``unproven`` skip is non-executing, so ``executed`` and ``failing``
+        are both false for it, and a control with one passing scenario beside
+        one unproven scenario reads as fully evidenced from those two alone.
+
+        Narrower than ``not executed``: a plain skip says there was nothing to
+        check here, and ``na_version`` says a version gate excluded it. This
+        says VIP was asked to check the control and could not, which is the
+        distinction ``vip.attest.unproven`` exists to record.
+        """
+        return any(m.status == "unproven" for m in self.matches)
+
 
 @dataclass
 class TraceabilityMatrix:
@@ -298,6 +314,21 @@ class TraceabilityMatrix:
         exists to prevent.
         """
         return [e.control.control_id for e in self.entries if e.coverage == "covered" and e.failing]
+
+    @property
+    def covered_with_unproven(self) -> list[str]:
+        """Control ids that are covered but have a scenario VIP could not run.
+
+        The third of these lists, and the only one that catches a control
+        whose scenarios ran, passed, and still left part of the control
+        unchecked. Deliberately not disjoint from the other two: an
+        unproven-only control is both not executed and not verifiable, and it
+        appears in both lists, because each statement is true and a reader
+        needs both.
+        """
+        return [
+            e.control.control_id for e in self.entries if e.coverage == "covered" and e.has_unproven
+        ]
 
 
 def _provenance(
@@ -554,8 +585,14 @@ def render_json(matrix: TraceabilityMatrix) -> str:
             # Covered and executed, but not a success. The third way a green
             # matrix can mislead, after "nothing is tagged" and "nothing ran".
             "covered_failed": len(matrix.covered_with_failure),
+            # The fourth: a control carrying a check VIP was asked to run and
+            # could not. Overlaps the two counts above rather than partitioning
+            # them -- an unproven-only control is counted here and in
+            # covered_not_executed -- so these five do not sum to `total`.
+            "covered_unproven": len(matrix.covered_with_unproven),
         },
         "covered_without_execution": matrix.covered_without_execution,
+        "covered_with_unproven": matrix.covered_with_unproven,
         "unrecognized_tags": matrix.unrecognized_tags,
         "controls": [
             {
