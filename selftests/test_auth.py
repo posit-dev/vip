@@ -515,10 +515,11 @@ class TestStartInteractiveAuthPollLoop:
         assert session.api_key is None
         assert session._workbench_url == "https://wb.example.com"
 
-    def test_timeout_raises_runtime_error(self, monkeypatch):
+    def test_timeout_raises_auth_timeout_error(self, monkeypatch):
         """If the URL never satisfies the completion condition before the
-        deadline, the loop must raise RuntimeError rather than continue
-        or return silently."""
+        deadline, the loop must raise AuthTimeoutError (a clean pytest
+        exit via plugin.py's AuthConfigError handler, not INTERNALERROR --
+        see #263) rather than continue or return silently."""
         from vip import auth as auth_mod
 
         stub = self._make_playwright_stub(["https://wb.example.com/auth-sign-in"])
@@ -530,7 +531,42 @@ class TestStartInteractiveAuthPollLoop:
         times = iter([0.0, 1000.0])
         monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
 
-        with pytest.raises(RuntimeError, match="did not complete within 5 minutes"):
+        with pytest.raises(auth_mod.AuthTimeoutError, match="did not complete within 5 minutes"):
+            auth_mod.start_interactive_auth(workbench_url="https://wb.example.com")
+
+    def test_timeout_includes_final_url_and_expected_origin(self, monkeypatch):
+        """The timeout error must report where the browser actually ended
+        up and what origin was expected, so a diagnostic run can tell IdP
+        stall apart from a bounce back to the product's own sign-in page
+        (see #263)."""
+        from vip import auth as auth_mod
+
+        stub = self._make_playwright_stub(["https://wb.example.com/auth-sign-in"])
+        monkeypatch.setattr(auth_mod, "sync_playwright", lambda: stub)
+
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        with pytest.raises(auth_mod.AuthTimeoutError) as exc_info:
+            auth_mod.start_interactive_auth(workbench_url="https://wb.example.com")
+
+        message = str(exc_info.value)
+        assert "https://wb.example.com/auth-sign-in" in message
+        assert "https://wb.example.com" in message
+
+    def test_timeout_duration_reflects_vip_timeout_scale(self, monkeypatch):
+        """VIP_TIMEOUT_SCALE=2 doubles the real wait to 10 minutes; the
+        error text must say 10, not the constant's nominal 5 (see #263)."""
+        from vip import auth as auth_mod
+
+        monkeypatch.setenv("VIP_TIMEOUT_SCALE", "2")
+        stub = self._make_playwright_stub(["https://wb.example.com/auth-sign-in"])
+        monkeypatch.setattr(auth_mod, "sync_playwright", lambda: stub)
+
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        with pytest.raises(auth_mod.AuthTimeoutError, match="did not complete within 10 minutes"):
             auth_mod.start_interactive_auth(workbench_url="https://wb.example.com")
 
 
@@ -886,6 +922,92 @@ class TestAuthenticateWorkbench:
         assert "state=" not in result
         assert "/sso/callback" in result
 
+    def test_timeout_reason_includes_page_title(self, monkeypatch):
+        """The returned reason must also surface the page title, so a
+        stuck IdP confirmation page is distinguishable from a bounce back
+        to Workbench's own sign-in page from the URL alone (see #263)."""
+        from unittest.mock import PropertyMock
+
+        from vip import auth as auth_mod
+
+        page = MagicMock()
+        page.goto.return_value = None
+        page.wait_for_load_state.return_value = None
+        type(page).url = PropertyMock(return_value="https://wb.example.com/auth-sign-in")
+        page.title.return_value = "Sign in to Workbench"
+
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
+
+        assert result is not None
+        assert "Sign in to Workbench" in result
+
+    def test_timeout_duration_reflects_vip_timeout_scale(self, monkeypatch):
+        """VIP_TIMEOUT_SCALE=2 doubles the real wait; the reason must say
+        so instead of the constant's nominal duration (see #263)."""
+        from unittest.mock import PropertyMock
+
+        from vip import auth as auth_mod
+
+        monkeypatch.setenv("VIP_TIMEOUT_SCALE", "2")
+        page = MagicMock()
+        page.goto.return_value = None
+        page.wait_for_load_state.return_value = None
+        type(page).url = PropertyMock(return_value="https://wb.example.com/auth-sign-in")
+
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
+
+        assert result is not None
+        assert "did not complete within 10 minutes" in result
+
+    def test_saml_provider_names_saml_in_message(self, monkeypatch):
+        """Mirrors TestWaitForProductRedirectTimeout.test_saml_provider_names_saml_in_message:
+        a SAML run's Workbench timeout reason must not hardcode OIDC (see #263)."""
+        from unittest.mock import PropertyMock
+
+        from vip import auth as auth_mod
+
+        page = MagicMock()
+        page.goto.return_value = None
+        page.wait_for_load_state.return_value = None
+        type(page).url = PropertyMock(return_value="https://wb.example.com/auth-sign-in")
+
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        result = auth_mod._authenticate_workbench(page, "https://wb.example.com", provider="saml")
+
+        assert result is not None
+        assert "SAML session may not be shared" in result
+        assert "OIDC" not in result
+
+    def test_unrecognized_provider_uses_neutral_wording(self, monkeypatch):
+        """No provider (the default) must not assert a protocol the caller
+        can't confirm — same convention as _wait_for_product_redirect."""
+        from unittest.mock import PropertyMock
+
+        from vip import auth as auth_mod
+
+        page = MagicMock()
+        page.goto.return_value = None
+        page.wait_for_load_state.return_value = None
+        type(page).url = PropertyMock(return_value="https://wb.example.com/auth-sign-in")
+
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
+
+        assert result is not None
+        assert "The login session may not be shared" in result
+        assert "OIDC" not in result
+        assert "SAML" not in result
+
 
 class TestLoadCachedAuth:
     """_load_cached_auth must refuse to reuse a cache that was minted
@@ -1113,6 +1235,125 @@ class TestWaitForProductRedirect:
         _wait_for_product_redirect(page, "https://wb.example.com")
 
         page.locator.return_value.first.click.assert_not_called()
+
+
+class TestWaitForProductRedirectTimeout:
+    """_wait_for_product_redirect's timeout error must name the actual
+    protocol, state the real (scaled) duration, and report where the
+    browser ended up.  Previously it hardcoded "OIDC" and "5 minutes" and
+    said nothing about the final URL, so a SAML timeout was indistinguishable
+    from a stuck IdP page or a bounce back to /auth-sign-in (see #263)."""
+
+    @staticmethod
+    def _timed_out_page(monkeypatch, auth_mod, url: str, title: str = "Sign In") -> MagicMock:
+        """A page stuck at *url* forever, with the deadline already expired
+        so the poll loop's body never runs (no real wall-clock wait)."""
+        from unittest.mock import PropertyMock
+
+        page = MagicMock()
+        type(page).url = PropertyMock(return_value=url)
+        page.title.return_value = title
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        return page
+
+    def test_saml_provider_names_saml_in_message(self, monkeypatch):
+        from vip import auth as auth_mod
+
+        page = self._timed_out_page(monkeypatch, auth_mod, "https://idp.example.com/saml/login")
+
+        with pytest.raises(auth_mod.AuthTimeoutError, match="SAML login did not complete"):
+            auth_mod._wait_for_product_redirect(page, "https://wb.example.com", provider="saml")
+
+    def test_oidc_provider_names_oidc_in_message(self, monkeypatch):
+        from vip import auth as auth_mod
+
+        page = self._timed_out_page(monkeypatch, auth_mod, "https://idp.example.com/oidc/login")
+
+        with pytest.raises(auth_mod.AuthTimeoutError, match="OIDC login did not complete"):
+            auth_mod._wait_for_product_redirect(page, "https://wb.example.com", provider="oidc")
+
+    def test_unrecognized_provider_uses_neutral_wording(self, monkeypatch):
+        """No provider (or one that isn't oidc/saml/oauth2) must not
+        assert a protocol the caller can't confirm."""
+        from vip import auth as auth_mod
+
+        page = self._timed_out_page(monkeypatch, auth_mod, "https://idp.example.com/login")
+
+        with pytest.raises(auth_mod.AuthTimeoutError) as exc_info:
+            auth_mod._wait_for_product_redirect(page, "https://wb.example.com")
+
+        message = str(exc_info.value)
+        assert message.startswith("Login did not complete")
+        assert "OIDC" not in message
+        assert "SAML" not in message
+
+    def test_message_includes_final_url_title_and_expected_origin(self, monkeypatch):
+        from vip import auth as auth_mod
+
+        page = self._timed_out_page(
+            monkeypatch,
+            auth_mod,
+            "https://idp.example.com/saml/login",
+            title="Keycloak - Sign in to your account",
+        )
+
+        with pytest.raises(auth_mod.AuthTimeoutError) as exc_info:
+            auth_mod._wait_for_product_redirect(page, "https://wb.example.com", provider="saml")
+
+        message = str(exc_info.value)
+        assert "https://idp.example.com/saml/login" in message
+        assert "Keycloak - Sign in to your account" in message
+        assert "https://wb.example.com" in message
+
+    def test_duration_reflects_vip_timeout_scale(self, monkeypatch):
+        """VIP_TIMEOUT_SCALE=2 doubles the real wait to 10 minutes; the
+        error text must say 10, not the constant's nominal 5 (see #263)."""
+        from vip import auth as auth_mod
+
+        monkeypatch.setenv("VIP_TIMEOUT_SCALE", "2")
+        page = self._timed_out_page(monkeypatch, auth_mod, "https://idp.example.com/login")
+
+        with pytest.raises(auth_mod.AuthTimeoutError, match="did not complete within 10 minutes"):
+            auth_mod._wait_for_product_redirect(page, "https://wb.example.com", provider="oidc")
+
+    def test_page_read_failure_does_not_mask_timeout(self, monkeypatch):
+        """If the page is closed or crashed by the time the deadline fires,
+        the diagnostic reads must not raise and swallow the real timeout."""
+        from unittest.mock import PropertyMock
+
+        from vip import auth as auth_mod
+
+        page = MagicMock()
+        type(page).url = PropertyMock(side_effect=RuntimeError("page closed"))
+        page.title.side_effect = RuntimeError("page closed")
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        with pytest.raises(auth_mod.AuthTimeoutError, match="did not complete"):
+            auth_mod._wait_for_product_redirect(page, "https://wb.example.com", provider="oidc")
+
+
+class TestAuthTimeoutErrorHierarchy:
+    """AuthTimeoutError must subclass AuthConfigError -- that relationship
+    is what lets plugin.py's existing ``except AuthConfigError`` handler
+    convert a timeout into a clean ``pytest.UsageError`` instead of an
+    INTERNALERROR traceback, with no change to that handler (see #263)."""
+
+    def test_is_subclass_of_auth_config_error(self):
+        from vip.auth import AuthConfigError, AuthTimeoutError
+
+        assert issubclass(AuthTimeoutError, AuthConfigError)
+
+    def test_instance_is_caught_by_auth_config_error_except_clause(self):
+        from vip.auth import AuthConfigError, AuthTimeoutError
+
+        try:
+            raise AuthTimeoutError("boom")
+        except AuthConfigError as exc:
+            assert isinstance(exc, AuthTimeoutError)
+        else:
+            pytest.fail("AuthTimeoutError was not caught by except AuthConfigError")
 
 
 class TestClickWorkbenchOidcConfirm:

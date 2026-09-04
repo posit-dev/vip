@@ -55,6 +55,12 @@ _MARKER_KEYWORDS = {"and", "or", "not"}
 # substring inside a larger token like ``_connect`` or ``1connect``.
 _IDENT_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z][A-Za-z0-9_-]*(?![A-Za-z0-9_-])")
 
+# Auth providers that imply IdP-based auth (used by both --idp's implied
+# default and --provider's own validation). Mirrors auth.py's own
+# _IDP_PROVIDERS, kept as a separate tuple here so cli.py doesn't need to
+# import vip.auth (and its playwright dependency) at module load time.
+_IDP_PROVIDERS = ("oidc", "saml", "oauth2")
+
 
 def _valid_categories_message() -> str:
     """Return a comma-separated string of preferred (hyphenated) category names."""
@@ -349,15 +355,20 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
                 inherited_provider = existing.auth.provider
 
     # Resolve the provider:
-    # - With --idp set, the user wants IdP-based auth.  Keep an inherited
-    #   IdP-class value (saml/oauth2) so specific declarations survive; but
-    #   ignore inherited non-IdP providers (ldap) that would contradict the
-    #   CLI intent — auth.py's flow selection keys off provider, not idp.
-    # - Without --idp, just honour whatever vip.toml declared.
-    _IDP_PROVIDERS = ("oidc", "saml", "oauth2")
-    if idp:
+    # - An explicit --provider always wins, overriding both --idp's implied
+    #   "oidc" and anything inherited from vip.toml.
+    # - Otherwise, with --idp set, the user wants IdP-based auth.  Keep an
+    #   inherited IdP-class value (saml/oauth2) so specific declarations
+    #   survive; but ignore inherited non-IdP providers (ldap) that would
+    #   contradict the CLI intent — auth.py's flow selection keys off
+    #   provider, not idp.
+    # - Without --provider or --idp, just honour whatever vip.toml declared.
+    explicit_provider = getattr(args, "provider", None)
+    if explicit_provider:
+        auth_provider: str | None = explicit_provider
+    elif idp:
         if inherited_provider in _IDP_PROVIDERS:
-            auth_provider: str | None = inherited_provider
+            auth_provider = inherited_provider
         else:
             auth_provider = "oidc"
     else:
@@ -422,6 +433,14 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
 
 def run_verify(args: argparse.Namespace) -> None:
     """Run VIP tests locally against URL args or a vip.toml config."""
+    provider = getattr(args, "provider", None)
+    if provider and provider not in _IDP_PROVIDERS:
+        print(
+            f"Error: unknown --provider value: {provider}. Valid: {', '.join(_IDP_PROVIDERS)}.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     config_path = args.config
     temp_config = None
 
@@ -1700,7 +1719,14 @@ def main() -> None:
         "--idp",
         default=None,
         help='Identity provider for --headless-auth: "keycloak", "okta", "snowflake". '
-        'Presence implies provider = "oidc" unless overridden in vip.toml.',
+        'Presence implies provider = "oidc" unless overridden by --provider or vip.toml.',
+    )
+    auth_group.add_argument(
+        "--provider",
+        default=None,
+        help=f"Auth provider for --headless-auth/--interactive-auth: "
+        f"{', '.join(_IDP_PROVIDERS)}. Overrides both --idp's implied "
+        f'"oidc" and any provider inherited from vip.toml.',
     )
     verify_parser.add_argument(
         "--interactive-auth",

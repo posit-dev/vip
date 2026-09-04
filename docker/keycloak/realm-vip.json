@@ -37,6 +37,37 @@
         "https://workbench.vip.test:8787/*"
       ],
       "webOrigins": ["https://workbench.vip.test:8787"]
+    },
+    {
+      "clientId": "https://workbench-saml.vip.test:8788/saml/metadata",
+      "name": "VIP Workbench SAML (mock-IdP E2E)",
+      "enabled": true,
+      "protocol": "saml",
+      "redirectUris": [
+        "https://workbench-saml.vip.test:8788/saml/acs"
+      ],
+      "attributes": {
+        "saml.assertion.signature": "true",
+        "saml.client.signature": "false",
+        "saml.server.signature": "true",
+        "saml.encrypt": "false",
+        "saml.authnstatement": "true",
+        "saml_name_id_format": "username",
+        "saml_force_name_id_format": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "username",
+          "protocol": "saml",
+          "protocolMapper": "saml-user-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "attribute.nameformat": "Basic",
+            "user.attribute": "username",
+            "attribute.name": "Username"
+          }
+        }
+      ]
     }
   ],
   "users": [
