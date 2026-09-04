@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
 from pytest_bdd import given, scenario, then, when
+
+from vip import attest
 
 
 @scenario("test_versions.feature", "Connect version matches configuration")
@@ -33,9 +34,9 @@ def test_package_manager_version():
 )
 def connect_version_configured(vip_config):
     if not vip_config.connect.is_configured:
-        pytest.skip("Connect is not configured")
+        attest.not_applicable("Connect is not configured")
     if not vip_config.connect.version:
-        pytest.skip(
+        attest.not_applicable(
             "No Connect version configured in vip.toml — set connect.version to enable this check"
         )
     return vip_config.connect.version
@@ -47,9 +48,9 @@ def connect_version_configured(vip_config):
 )
 def pm_version_configured(vip_config):
     if not vip_config.package_manager.is_configured:
-        pytest.skip("Package Manager is not configured")
+        attest.not_applicable("Package Manager is not configured")
     if not vip_config.package_manager.version:
-        pytest.skip(
+        attest.not_applicable(
             "No Package Manager version configured in vip.toml — "
             "set package_manager.version to enable this check"
         )
@@ -61,7 +62,7 @@ def fetch_connect_version(connect_client):
     info = connect_client.server_settings()
     version = info.get("version")
     if not version:
-        pytest.skip("Connect server_settings did not return a version field")
+        attest.unproven("Connect server_settings did not return a version field")
     return version
 
 
@@ -70,7 +71,7 @@ def fetch_pm_version(pm_client):
     info = pm_client.status()
     version = info.get("version")
     if not version:
-        pytest.skip("Package Manager status endpoint did not return a version field")
+        attest.unproven("Package Manager status endpoint did not return a version field")
     return version
 
 

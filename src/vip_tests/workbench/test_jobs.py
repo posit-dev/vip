@@ -16,6 +16,7 @@ from playwright.sync_api import Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given, scenario, then, when
 
+from vip import attest
 from vip.config import VIPConfig
 from vip_tests.workbench.conftest import (
     TIMEOUT_CLEANUP,
@@ -143,7 +144,7 @@ def start_rstudio_session_for_job(page: Page, job_context: dict):
                 cancel.click(timeout=TIMEOUT_QUICK)
             except Exception:
                 pass
-        pytest.skip("RStudio Pro IDE not available in this Workbench deployment")
+        attest.not_applicable("RStudio Pro IDE not available in this Workbench deployment")
 
     ide_tab.click(timeout=TIMEOUT_QUICK)
 
@@ -157,9 +158,11 @@ def start_rstudio_session_for_job(page: Page, job_context: dict):
                 cancel.click(timeout=TIMEOUT_QUICK)
             except Exception:
                 pass
-        pytest.skip(
-            "RStudio Pro tab opened but Launch button did not appear — "
-            "the IDE may not be installed or fully available on this Workbench instance"
+        attest.unproven(
+            "RStudio Pro tab opened but its Launch button never appeared, so no "
+            "session could be started and the Background Jobs checks below never "
+            "ran. The tab opening means the IDE is present; this is a UI or "
+            "readiness problem, not a missing IDE."
         )
 
     page.fill(NewSessionDialog.SESSION_NAME, session_name)
@@ -283,7 +286,7 @@ def run_as_background_job(page: Page, job_context: dict):
     try:
         bg_tab.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
     except PlaywrightTimeoutError:
-        pytest.skip(
+        attest.not_applicable(
             "Background Jobs tab not found — Background Jobs may not be available "
             "in this Workbench configuration"
         )
@@ -294,7 +297,7 @@ def run_as_background_job(page: Page, job_context: dict):
     try:
         start_btn.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
     except PlaywrightTimeoutError:
-        pytest.skip("Start Background Job button not found — cannot submit background job")
+        attest.unproven("Start Background Job button not found — cannot submit background job")
     start_btn.click()
 
     # Fill in the script path.
@@ -302,7 +305,7 @@ def run_as_background_job(page: Page, job_context: dict):
     try:
         script_input.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
     except PlaywrightTimeoutError:
-        pytest.skip("Background Job script input not found")
+        attest.unproven("Background Job script input not found")
     script_input.fill(_JOB_SCRIPT_PATH)
 
     # Submit the job.
@@ -321,7 +324,7 @@ def run_as_workbench_job(page: Page, job_context: dict):
     try:
         wb_tab.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
     except PlaywrightTimeoutError:
-        pytest.skip(
+        attest.not_applicable(
             "Workbench Jobs tab not found — Workbench Jobs (Launcher) may not be available "
             "in this Workbench configuration"
         )
@@ -332,7 +335,7 @@ def run_as_workbench_job(page: Page, job_context: dict):
     try:
         new_btn.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
     except PlaywrightTimeoutError:
-        pytest.skip("Run Script as Workbench Job button not found")
+        attest.unproven("Run Script as Workbench Job button not found")
     _open_workbench_job_dialog(page, new_btn)
 
     # Select the script via the file chooser. Unlike the Background Job dialog,
@@ -408,7 +411,7 @@ def _select_workbench_job_script(page: Page, script_filename: str) -> None:
     try:
         browse_btn.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
     except PlaywrightTimeoutError:
-        pytest.skip("Workbench Job script Browse button not found in the submission dialog")
+        attest.unproven("Workbench Job script Browse button not found in the submission dialog")
     browse_btn.click()
 
     # The Choose File dialog's name field IS editable -- type the filename there.
@@ -416,7 +419,7 @@ def _select_workbench_job_script(page: Page, script_filename: str) -> None:
     try:
         name_input.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
     except PlaywrightTimeoutError:
-        pytest.skip("Workbench Job file chooser did not open")
+        attest.unproven("Workbench Job file chooser did not open")
 
     # The chooser clears the name field ~1s after it first appears, as GWT
     # finishes initializing it. A fill() that lands before that reset is wiped,
