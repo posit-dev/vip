@@ -37,7 +37,7 @@ maintained by hand.
 Execution provenance. Each results file records who ran the tests, which host
 they ran on, which git commit and branch they came from, whether that tree was
 dirty, and which CI job produced them. The HTML report and the PDF render the
-attribution as well, so the archived artifact carries it rather than only the
+attribution as well, so the archived artifact includes it rather than only the
 machine-readable output. This is what makes a result attributable to a named
 operator and a pipeline execution rather than to an anonymous green tick.
 
@@ -87,14 +87,14 @@ or in part:
 
 - the intended use of the feature or function, insofar as your control
   descriptions state it
-- the result of your risk-based analysis, carried through from `controls.toml`
+- the result of your risk-based analysis, read from `controls.toml`
   and rendered in the matrix
 - a description of the testing conducted, as the tagged scenario and its steps
 - issues found during testing, as failed and skipped scenarios
 - who performed the testing and the date it was performed
 
 Two items are yours. VIP writes no conclusion statement declaring
-acceptability, and it carries no resolution against the issues it records:
+acceptability, and it makes no determination on the issues it records:
 both are judgements, not test results. Neither is there any review and
 approval signature, which the guidance asks for "when appropriate" and which
 belongs in your quality system.
@@ -117,13 +117,13 @@ structure and responsibilities, the inventory of systems in scope, and the
 timelines and training that go with them.
 
 Risk assessments. Which controls matter, how badly, and why. `controls.toml`
-carries a `risk` field and VIP passes it through untouched, without
+has a `risk` field and VIP passes it through untouched, without
 interpreting it. Deciding the value is the assessment.
 
 The qualification protocols themselves. Installation, Operational and
 Performance Qualification documents are structured, pre-approved, signed
 records. VIP supplies evidence that can go inside an OQ. It does not write the
-protocol, define the acceptance criteria, or carry the approval signatures.
+protocol, define the acceptance criteria, or include the approval signatures.
 
 Standard Operating Procedures, training records, and the change control and
 deviation records that surround a validated system.

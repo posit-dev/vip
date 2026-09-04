@@ -129,7 +129,7 @@ vip verify --config vip.toml --extensions ./my-tests
 | `21cfr-part11-validation` | Regulatory control tagging plus a `controls.toml` for `vip trace`. |
 
 Every scaffolded directory runs as-is against your deployment, and each one
-carries an `AGENTS.md` describing the extension contract, so a coding agent
+includes an `AGENTS.md` describing the extension contract, so a coding agent
 picking up the directory knows the auto-skip rules and which fixtures and
 markers it may use.
 
@@ -145,7 +145,7 @@ vip trace --results report/results.json --controls ./my-tests/controls.toml
 ```
 
 `vip report --controls` renders the same matrix into the HTML report and the
-archivable PDF, so the artifact you hand an auditor carries the join from a
+archivable PDF, so the artifact you hand an auditor includes the join from a
 control to its evidence rather than only a list of passing tests.
 
 It ships with `VALIDATION-PACKAGE.md`, which is the honest version of what this
@@ -171,7 +171,7 @@ vip verify --format json,junit,sarif
 Skip messages in the JUnit and SARIF output carry the actual skip reason
 instead of a generic "skipped" label. A check VIP was asked to run but could
 not -- a configured product whose authentication never completed, say -- is
-reported as **unproven** rather than as an ordinary skip: it carries an
+reported as **unproven** rather than as an ordinary skip: it has an
 `UNPROVEN:` prefix in JUnit, SARIF level `warning`, and exits **6** so a
 pipeline can tell "the deployment is broken" (exit 1) from "the deployment
 could not be checked" (exit 6). Pass `--allow-unproven` to exit 0 anyway. `results.json` also records provenance

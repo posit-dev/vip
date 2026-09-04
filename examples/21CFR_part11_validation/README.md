@@ -66,7 +66,7 @@ unauthenticated caller does not on its own evidence that access is limited to
 authorised individuals, because a deployment that refuses everybody passes that
 half too.
 
-Package Manager carries the reproducibility control because a dated snapshot
+Package Manager has the reproducibility control because a dated snapshot
 URL is what lets you rebuild the package set an analysis ran against. Set
 `validated_repo_name` and `validated_snapshot` in `conftest.py` to a repository
 and date your deployment actually covers. An absent snapshot returns 404, which
@@ -91,7 +91,7 @@ derived marker feeds the HTML report's per-feature grouping and the generated
 test catalog and feature matrix, while the product markers themselves
 separately drive auto-skip when a product is not configured.
 
-`controls.toml` names each control and carries whatever metadata your
+`controls.toml` names each control and records whatever metadata your
 regulatory mapping uses. Only `description` is required, and every field must be
 a quoted string -- TOML would otherwise read `reference = 2024-01-01` as a date,
 which the JSON export cannot serialise.
@@ -128,7 +128,7 @@ vip verify --config vip.toml --extensions ./21CFR_part11_validation
 vip trace --results report/results.json --controls ./21CFR_part11_validation/controls.toml
 ```
 
-Add `--format json` for a machine-readable matrix carrying the full provenance
+Add `--format json` for a machine-readable matrix that includes the full provenance
 block, or `--output matrix.csv` to write to a file.
 
 ## Extending it

@@ -125,7 +125,7 @@ registering the truncated name. Write `@control-11-10-a`.
 Control tags flow into `results.json` only, as entries in a test's `markers` list.
 They do not appear in the `junit.xml` or `results.sarif` outputs produced by
 `--format` — those formats predate control tagging and were not extended to
-carry it. If you need traceability evidence in CI artifacts beyond `results.json`,
+include it. If you need traceability evidence in CI artifacts beyond `results.json`,
 consume it via `vip trace` (see `docs/reporting.md`), not by expecting it in JUnit
 or SARIF.
 
@@ -197,7 +197,7 @@ Two failure modes to watch for, both of which have bitten this suite:
 
 **Skip and unproven are not the same statement.** A skip says "there was nothing here to check, and the run is still complete". Unproven says "this was supposed to be checked and was not, so treat the run as incomplete". Collapsing the two is how `vip verify` came to exit 0 against a configured product whose every test had silently fallen away (#596): to anyone reading the report, "we did not look" was indistinguishable from "we looked and it was fine".
 
-An unproven result carries through the whole pipeline -- its own `UNPROVEN` badge in the HTML report, an `UNPROVEN:`-prefixed message in JUnit, SARIF level `warning`, and exit code 6 from the run itself. `--allow-unproven` restores the old behaviour for pipelines that need it. Reach for `attest.unproven` whenever a *configured* capability goes unverified; reach for `attest.not_applicable` when skipping is the correct and final answer for this deployment. When in doubt, ask which one the person reading the report would want to be told.
+An unproven result shows up throughout the pipeline -- its own `UNPROVEN` badge in the HTML report, an `UNPROVEN:`-prefixed message in JUnit, SARIF level `warning`, and exit code 6 from the run itself. `--allow-unproven` restores the old behaviour for pipelines that need it. Reach for `attest.unproven` whenever a *configured* capability goes unverified. Reach for `attest.not_applicable` when skipping is the correct and final answer for this deployment. When in doubt, ask which one the person reading the report would want to be told.
 
 Skips carry the same burden of accuracy as failures. A skip reason states *why* there was nothing to verify, so it must be true: `test_repos.py` used to report "package not available — repo may not be synced yet" after probing only the first repo whose name matched, when a synced mirror sitting beside it served the package fine. Probe every candidate before concluding anything, and name all of them in the reason.
 

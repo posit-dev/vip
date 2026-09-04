@@ -63,7 +63,7 @@ full run that would produce nothing. `--ci` is a preset that turns on
 ```
 
 - `schema_version` -- versioned independently of VIP itself. The minor number bumps
-  for an additive change (a new field); the major number bumps for a removal, a
+  for an additive change (a new field). The major number bumps for a removal, a
   rename, or a change in the meaning of an existing field. A file with no
   `schema_version` at all predates versioning and is treated as pre-1.0.
 - `started_at` / `finished_at` -- per-test UTC ISO 8601 timestamps, covering the call
@@ -79,16 +79,16 @@ full run that would produce nothing. `--ci` is a preset that turns on
   operator identity in an archived artifact.
 - `execution.performed_by` -- the operator the run is attributable to, and `source`
   says where that value came from. Set `VIP_PERFORMED_BY` to name the person
-  accountable for the run (`source: "explicit"`); otherwise VIP reads the CI
+  accountable for the run (`source: "explicit"`). Otherwise VIP reads the CI
   system's own actor (`GITHUB_ACTOR`, `GITLAB_USER_LOGIN`, `BUILD_USER_ID`), then
-  falls back to the local login (`source: "login"`). `source` travels with the
+  falls back to the local login (`source: "login"`). `source` stays attached to the
   value because a reader seeing a service-account name needs to know whether a
   human typed it. FDA's Computer Software Assurance guidance asks the record of an
-  assurance activity to carry who performed the testing alongside the date, which
-  is why this exists; the rest of the block identifies a machine, not a person.
+  assurance activity to state who performed the testing alongside the date, which
+  is why this exists. The rest of the block identifies a machine, not a person.
 
 Both report editions render the attribution too, so the archived artifact
-carries it rather than only the machine-readable output. They render five of
+includes it rather than only the machine-readable output. They render five of
 these fields -- `performed_by` (qualified by its `source` unless that source is
 `explicit`), `hostname`, `git.commit` (flagged when `dirty`), `git.branch`, and
 `ci.run_url` or `ci.run_id`. `git.remote`, `ci.provider` and `ci.job` stay in
@@ -101,12 +101,12 @@ describe: they are properties of the machine that ran `vip verify` -- the VIP
 runner -- not the Connect/Workbench/Package Manager deployment under test. The
 `products` table is what identifies the system under test (its name, URL, version,
 and whether it was configured for this run). Don't read the runner's platform string
-as evidence about the deployment; it isn't.
+as evidence about the deployment. It isn't.
 
 ### Schema compatibility policy
 
 An unknown schema minor is accepted (fields you don't recognize are additive and
-safe to ignore); an unknown schema major is refused. The two consumers of
+safe to ignore), but an unknown schema major is refused. The two consumers of
 `schema_version` apply this policy differently on purpose:
 
 - `vip.reporting.load_results` -- used by `vip report` and the Quarto notebooks
@@ -174,15 +174,15 @@ responsibility = "customer"
 notes = "Evidenced by training records in your QMS. No automated test can establish this."
 ```
 
-`description` is required; `verification` defaults to `"automated"` and must be one
+`description` is required. `verification` defaults to `"automated"` and must be one
 of `"automated"`, `"manual"`, or `"procedural"`. VIP is regulation-agnostic: it
-carries `reference`, `risk`, `responsibility`, and `notes` through to the output
+passes `reference`, `risk`, `responsibility`, and `notes` through to the output
 verbatim without interpreting them. The `[controls.<id>]` key is the id a scenario
 references with `@control-<id>` (with the `control-` tag prefix stripped).
 
 Those six keys plus `extra` are the whole recognised set, and any other key is an
 error. Rejecting rather than ignoring is what catches a misspelled `referance`
-before it vanishes from the matrix a reviewer reads. Carry your own fields in an
+before it vanishes from the matrix a reviewer reads. Put your own fields in an
 `extra` table:
 
 ``` toml
@@ -195,7 +195,7 @@ Its keys must not start with a character a spreadsheet evaluates as a formula,
 since a key becomes a CSV header cell and TOML permits a quoted key like
 `"=HYPERLINK(...)"`. Its values must be strings, must not collide with an
 existing column name, and
-are carried through untouched: each becomes a trailing CSV column (appended after
+are passed through untouched: each becomes a trailing CSV column (appended after
 the fixed set, so `CSV_COLUMNS` stays an identical leading prefix across every
 customer's export) and an `extra` object per control in the JSON. Neither report
 edition renders them, because the table has no width for a variable number of
@@ -210,9 +210,9 @@ A control's row in the matrix gets one of three `coverage` values:
   skipped scenario still counts as covered, and its `skipped` status is reported
   alongside. See "Covered is not the same as executed" below, which matters more
   than it sounds like it should.
-- `gap` -- no scenario carries the tag, and `verification = "automated"` (the
+- `gap` -- no scenario has the tag, and `verification = "automated"` (the
   default). This is the one that should worry you.
-- `not_automatable` -- no scenario carries the tag, but `verification` is
+- `not_automatable` -- no scenario has the tag, but `verification` is
   `"manual"` or `"procedural"`. This is *not* a gap. A control satisfied by a
   personnel training record, a physical procedure, or a signature-manifestation
   requirement that Posit Team's platform doesn't implement has no automated
@@ -239,15 +239,15 @@ The rendered report displays coverage as `COVERED`, `FAILED`, `UNPROVEN`,
 
 A control can satisfy more than one of these at once, and the display column
 shows only the loudest. The order is `FAILED`, then `UNPROVEN`, then `NOT RUN`:
-a control that ran and failed is the strongest claim against it, and an
-all-unproven control is also not executed, where `UNPROVEN` is the more
-specific of the two. Read the per-scenario `status` column for the rest.
+a control that ran and failed is the strongest claim against it. An
+all-unproven control is also not executed, but `UNPROVEN` is the more
+specific of the two, so it takes priority. Read the per-scenario `status` column for the rest.
 
 ### Covered is not the same as executed
 
 A scenario can run and skip itself -- the endpoint it probes is absent from this
 deployment, there is no data to inspect, a version gate excludes it -- and it
-still carries its control tag into the results file. A control tagged only by
+still keeps its control tag in the results file. A control tagged only by
 such scenarios is therefore `covered`, and a matrix can read `covered: 3,
 gaps: 0` while nothing was verified at all. That is the most misleading thing
 this export can do, so it is reported three ways rather than left implicit:
@@ -265,7 +265,7 @@ this export can do, so it is reported three ways rather than left implicit:
   `Covered, executed and passing`, `Covered, not executed`, `Covered, failing`
   and `Covered, not verified`, so each control is counted once. Do not expect
   the report table and the JSON `summary` to add up the same way.
-- The JSON carries a `covered_without_execution` list of control ids and a
+- The JSON has a `covered_without_execution` list of control ids and a
   `covered_with_unproven` list.
 
 A version-gated scenario (`na_version`) counts as not executed too, for the same
@@ -282,7 +282,7 @@ them has nothing to join against, so it reports as a `gap`. An underconfigured
 run therefore understates coverage rather than overstating it, which is the
 safer direction, but a reader who takes the gap at face value concludes the
 suite lacks a check it has. The `products` block records what was actually
-under test; read it alongside the gaps.
+under test. Read it alongside the gaps.
 
 Read `gaps: 0` together with `covered_not_executed` and `covered_unproven`.
 Zero gaps and a non-zero `covered_not_executed` means the controls are mapped
@@ -303,10 +303,10 @@ to write to a file instead. With `--output` and no `--format`, the format is tak
 from the file extension, so `--output matrix.json` writes JSON. An explicit
 `--format` always wins and warns when it disagrees with the extension.
 
-Both formats carry the results digest. CSV repeats `generated_at`, `vip_version`,
-`results_sha256` and `exit_status` on every row, which is enough to tie the
-archived spreadsheet back to the exact `results.json` it came from. The full
-provenance block -- the products and versions under test, the runner host, the CI
+Both formats include the results digest. CSV repeats `generated_at`, `vip_version`,
+`results_sha256` and `exit_status` on every row, which is enough to match the
+archived spreadsheet to the exact `results.json` it came from. The full
+provenance block -- the products and versions under test, the runner host, and the CI
 run -- is JSON only, because it does not flatten into columns. CSV is the more portable format for spreadsheet tools,
 but it alters what a non-Excel reader sees: any cell whose value begins with
 `= + - @` or a leading tab/carriage-return/newline is apostrophe-prefixed
@@ -316,13 +316,13 @@ fidelity to the underlying value matters more than spreadsheet safety.
 
 Control ids become pytest marker names, so they may use only letters, digits,
 `-`, `.` and `_`. A `:` or `(` in an id (`11.10(a)`, `iso:27001`) truncates the
-name pytest registers, which aborts collection under `--strict-markers`; VIP
+name pytest registers, which aborts collection under `--strict-markers`. VIP
 warns and skips registering such a tag. Write `11-10-a` instead.
 
 ### In the rendered report
 
 `vip report --controls PATH` adds a Compliance Traceability section to both the
-HTML report and the PDF, carrying the summary counts, the per-control coverage,
+HTML report and the PDF, with the summary counts, the per-control coverage,
 and the scenario and timestamp evidencing each one. Without `--controls` there is
 no section and nothing changes, which is the case for every run that has no
 control list.
@@ -338,7 +338,7 @@ compliance section nobody asked for, built from a stale list. Rendering the
 report documents directly with `quarto render` therefore needs `VIP_CONTROLS`
 set by hand.
 
-The section repeats the same caveat the CSV and JSON exports carry, because the
+The section repeats the same caveat the CSV and JSON exports state, because the
 report is the artifact that gets archived and handed on: coverage records that a
 scenario is tagged, a control shown as NOT RUN has a tagged scenario that ran
 and skipped itself, and a control shown as UNPROVEN has one VIP was asked to run
