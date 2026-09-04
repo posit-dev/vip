@@ -3,6 +3,21 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.9.0 (2026-09-03)
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 3 updates ([#614](https://github.com/posit-dev/vip/pull/614), [`c2fe24e`](https://github.com/posit-dev/vip/commit/c2fe24e4a98e0d9074424b5ea9373d2898c79558))
+
+- **deps**: Bump the python-dependencies group across 1 directory with 7 updates ([#613](https://github.com/posit-dev/vip/pull/613), [`5ccc700`](https://github.com/posit-dev/vip/commit/5ccc700335e46d0f4ebd9a5d2d58bf1d12f279c0))
+
+### Features
+
+- **report**: Render a native Quarto PDF edition of the report ([#618](https://github.com/posit-dev/vip/pull/618), [`f281037`](https://github.com/posit-dev/vip/commit/f281037afa6acd0bb72bef17b7731d05edf61d53))
+
+- **reporting**: Report checks VIP could not verify as unproven ([#617](https://github.com/posit-dev/vip/pull/617), [`1f1672e`](https://github.com/posit-dev/vip/commit/1f1672eccd20087db05a9124cf1fbae8e27210ae))
+
+
 ## v2026.8.3 (2026-08-28)
 
 ### Bug Fixes
