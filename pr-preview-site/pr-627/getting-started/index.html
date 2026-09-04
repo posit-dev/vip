@@ -267,17 +267,17 @@ Feature: 21 CFR Part 11 flavoured controls
     When I list recent audit log entries
     Then each entry records an actor and a timestamp</code></pre> <p data-astro-cid-mwd2jfe2>
 Name the controls in a <code data-astro-cid-mwd2jfe2>controls.toml</code> of your own &mdash; VIP
-            stays regulation-agnostic and carries your reference, risk and
+            stays regulation-agnostic and passes your reference, risk and
             responsibility fields through untouched. Then join the two:
 </p> <pre data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>vip verify --connect-url https://connect.example.com --extensions ./my-tests
 vip trace --results report/results.json --controls ./my-tests/controls.toml</code></pre> <p data-astro-cid-mwd2jfe2>
 The result is a matrix in CSV (for a spreadsheet or a downstream
-            qualification-protocol generator) or JSON, carrying each control, the
+            qualification-protocol generator) or JSON, listing each control, the
             scenarios that verify it, their outcome, and the timestamp each check
             ran. Every control gets one of three coverage values, and the third
             exists because collapsing it into the second would overstate your
             coverage:
-</p> <ul data-astro-cid-mwd2jfe2> <li data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>covered</code> &mdash; at least one scenario is tagged for it</li> <li data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>gap</code> &mdash; no scenario in this run carries the tag, and
+</p> <ul data-astro-cid-mwd2jfe2> <li data-astro-cid-mwd2jfe2><code data-astro-cid-mwd2jfe2>covered</code> &mdash; at least one scenario is tagged for it</li> <li data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>gap</code> &mdash; no scenario in this run has the tag, and
 <code data-astro-cid-mwd2jfe2>verification</code> is <code data-astro-cid-mwd2jfe2>automated</code> (the default)
 </li> <li data-astro-cid-mwd2jfe2> <code data-astro-cid-mwd2jfe2>not_automatable</code> &mdash; you marked it
 <code data-astro-cid-mwd2jfe2>manual</code> or <code data-astro-cid-mwd2jfe2>procedural</code>, so no automated test is
@@ -299,7 +299,7 @@ Read a gap the same way. Scenarios belonging to a product you did not
             conclusion &mdash; that your suite has no check for the control &mdash;
             is still wrong. Check which products the run tested first.
 </p> <p data-astro-cid-mwd2jfe2>
-Both formats carry a SHA-256 of the results file the matrix was derived
+Both formats include a SHA-256 of the results file the matrix was derived
             from, so the archived artifact points back at its evidence. CSV repeats
             that digest with the generation time, VIP version and exit status on
             every row. The full provenance block, covering the products and
