@@ -411,3 +411,304 @@ class TestReportCLI:
         )
         assert result.returncode == 0
         assert "--results" in result.stdout
+
+
+class TestReportControls:
+    """`vip report --controls` scopes the control list to one render.
+
+    Copying controls.toml into the report directory was the alternative and is
+    wrong: that directory survives between runs, so one --controls invocation
+    would leave a file behind that every later plain `vip report` picks up,
+    growing a compliance section nobody asked for from a stale list.
+    """
+
+    @pytest.fixture
+    def cli(self):
+        from vip import cli
+
+        return cli
+
+    def _args(self, tmp_path, controls=None):
+        results = tmp_path / "results.json"
+        results.write_text('{"schema_version": "1.0", "results": []}', encoding="utf-8")
+        return argparse.Namespace(results=str(results), controls=controls, open=False, output=None)
+
+    def test_malformed_control_list_fails_before_quarto_starts(self, cli, tmp_path, monkeypatch):
+        """A notebook cell can only degrade to a warning, so validate out here."""
+        monkeypatch.chdir(tmp_path)
+        bad = tmp_path / "c.toml"
+        bad.write_text("[controls]\n", encoding="utf-8")
+
+        called = []
+        monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
+        with pytest.raises(SystemExit) as exc:
+            cli.run_report(self._args(tmp_path, str(bad)))
+        assert exc.value.code == 1
+        assert called == []
+
+    def test_missing_control_list_fails_before_quarto_starts(self, cli, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        called = []
+        monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
+        with pytest.raises(SystemExit):
+            cli.run_report(self._args(tmp_path, str(tmp_path / "absent.toml")))
+        assert called == []
+
+    def test_controls_reach_both_renders_through_the_environment(self, cli, tmp_path, monkeypatch):
+        """The HTML pages and the PDF are separate quarto invocations."""
+        monkeypatch.chdir(tmp_path)
+        controls = tmp_path / "c.toml"
+        controls.write_text('[controls.x]\ndescription = "d"\n', encoding="utf-8")
+
+        envs = []
+
+        def fake_render(document, report_dir, env):
+            envs.append((document, env.get("VIP_CONTROLS")))
+            out = report_dir / "_output"
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "index.html").write_text("<html></html>")
+            (out / "vip-report.pdf").write_bytes(b"%PDF-")
+            return 0
+
+        monkeypatch.setattr(cli, "_quarto_render", fake_render)
+        cli.run_report(self._args(tmp_path, str(controls)))
+
+        rendered = dict(envs)
+        assert rendered["index.qmd"] == str(controls.resolve())
+        assert rendered["vip-report.qmd"] == str(controls.resolve())
+
+    def _results(self, tmp_path, body):
+        results = tmp_path / "results.json"
+        results.write_text(body, encoding="utf-8")
+        return results
+
+    def _fake_render(self, envs):
+        def render(document, report_dir, env):
+            envs.append((document, env.get("VIP_CONTROLS")))
+            out = report_dir / "_output"
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "index.html").write_text("<html></html>")
+            (out / "vip-report.pdf").write_bytes(b"%PDF-")
+            return 0
+
+        return render
+
+    _UNREADABLE_MARKERS = (
+        '{"schema_version": "1.0", "results": '
+        '[{"nodeid": "t", "outcome": "passed", "markers": null}]}'
+    )
+
+    def test_unreadable_markers_are_refused_on_a_compliance_render(
+        self, cli, tmp_path, monkeypatch
+    ):
+        """A row whose markers cannot be read would print a GAP that does not exist.
+
+        `load_results` normalizes a malformed `markers` to an empty list so the
+        plain report still renders. Under --controls that turns a tagged
+        scenario into a coverage gap, so the matrix claims the suite is missing
+        a check it actually has. Refuse the file instead, the way `vip trace`
+        does.
+        """
+        monkeypatch.chdir(tmp_path)
+        controls = tmp_path / "c.toml"
+        controls.write_text('[controls.x]\ndescription = "d"\n', encoding="utf-8")
+        results = self._results(tmp_path, self._UNREADABLE_MARKERS)
+
+        called = []
+        monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
+        args = argparse.Namespace(
+            results=str(results), controls=str(controls), open=False, output=None
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli.run_report(args)
+        assert exc.value.code == 1
+        assert called == []
+
+    def test_unknown_schema_major_is_refused_on_a_compliance_render(
+        self, cli, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        controls = tmp_path / "c.toml"
+        controls.write_text('[controls.x]\ndescription = "d"\n', encoding="utf-8")
+        results = self._results(tmp_path, '{"schema_version": "99.0", "results": []}')
+
+        called = []
+        monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
+        args = argparse.Namespace(
+            results=str(results), controls=str(controls), open=False, output=None
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli.run_report(args)
+        assert exc.value.code == 1
+        assert called == []
+
+    def test_the_same_file_still_renders_without_controls(self, cli, tmp_path, monkeypatch):
+        """The asymmetry is the design, not an oversight.
+
+        Without a control list the report is a pass/fail document and must
+        render regardless -- the strictness above belongs to the compliance
+        artifact, not to every render.
+        """
+        monkeypatch.chdir(tmp_path)
+        results = self._results(tmp_path, self._UNREADABLE_MARKERS)
+
+        envs = []
+        monkeypatch.setattr(cli, "_quarto_render", self._fake_render(envs))
+        args = argparse.Namespace(results=str(results), controls=None, open=False, output=None)
+        cli.run_report(args)
+
+        assert [document for document, _ in envs] == ["index.qmd", "details.qmd", "vip-report.qmd"]
+
+    def test_without_controls_the_variable_is_absent_and_nothing_warns(
+        self, cli, tmp_path, monkeypatch, capsys
+    ):
+        """The overwhelmingly common path: no control list, no section, no noise."""
+        monkeypatch.chdir(tmp_path)
+        envs = []
+
+        def fake_render(document, report_dir, env):
+            envs.append(env.get("VIP_CONTROLS"))
+            out = report_dir / "_output"
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "index.html").write_text("<html></html>")
+            (out / "vip-report.pdf").write_bytes(b"%PDF-")
+            return 0
+
+        monkeypatch.setattr(cli, "_quarto_render", fake_render)
+        cli.run_report(self._args(tmp_path, None))
+
+        assert envs == [None, None, None]
+        assert "controls" not in capsys.readouterr().out.lower()
+
+    def test_report_with_controls_refuses_a_mismatched_sidecar(
+        self, cli, tmp_path, monkeypatch, capsys
+    ):
+        """--controls makes this a compliance artifact; it inherits trace's strictness.
+
+        `vip trace` already refuses a results.json whose sidecar disagrees
+        (`verify_results_checksum`); a compliance render must refuse the same
+        way rather than silently rendering a matrix built from evidence that
+        does not match its own attestation.
+        """
+        monkeypatch.chdir(tmp_path)
+        controls = tmp_path / "c.toml"
+        controls.write_text('[controls.x]\ndescription = "d"\n', encoding="utf-8")
+        results = self._results(tmp_path, '{"schema_version": "1.0", "results": []}')
+        results.with_name("results.json.sha256").write_text(f"{'a' * 64}  results.json\n")
+
+        called = []
+        monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
+        args = argparse.Namespace(
+            results=str(results), controls=str(controls), open=False, output=None
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli.run_report(args)
+
+        assert exc.value.code == 1
+        assert called == []
+        assert "checksum mismatch" in capsys.readouterr().err
+
+    def test_report_with_controls_refuses_an_empty_source_sidecar(
+        self, cli, tmp_path, monkeypatch, capsys
+    ):
+        """An invalid attestation must not launder itself into a benign absence.
+
+        `--results /external/path/results.json` copies the file into the
+        report directory, and _rehome_sidecar correctly refuses to
+        manufacture a destination sidecar out of an empty source one. A
+        *missing* destination sidecar is legal and benign, so a gate that
+        only ever looked at the destination let the compliance render
+        proceed on input `vip trace` refuses as a truncated attestation.
+        The compliance path must never be more permissive than `vip trace`.
+        """
+        monkeypatch.chdir(tmp_path)
+        external = tmp_path / "external"
+        external.mkdir()
+        results = external / "results.json"
+        results.write_text('{"schema_version": "1.0", "results": []}', encoding="utf-8")
+        results.with_name("results.json.sha256").write_text("   \n\n", encoding="utf-8")
+
+        controls = tmp_path / "c.toml"
+        controls.write_text('[controls.x]\ndescription = "d"\n', encoding="utf-8")
+
+        called = []
+        monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
+        args = argparse.Namespace(
+            results=str(results), controls=str(controls), open=False, output=None
+        )
+        with pytest.raises(SystemExit) as exc:
+            cli.run_report(args)
+
+        assert exc.value.code == 1
+        assert called == []
+        assert "is empty" in capsys.readouterr().err
+
+    def test_the_same_empty_sidecar_still_renders_without_controls(
+        self, cli, tmp_path, monkeypatch
+    ):
+        """Plain `vip report` stays lenient; only the compliance path is strict."""
+        monkeypatch.chdir(tmp_path)
+        external = tmp_path / "external"
+        external.mkdir()
+        results = external / "results.json"
+        results.write_text('{"schema_version": "1.0", "results": []}', encoding="utf-8")
+        results.with_name("results.json.sha256").write_text("   \n\n", encoding="utf-8")
+
+        envs = []
+        monkeypatch.setattr(cli, "_quarto_render", self._fake_render(envs))
+        args = argparse.Namespace(results=str(results), controls=None, open=False, output=None)
+        cli.run_report(args)
+
+        assert [document for document, _ in envs] == ["index.qmd", "details.qmd", "vip-report.qmd"]
+        assert not (tmp_path / "report" / "results.json.sha256").exists()
+
+    def test_a_source_with_no_sidecar_at_all_is_still_benign_under_controls(
+        self, cli, tmp_path, monkeypatch
+    ):
+        """No sidecar is a documented benign state on both paths.
+
+        Results files written before the sidecar existed have none, and
+        `vip trace` accepts them; the compliance render must match rather
+        than exceed that strictness.
+        """
+        monkeypatch.chdir(tmp_path)
+        external = tmp_path / "external"
+        external.mkdir()
+        results = external / "results.json"
+        results.write_text('{"schema_version": "1.0", "results": []}', encoding="utf-8")
+
+        controls = tmp_path / "c.toml"
+        controls.write_text('[controls.x]\ndescription = "d"\n', encoding="utf-8")
+
+        envs = []
+        monkeypatch.setattr(cli, "_quarto_render", self._fake_render(envs))
+        args = argparse.Namespace(
+            results=str(results), controls=str(controls), open=False, output=None
+        )
+        cli.run_report(args)
+
+        assert [document for document, _ in envs] == ["index.qmd", "details.qmd", "vip-report.qmd"]
+
+    def test_report_without_controls_ignores_a_mismatched_sidecar(self, cli, tmp_path, monkeypatch):
+        """Plain vip report stays lenient: a report must render regardless.
+
+        This is the other half of the asymmetry: the checksum gate must live
+        inside the `if args.controls` block, not ahead of it, or a plain
+        render would refuse to produce anything from a perfectly good local
+        results.json just because its stale sidecar disagrees.
+        """
+        monkeypatch.chdir(tmp_path)
+        results = self._results(tmp_path, '{"schema_version": "1.0", "results": []}')
+        results.with_name("results.json.sha256").write_text(f"{'a' * 64}  results.json\n")
+
+        envs = []
+        monkeypatch.setattr(cli, "_quarto_render", self._fake_render(envs))
+        args = argparse.Namespace(results=str(results), controls=None, open=False, output=None)
+
+        cli.run_report(args)
+
+        assert [document for document, _ in envs] == [
+            "index.qmd",
+            "details.qmd",
+            "vip-report.qmd",
+        ]

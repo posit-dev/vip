@@ -1441,6 +1441,66 @@ class TestVerifyProxyFlagWithConfig:
         assert "ignored when a config file is used" not in err
 
 
+class TestDisablingTheResultsFile:
+    """`--report ''` is the documented way to write no results file.
+
+    The CLI forwarded `--vip-report` only when the value was non-empty, so the
+    plugin fell back to its own default and wrote report/results.json anyway --
+    the one thing the invocation asked it not to do.
+    """
+
+    def test_an_empty_report_path_is_forwarded_to_the_plugin(self):
+        assert "--vip-report=" in _capture_cmd(_make_args(report=""))
+
+    def test_a_normal_report_path_is_unchanged(self):
+        cmd = _capture_cmd(_make_args(report="out/results.json"))
+        assert "--vip-report=out/results.json" in cmd
+
+    def test_the_default_path_is_still_forwarded(self):
+        assert "--vip-report=report/results.json" in _capture_cmd(_make_args())
+
+    @staticmethod
+    def _run_for_real_exit(args):
+        """Call run_verify without mocking sys.exit, so the refusal propagates.
+
+        The check runs before subprocess.run, so the suite never starts. The
+        shared _capture_call helper patches sys.exit into a no-op, which would
+        let execution fall through past the refusal.
+        """
+        with patch("vip.cli.subprocess.run", side_effect=AssertionError("suite was started")):
+            from vip.cli import run_verify
+
+            run_verify(args)
+
+    @pytest.mark.parametrize("fmt", ["junit", "sarif", "json,junit"])
+    def test_asking_for_a_sibling_format_while_disabling_the_source_is_refused(self, tmp_path, fmt):
+        """junit.xml and results.sarif are built by reloading results.json, so
+        the combination would run the whole suite and produce nothing."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        with pytest.raises(SystemExit) as exc:
+            self._run_for_real_exit(_make_args(config=str(cfg), report="", format=fmt))
+        assert exc.value.code == 2
+
+    def test_the_refusal_names_the_flag_the_formats_came_from(self, tmp_path, capsys):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        with pytest.raises(SystemExit):
+            self._run_for_real_exit(_make_args(config=str(cfg), report="", ci=True))
+        assert "--ci" in capsys.readouterr().err
+
+    def test_the_refusal_happens_before_the_suite_runs(self, tmp_path):
+        """A message after a full product run would be worse than no message."""
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        with pytest.raises(SystemExit):
+            self._run_for_real_exit(_make_args(config=str(cfg), report="", format="junit"))
+
+    def test_disabling_the_report_with_json_alone_is_allowed(self):
+        """json *is* results.json, so there is no sibling left to strand."""
+        assert "--vip-report=" in _capture_cmd(_make_args(report="", format="json"))
+
+
 class TestAllowUnprovenFlag:
     """`vip verify --allow-unproven` opts out of the unproven exit code."""
 

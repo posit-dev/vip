@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from conftest import matrix_from_statuses
 from vip import report_content
 from vip.reporting import ReportData, TestResult
 
@@ -331,6 +333,221 @@ class TestFeatureStepIndex:
         index = report_content.FeatureStepIndex()
         item = TestResult(nodeid="a.py::test_x", outcome="passed", scenario_title=None)
         assert index.steps_for(item) == []
+
+
+# ---------------------------------------------------------------------------
+# Coverage display (failing controls)
+# ---------------------------------------------------------------------------
+
+
+class TestFailedControlDisplay:
+    def test_a_failing_control_displays_as_covered_failed(self):
+        entry = SimpleNamespace(coverage="covered", executed=True, failing=True, has_unproven=False)
+        assert report_content.display_coverage(entry) == "covered_failed"
+
+    def test_a_failing_control_uses_the_failed_style(self):
+        """Reuses the outcome palette so the styles.css drift guard still holds."""
+        assert report_content.COVERAGE_STYLE_KEY["covered_failed"] == "failed"
+
+    def test_a_failing_control_is_labelled_failed(self):
+        assert report_content.COVERAGE_LABELS["covered_failed"] == "FAILED"
+
+    def test_a_passing_control_still_displays_as_covered(self):
+        entry = SimpleNamespace(
+            coverage="covered", executed=True, failing=False, has_unproven=False
+        )
+        assert report_content.display_coverage(entry) == "covered"
+
+    def test_an_all_skipped_control_still_displays_as_not_executed(self):
+        entry = SimpleNamespace(
+            coverage="covered", executed=False, failing=False, has_unproven=False
+        )
+        assert report_content.display_coverage(entry) == "covered_not_executed"
+
+    def test_a_gap_is_unaffected(self):
+        entry = SimpleNamespace(coverage="gap", executed=False, failing=False, has_unproven=False)
+        assert report_content.display_coverage(entry) == "gap"
+
+    def test_every_coverage_value_has_a_style_and_a_label(self):
+        assert set(report_content.COVERAGE_STYLE_KEY) == set(report_content.COVERAGE_LABELS)
+
+    def test_a_real_mixed_pass_and_failure_control_displays_as_failed(self):
+        """End to end through a real matrix, not a stub.
+
+        The stub tests above assert display_coverage's branching. This asserts
+        the decision the branching exists to implement: one failing scenario
+        demotes a control that also has a passing one.
+        """
+        matrix = matrix_from_statuses({"c1": ["passed", "failed"]})
+        entry = matrix.entries[0]
+        assert entry.coverage == "covered"
+        assert report_content.display_coverage(entry) == "covered_failed"
+
+    def test_a_real_mixed_control_is_counted_in_the_summary(self):
+        """The summary row reads the display value, so the count must follow."""
+        matrix = matrix_from_statuses({"c1": ["passed", "failed"], "c2": ["passed"]})
+        rows = dict(report_content.traceability_summary_rows(matrix))
+        assert rows["Covered, failing"] == "1"
+        assert rows["Covered, executed and passing"] == "1"
+
+    def test_a_pass_beside_an_unproven_skip_displays_as_unproven(self):
+        """Otherwise the badge reads COVERED and the unproven scenario is invisible."""
+        matrix = matrix_from_statuses({"c1": ["passed", "unproven"]})
+        assert report_content.display_coverage(matrix.entries[0]) == "covered_unproven"
+
+    def test_an_all_unproven_control_prefers_unproven_over_not_run(self):
+        """Both are true; UNPROVEN says which kind of non-execution it was."""
+        matrix = matrix_from_statuses({"c1": ["unproven"]})
+        entry = matrix.entries[0]
+        assert entry.executed is False
+        assert report_content.display_coverage(entry) == "covered_unproven"
+
+    def test_a_failure_outranks_an_unproven_skip(self):
+        """A control that ran and failed is the louder fact, so FAILED wins."""
+        matrix = matrix_from_statuses({"c1": ["failed", "unproven"]})
+        assert report_content.display_coverage(matrix.entries[0]) == "covered_failed"
+
+    def test_an_unproven_control_is_counted_in_the_summary(self):
+        matrix = matrix_from_statuses({"c1": ["passed", "unproven"], "c2": ["passed"]})
+        rows = dict(report_content.traceability_summary_rows(matrix))
+        assert rows["Covered, not verified"] == "1"
+        assert rows["Covered, executed and passing"] == "1"
+
+    def test_every_display_value_has_a_label_and_a_style(self):
+        """A display value with no entry in either dict renders as a blank badge."""
+        assert set(report_content.COVERAGE_LABELS) == set(report_content.COVERAGE_STYLE_KEY)
+        for key in report_content.COVERAGE_STYLE_KEY.values():
+            assert report_content.outcome_style(key).label != "?"
+
+
+class TestTraceabilityWarnings:
+    @staticmethod
+    def _matrix(unexecuted=(), failing=(), unproven=()):
+        return SimpleNamespace(
+            covered_without_execution=list(unexecuted),
+            covered_with_failure=list(failing),
+            covered_with_unproven=list(unproven),
+        )
+
+    def test_a_failing_control_produces_a_warning(self):
+        warnings_out = report_content.traceability_warnings(self._matrix(failing=["c1"]))
+        assert any("did not pass" in w and "c1" in w for w in warnings_out)
+
+    def test_an_unproven_control_produces_a_warning(self):
+        warnings_out = report_content.traceability_warnings(self._matrix(unproven=["c1"]))
+        assert any("could not verify" in w and "c1" in w for w in warnings_out)
+
+    def test_each_condition_gets_its_own_line(self):
+        """Three independent conditions, so three lines: a reader needs to know which."""
+        matrix = self._matrix(unexecuted=["c2"], failing=["c1"], unproven=["c3"])
+        assert len(report_content.traceability_warnings(matrix)) == 3
+
+    def test_a_clean_matrix_produces_none(self):
+        assert report_content.traceability_warnings(self._matrix()) == []
+
+
+class TestRenderFailureMessage:
+    def test_render_failure_message_names_the_error(self):
+        msg = report_content.TRACEABILITY_RENDER_FAILURE.format(error="boom")
+        assert "boom" in msg
+        assert "traceability" in msg.lower()
+
+
+class TestExecutionProvenanceRows:
+    """Attribution reaches the artifact the customer archives.
+
+    ``results.json`` has recorded the execution block since attribution
+    landed, but only ``vip trace --format json`` rendered it. A result that is
+    attributable in the machine-readable output and anonymous in the PDF is
+    attributable in the wrong place, because the PDF is what goes to an
+    auditor.
+    """
+
+    EXECUTION = {
+        "hostname": "runner-07",
+        "git": {
+            "commit": "a1b2c3d4e5f6",
+            "branch": "main",
+            "dirty": False,
+            "remote": "https://github.com/posit-dev/vip.git",
+        },
+        "ci": {"provider": "github", "run_url": "https://github.com/o/r/actions/runs/5"},
+        "performed_by": {"identity": "octocat", "source": "github"},
+    }
+
+    @staticmethod
+    def _rows(execution):
+        from vip.reporting import ReportData
+
+        return dict(report_content.provenance_rows(ReportData(results=[], execution=execution)))
+
+    def test_every_execution_field_reaches_the_report(self):
+        rows = self._rows(self.EXECUTION)
+        assert rows["Performed by"] == "octocat (GitHub actor)"
+        assert rows["Run host"] == "runner-07"
+        assert rows["Commit"] == "a1b2c3d4e5f6"
+        assert rows["Branch"] == "main"
+        assert rows["CI run"] == "https://github.com/o/r/actions/runs/5"
+
+    def test_an_absent_execution_block_omits_the_rows_entirely(self):
+        """``--vip-no-attribution`` asked for this; five "not recorded" rows
+        would read as a broken run rather than a deliberate one."""
+        rows = self._rows(None)
+        for label in ("Performed by", "Run host", "Commit", "Branch", "CI run"):
+            assert label not in rows
+
+    def test_the_pre_attribution_rows_still_render_without_an_execution_block(self):
+        assert "Exit status" in self._rows(None)
+
+    def test_a_dirty_tree_is_flagged_next_to_the_commit(self):
+        """Evidence from an uncommitted tree cannot be reproduced from the
+        commit alone, so the caveat belongs in the same cell."""
+        execution = {**self.EXECUTION, "git": {**self.EXECUTION["git"], "dirty": True}}
+        assert self._rows(execution)["Commit"] == "a1b2c3d4e5f6 (uncommitted changes present)"
+
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("login", "bd (local login)"),
+            ("github", "bd (GitHub actor)"),
+            ("gitlab", "bd (GitLab user)"),
+            ("jenkins", "bd (Jenkins build user)"),
+        ],
+    )
+    def test_every_inherited_identity_says_where_it_came_from(self, source, expected):
+        """A CI actor is often a service account. Unlabelled, it would read in
+        the archived artifact exactly like a named accountable operator."""
+        execution = {**self.EXECUTION, "performed_by": {"identity": "bd", "source": source}}
+        assert self._rows(execution)["Performed by"] == expected
+
+    def test_an_identity_with_no_source_is_never_rendered_bare(self):
+        """A malformed block must not read as an explicitly named operator,
+        nor render the literal string "None"."""
+        execution = {**self.EXECUTION, "performed_by": {"identity": "bd"}}
+        assert self._rows(execution)["Performed by"] == "bd (source not recorded)"
+
+    def test_an_unrecognized_source_is_still_labelled(self):
+        """A source this version does not know about is not an explicitly named
+        operator, and must not be promoted to one by rendering it bare."""
+        execution = {**self.EXECUTION, "performed_by": {"identity": "bd", "source": "buildkite"}}
+        assert self._rows(execution)["Performed by"] == "bd (buildkite)"
+
+    def test_an_explicit_operator_is_not_labelled(self):
+        performer = {"identity": "QA Lead", "source": "explicit"}
+        execution = {**self.EXECUTION, "performed_by": performer}
+        assert self._rows(execution)["Performed by"] == "QA Lead"
+
+    def test_a_missing_field_inside_a_present_block_follows_the_none_contract(self):
+        """Present-but-partial is different from absent: the row stays, and the
+        backend renders NOT_RECORDED rather than a fabricated value."""
+        rows = self._rows({"hostname": "runner-07"})
+        assert rows["Run host"] == "runner-07"
+        assert rows["Performed by"] is None
+        assert rows["Commit"] is None
+
+    def test_a_ci_run_without_a_url_falls_back_to_the_run_id(self):
+        execution = {**self.EXECUTION, "ci": {"provider": "gitlab", "run_id": "4412"}}
+        assert self._rows(execution)["CI run"] == "4412"
 
 
 class TestUnprovenRendering:

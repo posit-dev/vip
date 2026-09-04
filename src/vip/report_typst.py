@@ -38,14 +38,19 @@ from __future__ import annotations
 import textwrap
 
 from vip.report_content import (
+    COVERAGE_LABELS,
+    COVERAGE_STYLE_KEY,
     NOT_RECORDED,
     OUTCOME_LABELS,
     OUTCOME_ORDER,
     SECONDARY_BADGE_BACKGROUND,
     SECONDARY_BADGE_BORDER,
+    TRACEABILITY_CAVEAT,
+    TRACEABILITY_RENDER_FAILURE,
     Badge,
     FeatureStepIndex,
     category_label,
+    control_rows,
     description_line,
     display_title,
     dominant_feature_description,
@@ -59,6 +64,8 @@ from vip.report_content import (
     secondary_badges_for,
     skip_reason_parts,
     summary_status,
+    traceability_summary_rows,
+    traceability_warnings,
 )
 from vip.reporting import ReportData, TestResult
 
@@ -442,10 +449,20 @@ def render_provenance_table(data: ReportData) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _paragraph(value: str, *, italic: bool = False) -> str:
+def _paragraph(
+    value: str,
+    *,
+    italic: bool = False,
+    fill: str | None = None,
+    weight: str | None = None,
+) -> str:
     options = {"size": "10pt"}
     if italic:
         options["style"] = '"italic"'
+    if fill is not None:
+        options["fill"] = fill
+    if weight is not None:
+        options["weight"] = weight
     return _block(f"#{_text(value, **options)}", above="6pt", below="6pt")
 
 
@@ -524,10 +541,116 @@ def render_details(data: ReportData, hints: dict[str, dict]) -> str:
     return "".join(parts)
 
 
-def render_document(data: ReportData, hints: dict[str, dict]) -> str:
-    """The whole PDF body, preamble included, ready to emit as a ``{=typst}`` block."""
+def _stacked(parts: list[str]) -> str:
+    """Several Typst expressions as one table cell, separated by line breaks.
+
+    A table cell must be a single expression, so multi-line content needs a
+    content block rather than concatenated ``#`` calls -- which is what
+    ``text(...)#block(...)`` produced, and Typst rejected.
+    """
+    if len(parts) == 1:
+        return parts[0]
+    return "[" + "#linebreak()".join(f"#{part}" for part in parts) + "]"
+
+
+def render_traceability(matrix) -> str:  # noqa: ANN001 - TraceabilityMatrix
+    """The compliance traceability section as Typst markup.
+
+    Every customer-supplied value passes through ``_lit`` (this module's
+    standing invariant). A control list is authored outside VIP, so a
+    description containing ``#``, ``*`` or ``$`` is live Typst markup
+    otherwise -- and these are the first fully customer-authored strings to
+    reach this backend.
+    """
+    parts = [
+        _paragraph(TRACEABILITY_CAVEAT, italic=True, fill='rgb("#6b7280")'),
+        _kv_table(
+            [
+                (label, _text(value, size="9pt"))
+                for label, value in traceability_summary_rows(matrix)
+            ]
+        ),
+    ]
+    for warning in traceability_warnings(matrix):
+        parts.append(_paragraph(warning, fill='rgb("#dc2626")', weight='"bold"'))
+
+    rows = []
+    for row in control_rows(matrix):
+        style = outcome_style(COVERAGE_STYLE_KEY[row.coverage])
+        control_parts = [_text(row.control_id, size="9pt")]
+        if row.reference:
+            control_parts.append(_text(row.reference, size="8pt", fill='rgb("#6b7280")'))
+        if row.risk:
+            control_parts.append(_text(f"risk: {row.risk}", size="8pt", fill='rgb("#6b7280")'))
+        if row.scenarios:
+            evidence = _stacked(
+                [_text(f"{t} - {s} at {w}", size="8.5pt") for t, s, w in row.scenarios]
+            )
+        else:
+            evidence = _text("no tagged scenario", size="8.5pt", style='"italic"')
+        rows.append(
+            [
+                _stacked(control_parts),
+                _text(row.description, size="9pt"),
+                # vip-chip, not vip-pill: the HTML edition renders dark text on
+                # a pale fill (outcome_badge_html), and vip-pill is a saturated
+                # fill with white text. The two editions must match.
+                _call(
+                    "vip-chip",
+                    _lit(COVERAGE_LABELS[row.coverage]),
+                    _lit(style.color),
+                    _lit(style.background),
+                ),
+                evidence,
+            ]
+        )
+    parts.append(
+        _table(
+            "(auto, 1fr, auto, 1.2fr)",
+            ["Control", "Description", "Coverage", "Evidence"],
+            rows,
+        )
+    )
+    return "".join(parts)
+
+
+def render_document(data: ReportData, hints: dict[str, dict], matrix=None, trace_error=None) -> str:  # noqa: ANN001
+    """The whole PDF body, preamble included, ready to emit as a ``{=typst}`` block.
+
+    ``matrix`` is a ``vip.traceability.TraceabilityMatrix`` or ``None``. When
+    it is ``None`` -- every run without a control list, which is nearly all of
+    them -- the output is byte-identical to before the section existed.
+
+    ``trace_error`` names why the section could not be built at all (a
+    missing/malformed control list, a results checksum mismatch). It renders
+    through ``_paragraph``, which routes the text through ``_text`` to
+    ``_lit``. An exception message is arbitrary text, and ``_lit`` escapes
+    the characters that could terminate the string literal early -- the
+    quote in particular, plus backslash -- so the message lands as inert
+    literal text inside the quotes rather than breaking out into live
+    markup. A dropped section is invisible to a regulated reader, so this
+    is a visible marker in both editions rather than a silent skip.
+    """
+    # The error branch and the matrix branch emit the same heading, so a
+    # reader of the PDF sees the section start either way instead of the
+    # section silently disappearing.
+    if trace_error:
+        trace_section = _heading("Compliance Traceability", 2) + _paragraph(
+            TRACEABILITY_RENDER_FAILURE.format(error=trace_error)
+        )
+    elif matrix is not None:
+        trace_section = _heading("Compliance Traceability", 2) + render_traceability(matrix)
+    else:
+        trace_section = ""
+
     if data.total == 0:
-        return PREAMBLE + _paragraph("No results found. Run vip verify to generate results.")
+        empty = PREAMBLE + _paragraph("No results found. Run vip verify to generate results.")
+        # The HTML cell renders the section whenever a control list is set,
+        # including over an empty results file, where the matrix is all gaps
+        # and manual controls. Returning early here would drop it from the
+        # PDF alone and split the two editions on exactly the run a reader is
+        # most likely to misread.
+        return empty + trace_section
     parts = [
         PREAMBLE,
         _heading("VIP Validation Report", 1),
@@ -539,6 +662,7 @@ def render_document(data: ReportData, hints: dict[str, dict]) -> str:
         render_summary_table(data),
         _heading("Provenance", 2),
         render_provenance_table(data),
+        trace_section,
         _heading("Failures & Skips", 2),
         _paragraph(
             "Every check that did not pass, in full. Passing checks are counted above, "

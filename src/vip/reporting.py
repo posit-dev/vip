@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +17,13 @@ else:
 
 
 VALID_FORMATS = frozenset({"json", "junit", "sarif"})
+
+# results.json schema version. Bump the minor for additive changes (a new
+# field); bump the major for a removal, a rename, or a change in the meaning
+# of an existing field. Consumers accept an unknown minor and refuse an
+# unknown major. A file with no schema_version at all predates versioning
+# and is treated as "pre-1.0".
+RESULTS_SCHEMA_VERSION = "1.0"
 
 
 @dataclass
@@ -49,6 +57,12 @@ class TestResult:
     # that gets archived/published, and skip_reason already carries the part
     # a reader actually wants.
     skip_reason: str | None = None
+    # When this check began and ended, UTC ISO 8601, from pytest's report.start
+    # and report.stop. This is the call phase, so it excludes fixture setup
+    # (except for a setup-phase skip, where it is the setup start). None for a
+    # results.json written before these fields existed.
+    started_at: str | None = None
+    finished_at: str | None = None
 
     @property
     def category(self) -> str:
@@ -134,11 +148,15 @@ class ReportData:
     # concrete-looking value (e.g. 0.0 or "unknown") so an older results.json
     # written before these fields existed loads as "not recorded" instead of
     # silently claiming a value that was never measured.
+    schema_version: str | None = None
     vip_version: str | None = None
     run_duration_seconds: float | None = None
     python_version: str | None = None
     platform: str | None = None
     basic_mode: bool | None = None
+    # Host / git / CI attribution; see vip.attribution. None when the run used
+    # --vip-no-attribution, or for a results.json predating the field.
+    execution: dict | None = None
 
     @property
     def total(self) -> int:
@@ -199,7 +217,43 @@ def load_results(path: str | Path) -> ReportData:
     if not p.exists():
         return ReportData()
 
-    raw = json.loads(p.read_text())
+    raw = json.loads(p.read_text(encoding="utf-8"))
+
+    # Guard the type before splitting. This loader's documented contract is to
+    # warn and carry on, never to raise: it runs inside the Quarto notebook
+    # cells (report/index.qmd, details.qmd, vip-report.qmd) where an exception
+    # renders as an unreadable traceback instead of a report. A hand-edited or
+    # third-party results.json carrying `"schema_version": 1.0` as a JSON
+    # number would otherwise raise AttributeError here.
+    schema_version = raw.get("schema_version")
+    if schema_version is not None and not isinstance(schema_version, str):
+        warnings.warn(
+            f"results.json schema_version is {schema_version!r}, not a string; "
+            "treating it as unversioned",
+            stacklevel=2,
+        )
+        schema_version = None
+    if schema_version:
+        theirs = schema_version.split(".", 1)[0]
+        ours = RESULTS_SCHEMA_VERSION.split(".", 1)[0]
+        if theirs != ours:
+            # int, not string: "9" > "10" lexicographically, so a string
+            # compare misreports the direction once either major reaches two
+            # digits. A non-numeric major is possible in a hand-edited file,
+            # so fall back to the string compare rather than raising inside a
+            # loader whose contract is to warn and carry on.
+            try:
+                newer = int(theirs) > int(ours)
+            except ValueError:
+                newer = theirs > ours
+            direction = "newer than" if newer else "older than"
+            warnings.warn(
+                f"results.json schema version {schema_version} is {direction} this vip "
+                f"understands ({RESULTS_SCHEMA_VERSION}); some fields may be missing "
+                "or misinterpreted",
+                stacklevel=2,
+            )
+
     results = [
         TestResult(
             nodeid=r["nodeid"],
@@ -207,12 +261,22 @@ def load_results(path: str | Path) -> ReportData:
             duration=r.get("duration") or 0.0,
             longrepr=r.get("longrepr"),
             concise_error=r.get("concise_error"),
-            markers=r.get("markers", []),
+            # `or []` as well as the default: an explicit JSON null passes
+            # through .get() untouched and would reach every consumer as a
+            # None to iterate over. This loader is deliberately lenient --
+            # it renders a report and must not raise inside a notebook cell.
+            # `vip trace` refuses the same input instead, via
+            # traceability.check_results_rows: silently reading a malformed
+            # row as untagged would drop its control tags and report a gap
+            # that does not exist.
+            markers=r.get("markers") or [],
             scenario_title=r.get("scenario_title"),
             feature_description=r.get("feature_description"),
             na_version=r.get("na_version", False),
             unproven=r.get("unproven", False),
             skip_reason=r.get("skip_reason"),
+            started_at=r.get("started_at"),
+            finished_at=r.get("finished_at"),
         )
         for r in raw.get("results", [])
     ]
@@ -235,11 +299,13 @@ def load_results(path: str | Path) -> ReportData:
         exit_status=raw.get("exit_status", 0),
         products=products,
         results=results,
+        schema_version=schema_version,
         vip_version=raw.get("vip_version"),
         run_duration_seconds=raw.get("run_duration_seconds"),
         python_version=raw.get("python_version"),
         platform=raw.get("platform"),
         basic_mode=raw.get("basic_mode"),
+        execution=raw.get("execution"),
     )
 
 

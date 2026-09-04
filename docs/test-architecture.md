@@ -80,6 +80,55 @@ VIP supports running the same scenario through different channels using product 
 
 Every feature file **must** have a product marker tag (`@connect`, `@workbench`, or `@package_manager`). The tag controls auto-skip: when a product is not configured, all scenarios with its tag are skipped automatically. Forgetting the tag breaks this mechanism and causes confusing failures.
 
+### Compliance control tagging
+
+A scenario can declare which regulatory or compliance control it verifies with an
+`@control-<slug>` Gherkin tag:
+
+```gherkin
+@connect
+Feature: 21 CFR Part 11 flavoured controls
+
+  @control-audit-trail-publish
+  Scenario: Publishing content is recorded with an actor and a timestamp
+    Given Connect is accessible at the configured URL
+    When I list recent audit log entries
+    Then each entry records an actor and a timestamp
+```
+
+Control tags do not affect the derived marker. `src/vip/gherkin.py` derives a
+feature's pytest marker from the first non-control tag it finds, skipping
+`@control-<slug>` entirely, so `@control-audit-trail @connect` and
+`@connect @control-audit-trail` both yield the marker `connect`.
+
+The product tag should still be the first tag that is not a control tag. Only control
+tags are skipped, so any other tag ahead of the product tag becomes the marker instead
+-- `@slow @connect` derives `slow`, not `connect`. The derived marker feeds the HTML
+report's per-feature grouping and the generated test catalog and feature matrix, and
+the product markers (`@connect`, `@workbench`, `@package_manager`) separately drive
+auto-skip when a product is not configured. Getting this wrong mislabels the feature
+in those outputs rather than raising an error, so it is worth a glance when adding a
+tag.
+
+Control tags become registered pytest markers automatically. `vip.plugin` pre-scans
+the feature files about to be collected and registers every `@control-<slug>` tag it
+finds via `config.addinivalue_line("markers", ...)`, so a run under `--strict-markers`
+(which regulated CI is likely to enable) does not fail on an unrecognized marker.
+
+Keep the slug to letters, digits, `-`, `.` and `_`. pytest derives a registered
+marker's name by cutting at the first `:` or `(`, so `@control-11.10(a)` would
+register as `control-11.10` while pytest-bdd applies the full tag, and collection
+would then fail under `--strict-markers` against a marker list that looks like it
+should have matched. VIP warns and skips registering such a tag rather than
+registering the truncated name. Write `@control-11-10-a`.
+
+Control tags flow into `results.json` only, as entries in a test's `markers` list.
+They do not appear in the `junit.xml` or `results.sarif` outputs produced by
+`--format` — those formats predate control tagging and were not extended to
+include it. If you need traceability evidence in CI artifacts beyond `results.json`,
+consume it via `vip trace` (see `docs/reporting.md`), not by expecting it in JUnit
+or SARIF.
+
 ### Version gating
 
 Use the `min_version` marker for features that only exist in certain product versions:
@@ -148,7 +197,7 @@ Two failure modes to watch for, both of which have bitten this suite:
 
 **Skip and unproven are not the same statement.** A skip says "there was nothing here to check, and the run is still complete". Unproven says "this was supposed to be checked and was not, so treat the run as incomplete". Collapsing the two is how `vip verify` came to exit 0 against a configured product whose every test had silently fallen away (#596): to anyone reading the report, "we did not look" was indistinguishable from "we looked and it was fine".
 
-An unproven result carries through the whole pipeline -- its own `UNPROVEN` badge in the HTML report, an `UNPROVEN:`-prefixed message in JUnit, SARIF level `warning`, and exit code 6 from the run itself. `--allow-unproven` restores the old behaviour for pipelines that need it. Reach for `attest.unproven` whenever a *configured* capability goes unverified; reach for `attest.not_applicable` when skipping is the correct and final answer for this deployment. When in doubt, ask which one the person reading the report would want to be told.
+An unproven result shows up throughout the pipeline -- its own `UNPROVEN` badge in the HTML report, an `UNPROVEN:`-prefixed message in JUnit, SARIF level `warning`, and exit code 6 from the run itself. `--allow-unproven` restores the old behaviour for pipelines that need it. Reach for `attest.unproven` whenever a *configured* capability goes unverified. Reach for `attest.not_applicable` when skipping is the correct and final answer for this deployment. When in doubt, ask which one the person reading the report would want to be told.
 
 Skips carry the same burden of accuracy as failures. A skip reason states *why* there was nothing to verify, so it must be true: `test_repos.py` used to report "package not available — repo may not be synced yet" after probing only the first repo whose name matched, when a synced mirror sitting beside it served the package fine. Probe every candidate before concluding anything, and name all of them in the reason.
 
@@ -331,14 +380,16 @@ vip scaffold --template cross-product --output ./my-custom-tests
 ```
 
 `--template` defaults to `cross-product` (the pre-existing behavior of `vip scaffold --output DIR`
-is unchanged). Two canonical templates ship with VIP:
+is unchanged). Three canonical templates ship with VIP:
 
 - `minimal` (`examples/custom_tests/`) — a single-scenario HTTP health check against your own
   configured product; the best starting point for a new extension
 - `cross-product` (`examples/cross_product_validation/`) — a full GxP validation example that
   verifies R/Python runtime versions and package installability across Connect and Workbench
+- `21cfr-part11-validation` (`examples/21CFR_part11_validation/`) — compliance control tagging plus a
+  `controls.toml`, the worked starting point for a `vip trace` traceability matrix
 
-Both follow the same four-layer architecture as the built-in suite. Every scaffolded directory
+All three follow the same four-layer architecture as the built-in suite. Every scaffolded directory
 also gets an `AGENTS.md`, generated from a single shared source (`examples/_shared/AGENTS.md`),
 documenting the extension contract: the auto-skip rules, `min_version` gating, and an enumerated
 inventory of the public fixtures, registered markers, and client entry points an extension may

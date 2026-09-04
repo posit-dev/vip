@@ -13,8 +13,9 @@ compiles the real document end to end.
 
 from __future__ import annotations
 
+from conftest import matrix_from_statuses
 from vip import report_typst
-from vip.report_content import NA_VERSION_EXPLANATION
+from vip.report_content import COVERAGE_STYLE_KEY, NA_VERSION_EXPLANATION, outcome_style
 from vip.reporting import ReportData, TestResult
 
 # Typst metacharacters that must never reach the document outside a string
@@ -161,6 +162,28 @@ class TestDocument:
         assert "No results found" in markup
         assert markup.startswith(report_typst.PREAMBLE)
 
+    def test_empty_results_still_carry_the_matrix_when_one_was_asked_for(self):
+        """index.qmd renders the section at zero results, so the PDF must too.
+
+        Returning early on an empty results file dropped the section from the
+        PDF alone, splitting the two editions on exactly the run a reader is
+        most likely to misread -- one where every automated control is a gap.
+        """
+        from vip.traceability import ControlSpec, build_traceability_matrix
+
+        matrix = build_traceability_matrix(
+            ReportData(), {"audit-trail": ControlSpec("audit-trail", "An audit trail exists")}
+        )
+        markup = report_typst.render_document(ReportData(), {}, matrix)
+        assert "No results found" in markup
+        assert report_typst._lit("Compliance Traceability") in markup
+        assert report_typst._lit("audit-trail") in markup
+
+    def test_empty_results_without_a_matrix_are_unchanged(self):
+        assert report_typst.render_document(ReportData(), {}, None) == (
+            report_typst.render_document(ReportData(), {})
+        )
+
     def test_document_carries_every_section(self):
         data = ReportData(
             deployment_name="Acme",
@@ -190,3 +213,59 @@ class TestDocument:
         data = ReportData(results=[TestResult(nodeid="a.py::t", outcome="passed")])
         markup = report_typst.render_document(data, {})
         assert '"not recorded"' in markup
+
+    def test_render_document_shows_a_trace_error_instead_of_dropping_the_section(self):
+        out = report_typst.render_document(ReportData(), {}, matrix=None, trace_error="boom")
+        assert "boom" in out
+
+    def test_a_trace_error_is_escaped_for_typst(self):
+        """An exception message can carry #, * or $, which are live Typst markup.
+
+        HOSTILE (module-level, shared with TestEscaping) carries a `#panic(...)`
+        call, math, emphasis, and an unescaped quote. The live-markup form must
+        never appear, and the text must land inside an escaped string literal --
+        the same invariant TestEscaping checks for card content.
+        """
+        out = report_typst.render_document(ReportData(), {}, matrix=None, trace_error=HOSTILE)
+        assert '#panic("owned")' not in out
+        assert '\\"owned\\"' in out
+        # Both branches emit the same heading, so a PDF reader sees the section
+        # start whether the matrix built or the render failed.
+        assert report_typst._lit("Compliance Traceability") in out
+
+
+class TestCoverageBadge:
+    def test_coverage_badge_uses_the_same_chip_as_an_outcome(self):
+        """vip-pill is a saturated fill with white text; the HTML edition is a chip."""
+        matrix = matrix_from_statuses(statuses={"c1": ["passed"]})
+        out = report_typst.render_traceability(matrix)
+        assert "vip-chip" in out
+        assert "vip-pill" not in out
+
+        # Verify colors are in the right order: fg (color) before bg (background).
+        style = outcome_style(COVERAGE_STYLE_KEY["covered"])
+        fg_color = f'"{style.color}"'
+        bg_color = f'"{style.background}"'
+        assert fg_color in out
+        assert bg_color in out
+        # The fg must appear before bg in the vip-chip(...) call.
+        fg_pos = out.find(fg_color)
+        bg_pos = out.find(bg_color)
+        assert fg_pos < bg_pos, "fg color must appear before bg color in vip-chip call"
+
+    def test_caveat_renders_in_gray_italic(self):
+        """The caveat matches HTML: gray #6b7280 italic."""
+        matrix = matrix_from_statuses(statuses={"c1": ["passed"]})
+        out = report_typst.render_traceability(matrix)
+        # Caveat should have gray fill and italic style.
+        assert 'rgb("#6b7280")' in out
+        assert 'style: "italic"' in out
+
+    def test_warning_renders_in_red_bold(self):
+        """Each warning matches HTML: red #dc2626 bold."""
+        matrix = matrix_from_statuses(statuses={"c1": ["failed"]})
+        out = report_typst.render_traceability(matrix)
+        # A failing control produces a covered-but-not-passing warning, which
+        # must render in red and bold.
+        assert 'fill: rgb("#dc2626")' in out
+        assert 'weight: "bold"' in out

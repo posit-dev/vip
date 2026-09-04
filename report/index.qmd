@@ -58,3 +58,52 @@ if data.results:
     ))
 display(HTML(report_html.render_actionable_cards(data, hints)))
 ```
+
+```{python}
+#| echo: false
+# Rendered only when VIP_CONTROLS names a control list. Scoped to one render
+# via the environment rather than a file copied into this directory: the
+# report directory survives between runs, so a copied controls.toml would make
+# every later plain `vip report` sprout a compliance section nobody asked for,
+# built from a stale list.
+#
+# Nothing here may raise. A failure in a notebook cell renders as a traceback
+# instead of a report, so a missing or malformed control list, or a results
+# checksum that fails verification, becomes a visible marker in the section
+# instead -- the except branch below still shows the heading rather than
+# dropping the section silently.
+import os
+
+_controls = os.environ.get("VIP_CONTROLS")
+if _controls:
+    try:
+        from vip.traceability import (
+            build_traceability_matrix,
+            load_controls,
+            verify_results_checksum,
+        )
+
+        _results_path = Path("results.json")
+        # Verify rather than only digest. --controls makes this a compliance
+        # artifact, and the sidecar attestation in the provenance block is
+        # worthless if nothing checked it. verify_results_checksum raises, and
+        # the except below is now a visible marker rather than a dropped
+        # section, so raising here is safe.
+        _digest, _verified = verify_results_checksum(_results_path)
+        _matrix = build_traceability_matrix(
+            data,
+            load_controls(_controls),
+            results_sha256=_digest,
+            results_sha256_sidecar_verified=_verified or None,
+        )
+        display(Markdown("## Compliance Traceability"))
+        display(HTML(report_html.render_traceability(_matrix)))
+    except Exception as exc:  # noqa: BLE001 - a report must render regardless
+        display(Markdown("## Compliance Traceability"))
+        # HTML, not Markdown: IPython.display.Markdown passes raw HTML
+        # through in Quarto, and this message carries the VIP_CONTROLS path
+        # and control ids out of a customer-authored controls.toml.
+        # render_traceability_error escapes it the way every other value
+        # report_html emits is escaped.
+        display(HTML(report_html.render_traceability_error(exc)))
+```

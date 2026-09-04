@@ -24,12 +24,17 @@ from __future__ import annotations
 from html import escape as _esc
 
 from vip.report_content import (
+    COVERAGE_LABELS,
+    COVERAGE_STYLE_KEY,
     NOT_RECORDED,
     OUTCOME_LABELS,
     OUTCOME_ORDER,
+    TRACEABILITY_CAVEAT,
+    TRACEABILITY_RENDER_FAILURE,
     Badge,
     FeatureStepIndex,
     category_label,
+    control_rows,
     description_line,
     display_title,
     dominant_feature_description,
@@ -43,6 +48,8 @@ from vip.report_content import (
     secondary_badges_for,
     skip_reason_parts,
     summary_status,
+    traceability_summary_rows,
+    traceability_warnings,
 )
 from vip.reporting import ReportData, TestResult
 
@@ -411,3 +418,74 @@ def render_provenance_table(data: ReportData) -> str:
         for label, value in provenance_rows(data)
     )
     return f"<table><tbody>{body}</tbody></table>"
+
+
+def render_traceability_error(error: object) -> str:
+    """The visible marker shown when the traceability section could not be built.
+
+    ``error`` is the exception that stopped it -- a missing or malformed
+    control list, a checksum that failed verification. Its message carries
+    the ``VIP_CONTROLS`` path and control ids read straight out of a
+    customer-authored ``controls.toml``, which makes it the same fully
+    untrusted text ``render_traceability`` describes, and it goes through
+    ``_esc`` for the same reason. ``IPython.display.Markdown`` passes raw
+    HTML through in Quarto, so rendering this message as Markdown put
+    customer-controlled markup into a publicly published page; the Typst
+    edition already routes the identical value through ``_lit``.
+
+    A dropped section is invisible to a regulated reader, so the failure is
+    a visible marker in both editions rather than a silent skip -- the
+    caller still emits the heading alongside this fragment.
+    """
+    message = TRACEABILITY_RENDER_FAILURE.format(error=_esc(str(error)))
+    return f"<p class='trace-warning'>{message}</p>"
+
+
+def render_traceability(matrix) -> str:  # noqa: ANN001 - vip.traceability.TraceabilityMatrix
+    """The compliance traceability section: summary counts, then one row per control.
+
+    Every customer-supplied value goes through ``_esc``. A control list is
+    authored outside VIP entirely, so its descriptions and references are the
+    first fully untrusted text this backend renders.
+    """
+    summary = "".join(
+        f"<tr><th>{_esc(label)}</th><td>{_esc(value)}</td></tr>"
+        for label, value in traceability_summary_rows(matrix)
+    )
+    parts = [
+        f"<p class='trace-caveat'>{_esc(TRACEABILITY_CAVEAT)}</p>",
+        f"<table><tbody>{summary}</tbody></table>",
+    ]
+    for warning in traceability_warnings(matrix):
+        parts.append(f"<p class='trace-warning'><strong>{_esc(warning)}</strong></p>")
+
+    rows = []
+    for row in control_rows(matrix):
+        style = outcome_style(COVERAGE_STYLE_KEY[row.coverage])
+        badge = (
+            f"<span class='vip-badge' style='color:{style.color};"
+            f"background:{style.background}'>{_esc(COVERAGE_LABELS[row.coverage])}</span>"
+        )
+        if row.scenarios:
+            evidence = "<br>".join(
+                f"{_esc(title)} &mdash; {_esc(status)} at {_esc(when)}"
+                for title, status, when in row.scenarios
+            )
+        else:
+            evidence = "<em>no tagged scenario</em>"
+        # Reference and risk sit under the control id as sublines rather than
+        # as their own columns: the Typst edition's table is already at its
+        # width budget with four columns, and the two editions must match.
+        sublines = "".join(
+            f"<br><small>{_esc(text)}</small>"
+            for text in (row.reference, f"risk: {row.risk}" if row.risk else "")
+            if text
+        )
+        reference = sublines
+        rows.append(
+            f"<tr><td><code>{_esc(row.control_id)}</code>{reference}</td>"
+            f"<td>{_esc(row.description)}</td><td>{badge}</td><td>{evidence}</td></tr>"
+        )
+    header = "<tr><th>Control</th><th>Description</th><th>Coverage</th><th>Evidence</th></tr>"
+    parts.append(f"<table><thead>{header}</thead><tbody>{''.join(rows)}</tbody></table>")
+    return "".join(parts)
