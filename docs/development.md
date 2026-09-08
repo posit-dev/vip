@@ -32,16 +32,21 @@ just format         # ruff format
 Without just, run ruff directly:
 
 ```bash
-uv run ruff check src/ src/vip_tests/        # lint
-uv run ruff format --check src/ src/vip_tests/  # format check
-uv run ruff check --fix src/ src/vip_tests/  # auto-fix lint
-uv run ruff format src/ src/vip_tests/       # reformat
+uv run ruff check src/ selftests/ examples/ docker/        # lint
+uv run ruff format --check src/ selftests/ examples/ docker/  # format check
+uv run ruff check --fix src/ selftests/ examples/ docker/  # auto-fix lint
+uv run ruff format src/ selftests/ examples/ docker/       # reformat
 ```
 
 ## Type checking
 
 ```bash
-uv run mypy src/
+just typecheck
+
+# Without just. `--extra dev` matters: mypy lives in the dev extra, which a bare
+# `uv sync` does not install. The path is `src/vip/`, not `src/` -- CI does not
+# type-check `src/vip_tests/`.
+uv run --extra dev mypy src/vip/
 ```
 
 ## The lockfile
