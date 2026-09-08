@@ -907,6 +907,60 @@ def _ensure_terminal_open(page: Page, timeout: int = 30_000) -> None:
     expect(_visible_terminal_input(page)).to_be_visible(timeout=timeout)
 
 
+# Max characters of captured output quoted in a timeout message. Enough to show
+# a clone's progress lines or a shell error, without pasting a whole build log
+# into a pytest failure.
+_TIMEOUT_CONTENT_CHARS = 400
+
+
+def _timeout_diagnostics(
+    last_content: str | None,
+    last_readback_error: str | None,
+    readback_successes: int,
+) -> str:
+    """Explain a ``terminal_run`` timeout from what the polling loop observed.
+
+    A timeout only ever says the done marker never appeared. That is consistent
+    with three unrelated faults, and the caller cannot act until they are told
+    apart:
+
+    * the readback never worked -- the console never became usable, so nothing is
+      known about the command itself (report the readback error, not the command);
+    * the readback worked and the file was empty -- the command never started, so
+      the terminal never received the typed input;
+    * the readback worked and the file held output -- the command started and was
+      still running when the budget ran out, so the timeout is the thing to
+      question.
+
+    Returns a sentence for each case, with the captured output tail truncated to
+    :data:`_TIMEOUT_CONTENT_CHARS`.
+    """
+    if readback_successes == 0:
+        detail = last_readback_error or "no error recorded"
+        return (
+            "The capture file was never read back successfully "
+            f"({readback_successes} successful reads), so the command's own progress is "
+            f"unknown -- the console, not the command, is the likely fault. "
+            f"Last readback error: {detail}"
+        )
+
+    content = last_content or ""
+    if not content.strip():
+        return (
+            f"The capture file read back empty after {readback_successes} successful "
+            "reads, so the command appears never to have started -- suspect the "
+            "terminal never received the typed command."
+        )
+
+    tail = content[-_TIMEOUT_CONTENT_CHARS:]
+    elided = "..." if len(content) > _TIMEOUT_CONTENT_CHARS else ""
+    return (
+        f"The capture file read back after {readback_successes} successful reads but "
+        "never contained the done marker, so the command started and was still "
+        f"running when the budget expired. Last captured output: {elided}{tail!r}"
+    )
+
+
 def terminal_run(
     page: Page,
     cmd: str,
@@ -1002,6 +1056,14 @@ def terminal_run(
     deadline = time.monotonic() + timeout / 1000.0
     poll_interval = 1.0
 
+    # Readback bookkeeping, reported if this call times out. A timeout means the
+    # marker never appeared, but *why* splits three ways -- the command never
+    # started, it is still running, or it finished and the readback could not be
+    # read -- and only these values distinguish them. See _timeout_diagnostics.
+    last_content: str | None = None
+    last_readback_error: str | None = None
+    readback_successes = 0
+
     if ide == "vscode":
         # VS Code: poll the one-line sentinel file (donefile) in the Monaco
         # editor. It is a single line, so Monaco's viewport virtualization
@@ -1013,8 +1075,11 @@ def terminal_run(
                 _open_file_in_vscode_editor(page, donefile, timeout=5_000)
                 marker_text = _read_vscode_editor_text(page, timeout=5_000)
                 _close_active_editor(page)
-            except Exception:
+                readback_successes += 1
+                last_content = marker_text
+            except Exception as exc:
                 marker_text = ""
+                last_readback_error = f"{type(exc).__name__}: {exc}"
             parsed = _parse_done_marker(marker_text, done_marker)
             if parsed is not None:
                 _, exit_code = parsed
@@ -1082,14 +1147,18 @@ def terminal_run(
                 attempt_ms = remaining_ms
             try:
                 content = read_file(page, tmpfile, timeout=attempt_ms, lang=readback_lang)
-            except ExecError:
+            except ExecError as exc:
+                last_readback_error = f"ExecError: {exc}"
                 if ide == "positron":
                     time.sleep(poll_interval)
                     continue
                 raise
-            except Exception:
+            except Exception as exc:
+                last_readback_error = f"{type(exc).__name__}: {exc}"
                 time.sleep(poll_interval)
                 continue
+            readback_successes += 1
+            last_content = content
             parsed = _parse_done_marker(content, done_marker)
             if parsed is not None:
                 output, exit_code = parsed
@@ -1101,7 +1170,8 @@ def terminal_run(
             time.sleep(poll_interval)
 
     raise ExecError(
-        f"terminal_run timed out after {timeout}ms waiting for done marker in {tmpfile!r}"
+        f"terminal_run timed out after {timeout}ms waiting for done marker in {tmpfile!r}. "
+        + _timeout_diagnostics(last_content, last_readback_error, readback_successes)
     )
 
 
