@@ -22,6 +22,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenarios, then, when
 
+from vip import attest
 from vip.clients.kubernetes import KubernetesClient
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
@@ -84,7 +85,7 @@ def _launch_session(page: Page, session_name: str, profile: str | None = None) -
                     raise ResourceProfileDisabled(profile)
                 option.click(timeout=TIMEOUT_QUICK)
         else:
-            pytest.skip(f"Resource profile dropdown not available; cannot select '{profile}'")
+            attest.unproven(f"Resource profile dropdown not available; cannot select '{profile}'")
 
     page.fill(NewSessionDialog.SESSION_NAME, session_name)
 
@@ -135,30 +136,34 @@ def _parse_memory_gib(mem_str: str) -> float:
 def k8s_cluster_configured(vip_config) -> KubernetesClient:
     k8s_cfg = vip_config.workbench.kubernetes
     if not k8s_cfg.is_configured:
-        pytest.skip("workbench.kubernetes is not configured (set enabled = true in vip.toml)")
+        attest.not_applicable(
+            "workbench.kubernetes is not configured (set enabled = true in vip.toml)"
+        )
     try:
         return KubernetesClient(namespace=k8s_cfg.namespace)
     except RuntimeError as exc:
-        pytest.skip(str(exc))
+        attest.unproven(str(exc))
 
 
 @given("a maximum session count is configured")
 def max_session_count_configured(vip_config):
     if vip_config.workbench.kubernetes.max_sessions is None:
-        pytest.skip("workbench.kubernetes.max_sessions is not set in vip.toml")
+        attest.not_applicable("workbench.kubernetes.max_sessions is not set in vip.toml")
 
 
 @given("node-pool-to-profile mappings are configured")
 def node_pool_profiles_configured(vip_config):
     if not vip_config.workbench.kubernetes.node_pool_profiles:
-        pytest.skip("workbench.kubernetes.node_pool_profiles is not configured in vip.toml")
+        attest.not_applicable(
+            "workbench.kubernetes.node_pool_profiles is not configured in vip.toml"
+        )
 
 
 @given("resource limit expectations are configured")
 def resource_limits_configured(vip_config):
     k8s_cfg = vip_config.workbench.kubernetes
     if not k8s_cfg.profile_cpu_limit and not k8s_cfg.profile_memory_limit_gib:
-        pytest.skip(
+        attest.not_applicable(
             "workbench.kubernetes.profile_cpu_limit / profile_memory_limit_gib "
             "are not configured in vip.toml"
         )
@@ -242,7 +247,7 @@ def launch_profiled_session(page: Page, vip_config) -> list[dict]:
     try:
         _launch_session(page, name, profile=profile)
     except ResourceProfileDisabled as exc:
-        pytest.skip(
+        attest.not_applicable(
             f"Resource profile '{exc.profile}' is disabled for the "
             "authenticated user (likely a group/entitlement restriction)"
         )
@@ -263,7 +268,7 @@ def launch_limited_session(page: Page, vip_config) -> list[dict]:
     try:
         _launch_session(page, name, profile=profile)
     except ResourceProfileDisabled as exc:
-        pytest.skip(
+        attest.not_applicable(
             f"Resource profile '{exc.profile}' is disabled for the "
             "authenticated user (likely a group/entitlement restriction)"
         )

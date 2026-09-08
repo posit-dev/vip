@@ -14,8 +14,9 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
-import pytest
 from pytest_bdd import parsers, scenarios, then, when
+
+from vip import attest
 
 # ---------------------------------------------------------------------------
 # Scenarios
@@ -34,16 +35,16 @@ def check_ssl_cert(product, vip_config):
     product_key = product.lower().replace(" ", "_")
     pc = vip_config.product_config(product_key)
     if not pc.is_configured:
-        pytest.skip(f"{product} is not configured")
+        attest.not_applicable(f"{product} is not configured")
 
     product_url = pc.url
     parsed = urlparse(product_url)
     if parsed.scheme != "https":
-        pytest.skip(f"URL is not HTTPS: {product_url}")
+        attest.not_applicable(f"URL is not HTTPS: {product_url}")
     if vip_config.insecure:
         # The user explicitly disabled certificate verification
         # (tls.insecure=true) — asserting cert validity contradicts that. #268.
-        pytest.skip("tls.insecure=true — certificate validity checks are disabled")
+        attest.not_applicable("tls.insecure=true — certificate validity checks are disabled")
 
     hostname = parsed.hostname
     port = parsed.port or 443
@@ -55,7 +56,7 @@ def check_ssl_cert(product, vip_config):
         # host is unreachable, which is not a certificate finding. Same
         # connect-vs-handshake split as ``_attempt_tls``/``_ConnectError``
         # below: only the TCP connect stage is skip-worthy. #555.
-        pytest.skip(f"Could not connect to {hostname}:{port}: {exc}")
+        attest.unproven(f"Could not connect to {hostname}:{port}: {exc}")
 
     ctx = ssl.create_default_context()
     try:
@@ -149,12 +150,12 @@ def request_http(product, vip_config):
     product_key = product.lower().replace(" ", "_")
     pc = vip_config.product_config(product_key)
     if not pc.is_configured:
-        pytest.skip(f"{product} is not configured")
+        attest.not_applicable(f"{product} is not configured")
 
     product_url = pc.url
     if urlparse(product_url).scheme != "https":
         # No HTTPS endpoint to redirect to on an HTTP-only deployment. See #268.
-        pytest.skip(f"URL is not HTTPS: {product_url}")
+        attest.not_applicable(f"URL is not HTTPS: {product_url}")
     http_url = product_url.replace("https://", "http://", 1)
     parsed = urlparse(http_url)
     if parsed.scheme != "http":
@@ -365,12 +366,12 @@ def attempt_tls_connection(product, vip_config):
     product_key = product.lower().replace(" ", "_")
     pc = vip_config.product_config(product_key)
     if not pc.is_configured:
-        pytest.skip(f"{product} is not configured")
+        attest.not_applicable(f"{product} is not configured")
 
     product_url = pc.url
     parsed = urlparse(product_url)
     if parsed.scheme != "https":
-        pytest.skip(f"URL is not HTTPS: {product_url}")
+        attest.not_applicable(f"URL is not HTTPS: {product_url}")
 
     hostname = parsed.hostname
     port = parsed.port or 443
@@ -396,7 +397,7 @@ def attempt_tls_connection(product, vip_config):
             ),
         }
     except _ConnectError as exc:
-        pytest.skip(f"Could not reach {hostname}:{port}: {exc}")
+        attest.unproven(f"Could not reach {hostname}:{port}: {exc}")
 
     unsupported = [
         label
@@ -404,7 +405,7 @@ def attempt_tls_connection(product, vip_config):
         if results[key]["status"] == "client_unsupported"
     ]
     if unsupported:
-        pytest.skip(
+        attest.unproven(
             f"Runner cannot configure {', '.join(unsupported)} — cannot "
             f"assess server TLS enforcement on this client."
         )

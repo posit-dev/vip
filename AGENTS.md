@@ -389,6 +389,7 @@ Register warning filters in `src/vip/plugin.py::pytest_configure` (via `config.a
 -   Adding a Workbench scenario that ends the shared auth session (sign-out, session revocation, password change) without ordering it last *and* restoring the session afterwards. Under `--interactive-auth` / `--headless-auth` every Workbench scenario shares one account, so ending that session breaks every scenario still running on other xdist workers, plus the cached auth session on disk. `test_workbench_signout` is the worked example.
 -   Creating `.py` step files without a matching `.feature` file (or vice versa).
 -   Forgetting the `@connect`/`@workbench`/`@package_manager` tag in feature files (breaks auto-skip).
+-   Adding a bare `pytest.skip()` to a file listed in `selftests/test_skip_triage.py`. Every skip in those files has been deliberately classified, and `test_skip_triage.py` fails the build if a new unclassified one appears — use `attest.unproven()` or `attest.not_applicable()`.
 -   Reaching for a bare `pytest.skip()` when the real situation is "I could not check this". That is the failure mode #616 exists to close: an unverified deployment reporting itself as a passing one. If the product was configured and you still could not run the check, use `vip.attest.unproven()`.
 -   Using non-conventional PR titles (must be `type: description`).
 -   Relying on multi-line formatting to shorten lines -- `ruff format` will collapse list comprehensions back to one line if they fit within 100 chars. Extract a helper function instead.
