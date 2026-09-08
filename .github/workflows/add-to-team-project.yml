@@ -13,6 +13,7 @@ permissions: {}
 jobs:
   add-to-team-project:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Map label to project URL
         id: project-url

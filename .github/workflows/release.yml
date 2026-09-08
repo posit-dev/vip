@@ -26,6 +26,9 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    # Covers the version bump, changelog generation, `just relock`, and the
+    # commit/tag/push — infrequent (weekly) so a generous ceiling costs nothing.
+    timeout-minutes: 20
     permissions:
       contents: write
     concurrency:

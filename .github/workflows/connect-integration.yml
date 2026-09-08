@@ -35,6 +35,9 @@ jobs:
   connect-integration:
     name: Integration tests against Connect ${{ matrix.connect-version }}
     runs-on: ubuntu-latest
+    # Measured ~3.7 min per leg (release/preview); this is a drift detector, not
+    # a merge gate, so a generous ceiling is fine.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -195,6 +198,7 @@ jobs:
   notify-on-failure:
     name: Notify Slack on failure
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: connect-integration
     if: ${{ failure() }}
     steps:
