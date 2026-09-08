@@ -793,13 +793,14 @@ def workbench_login(
             "Pass --interactive-auth or --headless-auth to pre-load browser storage state."
         )
 
+    _debug_602: list[str] = []
+
     page.goto(workbench_url)
     page.wait_for_load_state("load")
-    print(f"DEBUG_602: after initial goto, url={page.url!r}", flush=True)
+    _debug_602.append(f"after initial goto, url={page.url!r}")
 
     # Fast path: already logged in (common with interactive_auth)?
     if homepage_logo.is_visible():
-        print("DEBUG_602: homepage_logo visible on initial goto, returning", flush=True)
         return
 
     # A valid session cookie can redirect straight into a running session's IDE
@@ -808,16 +809,14 @@ def workbench_login(
     # (it's neither a login page nor the homepage). Same case test_sessions.py
     # handles when navigating back from a session: go to /home explicitly.
     if "/s/" in page.url:
-        print("DEBUG_602: '/s/' branch taken, navigating to /home", flush=True)
         page.goto(f"{workbench_url}/home")
         page.wait_for_load_state("load")
-        print(
-            f"DEBUG_602: after /home goto, url={page.url!r} "
+        _debug_602.append(
+            f"after /home goto, url={page.url!r} "
             f"homepage_logo.is_visible={homepage_logo.is_visible()} "
-            f"title={page.title()!r}",
-            flush=True,
+            f"title={page.title()!r} "
+            f"body={page.locator('body').inner_text()[:300]!r}"
         )
-        print(f"DEBUG_602: body snippet={page.locator('body').inner_text()[:500]!r}", flush=True)
         if homepage_logo.is_visible():
             return
 
@@ -927,6 +926,10 @@ def workbench_login(
         try:
             login_form.wait_for(state="visible", timeout=TIMEOUT_QUICK)
         except Exception:
+            _debug_602.append(
+                f"attempt {attempt}: login_form not visible, url={page.url!r} "
+                f"title={page.title()!r} body={page.locator('body').inner_text()[:300]!r}"
+            )
             continue
 
         # Fill and submit
@@ -958,7 +961,7 @@ def workbench_login(
             raise AssertionError(f"Login failed: {error_text or 'Unknown error'}")
         # Transient error (e.g., rate limit) - retry
 
-    raise AssertionError(f"Login failed after {max_retries} attempts")
+    raise AssertionError(f"Login failed after {max_retries} attempts. DEBUG_602: {_debug_602}")
 
 
 # ---------------------------------------------------------------------------
