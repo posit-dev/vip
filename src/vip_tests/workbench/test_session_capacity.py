@@ -28,6 +28,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_QUICK,
     ResourceProfileDisabled,
     _option_is_disabled,
+    cap_auto_detected_profiles,
     capacity_session_prefix,
     format_capacity_failure,
     quit_owned_sessions_via_page,
@@ -185,7 +186,9 @@ def launch_sessions(page: Page, vip_config):
                 attest.not_applicable(
                     f"All resource profiles are disabled for the authenticated user: {names}"
                 )
-            profiles_to_test = enabled
+            # A host that advertises N profiles cannot necessarily run all N at
+            # once, so launch only the smallest few (#631).
+            profiles_to_test = cap_auto_detected_profiles(enabled)
         else:
             # No profiles dropdown — launch with default.
             profiles_to_test = [None]
