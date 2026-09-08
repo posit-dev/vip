@@ -26,8 +26,8 @@ Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `py
 Ruff is the linter and formatter. CI enforces both. Always run checks before committing:
 
 ``` bash
-uv run ruff check src/ src/vip_tests/ selftests/ examples/
-uv run ruff format --check src/ src/vip_tests/ selftests/ examples/
+uv run ruff check src/ selftests/ examples/ docker/
+uv run ruff format --check src/ selftests/ examples/ docker/
 ```
 
 Or with just:
@@ -36,7 +36,7 @@ Or with just:
 just check
 ```
 
-Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. All Python directories (`src/`, `src/vip_tests/`, `selftests/`, `examples/`) must pass. CI pins ruff to version 0.15.0 -- do not change the version without updating `.github/workflows/ci.yml`.
+Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. All Python directories (`src/`, which includes `src/vip_tests/`, plus `selftests/`, `examples/` and `docker/`) must pass. `docker/` is easy to forget and holds `docker/playwright-smoke.py`. CI pins ruff to version 0.15.0 -- do not change the version without updating `.github/workflows/ci.yml`.
 
 Auto-fix before committing:
 
@@ -393,6 +393,5 @@ Register warning filters in `src/vip/plugin.py::pytest_configure` (via `config.a
 -   Reaching for a bare `pytest.skip()` when the real situation is "I could not check this". That is the failure mode #616 exists to close: an unverified deployment reporting itself as a passing one. If the product was configured and you still could not run the check, use `vip.attest.unproven()`.
 -   Using non-conventional PR titles (must be `type: description`).
 -   Relying on multi-line formatting to shorten lines -- `ruff format` will collapse list comprehensions back to one line if they fit within 100 chars. Extract a helper function instead.
--   Importing a pytest-bdd step module (anything under `src/vip_tests/**` that calls `@scenario` / `scenarios()`) from inside a selftest. `@scenario` inspects the caller's frame at import time, so importing it mid-test raises `IndexError: list index out of range` — and only under some orderings, so it passes locally and fails in CI under `pytest-randomly`. Put the helper you want to test in `conftest.py` and import it from there, or assert via `--collect-only` in a subprocess the way `selftests/test_workbench_ordering.py` does.
--   Running selftests with `-p no:randomly`. CI runs them randomized; disabling the plugin hides exactly the order-dependent failures it exists to catch.
+-   Importing a pytest-bdd step module (anything under `src/vip_tests/**` that calls `@scenario` / `scenarios()`) from inside a selftest. `@scenario` inspects the caller's frame at import time, so importing it mid-test raises `IndexError: list index out of range` — and only under some orderings, so it can pass in one run and fail in another as xdist redistributes tests across workers. Put the helper you want to test in `conftest.py` and import it from there, or assert via `--collect-only` in a subprocess the way `selftests/test_workbench_ordering.py` does.
 -   Bypassing `vip install` with raw `uv run playwright install --with-deps chromium` (or `playwright install chromium`) in setup recipes, Dockerfiles, CI workflows, or docs. The whole `vip uninstall` reversibility relies on the `.vip-install.json` manifest that only `vip install` writes -- a raw `playwright install` leaves no record. The only acceptable alternative is `uv run vip install --skip-system` (used by CI workflows where the runner already has system libs), which still records the Playwright cache.

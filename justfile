@@ -48,12 +48,14 @@ check: lint format-check
 fix: lint-fix format
 
 # Run mypy type checker
+# --extra dev: mypy is in the dev extra, which a bare `uv sync` does not install.
 typecheck:
-    uv run mypy src/vip/
+    uv run --extra dev mypy src/vip/
 
 # Run selftests with coverage
+# --extra dev: pytest-cov is in the dev extra, which a bare `uv sync` does not install.
 coverage:
-    uv run pytest selftests/ --cov=src/vip --cov-report=term-missing
+    uv run --extra dev pytest selftests/ --cov=src/vip --cov-report=term-missing
 
 # Run selftests (no products required)
 selftest *ARGS:
@@ -61,15 +63,15 @@ selftest *ARGS:
 
 # Run the full VIP test suite against configured products
 test *ARGS:
-    uv run pytest tests/ {{ ARGS }}
+    uv run pytest src/vip_tests/ {{ ARGS }}
 
 # Run tests for a specific product (connect, workbench, package_manager)
 test-product PRODUCT:
-    uv run pytest tests/ -m {{ PRODUCT }}
+    uv run pytest src/vip_tests/ -m {{ PRODUCT }}
 
 # Generate the Quarto report from product test results
 report *ARGS:
-    uv run pytest tests/ {{ ARGS }}
+    uv run pytest src/vip_tests/ {{ ARGS }}
     cd report && uv run quarto render
 
 # Generate test catalog and feature matrix JSON for the website
