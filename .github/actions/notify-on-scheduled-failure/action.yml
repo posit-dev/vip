@@ -43,8 +43,18 @@ runs:
         # is only eventually consistent, and reads a colon as a qualifier separator --
         # none of which a de-duplication key can tolerate. `--state open` is what makes
         # closing the issue the way to ask for a fresh one on the next failure.
-        EXISTING=$(gh issue list --state open --limit 200 --json number,title \
-          | jq -r --arg t "${TITLE}" 'map(select(.title == $t)) | .[0].number // empty')
+        #
+        # The whole lookup is deliberately non-fatal. This step runs under `set -e`, so
+        # without the trailing `|| true` a transient `gh` API error -- or a runner image
+        # that ships without `jq` -- would abort the step and file nothing, which is the
+        # exact silence this action exists to prevent. Degrading to an empty result
+        # files a duplicate issue instead. A duplicate is noisy; silence is invisible.
+        #
+        # The limit is high enough that an older still-open tracking issue is not missed
+        # and mistaken for absent, which would also produce a duplicate.
+        EXISTING=$(gh issue list --state open --limit 500 --json number,title 2>/dev/null \
+          | jq -r --arg t "${TITLE}" 'map(select(.title == $t)) | .[0].number // empty' \
+          || true)
 
         # Built with printf into a file so no line carries the leading indentation of
         # this script; four leading spaces would render the whole body as a code block.
