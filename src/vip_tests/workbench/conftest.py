@@ -795,9 +795,11 @@ def workbench_login(
 
     page.goto(workbench_url)
     page.wait_for_load_state("load")
+    print(f"DEBUG_602: after initial goto, url={page.url!r}", flush=True)
 
     # Fast path: already logged in (common with interactive_auth)?
     if homepage_logo.is_visible():
+        print("DEBUG_602: homepage_logo visible on initial goto, returning", flush=True)
         return
 
     # A valid session cookie can redirect straight into a running session's IDE
@@ -806,8 +808,16 @@ def workbench_login(
     # (it's neither a login page nor the homepage). Same case test_sessions.py
     # handles when navigating back from a session: go to /home explicitly.
     if "/s/" in page.url:
+        print("DEBUG_602: '/s/' branch taken, navigating to /home", flush=True)
         page.goto(f"{workbench_url}/home")
         page.wait_for_load_state("load")
+        print(
+            f"DEBUG_602: after /home goto, url={page.url!r} "
+            f"homepage_logo.is_visible={homepage_logo.is_visible()} "
+            f"title={page.title()!r}",
+            flush=True,
+        )
+        print(f"DEBUG_602: body snippet={page.locator('body').inner_text()[:500]!r}", flush=True)
         if homepage_logo.is_visible():
             return
 
