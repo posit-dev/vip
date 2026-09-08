@@ -249,7 +249,13 @@ jobs:
     if: always()
     needs: [changes, set-matrix, mock-idp-e2e]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Check result
         run: |
           if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
@@ -273,3 +279,13 @@ jobs:
             exit 1
           fi
           echo "Mock-IdP E2E tests passed or were legitimately out of scope"
+
+      # Nightly failures have no PR author to notice them; file (or update) a
+      # tracking issue instead of failing silently. Never fires on push/pull_request
+      # -- the author already sees those runs.
+      - name: Notify on scheduled failure
+        if: failure() && github.event_name == 'schedule'
+        uses: ./.github/actions/notify-on-scheduled-failure
+        with:
+          workflow-name: Mock-IdP E2E Tests
+          github-token: ${{ secrets.GITHUB_TOKEN }}
