@@ -107,6 +107,15 @@ class TestCapAutoDetectedProfiles:
         # The escape hatch has to be discoverable from the warning itself.
         assert "workbench.session_profiles" in message
 
+    def test_profile_labels_are_quoted_so_their_own_commas_do_not_run_together(self):
+        # "Medium (2 CPUs, 8GB RAM)" contains a comma, so an unquoted join makes
+        # the chosen/skipped lists unparseable in the warning.
+        with pytest.warns(UserWarning) as record:
+            cap_auto_detected_profiles(CI_PROFILES, limit=2)
+        message = str(record[0].message)
+        assert "'Small (1 CPU, 2GB RAM)', 'Default (1 CPU, 4GB RAM)'" in message
+        assert "'Medium (2 CPUs, 8GB RAM)', 'Large (4 CPUs, 16GB RAM)'" in message
+
     def test_ties_keep_dropdown_order(self):
         # Same allocation, different names: a stable sort must not reshuffle
         # them, so the cap is deterministic across runs.

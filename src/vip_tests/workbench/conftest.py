@@ -325,8 +325,19 @@ def profile_size_key(name: str) -> tuple[float, float]:
     cpus = float(cpu.group(1)) if cpu else float("inf")
     if mem is None:
         return (cpus, float("inf"))
-    megabytes = float(mem.group(1)) * (1024 if mem.group(2).upper() == "G" else 1)
-    return (cpus, megabytes)
+    # 1024, so these are mebibytes. The exact unit does not matter -- this is only
+    # ever a sort key -- but the name should not claim otherwise.
+    mebibytes = float(mem.group(1)) * (1024 if mem.group(2).upper() == "G" else 1)
+    return (cpus, mebibytes)
+
+
+def _quoted(names: list[str]) -> str:
+    """Render *names* as a quoted, comma-separated list.
+
+    Resource-profile labels embed their own commas, so an unquoted join produces
+    an unparseable run-on list in the warning.
+    """
+    return ", ".join(repr(n) for n in names)
 
 
 def cap_auto_detected_profiles(
@@ -350,9 +361,12 @@ def cap_auto_detected_profiles(
         return list(names)
     ordered = sorted(names, key=profile_size_key)
     chosen, dropped = ordered[:limit], ordered[limit:]
+    # Labels contain commas of their own ("Medium (2 CPUs, 8GB RAM)"), so a bare
+    # ", " join reads as one run-on list. Quote each label to keep the boundaries
+    # visible.
     message = (
         f"Auto-detected {len(names)} enabled resource profiles; launching only the "
-        f"{limit} smallest ({', '.join(chosen)}) and skipping {', '.join(dropped)}. "
+        f"{limit} smallest ({_quoted(chosen)}) and skipping {_quoted(dropped)}. "
         "Launching every advertised profile at once exhausts a modest host and fails "
         "the scenario for a reason that is not the deployment's capacity. Set "
         "workbench.session_profiles in vip.toml to choose the profiles explicitly; "
