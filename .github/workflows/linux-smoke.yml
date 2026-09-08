@@ -33,6 +33,9 @@ jobs:
   smoke:
     name: ${{ matrix.version }}
     runs-on: ubuntu-latest
+    # Builds a Docker image per distro (rhel9/rhel10/opensuse-leap) with system
+    # package installs; more variable than the plain docker.yml build.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

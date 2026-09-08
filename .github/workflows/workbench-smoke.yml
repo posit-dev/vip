@@ -28,6 +28,7 @@ permissions:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -70,6 +71,7 @@ jobs:
   # job-rename step below matches the running check by name substring.
   set-matrix:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions: {}
     outputs:
       versions: ${{ steps.pick.outputs.versions }}
@@ -92,6 +94,9 @@ jobs:
       || github.event_name == 'workflow_dispatch'
     name: Smoke test against Workbench ${{ matrix.workbench-version }}
     runs-on: ubuntu-latest
+    # Measured ~14.3 min median, up to 14.9 max — the heaviest job in the repo.
+    # The nightly "full" tier adds ~9 more files on top of the gate set.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -444,6 +449,7 @@ jobs:
     if: always()
     needs: [changes, set-matrix, workbench-smoke]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write
