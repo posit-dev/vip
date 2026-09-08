@@ -800,6 +800,17 @@ def workbench_login(
     if homepage_logo.is_visible():
         return
 
+    # A valid session cookie can redirect straight into a running session's IDE
+    # view instead of the homepage -- that view has none of Homepage's chrome, so
+    # the check above misses it and the login-page probe below also misses it
+    # (it's neither a login page nor the homepage). Same case test_sessions.py
+    # handles when navigating back from a session: go to /home explicitly.
+    if "/s/" in page.url:
+        page.goto(f"{workbench_url}/home")
+        page.wait_for_load_state("load")
+        if homepage_logo.is_visible():
+            return
+
     # Check if we landed on a login/IdP page
     if _on_login_page(page.url):
         # The sign-in page renders client-side after ``load``; wait once for
