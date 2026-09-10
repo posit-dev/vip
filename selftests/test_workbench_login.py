@@ -107,6 +107,42 @@ def test_interactive_auth_skips_when_sso_cannot_complete():
     assert page.sso_clicked is True
 
 
+class _ActiveSessionFakePage:
+    """Models a deployment that redirects an already-authenticated request
+    straight into a running session, with no distinct homepage view at all --
+    observed under the mock-IdP stack's SAML lane (issue #263): the very
+    first request after a successful SSO login landed in
+    ``/s/<id>/workspaces/`` and retrying ``/home`` bounced right back into it.
+    """
+
+    def __init__(self):
+        self.url = "https://wb.example.com/"
+        self._session_url = "https://wb.example.com/s/57ea13c286bd33c286bd3/workspaces/"
+        self.home_visits = 0
+
+    def goto(self, url, *args, **kwargs):
+        if url.rstrip("/").endswith("/home"):
+            self.home_visits += 1
+        self.url = self._session_url
+
+    def wait_for_load_state(self, *args, **kwargs):
+        pass
+
+    def locator(self, selector):
+        # The session view has none of Homepage's chrome -- the logo never appears.
+        return _AuthFakeLocator(visible=lambda: False)
+
+
+def test_interactive_auth_returns_when_home_redirects_back_into_active_session():
+    # A /s/<id>/ URL is only reachable by an authenticated request, so bouncing
+    # straight back into it after /home is proof of a successful login, not a
+    # state for the password-retry loop to (unsuccessfully) recover from.
+    page = _ActiveSessionFakePage()
+    workbench_login(page, "https://wb.example.com", "", "", interactive_auth=True)
+    assert page.home_visits == 1
+    assert "/s/" in page.url
+
+
 class _ExternalIdpFakePage:
     """Models a deployment that redirects sign-in out to a third-party IdP.
 
