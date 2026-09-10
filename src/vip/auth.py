@@ -1270,18 +1270,12 @@ def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = 
     base = product_url.rstrip("/").lower()
     deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
     clicked_oidc_confirm = False
-    _diag_last_url = None
-    _diag_iter = 0
 
     while time.monotonic() < deadline:
         try:
             url = page.url.lower()
         except Exception:
             break
-        _diag_iter += 1
-        if url != _diag_last_url or _diag_iter % 20 == 0:
-            print(f">>> _wait_for_product_redirect[{product_url}] iter={_diag_iter} url={url}")
-            _diag_last_url = url
         if url.startswith(base) and not _on_login_page(url):
             return
         # Workbench lands on an OIDC confirmation page after the IdP
