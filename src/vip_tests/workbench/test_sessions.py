@@ -26,7 +26,7 @@ from vip_tests.workbench.conftest import (
     wait_for_session_suspended,
     workbench_login,
 )
-from vip_tests.workbench.pages import Homepage, NewSessionDialog
+from vip_tests.workbench.pages import Homepage, NewSessionDialog, RStudioSession
 
 pytestmark = pytest.mark.order(30)
 
@@ -178,9 +178,18 @@ def user_resumes_session(page: Page, session_context: dict):
 
     # Wait for the navigation into the session URL to commit before going
     # anywhere else. Navigating away from /s/<id> too quickly causes
-    # Workbench to abort the resume.
+    # Workbench to abort the resume — and the top-level document's "load"
+    # event is not sufficient proof that the resume itself has landed: it
+    # fires once the session *shell* page is served, well before the backend
+    # has finished reattaching rsession and streaming the IDE into it. Prior
+    # to this, the observation step bounced straight to /home and polled the
+    # homepage badge, which raced that reattachment and could itself be what
+    # aborted a resume that was still in flight (issue #648). Wait for actual
+    # RStudio content here instead — the same readiness gate the fresh-launch
+    # path already trusts (see ``rstudio_functional`` in test_ide_launch.py)
+    # — so we only leave /s/<id> once the resume has demonstrably succeeded.
     page.wait_for_url("**/s/**", timeout=TIMEOUT_PAGE_LOAD)
-    page.wait_for_load_state("load", timeout=TIMEOUT_PAGE_LOAD)
+    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_SESSION_START)
 
     # Navigate back to homepage to observe the Active state. NB: Workbench's
     # /home may auto-redirect back to the recently-used session — that is OK
