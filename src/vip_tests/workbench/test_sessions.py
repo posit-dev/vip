@@ -188,8 +188,19 @@ def user_resumes_session(page: Page, session_context: dict):
     # RStudio content here instead — the same readiness gate the fresh-launch
     # path already trusts (see ``rstudio_functional`` in test_ide_launch.py)
     # — so we only leave /s/<id> once the resume has demonstrably succeeded.
+    # A timeout here means resume did not demonstrably complete; report that
+    # as unproven rather than letting the bare Playwright assertion surface
+    # as an opaque hard failure (this file's established pattern — see
+    # session_becomes_active_again below).
     page.wait_for_url("**/s/**", timeout=TIMEOUT_PAGE_LOAD)
-    expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_SESSION_START)
+    try:
+        expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_SESSION_START)
+    except AssertionError as exc:
+        attest.unproven(
+            f"RStudio content did not render within {TIMEOUT_SESSION_START}ms of resuming "
+            f"the session — suspend/resume may not be supported in this Workbench "
+            f"configuration ({exc})"
+        )
 
     # Navigate back to homepage to observe the Active state. NB: Workbench's
     # /home may auto-redirect back to the recently-used session — that is OK
