@@ -53,7 +53,8 @@
         "saml.encrypt": "false",
         "saml.authnstatement": "true",
         "saml_name_id_format": "username",
-        "saml_force_name_id_format": "false"
+        "saml_force_name_id_format": "false",
+        "saml.force.post.binding": "true"
       },
       "protocolMappers": [
         {

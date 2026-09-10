@@ -37,6 +37,14 @@ fi
 # reached only at https://workbench-saml.vip.test:8788 -- matching the
 # Keycloak client's clientId (SP entity ID/metadata URL) and redirectUris
 # (ACS URL) below.
+#
+# Workbench's ACS endpoint only accepts a POST-bound response -- an
+# HTTP-Redirect-bound one (SAMLResponse in the query string) gets a bare
+# "405 method not allowed" instead of a session, with nothing logged
+# server-side to explain it (confirmed by dumping the actual rendered
+# page: issue #263 diagnostic). The Keycloak client sets
+# "saml.force.post.binding": "true" to guarantee POST regardless of what
+# binding rserver's AuthnRequest asks for (or doesn't specify).
 cat >> /etc/rstudio/rserver.conf << 'EOF'
 ssl-enabled=1
 ssl-certificate=/certs/workbench-saml.crt
