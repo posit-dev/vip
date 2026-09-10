@@ -79,7 +79,7 @@ jobs:
       - id: pick
         run: |
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo 'versions=["release", "2026.06.0", "2026.05.1"]' >> "$GITHUB_OUTPUT"
+            echo 'versions=["release", "2026.08.1", "2026.07.0"]' >> "$GITHUB_OUTPUT"
           else
             echo 'versions=["release"]' >> "$GITHUB_OUTPUT"
           fi
