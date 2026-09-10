@@ -46,6 +46,16 @@ auth-saml-metadata-url=https://keycloak.vip.test:8443/realms/vip/protocol/saml/d
 auth-saml-sp-attribute-username=Username
 EOF
 
+# TEMPORARY (issue #263 investigation): page.url gets stuck on
+# /saml/acs?SAMLResponse=... for the full auth timeout, and rserver's
+# default log level records nothing about SAML assertion processing.
+# Debug logging to find out why the assertion is never accepted /
+# rserver never redirects. Remove once the cause is confirmed.
+cat >> /etc/rstudio/logging.conf << 'EOF'
+[@default]
+log-level=debug
+EOF
+
 # SAML does not use a client secret file -- unlike auth-openid, there is no
 # openid-client-secret equivalent to write.
 
