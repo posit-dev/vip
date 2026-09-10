@@ -475,6 +475,15 @@ jobs:
         if: failure()
         run: docker compose -f compose.mock-idp.yml --profile saml logs --tail=300 workbench-saml
 
+      # rserver logs to a file once past its initial supervisor-managed
+      # startup burst (the compose-logs step above never shows anything
+      # beyond that burst), so read the file directly instead.
+      - name: Surface workbench-saml's rserver log file on failure
+        if: failure()
+        run: |
+          docker compose -f compose.mock-idp.yml --profile saml exec -T workbench-saml \
+            sh -c 'ls -la /var/log/rstudio/rstudio-server/ 2>&1; echo ---; cat /var/log/rstudio/rstudio-server/*.log 2>&1'
+
       - name: Upload SAML diagnostic results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
