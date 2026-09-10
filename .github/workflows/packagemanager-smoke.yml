@@ -59,9 +59,11 @@ jobs:
   # runs fan out across the support window (current + 2 back). Bump the pinned
   # tags here when a new PM release ships; `ubuntu2204` (no version suffix)
   # always resolves to the latest PM build. Pinned tags are pulled directly as
-  # rstudio/rstudio-package-manager:<tag>. Pinned tags must not be substrings of
-  # one another — the resolved-version job-rename step below matches the running
-  # check by name substring.
+  # rstudio/rstudio-package-manager:<tag>. No pinned tag may be a *suffix* of
+  # another — the resolved-version job-rename step below matches the running
+  # check by name ending in the tag, and `ubuntu2204` is deliberately a
+  # *prefix* of the versioned tags (e.g. `ubuntu2204-2026.08.0`), which an
+  # ``includes()`` match would have confused for a suffix collision too.
   set-matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -206,7 +208,7 @@ jobs:
               run_id: context.runId,
             });
             const currentJob = jobs.find(
-              j => j.status === 'in_progress' && j.name.includes('${{ matrix.pm-version }}')
+              j => j.status === 'in_progress' && j.name.endsWith('${{ matrix.pm-version }}')
             );
             if (currentJob) {
               await github.rest.checks.update({
