@@ -21,7 +21,7 @@ class TestMinimumSupportedVersion:
         # policy decision, so changing it must be intentional.
         from vip.version import MINIMUM_SUPPORTED_POSIT_TEAM
 
-        assert MINIMUM_SUPPORTED_POSIT_TEAM == "2026.04.0"
+        assert MINIMUM_SUPPORTED_POSIT_TEAM == "2026.06.0"
 
 
 class TestVersionFlag:
