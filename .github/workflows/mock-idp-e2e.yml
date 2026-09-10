@@ -465,6 +465,16 @@ jobs:
         if: failure()
         run: docker compose -f compose.mock-idp.yml --profile saml logs
 
+      # The full dump above is ordered oldest-first and GH Actions caps step
+      # output, so on a long-running stack it can truncate before reaching
+      # anything from the actual login attempts (both E2E steps run several
+      # minutes after container startup). Get workbench-saml's own tail
+      # separately so its most recent -- and most relevant -- lines are not
+      # lost to that cap.
+      - name: Surface workbench-saml's recent logs on failure
+        if: failure()
+        run: docker compose -f compose.mock-idp.yml --profile saml logs --tail=300 workbench-saml
+
       - name: Upload SAML diagnostic results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
