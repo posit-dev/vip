@@ -873,6 +873,7 @@ def workbench_login(
 
     page.goto(workbench_url)
     page.wait_for_load_state("load")
+    print(f"\n>>> workbench_login: post-goto URL: {page.url}")
 
     # Fast path: already logged in (common with interactive_auth)?
     if homepage_logo.is_visible():
@@ -884,21 +885,11 @@ def workbench_login(
     # (it's neither a login page nor the homepage). Same case test_sessions.py
     # handles when navigating back from a session: go to /home explicitly.
     if "/s/" in page.url:
+        print(f">>> workbench_login: landed in a running session at {page.url}, trying /home")
         page.goto(f"{workbench_url}/home")
         page.wait_for_load_state("load")
+        print(f">>> workbench_login: post-/home URL: {page.url}")
         if homepage_logo.is_visible():
-            return
-        if "/s/" in page.url:
-            # /home redirected straight back into the same active session
-            # instead of showing a homepage. Observed under the mock-IdP
-            # stack's SAML lane (issue #263): a SAML SSO login can land the
-            # very first authenticated request inside an already-running
-            # session with no distinct homepage view at all, so retrying
-            # /home can never escape it. Reaching any /s/<id>/ URL requires a
-            # valid authenticated session -- Workbench would have bounced an
-            # unauthenticated request to the sign-in page instead -- so this
-            # is proof of a successful login, not a state for the
-            # password-retry loop below to (unsuccessfully) recover from.
             return
 
     # Check if we landed on a login/IdP page
