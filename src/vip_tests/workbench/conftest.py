@@ -889,6 +889,16 @@ def workbench_login(
         if homepage_logo.is_visible():
             return
         if "/s/" in page.url:
+            try:
+                cookies = {c["name"]: c["value"] for c in page.context.cookies()}
+                diag_client = WorkbenchClient(workbench_url, insecure=True)
+                diag_client.set_cookies(cookies)
+                print(
+                    f">>> workbench_login: /api/sessions for this cookie jar: "
+                    f"{diag_client.list_sessions()!r}, page title: {page.title()!r}"
+                )
+            except Exception as exc:
+                print(f">>> workbench_login: /api/sessions diagnostic call failed: {exc!r}")
             # /home redirected straight back into the same active session
             # instead of showing a homepage. Observed under the mock-IdP
             # stack's SAML lane (issue #263): a SAML SSO login can land the
