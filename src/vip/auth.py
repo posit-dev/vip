@@ -1383,7 +1383,7 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
     # Quick check — already on the Workbench dashboard?
     url = page.url
     if url.lower().startswith(wb_base) and not _on_login_page(url):
-        print(">>> Workbench authenticated via SSO.\n")
+        print(f">>> Workbench authenticated via SSO. Landed at: {url}\n")
         return None
 
     # We're likely on /auth-sign-in.  Try clicking a sign-in button to
@@ -1419,7 +1419,7 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
         except Exception:
             break
         if last_url.lower().startswith(wb_base) and not _on_login_page(last_url):
-            print(">>> Workbench authenticated.\n")
+            print(f">>> Workbench authenticated. Landed at: {last_url}\n")
             return None
         try:
             page.wait_for_timeout(500)
