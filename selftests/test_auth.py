@@ -891,6 +891,33 @@ class TestAuthenticateWorkbench:
         assert "did not complete" in result
         assert "auth-sign-in" in result
 
+    def test_returns_reason_when_stuck_on_saml_acs_callback(self, monkeypatch):
+        """Landing on Workbench's own SAML ACS endpoint must NOT be read as
+        success. issue #263's diagnostic showed the quick check accepting
+        it (it is on the Workbench origin and matches none of the old
+        login keywords) the instant ``networkidle`` fired, before
+        Workbench's own post-assertion redirect ran -- capturing a storage
+        state with no valid session cookie, so the real login test later
+        failed even though pre-test auth reported success."""
+        from unittest.mock import PropertyMock
+
+        from vip import auth as auth_mod
+
+        page = MagicMock()
+        page.goto.return_value = None
+        page.wait_for_load_state.return_value = None
+        type(page).url = PropertyMock(
+            return_value="https://wb.example.com/saml/acs?SAMLResponse=abc123&RelayState=xyz"
+        )
+
+        times = iter([0.0, 1000.0])
+        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+
+        result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
+
+        assert result is not None
+        assert "did not complete" in result
+
     def test_timeout_reason_strips_oidc_query_parameters(self, monkeypatch):
         """The returned URL is surfaced in CI logs via the workbench skip
         message.  OIDC/SAML redirects can carry ``code=``, ``state=``,

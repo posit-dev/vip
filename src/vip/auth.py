@@ -1326,11 +1326,25 @@ def _click_workbench_oidc_confirm(page: Page) -> bool:
         return False
 
 
-_LOGIN_KEYWORDS = ("sign-in", "login", "auth-sign-in")
+_LOGIN_KEYWORDS = ("sign-in", "login", "auth-sign-in", "/saml/acs")
 
 
 def _on_login_page(url: str) -> bool:
-    """Return True if *url* looks like a login or IdP page."""
+    """Return True if *url* looks like a login page or an in-flight auth callback.
+
+    ``/saml/acs`` is Workbench's SAML Assertion Consumer Service endpoint --
+    the raw POST target the IdP redirects to before Workbench validates the
+    assertion and issues its own session cookie. Every caller here uses this
+    check to decide "is the round-trip actually finished", and landing on
+    that URL means it is not: the completion checks in
+    :func:`_authenticate_workbench` and :func:`_wait_for_product_redirect`
+    previously accepted it as done the moment ``networkidle`` fired (before
+    Workbench's own post-assertion redirect ran), capturing a storage state
+    with no valid Workbench session cookie -- which is what made a real SAML
+    login look successful during --headless-auth but then fail for real once
+    ``test_workbench_login`` reused that state (issue #263 diagnostic, run
+    34510387889).
+    """
     lower = url.lower()
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
 
