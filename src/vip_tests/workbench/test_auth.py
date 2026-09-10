@@ -53,23 +53,32 @@ def _restore_session_after_signout(page: Page, workbench_url: str):
 
 
 @pytest.fixture
-def page(request: pytest.FixtureRequest, browser: Browser, browser_context_args: dict):
+def page(
+    request: pytest.FixtureRequest,
+    browser: Browser,
+    browser_context_args: dict,
+    auth_provider: str,
+):
     """Override the default page fixture for the login-form test only.
 
-    The login scenario must genuinely exercise the password login form, so it
-    needs a *logged-out* context: storage_state (injected by --interactive-auth
-    / --headless-auth) is stripped. Every other test in this module — notably
-    the sign-out scenario — must stay *logged in* via that session, so they
-    keep storage_state. Stripping it for sign-out would leave the browser
-    anonymous and, under SSO, unable to re-authenticate (no password), so the
-    "I am logged in" precondition could never be met.
+    The login scenario must genuinely exercise the password login form, so
+    under password auth it needs a *logged-out* context: storage_state
+    (injected by --interactive-auth / --headless-auth) is stripped. Under
+    SSO/OIDC, storage_state instead carries the pre-loaded IdP session that
+    workbench_login's silent SSO round-trip depends on, so it must stay --
+    stripping it would leave the browser with no IdP session to reuse. Every
+    other test in this module — notably the sign-out scenario — must stay
+    *logged in* via that session regardless of auth provider, so they keep
+    storage_state too.
 
     All other context args (TLS, CA bundle, etc.) are preserved so this page
     behaves consistently with the rest of the suite. The autouse
     _cleanup_sessions fixture in workbench/conftest.py uses this same page,
     keeping cleanup and execution in the same context.
     """
-    strip_storage_state = request.node.name.startswith("test_workbench_login")
+    strip_storage_state = (
+        request.node.name.startswith("test_workbench_login") and auth_provider == "password"
+    )
     args = {
         k: v
         for k, v in browser_context_args.items()
@@ -84,11 +93,7 @@ def page(request: pytest.FixtureRequest, browser: Browser, browser_context_args:
 
 
 @given("Workbench is accessible at the configured URL")
-def workbench_accessible(workbench_client, auth_provider: str):
-    # This test only validates password-based login form flow
-    if auth_provider != "password":
-        pytest.skip(f"test_auth only supports password auth, not {auth_provider!r}")
-
+def workbench_accessible(workbench_client):
     assert workbench_client is not None, "Workbench client not configured"
     status = workbench_client.health()
     assert status < 400, f"Workbench health-check returned HTTP {status}"
@@ -100,9 +105,22 @@ def navigate_and_login(
     workbench_url: str,
     test_username: str,
     test_password: str,
+    auth_provider: str,
+    interactive_auth: bool,
+    auth_mode: str,
+    workbench_auth_error: str | None,
 ):
-    """Log in using password auth form."""
-    workbench_login(page, workbench_url, test_username, test_password)
+    """Log in using password auth form, or the real SSO round-trip under SSO/OIDC."""
+    workbench_login(
+        page,
+        workbench_url,
+        test_username,
+        test_password,
+        auth_provider,
+        interactive_auth,
+        auth_mode=auth_mode,
+        workbench_auth_error=workbench_auth_error,
+    )
 
 
 @then("the Workbench homepage is displayed")

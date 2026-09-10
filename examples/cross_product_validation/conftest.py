@@ -10,9 +10,10 @@ This conftest adds only the fixtures unique to this example:
   - python_package_name -- the Python package to verify (default: PyDeSEQ2)
 
 Note: expected_r_versions and expected_python_versions are intentionally NOT
-redefined here. They are already provided by VIP's core conftest
-(src/vip_tests/conftest.py) and are wired to vip.toml [runtimes]. Redefining
-them here would silently shadow the config-driven versions.
+redefined here. They are already provided by VIP's core fixtures
+(src/vip/fixtures.py, registered as part of the VIP plugin) and are wired to
+vip.toml [runtimes]. Redefining them here would silently shadow the
+config-driven versions.
 
 To populate these fixtures with real data, add a [runtimes] block to vip.toml:
 

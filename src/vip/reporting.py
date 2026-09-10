@@ -29,29 +29,84 @@ class TestResult:
     scenario_title: str | None = None
     feature_description: str | None = None
     na_version: bool = False
+    # True when the check was skipped because VIP could not do what it was
+    # asked to do -- as opposed to an ordinary skip, which means there was
+    # nothing to do (product not configured, tier lacks the feature). The
+    # distinction is the whole point: a validation tool that reports the two
+    # identically cannot tell "verified" from "never looked". Set by
+    # ``vip.attest.unproven`` at the skip site and carried through by the
+    # plugin; see ``ReportData.unproven`` for how it reaches the exit code.
+    unproven: bool = False
+    # Human-readable reason a skipped test was skipped (e.g. "high-concurrency
+    # localhost loads are flaky on macOS CI runners"), with pytest's "Skipped: "
+    # prefix stripped. Populated by the plugin from ``report.longrepr`` — see
+    # ``plugin._extract_skip_reason``. ``None`` for non-skips, and also for a
+    # skip whose longrepr doesn't have the expected shape (never crash trying
+    # to explain a skip). ``longrepr`` itself is deliberately *not* populated
+    # for skips (see the plugin's ``pytest_runtest_logreport``): pytest's
+    # stringified longrepr for a skip is a 3-tuple embedding the absolute path
+    # of the file that called ``skip()``, which has no business in a report
+    # that gets archived/published, and skip_reason already carries the part
+    # a reader actually wants.
+    skip_reason: str | None = None
 
     @property
     def category(self) -> str:
-        """Derive the top-level test category from the nodeid."""
-        # nodeid looks like "tests/connect/test_auth.py::test_login"
-        parts = self.nodeid.split("/")
+        """Derive the top-level test category from the nodeid.
+
+        A nodeid starts with the pytest path to the test file, so the category
+        is the directory holding it: ``vip_tests/connect/test_auth.py::test_x``
+        is ``connect``.
+
+        Anchor on the ``vip_tests`` package segment rather than a fixed index.
+        The prefix depends on how the suite was collected -- a source checkout
+        yields ``src/vip_tests/...`` while an installed wheel yields a
+        site-packages path -- so the old fixed ``parts[1]`` returned the
+        literal string ``"vip_tests"`` for every result this repo actually
+        produces. That collapsed the whole Detailed Results page into one
+        section headed "Vip Tests" and labelled every SARIF logical location
+        ``vip_tests / <check>``. The ``parts[1]`` fallback is kept for nodeids
+        that do not run out of the package at all, such as a custom test
+        directory passed via ``--vip-test-dir``.
+        """
+        parts = self.nodeid.split("::", 1)[0].split("/")
+        if "vip_tests" in parts:
+            # Scan from the right: the innermost ``vip_tests`` is the package
+            # root closest to the category directory, so a collection path that
+            # happens to nest one inside another (or inside a folder of the
+            # same name) still resolves to the real category.
+            idx = len(parts) - 1 - parts[::-1].index("vip_tests") + 1
+            # Only a directory counts as a category. A file sitting directly
+            # in vip_tests/ (conftest.py, say) has no category of its own.
+            if idx < len(parts) - 1:
+                return parts[idx]
+            return "unknown"
         if len(parts) >= 2:
             return parts[1]
         return "unknown"
 
     @property
     def status(self) -> str:
-        """Report status, distinguishing N/A-by-version from ordinary skips.
+        """Report status, splitting skips into three distinguishable kinds.
 
         Returns ``"na_version"`` when the test was skipped because a
         product's version could not be determined (see
-        ``plugin._skip_version_unknown``), otherwise returns ``outcome``
-        unchanged. Quarto templates key their styling dicts on this value
-        instead of raw ``outcome`` so version gaps render distinctly from
-        both passes/failures and ordinary (unconfigured-feature) skips.
+        ``plugin._skip_version_unknown``), ``"unproven"`` when VIP was asked
+        to run the check and could not (see ``vip.attest.unproven``), and
+        otherwise ``outcome`` unchanged. Quarto templates key their styling
+        dicts on this value instead of raw ``outcome`` so version gaps and
+        unverified checks each render distinctly from both passes/failures
+        and ordinary (unconfigured-feature) skips.
+
+        ``na_version`` wins when both flags are set: it is the more specific
+        statement about *why* the check could not run, and it already owns a
+        badge of its own.
         """
-        if self.na_version and self.outcome == "skipped":
-            return "na_version"
+        if self.outcome == "skipped":
+            if self.na_version:
+                return "na_version"
+            if self.unproven:
+                return "unproven"
         return self.outcome
 
 
@@ -73,6 +128,17 @@ class ReportData:
     exit_status: int = 0
     products: list[ProductInfo] = field(default_factory=list)
     results: list[TestResult] = field(default_factory=list)
+    # Provenance: what produced this report, so a customer archiving it as
+    # evidence can tell which VIP version ran, how long it took, and whether
+    # it was a full or `--basic` run. All default to None/unset rather than a
+    # concrete-looking value (e.g. 0.0 or "unknown") so an older results.json
+    # written before these fields existed loads as "not recorded" instead of
+    # silently claiming a value that was never measured.
+    vip_version: str | None = None
+    run_duration_seconds: float | None = None
+    python_version: str | None = None
+    platform: str | None = None
+    basic_mode: bool | None = None
 
     @property
     def total(self) -> int:
@@ -93,6 +159,16 @@ class ReportData:
         # section/badge in the report via TestResult.status, but the summary
         # count is not split out separately.
         return sum(1 for r in self.results if r.outcome == "skipped")
+
+    @property
+    def unproven(self) -> int:
+        """Checks VIP was asked to run and could not.
+
+        Keyed on ``status`` rather than the raw flag so an ``na_version``
+        result is counted once, under N/A, and not again here. Like
+        ``na_version``, these still count toward ``skipped``.
+        """
+        return sum(1 for r in self.results if r.status == "unproven")
 
     @property
     def generated_at_display(self) -> str:
@@ -135,6 +211,8 @@ def load_results(path: str | Path) -> ReportData:
             scenario_title=r.get("scenario_title"),
             feature_description=r.get("feature_description"),
             na_version=r.get("na_version", False),
+            unproven=r.get("unproven", False),
+            skip_reason=r.get("skip_reason"),
         )
         for r in raw.get("results", [])
     ]
@@ -157,6 +235,11 @@ def load_results(path: str | Path) -> ReportData:
         exit_status=raw.get("exit_status", 0),
         products=products,
         results=results,
+        vip_version=raw.get("vip_version"),
+        run_duration_seconds=raw.get("run_duration_seconds"),
+        python_version=raw.get("python_version"),
+        platform=raw.get("platform"),
+        basic_mode=raw.get("basic_mode"),
     )
 
 
@@ -167,6 +250,30 @@ _ANSI_CSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 def _xml_safe(text: str) -> str:
     """Strip ANSI escape sequences and XML-1.0-invalid control chars (keep tab/LF/CR)."""
     return _XML_INVALID_CHARS.sub("", _ANSI_CSI.sub("", text))
+
+
+UNPROVEN_PREFIX = "UNPROVEN: "
+
+
+def _skip_message(r: TestResult, *, generic: str) -> str:
+    """Build the reason text a machine-readable format shows for a skip.
+
+    Precedence is the real recorded reason, then the ``na_version`` fallback
+    wording (for reports written before ``skip_reason`` existed), then
+    *generic*. An unproven skip gets :data:`UNPROVEN_PREFIX` in front of
+    whatever that resolves to, so the classification survives into JUnit --
+    which has no third outcome state to put it in -- and stays greppable in
+    any reporter that only shows the message.
+    """
+    if r.skip_reason:
+        reason = r.skip_reason
+    elif r.na_version:
+        reason = "N/A for this product version"
+    else:
+        reason = generic
+    if r.status == "unproven":
+        return f"{UNPROVEN_PREFIX}{reason}"
+    return reason
 
 
 def write_junit_xml(data: ReportData, path: str | Path) -> None:
@@ -205,22 +312,36 @@ def write_junit_xml(data: ReportData, path: str | Path) -> None:
             )
             failure.text = _xml_safe(r.longrepr or r.concise_error or "")
         elif r.outcome == "skipped":
-            reason = "N/A for this product version" if r.na_version else "skipped"
-            ET.SubElement(case, "skipped", message=reason)
+            # An unproven check stays a <skipped> element: JUnit has only
+            # failure/error/skipped, and promoting it to a failure would make
+            # every existing reporter double-count against the run's own
+            # exit code. The classification rides in the message instead.
+            reason = _skip_message(r, generic="could not verify" if r.unproven else "skipped")
+            ET.SubElement(case, "skipped", message=_xml_safe(reason))
 
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     ET.ElementTree(suites).write(p, encoding="utf-8", xml_declaration=True)
 
 
-_SARIF_LEVEL = {"failed": "error", "passed": "none", "skipped": "note"}
+# Keyed on TestResult.status, not the raw outcome, so an unproven check can
+# carry its own level. SARIF has a rung between "clean" and "broken" and this
+# is exactly what it is for: nothing failed, but nothing was verified either.
+_SARIF_LEVEL = {
+    "failed": "error",
+    "passed": "none",
+    "skipped": "note",
+    "na_version": "note",
+    "unproven": "warning",
+}
 
 
 def write_sarif(data: ReportData, path: str | Path) -> None:
     """Write test results as SARIF 2.1.0 for secops / code-scanning ingestion.
 
-    Every check emits a result (fail=error, pass=none, skip=note) to give a
-    full audit trail of what was validated, not only failures.
+    Every check emits a result (fail=error, unproven=warning, pass=none,
+    skip=note) to give a full audit trail of what was validated, not only
+    failures -- including the checks that never got to run.
     """
     from vip import __version__
 
@@ -235,13 +356,13 @@ def write_sarif(data: ReportData, path: str | Path) -> None:
         if r.outcome == "failed":
             text = r.concise_error or r.longrepr or "check failed"
         elif r.outcome == "skipped":
-            text = "N/A for this product version" if r.na_version else "check skipped"
+            text = _skip_message(r, generic="could not verify" if r.unproven else "check skipped")
         else:
             text = check
         results.append(
             {
                 "ruleId": r.nodeid,
-                "level": _SARIF_LEVEL.get(r.outcome, "none"),
+                "level": _SARIF_LEVEL.get(r.status, "none"),
                 "message": {"text": text},
                 "locations": [{"logicalLocations": [{"name": f"{r.category} / {check}"}]}],
             }

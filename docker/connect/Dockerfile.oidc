@@ -1,8 +1,10 @@
 # Thin wrapper around the official Connect image for the mock-IdP E2E stack.
 #
-# The stock Connect image has no cont-init.d-style pre-start hook (unlike
-# Workbench's s6-overlay), so trusting the stack's shared CA before the
-# Connect process starts requires overriding the entrypoint.
+# The stock Connect image has no cont-init.d-style pre-start hook -- like
+# Workbench (see docker/workbench/Dockerfile.oidc), its ENTRYPOINT is unset
+# and CMD runs its own startup script directly -- so trusting the stack's
+# shared CA before the Connect process starts requires overriding the
+# entrypoint.
 #
 # ghcr.io/posit-dev/connect is the current registry (post-2026.04 cutover,
 # see posit-dev/with-connect's get_docker_tag()) -- NOT the legacy

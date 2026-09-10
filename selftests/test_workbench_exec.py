@@ -1029,6 +1029,73 @@ class TestTerminalRun:
         with pytest.raises(ExecError, match="timed out"):
             exec_mod.terminal_run(page, "sleep 999", timeout=10)
 
+    def test_timeout_reports_last_readback_content(self, monkeypatch):
+        """A timeout must quote what the capture file actually held.
+
+        Whether the command never started, is still running, or finished while
+        the readback failed are three different bugs, and the bare
+        "timed out ... waiting for done marker" message cannot tell them apart --
+        which is why the CI flake it reports has recurred unchanged. Readback
+        succeeding with partial output proves the command started, so that
+        content has to survive into the message.
+        """
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(exec_mod, "read_file", MagicMock(return_value="Cloning into 'repo'..."))
+        monkeypatch.setattr(exec_mod.time, "sleep", lambda s: None)
+        page = MagicMock()
+
+        with pytest.raises(ExecError) as excinfo:
+            exec_mod.terminal_run(page, "git clone ...", timeout=10)
+
+        msg = str(excinfo.value)
+        assert "timed out" in msg
+        assert "Cloning into 'repo'..." in msg
+
+    def test_timeout_reports_empty_capture_file(self, monkeypatch):
+        """A readable but empty capture file means the command never started.
+
+        Distinct from a partial-output timeout: the console is fine and the file
+        exists, so the typed command never reached the terminal -- pointing at
+        input delivery rather than at the command or the budget.
+        """
+        self._patch_common(monkeypatch)
+        monkeypatch.setattr(exec_mod, "read_file", MagicMock(return_value="   "))
+        monkeypatch.setattr(exec_mod.time, "sleep", lambda s: None)
+        page = MagicMock()
+
+        with pytest.raises(ExecError) as excinfo:
+            exec_mod.terminal_run(page, "git clone ...", timeout=10)
+
+        msg = str(excinfo.value)
+        assert "read back empty" in msg
+        assert "never to have started" in msg
+
+    def test_timeout_reports_when_no_readback_ever_succeeded(self, monkeypatch):
+        """A timeout where every readback failed must say so, and say why.
+
+        This is the opposite diagnosis to a partial-output timeout: the console
+        never became usable, so the capture file was never read at all and the
+        command's own progress is unknown. Reporting the last readback error
+        distinguishes it instead of blaming the command.
+        """
+        self._patch_common(monkeypatch, ide="positron")
+        monkeypatch.setattr(
+            exec_mod,
+            "read_file",
+            MagicMock(side_effect=ExecError("console not ready")),
+        )
+        monkeypatch.setattr(exec_mod, "_positron_console_state_label", lambda p: None)
+        monkeypatch.setattr(exec_mod.time, "sleep", lambda s: None)
+        page = MagicMock()
+
+        with pytest.raises(ExecError) as excinfo:
+            exec_mod.terminal_run(page, "git clone ...", timeout=10)
+
+        msg = str(excinfo.value)
+        assert "timed out" in msg
+        assert "never read back successfully" in msg
+        assert "console not ready" in msg
+
     def test_positron_attempt_timeout_is_capped(self, monkeypatch):
         """Positron attempts must be capped to _POSITRON_READBACK_ATTEMPT_MS,
         not handed the outer loop's entire remaining budget: read_file's

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import os
@@ -575,6 +576,8 @@ def run_verify(args: argparse.Namespace) -> None:
         cmd.append("--no-auth")
     if args.api_auth:
         cmd.append("--api-auth")
+    if getattr(args, "allow_unproven", False):
+        cmd.append("--vip-allow-unproven")
     for ext in args.extensions or []:
         cmd.append(f"--vip-extensions={ext}")
     if args.categories:
@@ -649,8 +652,24 @@ def run_verify(args: argparse.Namespace) -> None:
 
 
 # Quarto report template files copied into the working report/ directory.
-# Keep in sync with the force-include block in pyproject.toml.
-_REPORT_TEMPLATE_FILES = ("index.qmd", "details.qmd", "_quarto.yml", "styles.css")
+# Keep in sync with the force-include block in pyproject.toml. The fonts are
+# part of the template set: vip-report.qmd resolves them via a relative
+# `font-paths: fonts`, so a working report directory without them falls back
+# to whatever faces the host has and renders a different-looking PDF.
+_REPORT_TEMPLATE_FILES = (
+    "index.qmd",
+    "details.qmd",
+    "vip-report.qmd",
+    "_quarto.yml",
+    "styles.css",
+    "fonts/SourceSans3-Regular.otf",
+    "fonts/SourceSans3-It.otf",
+    "fonts/SourceSans3-Semibold.otf",
+    "fonts/SourceSans3-Bold.otf",
+    "fonts/SourceCodePro-Regular.otf",
+    "fonts/LICENSE-SourceSans3.md",
+    "fonts/LICENSE-SourceCodePro.md",
+)
 
 
 def _has_all_report_templates(directory: Path) -> bool:
@@ -677,6 +696,7 @@ def _copy_report_templates(src: Path, report_dir: Path) -> list[str]:
             if dest.read_bytes() == candidate.read_bytes():
                 continue
             replaced.append(name)
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(candidate, dest)
     return replaced
 
@@ -696,7 +716,6 @@ def _ensure_report_templates(report_dir: Path) -> bool:
     that the refresh did overwrite, so local template customizations never
     disappear silently.
     """
-    import contextlib
     import importlib.resources
 
     replaced: list[str] = []
@@ -732,12 +751,32 @@ def _ensure_report_templates(report_dir: Path) -> bool:
     return _has_all_report_templates(report_dir)
 
 
+def _resolve_report_dir() -> Path:
+    """Return the working report directory for the current invocation.
+
+    The report directory is ``./report`` relative to the invocation, but a
+    plain ``Path("report")`` also resolves that way when the caller is already
+    standing *inside* a report directory -- so ``vip report --results
+    results.json`` run from within ``report/`` used to create a nested
+    ``report/report/``, copy the templates into it, and render there. That left
+    a stray tree behind (papered over by a ``report/report/`` .gitignore entry)
+    and hid the rendered output one level deeper than the caller expected.
+
+    Treat a working directory already named ``report`` as the report directory
+    instead of descending into it.
+    """
+    cwd = Path.cwd()
+    if cwd.name == "report":
+        return Path()
+    return Path("report")
+
+
 def run_report(args: argparse.Namespace) -> None:
     """Render the Quarto report from a results.json file."""
     import shutil
     import webbrowser
 
-    report_dir = Path("report")
+    report_dir = _resolve_report_dir()
     report_dir.mkdir(parents=True, exist_ok=True)
 
     results_src = Path(args.results)
@@ -771,18 +810,20 @@ def run_report(args: argparse.Namespace) -> None:
     # import vip.gherkin / vip.reporting) or the Jupyter stack. sys.executable
     # is the vip install itself, which always has both. See issue #554.
     env = {**os.environ, "QUARTO_PYTHON": sys.executable}
-    try:
-        result = subprocess.run(["quarto", "render"], cwd=str(report_dir), env=env)
-    except FileNotFoundError:
-        print(
-            "Error: quarto was not found on PATH. Install Quarto "
-            "(https://quarto.org/docs/get-started/) and re-run.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
 
-    if result.returncode != 0:
-        sys.exit(result.returncode)
+    # The HTML pages and the PDF render as separate quarto invocations on
+    # purpose. One combined `quarto render` ties their fates together: on a
+    # Quarto too old to know Typst (pre-1.4), the PDF document fails the
+    # whole render *after* the HTML pages already rendered, and `vip report`
+    # would exit nonzero without handing over the HTML report it just
+    # produced. HTML is the primary artifact, so only its failure is fatal;
+    # the PDF degrades to a warning. All three documents stay in
+    # _quarto.yml's render list because a single-document render only lands
+    # in _output/ for listed files.
+    for page in ("index.qmd", "details.qmd"):
+        returncode = _quarto_render(page, report_dir, env)
+        if returncode != 0:
+            sys.exit(returncode)
 
     output = report_dir / "_output" / "index.html"
     if not output.exists():
@@ -794,8 +835,41 @@ def run_report(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     print(f"Report generated: {output}")
+
+    # The PDF is the copy customers archive, so a missing one warns loudly —
+    # but never fails the command, and never blocks the HTML hand-off above.
+    pdf = report_dir / "_output" / "vip-report.pdf"
+    if _quarto_render("vip-report.qmd", report_dir, env) == 0 and pdf.exists():
+        print(f"PDF generated: {pdf}")
+    else:
+        print(
+            f"Warning: the HTML report rendered but {pdf} did not. "
+            "Quarto compiles it with Typst, which ships with Quarto 1.4 and "
+            "later — check `quarto --version` and upgrade if it is older.",
+            file=sys.stderr,
+        )
+
     if args.open:
         webbrowser.open(output.resolve().as_uri())
+
+
+def _quarto_render(document: str, report_dir: Path, env: dict[str, str]) -> int:
+    """Render one listed document of the report project, returning quarto's exit code.
+
+    A missing quarto binary is fatal here rather than at the caller: it means
+    no document can render at all, and the message is the same wherever it
+    surfaces.
+    """
+    try:
+        result = subprocess.run(["quarto", "render", document], cwd=str(report_dir), env=env)
+    except FileNotFoundError:
+        print(
+            "Error: quarto was not found on PATH. Install Quarto "
+            "(https://quarto.org/docs/get-started/) and re-run.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return result.returncode
 
 
 def _collect_status(config: VIPConfig) -> dict:
@@ -1080,67 +1154,148 @@ def run_uninstall(args: argparse.Namespace) -> None:
     sys.exit(rc)
 
 
-def run_scaffold(args: argparse.Namespace) -> None:
-    """Copy the cross_product_validation example to a user-specified directory."""
-    import importlib.resources
-    import shutil
+# Registry of scaffold templates: name -> (examples/ source directory, one-line
+# description). "cross-product" is the default so existing `vip scaffold
+# --output DIR` invocations (predating --template) are unchanged.
+_SCAFFOLD_TEMPLATES: dict[str, tuple[str, str]] = {
+    "minimal": (
+        "custom_tests",
+        "Single-scenario HTTP health check against your configured product (start here)",
+    ),
+    "cross-product": (
+        "cross_product_validation",
+        "R/Python runtime versions and package installability across Connect and Workbench",
+    ),
+}
+_DEFAULT_SCAFFOLD_TEMPLATE = "cross-product"
 
-    # Prefer the bundled copy inside the installed wheel (_scaffold/ is embedded
-    # via [tool.hatch.build.targets.wheel.force-include]).  Fall back to the
-    # repo's top-level examples/ directory so in-repo usage and selftests work
-    # without building a wheel first.
-    src: Path | None = None
+
+def _resolve_scaffold_source(dirname: str, stack: contextlib.ExitStack) -> Path | None:
+    """Locate the source directory for a scaffold template, or None if missing.
+
+    Prefer the bundled copy inside the installed wheel (_scaffold/ is embedded
+    via [tool.hatch.build.targets.wheel.force-include]).  Fall back to the
+    repo's top-level examples/ directory so in-repo usage and selftests work
+    without building a wheel first.
+
+    The bundled path is materialized through ``importlib.resources.as_file``,
+    whose context must stay open for as long as anyone reads from the returned
+    path: for a zip-imported package as_file() extracts into a temporary
+    directory that is deleted when the context exits, so closing it here would
+    hand back a path that no longer exists by the time the caller copies from
+    it.  It is entered on the caller's ExitStack instead, which run_scaffold
+    holds open across the copy -- the same pattern _ensure_report_templates
+    uses for the bundled Quarto templates.
+    """
+    import importlib.resources
+
     try:
-        scaffold_pkg = importlib.resources.files("vip") / "_scaffold" / "cross_product_validation"
+        scaffold_pkg = importlib.resources.files("vip") / "_scaffold" / dirname
         # files() returns a Traversable; we need a real Path for shutil.copytree.
-        with importlib.resources.as_file(scaffold_pkg) as p:
-            if p.is_dir():
-                src = p
-    except (TypeError, FileNotFoundError):
+        p = stack.enter_context(importlib.resources.as_file(scaffold_pkg))
+        if p.is_dir():
+            return p
+    except (TypeError, OSError, ModuleNotFoundError):
         pass
 
-    if src is None:
-        # Source checkout: three levels up from src/vip/cli.py → repo root.
-        repo_root = Path(__file__).parent.parent.parent
-        candidate = repo_root / "examples" / "cross_product_validation"
-        if candidate.is_dir():
-            src = candidate
+    # Source checkout: three levels up from src/vip/cli.py → repo root.
+    repo_root = Path(__file__).parent.parent.parent
+    candidate = repo_root / "examples" / dirname
+    if candidate.is_dir():
+        return candidate
+    return None
 
-    if src is None:
-        print(
-            "Error: could not locate examples/cross_product_validation/. "
-            "Ensure VIP is installed from source or as a wheel built with examples.",
-            file=sys.stderr,
+
+def _scaffold_next_steps(template: str, dest: Path) -> str:
+    """Per-template "Next steps" text printed after a successful scaffold."""
+    if template == "cross-product":
+        return (
+            f"\nNext steps:\n"
+            f"  1. Edit {dest / 'conftest.py'} to set your package names and versions.\n"
+            f"  2. Add a [runtimes] block to vip.toml:\n"
+            f"       [runtimes]\n"
+            f'       r_versions = ["4.4.0"]\n'
+            f'       python_versions = ["3.11.0"]\n'
+            f"  3. Run the extension:\n"
+            f"       vip verify --config vip.toml --extensions {dest}\n"
+            f"\nSee {dest / 'README.md'} for full customization instructions."
         )
-        sys.exit(1)
-
-    dest = Path(args.output)
-    if dest.exists() and not args.force:
-        print(
-            f"Error: destination already exists: {dest}\nPass --force to overwrite.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    if dest.exists():
-        if dest.is_dir() and not dest.is_symlink():
-            shutil.rmtree(dest)
-        else:
-            dest.unlink()
-
-    shutil.copytree(src, dest)
-    print(f"Scaffolded extension to: {dest}")
-    print(
+    return (
         f"\nNext steps:\n"
-        f"  1. Edit {dest / 'conftest.py'} to set your package names and versions.\n"
-        f"  2. Add a [runtimes] block to vip.toml:\n"
-        f"       [runtimes]\n"
-        f'       r_versions = ["4.4.0"]\n'
-        f'       python_versions = ["3.11.0"]\n'
-        f"  3. Run the extension:\n"
+        f"  1. Edit {dest / 'test_custom_check.feature'} and"
+        f" {dest / 'test_custom_check.py'} to check your own endpoint.\n"
+        f"  2. Run the extension:\n"
         f"       vip verify --config vip.toml --extensions {dest}\n"
         f"\nSee {dest / 'README.md'} for full customization instructions."
     )
+
+
+def run_scaffold(args: argparse.Namespace) -> None:
+    """Copy a scaffold template to a user-specified directory, or list templates."""
+    import shutil
+
+    if getattr(args, "list", False):
+        print("Available templates:\n")
+        for name, (_dirname, description) in _SCAFFOLD_TEMPLATES.items():
+            print(f"  {name} - {description}")
+        return
+
+    template = getattr(args, "template", None) or _DEFAULT_SCAFFOLD_TEMPLATE
+    if template not in _SCAFFOLD_TEMPLATES:
+        valid = ", ".join(sorted(_SCAFFOLD_TEMPLATES))
+        print(
+            f"Error: unknown template {template!r}. Valid templates: {valid}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    dirname, _description = _SCAFFOLD_TEMPLATES[template]
+
+    # One ExitStack spans every read of a bundled resource: the paths handed
+    # back by _resolve_scaffold_source are only guaranteed to exist while it is
+    # open (see that function's docstring).
+    with contextlib.ExitStack() as stack:
+        src = _resolve_scaffold_source(dirname, stack)
+        if src is None:
+            print(
+                f"Error: could not locate examples/{dirname}/. "
+                "Ensure VIP is installed from source or as a wheel built with examples.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        dest = Path(args.output)
+        if dest.exists() and not args.force:
+            print(
+                f"Error: destination already exists: {dest}\nPass --force to overwrite.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        if dest.exists():
+            if dest.is_dir() and not dest.is_symlink():
+                shutil.rmtree(dest)
+            else:
+                dest.unlink()
+
+        shutil.copytree(src, dest)
+
+        # AGENTS.md is shared across every template (single source of truth), so
+        # it's copied in separately rather than living inside each template dir.
+        shared_agents_md = _resolve_scaffold_source("_shared", stack)
+        if shared_agents_md is not None:
+            shutil.copyfile(shared_agents_md / "AGENTS.md", dest / "AGENTS.md")
+        else:
+            # Don't fail the scaffold over it -- the tests themselves are still
+            # usable -- but say so, because a silently missing AGENTS.md means a
+            # packaging regression that is otherwise invisible to the user.
+            print(
+                "Warning: could not locate examples/_shared/AGENTS.md; "
+                "the scaffolded directory has no extension-authoring guide.",
+                file=sys.stderr,
+            )
+
+    print(f"Scaffolded extension to: {dest}")
+    print(_scaffold_next_steps(template, dest))
 
 
 def _cleanup_workbench_sessions(
@@ -1680,6 +1835,18 @@ def main() -> None:
         ),
     )
 
+    verify_parser.add_argument(
+        "--allow-unproven",
+        action="store_true",
+        default=False,
+        help=(
+            "Exit 0 even when checks could not be verified. By default a check "
+            "that VIP was asked to run but could not (for example, a configured "
+            "product whose authentication never completed) fails the run, so an "
+            "unverified deployment is not reported as a passing one."
+        ),
+    )
+
     # Pytest passthrough
     verify_parser.add_argument(
         "pytest_args",
@@ -1818,13 +1985,14 @@ def main() -> None:
         "scaffold",
         help="Generate a ready-to-run custom test extension directory",
         description=(
-            "Copy the cross_product_validation example to a new directory, ready to\n"
-            "customise and run with:\n\n"
+            "Copy a scaffold template to a new directory, ready to customise and run\n"
+            "with:\n\n"
             "  vip verify --config vip.toml --extensions <output-dir>\n\n"
-            "The example verifies specific R/Python runtime versions and package\n"
-            "installability across Workbench and Connect. Edit the generated\n"
-            "conftest.py to set your own package names and version requirements.\n\n"
-            "See vip.toml.example for the [runtimes] block you need to populate."
+            "Templates range from a minimal single-scenario health check to a fuller\n"
+            "cross-product example spanning Workbench and Connect. Run\n"
+            "'vip scaffold --list' to see what's available. Every template also\n"
+            "receives an AGENTS.md documenting VIP's fixtures, markers, and client\n"
+            "layers for anyone (human or AI assistant) writing the extension."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -1833,6 +2001,21 @@ def main() -> None:
         default="./custom_tests",
         metavar="DIR",
         help="Destination directory for the scaffolded extension (default: ./custom_tests)",
+    )
+    scaffold_parser.add_argument(
+        "--template",
+        default=_DEFAULT_SCAFFOLD_TEMPLATE,
+        metavar="NAME",
+        help=(
+            "Which template to scaffold (default: %(default)s). "
+            "Run 'vip scaffold --list' for the available templates."
+        ),
+    )
+    scaffold_parser.add_argument(
+        "--list",
+        action="store_true",
+        default=False,
+        help="List available templates and exit",
     )
     scaffold_parser.add_argument(
         "--force",

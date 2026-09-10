@@ -17,6 +17,7 @@ jobs:
   # the Selftests Status shim) report success even when the code jobs are skipped.
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -46,6 +47,7 @@ jobs:
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -68,12 +70,13 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
 
@@ -88,12 +91,15 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    # zizmor downloads its own toolchain via uvx on top of the lint work, so it
+    # runs longer than the other path-gated jobs here.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Enforce SHA-pinned actions and credential hygiene
         env:
@@ -127,12 +133,13 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
 
@@ -150,6 +157,9 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ${{ matrix.os }}
+    # The heaviest job in this workflow: uv sync plus the full selftest suite,
+    # across two OSes and two Python versions.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -160,7 +170,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
 
@@ -191,6 +201,7 @@ jobs:
     if: always()
     needs: [changes, selftest]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Check selftest matrix result
         run: |
@@ -217,6 +228,7 @@ jobs:
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -256,6 +268,7 @@ jobs:
     if: always()
     needs: [changes, typecheck, actions-lint, audit, lockfile-guard]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Check CI job results
         run: |

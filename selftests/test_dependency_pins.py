@@ -129,7 +129,7 @@ def test_every_runtime_dependency_is_classified():
 # base [project.dependencies] (issue #554), where CAPPED enforces their bounds.
 CAPPED_OPTIONAL = {
     "report": set(),
-    "load": {"locust", "msgpack", "python-engineio", "python-socketio"},
+    "load": {"click", "locust", "msgpack", "python-engineio", "python-socketio"},
 }
 
 

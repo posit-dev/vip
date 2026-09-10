@@ -28,6 +28,7 @@ permissions:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -70,6 +71,7 @@ jobs:
   # job-rename step below matches the running check by name substring.
   set-matrix:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions: {}
     outputs:
       versions: ${{ steps.pick.outputs.versions }}
@@ -92,6 +94,9 @@ jobs:
       || github.event_name == 'workflow_dispatch'
     name: Smoke test against Workbench ${{ matrix.workbench-version }}
     runs-on: ubuntu-latest
+    # Measured ~14.3 min median, up to 14.9 max — the heaviest job in the repo.
+    # The nightly "full" tier adds ~9 more files on top of the gate set.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -194,7 +199,7 @@ jobs:
             }
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
 
@@ -444,7 +449,14 @@ jobs:
     if: always()
     needs: [changes, set-matrix, workbench-smoke]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Check smoke test result
         run: |
           if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
@@ -466,3 +478,13 @@ jobs:
             exit 1
           fi
           echo "Workbench smoke tests passed or were legitimately out of scope"
+
+      # Nightly failures have no PR author to notice them; file (or update) a
+      # tracking issue instead of failing silently. Never fires on push/pull_request
+      # -- the author already sees those runs.
+      - name: Notify on scheduled failure
+        if: failure() && github.event_name == 'schedule'
+        uses: ./.github/actions/notify-on-scheduled-failure
+        with:
+          workflow-name: Workbench Smoke Tests
+          github-token: ${{ secrets.GITHUB_TOKEN }}

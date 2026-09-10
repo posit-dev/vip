@@ -74,15 +74,15 @@ suggested_steps = [
 ]
 docs_url = "https://docs.posit.co/connect/admin/authentication/"
 
-["Workbench server is reachable but not configured"]
-summary = "Demonstrates report failure rendering (expected to fail in CI)"
+["This check intentionally fails to demonstrate failure rendering"]
+summary = "Demonstrates report failure rendering (expected to fail whenever it runs)"
 likely_causes = [
-    "Workbench is not configured in vip.toml (expected in CI preview)",
-    "This test intentionally fails to demonstrate report failure rendering",
+    "This check is designed to always fail, so the example report has a failure card to show",
+    "No product or configuration problem is involved",
 ]
 suggested_steps = [
-    "No action needed — this failure is expected in the CI report preview",
-    "To resolve, add a [workbench] section with a valid URL to vip.toml",
+    "No action needed. This failure is intentional and does not indicate a real problem",
+    "It only runs when VIP_ENABLE_EXPECTED_FAILURE_DEMO=1 is set",
 ]
 docs_url = "https://github.com/posit-dev/vip/issues/73"
 
@@ -99,3 +99,235 @@ suggested_steps = [
     "Check that the VIP_CONNECT_API_KEY environment variable is exported",
 ]
 docs_url = "https://docs.posit.co/connect/user/api-keys/"
+
+["Connect version matches configuration"]
+summary = "Verifies the running Connect version matches vip.toml's [connect] version"
+likely_causes = [
+    "Connect was upgraded but vip.toml's [connect] version was not updated",
+    "vip.toml points at the wrong Connect deployment",
+]
+suggested_steps = [
+    "Check the running version: `curl -H 'Authorization: Key <key>' <connect-url>/__api__/server_settings`",
+    "Update the version field under [connect] in vip.toml to match",
+]
+docs_url = "https://docs.posit.co/connect/admin/server-management/"
+
+["Package Manager version matches configuration"]
+summary = "Verifies the running Package Manager version matches vip.toml's [package_manager] version"
+likely_causes = [
+    "Package Manager was upgraded but vip.toml's [package_manager] version was not updated",
+    "vip.toml points at the wrong Package Manager deployment",
+]
+suggested_steps = [
+    "Check the running version: `curl <pm-url>/__api__/status`",
+    "Update the version field under [package_manager] in vip.toml to match",
+]
+docs_url = "https://docs.posit.co/rspm/admin/upgrading/"
+
+["Admin user exists and has admin privileges"]
+summary = "Verifies the API key belongs to a Connect administrator"
+likely_causes = [
+    "The configured API key belongs to a publisher or viewer, not an administrator",
+    "The API key's owning user was demoted or deactivated",
+]
+suggested_steps = [
+    "Check the user's role in the Connect admin panel under People",
+    "Generate a new API key from an administrator account and update vip.toml or VIP_CONNECT_API_KEY",
+]
+docs_url = "https://docs.posit.co/connect/admin/user-management/"
+
+["Users can be listed"]
+summary = "Verifies the Connect API returns a non-empty user list, including the configured test user"
+likely_causes = [
+    "The test user named by [auth] username in vip.toml (or VIP_TEST_USERNAME) does not exist on Connect",
+    "Connect has no users other than the bootstrap administrator",
+]
+suggested_steps = [
+    "Create the test user in Connect's admin panel or via `POST /__api__/v1/users`",
+    "Confirm [auth] username in vip.toml matches an existing Connect username exactly",
+]
+docs_url = "https://docs.posit.co/connect/admin/user-management/"
+
+["Groups can be listed"]
+summary = "Verifies the Connect groups API responds successfully"
+likely_causes = [
+    "Group management is backed by an external directory (LDAP/SAML) that is unreachable",
+    "The API key does not have administrator privileges",
+]
+suggested_steps = [
+    "Check Connect's authentication provider configuration for group-sync errors",
+    "Verify the API key belongs to an administrator",
+]
+docs_url = "https://docs.posit.co/connect/admin/user-management/"
+
+["Expected R versions are available on Connect"]
+summary = "Verifies every R version listed under [runtimes] in vip.toml is installed on Connect"
+likely_causes = [
+    "The R version was never installed on the Connect server",
+    "vip.toml's [runtimes] r_versions list is out of date with what was actually installed",
+]
+suggested_steps = [
+    "List installed R versions: `docker exec <container> ls /opt/R` or check the Connect admin panel",
+    "Install the missing R version, or correct r_versions under [runtimes] in vip.toml",
+]
+docs_url = "https://docs.posit.co/connect/admin/r/"
+
+["Expected Python versions are available on Connect"]
+summary = "Verifies every Python version listed under [runtimes] in vip.toml is installed on Connect"
+likely_causes = [
+    "The Python version was never installed on the Connect server",
+    "vip.toml's [runtimes] python_versions list is out of date with what was actually installed",
+]
+suggested_steps = [
+    "List installed Python versions: `docker exec <container> ls /opt/python` or check the Connect admin panel",
+    "Install the missing Python version, or correct python_versions under [runtimes] in vip.toml",
+]
+docs_url = "https://docs.posit.co/connect/admin/python/"
+
+["Expected Quarto versions are available"]
+summary = "Verifies at least one Quarto version is installed on Connect"
+likely_causes = [
+    "Quarto was never installed on the Connect server",
+    "Quarto is installed but not on Connect's configured search path",
+]
+suggested_steps = [
+    "Check installed Quarto versions in the Connect admin panel under Versions",
+    "Install Quarto and confirm Connect's Quarto.Executable / search path configuration",
+]
+docs_url = "https://docs.posit.co/connect/admin/quarto/"
+
+["Connect system checks can be run and the report downloaded"]
+summary = "Verifies Connect's built-in system checks run to completion and return a downloadable report"
+likely_causes = [
+    "The API key does not have administrator privileges",
+    "A system check itself is failing on the host (e.g. missing sandbox binary, disk space)",
+    "The system check run timed out before reaching a 'done' status",
+]
+suggested_steps = [
+    "Re-run system checks from the Connect admin panel under System Information",
+    "Review the individual check results for the specific failing check",
+    "Verify the API key belongs to an administrator",
+]
+docs_url = "https://docs.posit.co/connect/user/system-checks/"
+
+["Unauthenticated API request returns 401"]
+summary = "Verifies Connect rejects an API request with no credentials"
+likely_causes = [
+    "An upstream proxy or load balancer is granting access before Connect sees the request",
+    "Connect's authentication is misconfigured to allow anonymous access to authenticated endpoints",
+]
+suggested_steps = [
+    "Reproduce with `curl -i <connect-url>/__api__/v1/content` and inspect the status code",
+    "Check any reverse proxy or gateway in front of Connect for auth bypass rules",
+]
+docs_url = "https://docs.posit.co/connect/admin/authentication/"
+
+["Invalid API key returns 401"]
+summary = "Verifies Connect rejects an API request with a bad API key"
+likely_causes = [
+    "An upstream proxy or load balancer is granting access before Connect validates the key",
+    "Connect's authentication is misconfigured to accept any Authorization header",
+]
+suggested_steps = [
+    "Reproduce with `curl -i -H 'Authorization: Key invalid' <connect-url>/__api__/v1/content`",
+    "Check any reverse proxy or gateway in front of Connect for auth bypass rules",
+]
+docs_url = "https://docs.posit.co/connect/admin/authentication/"
+
+["Non-existent endpoint returns 404"]
+summary = "Verifies Connect returns 404 for a path that does not exist"
+likely_causes = [
+    "An upstream proxy or load balancer is intercepting the request before Connect replies",
+    "A reverse proxy is rewriting unmatched paths to a different response",
+]
+suggested_steps = [
+    "Reproduce with `curl -i <connect-url>/__api__/v1/does-not-exist-vip-test`",
+    "Check reverse proxy path-rewrite and catch-all rules in front of Connect",
+]
+docs_url = "https://docs.posit.co/connect/admin/proxy/"
+
+["User can log in to Workbench via the web UI"]
+summary = "Verifies password-based login to Workbench through the browser login form"
+likely_causes = [
+    "Incorrect test credentials in vip.toml or VIP_TEST_USERNAME/VIP_TEST_PASSWORD",
+    "Auth provider misconfiguration (SAML, OIDC, LDAP, PAM)",
+    "Workbench login page markup changed or is unreachable",
+]
+suggested_steps = [
+    "Verify credentials work by logging in manually at the Workbench URL",
+    "Check the auth provider configuration in rserver.conf / auth-pam or auth-saml settings",
+    "If using an external IdP, try `--interactive-auth` or `--headless-auth` instead of a password test",
+]
+docs_url = "https://docs.posit.co/ide/server-pro/authenticating_users/authenticating_users.html"
+
+["User can sign out of Workbench"]
+summary = "Verifies signing out of Workbench returns the browser to the login page"
+likely_causes = [
+    "The sign-out button or menu changed location between Workbench versions",
+    "A reverse proxy is caching the post-logout redirect",
+]
+suggested_steps = [
+    "Manually sign out in a browser and confirm you land back on the login page",
+    "Check any reverse proxy or CDN in front of Workbench for cached redirects",
+]
+docs_url = "https://docs.posit.co/ide/server-pro/authenticating_users/authenticating_users.html"
+
+["CRAN mirror is accessible"]
+summary = "Verifies Package Manager serves a known CRAN package from a configured repository"
+likely_causes = [
+    "No CRAN-type repository is configured in Package Manager",
+    "The CRAN source has not finished its initial sync",
+]
+suggested_steps = [
+    "Check configured repositories: `rspm list repos` on the Package Manager host",
+    "Check sync status: `rspm list sources` and wait for the initial sync to complete",
+]
+docs_url = "https://docs.posit.co/rspm/admin/repositories/"
+
+["PyPI mirror is accessible"]
+summary = "Verifies Package Manager serves a known PyPI package from a configured repository"
+likely_causes = [
+    "No PyPI-type repository is configured in Package Manager",
+    "The PyPI source has not finished its initial sync",
+]
+suggested_steps = [
+    "Check configured repositories: `rspm list repos` on the Package Manager host",
+    "Check sync status: `rspm list sources` and wait for the initial sync to complete",
+]
+docs_url = "https://docs.posit.co/rspm/admin/repositories/"
+
+["Bioconductor mirror is accessible"]
+summary = "Verifies Package Manager serves a known Bioconductor package from a configured repository"
+likely_causes = [
+    "No Bioconductor-type repository is configured in Package Manager",
+    "The Bioconductor source has not finished its initial sync",
+]
+suggested_steps = [
+    "Check configured repositories: `rspm list repos` on the Package Manager host",
+    "Check sync status: `rspm list sources` and wait for the initial sync to complete",
+]
+docs_url = "https://docs.posit.co/rspm/admin/repositories/"
+
+["OpenVSX mirror is accessible"]
+summary = "Verifies Package Manager serves a known VS Code extension from a configured OpenVSX repository"
+likely_causes = [
+    "No OpenVSX-type repository is configured in Package Manager",
+    "The OpenVSX source has not finished its initial sync",
+]
+suggested_steps = [
+    "Check configured repositories: `rspm list repos` on the Package Manager host",
+    "Check sync status: `rspm list sources` and wait for the initial sync to complete",
+]
+docs_url = "https://docs.posit.co/rspm/admin/repositories/"
+
+["At least one repository is configured"]
+summary = "Verifies Package Manager has at least one repository configured"
+likely_causes = [
+    "Package Manager was installed but no repositories were ever created",
+    "Repositories exist but were deleted or renamed",
+]
+suggested_steps = [
+    "Create a repository: `rspm create repo --name=<name> --type=<cran|python|bioconductor>`",
+    "List existing repositories: `rspm list repos`",
+]
+docs_url = "https://docs.posit.co/rspm/admin/repositories/"

@@ -26,8 +26,8 @@ Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `py
 Ruff is the linter and formatter. CI enforces both. Always run checks before committing:
 
 ``` bash
-uv run ruff check src/ src/vip_tests/ selftests/ examples/
-uv run ruff format --check src/ src/vip_tests/ selftests/ examples/
+uv run ruff check src/ selftests/ examples/ docker/
+uv run ruff format --check src/ selftests/ examples/ docker/
 ```
 
 Or with just:
@@ -36,7 +36,7 @@ Or with just:
 just check
 ```
 
-Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. All Python directories (`src/`, `src/vip_tests/`, `selftests/`, `examples/`) must pass. CI pins ruff to version 0.15.0 -- do not change the version without updating `.github/workflows/ci.yml`.
+Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. All Python directories (`src/`, which includes `src/vip_tests/`, plus `selftests/`, `examples/` and `docker/`) must pass. `docker/` is easy to forget and holds `docker/playwright-smoke.py`. CI pins ruff to version 0.15.0 -- do not change the version without updating `.github/workflows/ci.yml`.
 
 Auto-fix before committing:
 
@@ -120,6 +120,7 @@ Key rules:
 -   Step function names should be descriptive. Use `target_fixture` to pass state between steps.
 -   Tests must be non-destructive. Tag created content with `_vip_test` and clean it up in a final `then` step.
 -   Use version gating for version-specific features: `@pytest.mark.min_version(product="connect", version="2024.09.0")`
+-   Say what a skip *means*. `vip.attest.not_applicable(reason)` says there was nothing to check here (product not configured, tier lacks the feature) and keeps the run green. `vip.attest.unproven(reason)` says VIP was asked to check something and could not, which fails the run with exit code 6 unless `--allow-unproven` is passed. A bare `pytest.skip()` still behaves like `not_applicable`; prefer the explicit helper so the next reader does not have to infer which one you meant.
 
 ## Four-layer test architecture
 
@@ -150,10 +151,15 @@ Key principles:
 | `src/vip/proxy.py` | Single source of truth for outbound-proxy resolution. `ProxyConfig` + `build_proxy_map` (mirrors httpx's `get_environment_proxies`, incl. NO_PROXY formatting), `build_mounts` (per-scheme `HTTPTransport` mounts that keep `verify`), `proxy_for_url` (httpx-identical most-specific-pattern selection, used by non-httpx probes), `playwright_proxy` (renders a Playwright `launch(proxy=)` dict). Every HTTP egress path routes through this so VIP never diverges from httpx's own env-proxy behavior — see "Outbound proxy support" below |
 | `src/vip/auth.py` | Interactive and headless browser authentication for OIDC providers; `authenticated_page` opens a headless page from a cached auth session for `vip cleanup --workbench-url`; `auth_cache_path()` is the single source of truth for the `.vip-auth-cache.json` location (both `plugin.py` and `cli.py` must use it), and `_load_cached_auth` probes Workbench before trusting a cached session; `refresh_auth_cache_from_storage_state` writes a live context's cookies back over a cache whose session has been invalidated (atomic, 0600, existing caches only) |
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
-| `src/vip/plugin.py` | pytest plugin: markers (including `slow`, used by `verify --basic`), auto-skip, JSON report output |
+| `src/vip/attest.py` | The two skip helpers (`not_applicable`, `unproven`) that record whether a skipped check was out of scope or simply never verified |
+| `src/vip/plugin.py` | pytest plugin: markers (including `slow`, used by `verify --basic`), auto-skip, JSON report output; `pytest_configure` also registers `vip.fixtures` as its own named plugin (`"vip-fixtures"`) so core fixtures resolve regardless of directory ancestry — see that module's docstring |
+| `src/vip/fixtures.py` | VIP's core pytest fixtures and shared BDD "Given" steps (`vip_config`, `connect_client`, `browser_context_args`, etc.), registered by `vip.plugin.pytest_configure` rather than defined in a `conftest.py` — pytest scopes `conftest.py` fixtures by directory ancestry, which made them invisible to extension directories (issue #609) |
 | `src/vip/version.py` | `ProductVersion` parsing/comparison for `min_version` gating; `MINIMUM_SUPPORTED_POSIT_TEAM` support floor (powers `vip version`) |
 | `src/vip/workbench_ui.py` | Browser-driven Workbench session-cleanup sweep (`quit_vip_sessions_via_ui`), shared by the per-test cleanup fixture and `vip cleanup --workbench-url`; takes an `owner` so a per-test sweep only quits its own xdist worker's sessions |
 | `src/vip/reporting.py` | Report data model for Quarto templates |
+| `src/vip/report_content.py` | Format-neutral report content shared by both rendering backends: titles, outcome/badge styling (colors drift-guarded against `styles.css` by `selftests/test_report_content.py`), grouping, skip wording, provenance rows |
+| `src/vip/report_html.py` | HTML backend: renders `report_content` into the fragments `index.qmd`/`details.qmd` display |
+| `src/vip/report_typst.py` | Typst backend: renders the same content as Typst markup for `report/vip-report.qmd` → `_output/vip-report.pdf`; every dynamic value passes through `_lit` (Typst-injection escaping) |
 | `src/vip/clients/connect.py` | httpx client for Connect API |
 | `src/vip/clients/workbench.py` | httpx client for Workbench API; `quit_vip_sessions` warns loudly (not silently) when a VIP session persists after all retries. `session_owner` / `is_vip_session_for_owner` decide whether a VIP session belongs to the sweeping worker — see "Session ownership" below |
 | `src/vip/clients/packagemanager.py` | httpx client for Package Manager API |
@@ -163,9 +169,10 @@ Key principles:
 | `src/vip/install/playwright.py` | Playwright cache detection + `playwright install chromium` wrapper |
 | `src/vip/install/plan.py` | Pure `build_install_plan` / `build_uninstall_plan` builders |
 | `src/vip/install/runner.py` | Plan executor: dry-run formatting + execute (system packages, Playwright, manifest writes) |
-| `src/vip_tests/conftest.py` | Root fixtures: clients, auth, runtimes, data sources |
+| `src/vip_tests/conftest.py` | Directory-scoped warning filter (kept out of the global plugin deliberately) plus the three autouse Connect content-cleanup fixtures — see that file's docstring for why those stay directory-scoped instead of moving to `src/vip/fixtures.py` |
 | `report/index.qmd` | Quarto summary page |
 | `report/details.qmd` | Quarto detailed results page |
+| `report/vip-report.qmd` | Quarto/Typst PDF edition (summary + full listing in one archivable file) |
 
 ## Extension examples
 
@@ -176,11 +183,21 @@ VIP ships two canonical extension examples in `examples/`:
 | `examples/custom_tests/` | Minimal HTTP health-check extension (simpler starting point) |
 | `examples/cross_product_validation/` | GxP/regulated-environment pattern: runtime version checks + DESeq2/PyDeSEQ2 package installability across Connect and Workbench |
 
-Generate the cross-product example in a new directory with:
+Generate either one in a new directory with `vip scaffold` (`--template` defaults to
+`cross-product`, so bare `vip scaffold --output DIR` is unchanged):
 
 ```bash
-vip scaffold --output ./my-custom-tests
+vip scaffold --list
+vip scaffold --template minimal --output ./my-custom-tests
+vip scaffold --template cross-product --output ./my-custom-tests
 ```
+
+Every scaffolded directory also gets an `AGENTS.md`, generated from the single shared source
+`examples/_shared/AGENTS.md`. It's the extension contract for whoever (human or agent) writes the
+new tests: the auto-skip rules, `min_version` gating, and an enumerated inventory of public
+fixtures, registered markers, and client entry points. `selftests/test_scaffold_agents_md.py`
+parses the real source and fails if that inventory ever drifts -- keep it in sync when fixtures or
+markers change.
 
 When writing a new extension example, follow the same four-layer architecture and add
 `@pytest.mark.connect` / `@pytest.mark.workbench` decorators to every `@scenario` function so
@@ -188,7 +205,10 @@ auto-skip works correctly (feature-level Gherkin tags alone are not sufficient).
 
 ## Fixtures available in product tests
 
-These are defined in `src/vip_tests/conftest.py` and available to all tests:
+These are defined in `src/vip/fixtures.py` and registered as part of VIP's own pytest plugin
+(`vip.plugin.pytest_configure`), so they are available to every test collected in a run —
+including extension directories loaded via `--vip-extensions`, not just tests under
+`src/vip_tests`:
 
 -   `vip_config` -- the full `VIPConfig` object
 -   `connect_client` / `workbench_client` / `pm_client` -- httpx API clients (or `None` if not configured)
@@ -284,6 +304,8 @@ Rules for cleanup code:
 
 The report lives in `report/` and reads `report/results.json` (written by pytest by default). The `.qmd` files use `IPython.display.Markdown` with `display()` to render content. Always wrap `Markdown()` calls with `display()` -- bare expressions are silently swallowed inside conditionals.
 
+Every render also produces `_output/vip-report.pdf` from `report/vip-report.qmd` -- a native Quarto/Typst document, deliberately not a browser print, because the report exists partly to show off Quarto. `vip report` renders each document with its own `quarto render <doc>` call so a Quarto older than 1.4 (no Typst) still hands over the HTML report and only warns about the PDF. It cannot reuse the HTML pages (pandoc drops `IPython.display.HTML` content to its repr when targeting Typst), so `src/vip/report_typst.py` renders the same `report_content` as Typst markup. Two invariants when touching it: every dynamic value must go through `_lit` (a `#`/`*`/`$` in test output is live Typst markup otherwise), and visual changes must land in `report_content`/`styles.css` in the same commit so the HTML and PDF editions stay identical -- `selftests/test_report_content.py` guards the colors. The faces (Source Sans 3, Source Code Pro; both OFL) are vendored in `report/fonts/` so renders match across laptops, CI, and air-gapped hosts; the font files are part of `_REPORT_TEMPLATE_FILES` and the pyproject force-include block, which `selftests/test_cli_report.py` keeps in sync.
+
 ## CI workflows
 
 -   **`ci.yml`** -- on every PR/push: ruff lint/format (pinned to 0.15.0), mypy type-check, zizmor actions-lint, a runtime dependency audit, and selftests (Ubuntu + macOS, Python 3.10 and 3.12). A `changes` path-filter gates the expensive jobs, while `Lint & Format`, `Selftests Status` and `CI Status` always run as required checks. Uses uv cache. `CI Status` is the scope-aware aggregator for the four path-gated jobs (`Type Check`, `Actions Lint (zizmor)`, `Dependency Audit`, `Lockfile Guard`): none of them can be a required check directly, because each is conditional on `changes` and a failed change-detection job would skip them all and report a green gate. A legitimately skipped job counts as passing; only failure or cancellation is fatal.
@@ -367,8 +389,9 @@ Register warning filters in `src/vip/plugin.py::pytest_configure` (via `config.a
 -   Adding a Workbench scenario that ends the shared auth session (sign-out, session revocation, password change) without ordering it last *and* restoring the session afterwards. Under `--interactive-auth` / `--headless-auth` every Workbench scenario shares one account, so ending that session breaks every scenario still running on other xdist workers, plus the cached auth session on disk. `test_workbench_signout` is the worked example.
 -   Creating `.py` step files without a matching `.feature` file (or vice versa).
 -   Forgetting the `@connect`/`@workbench`/`@package_manager` tag in feature files (breaks auto-skip).
+-   Adding a bare `pytest.skip()` to a file listed in `selftests/test_skip_triage.py`. Every skip in those files has been deliberately classified, and `test_skip_triage.py` fails the build if a new unclassified one appears — use `attest.unproven()` or `attest.not_applicable()`.
+-   Reaching for a bare `pytest.skip()` when the real situation is "I could not check this". That is the failure mode #616 exists to close: an unverified deployment reporting itself as a passing one. If the product was configured and you still could not run the check, use `vip.attest.unproven()`.
 -   Using non-conventional PR titles (must be `type: description`).
 -   Relying on multi-line formatting to shorten lines -- `ruff format` will collapse list comprehensions back to one line if they fit within 100 chars. Extract a helper function instead.
--   Importing a pytest-bdd step module (anything under `src/vip_tests/**` that calls `@scenario` / `scenarios()`) from inside a selftest. `@scenario` inspects the caller's frame at import time, so importing it mid-test raises `IndexError: list index out of range` — and only under some orderings, so it passes locally and fails in CI under `pytest-randomly`. Put the helper you want to test in `conftest.py` and import it from there, or assert via `--collect-only` in a subprocess the way `selftests/test_workbench_ordering.py` does.
--   Running selftests with `-p no:randomly`. CI runs them randomized; disabling the plugin hides exactly the order-dependent failures it exists to catch.
+-   Importing a pytest-bdd step module (anything under `src/vip_tests/**` that calls `@scenario` / `scenarios()`) from inside a selftest. `@scenario` inspects the caller's frame at import time, so importing it mid-test raises `IndexError: list index out of range` — and only under some orderings, so it can pass in one run and fail in another as xdist redistributes tests across workers. Put the helper you want to test in `conftest.py` and import it from there, or assert via `--collect-only` in a subprocess the way `selftests/test_workbench_ordering.py` does.
 -   Bypassing `vip install` with raw `uv run playwright install --with-deps chromium` (or `playwright install chromium`) in setup recipes, Dockerfiles, CI workflows, or docs. The whole `vip uninstall` reversibility relies on the `.vip-install.json` manifest that only `vip install` writes -- a raw `playwright install` leaves no record. The only acceptable alternative is `uv run vip install --skip-system` (used by CI workflows where the runner already has system libs), which still records the Playwright cache.

@@ -1,0 +1,89 @@
+name: Notify on scheduled failure
+description: >-
+  Files a de-duplicated GitHub issue (or comments on the existing one) when a scheduled workflow
+  run fails, so a silent nightly failure gets surfaced instead of disappearing. Only call this
+  from a step gated on `if: failure() && github.event_name == 'schedule'` -- it does not check
+  the event name itself, so a caller gated on push/pull_request would file issues the author
+  already sees in their own run.
+
+inputs:
+  workflow-name:
+    description: >-
+      Human-readable name of the failing workflow. Also the de-duplication key: it forms the
+      issue title, and an existing open issue with that exact title is commented on rather than
+      duplicated. Renaming it orphans any existing tracking issue.
+    required: true
+  github-token:
+    description: "Token with `issues: write` on this repository. Pass `secrets.GITHUB_TOKEN`."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: File or update the nightly failure issue
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
+        WORKFLOW_NAME: ${{ inputs.workflow-name }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        set -euo pipefail
+
+        RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+        TITLE="Nightly failure: ${WORKFLOW_NAME}"
+
+        # Which jobs in this run actually failed. Best-effort: an empty result just
+        # means the body omits the "Failed jobs" line.
+        FAILED_JOBS=$(gh api "repos/${GH_REPO}/actions/runs/${GITHUB_RUN_ID}/jobs" --paginate \
+          --jq '[.jobs[] | select(.conclusion == "failure") | .name] | join(", ")' 2>/dev/null || echo "")
+
+        # De-duplicate on an exact title match against the open issues, compared here
+        # rather than handed to GitHub's search index: `--search` tokenises its input,
+        # is only eventually consistent, and reads a colon as a qualifier separator --
+        # none of which a de-duplication key can tolerate. `--state open` is what makes
+        # closing the issue the way to ask for a fresh one on the next failure.
+        #
+        # The whole lookup is deliberately non-fatal. This step runs under `set -e`, so
+        # without the trailing `|| true` a transient `gh` API error -- or a runner image
+        # that ships without `jq` -- would abort the step and file nothing, which is the
+        # exact silence this action exists to prevent. Degrading to an empty result
+        # files a duplicate issue instead. A duplicate is noisy; silence is invisible.
+        #
+        # The limit is high enough that an older still-open tracking issue is not missed
+        # and mistaken for absent, which would also produce a duplicate.
+        EXISTING=$(gh issue list --state open --limit 500 --json number,title 2>/dev/null \
+          | jq -r --arg t "${TITLE}" 'map(select(.title == $t)) | .[0].number // empty' \
+          || true)
+
+        # Built with printf into a file so no line carries the leading indentation of
+        # this script; four leading spaces would render the whole body as a code block.
+        BODY_FILE="${RUNNER_TEMP:-/tmp}/nightly-failure-body.md"
+        {
+          if [ -n "${EXISTING}" ]; then
+            printf 'The scheduled run of **%s** failed again on %s.\n\n' "${WORKFLOW_NAME}" "${RUN_DATE}"
+          else
+            printf 'The scheduled run of **%s** failed on %s.\n\n' "${WORKFLOW_NAME}" "${RUN_DATE}"
+          fi
+          printf 'Run: %s\n' "${RUN_URL}"
+          if [ -n "${FAILED_JOBS}" ]; then
+            printf '\nFailed jobs: %s\n' "${FAILED_JOBS}"
+          fi
+          if [ -z "${EXISTING}" ]; then
+            printf '\n%s\n' "This issue was filed automatically and is reused for subsequent nightly failures of this workflow. Close it once the underlying failure is fixed, so the next failure opens a fresh issue instead of reviving this one."
+          fi
+        } > "${BODY_FILE}"
+
+        if [ -n "${EXISTING}" ]; then
+          echo "Existing open tracking issue #${EXISTING}; commenting instead of filing a duplicate."
+          gh issue comment "${EXISTING}" --body-file "${BODY_FILE}"
+          exit 0
+        fi
+
+        echo "No open tracking issue found; filing a new one."
+        if ! gh issue create --title "${TITLE}" --body-file "${BODY_FILE}" \
+            --label nightly-failure 2>"${RUNNER_TEMP:-/tmp}/notify-create-err.log"; then
+          echo "::warning::Could not file the issue with the 'nightly-failure' label; retrying without it. Create that label in the repository to restore tagging."
+          cat "${RUNNER_TEMP:-/tmp}/notify-create-err.log"
+          gh issue create --title "${TITLE}" --body-file "${BODY_FILE}"
+        fi

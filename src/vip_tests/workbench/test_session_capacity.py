@@ -22,11 +22,13 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import scenarios, then, when
 
+from vip import attest
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
     ResourceProfileDisabled,
     _option_is_disabled,
+    cap_auto_detected_profiles,
     capacity_session_prefix,
     format_capacity_failure,
     quit_owned_sessions_via_page,
@@ -143,7 +145,7 @@ def _launch_session(
                     raise ResourceProfileDisabled(profile)
                 option.click(timeout=TIMEOUT_QUICK)
         else:
-            pytest.skip(f"Resource profile dropdown not available; cannot select '{profile}'")
+            attest.unproven(f"Resource profile dropdown not available; cannot select '{profile}'")
 
     # Fill session name.
     page.fill(NewSessionDialog.SESSION_NAME, session_name)
@@ -181,10 +183,12 @@ def launch_sessions(page: Page, vip_config):
                 # Every profile is offered but disabled for this user — nothing
                 # is launchable, so there is no capacity to exercise.
                 names = ", ".join(p.name for p in detected)
-                pytest.skip(
+                attest.not_applicable(
                     f"All resource profiles are disabled for the authenticated user: {names}"
                 )
-            profiles_to_test = enabled
+            # A host that advertises N profiles cannot necessarily run all N at
+            # once, so launch only the smallest few (#631).
+            profiles_to_test = cap_auto_detected_profiles(enabled)
         else:
             # No profiles dropdown — launch with default.
             profiles_to_test = [None]
@@ -220,7 +224,7 @@ def launch_sessions(page: Page, vip_config):
         # skipped (not passed) on a correctly-restricted test account,
         # distinct from an actual capacity failure.
         names = ", ".join(disabled_profiles)
-        pytest.skip(
+        attest.not_applicable(
             f"Resource profile(s) '{names}' are disabled for the authenticated "
             "user (likely a group/entitlement restriction)"
         )

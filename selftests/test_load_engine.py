@@ -71,6 +71,17 @@ class _ThreadedHTTPServer(http.server.HTTPServer):
     allow_reuse_address = True
     pool_size = 64
 
+    # ``socketserver.TCPServer`` defaults this to 5, which is the ``listen()``
+    # backlog -- not a limit on concurrent work.  The load tests open 50-1000
+    # connections near-simultaneously, faster than ``serve_forever`` can accept
+    # them, so with the default, anything past the fifth queued connection --
+    # i.e. the sixth and later -- is reset by the kernel before it is ever
+    # accepted.  Those resets are counted as request failures, so the
+    # assertions read a load-engine failure rate that the fixture caused.
+    # macOS is stricter about the ceiling than Linux, which is why this
+    # surfaced there first.
+    request_queue_size = 128
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._requests: queue.Queue = queue.Queue()

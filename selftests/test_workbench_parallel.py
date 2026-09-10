@@ -130,6 +130,13 @@ class TestWorkbenchGroupName:
     def test_module_without_test_prefix_kept_verbatim(self):
         assert wb._workbench_group_name(set(), "chronicle_probe") == "workbench_chronicle_probe"
 
+    def test_multiple_ide_markers_raise_usage_error(self):
+        # No item carries two IDE markers today, but the same fixed-order loop that
+        # decides between them here must not silently pick the first one -- see the
+        # matching guard in test_ide_extensions.py's cascade-skip fixture.
+        with pytest.raises(pytest.UsageError, match="at most one IDE marker"):
+            wb._workbench_group_name({"rstudio", "vscode"}, "test_ide_launch")
+
 
 class _FakeMarker:
     def __init__(self, name):
@@ -209,6 +216,287 @@ class TestCollectionHook:
         item = _FakeItem(Path("/somewhere/connect/test_auth.py"), ["connect"])
         wb.pytest_collection_modifyitems(_FakeConfig(object()), [item])
         assert item.added == []
+
+
+class TestExtensionSharesLaunchGroup:
+    """#592: an extension scenario must join its IDE's launch group.
+
+    ``pytest_collection_modifyitems`` groups purely off the IDE marker set on
+    the item, independent of which file it came from -- so once
+    test_ide_extensions.py's scenarios carry the same IDE markers as
+    test_ide_launch.py's, they land in the same ``workbench_ide_<ide>`` group
+    (and therefore the same xdist worker) for free.
+    """
+
+    def _wb_dir(self):
+        return Path(wb.__file__).parent
+
+    def test_vscode_extension_item_joins_vscode_launch_group(self):
+        launch_item = _FakeItem(self._wb_dir() / "test_ide_launch.py", ["workbench", "vscode"])
+        extensions_item = _FakeItem(
+            self._wb_dir() / "test_ide_extensions.py", ["workbench", "vscode"]
+        )
+        config = _FakeConfig(object())
+        wb.pytest_collection_modifyitems(config, [launch_item, extensions_item])
+
+        launch_group = next(args for name, args in launch_item.added if name == "xdist_group")
+        extensions_group = next(
+            args for name, args in extensions_item.added if name == "xdist_group"
+        )
+        assert launch_group == extensions_group == ("workbench_ide_vscode",)
+
+
+class TestRecordIdeLaunchOutcome:
+    def test_first_record_sets_outcome(self):
+        outcomes: dict[str, str] = {}
+        wb._record_ide_launch_outcome(outcomes, "vscode", "passed")
+        assert outcomes == {"vscode": "passed"}
+
+    def test_setup_skip_then_no_call_leaves_skipped(self):
+        # Models the real "IDE not configured" setup-phase skip: only one
+        # phase ever reports (call never runs), so only one call happens.
+        outcomes: dict[str, str] = {}
+        wb._record_ide_launch_outcome(outcomes, "positron", "skipped")
+        assert outcomes == {"positron": "skipped"}
+
+    def test_passed_setup_then_failed_call_ends_failed(self):
+        outcomes: dict[str, str] = {}
+        wb._record_ide_launch_outcome(outcomes, "jupyter", "passed")
+        wb._record_ide_launch_outcome(outcomes, "jupyter", "failed")
+        assert outcomes == {"jupyter": "failed"}
+
+    def test_later_passed_never_overwrites_earlier_skipped(self):
+        # The guard this test exists for: a later phase reporting "passed"
+        # must not erase an earlier non-passed verdict.
+        outcomes: dict[str, str] = {}
+        wb._record_ide_launch_outcome(outcomes, "rstudio", "skipped")
+        wb._record_ide_launch_outcome(outcomes, "rstudio", "passed")
+        assert outcomes == {"rstudio": "skipped"}
+
+    def test_later_passed_never_overwrites_earlier_failed(self):
+        outcomes: dict[str, str] = {}
+        wb._record_ide_launch_outcome(outcomes, "vscode", "failed")
+        wb._record_ide_launch_outcome(outcomes, "vscode", "passed")
+        assert outcomes == {"vscode": "failed"}
+
+
+class TestIdeExtensionSkipReason:
+    def test_absence_means_run(self):
+        # The critical rule: no recorded outcome at all -> None (run), never a skip.
+        assert wb._ide_extension_skip_reason("vscode", None) is None
+
+    def test_passed_means_run(self):
+        assert wb._ide_extension_skip_reason("jupyter", "passed") is None
+
+    def test_skipped_outcome_names_ide_and_outcome(self):
+        reason = wb._ide_extension_skip_reason("positron", "skipped")
+        assert reason is not None
+        assert "Positron" in reason
+        assert "skipped" in reason
+
+    def test_failed_outcome_names_ide_and_outcome(self):
+        reason = wb._ide_extension_skip_reason("vscode", "failed")
+        assert reason is not None
+        assert "VS Code" in reason
+        assert "failed" in reason
+
+    def test_unknown_ide_falls_back_to_marker_name(self):
+        # Defensive: an ide not in _IDE_DISPLAY_NAMES still produces a message
+        # rather than raising, naming the raw marker instead of a display name.
+        reason = wb._ide_extension_skip_reason("made_up_ide", "failed")
+        assert reason is not None
+        assert "made_up_ide" in reason
+
+
+class TestIdeLaunchOutcomeHookIntegration:
+    """End-to-end: the real ``pytest_runtest_makereport`` hookwrapper, exercised
+    via ``pytester`` against real pytest test execution rather than fake items.
+    """
+
+    def _run_and_capture_outcomes(self, pytester) -> dict[str, str]:
+        # Delegate to the real hook (not a copy) and dump the stash it filled to
+        # a file at session end, where the outer test can read it back.
+        pytester.makeconftest(
+            """
+            import json
+
+            import pytest
+            from vip_tests.workbench import conftest as wb
+
+            pytest_runtest_makereport = wb.pytest_runtest_makereport
+
+            def pytest_sessionfinish(session):
+                outcomes = session.config.stash.get(wb._ide_launch_outcome_key, {})
+                (session.config.rootpath / "outcomes.json").write_text(json.dumps(outcomes))
+            """
+        )
+        pytester.runpytest_inprocess()
+        outcomes_path = pytester.path / "outcomes.json"
+        if not outcomes_path.exists():
+            return {}
+        import json
+
+        return json.loads(outcomes_path.read_text())
+
+    def test_setup_skip_is_recorded_even_though_call_never_runs(self, pytester):
+        pytester.makepyfile(
+            test_ide_launch="""
+            import pytest
+
+            @pytest.fixture
+            def _unavailable():
+                pytest.skip("VS Code IDE not available in this Workbench deployment")
+
+            @pytest.mark.vscode
+            def test_launch_vscode(_unavailable):
+                pass
+            """
+        )
+        outcomes = self._run_and_capture_outcomes(pytester)
+        assert outcomes == {"vscode": "skipped"}
+
+    def test_call_failure_is_recorded(self, pytester):
+        pytester.makepyfile(
+            test_ide_launch="""
+            import pytest
+
+            @pytest.mark.jupyter
+            def test_launch_jupyter():
+                assert False, "boom"
+            """
+        )
+        outcomes = self._run_and_capture_outcomes(pytester)
+        assert outcomes == {"jupyter": "failed"}
+
+    def test_full_pass_is_recorded(self, pytester):
+        pytester.makepyfile(
+            test_ide_launch="""
+            import pytest
+
+            @pytest.mark.rstudio
+            def test_launch_rstudio():
+                pass
+            """
+        )
+        outcomes = self._run_and_capture_outcomes(pytester)
+        assert outcomes == {"rstudio": "passed"}
+
+    def test_non_launch_file_and_unmarked_tests_are_ignored(self, pytester):
+        pytester.makepyfile(
+            test_ide_launch="""
+            def test_no_ide_marker():
+                pass
+            """,
+            test_ide_extensions="""
+            import pytest
+
+            @pytest.mark.vscode
+            def test_vscode_extensions():
+                pass
+            """,
+        )
+        outcomes = self._run_and_capture_outcomes(pytester)
+        assert outcomes == {}
+
+
+class TestCascadeSkipFixtureIntegration:
+    """#592/#594: the real ``_skip_if_ide_launch_did_not_pass`` autouse fixture from
+    ``test_ide_extensions.py``, exercised end to end via ``pytester``.
+
+    Nothing in the selftest or product suite runs this fixture otherwise, so a
+    break in it (e.g. a stale stash key, a flipped skip condition) would go
+    undetected -- see the "cascade skip" section of ``conftest.py``. The fixture
+    is imported from its real module rather than reimplemented: pytest_bdd's
+    ``@scenario`` decorator only resolves (it needs an active pytest config on
+    ``CONFIG_STACK``) inside a live pytest session, which ``runpytest_inprocess``
+    provides, so this must run through pytester rather than a bare import.
+    """
+
+    def _make_conftest(self, pytester):
+        # Delegate to the real hook that records launch outcomes into the stash
+        # the fixture reads back from -- same wiring as
+        # TestIdeLaunchOutcomeHookIntegration above.
+        pytester.makeconftest(
+            """
+            from vip_tests.workbench import conftest as wb
+
+            pytest_runtest_makereport = wb.pytest_runtest_makereport
+            """
+        )
+
+    def _setup_report(self, result, test_name: str):
+        reports = result.reprec.getreports("pytest_runtest_logreport")
+        return next(r for r in reports if r.when == "setup" and r.nodeid.endswith(f"::{test_name}"))
+
+    def test_extension_scenario_skips_when_launch_did_not_pass(self, pytester):
+        self._make_conftest(pytester)
+        # "test_ide_launch.py" sorts before "test_zz_extensions.py" so the launch
+        # test's outcome is recorded before the extension test's setup runs --
+        # in the real suite that ordering comes from hybrid xdist grouping plus
+        # pytest-order, which pytester's isolated rootdir does not apply.
+        pytester.makepyfile(
+            test_ide_launch="""
+            import pytest
+
+            @pytest.mark.jupyter
+            def test_launch_jupyter():
+                assert False, "boom"
+            """,
+            test_zz_extensions="""
+            from vip_tests.workbench.test_ide_extensions import _skip_if_ide_launch_did_not_pass
+            import pytest
+
+            @pytest.mark.jupyter
+            def test_jupyterlab_extensions():
+                pass
+            """,
+        )
+        result = pytester.runpytest_inprocess()
+        result.assert_outcomes(failed=1, skipped=1)
+        report = self._setup_report(result, "test_jupyterlab_extensions")
+        assert report.skipped
+        assert "JupyterLab launch did not pass (failed)" in str(report.longrepr)
+
+    def test_extension_scenario_runs_when_launch_passed(self, pytester):
+        self._make_conftest(pytester)
+        pytester.makepyfile(
+            test_ide_launch="""
+            import pytest
+
+            @pytest.mark.jupyter
+            def test_launch_jupyter():
+                pass
+            """,
+            test_zz_extensions="""
+            from vip_tests.workbench.test_ide_extensions import _skip_if_ide_launch_did_not_pass
+            import pytest
+
+            @pytest.mark.jupyter
+            def test_jupyterlab_extensions():
+                pass
+            """,
+        )
+        result = pytester.runpytest_inprocess()
+        # Both pass: the recorded "passed" launch outcome means the fixture's
+        # "absence or passed means run" rule leaves the extension test alone.
+        result.assert_outcomes(passed=2)
+
+    def test_multiple_ide_markers_raise_usage_error(self, pytester):
+        self._make_conftest(pytester)
+        pytester.makepyfile(
+            test_zz_extensions="""
+            from vip_tests.workbench.test_ide_extensions import _skip_if_ide_launch_did_not_pass
+            import pytest
+
+            @pytest.mark.jupyter
+            @pytest.mark.positron
+            def test_two_ide_markers():
+                pass
+            """,
+        )
+        result = pytester.runpytest_inprocess()
+        result.assert_outcomes(errors=1)
+        result.stdout.fnmatch_lines(["*UsageError*Expected exactly one IDE marker*"])
 
 
 class TestRealMarkerMechanics:

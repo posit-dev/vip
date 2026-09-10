@@ -13,6 +13,7 @@ vip/
 │   ├── config.py                # TOML config loader + dataclasses
 │   ├── plugin.py                # pytest plugin (markers, skip logic, JSON report)
 │   ├── reporting.py             # Report data model for Quarto
+│   ├── report_html.py           # HTML rendering for the Quarto report (reporting.py's testable sibling)
 │   └── clients/                 # Lightweight HTTP clients (httpx, no SDKs)
 │       ├── connect.py           # Content CRUD, deploy, tags, runtime versions
 │       ├── workbench.py         # Health, server info, sessions
@@ -31,12 +32,14 @@ vip/
 ├── selftests/                   # Framework tests (no products required, run in CI)
 │   ├── test_config.py           # Config loading, TOML parsing, env vars
 │   ├── test_plugin.py           # Version parsing, skip logic, JSON output, extensions
-│   └── test_reporting.py        # Report data model, result loading
+│   ├── test_reporting.py        # Report data model, result loading
+│   └── test_report_html.py      # HTML rendering: escaping, cards, badges, rollups
 │
 ├── report/                      # Quarto report templates
-│   ├── _quarto.yml              # Website config (cosmo theme, navbar)
-│   ├── index.qmd                # Summary: pass/fail counts, category breakdown, failures
-│   └── details.qmd              # Per-test listing with outcome and duration
+│   ├── _quarto.yml              # Website config (cosmo theme, navbar, embed-resources)
+│   ├── styles.css               # Shared CSS for both pages (badges, cards, print styles)
+│   ├── index.qmd                # Summary: products/provenance rollup, failures & skips in full
+│   └── details.qmd              # Full per-test listing, grouped by category
 │
 ├── examples/custom_src/vip_tests/       # Extension example for customer-specific tests
 ├── .github/workflows/

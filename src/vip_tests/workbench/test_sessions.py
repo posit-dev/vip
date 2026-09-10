@@ -13,6 +13,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
+from vip import attest
 from vip_tests.workbench.conftest import (
     TIMEOUT_CLEANUP,
     TIMEOUT_DIALOG,
@@ -221,7 +222,7 @@ def session_becomes_active_again(page: Page, workbench_url: str, session_context
             page.reload(timeout=TIMEOUT_PAGE_LOAD)
             expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
-    pytest.skip(
+    attest.unproven(
         f"Session did not return to Active state after resume — "
         f"suspend/resume may not be supported in this Workbench configuration ({exc})"
     )

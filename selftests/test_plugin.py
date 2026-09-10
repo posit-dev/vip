@@ -12,6 +12,7 @@ import pytest
 from vip.plugin import (
     _emit_extra_formats,
     _extract_exception_info,
+    _extract_skip_reason,
     _format_concise_error,
     _outcome_color,
     _shorten_location_line,
@@ -160,6 +161,58 @@ class TestExtractExceptionInfo:
         exc_type, exc_message = _extract_exception_info(longrepr)
         assert exc_type == "AssertionError"
         assert "Connect: /metrics returned 403" in exc_message
+
+
+class TestExtractSkipReason:
+    """F3: pulling a human-readable skip reason out of report.longrepr."""
+
+    def test_whitespace_only_reason_is_treated_as_absent(self):
+        """A blank reason must fall back to None, not render an empty line.
+
+        Both a ``reason="   "`` and a bare ``"Skipped:    "`` leave whitespace
+        once the prefix is stripped; truthy-but-blank would reach the report as
+        an empty skip line instead of the "no reason recorded" wording.
+        """
+        assert _extract_skip_reason(("/p/test_x.py", 3, "Skipped:    ")) is None
+        assert _extract_skip_reason(("/p/test_x.py", 3, "   ")) is None
+
+    def test_reason_is_stripped_of_surrounding_whitespace(self):
+        got = _extract_skip_reason(("/p/test_x.py", 3, "Skipped:  no license  "))
+        assert got == "no license"
+
+    def test_tuple_longrepr_strips_skipped_prefix(self):
+        # This is the real shape pytest hands back for a skip -- a 3-tuple
+        # with the caller's absolute file path in element 0. Reading the
+        # reason out of element 2 directly means that path never gets near
+        # results.json.
+        longrepr = (
+            "/Users/dev/vip/selftests/test_load_engine.py",
+            255,
+            "Skipped: high-concurrency localhost loads are flaky on macOS CI runners",
+        )
+        assert (
+            _extract_skip_reason(longrepr)
+            == "high-concurrency localhost loads are flaky on macOS CI runners"
+        )
+
+    def test_tuple_with_empty_reason_returns_none(self):
+        assert _extract_skip_reason(("/some/path.py", 1, "Skipped: ")) is None
+
+    def test_plain_string_without_prefix_is_returned_as_is(self):
+        assert _extract_skip_reason("not configured") == "not configured"
+
+    def test_plain_string_with_prefix_is_stripped(self):
+        assert _extract_skip_reason("Skipped: not configured") == "not configured"
+
+    def test_none_returns_none(self):
+        assert _extract_skip_reason(None) is None
+
+    def test_unexpected_shapes_fall_back_to_none_without_crashing(self):
+        assert _extract_skip_reason(("too", "few")) is None
+        assert _extract_skip_reason(("a", "b", "c", "d")) is None
+        assert _extract_skip_reason(("path", 1, 12345)) is None
+        assert _extract_skip_reason(12345) is None
+        assert _extract_skip_reason([]) is None
 
 
 class TestOutcomeColor:
@@ -787,6 +840,141 @@ class TestPluginIntegration:
         result = data["results"][0]
         assert result["na_version"] is False
 
+    def test_json_report_includes_skip_reason(self, selftest_pytester):
+        """A marker-skipped test's reason lands in skip_reason, and longrepr is
+        dropped rather than storing pytest's absolute-path-carrying tuple form."""
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.skip(reason="high-concurrency localhost loads are flaky")
+            def test_skips():
+                pass
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        result = data["results"][0]
+        assert result["outcome"] == "skipped"
+        assert result["skip_reason"] == "high-concurrency localhost loads are flaky"
+        assert result["longrepr"] is None
+
+    def test_json_report_na_version_skip_also_gets_skip_reason(self, selftest_pytester):
+        """na_version skips (see _skip_version_unknown) are still skips, so they
+        get a skip_reason too -- it complements na_version, not replaces it."""
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://example.com"\n'
+            ),
+        )
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.min_version(product="connect", version="9999.01.0")
+            def test_future_version():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        result = data["results"][0]
+        assert result["na_version"] is True
+        assert result["skip_reason"] is not None
+        assert "version unknown for connect" in result["skip_reason"]
+
+    def test_json_report_skip_reason_none_for_non_skips(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            """
+            def test_plain():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        assert data["results"][0]["skip_reason"] is None
+
+    def test_json_report_failure_longrepr_unaffected_by_skip_change(self, selftest_pytester):
+        """Dropping longrepr is specific to skips -- a failure still gets one."""
+        selftest_pytester.makepyfile(
+            """
+            def test_fails():
+                assert False, "boom"
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        result = data["results"][0]
+        assert result["outcome"] == "failed"
+        assert result["longrepr"] is not None
+        assert result["skip_reason"] is None
+
+    def test_json_report_includes_provenance_fields(self, selftest_pytester):
+        """F9: results.json records the version/duration/environment that
+        produced it."""
+        import platform as _platform
+
+        selftest_pytester.makepyfile(
+            """
+            def test_plain():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        data = json.loads(report_path.read_text())
+        from vip import __version__ as vip_version
+
+        assert data["vip_version"] == vip_version
+        # This pytester run executes in-process (runpytest, not
+        # runpytest_subprocess), so it shares this test's own interpreter --
+        # the recorded python_version/platform must match it exactly.
+        assert data["python_version"] == _platform.python_version()
+        assert data["platform"] == _platform.platform()
+        assert isinstance(data["run_duration_seconds"], float)
+        assert data["run_duration_seconds"] >= 0
+        assert data["basic_mode"] is False
+
+    def test_json_report_basic_mode_true_when_slow_marker_excluded(self, selftest_pytester):
+        """basic_mode reflects the resolved marker expression, not a dedicated
+        flag -- `vip verify --basic` and a hand-written `-m "not slow"` both
+        set it, because both actually excluded the slow marker."""
+        selftest_pytester.makepyfile(
+            """
+            def test_plain():
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+            "-m",
+            "not slow",
+        )
+        data = json.loads(report_path.read_text())
+        assert data["basic_mode"] is True
+
     def test_interactive_auth_skipped_when_no_auth_products(self, selftest_pytester):
         """--interactive-auth skips the browser flow when no auth-requiring products are enabled.
 
@@ -1026,6 +1214,148 @@ class TestPluginIntegration:
         passed = [r for r in data["results"] if r["outcome"] == "passed"]
         for r in passed:
             assert r["concise_error"] is None
+
+    def test_unproven_skip_is_flagged_and_reason_is_clean(self, selftest_pytester):
+        """The sentinel is an internal transport detail: it classifies the
+        skip and must not leak into the reason a human reads."""
+        selftest_pytester.makepyfile(
+            """
+            from vip import attest
+
+            def test_needs_auth():
+                attest.unproven("Workbench authentication did not complete")
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        result = json.loads(report_path.read_text())["results"][0]
+        assert result["outcome"] == "skipped"
+        assert result["unproven"] is True
+        assert result["skip_reason"] == "Workbench authentication did not complete"
+
+    def test_not_applicable_skip_is_not_flagged(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            """
+            from vip import attest
+
+            def test_nothing_to_do():
+                attest.not_applicable("Connect is not configured")
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        result = json.loads(report_path.read_text())["results"][0]
+        assert result["outcome"] == "skipped"
+        assert result["unproven"] is False
+        assert result["skip_reason"] == "Connect is not configured"
+
+    def test_plain_pytest_skip_defaults_to_not_unproven(self, selftest_pytester):
+        # The 160 untriaged skip sites keep their current meaning until they
+        # are converted deliberately; this field must not change under them.
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+
+            def test_plain_skip():
+                pytest.skip("some existing reason")
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        result = json.loads(report_path.read_text())["results"][0]
+        assert result["unproven"] is False
+
+    def test_unproven_from_a_fixture_is_flagged(self, selftest_pytester):
+        """Real unproven skips fire from fixtures (the auth gate), which land
+        in the 'setup' phase rather than 'call'."""
+        selftest_pytester.makepyfile(
+            """
+            import pytest
+            from vip import attest
+
+            @pytest.fixture
+            def workbench_session():
+                attest.unproven("no usable IdP session")
+
+            def test_uses_session(workbench_session):
+                assert True
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        result = json.loads(report_path.read_text())["results"][0]
+        assert result["outcome"] == "skipped"
+        assert result["unproven"] is True
+        assert result["skip_reason"] == "no usable IdP session"
+
+    def test_unproven_reason_is_rewritten_for_downstream_reporters(self, selftest_pytester):
+        """The sentinel must not reach pytest's own --junitxml.
+
+        CI runs pytest --junitxml directly (ci.yml, connect-smoke.yml,
+        packagemanager-smoke.yml), and AGENTS.md tells operators to read skip
+        reasons out of that file because VIP's terminal reporter hides them.
+        A raw sentinel there is both unreadable and hides the classification,
+        so rewrite report.longrepr in place rather than only cleaning up
+        VIP's own artifacts.
+        """
+        selftest_pytester.makepyfile(
+            """
+            from vip import attest
+
+            def test_needs_auth():
+                attest.unproven("Workbench authentication did not complete")
+            """
+        )
+        xml_path = selftest_pytester.path / "native-junit.xml"
+        selftest_pytester.runpytest("--vip-config=vip.toml", f"--junitxml={xml_path}")
+        raw = xml_path.read_bytes()
+        assert b"vip:unproven" not in raw, "internal sentinel leaked to native JUnit"
+        assert b"#x00" not in raw, "escaped NUL leaked to native JUnit"
+        assert b"UNPROVEN: Workbench authentication did not complete" in raw
+
+    def test_ordinary_skip_reason_is_left_alone_downstream(self, selftest_pytester):
+        selftest_pytester.makepyfile(
+            """
+            from vip import attest
+
+            def test_nothing_to_do():
+                attest.not_applicable("Connect is not configured")
+            """
+        )
+        xml_path = selftest_pytester.path / "native-junit.xml"
+        selftest_pytester.runpytest("--vip-config=vip.toml", f"--junitxml={xml_path}")
+        raw = xml_path.read_bytes()
+        assert b"Connect is not configured" in raw
+        assert b"UNPROVEN" not in raw
+
+    def test_unproven_summary_names_the_flag_that_actually_works(self, selftest_pytester):
+        """The summary is printed by the plugin, so it is reached by a bare
+        `pytest` run too -- where the option is spelled --vip-allow-unproven.
+        Naming only the `vip verify` alias sends those users to a flag pytest
+        rejects."""
+        selftest_pytester.makepyfile(
+            """
+            from vip import attest
+
+            def test_needs_auth():
+                attest.unproven("auth did not complete")
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml")
+        printed = result.stdout.str() + result.stderr.str()
+        assert "--vip-allow-unproven" in printed
 
 
 class TestXdistCompatibility:
@@ -1959,3 +2289,166 @@ class TestFormatEmission:
         with pytest.warns(UserWarning, match="unknown"):
             _emit_extra_formats("junit,bogus", results)  # bogus warned, junit still written
         assert (tmp_path / "junit.xml").exists()
+
+
+class TestClassifySkipReason:
+    """The sentinel that carries a skip's classification from the skip site."""
+
+    def test_plain_reason_is_not_unproven(self):
+        from vip.plugin import _classify_skip_reason
+
+        assert _classify_skip_reason("Connect is not configured") == (
+            "Connect is not configured",
+            False,
+        )
+
+    def test_sentinel_is_stripped_and_flags_unproven(self):
+        from vip.attest import UNPROVEN_SENTINEL
+        from vip.plugin import _classify_skip_reason
+
+        raw = f"{UNPROVEN_SENTINEL}Workbench authentication did not complete"
+        assert _classify_skip_reason(raw) == (
+            "Workbench authentication did not complete",
+            True,
+        )
+
+    def test_none_reason_survives(self):
+        from vip.plugin import _classify_skip_reason
+
+        assert _classify_skip_reason(None) == (None, False)
+
+    def test_sentinel_alone_leaves_no_reason_but_still_flags(self):
+        from vip.attest import UNPROVEN_SENTINEL
+        from vip.plugin import _classify_skip_reason
+
+        assert _classify_skip_reason(UNPROVEN_SENTINEL) == (None, True)
+
+    def test_sentinel_must_be_a_prefix_not_a_substring(self):
+        # A test whose reason merely quotes the sentinel is not unproven.
+        from vip.attest import UNPROVEN_SENTINEL
+        from vip.plugin import _classify_skip_reason
+
+        raw = f"reason mentioning {UNPROVEN_SENTINEL} in passing"
+        assert _classify_skip_reason(raw) == (raw, False)
+
+
+class TestAttestSkipHelpers:
+    """`vip.attest` is how a skip site declares which kind of skip it is."""
+
+    def test_unproven_raises_a_skip_carrying_the_sentinel(self):
+        from vip import attest
+
+        with pytest.raises(BaseException) as exc:
+            attest.unproven("auth did not complete")
+        assert exc.typename == "Skipped"
+        assert attest.UNPROVEN_SENTINEL in str(exc.value)
+        assert "auth did not complete" in str(exc.value)
+
+    def test_not_applicable_raises_a_plain_skip(self):
+        from vip import attest
+
+        with pytest.raises(BaseException) as exc:
+            attest.not_applicable("Connect is not configured")
+        assert exc.typename == "Skipped"
+        assert attest.UNPROVEN_SENTINEL not in str(exc.value)
+        assert "Connect is not configured" in str(exc.value)
+
+
+class TestUnprovenExitStatus:
+    """The exit-code contract: a run that verified nothing is not a success.
+
+    This is the behaviour #596 asks for, generalised. A configured product
+    whose checks all went unproven must not exit 0, whatever the cause.
+    """
+
+    @pytest.fixture()
+    def selftest_pytester(self, pytester):
+        pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
+        return pytester
+
+    def _run(self, pytester, body, *extra):
+        pytester.makepyfile(body)
+        report_path = pytester.path / "results.json"
+        result = pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}", *extra)
+        return result, json.loads(report_path.read_text())
+
+    def test_unproven_check_makes_the_run_exit_nonzero(self, selftest_pytester):
+        from vip.plugin import EXIT_UNPROVEN
+
+        result, _ = self._run(
+            selftest_pytester,
+            """
+            from vip import attest
+
+            def test_needs_auth():
+                attest.unproven("Workbench authentication did not complete")
+            """,
+        )
+        assert result.ret == EXIT_UNPROVEN
+
+    def test_exit_code_is_distinct_from_ordinary_test_failure(self):
+        # CI needs to tell "something is broken" from "something went
+        # unverified" without parsing output.
+        from vip.plugin import EXIT_UNPROVEN
+
+        assert EXIT_UNPROVEN != 0
+        assert EXIT_UNPROVEN != 1
+
+    def test_allow_unproven_restores_the_old_behaviour(self, selftest_pytester):
+        result, _ = self._run(
+            selftest_pytester,
+            """
+            from vip import attest
+
+            def test_needs_auth():
+                attest.unproven("auth did not complete")
+            """,
+            "--vip-allow-unproven",
+        )
+        assert result.ret == 0
+
+    def test_real_failure_outranks_unproven(self, selftest_pytester):
+        # A broken deployment is a stronger signal than an unverified one;
+        # the exit code must not hide a genuine failure behind UNPROVEN.
+        result, _ = self._run(
+            selftest_pytester,
+            """
+            from vip import attest
+
+            def test_needs_auth():
+                attest.unproven("auth did not complete")
+
+            def test_broken():
+                assert False
+            """,
+        )
+        assert result.ret == 1
+
+    def test_ordinary_skips_still_exit_zero(self, selftest_pytester):
+        result, _ = self._run(
+            selftest_pytester,
+            """
+            from vip import attest
+
+            def test_nothing_to_do():
+                attest.not_applicable("Connect is not configured")
+            """,
+        )
+        assert result.ret == 0
+
+    def test_reported_exit_status_matches_the_process(self, selftest_pytester):
+        # results.json is the audit artifact; it must not record 0 for a run
+        # the process reported as unproven.
+        from vip.plugin import EXIT_UNPROVEN
+
+        result, data = self._run(
+            selftest_pytester,
+            """
+            from vip import attest
+
+            def test_needs_auth():
+                attest.unproven("auth did not complete")
+            """,
+        )
+        assert result.ret == EXIT_UNPROVEN
+        assert data["exit_status"] == EXIT_UNPROVEN

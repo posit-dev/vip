@@ -15,6 +15,7 @@ from playwright.sync_api import Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given, scenario, then, when
 
+from vip import attest
 from vip_tests.workbench.conftest import (
     TIMEOUT_CLEANUP,
     TIMEOUT_CODE_EXEC,
@@ -234,7 +235,7 @@ def _start_session(page: Page, ide_type: str, session_name: str):
 
 
 def _dismiss_dialog_and_skip(page: Page, reason: str) -> NoReturn:
-    """Best-effort cancel of the New Session dialog, then ``pytest.skip``.
+    """Best-effort cancel of the New Session dialog, then ``attest.not_applicable``.
 
     Uses a short timeout on the cancel click so a missing or unreachable
     cancel button does not mask the real skip reason with a 30-second
@@ -253,7 +254,7 @@ def _dismiss_dialog_and_skip(page: Page, reason: str) -> NoReturn:
                 pass
     except (PlaywrightTimeoutError, PlaywrightError):
         pass
-    pytest.skip(reason)
+    attest.not_applicable(reason)
 
 
 @then("the session transitions to Active state")
@@ -321,7 +322,7 @@ def _expect_ide_or_skip(
             )
         else:
             reason = skip_reason.format(exc=exc) if "{exc}" in skip_reason else skip_reason
-        pytest.skip(reason)
+        attest.not_applicable(reason)
 
 
 @then("the VS Code IDE is displayed")
@@ -538,7 +539,7 @@ def jupyterlab_executes_code(page: Page, session_context: dict):
             pass  # fall through; re-check below and retry or skip
         notebook_card = page.locator(JupyterLabSession.LAUNCHER_NOTEBOOK_CARD).first
     if notebook_card.count() == 0:
-        pytest.skip("No notebook kernel cards available in JupyterLab launcher")
+        attest.unproven("No notebook kernel cards available in JupyterLab launcher")
     expect(notebook_card).to_be_visible(timeout=TIMEOUT_CODE_EXEC)
 
     # A leftover modal from a *previous* notebook in this session (e.g. an
@@ -603,7 +604,7 @@ def jupyterlab_executes_code(page: Page, session_context: dict):
     # Type-and-run with input verification and run retries. Returns False only
     # after exhausting retries with no output.
     if not _run_jupyter_cell_and_get_output(page, notebook_panel, cell_input):
-        pytest.skip(
+        attest.unproven(
             "JupyterLab notebook UI did not surface cell output within timeout — "
             "the cell run raced session hydration (kernel reachability is verified "
             "separately; this is a UI-interaction timeout, not kernel death)"
@@ -627,7 +628,7 @@ def positron_console_accessible(page: Page):
     reason rather than implying Positron is missing.
     """
     if not ensure_positron_console(page, timeout=TIMEOUT_IDE_LOAD):
-        pytest.skip(
+        attest.unproven(
             "Positron loaded but no console session could be started — the "
             '"Start New Console Session" control was unavailable, no R/Python '
             "interpreter resolved, or the console did not render (issue #477)."

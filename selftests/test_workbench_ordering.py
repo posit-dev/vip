@@ -95,6 +95,15 @@ def _file_of(nodeid: str) -> str:
     return Path(nodeid.split("::", 1)[0]).stem
 
 
+def _function_of(nodeid: str) -> str:
+    """Return the test function name (e.g. ``test_launch_rstudio``) for a node id.
+
+    Strips the trailing ``[chromium]`` parametrize suffix so callers can
+    compare against the bare scenario function name.
+    """
+    return nodeid.split("::", 1)[1].split("[", 1)[0]
+
+
 def _first_index_of_file(nodeids: list[str], file_stem: str) -> int:
     for i, nodeid in enumerate(nodeids):
         if _file_of(nodeid) == file_stem:
@@ -172,6 +181,42 @@ def test_login_collects_before_signout(tmp_path: Path) -> None:
         i for i, n in enumerate(nodeids) if n.endswith("test_workbench_signout[chromium]")
     )
     assert login_idx < signout_idx, f"login must collect before sign-out: {nodeids}"
+
+
+def test_ide_marker_selects_matching_launch_and_extensions_scenarios(tmp_path: Path) -> None:
+    """#592: each IDE marker must select exactly its launch scenario plus its
+    (if any) extensions scenario -- nothing else.
+
+    ``pytest_collection_modifyitems`` in ``workbench/conftest.py`` groups
+    Workbench items for xdist purely off this marker set (see
+    ``_workbench_group_name``): every item carrying a given IDE marker lands
+    in that IDE's ``workbench_ide_<ide>`` group. So an IDE marker selecting
+    exactly the launch+extensions pair here is what "shares its IDE's group"
+    reduces to -- if a scenario carried the wrong marker (or none), this
+    would select the wrong set of files.
+
+    RStudio has no extensions scenario today, so its marker selects only the
+    launch file.
+
+    Asserting scenario *function names* (not just file stems) matters: a
+    marker mix-up between two IDEs on the extensions functions (e.g. jupyter
+    and positron swapped between ``test_jupyterlab_extensions`` and
+    ``test_positron_extensions``) would still select the right *file* --
+    ``test_ide_extensions`` -- for both markers, and a file-only assertion
+    would not catch it.
+    """
+    marker_to_expected_functions = {
+        "rstudio": {"test_launch_rstudio"},
+        "vscode": {"test_launch_vscode", "test_vscode_extensions"},
+        "jupyter": {"test_launch_jupyter", "test_jupyterlab_extensions"},
+        "positron": {"test_launch_positron", "test_positron_extensions"},
+    }
+    for marker, expected_functions in marker_to_expected_functions.items():
+        nodeids = _collect_workbench_nodeids(tmp_path, marker_expr=marker)
+        functions = {_function_of(n) for n in nodeids}
+        assert functions == expected_functions, (
+            f"-m {marker} should select exactly {expected_functions}, got {functions}: {nodeids}"
+        )
 
 
 def test_basic_marker_deselects_slow_workbench_features(tmp_path: Path) -> None:

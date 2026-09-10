@@ -18,6 +18,7 @@ Responsibilities:
 from __future__ import annotations
 
 import json
+import platform
 import re
 import sys
 import threading
@@ -30,6 +31,7 @@ from typing import Any
 
 import pytest
 
+from vip.attest import UNPROVEN_SENTINEL
 from vip.config import VIPConfig, load_config
 from vip.version import ProductVersion
 
@@ -43,6 +45,11 @@ _results_key = pytest.StashKey[list[dict[str, Any]]]()
 _auth_session_key = pytest.StashKey[Any]()
 _auth_mode_key = pytest.StashKey[str]()
 _version_na_key = pytest.StashKey[bool]()
+# Wall-clock start of the session, for the "run_duration_seconds" provenance
+# field. Recorded in every process (worker or controller) but only read back
+# on the controller in pytest_sessionfinish, which is the process that
+# ultimately writes results.json.
+_session_start_key = pytest.StashKey[float]()
 
 # Module-level reference to the active pytest.Config, set in pytest_configure.
 # Safe because pytester runs in a subprocess (fresh import each time).
@@ -63,6 +70,19 @@ _PRODUCT_MARKERS = {
     "package_manager": "package_manager",
 }
 
+#: Exit code for a run in which nothing failed but something went unverified.
+#: Deliberately distinct from pytest's own codes (0 ok, 1 failed, 2 interrupted,
+#: 3 internal, 4 usage, 5 no tests collected) so a CI job can tell "the
+#: deployment is broken" from "we could not check the deployment" without
+#: parsing output. See ``vip.attest`` for what makes a check unproven.
+EXIT_UNPROVEN = 6
+
+#: Human-facing marker for an unproven skip. Mirrors ``reporting.UNPROVEN_PREFIX``
+#: so a reason reads the same whether it came from VIP's own emitters or from a
+#: reporter VIP does not control.
+UNPROVEN_DISPLAY_PREFIX = "UNPROVEN: "
+
+
 # ---------------------------------------------------------------------------
 # Plugin hooks
 # ---------------------------------------------------------------------------
@@ -74,6 +94,16 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--vip-config",
         default=None,
         help="Path to vip.toml configuration file.",
+    )
+    group.addoption(
+        "--vip-allow-unproven",
+        action="store_true",
+        default=False,
+        help=(
+            "Exit 0 even when checks went unproven (could not be verified). "
+            "Restores the pre-attestation behaviour where an unverified check "
+            "was indistinguishable from a passing run."
+        ),
     )
     group.addoption(
         "--vip-extensions",
@@ -128,6 +158,19 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     global _active_config
     _active_config = config
+
+    # Register VIP's core fixtures and shared BDD steps as their own pytest
+    # plugin (see vip.fixtures' module docstring for why: directory-scoped
+    # conftest.py fixtures are invisible to extension directories loaded via
+    # --vip-extensions, issue #609). Deferred import: vip.fixtures imports
+    # stash keys and require_connect_api_key from this module, and importing
+    # it here -- after this module has finished its own top-level
+    # definitions -- avoids a circular import at module-load time. Runs once
+    # per pytest process, so xdist workers register it too (each is a fresh
+    # process that goes through pytest_configure independently).
+    from vip.fixtures import register as _register_fixtures
+
+    _register_fixtures(config)
 
     # Register the canonical warning filters in the plugin so they apply
     # regardless of the pytest rootdir, including when vip is installed into
@@ -184,10 +227,10 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "api_auth: test requires only an API key, not browser credentials",
     )
-    config.addinivalue_line("markers", "rstudio: Workbench RStudio IDE-launch scenario")
-    config.addinivalue_line("markers", "vscode: Workbench VS Code IDE-launch scenario")
-    config.addinivalue_line("markers", "jupyter: Workbench JupyterLab IDE-launch scenario")
-    config.addinivalue_line("markers", "positron: Workbench Positron IDE-launch scenario")
+    config.addinivalue_line("markers", "rstudio: Workbench RStudio IDE scenario")
+    config.addinivalue_line("markers", "vscode: Workbench VS Code IDE scenario")
+    config.addinivalue_line("markers", "jupyter: Workbench JupyterLab IDE scenario")
+    config.addinivalue_line("markers", "positron: Workbench Positron IDE scenario")
 
     # In concise mode, suppress the "short test summary info" section — the
     # inline concise error messages make it redundant.
@@ -562,6 +605,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     # reporter is guaranteed to exist.
     _install_progress_recolor(session.config)
     _install_location_shortener(session.config)
+    session.config.stash[_session_start_key] = time.monotonic()
 
     ext_dirs = session.config.stash.get(_ext_dirs_key, [])
     for d in ext_dirs:
@@ -912,6 +956,61 @@ def _extract_exception_info(longrepr: str) -> tuple[str, str]:
     return "UnknownError", longrepr.strip()[:200]
 
 
+_SKIPPED_PREFIX = "Skipped: "
+
+
+def _classify_skip_reason(reason: str | None) -> tuple[str | None, bool]:
+    """Split a skip reason into its human-readable text and its classification.
+
+    ``vip.attest.unproven`` prefixes the reason with a sentinel so the
+    classification survives the trip from the skip site to here (see that
+    module for why the reason string is the transport). This strips it back
+    off, so the sentinel never reaches a report, a terminal line, or a user.
+
+    Returns ``(reason_without_sentinel_or_None, is_unproven)``. The sentinel
+    must be a *prefix* -- a reason that merely quotes it is not a
+    classification.
+    """
+    if reason is None:
+        return None, False
+    if not reason.startswith(UNPROVEN_SENTINEL):
+        return reason, False
+    stripped = reason[len(UNPROVEN_SENTINEL) :].strip()
+    return (stripped or None), True
+
+
+def _extract_skip_reason(longrepr: object) -> str | None:
+    """Pull the human-readable reason out of a skip report's ``longrepr``.
+
+    For a skip, pytest hands back ``report.longrepr`` as a 3-tuple
+    ``(path, lineno, message)`` where ``message`` is ``"Skipped: <reason>"`` —
+    that shape is what ``pytest.mark.skip(reason=...)``, a bare
+    ``pytest.skip(...)`` call, and ``_skip_version_unknown``'s marker-based
+    skip all produce, so this one path also covers ``na_version`` skips. We
+    read the tuple directly rather than regex-parsing ``str(report.longrepr)``
+    — the whole point is to avoid the absolute source path that stringified
+    form embeds in element 0 (see ``TestResult.skip_reason``'s docstring).
+    A plain string or ``None`` (unusual, but not ruled out by pytest's own
+    typing) is handled too. Anything else falls back to ``None`` instead of
+    guessing at a shape we haven't seen.
+    """
+    if isinstance(longrepr, tuple) and len(longrepr) == 3:
+        message = longrepr[2]
+    elif isinstance(longrepr, str) or longrepr is None:
+        message = longrepr
+    else:
+        return None
+    if not isinstance(message, str) or not message:
+        return None
+    if message.startswith(_SKIPPED_PREFIX):
+        message = message[len(_SKIPPED_PREFIX) :]
+    # Strip before the emptiness check, not after: "Skipped:    " and a
+    # ``reason="   "`` both leave whitespace once the prefix is removed, and a
+    # truthy-but-blank reason renders as an empty line in the report rather
+    # than falling back to the "no reason recorded" wording.
+    return message.strip() or None
+
+
 def _format_concise_error(
     nodeid: str,
     exc_type: str,
@@ -1123,6 +1222,31 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     if hasattr(_active_config, "workerinput"):
         return
 
+    # Classify the skip and rewrite its reason in place, before anything else
+    # reads it. Downstream reporters we do not own -- pytest's own --junitxml
+    # above all, which ci.yml and the smoke workflows pass directly -- render
+    # report.longrepr verbatim, so leaving the sentinel there would publish an
+    # internal transport detail into an uploaded artifact that AGENTS.md
+    # explicitly tells operators to read skip reasons out of. Rewriting to the
+    # display prefix instead means those reporters show the classification too.
+    #
+    # This runs after the worker guard on purpose: the sentinel is how the
+    # classification survives the trip from an xdist worker to the controller,
+    # since custom report attributes are not serialised across that boundary.
+    # Strip it once, here, where the JUnit XML is actually written.
+    if report.skipped:
+        _skip_reason, _unproven = _classify_skip_reason(_extract_skip_reason(report.longrepr))
+        report.vip_skip_reason = _skip_reason  # type: ignore[attr-defined]
+        report.vip_unproven = _unproven  # type: ignore[attr-defined]
+        if _unproven:
+            _display = f"{UNPROVEN_DISPLAY_PREFIX}{_skip_reason or 'could not verify'}"
+            # Keep pytest's 3-tuple shape: _pytest.junitxml asserts on it.
+            if isinstance(report.longrepr, tuple) and len(report.longrepr) == 3:
+                _path, _lineno, _ = report.longrepr
+                report.longrepr = (_path, _lineno, f"{_SKIPPED_PREFIX}{_display}")
+            else:
+                report.longrepr = _display
+
     # Capture this line's color for the progress-indicator recolor wrapper.
     # tryfirst ensures this runs before the terminal reporter renders the same
     # report, so the trailing ``[ x%]`` picks up this line's own outcome.
@@ -1135,9 +1259,22 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
         if results is not None:
             longrepr_str = str(report.longrepr) if report.longrepr else None
             concise_error = None
+            skip_reason = None
+            unproven = False
             if report.outcome == "failed" and longrepr_str:
                 exc_type, exc_message = _extract_exception_info(longrepr_str)
                 concise_error = _format_concise_error(report.nodeid, exc_type, exc_message)
+            elif report.outcome == "skipped":
+                # Already classified above; re-parsing here would read back the
+                # rewritten reason and double-prefix it.
+                skip_reason = getattr(report, "vip_skip_reason", None)
+                unproven = getattr(report, "vip_unproven", False)
+                # Stringified longrepr is pytest's raw ``(path, lineno, "Skipped:
+                # ...")`` tuple and leaks the absolute path of the file that
+                # called skip() into results.json (an uploaded CI artifact).
+                # skip_reason above already carries the part worth keeping, so
+                # don't also store the leaky form for skips.
+                longrepr_str = None
 
             results.append(
                 {
@@ -1146,10 +1283,12 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
                     "duration": report.duration,
                     "longrepr": longrepr_str,
                     "concise_error": concise_error,
+                    "skip_reason": skip_reason,
                     "markers": list(getattr(report, "vip_markers", ())),
                     "scenario_title": getattr(report, "vip_scenario_title", None),
                     "feature_description": getattr(report, "vip_feature_description", None),
                     "na_version": getattr(report, "vip_na_version", False),
+                    "unproven": unproven,
                 }
             )
 
@@ -1191,6 +1330,40 @@ def _emit_extra_formats(fmt: str, results_path: Path) -> None:
         write_sarif(data, results_path.parent / "results.sarif")
 
 
+def _apply_unproven_exit_status(session: pytest.Session, exitstatus: int) -> int:
+    """Fail the run when checks went unproven, and return the effective status.
+
+    Only promotes a status of 0. A real failure is the stronger signal and
+    must not be masked -- if pytest already decided the run failed, that
+    verdict stands. ``--vip-allow-unproven`` opts out entirely.
+
+    Mutates ``session.exitstatus`` so the process exit code follows, and
+    returns the new value so the caller records the same number in
+    results.json rather than the stale one pytest passed in.
+    """
+    if exitstatus != 0:
+        return exitstatus
+    if session.config.getoption("--vip-allow-unproven", default=False):
+        return exitstatus
+    results = session.config.stash.get(_results_key, None) or []
+    unproven = [r for r in results if r.get("unproven")]
+    if not unproven:
+        return exitstatus
+
+    session.exitstatus = EXIT_UNPROVEN
+    reasons = "\n".join(
+        f"  - {r['nodeid']}: {r.get('skip_reason') or 'no reason recorded'}" for r in unproven
+    )
+    print(
+        f"\nVIP: {len(unproven)} check(s) could not be verified. Nothing failed, "
+        f"but nothing was proven either:\n{reasons}\n"
+        "Pass --vip-allow-unproven (or --allow-unproven via `vip verify`) "
+        "to treat these as an ordinary skip.",
+        file=sys.stderr,
+    )
+    return EXIT_UNPROVEN
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     # xdist workers skip all session-end cleanup (controller handles it).
     is_worker = hasattr(session.config, "workerinput")
@@ -1200,6 +1373,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         auth_session = session.config.stash.get(_auth_session_key, None)
         if auth_session is not None:
             auth_session.cleanup()
+
+    if not is_worker:
+        exitstatus = _apply_unproven_exit_status(session, exitstatus)
 
     report_path = session.config.getoption("--vip-report")
     if not report_path or is_worker:
@@ -1220,10 +1396,29 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             "configured": pc.is_configured,
         }
 
+    from vip import __version__ as vip_version
+
+    session_start = session.config.stash.get(_session_start_key, None)
+    run_duration_seconds = time.monotonic() - session_start if session_start is not None else None
+    # There is no dedicated "--basic" flag on the plugin side — `vip verify
+    # --basic` (cli.py) maps to the generic pytest `-m` marker expression,
+    # appending "not slow" to whatever categories/markers were already
+    # selected. Detecting that from here means reading the resolved
+    # expression back rather than a purpose-built flag, but it is also the
+    # more honest signal: it reflects "was the slow marker actually excluded",
+    # true for any run that got there via `-m "not slow"` directly too, not
+    # just ones that went through `--basic`.
+    basic_mode = "not slow" in (session.config.getoption("markexpr", default="") or "")
+
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "deployment_name": cfg.deployment_name,
         "exit_status": exitstatus,
+        "vip_version": vip_version,
+        "run_duration_seconds": run_duration_seconds,
+        "python_version": platform.python_version(),
+        "platform": platform.platform(),
+        "basic_mode": basic_mode,
         "products": products,
         "results": results,
     }

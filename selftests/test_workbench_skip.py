@@ -54,3 +54,45 @@ def test_omits_pre_test_error_section_when_none():
         auth_mode="headless", workbench_auth_error=None, landed_url="https://wb/login"
     )
     assert "Pre-test auth reported:" not in msg
+
+
+class TestWorkbenchSessionSkipIsUnproven:
+    """A configured Workbench whose auth never completed is #596's case.
+
+    The deployment was explicitly asked for and could not be checked. That is
+    the definition of unproven, so these skips must not be reported as the
+    ordinary "nothing to do here" kind.
+    """
+
+    def test_raises_a_skip_flagged_unproven(self):
+        import pytest
+
+        from vip.attest import UNPROVEN_SENTINEL
+        from vip_tests.workbench.conftest import _skip_workbench_session_unproven
+
+        with pytest.raises(BaseException) as exc:
+            _skip_workbench_session_unproven(
+                auth_mode="headless",
+                workbench_auth_error="timed out waiting for SSO redirect",
+                landed_url="https://idp.example.com/login",
+            )
+        assert exc.typename == "Skipped"
+        assert str(exc.value).startswith(UNPROVEN_SENTINEL)
+
+    def test_message_still_carries_the_diagnostic_detail(self):
+        import pytest
+
+        from vip.plugin import _classify_skip_reason
+        from vip_tests.workbench.conftest import _skip_workbench_session_unproven
+
+        with pytest.raises(BaseException) as exc:
+            _skip_workbench_session_unproven(
+                auth_mode="headless",
+                workbench_auth_error="timed out waiting for SSO redirect",
+                landed_url="https://idp.example.com/login",
+            )
+        reason, unproven = _classify_skip_reason(str(exc.value))
+        assert unproven is True
+        # Classifying the skip must not cost the operator the actual cause.
+        assert "--headless-auth" in reason
+        assert "timed out waiting for SSO redirect" in reason
