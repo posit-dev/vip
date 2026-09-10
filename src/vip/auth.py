@@ -1270,12 +1270,25 @@ def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = 
     base = product_url.rstrip("/").lower()
     deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
     clicked_oidc_confirm = False
+    _diag_dumped_content = False
+    _diag_iter = 0
 
     while time.monotonic() < deadline:
         try:
             url = page.url.lower()
         except Exception:
             break
+        _diag_iter += 1
+        if not _diag_dumped_content and _diag_iter == 20:
+            _diag_dumped_content = True
+            try:
+                content = page.content()
+            except Exception as exc:
+                content = f"<could not read page.content(): {exc!r}>"
+            print(
+                f">>> _wait_for_product_redirect[{product_url}] stuck at iter=20, "
+                f"url={url}\n>>> page.content() (first 4000 chars):\n{content[:4000]}"
+            )
         if url.startswith(base) and not _on_login_page(url):
             return
         # Workbench lands on an OIDC confirmation page after the IdP
@@ -1423,6 +1436,8 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
     # rather than this function's own, shorter one.
     deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
     last_url = url
+    _diag_dumped_content = False
+    _diag_iter = 0
     while time.monotonic() < deadline:
         try:
             page.wait_for_load_state("networkidle", timeout=int(scaled(5_000)))
@@ -1432,6 +1447,17 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
             last_url = page.url
         except Exception:
             break
+        _diag_iter += 1
+        if not _diag_dumped_content and _diag_iter == 3:
+            _diag_dumped_content = True
+            try:
+                content = page.content()
+            except Exception as exc:
+                content = f"<could not read page.content(): {exc!r}>"
+            print(
+                f">>> _authenticate_workbench stuck at iter=3, url={last_url}\n"
+                f">>> page.content() (first 4000 chars):\n{content[:4000]}"
+            )
         if last_url.lower().startswith(wb_base) and not _on_login_page(last_url):
             print(f">>> Workbench authenticated. Landed at: {last_url}\n")
             return None
