@@ -873,7 +873,6 @@ def workbench_login(
 
     page.goto(workbench_url)
     page.wait_for_load_state("load")
-    print(f"\n>>> workbench_login: post-goto URL: {page.url}")
 
     # Fast path: already logged in (common with interactive_auth)?
     if homepage_logo.is_visible():
@@ -885,10 +884,8 @@ def workbench_login(
     # (it's neither a login page nor the homepage). Same case test_sessions.py
     # handles when navigating back from a session: go to /home explicitly.
     if "/s/" in page.url:
-        print(f">>> workbench_login: landed in a running session at {page.url}, trying /home")
         page.goto(f"{workbench_url}/home")
         page.wait_for_load_state("load")
-        print(f">>> workbench_login: post-/home URL: {page.url}")
         if homepage_logo.is_visible():
             return
 

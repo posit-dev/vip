@@ -289,10 +289,18 @@ jobs:
       # (see compose.mock-idp.yml); the OIDC `workbench` service and
       # everything else in the stack come up exactly as they do in the
       # headless-auth job above.
+      # RSW_VERSION defaults to the bare `jammy` tag here for the same reason
+      # the headless-auth job above pins it explicitly: `latest` is stale
+      # (last updated 2022-08-19) and served a Workbench whose homepage
+      # predates VIP's current selectors entirely, which is what made this
+      # diagnostic's login test fail with an unrelated "Locator expected to
+      # be visible" against `#posit-logo` instead of actually exercising the
+      # #263 hypothesis. `jammy` rolls forward with every release.
       - name: Start mock-IdP stack with SAML lane (Keycloak + Connect + Workbench + Workbench-SAML)
         env:
           RSC_LICENSE: ${{ secrets.CONNECT_LICENSE }}
           RSW_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
+          RSW_VERSION: jammy
         run: docker compose -f compose.mock-idp.yml --profile saml up -d --build --wait
 
       - name: Set up Docker Buildx
