@@ -3,6 +3,41 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.9.1 (2026-09-10)
+
+### Bug Fixes
+
+- **justfile**: Repair five recipes that fail on a fresh clone ([#639](https://github.com/posit-dev/vip/pull/639), [`0acd074`](https://github.com/posit-dev/vip/commit/0acd0743808e9ec51f48766ba08cd42ab44f5a95))
+
+- **workbench**: Cap auto-detected resource profiles in the capacity scenario ([#635](https://github.com/posit-dev/vip/pull/635), [`f062754`](https://github.com/posit-dev/vip/commit/f06275444296114edc9b2abb8fa68ec3e1c70e6e))
+
+- **workbench**: Exercise the real SSO login path in test_workbench_login ([`6c82f69`](https://github.com/posit-dev/vip/commit/6c82f693e8f8c0a4ff89f7ad1141fc2583ba7c72))
+
+- **workbench**: Explain a terminal_run timeout instead of only reporting it ([`e42dca5`](https://github.com/posit-dev/vip/commit/e42dca571f47348e49465aaee6327a6df8ed59e8))
+
+- **workbench**: Wait for RStudio content before leaving resumed session ([#652](https://github.com/posit-dev/vip/pull/652), [`28e726c`](https://github.com/posit-dev/vip/commit/28e726c3e77a2ec4901b84e49e66b07654c9fb3b))
+
+### Chores
+
+- Update supported product versions ([#653](https://github.com/posit-dev/vip/pull/653), [`c3ee55f`](https://github.com/posit-dev/vip/commit/c3ee55f57e2e6fb355adca684b0dc45034b46f9c))
+
+- **deps**: Bump anthropics/claude-code-action from 1.0.196 to 1.0.206 in the actions-dependencies group ([#629](https://github.com/posit-dev/vip/pull/629), [`830ef79`](https://github.com/posit-dev/vip/commit/830ef79d003cd26f8127d1adbb178cf0910e98bd))
+
+- **deps**: Bump the actions-dependencies group with 2 updates ([#651](https://github.com/posit-dev/vip/pull/651), [`ea32cd8`](https://github.com/posit-dev/vip/commit/ea32cd809e09d61fc29ae31ddd4e8249b1fead86))
+
+- **deps**: Bump the python-dependencies group across 1 directory with 6 updates ([#650](https://github.com/posit-dev/vip/pull/650), [`4546c0e`](https://github.com/posit-dev/vip/commit/4546c0ea8573f25f3916ed49b29515c6d1d963d8))
+
+### Continuous Integration
+
+- File a tracking issue when a scheduled smoke run fails ([#636](https://github.com/posit-dev/vip/pull/636), [`66a0c54`](https://github.com/posit-dev/vip/commit/66a0c54ca7835348e22fb8709257f05231e84526))
+
+- Set an explicit timeout-minutes on every job ([#637](https://github.com/posit-dev/vip/pull/637), [`f2f5f09`](https://github.com/posit-dev/vip/commit/f2f5f09279ceecdb359157cdb13dd410686d448d))
+
+### Testing
+
+- Classify every skip in eight files as unproven or not-applicable ([`220fa3c`](https://github.com/posit-dev/vip/commit/220fa3cd61e88d299d0727ba13f9ca7e44349145))
+
+
 ## v2026.9.0 (2026-09-03)
 
 ### Chores
