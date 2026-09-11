@@ -397,6 +397,11 @@ jobs:
       - name: Render Quarto report
         run: cd report && uv run quarto render
 
+      - name: Stage the standard report
+        run: |
+          mkdir -p _site
+          mv report/_output _site/example-report
+
       # Stop Connect
       - name: Stop Connect
         if: always()
@@ -420,4 +425,4 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: example-report
-          path: report/_output/
+          path: _site/example-report/

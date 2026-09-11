@@ -1,7 +1,10 @@
 # VIP-specific
 vip.toml
 report/results.json
+report/results.json.sha256
 report/failures.json
+report/junit.xml
+report/results.sarif
 report/connect_system_checks.json
 .vip-auth-cache.json
 .vip-auth-cache.meta.json
@@ -253,3 +256,9 @@ presentations/qa-overview/index_files/
 # local dev license files
 /*.lic
 
+
+# Superpowers SDD scratch (subagent-driven-development workspace)
+.superpowers/
+
+# Staging directory for the two example reports built by example-report.yml
+_site/

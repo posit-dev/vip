@@ -380,8 +380,79 @@ EXIT_STATUS_LABELS = {
 NOT_RECORDED = "not recorded"
 
 
+# How each `performed_by.source` reads in the report. `explicit` is the only
+# unlabelled state, because it is the only one where a human named the person
+# accountable for the run. Every other value was inherited from the
+# environment and must say so: `GITHUB_ACTOR` on a scheduled run is whoever
+# last touched the workflow, and a CI actor is often a service account, so an
+# unlabelled one would be indistinguishable from a named operator in the
+# archived artifact.
+PERFORMER_SOURCE_LABELS = {
+    "github": "GitHub actor",
+    "gitlab": "GitLab user",
+    "jenkins": "Jenkins build user",
+    "login": "local login",
+}
+
+
+def _performer_label(performer: dict) -> str | None:
+    """The operator identity as the report shows it, qualified by its source."""
+    identity = performer.get("identity")
+    source = performer.get("source")
+    if not identity or source == "explicit":
+        return identity
+    # An unrecognized source renders verbatim rather than bare: a value this
+    # version does not know about is still not an explicitly named operator,
+    # and rendering it unlabelled would promote it to one. Both backends
+    # escape the result, so an edited results.json cannot inject markup.
+    # A block carrying an identity but no source at all is malformed, and it
+    # gets the same treatment for the same reason -- never bare, and never the
+    # literal string "None".
+    label = PERFORMER_SOURCE_LABELS.get(source, source) if source else f"source {NOT_RECORDED}"
+    return f"{identity} ({label})"
+
+
+def _execution_rows(execution: dict | None) -> list[tuple[str, str | None]]:
+    """Who ran this, on which host, from which commit, under which CI job.
+
+    ``results.json`` has recorded this block since attribution landed, but
+    until now only ``vip trace --format json`` rendered it. The report is the
+    artifact a customer archives and hands to an auditor, so a result that is
+    attributable in the machine-readable output and anonymous in the PDF is
+    attributable in the wrong place.
+
+    The whole block is omitted rather than shown as five ``NOT_RECORDED`` rows
+    when ``execution`` is absent: that is what ``--vip-no-attribution`` asked
+    for, and repeating "not recorded" five times reads as a broken run rather
+    than a deliberate one. Within a present block, an individual missing field
+    still follows the ``None`` contract above.
+    """
+    if not execution:
+        return []
+    git = execution.get("git") or {}
+    ci = execution.get("ci") or {}
+    performer = execution.get("performed_by") or {}
+
+    commit = git.get("commit")
+    if commit and git.get("dirty"):
+        # An uncommitted tree means the evidence cannot be reproduced from the
+        # commit alone. That belongs next to the commit, not in a footnote.
+        commit = f"{commit} (uncommitted changes present)"
+
+    identity = _performer_label(performer)
+
+    return [
+        ("Performed by", identity),
+        ("Run host", execution.get("hostname")),
+        ("Commit", commit),
+        ("Branch", git.get("branch")),
+        ("CI run", ci.get("run_url") or ci.get("run_id")),
+    ]
+
+
 def provenance_rows(data: ReportData) -> list[tuple[str, str | None]]:
-    """VIP version, run duration, interpreter/platform, mode, exit status (F9).
+    """VIP version, run duration, interpreter/platform, mode, exit status (F9),
+    then the execution attribution block when the run recorded one.
 
     A ``None`` value means the field is absent from this ``results.json`` and
     the backend must render ``NOT_RECORDED`` rather than a fabricated value.
@@ -401,6 +472,7 @@ def provenance_rows(data: ReportData) -> list[tuple[str, str | None]]:
         ("Platform", data.platform),
         ("Mode", mode),
         ("Exit status", f"{data.exit_status} ({exit_label})"),
+        *_execution_rows(data.execution),
     ]
 
 
@@ -417,3 +489,188 @@ def summary_status(data: ReportData) -> str:
     if data.unproven:
         return "UNPROVEN"
     return "PASS"
+
+
+# ---------------------------------------------------------------------------
+# Compliance traceability section
+# ---------------------------------------------------------------------------
+
+# Coverage values reuse the outcome palette rather than introducing new colors,
+# so `selftests/test_report_content.py`'s drift guard against styles.css keeps
+# working unchanged. The mapping is the honest one: a gap reads like a failure,
+# an executed covered control like a pass, a control with no automated test to
+# point at like a skip, and a covered control whose scenarios never ran like
+# na_version -- amber, because it is the state most likely to be misread as
+# evidence. A covered control whose scenarios ran without passing uses the red
+# of a gap, because both mean the control is not evidenced.
+COVERAGE_STYLE_KEY = {
+    "covered": "passed",
+    "covered_not_executed": "na_version",
+    "covered_failed": "failed",
+    # Reuses the scenario-level "unproven" style, so a control that could not
+    # be verified is painted the same amber-red as the scenario rows beneath
+    # it and no new color enters the palette.
+    "covered_unproven": "unproven",
+    "gap": "failed",
+    "not_automatable": "skipped",
+}
+
+COVERAGE_LABELS = {
+    "covered": "COVERED",
+    "covered_not_executed": "NOT RUN",
+    "covered_failed": "FAILED",
+    "covered_unproven": "UNPROVEN",
+    "gap": "GAP",
+    "not_automatable": "N/A (manual)",
+}
+
+
+@dataclass(frozen=True)
+class ControlRow:
+    """One control's line in the rendered traceability section."""
+
+    control_id: str
+    description: str
+    reference: str
+    risk: str
+    """The customer's own risk rating, carried through uninterpreted.
+
+    Rendered because FDA's Computer Software Assurance guidance asks the
+    record to carry the result of the risk-based analysis, and because a
+    reviewer triaging a matrix reads the high-risk gaps first. VIP does not
+    rank or validate the value -- ``risk = "banana"`` renders as "banana".
+    """
+    coverage: str
+    """"covered" | "covered_not_executed" | "covered_failed" |
+    "covered_unproven" | "gap" | "not_automatable".
+
+    Distinct from ``ControlEntry.coverage``, which has no
+    ``covered_not_executed`` or ``covered_failed`` value: the matrix keeps
+    coverage, execution and outcome as separate facts, and this flattens them
+    for display because a reader scanning one column must not read an
+    all-skipped or all-failing control as evidenced.
+    """
+    scenarios: list[tuple[str, str, str]]
+    """``(scenario title, status, when it ran)`` for each matched scenario."""
+
+
+def display_coverage(entry) -> str:  # noqa: ANN001 - vip.traceability.ControlEntry
+    """Flatten coverage, execution and outcome into the one value the report shows.
+
+    Ordered by how loudly each fact demotes the control, because the matrix
+    keeps them as overlapping facts and one column can show only one. A
+    control that ran and failed is the strongest claim against it, so FAILED
+    wins over an unproven scenario on the same control. UNPROVEN then outranks
+    NOT RUN, which is the vaguer of the two: an all-unproven control is both,
+    and "VIP could not check this" tells the reader more than "nothing ran".
+    """
+    if entry.coverage != "covered":
+        return entry.coverage
+    if entry.failing:
+        return "covered_failed"
+    if entry.has_unproven:
+        return "covered_unproven"
+    if not entry.executed:
+        return "covered_not_executed"
+    return entry.coverage
+
+
+def control_rows(matrix) -> list[ControlRow]:  # noqa: ANN001 - TraceabilityMatrix
+    """Every control in the matrix, ready for a backend to render as a table."""
+    rows = []
+    for entry in matrix.entries:
+        scenarios = [
+            (
+                m.scenario_title or m.nodeid,
+                m.status,
+                (m.started_at or "").replace("T", " ")[:19] or NOT_RECORDED,
+            )
+            for m in entry.matches
+        ]
+        rows.append(
+            ControlRow(
+                control_id=entry.control.control_id,
+                description=entry.control.description,
+                reference=entry.control.reference or "",
+                risk=entry.control.risk or "",
+                coverage=display_coverage(entry),
+                scenarios=scenarios,
+            )
+        )
+    return rows
+
+
+def traceability_summary_rows(matrix) -> list[tuple[str, str]]:  # noqa: ANN001
+    """Label/value counts for the section's summary table.
+
+    Counts straight from ``matrix.entries`` rather than via :func:`control_rows`,
+    which also builds each control's full scenario list -- both backends already
+    call :func:`control_rows` once for the table itself, so building it again
+    here would be a second, unused pass over every control just to count them.
+    """
+    entries = list(matrix.entries)
+    counts = Counter(display_coverage(entry) for entry in entries)
+    return [
+        ("Controls", str(len(entries))),
+        ("Covered, executed and passing", str(counts.get("covered", 0))),
+        ("Covered, not executed", str(counts.get("covered_not_executed", 0))),
+        ("Covered, failing", str(counts.get("covered_failed", 0))),
+        ("Covered, not verified", str(counts.get("covered_unproven", 0))),
+        ("Gaps", str(counts.get("gap", 0))),
+        ("Not automatable", str(counts.get("not_automatable", 0))),
+    ]
+
+
+# Shown under the section heading in both backends. The report is the artifact
+# a customer archives, so the limits of the claim travel with it rather than
+# living only in the docs they may never read.
+TRACEABILITY_CAVEAT = (
+    "Coverage records that a scenario is tagged for a control, not that the "
+    "scenario passed or even ran. A control shown as NOT RUN has a tagged "
+    "scenario that ran and skipped itself, because this deployment does not "
+    "expose what it probes or a version gate excluded it. A control shown as "
+    "a GAP may instead belong to a product this run did not test, since those "
+    "scenarios are excluded from the run and reach no result at all. "
+    "A control shown as FAILED has a tagged scenario that ran and did not pass, "
+    "so the control is not evidenced by this run. A control shown as UNPROVEN "
+    "has a tagged scenario VIP was asked to run and could not, which is not the "
+    "same as a check that found nothing to test. This "
+    "section evidences the controls chosen for automation. It is not an "
+    "attestation of regulatory compliance."
+)
+
+# Both editions render this identically when the section cannot be built. A
+# compliance report that drops the section without saying so is the one
+# outcome a regulated reader cannot detect.
+TRACEABILITY_RENDER_FAILURE = "Could not render the traceability section: {error}"
+
+
+def traceability_warnings(matrix) -> list[str]:  # noqa: ANN001
+    """Lines naming controls that look covered but are not evidence.
+
+    Three independent conditions, so three lines rather than one combined
+    sentence: a control can be counted as covered because nothing ran, because
+    what ran did not pass, or because VIP was asked to check it and could not,
+    and a reader needs to know which. The conditions overlap, so one control
+    can appear on more than one line.
+    """
+    lines = []
+    failing = matrix.covered_with_failure
+    if failing:
+        lines.append(
+            f"{pluralize(len(failing), 'control')} counted as covered but had a "
+            f"scenario that did not pass: {', '.join(failing)}."
+        )
+    unexecuted = matrix.covered_without_execution
+    if unexecuted:
+        lines.append(
+            f"{pluralize(len(unexecuted), 'control')} counted as covered but had no "
+            f"scenario that ran: {', '.join(unexecuted)}."
+        )
+    unproven = matrix.covered_with_unproven
+    if unproven:
+        lines.append(
+            f"{pluralize(len(unproven), 'control')} counted as covered but had a "
+            f"scenario VIP could not verify: {', '.join(unproven)}."
+        )
+    return lines

@@ -81,6 +81,28 @@ class PackageManagerClient(BaseClient):
         resp.raise_for_status()
         return resp.json()
 
+    # -- Snapshots ----------------------------------------------------------
+
+    def snapshot_index_reachable(self, repo_name: str, snapshot: str) -> tuple[bool, int]:
+        """Check whether a point-in-time snapshot of a repo's CRAN index is served.
+
+        *snapshot* is a Package Manager snapshot identifier -- a ``YYYY-MM-DD``
+        date, or the id of a frozen repository URL. A dated URL is what lets a
+        regulated deployment reconstruct the exact package set an analysis ran
+        against, so this reads the snapshot's ``PACKAGES`` index rather than
+        just checking that the URL answers.
+
+        Returns ``(found, status)`` on the same contract as
+        :meth:`cran_windows_binary_index_reachable`: *found* is True only for a
+        200 carrying a real index body, so a caller can tell a broken server
+        (fail) from snapshots being switched off or that date predating the
+        repository (skip).
+        """
+        resp = self._client.get(f"/{repo_name}/{snapshot}/src/contrib/PACKAGES")
+        if resp.status_code != 200:
+            return False, resp.status_code
+        return "Package:" in resp.text, resp.status_code
+
     # -- CRAN ---------------------------------------------------------------
 
     def cran_package_available(self, repo_name: str, package: str) -> bool:

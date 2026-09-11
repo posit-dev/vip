@@ -574,8 +574,9 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
 
     path = Path(path)
     if not path.exists():
-        # Return default config when no file is present - tests will be
-        # skipped for unconfigured products.
+        # Return default config when no file is present - every product is
+        # then unconfigured, so pytest_collection_modifyitems deselects its
+        # tests rather than skipping them (they never reach the report).
         warnings.warn(f"Config file not found: {path}", stacklevel=2)
         return VIPConfig()
 

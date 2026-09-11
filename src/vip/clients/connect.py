@@ -497,3 +497,35 @@ class ConnectClient(BaseClient):
         resp = self._client.post("/v1/tasks/send-test-email", json={"to": to})
         resp.raise_for_status()
         return resp.json()
+
+    # -- Audit log ------------------------------------------------------------
+
+    def list_audit_logs(self, *, limit: int = 20) -> list[dict[str, Any]] | None:
+        """Return recent audit log entries, or None if unavailable.
+
+        None (rather than an exception) for 404/403 so a caller can skip on a
+        deployment that does not expose the endpoint or a key that cannot read
+        it, without conflating that with an empty log.
+        """
+        resp = self._client.get("/v1/audit_logs", params={"limit": limit})
+        if resp.status_code in (403, 404):
+            return None
+        resp.raise_for_status()
+        payload = resp.json()
+        return payload.get("results", []) if isinstance(payload, dict) else payload
+
+    def audit_log_allowed_methods(self) -> set[str] | None:
+        """Return the HTTP methods the audit log endpoint advertises, or None.
+
+        Reads the Allow header from an OPTIONS request. Deliberately
+        read-only: proving the audit trail is immutable must never involve
+        deleting an audit record, which in a regulated deployment destroys the
+        very evidence the control protects.
+        """
+        resp = self._client.request("OPTIONS", "/v1/audit_logs")
+        if resp.status_code in (401, 403, 404, 405, 501):
+            return None
+        allow = resp.headers.get("allow", "")
+        if not allow:
+            return None
+        return {m.strip().upper() for m in allow.split(",") if m.strip()}
