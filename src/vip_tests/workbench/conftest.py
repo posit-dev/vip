@@ -248,6 +248,12 @@ TIMEOUT_CLEANUP = int(30_000 * timeout_scale())
 TIMEOUT_CODE_EXEC = int(30_000 * timeout_scale())
 TIMEOUT_IDE_LOAD = int(60_000 * timeout_scale())
 TIMEOUT_SESSION_START = int(90_000 * timeout_scale())
+# The silent-SSO click-through in _silent_sso_signin used TIMEOUT_PAGE_LOAD
+# (15s) until issue #263's diagnostic showed a SAML round-trip (IdP redirect,
+# assertion POST, Workbench's own validation) taking longer than that under
+# real IdP latency, which read as "no usable IdP session" and skipped a
+# login that was actually still completing.
+TIMEOUT_SSO_ROUNDTRIP = int(60_000 * timeout_scale())
 # Short window to detect whether an optional confirm/force-quit dialog appeared
 # in the UI session sweep. Used to gate (not to click) so an absent dialog does
 # not cost TIMEOUT_QUICK each iteration; a dialog that does appear is then
@@ -755,7 +761,7 @@ def _silent_sso_signin(sso_button, homepage_logo, workbench_url: str) -> bool:
     with oidc_login_lock(workbench_url):
         sso_button.click()
         try:
-            homepage_logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
+            homepage_logo.wait_for(state="visible", timeout=TIMEOUT_SSO_ROUNDTRIP)
             return True
         except (PlaywrightTimeoutError, PlaywrightError):
             # Homepage never appeared: no usable IdP session (expired, or storage state

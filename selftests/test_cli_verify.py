@@ -34,6 +34,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "test_timeout": DEFAULT_TEST_TIMEOUT_SECONDS,
         "headless_auth": False,
         "idp": None,
+        "provider": None,
         "performance_tests": False,
         "basic": False,
         "insecure": False,
@@ -915,6 +916,87 @@ class TestAuthCliFlags:
             assert cfg.auth.provider == "oidc"
         finally:
             Path(path).unlink(missing_ok=True)
+
+
+class TestProviderCliFlag:
+    """--provider always wins, overriding --idp's implied "oidc" and vip.toml."""
+
+    def test_explicit_provider_saml(self, tmp_path, monkeypatch):
+        """--provider saml is written to the temp config as-is."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", provider="saml")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "saml"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_explicit_provider_overrides_inherited_vip_toml(self, tmp_path, monkeypatch):
+        """--provider wins over a provider already declared in vip.toml."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "oauth2"\nidp = "okta"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", provider="saml")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "saml"  # CLI override
+            assert cfg.auth.idp == "okta"  # idp still inherited
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_inherited_provider_survives_with_no_provider_flag(self, tmp_path, monkeypatch):
+        """Without --provider, vip.toml's declared provider is unchanged."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "oauth2"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(workbench_url="https://wb.example.com"))
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "oauth2"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_idp_with_no_provider_still_defaults_to_oidc(self, tmp_path, monkeypatch):
+        """--idp alone (no --provider, no vip.toml) still implies "oidc"."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(workbench_url="https://wb.example.com", idp="okta"))
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "oidc"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_invalid_provider_rejected(self, tmp_path, monkeypatch):
+        """An unknown --provider value must exit rather than reach pytest.
+
+        Uses run_verify directly (real sys.exit), like
+        TestFormatFlag.test_unknown_format_rejected.
+        """
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import run_verify
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_verify(_make_args(workbench_url="https://wb.example.com", provider="bogus"))
+        assert exc_info.value.code == 2
 
 
 class TestVerifyLocalTLSFlags:
