@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import ClassVar
 
 # Imported at collection time, on purpose. ``test_content_deploy`` is a
 # pytest-bdd module whose module-level ``@scenario`` decorators read
@@ -113,7 +114,7 @@ import json  # noqa: E402
 
 
 class TestSharedShinyBundle:
-    _R_VERSIONS = ["4.3.1", "4.6.0", "4.4.2"]
+    _R_VERSIONS: ClassVar[list[str]] = ["4.3.1", "4.6.0", "4.4.2"]
 
     def test_workbench_fixture_defined_in_conftest(self):
         """The Workbench shiny_bundle_spec fixture must exist in conftest."""

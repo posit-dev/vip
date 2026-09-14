@@ -1173,7 +1173,7 @@ def run_uninstall(args: argparse.Namespace) -> None:
     if connect_pc is not None:
         api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
 
-        def cleanup_callable(_url: str) -> None:  # noqa: F811
+        def cleanup_callable(_url: str) -> None:
             from vip.auth import resolve_url_scheme
             from vip.clients.connect import ConnectClient
 

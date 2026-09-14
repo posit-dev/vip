@@ -165,7 +165,7 @@ def _wb_git_cleanup_state():
     state: dict = {"pending": []}
     yield state
     # Best-effort cleanup using subprocess; Playwright pages are gone by now.
-    import subprocess  # noqa: PLC0415
+    import subprocess
 
     for auth_url, branch in state["pending"]:
         try:

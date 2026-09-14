@@ -193,7 +193,7 @@ def launch_sessions(page: Page, vip_config):
             # No profiles dropdown — launch with default.
             profiles_to_test = [None]
         # When auto-detecting, launch 1 session per profile to avoid
-        # overwhelming the cluster with many profiles × session_count.
+        # overwhelming the cluster with many profiles x session_count.
         session_count = 1
 
     all_sessions: list[dict[str, str | None]] = []

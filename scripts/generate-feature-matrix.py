@@ -1,4 +1,4 @@
-"""Generate feature matrix JSON — test areas × products cross-tab.
+"""Generate feature matrix JSON — test areas x products cross-tab.
 
 USAGE:
     uv run python scripts/generate-feature-matrix.py [--output PATH]

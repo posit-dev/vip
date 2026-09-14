@@ -24,7 +24,7 @@ class TestGetIdpStrategy:
         assert callable(strategy)
 
     def test_unknown_idp_raises(self):
-        with pytest.raises(AuthConfigError, match="Unsupported IdP.*unknown.*keycloak.*okta"):
+        with pytest.raises(AuthConfigError, match=r"Unsupported IdP.*unknown.*keycloak.*okta"):
             get_idp_strategy("unknown")
 
     def test_case_insensitive_lookup(self):

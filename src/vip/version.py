@@ -54,7 +54,7 @@ class ProductVersion:
     ``YYYY.MM.patch[-dev|-daily[.X]|-preview][+build]`` shape.
     """
 
-    __slots__ = ("_raw", "year", "month", "patch", "pre_kind", "pre_extra", "build")
+    __slots__ = ("_raw", "build", "month", "patch", "pre_extra", "pre_kind", "year")
 
     def __init__(self, raw: str) -> None:
         match = _VERSION_RE.match(raw.strip())
