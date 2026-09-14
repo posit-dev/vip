@@ -1294,7 +1294,7 @@ def run_scaffold(args: argparse.Namespace) -> None:
 
 def _cleanup_workbench_sessions(
     workbench_url: str,
-    args: argparse.Namespace,
+    _args: argparse.Namespace,
     config: VIPConfig,
 ) -> None:
     """Authenticate to Workbench and quit orphaned VIP-named sessions.
@@ -1551,7 +1551,7 @@ def _format_version_details() -> str:
     )
 
 
-def run_version(args: argparse.Namespace) -> None:
+def run_version(_args: argparse.Namespace) -> None:
     """Print the vip version and the minimum supported Posit Team version."""
     print(_format_version_details())
 
