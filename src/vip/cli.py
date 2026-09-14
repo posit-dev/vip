@@ -346,7 +346,7 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
 
         try:
             existing = load_config(default_path)
-        except Exception:
+        except Exception:  # noqa: BLE001
             existing = None
         if existing is not None:
             if not idp and existing.auth.idp:
@@ -633,7 +633,7 @@ def run_verify(args: argparse.Namespace) -> None:
             from vip.proxy import proxy_env_for_subprocess
 
             subprocess_env = proxy_env_for_subprocess(load_config(config_path).proxy, os.environ)
-        except Exception:
+        except Exception:  # noqa: BLE001
             subprocess_env = None
 
     try:
@@ -935,7 +935,7 @@ def _collect_status(config: VIPConfig) -> dict:
                 "http_status": http_status,
                 "state": state,
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             products[name] = {
                 "configured": True,
                 "url": pc.url,
@@ -1362,7 +1362,7 @@ def _cleanup_workbench_sessions(
     except AuthConfigError as exc:
         print(f"Error: could not authenticate to Workbench: {exc}", file=sys.stderr)
         sys.exit(1)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(
             f"Error: could not authenticate to Workbench at {workbench_url}: {exc}\n"
             "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD for non-interactive cleanup, "

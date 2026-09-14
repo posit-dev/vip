@@ -127,7 +127,7 @@ def session_context(page: Page, workbench_url: str):
             quit_btn = page.locator(Homepage.QUIT_BUTTON)
             if quit_btn.count() > 0:
                 quit_btn.click()
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Best-effort cleanup — don't mask the original failure/skip.
         pass
 

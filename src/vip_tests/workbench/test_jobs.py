@@ -88,7 +88,7 @@ def job_context(page: Page, workbench_url: str):
             quit_btn = page.locator(Homepage.QUIT_BUTTON)
             if quit_btn.count() > 0:
                 quit_btn.click()
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Best-effort cleanup — don't mask the original failure/skip.
         pass
 
@@ -143,7 +143,7 @@ def start_rstudio_session_for_job(page: Page, job_context: dict):
         if cancel.count() > 0:
             try:
                 cancel.click(timeout=TIMEOUT_QUICK)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         attest.not_applicable("RStudio Pro IDE not available in this Workbench deployment")
 
@@ -157,7 +157,7 @@ def start_rstudio_session_for_job(page: Page, job_context: dict):
         if cancel.count() > 0:
             try:
                 cancel.click(timeout=TIMEOUT_QUICK)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         attest.unproven(
             "RStudio Pro tab opened but its Launch button never appeared, so no "
@@ -511,7 +511,7 @@ def remove_test_script(page: Page):
     """
     try:
         _run_console_command(page, f'suppressWarnings(file.remove("{_JOB_SCRIPT_PATH}"))')
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
 
 
@@ -532,7 +532,7 @@ def job_session_cleaned_up(page: Page, workbench_url: str, job_context: dict):
         quit_btn.click()
         session_link = page.locator(Homepage.session_link(session_name))
         expect(session_link).not_to_be_visible(timeout=TIMEOUT_CLEANUP)
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
     finally:
         job_context["cleaned_up"] = True

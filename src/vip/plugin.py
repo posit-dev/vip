@@ -1120,7 +1120,7 @@ def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
         markers: list[str] = []
         try:
             markers = [m.name for m in item.iter_markers()]
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
         item_stash = getattr(item, "stash", None)

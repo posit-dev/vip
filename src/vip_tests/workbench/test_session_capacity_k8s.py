@@ -370,6 +370,6 @@ def cleanup_k8s_sessions(launched_sessions: list[dict], page: Page, workbench_ur
         row = page.locator(Homepage.session_row(session["name"]))
         try:
             expect(row).to_be_hidden(timeout=TIMEOUT_DIALOG)
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Best-effort cleanup — don't mask the original failure/skip.
             pass

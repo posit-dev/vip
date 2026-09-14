@@ -206,7 +206,7 @@ class WorkbenchClient(BaseClient):
             # deprecated in httpx and its persistence semantics are ambiguous).
             self._client.cookies.update(cookies)
             resp = self._client.request("DELETE", url, headers=headers)
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
         # 404 → already gone, treat as success (idempotent teardown).
         return resp.status_code < 400 or resp.status_code == 404
@@ -251,7 +251,7 @@ class WorkbenchClient(BaseClient):
             if resp.status_code != 200:
                 return -1
             sessions = resp.json()
-        except Exception:
+        except Exception:  # noqa: BLE001
             return -1
         if not isinstance(sessions, list):
             return -1
@@ -274,7 +274,7 @@ class WorkbenchClient(BaseClient):
             if resp.status_code != 200:
                 return False
             return isinstance(resp.json(), list)
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     def quit_session(self, session_id: str) -> bool:
@@ -287,7 +287,7 @@ class WorkbenchClient(BaseClient):
                 resp = self._client.request(method, path)
                 if resp.status_code < 400:
                     return True
-            except Exception:
+            except Exception:  # noqa: BLE001
                 continue
         return False
 
@@ -329,7 +329,7 @@ class WorkbenchClient(BaseClient):
             try:
                 resp = self._client.get("/api/sessions")
                 sessions = resp.json() if resp.status_code == 200 else []
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # Connection error, non-JSON body, etc. — give up this run.
                 break
             if not isinstance(sessions, list):
@@ -360,7 +360,7 @@ class WorkbenchClient(BaseClient):
         try:
             resp = self._client.get("/api/sessions")
             sessions = resp.json() if resp.status_code == 200 else []
-        except Exception:
+        except Exception:  # noqa: BLE001
             return
         if not isinstance(sessions, list):
             return
