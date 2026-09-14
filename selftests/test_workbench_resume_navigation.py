@@ -1,19 +1,7 @@
-"""Selftests for detecting real navigation into a resumed session.
-
-Two live CI runs of the suspend/resume scenario (rstudio/rstudio-pro's
-"Workbench VIP Tests", 2026-09-11 and 2026-09-14) timed out waiting for
-RStudio content after resuming a session, even though the diagnostics
-collector showed the backend completed the resume in under 2 seconds both
-times. The browser's own aria snapshot at timeout showed it was still on the
-homepage's Projects table, not inside the session.
-
-The cause: the step's navigation check was ``page.wait_for_url("**/s/**")``,
-meant to confirm the browser had left the homepage for the resumed session's
-URL. But Workbench's homepage is itself served under a "/s/<id>/" URL (both
-failures landed on "/s/57ea13c286bd33c286bd3/workspaces/"), so that glob is
-satisfied by the homepage's own URL and never proves navigation happened.
-
-No real browser is used: these test the pure URL classification.
+"""Selftests for ``_navigated_into_session``, which distinguishes a real
+session URL from Workbench's own homepage URL (also served under
+"/s/<id>/") -- something a bare "**/s/**" glob can't do. No real browser
+is used: these test the pure URL classification.
 """
 
 from __future__ import annotations

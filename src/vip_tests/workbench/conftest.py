@@ -453,12 +453,9 @@ def _on_login_page(url: str) -> bool:
 def _navigated_into_session(url: str) -> bool:
     """Return True if *url* is inside a session, not the homepage.
 
-    Workbench's own homepage is itself served under a "/s/<id>/" URL (e.g.
-    "/s/<hex>/workspaces/"), so a bare "**/s/**" glob match against *url*
-    is satisfied by the homepage's own URL and proves nothing about whether
-    the browser actually navigated into a session -- it can pass while the
-    page never left the homepage. A real session URL has no "workspaces"
-    path segment after the id (e.g. "/s/<hex>/?launcher=1").
+    Workbench's homepage is itself served under a "/s/<id>/" URL (its
+    "workspaces" view), so a bare "/s/" check can't tell the two apart. A
+    real session URL has no "workspaces" segment after the id.
     """
     segments = [s for s in urlparse(url).path.split("/") if s]
     if len(segments) < 2 or segments[0] != "s":
