@@ -47,9 +47,7 @@ def substitute_param_placeholders(nodeid: str, title: str) -> str:
     pytest-bdd's Scenario Outline expansion leaves the Gherkin placeholder
     syntax (e.g. "Install <package> from CRAN") in ``scenario_title`` and puts
     the actual parametrize value in the nodeid's trailing ``[...]`` instead.
-    Hoisted out of the per-card loop both templates used to have — each did
-    ``import re as _re`` inside the loop (F13) — and shared, since both pages
-    need the identical substitution.
+    Shared, since both pages need the identical substitution.
     """
     if "<" not in title:
         return title
