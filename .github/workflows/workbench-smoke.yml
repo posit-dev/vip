@@ -204,7 +204,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Resolve Playwright version
         id: playwright-version
@@ -382,13 +382,28 @@ jobs:
           SUITE: ${{ inputs.suite || (github.event_name == 'schedule' && 'full' || 'gate') }}
           VIP_TEST_PASSWORD: ${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}
 
-      # Upload test results for debugging failures
+      # Retried, continue-on-error-scoped upload -- see connect-smoke.yml's
+      # "Upload test results" step for the full rationale (why, and why not
+      # a shared composite action).
       - name: Upload test results
+        id: upload-results
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: workbench-smoke-results-${{ matrix.workbench-version }}
           path: smoke-results.xml
+
+      # overwrite: true -- CreateArtifact already reserved this name before
+      # FinalizeArtifact returned 403, so a same-name retry fails without it.
+      - name: Retry upload test results
+        if: always() && steps.upload-results.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: workbench-smoke-results-${{ matrix.workbench-version }}
+          path: smoke-results.xml
+          overwrite: true
 
       # Write a rich job summary with test details and emoji
       - name: Write workflow summary

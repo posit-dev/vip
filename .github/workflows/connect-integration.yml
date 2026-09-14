@@ -91,9 +91,19 @@ jobs:
         env:
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
         run: |
-          RESPONSE=$(curl -sf \
-            -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
-            "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings")
+          RESOLVED=0
+          for i in $(seq 1 60); do
+            RESPONSE=$(curl -sf \
+              -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
+              "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings") && { RESOLVED=1; break; }
+            echo "Attempt ${i}: server_settings not reachable yet, retrying..."
+            sleep 2
+          done
+          if [ "${RESOLVED}" != "1" ]; then
+            echo "ERROR: server_settings did not become reachable within 120 seconds"
+            exit 1
+          fi
+          echo "server_settings reachable (attempt ${i})"
           VERSION=$(echo "${RESPONSE}" | jq -r '.version')
           if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
             echo "ERROR: Could not resolve Connect version from server_settings"
@@ -109,7 +119,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Install Playwright browsers
         run: uv run vip install --skip-system
@@ -130,12 +140,30 @@ jobs:
         env:
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
 
-      # Upload test results for debugging failures
+      # Retried, continue-on-error-scoped upload -- see connect-smoke.yml's
+      # "Upload test results" step for the full rationale (why, and why not
+      # a shared composite action).
       - name: Upload test results
+        id: upload-results
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: connect-integration-results-${{ matrix.connect-version }}
+          path: |
+            connect-results.xml
+            results.json
+          if-no-files-found: ignore
+
+      # overwrite: true -- CreateArtifact already reserved this name before
+      # FinalizeArtifact returned 403, so a same-name retry fails without it.
+      - name: Retry upload test results
+        if: always() && steps.upload-results.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: connect-integration-results-${{ matrix.connect-version }}
+          overwrite: true
           path: |
             connect-results.xml
             results.json

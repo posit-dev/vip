@@ -227,7 +227,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.license.outputs.available == 'true'
-        run: uv sync
+        run: uv sync --frozen
 
       # The UI smoke tests (test_ui.py) drive a real browser, so the Playwright
       # browsers must be installed. The API-only tests don't need them; the
@@ -283,13 +283,29 @@ jobs:
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
 
-      # Upload test results for debugging failures
+      # Retried, continue-on-error-scoped upload -- see connect-smoke.yml's
+      # "Upload test results" step for the full rationale (why, and why not
+      # a shared composite action). The license gate applies to both attempts
+      # so a skipped (unlicensed) run still uploads nothing, same as before.
       - name: Upload test results
+        id: upload-results
         if: always() && steps.license.outputs.available == 'true'
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: pm-smoke-results-${{ matrix.pm-version }}
           path: smoke-results.xml
+
+      # overwrite: true -- CreateArtifact already reserved this name before
+      # FinalizeArtifact returned 403, so a same-name retry fails without it.
+      - name: Retry upload test results
+        if: always() && steps.license.outputs.available == 'true' && steps.upload-results.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pm-smoke-results-${{ matrix.pm-version }}
+          path: smoke-results.xml
+          overwrite: true
 
       # Write a rich job summary with test details
       - name: Write workflow summary

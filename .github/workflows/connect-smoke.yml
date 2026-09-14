@@ -145,10 +145,22 @@ jobs:
       # Resolve the actual Connect version for unambiguous job records
       - name: Resolve Connect version
         id: version
+        env:
+          VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
         run: |
-          RESPONSE=$(curl -sf \
-            -H "Authorization: Key ${{ steps.connect.outputs.CONNECT_API_KEY }}" \
-            "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings")
+          RESOLVED=0
+          for i in $(seq 1 60); do
+            RESPONSE=$(curl -sf \
+              -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
+              "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings") && { RESOLVED=1; break; }
+            echo "Attempt ${i}: server_settings not reachable yet, retrying..."
+            sleep 2
+          done
+          if [ "${RESOLVED}" != "1" ]; then
+            echo "ERROR: server_settings did not become reachable within 120 seconds"
+            exit 1
+          fi
+          echo "server_settings reachable (attempt ${i})"
           VERSION=$(echo "${RESPONSE}" | jq -r '.version')
           if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
             echo "ERROR: Could not resolve Connect version from server_settings"
@@ -187,7 +199,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Resolve Playwright version
         id: playwright-version
@@ -281,13 +293,36 @@ jobs:
           SUITE: ${{ inputs.suite || (github.event_name == 'schedule' && 'full' || 'gate') }}
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
 
-      # Upload test results for debugging failures
+      # Upload test results for debugging failures. Every observed failure of
+      # this step was a transient "Failed to FinalizeArtifact" 403 from the
+      # artifact backend that cleared on a re-run, so it gets one retry before
+      # falling back. continue-on-error is scoped to just these two upload
+      # attempts -- it must never spread to the test step above, which stays
+      # the real, unmasked gate on this job's result. A local composite action
+      # was considered instead of duplicating this comment at every call site,
+      # but continue-on-error on a step inside a composite is a known runner
+      # limitation, so the tolerance would have to move to the caller's
+      # `uses:` while both attempts stay inside it, which is not equivalent to
+      # what is written here; duplicated per file it is.
       - name: Upload test results
+        id: upload-results
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: connect-smoke-results-${{ matrix.connect-version }}
           path: smoke-results.xml
+
+      # overwrite: true -- CreateArtifact already reserved this name before
+      # FinalizeArtifact returned 403, so a same-name retry fails without it.
+      - name: Retry upload test results
+        if: always() && steps.upload-results.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: connect-smoke-results-${{ matrix.connect-version }}
+          path: smoke-results.xml
+          overwrite: true
 
       # Write a rich job summary with test details and emoji
       - name: Write workflow summary
