@@ -756,14 +756,13 @@ def _resolve_report_dir() -> Path:
 
     The report directory is ``./report`` relative to the invocation, but a
     plain ``Path("report")`` also resolves that way when the caller is already
-    standing *inside* a report directory -- so ``vip report --results
-    results.json`` run from within ``report/`` used to create a nested
-    ``report/report/``, copy the templates into it, and render there. That left
-    a stray tree behind (papered over by a ``report/report/`` .gitignore entry)
-    and hid the rendered output one level deeper than the caller expected.
-
-    Treat a working directory already named ``report`` as the report directory
-    instead of descending into it.
+    standing *inside* a report directory. Treat a working directory already
+    named ``report`` as the report directory itself, instead of descending
+    into it: otherwise ``vip report --results results.json`` run from within
+    ``report/`` creates a nested ``report/report/``, copies the templates
+    into it, and renders there, leaving a stray tree behind (papered over by
+    a ``report/report/`` .gitignore entry) and hiding the rendered output one
+    level deeper than the caller expected.
     """
     cwd = Path.cwd()
     if cwd.name == "report":
@@ -1069,11 +1068,11 @@ def run_uninstall(args: argparse.Namespace) -> None:
 
     # Resolve Connect URL for chained cleanup. A CLI flag wins over vip.toml;
     # wrapping it in ProductConfig routes a scheme-less --connect-url through
-    # the same _normalize_url every other entry point uses (it was previously
-    # handed to ConnectClient completely unnormalized). cfg carries the TLS
-    # settings (insecure/ca_bundle) for the probe-and-fallback below when the
-    # URL came from vip.toml; a CLI-flag-only invocation has no cfg to draw
-    # those from, so it probes with defaults (verify=True).
+    # the same _normalize_url every other entry point uses, so ConnectClient
+    # never sees an unnormalized URL. cfg carries the TLS settings
+    # (insecure/ca_bundle) for the probe-and-fallback below when the URL came
+    # from vip.toml; a CLI-flag-only invocation has no cfg to draw those from,
+    # so it probes with defaults (verify=True).
     from vip.config import ProductConfig
 
     connect_arg = getattr(args, "connect_url", None)
@@ -1333,8 +1332,7 @@ def _cleanup_workbench_sessions(
     ca_bundle = config.ca_bundle
     proxy = config.proxy
     # Same helper plugin.py uses, so this finds the session a prior `vip verify`
-    # from this directory cached.  These two used to build the path independently
-    # and disagreed for installed VIP -- see auth_cache_path.
+    # from this directory cached.
     cache_path = auth_cache_path()
 
     username = config.auth.username
@@ -1470,12 +1468,11 @@ def run_cleanup(args: argparse.Namespace) -> None:
     # "Config file not found" warning (env-based credentials still apply).
     config = _load_cleanup_config()
 
-    # A CLI flag wins over vip.toml, as before. Wrapping the CLI arg in
-    # ProductConfig routes it through the same _normalize_url a bare
-    # hostname gets from every other entry point (vip verify, vip status):
-    # previously a scheme-less --connect-url was handed to ConnectClient
-    # completely unnormalized (a bug in its own right -- httpx requires an
-    # absolute URL) and never got the probe-and-fallback treatment below.
+    # A CLI flag wins over vip.toml. Wrapping the CLI arg in ProductConfig
+    # routes it through the same _normalize_url a bare hostname gets from
+    # every other entry point (vip verify, vip status), so ConnectClient
+    # never receives a scheme-less URL -- httpx requires an absolute one --
+    # and the probe-and-fallback treatment below still applies.
     # config.connect/config.workbench are already normalized ProductConfig
     # instances -- every ProductConfig runs _normalize_url in its own
     # __post_init__ regardless of how it was constructed, including the bare
