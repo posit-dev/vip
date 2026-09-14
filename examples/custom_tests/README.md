@@ -23,7 +23,7 @@ vip scaffold --template minimal --output ./my-custom-tests
 vip verify --config vip.toml --extensions .
 
 # Dry-run: collect tests without executing
-vip verify --config vip.toml --extensions . --collect-only
+vip verify --config vip.toml --extensions . -- --collect-only
 ```
 
 ## Customizing

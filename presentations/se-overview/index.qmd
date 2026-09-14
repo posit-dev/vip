@@ -56,14 +56,8 @@ pip install posit-vip
 vip verify --connect-url https://connect.example.com --interactive-auth
 ```
 
-**Shiny app:**
-
-```bash
-vip app   # opens a graphical test runner
-```
-
 ::: {.notes}
-Simplest path: pip install, one command. The --interactive-auth flag opens a browser for SSO/OIDC — you log in once, then tests run headlessly. vip app gives you a Shiny UI if you'd rather click than type. You can scope runs with --categories: just 'connect', just 'security', whatever you need.
+Simplest path: pip install, one command. The --interactive-auth flag opens a browser for SSO/OIDC — you log in once, then tests run headlessly. You can scope runs with --categories: just 'connect', just 'security', whatever you need.
 :::
 
 ## Your Sign-Off Document
