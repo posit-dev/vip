@@ -115,9 +115,10 @@ mock-idp-up:
 mock-idp-down:
     docker compose -f compose.mock-idp.yml down -v
 
+# (issue #263: Workbench behind SAML on a separate hostname from Connect).
 # Same requirements as `mock-idp-up`, plus add workbench-saml.vip.test to
 # /etc/hosts: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test workbench-saml.vip.test`.
-# Start the mock-IdP E2E stack with the SAML Workbench lane also enabled (issue #263: Workbench behind SAML on a separate hostname from Connect).
+# Start the mock-IdP E2E stack with the SAML Workbench lane also enabled.
 mock-idp-saml-up:
     docker compose -f compose.mock-idp.yml --profile saml up -d --build --wait
     @docker compose -f compose.mock-idp.yml --profile saml ps
