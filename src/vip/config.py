@@ -1,15 +1,28 @@
 """Load and validate VIP configuration.
 
-The seven ``from_dict`` classmethods below (``ConnectConfig``,
+The eight ``from_dict`` classmethods below (``ConnectConfig``,
 ``WorkbenchKubernetesConfig``, ``WorkbenchExtensionsConfig``, ``GitTestConfig``,
-``WorkbenchConfig``, ``PackageManagerConfig``, ``AuthConfig``) share one parsing
-convention, stated here once instead of seven times: a key missing from the raw
-dict falls back to the dataclass field's default via ``raw.get(key, default)``,
-and a key present in the raw dict that the classmethod doesn't recognize is
-silently ignored -- there is no unknown-key validation. Secret fields
-(``api_key``, ``token``, ``password``) are passed through as given; when the
-raw dict leaves one empty, the owning dataclass's ``__post_init__`` -- not
-``from_dict`` itself -- resolves it from an environment variable.
+``WorkbenchConfig``, ``PackageManagerConfig``, ``AuthConfig``,
+``PerformanceConfig``) share one parsing convention, stated here once instead
+of eight times: a key missing from the raw dict falls back to the dataclass
+field's default via ``raw.get(key, default)``, and a key present in the raw
+dict that the classmethod doesn't recognize is silently ignored -- there is
+no unknown-key validation. Secret fields (``api_key``, ``token``,
+``password``) are passed through as given; when the raw dict leaves one
+empty, the owning dataclass's ``__post_init__`` -- not ``from_dict`` itself --
+resolves it from an environment variable.
+
+Exceptions to the above: ``WorkbenchConfig.from_dict``'s ``git_test`` key,
+when absent, does not fall back to the ``GitTestConfig`` field's ``None``
+default -- it synthesizes an anonymous-clone ``GitTestConfig`` pointing at
+``DEFAULT_PUBLIC_CLONE_URL``. ``WorkbenchExtensionsConfig.from_dict``'s
+``vscode``/``positron``/``jupyterlab`` and ``WorkbenchConfig.from_dict``'s
+``test_packages`` are validated via ``_as_str_list`` and raise ``ValueError``
+on a non-string/non-list value, rather than silently accepting anything.
+``GitTestConfig``'s ``token`` is not passed through as given: its
+``__post_init__`` clears it to ``""`` whenever ``auth_method == "none"``, even
+if one was supplied, and raises ``ValueError`` for an unsupported
+``auth_method``.
 """
 
 from __future__ import annotations
