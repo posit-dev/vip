@@ -8,6 +8,7 @@ import pytest
 from pytest_bdd import scenario, then, when
 
 from vip_tests.connect.conftest import _make_tar_gz
+from vip_tests.helpers import pm_url_in_log_lines
 
 
 @scenario(
@@ -61,14 +62,15 @@ def deploy_r_content_on_connect(connect_client):
 def pm_url_in_integration_deploy_logs(integration_deploy_state, pm_url):
     task = integration_deploy_state["task"]
     output_lines = task.get("output", [])
-    pm_base = pm_url.rstrip("/")
 
-    if any(pm_base in line for line in output_lines):
+    if pm_url_in_log_lines(pm_url, output_lines):
         return
 
     assert False, (
-        f"Package Manager URL {pm_base!r} was not found in the deployment logs.\n"
-        "Connect may not be configured to use Package Manager for R package installation.\n\n"
+        f"Package Manager URL {pm_url!r} was not found in the deployment logs.\n"
+        "The scheme and host are matched case-insensitively, so this is not a case\n"
+        "mismatch there; if Connect is otherwise configured correctly, the remaining\n"
+        "cause is a case difference in the URL path, which is compared exactly.\n\n"
         "--- Deployment output (last 30 lines) ---\n" + "\n".join(output_lines[-30:])
     )
 

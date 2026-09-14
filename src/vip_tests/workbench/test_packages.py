@@ -10,6 +10,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
+from vip_tests.helpers import pm_url_matches_repo_urls
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_IDE_LOAD,
@@ -163,8 +164,8 @@ def check_r_repos(page: Page, workbench_url: str):
 def repo_url_present(repo_check_url, vip_config):
     if not vip_config.package_manager.is_configured:
         pytest.skip("Package Manager URL is not configured in vip.toml; cannot verify R repos")
-    expected = vip_config.package_manager.url.rstrip("/")
-    found = any(u.rstrip("/") == expected or u.startswith(expected + "/") for u in repo_check_url)
+    expected = vip_config.package_manager.url
+    found = pm_url_matches_repo_urls(expected, repo_check_url)
     assert found, (
         f"Package Manager URL {expected!r} not found in R repository configuration. "
         f"Found URLs: {repo_check_url[:10]}"

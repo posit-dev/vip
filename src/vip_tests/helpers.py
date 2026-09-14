@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 import socket
+from collections.abc import Iterable
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -124,3 +126,79 @@ def check_data_source_connectivity(data_sources, verify: bool | str = True) -> l
             result["error"] = str(exc)
         results.append(result)
     return results
+
+
+def _split_case_insensitive_prefix(url: str) -> tuple[str, str] | None:
+    """Split *url* into a lowercased `scheme://host` prefix and its exact-case path.
+
+    Scheme and host are case-insensitive per RFC 3986; the path is not, so the
+    two halves are kept separate rather than lowercasing the whole URL, which
+    would turn a real path-case mismatch (e.g. /CRAN/latest vs /cran/latest)
+    into a false match. Returns None when *url* carries no scheme/host to
+    split on (e.g. a scheme-less URL that was never resolved), so callers can
+    fall back to a plain string comparison instead of guessing one.
+    """
+    parts = urlsplit(url.rstrip("/"))
+    if not parts.netloc:
+        return None
+    return f"{parts.scheme}://{parts.netloc}".lower(), parts.path
+
+
+def pm_url_in_log_lines(pm_url: str, output_lines: Iterable[str]) -> bool:
+    """True when `pm_url` appears in any log line.
+
+    Scheme and host compare case-insensitively; the path compares exactly.
+    See `_split_case_insensitive_prefix` for why. Note this compares against
+    the path only, not any query string, since Package Manager repo URLs
+    don't carry one in practice.
+    """
+    normalized = _split_case_insensitive_prefix(pm_url)
+    if normalized is None:
+        # No scheme/host to split on -- fall back to an exact substring test.
+        needle = pm_url.rstrip("/")
+        return any(needle in line for line in output_lines)
+
+    prefix, path = normalized
+
+    for line in output_lines:
+        lowered = line.lower()
+        start = 0
+        while True:
+            idx = lowered.find(prefix, start)
+            if idx == -1:
+                break
+            tail = idx + len(prefix)
+            if line[tail : tail + len(path)] == path:
+                return True
+            start = idx + 1
+    return False
+
+
+def pm_url_matches_repo_urls(pm_url: str, repo_urls: Iterable[str]) -> bool:
+    """True when `pm_url` exactly matches, or is an exact ancestor path of, any URL in `repo_urls`.
+
+    Scheme and host compare case-insensitively; the path compares exactly
+    (see `_split_case_insensitive_prefix`). A trailing "/" boundary on the
+    path distinguishes a real sub-path match -- e.g. `pm_url` "https://pm/cran"
+    matching "https://pm/cran/latest" -- from a same-prefix but unrelated path
+    like "https://pm/cranfoo".
+    """
+    normalized = _split_case_insensitive_prefix(pm_url)
+    if normalized is None:
+        # No scheme/host to split on -- fall back to the original exact/prefix
+        # string comparison rather than guessing a scheme.
+        needle = pm_url.rstrip("/")
+        return any(url.rstrip("/") == needle or url.startswith(needle + "/") for url in repo_urls)
+
+    expected_prefix, expected_path = normalized
+
+    for url in repo_urls:
+        candidate = _split_case_insensitive_prefix(url)
+        if candidate is None:
+            continue
+        candidate_prefix, candidate_path = candidate
+        if candidate_prefix != expected_prefix:
+            continue
+        if candidate_path == expected_path or candidate_path.startswith(expected_path + "/"):
+            return True
+    return False
