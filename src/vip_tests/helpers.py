@@ -56,11 +56,8 @@ def _extract_host_port(connection_string: str, ds_type: str) -> tuple[str, int] 
         return None
     host = match.group(1)
     raw_port = match.group(2)
-    if raw_port:
-        port = int(raw_port)
-    else:
-        # Fall back to well-known defaults keyed by DS type.
-        port = _DEFAULT_PORTS.get(ds_type.lower(), 0)
+    # Fall back to well-known defaults keyed by DS type when the port is absent.
+    port = int(raw_port) if raw_port else _DEFAULT_PORTS.get(ds_type.lower(), 0)
     if not host or port == 0:
         return None
     return host, port

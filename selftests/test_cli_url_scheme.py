@@ -51,9 +51,11 @@ class TestCollectStatusSchemeResolution:
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
-        with patch("httpx.get") as mock_get:
-            with patch("vip.clients.connect.ConnectClient", return_value=mock_client) as ctor:
-                result = _collect_status(config)
+        with (
+            patch("httpx.get") as mock_get,
+            patch("vip.clients.connect.ConnectClient", return_value=mock_client) as ctor,
+        ):
+            result = _collect_status(config)
 
         mock_get.assert_not_called()
         assert ctor.call_args.args[0] == "https://connect.example.com"
@@ -69,9 +71,11 @@ class TestCollectStatusSchemeResolution:
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
-        with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
-            with patch("vip.clients.connect.ConnectClient", return_value=mock_client) as ctor:
-                result = _collect_status(config)
+        with (
+            patch("httpx.get", side_effect=httpx.ConnectError("nope")),
+            patch("vip.clients.connect.ConnectClient", return_value=mock_client) as ctor,
+        ):
+            result = _collect_status(config)
 
         assert ctor.call_args.args[0] == "http://connect.example.com"
         assert result["products"]["connect"]["url"] == "http://connect.example.com"
@@ -202,9 +206,8 @@ class TestRunUninstallSchemeResolution:
         args = argparse.Namespace(
             connect_url="connect.example.com", api_key=None, force_host=False, yes=False
         )
-        with patch("httpx.get") as mock_get:
-            with pytest.raises(SystemExit) as exc:
-                cli.run_uninstall(args)
+        with patch("httpx.get") as mock_get, pytest.raises(SystemExit) as exc:
+            cli.run_uninstall(args)
 
         assert exc.value.code == 0
         mock_get.assert_not_called()
@@ -237,9 +240,11 @@ class TestRunUninstallSchemeResolution:
         args = argparse.Namespace(
             connect_url="connect.example.com", api_key=None, force_host=False, yes=True
         )
-        with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
-            with pytest.raises(SystemExit) as exc:
-                cli.run_uninstall(args)
+        with (
+            patch("httpx.get", side_effect=httpx.ConnectError("nope")),
+            pytest.raises(SystemExit) as exc,
+        ):
+            cli.run_uninstall(args)
 
         assert exc.value.code == 0
         assert constructed == ["http://connect.example.com"]
@@ -278,9 +283,11 @@ class TestRunUninstallSchemeResolution:
         args = argparse.Namespace(
             connect_url="connect.example.com", api_key=None, force_host=False, yes=True
         )
-        with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
-            with pytest.raises(SystemExit) as exc:
-                cli.run_uninstall(args)
+        with (
+            patch("httpx.get", side_effect=httpx.ConnectError("nope")),
+            pytest.raises(SystemExit) as exc,
+        ):
+            cli.run_uninstall(args)
 
         assert exc.value.code == 0
         printed = capsys.readouterr().out
@@ -305,9 +312,8 @@ class TestRunUninstallSchemeResolution:
         args = argparse.Namespace(
             connect_url="connect.example.com", api_key=None, force_host=False, yes=False
         )
-        with patch("httpx.get") as mock_get:
-            with pytest.raises(SystemExit) as exc:
-                cli.run_uninstall(args)
+        with patch("httpx.get") as mock_get, pytest.raises(SystemExit) as exc:
+            cli.run_uninstall(args)
 
         assert exc.value.code == 0
         mock_get.assert_not_called()
@@ -340,9 +346,8 @@ class TestRunUninstallSchemeResolution:
         args = argparse.Namespace(
             connect_url="https://connect.example.com", api_key=None, force_host=False, yes=True
         )
-        with patch("httpx.get") as mock_get:
-            with pytest.raises(SystemExit) as exc:
-                cli.run_uninstall(args)
+        with patch("httpx.get") as mock_get, pytest.raises(SystemExit) as exc:
+            cli.run_uninstall(args)
 
         assert exc.value.code == 0
         mock_get.assert_not_called()

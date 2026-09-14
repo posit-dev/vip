@@ -60,10 +60,9 @@ def check_ssl_cert(product, vip_config):
 
     ctx = ssl.create_default_context()
     try:
-        with sock:
-            with ctx.wrap_socket(sock, server_hostname=hostname) as ssock:
-                cert = ssock.getpeercert()
-                return {"cert": cert, "error": None, "hostname": hostname}
+        with sock, ctx.wrap_socket(sock, server_hostname=hostname) as ssock:
+            cert = ssock.getpeercert()
+            return {"cert": cert, "error": None, "hostname": hostname}
     except ssl.SSLCertVerificationError as exc:
         return {"cert": None, "error": str(exc), "hostname": hostname}
     # Deliberately no broader ``except Exception`` here: a handshake failure

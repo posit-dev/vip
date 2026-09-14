@@ -34,9 +34,8 @@ class TestOidcLoginLock:
         # The lock must release even if the protected body raises, or a stale cross-worker
         # lock file would stall every other worker for the full timeout on each login.
         url = "https://wb.example.com/raises"
-        with pytest.raises(RuntimeError):
-            with wb.oidc_login_lock(url):
-                raise RuntimeError("boom inside the lock")
+        with pytest.raises(RuntimeError), wb.oidc_login_lock(url):
+            raise RuntimeError("boom inside the lock")
         other = FileLock(str(wb._login_lock_path(url)))
         other.acquire(timeout=1)  # would block/raise Timeout if the lock leaked
         other.release()
@@ -47,11 +46,13 @@ class TestOidcLoginLock:
         blocker.acquire()
         try:
             entered = False
-            with caplog.at_level(logging.WARNING):
+            with (
+                caplog.at_level(logging.WARNING),
                 # Surfaced as a warning too, so contention is visible in pytest's summary.
-                with pytest.warns(UserWarning, match="proceeding without it"):
-                    with wb.oidc_login_lock(url, timeout=0.2):
-                        entered = True
+                pytest.warns(UserWarning, match="proceeding without it"),
+                wb.oidc_login_lock(url, timeout=0.2),
+            ):
+                entered = True
             assert entered  # proceeded despite not holding the lock
             assert "proceeding without it" in caplog.text
         finally:
