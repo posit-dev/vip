@@ -1,12 +1,12 @@
 """VIP's core pytest fixtures and shared BDD step definitions.
 
-These used to live in ``src/vip_tests/conftest.py``. pytest scopes
-``conftest.py`` fixtures by directory ancestry, so a test collected from
-outside ``src/vip_tests`` -- exactly what an extension directory loaded via
-``--vip-extensions`` (or ``extension_dirs`` in vip.toml) is -- could never see
-them: requesting ``vip_config`` failed with ``fixture 'vip_config' not
-found`` (issue #609), even though ``pytest_sessionstart`` in ``vip.plugin``
-makes such a directory collectible.
+These fixtures live here rather than in a ``conftest.py`` because pytest
+scopes ``conftest.py`` fixtures by directory ancestry, so a test collected
+from outside ``src/vip_tests`` -- exactly what an extension directory loaded
+via ``--vip-extensions`` (or ``extension_dirs`` in vip.toml) is -- could
+never see them: requesting ``vip_config`` would fail with ``fixture
+'vip_config' not found`` (issue #609), even though ``pytest_sessionstart`` in
+``vip.plugin`` makes such a directory collectible.
 
 This module is not a plugin by itself and is never imported at ``vip.plugin``
 module scope. ``vip.plugin.pytest_configure`` registers it with pluggy under
@@ -103,6 +103,11 @@ def vip_verbose(request: pytest.FixtureRequest) -> bool:
 def connect_client(
     request: pytest.FixtureRequest, vip_config: VIPConfig
 ) -> Generator[ConnectClient | None]:
+    """The Connect API client for this session, or ``None`` when Connect is not configured.
+
+    When an interactive or headless auth session is active, injects that session's cookies
+    so an OIDC forward-auth proxy fronting Connect accepts the request.
+    """
     from vip.plugin import _auth_session_key, require_connect_api_key
 
     if not vip_config.connect.is_configured:
@@ -166,6 +171,11 @@ def connect_url(vip_config: VIPConfig) -> str:
 def workbench_client(
     request: pytest.FixtureRequest, vip_config: VIPConfig
 ) -> Generator[WorkbenchClient | None]:
+    """The Workbench API client for this session, or ``None`` when Workbench is not configured.
+
+    When an interactive or headless auth session is active, injects that session's cookies
+    so the same forward-auth proxy that fronts Connect accepts the request.
+    """
     from vip.plugin import _auth_session_key
 
     if not vip_config.workbench.is_configured:
@@ -222,12 +232,11 @@ def kubernetes_client(vip_config: VIPConfig) -> KubernetesClient | None:
 
 @pytest.fixture(scope="session")
 def pm_client(vip_config: VIPConfig) -> Generator[PackageManagerClient | None]:
+    """The Package Manager API client for this session, or ``None`` when not configured."""
     if not vip_config.package_manager.is_configured:
         # Yield (not return) None, for the same reason as connect_client and
         # workbench_client above: a bare return from a generator fixture raises
-        # "pm_client did not yield a value" instead of handing back None.  This
-        # one was missed when the other two were fixed, so requesting pm_client
-        # on a run without Package Manager configured used to error in setup.
+        # "pm_client did not yield a value" instead of handing back None.
         yield None
         return
     url = resolve_url_scheme(
