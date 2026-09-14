@@ -150,14 +150,16 @@ jobs:
         run: |
           RESOLVED=0
           for i in $(seq 1 60); do
-            RESPONSE=$(curl -sf \
+            RESPONSE=$(curl -sf --connect-timeout 5 --max-time 15 \
               -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
               "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings") && { RESOLVED=1; break; }
-            echo "Attempt ${i}: server_settings not reachable yet, retrying..."
-            sleep 2
+            if [ "${i}" -lt 60 ]; then
+              echo "Attempt ${i}: server_settings not reachable yet, retrying..."
+              sleep 2
+            fi
           done
           if [ "${RESOLVED}" != "1" ]; then
-            echo "ERROR: server_settings did not become reachable within 120 seconds"
+            echo "ERROR: server_settings did not become reachable after 60 attempts"
             exit 1
           fi
           echo "server_settings reachable (attempt ${i})"
@@ -295,15 +297,21 @@ jobs:
 
       # Upload test results for debugging failures. Every observed failure of
       # this step was a transient "Failed to FinalizeArtifact" 403 from the
-      # artifact backend that cleared on a re-run, so it gets one retry before
-      # falling back. continue-on-error is scoped to just these two upload
-      # attempts -- it must never spread to the test step above, which stays
-      # the real, unmasked gate on this job's result. A local composite action
-      # was considered instead of duplicating this comment at every call site,
-      # but continue-on-error on a step inside a composite is a known runner
-      # limitation, so the tolerance would have to move to the caller's
-      # `uses:` while both attempts stay inside it, which is not equivalent to
-      # what is written here; duplicated per file it is.
+      # artifact backend. continue-on-error is scoped to just this step -- it
+      # must never spread to the test step above, which stays the real,
+      # unmasked gate on this job's result.
+      #
+      # Deliberately NOT retried. A retry needs `overwrite: true` to survive
+      # CreateArtifact's name reservation from the first attempt, but
+      # continue-on-error hides whether that attempt's failure was this
+      # transient 403 or a genuine same-name collision (HTTP 409) -- and
+      # nothing inside a running job can reliably tell the two apart: a
+      # job's own step logs aren't available via the API until the job
+      # finishes, and whether the list-artifacts endpoint would even show a
+      # CreateArtifact-but-not-finalized name is unverified without a live
+      # run. Retrying with `overwrite: true` regardless would silently
+      # paper over a real collision, which is worse than the bug this fixes.
+      # See the PR description for the two fallbacks this chose between.
       - name: Upload test results
         id: upload-results
         if: always()
@@ -312,17 +320,6 @@ jobs:
         with:
           name: connect-smoke-results-${{ matrix.connect-version }}
           path: smoke-results.xml
-
-      # overwrite: true -- CreateArtifact already reserved this name before
-      # FinalizeArtifact returned 403, so a same-name retry fails without it.
-      - name: Retry upload test results
-        if: always() && steps.upload-results.outcome == 'failure'
-        continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: connect-smoke-results-${{ matrix.connect-version }}
-          path: smoke-results.xml
-          overwrite: true
 
       # Write a rich job summary with test details and emoji
       - name: Write workflow summary

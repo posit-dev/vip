@@ -93,14 +93,16 @@ jobs:
         run: |
           RESOLVED=0
           for i in $(seq 1 60); do
-            RESPONSE=$(curl -sf \
+            RESPONSE=$(curl -sf --connect-timeout 5 --max-time 15 \
               -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
               "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings") && { RESOLVED=1; break; }
-            echo "Attempt ${i}: server_settings not reachable yet, retrying..."
-            sleep 2
+            if [ "${i}" -lt 60 ]; then
+              echo "Attempt ${i}: server_settings not reachable yet, retrying..."
+              sleep 2
+            fi
           done
           if [ "${RESOLVED}" != "1" ]; then
-            echo "ERROR: server_settings did not become reachable within 120 seconds"
+            echo "ERROR: server_settings did not become reachable after 60 attempts"
             exit 1
           fi
           echo "server_settings reachable (attempt ${i})"
@@ -140,9 +142,9 @@ jobs:
         env:
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
 
-      # Retried, continue-on-error-scoped upload -- see connect-smoke.yml's
-      # "Upload test results" step for the full rationale (why, and why not
-      # a shared composite action).
+      # Tolerant, unretried upload -- see connect-smoke.yml's "Upload test
+      # results" step for the full rationale, including why no safe retry
+      # was found.
       - name: Upload test results
         id: upload-results
         if: always()
@@ -150,20 +152,6 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: connect-integration-results-${{ matrix.connect-version }}
-          path: |
-            connect-results.xml
-            results.json
-          if-no-files-found: ignore
-
-      # overwrite: true -- CreateArtifact already reserved this name before
-      # FinalizeArtifact returned 403, so a same-name retry fails without it.
-      - name: Retry upload test results
-        if: always() && steps.upload-results.outcome == 'failure'
-        continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: connect-integration-results-${{ matrix.connect-version }}
-          overwrite: true
           path: |
             connect-results.xml
             results.json
