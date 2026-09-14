@@ -1294,6 +1294,7 @@ def run_scaffold(args: argparse.Namespace) -> None:
 
 def _cleanup_workbench_sessions(
     workbench_url: str,
+    _args: argparse.Namespace,
     config: VIPConfig,
 ) -> None:
     """Authenticate to Workbench and quit orphaned VIP-named sessions.
@@ -1503,7 +1504,7 @@ def run_cleanup(args: argparse.Namespace) -> None:
         workbench_url = resolve_url_scheme(
             workbench_pc, insecure=config.insecure, ca_bundle=config.ca_bundle, proxy=config.proxy
         )
-        _cleanup_workbench_sessions(workbench_url, config)
+        _cleanup_workbench_sessions(workbench_url, args, config)
 
     print("Cleanup completed successfully")
 

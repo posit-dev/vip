@@ -143,7 +143,7 @@ class TestConnectWorkbenchRouting:
         monkeypatch.setattr(
             vip.cli,
             "_cleanup_workbench_sessions",
-            lambda url, config: called.setdefault("url", url),
+            lambda url, args, config: called.setdefault("url", url),
         )
 
         vip.cli.run_cleanup(_make_args(workbench_url="https://wb.example.com"))
@@ -173,7 +173,7 @@ class TestConnectWorkbenchRouting:
         monkeypatch.setattr(
             vip.cli,
             "_cleanup_workbench_sessions",
-            lambda url, config: called.setdefault("url", url),
+            lambda url, args, config: called.setdefault("url", url),
         )
 
         vip.cli.run_cleanup(
@@ -222,7 +222,7 @@ class TestConnectWorkbenchRouting:
         monkeypatch.setattr(
             vip.cli,
             "_cleanup_workbench_sessions",
-            lambda url, config: called.setdefault("url", url),
+            lambda url, args, config: called.setdefault("url", url),
         )
 
         vip.cli.run_cleanup(_make_args())
@@ -272,7 +272,7 @@ class TestWorkbenchAuthModeSelection:
         config.auth.username = "admin"
         config.auth.password = "secret"
 
-        vip.cli._cleanup_workbench_sessions("https://wb.example.com", config)
+        vip.cli._cleanup_workbench_sessions("https://wb.example.com", _make_args(), config)
 
         assert calls["headless"]["workbench_url"] == "https://wb.example.com"
         assert calls["headless"]["username"] == "admin"
@@ -299,7 +299,7 @@ class TestWorkbenchAuthModeSelection:
         config.auth.username = ""
         config.auth.password = ""
 
-        vip.cli._cleanup_workbench_sessions("https://wb.example.com", config)
+        vip.cli._cleanup_workbench_sessions("https://wb.example.com", _make_args(), config)
 
         assert calls["interactive"]["workbench_url"] == "https://wb.example.com"
 
@@ -317,7 +317,7 @@ class TestWorkbenchAuthModeSelection:
         config.auth.password = ""
 
         with pytest.raises(SystemExit) as exc_info:
-            vip.cli._cleanup_workbench_sessions("https://wb.example.com", config)
+            vip.cli._cleanup_workbench_sessions("https://wb.example.com", _make_args(), config)
 
         assert exc_info.value.code == 1
         assert "could not authenticate" in capsys.readouterr().err
@@ -337,7 +337,7 @@ class TestWorkbenchAuthModeSelection:
         config.auth.password = ""
 
         with pytest.raises(SystemExit) as exc_info:
-            vip.cli._cleanup_workbench_sessions("https://wb.example.com", config)
+            vip.cli._cleanup_workbench_sessions("https://wb.example.com", _make_args(), config)
 
         assert exc_info.value.code == 1
         err = capsys.readouterr().err
@@ -380,7 +380,7 @@ class TestWorkbenchUiEscalation:
         config.auth.username = ""
         config.auth.password = ""
 
-        vip.cli._cleanup_workbench_sessions("https://wb.example.com", config)
+        vip.cli._cleanup_workbench_sessions("https://wb.example.com", _make_args(), config)
         return ui_calls
 
     def test_escalates_when_api_unreachable(self, tmp_path, monkeypatch):
