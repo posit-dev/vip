@@ -144,13 +144,29 @@ def _split_case_insensitive_prefix(url: str) -> tuple[str, str] | None:
     return f"{parts.scheme}://{parts.netloc}".lower(), parts.path
 
 
+# Characters that cannot be part of a URL as embedded in VIP's own log/output
+# text -- mirrors the charset excluded by the `https?://[^\s<>"']+` extraction
+# regex used elsewhere (e.g. `vip_tests.workbench.conftest.extract_repo_urls`).
+# A match ending on anything else (e.g. the "foo" in ".../latestfoo") means the
+# expected path was only a prefix of a longer token, not the whole URL.
+_URL_BOUNDARY_CHARS = frozenset(" \t\n\r\v\f<>\"'/?#")
+
+
+def _ends_at_url_boundary(line: str, end: int) -> bool:
+    """True when position *end* in *line* is the end of a URL, not its middle."""
+    return end >= len(line) or line[end] in _URL_BOUNDARY_CHARS
+
+
 def pm_url_in_log_lines(pm_url: str, output_lines: Iterable[str]) -> bool:
     """True when `pm_url` appears in any log line.
 
     Scheme and host compare case-insensitively; the path compares exactly.
-    See `_split_case_insensitive_prefix` for why. Note this compares against
-    the path only, not any query string, since Package Manager repo URLs
-    don't carry one in practice.
+    See `_split_case_insensitive_prefix` for why. The match must also end at
+    a URL boundary (end of string, `/`, `?`, `#`, or a delimiter that could
+    not be part of a URL) -- otherwise "/cran/latest" would match inside
+    "/cran/latestfoo", which is a different, longer path that happens to
+    share a prefix. Note this compares against the path only, not any query
+    string, since Package Manager repo URLs don't carry one in practice.
     """
     normalized = _split_case_insensitive_prefix(pm_url)
     if normalized is None:
@@ -168,7 +184,8 @@ def pm_url_in_log_lines(pm_url: str, output_lines: Iterable[str]) -> bool:
             if idx == -1:
                 break
             tail = idx + len(prefix)
-            if line[tail : tail + len(path)] == path:
+            end = tail + len(path)
+            if line[tail:end] == path and _ends_at_url_boundary(line, end):
                 return True
             start = idx + 1
     return False

@@ -69,8 +69,9 @@ def pm_url_in_integration_deploy_logs(integration_deploy_state, pm_url):
     assert False, (
         f"Package Manager URL {pm_url!r} was not found in the deployment logs.\n"
         "The scheme and host are matched case-insensitively, so this is not a case\n"
-        "mismatch there; if Connect is otherwise configured correctly, the remaining\n"
-        "cause is a case difference in the URL path, which is compared exactly.\n\n"
+        "mismatch there. Remaining possibilities: a case difference in the URL path\n"
+        "(which is compared exactly), Connect genuinely not using Package Manager for\n"
+        "this deployment, or the log format not matching what this check expects.\n\n"
         "--- Deployment output (last 30 lines) ---\n" + "\n".join(output_lines[-30:])
     )
 

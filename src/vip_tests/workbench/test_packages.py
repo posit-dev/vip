@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import time
 from pathlib import Path
 
@@ -16,6 +15,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_IDE_LOAD,
     TIMEOUT_QUICK,
     assert_homepage_loaded,
+    extract_repo_urls,
     unique_session_name,
     wait_for_session_active,
     workbench_login,
@@ -149,7 +149,7 @@ def check_r_repos(page: Page, workbench_url: str):
 
     output = _execute_r_command(page, "getOption('repos')")
 
-    repo_urls = re.findall(r"https?://[^\s<>\"']+", output)
+    repo_urls = extract_repo_urls(output)
 
     if not repo_urls:
         pytest.skip(

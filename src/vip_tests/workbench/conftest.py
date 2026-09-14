@@ -440,6 +440,18 @@ def unique_session_name(filename: str) -> str:
     return f"VIP {filename} - {current_worker_id()}-{time.time_ns()}"
 
 
+def extract_repo_urls(output: str) -> list[str]:
+    """Extract URLs from R's ``getOption('repos')`` console output.
+
+    ``IGNORECASE`` on the scheme: R can echo the scheme in whatever case the
+    repos config carries (e.g. ``HTTPS://...``); without it, a scheme-cased
+    URL is silently dropped here before ``pm_url_matches_repo_urls`` ever gets
+    a chance to apply its own case-insensitive scheme/host comparison, making
+    that comparison unreachable for exactly the input it exists to handle.
+    """
+    return re.findall(r"https?://[^\s<>\"']+", output, re.IGNORECASE)
+
+
 # Keywords indicating the URL is a login/auth page (used for OIDC detection)
 _LOGIN_KEYWORDS = ("sign-in", "login", "auth")
 
