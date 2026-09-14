@@ -26,8 +26,8 @@ Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `py
 Ruff is the linter and formatter. CI enforces both. Always run checks before committing:
 
 ``` bash
-uv run --extra dev ruff check src/ selftests/ examples/ docker/
-uv run --extra dev ruff format --check src/ selftests/ examples/ docker/
+uv run --extra dev ruff check .
+uv run --extra dev ruff format --check .
 ```
 
 Or with just:
@@ -36,7 +36,7 @@ Or with just:
 just check
 ```
 
-Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. All Python directories (`src/`, which includes `src/vip_tests/`, plus `selftests/`, `examples/` and `docker/`) must pass. `docker/` is easy to forget and holds `docker/playwright-smoke.py`. The ruff version is pinned in three places that must move together: `.github/workflows/ci.yml`, `.pre-commit-config.yaml`, and the `dev` extra in `pyproject.toml`. Bump all three in the same commit -- do not change one without the others.
+Ruff's rule set is the `select` list in `pyproject.toml` under `[tool.ruff.lint]`; do not restate it here. Line length is 100. The whole repository must pass, not just `src/`, `selftests/`, `examples/` and `docker/` -- CI's ruff action already covers `scripts/` too, since it appends the repo root to its arguments, so run these commands from the repo root to match. The ruff version is pinned in three places that must move together: `.github/workflows/ci.yml`, `.pre-commit-config.yaml`, and the `dev` extra in `pyproject.toml`. Bump all three in the same commit -- do not change one without the others.
 
 Auto-fix before committing:
 
