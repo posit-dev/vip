@@ -452,7 +452,7 @@ def _restore_worker_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
 
 
 def pytest_configure_node(node) -> None:
-    """xdist controller hook: share interactive-auth credentials with workers."""
+    """Xdist controller hook: share interactive-auth credentials with workers."""
     # Forward the auth mode even when no browser session was established (e.g.
     # only Package Manager configured, so the flow was skipped). Workers don't
     # re-run the controller-only auth branch, so without this their auth_mode
@@ -598,7 +598,8 @@ def _install_location_shortener(config: pytest.Config) -> None:
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Add extension directories to sys.path so their conftest / modules
     are importable, register them for collection, recolor progress indicators
-    per-line, and shorten node paths."""
+    per-line, and shorten node paths.
+    """
     # Wrap the terminal reporter here rather than in pytest_configure: the
     # builtin terminal plugin registers "terminalreporter" in its own
     # pytest_configure, which pluggy may call after ours.  By sessionstart the
@@ -623,7 +624,8 @@ def pytest_collection_modifyitems(
     items: list[pytest.Item],
 ) -> None:
     """Deselect tests whose product is not configured, skip tests whose
-    version requirement is not met, and ensure prerequisites run first."""
+    version requirement is not met, and ensure prerequisites run first.
+    """
     vip_cfg: VIPConfig = config.stash[_vip_config_key]
     no_auth = config.getoption("--no-auth", default=False)
     api_auth = config.getoption("--api-auth", default=False)

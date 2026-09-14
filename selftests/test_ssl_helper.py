@@ -124,7 +124,8 @@ def test_attempt_tls_raises_connect_error_when_host_unreachable(monkeypatch):
 def _recording_context_factory(seen: dict):
     """Build a fake ``create_default_context()`` replacement that records
     every attribute assignment into *seen* and answers ``wrap_socket`` with
-    a stub context manager (no real handshake)."""
+    a stub context manager (no real handshake).
+    """
 
     class _StubSSLSocket:
         def __enter__(self):
@@ -189,7 +190,8 @@ def test_attempt_tls_classifies_context_config_failure_as_client_unsupported(
 ):
     """Context-config failure (e.g. OpenSSL without TLS 1.0) reports
     ``client_unsupported`` so the caller can skip honestly instead of
-    falsely counting it as a server rejection."""
+    falsely counting it as a server rejection.
+    """
     _patch_connect(monkeypatch)
 
     class _FakeContext:
@@ -316,7 +318,8 @@ def test_modern_tls_succeeds_reports_plain_rejection_clearly():
 
 def test_modern_tls_succeeds_insecure_cert_failure_does_not_suggest_ssl_cert_file():
     """Under ``tls.insecure=true`` a cert-verify failure should not blame the
-    user for skipping a step they explicitly opted out of. #457."""
+    user for skipping a step they explicitly opted out of. #457.
+    """
     results = _results(
         {"status": "rejected", "detail": ""},
         {"status": "rejected", "detail": ""},
@@ -341,7 +344,8 @@ def test_modern_tls_succeeds_insecure_cert_failure_does_not_suggest_ssl_cert_fil
 
 def test_check_ssl_cert_skips_on_connect_failure(monkeypatch):
     """A TCP connect failure (refused/timeout/DNS) means the host is
-    unreachable -- not a certificate finding -- so it must still skip."""
+    unreachable -- not a certificate finding -- so it must still skip.
+    """
     _patch_connect(monkeypatch, OSError("connection refused"))
     vip_config = VIPConfig(connect=ConnectConfig(url="https://connect.example.com"))
 
@@ -353,7 +357,8 @@ def test_check_ssl_cert_propagates_non_cert_handshake_errors(monkeypatch):
     """A handshake failure for a reason other than certificate verification
     (e.g. a protocol mismatch) must fail loudly, not be silently skipped --
     a broad skip here would gate the expiry-margin assertion behind "not
-    applicable" instead of "unknown"."""
+    applicable" instead of "unknown".
+    """
     _patch_connect(monkeypatch)
     _patch_handshake(monkeypatch, ssl.SSLError("unsupported protocol"))
     vip_config = VIPConfig(connect=ConnectConfig(url="https://connect.example.com"))
@@ -381,7 +386,8 @@ def test_cert_expires_at_parses_notafter():
 
 def test_cert_expires_at_handles_single_digit_day_double_space():
     """OpenSSL pads a single-digit day with an extra space instead of
-    zero-padding it (e.g. "Jun  1 ..."), not "Jun 01 ...". #560."""
+    zero-padding it (e.g. "Jun  1 ..."), not "Jun 01 ...". #560.
+    """
     expires_at = _cert_expires_at({"notAfter": "Jun  1 12:00:00 2030 GMT"})
     assert expires_at == datetime(2030, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -444,7 +450,8 @@ def test_cert_valid_passes_when_expiry_beyond_threshold():
 
 def test_cert_valid_fails_when_expiry_within_threshold():
     """A soon-to-expire certificate must trip the margin check -- proof the
-    assertion isn't vacuous. #555."""
+    assertion isn't vacuous. #555.
+    """
     cert_info = {
         "error": None,
         "cert": _cert_with_days_remaining(5),
@@ -486,7 +493,8 @@ def test_http_port_no_content_passes_on_redirect():
 
 def test_http_port_no_content_fails_on_real_content():
     """A plain-HTTP server answering with real content (not a redirect) must
-    trip this step -- proof it isn't a vacuous ``pass`` anymore. #555."""
+    trip this step -- proof it isn't a vacuous ``pass`` anymore. #555.
+    """
     with pytest.raises(AssertionError) as info:
         http_port_no_content({"error": None, "status": 200})
     assert "served content directly" in str(info.value)
@@ -501,7 +509,8 @@ def test_request_http_classifies_protocol_error_as_port_closed(monkeypatch):
     """A plaintext request landing on a TLS-only port raises a protocol
     error, not ``httpx.ConnectError`` -- it must still classify as
     "port_closed" so the redirect / no-content checks treat a missing
-    plain-HTTP listener as acceptable rather than failing. #457."""
+    plain-HTTP listener as acceptable rather than failing. #457.
+    """
 
     def fake_get(url, follow_redirects=False, timeout=10, **kwargs):
         raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
@@ -521,7 +530,8 @@ def test_request_http_classifies_read_error_as_port_closed(monkeypatch):
     ``RemoteProtocolError``, depending on the server and OS. ``ReadError``
     is an ``httpx.NetworkError``, NOT an ``httpx.ConnectError`` or
     ``httpx.ProtocolError``, which is why the except clause must catch
-    ``NetworkError`` rather than just ``ConnectError``. #457."""
+    ``NetworkError`` rather than just ``ConnectError``. #457.
+    """
 
     def fake_get(url, follow_redirects=False, timeout=10, **kwargs):
         raise httpx.ReadError("[Errno 54] Connection reset by peer")
@@ -556,7 +566,8 @@ def test_request_http_does_not_swallow_unrelated_exceptions(monkeypatch):
 
 def test_request_http_does_not_swallow_programming_errors(monkeypatch):
     """A plain bug (e.g. a typo introduced in a future edit) must not be
-    reported as an acceptable "port closed" outcome either. #457."""
+    reported as an acceptable "port closed" outcome either. #457.
+    """
 
     def fake_get(url, follow_redirects=False, timeout=10, **kwargs):
         raise RuntimeError("boom")
@@ -590,7 +601,8 @@ def test_request_http_does_not_classify_connect_timeout_as_port_closed(monkeypat
 def test_request_http_does_not_classify_read_timeout_as_port_closed(monkeypatch):
     """A ``ReadTimeout`` means the port accepted the connection and then
     never answered -- a hung listener, a real bug worth surfacing loudly,
-    not "port closed". #457."""
+    not "port closed". #457.
+    """
 
     def fake_get(url, follow_redirects=False, timeout=10, **kwargs):
         raise httpx.ReadTimeout("timed out")

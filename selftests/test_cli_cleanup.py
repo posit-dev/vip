@@ -85,7 +85,8 @@ def _reset_fake_workbench_client():
 
 class TestConnectWorkbenchRouting:
     """run_cleanup must run Connect-only, Workbench-only, or both, based on
-    which URLs resolve — and error when neither does."""
+    which URLs resolve — and error when neither does.
+    """
 
     def test_neither_url_exits_with_error(self, tmp_path, monkeypatch, capsys):
         monkeypatch.chdir(tmp_path)
@@ -232,7 +233,8 @@ class TestConnectWorkbenchRouting:
 
 class TestWorkbenchAuthModeSelection:
     """_cleanup_workbench_sessions must pick headless auth when test creds are
-    present, otherwise fall back to interactive."""
+    present, otherwise fall back to interactive.
+    """
 
     def _patch_client_and_ui(self, monkeypatch, *, api_reachable=True, remaining=None):
         def _fake_client_ctor(*args, **kwargs):
@@ -347,7 +349,8 @@ class TestWorkbenchAuthModeSelection:
 
 class TestWorkbenchUiEscalation:
     """The UI sweep must fire when the API is unreachable or leaves VIP
-    sessions behind, and must be skipped when the API sweep is confirmed clean."""
+    sessions behind, and must be skipped when the API sweep is confirmed clean.
+    """
 
     def _run(self, tmp_path, monkeypatch, *, api_reachable, remaining, count=None):
         from vip.config import VIPConfig

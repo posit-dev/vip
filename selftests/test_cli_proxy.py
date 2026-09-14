@@ -88,7 +88,8 @@ def test_whitespace_only_no_proxy_disables_proxying():
 
 def test_no_proxy_without_proxy_still_lists_hosts():
     """--no-proxy with hosts but no --proxy records the bypass list (so it also
-    applies to an ambient env proxy)."""
+    applies to an ambient env proxy).
+    """
     path = _generate_temp_config(_args(no_proxy="localhost"))
     cfg = load_config(path)
     assert cfg.proxy.no_proxy == ["localhost"]

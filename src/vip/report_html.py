@@ -66,7 +66,8 @@ def secondary_badges_html(markers: list[str]) -> str:
 
 def product_badges_html(item: TestResult) -> str:
     """Every primary badge present in ``item.markers`` (may be more than one),
-    followed by any secondary (IDE/slow) badges."""
+    followed by any secondary (IDE/slow) badges.
+    """
     primary = "".join(_badge_html(badge) for badge in primary_badges_for(item))
     return primary + secondary_badges_html(item.markers)
 

@@ -84,7 +84,8 @@ def test_execute_install_plan_runs_playwright_and_writes_manifest(monkeypatch, t
 
 def test_execute_install_plan_records_pending_when_root_required(monkeypatch, tmp_path: Path):
     """When system_step has packages and the user isn't root, runner returns code 2
-    after writing pending packages to the manifest."""
+    after writing pending packages to the manifest.
+    """
     plan = InstallPlan(
         platform="rhel-family",
         platform_id="rhel",

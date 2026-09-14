@@ -880,6 +880,7 @@ def workbench_login(
         pytest.skip: For non-password auth without a pre-loaded auth session,
             or when the session's storage state doesn't cover Workbench
         AssertionError: When password login fails after retries
+
     """
     homepage_logo = page.locator(Homepage.POSIT_LOGO)
 

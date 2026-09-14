@@ -49,7 +49,8 @@ class _AuthFakeLocator:
 class _OidcLoginFakePage:
     """Models an OIDC-only sign-in page: a "Sign in with OpenID" button and no
     username field. *idp_valid* controls whether clicking the button reaches an
-    authenticated homepage (the logo becoming visible)."""
+    authenticated homepage (the logo becoming visible).
+    """
 
     def __init__(self, *, idp_valid: bool = True):
         self.url = "https://wb.example.com/auth-sign-in?appUri=&error=2"

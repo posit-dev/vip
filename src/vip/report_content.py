@@ -215,7 +215,8 @@ def results_for_product(results: list[TestResult], product: str) -> list[TestRes
 
 def group_by_category(results: list[TestResult]) -> dict[str, list[TestResult]]:
     """Group results by ``category_for`` (see its docstring for why not
-    ``ReportData.by_category``), preserving each category's first-seen order."""
+    ``ReportData.by_category``), preserving each category's first-seen order.
+    """
     groups: dict[str, list[TestResult]] = {}
     for item in results:
         groups.setdefault(category_for(item), []).append(item)
@@ -223,12 +224,12 @@ def group_by_category(results: list[TestResult]) -> dict[str, list[TestResult]]:
 
 
 def category_label(category: str) -> str:
-    """ "package_manager" -> "Package Manager" for a section heading."""
+    """\"package_manager" -> "Package Manager" for a section heading."""
     return category.replace("_", " ").title()
 
 
 def outcome_counts_summary(items: list[TestResult]) -> str:
-    """ "6 passed, 1 failed, 2 skipped" — used in category/group sub-headers."""
+    """\"6 passed, 1 failed, 2 skipped" — used in category/group sub-headers."""
     counts = Counter(i.status for i in items)
     order = [
         ("passed", "passed"),

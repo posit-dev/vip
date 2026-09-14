@@ -50,6 +50,7 @@ def unproven(reason: str) -> NoReturn:
     Args:
         reason: Why the check could not run, phrased for an operator reading
             the report. Name the cause, not the symptom.
+
     """
     pytest.skip(f"{UNPROVEN_SENTINEL}{reason}")
 
@@ -63,5 +64,6 @@ def not_applicable(reason: str) -> NoReturn:
 
     Args:
         reason: Why the check does not apply to this deployment.
+
     """
     pytest.skip(reason)

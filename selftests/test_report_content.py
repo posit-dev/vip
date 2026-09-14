@@ -218,7 +218,8 @@ class TestSkipReasonParts:
 class TestCategoryFor:
     """category_for prefers a scenario's own marker over the directory it
     lives in, falling back to TestResult.category (which derives the category
-    from the nodeid path)."""
+    from the nodeid path).
+    """
 
     def test_real_nodeid_shape_resolves_to_directory(self):
         item = TestResult(nodeid="src/vip_tests/connect/test_auth.py::test_login", outcome="passed")

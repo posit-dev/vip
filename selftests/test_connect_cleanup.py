@@ -87,7 +87,7 @@ def test_cleanup_content_returns_zero_and_does_not_raise_on_errors():
 
 
 def test_cleanup_content_makes_one_attempt_when_retries_zero():
-    """retries below 1 must still attempt deletion once, not silently skip."""
+    """Retries below 1 must still attempt deletion once, not silently skip."""
     calls: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:

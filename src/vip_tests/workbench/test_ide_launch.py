@@ -310,6 +310,7 @@ def _expect_ide_or_skip(
             ``"{ide_name} did not load within timeout — ..."`` is used.
             The string may contain ``{exc}`` which will be substituted with the
             caught ``PlaywrightTimeoutError`` instance.
+
     """
     effective_timeout = TIMEOUT_IDE_LOAD if timeout is None else timeout
     try:

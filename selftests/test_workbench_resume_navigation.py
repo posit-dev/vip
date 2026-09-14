@@ -15,7 +15,8 @@ _SESSION_URL = "http://localhost:8787/s/92751cfc78a319a4c2e9b/?launcher=1"
 def test_old_glob_check_could_not_tell_the_homepage_from_a_session():
     """Reproduces the bug: a bare "contains /s/" check -- what
     ``page.wait_for_url("**/s/**")`` reduces to -- passes on the homepage's
-    own URL, so it can never catch a resume that silently stayed put."""
+    own URL, so it can never catch a resume that silently stayed put.
+    """
     assert "/s/" in _HOMEPAGE_URL
     assert "/s/" in _SESSION_URL
 
