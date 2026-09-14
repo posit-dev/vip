@@ -53,44 +53,54 @@ def _parse_provides(field: str) -> set[str]:
     return names
 
 
-def _provided_names() -> set[str]:
-    """Return every name any installed dpkg package declares in Provides.
+def _provided_by_package() -> dict[str, str]:
+    """Map every name any installed dpkg package declares in Provides to that
+    package's own (real) name.
 
     Queried once per `installed_dpkg()` call across the whole package database,
     not per requested name -- `dpkg-query -W` only matches real package names, so
     there is no per-name query that could resolve a purely virtual/Provides name
     directly (see `installed_dpkg`).
     """
-    cp = _run_dpkg_query(["dpkg-query", "-W", "-f=${Status}\t${Provides}\n"])
+    cp = _run_dpkg_query(["dpkg-query", "-W", "-f=${Package}\t${Status}\t${Provides}\n"])
     if cp.returncode != 0:
-        return set()
-    provided: set[str] = set()
+        return {}
+    provided: dict[str, str] = {}
     for line in cp.stdout.splitlines():
-        status, _, provides = line.partition("\t")
+        package, _, rest = line.partition("\t")
+        status, _, provides = rest.partition("\t")
         if _is_installed_status(status):
-            provided |= _parse_provides(provides)
+            for name in _parse_provides(provides):
+                provided.setdefault(name, package)
     return provided
 
 
-def installed_dpkg(names: Iterable[str]) -> set[str]:
-    """Return the subset of `names` that dpkg reports as installed.
+def installed_dpkg(names: Iterable[str]) -> dict[str, str]:
+    """Return, for each of `names` that dpkg reports as installed, the concrete
+    package name that actually satisfies it.
 
-    A name counts as installed when dpkg has it as a real package in
-    'install ok installed' state, or when such a package declares it in
-    Provides. Ubuntu 24.04's 64-bit time_t transition renamed libcups2 to
-    libcups2t64 and friends, keeping the old names only as Provides, so
-    querying the old name directly reports not-installed even though apt
-    installed it successfully (#621).
+    A name maps to itself when dpkg has it as a real package in 'install ok
+    installed' state. It maps to the providing package's name when only that
+    package declares it in Provides. Ubuntu 24.04's 64-bit time_t transition
+    renamed libcups2 to libcups2t64 and friends, keeping the old names only as
+    Provides, so querying the old name directly reports not-installed even
+    though apt installed it successfully (#621). Callers that record what got
+    installed (e.g. for `vip uninstall`) must record the concrete name this
+    returns, not the requested one -- `libcups2` is not a real package to
+    remove on Ubuntu 24.04, `libcups2t64` is.
     """
-    present: set[str] = set()
+    resolved: dict[str, str] = {}
     unresolved: list[str] = []
     for name in names:
         cp = _run_dpkg_query(["dpkg-query", "-W", "-f=${Status}", name])
         if cp.returncode == 0 and _is_installed_status(cp.stdout.strip()):
-            present.add(name)
+            resolved[name] = name
         else:
             unresolved.append(name)
     if unresolved:
-        provided = _provided_names()
-        present |= {name for name in unresolved if name in provided}
-    return present
+        provided_by = _provided_by_package()
+        for name in unresolved:
+            concrete = provided_by.get(name)
+            if concrete is not None:
+                resolved[name] = concrete
+    return resolved

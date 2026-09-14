@@ -52,9 +52,11 @@ def format_install_plan(plan: InstallPlan) -> str:
         lines.append("  system packages to install (run yourself if not root):")
         lines.append(f"    {cmd} {' '.join(plan.system_step.packages)}")
     if plan.claim_pending:
-        lines.append(
-            "  pending packages now installed, will be claimed: " + " ".join(plan.claim_pending)
+        claimed = " ".join(
+            concrete if pending_name == concrete else f"{pending_name} (as {concrete})"
+            for pending_name, concrete in plan.claim_pending
         )
+        lines.append("  pending packages now installed, will be claimed: " + claimed)
     if plan.playwright_step:
         lines.append(
             f"  playwright: install {plan.playwright_step.browser} "

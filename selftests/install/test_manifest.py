@@ -218,7 +218,35 @@ def test_pending_package_helpers():
     assert m.pending_packages_set() == {"libdrm"}
     m.add_pending_packages(["alsa-lib", "libdrm"])  # dedupe
     assert m.pending_packages_set() == {"libdrm", "alsa-lib"}
-    m.claim_pending(["libdrm"], installed_at="2026-04-30T15:00:00Z", manager="dnf")
+    m.claim_pending([("libdrm", "libdrm")], installed_at="2026-04-30T15:00:00Z", manager="dnf")
     assert m.pending_packages_set() == {"alsa-lib"}
     names = [it.name for it in m.items if isinstance(it, SystemPackageItem)]
     assert "libdrm" in names
+
+
+def test_claim_pending_records_concrete_name_not_alias():
+    """#621: a pending alias (e.g. libcups2, resolved via dpkg Provides) is
+    recorded under the concrete provider name, and the alias -- not the
+    concrete name -- is what gets cleared from pending."""
+    m = _sample_manifest()
+    m.pending_system_packages = ["libcups2"]
+    m.claim_pending(
+        [("libcups2", "libcups2t64")], installed_at="2026-04-30T15:00:00Z", manager="apt"
+    )
+    assert m.pending_packages_set() == set()
+    items = [it for it in m.items if isinstance(it, SystemPackageItem)]
+    assert any(it.name == "libcups2t64" for it in items)
+    assert not any(it.name == "libcups2" for it in items)
+
+
+def test_claim_pending_ignores_unpending_alias():
+    """A (pending_name, concrete_name) pair whose pending_name isn't actually
+    pending is not claimed and doesn't create an item."""
+    m = _sample_manifest()
+    m.pending_system_packages = ["alsa-lib"]
+    before_items = len(m.items)
+    m.claim_pending(
+        [("libcups2", "libcups2t64")], installed_at="2026-04-30T15:00:00Z", manager="apt"
+    )
+    assert m.pending_packages_set() == {"alsa-lib"}
+    assert len(m.items) == before_items
