@@ -275,7 +275,7 @@ def test_run_uninstall_chained_cleanup_invokes_connect_client(tmp_path, monkeypa
     invocations = []
 
     class FakeConnectClient:
-        def __init__(self, url, api_key, proxy=None):
+        def __init__(self, url, api_key, insecure=False, ca_bundle=None, proxy=None):
             invocations.append(("init", url, api_key))
 
         def __enter__(self):
@@ -306,3 +306,145 @@ def test_run_uninstall_chained_cleanup_invokes_connect_client(tmp_path, monkeypa
     # Verify the chained cleanup was invoked.
     assert any(call[0] == "cleanup" for call in invocations)
     assert ("init", "https://connect.example.com", "fake-api-key") in invocations
+
+
+def _parse_uninstall(monkeypatch, *argv: str):
+    """Parse a `vip uninstall` command line and return the namespace.
+
+    Mirrors test_cli_verify.py's ``_parse_verify``: the parser lives inside
+    ``main()``, so reach it by stubbing ``run_uninstall`` and capturing the
+    namespace ``main()`` would have dispatched -- no manifest file needed.
+    """
+    import sys
+
+    from vip import cli
+
+    seen = []
+    monkeypatch.setattr(cli, "run_uninstall", seen.append)
+    monkeypatch.setattr(sys, "argv", ["vip", "uninstall", *argv])
+    cli.main()
+    assert seen, "run_uninstall was never reached"
+    return seen[0]
+
+
+def test_insecure_flag_parses(monkeypatch):
+    args = _parse_uninstall(monkeypatch, "--insecure")
+    assert args.insecure is True
+
+
+def test_ca_bundle_flag_parses_as_path(monkeypatch, tmp_path):
+    bundle = tmp_path / "ca.pem"
+    bundle.write_text("fake-pem")
+    args = _parse_uninstall(monkeypatch, "--ca-bundle", str(bundle))
+    assert args.ca_bundle == bundle
+    assert isinstance(args.ca_bundle, Path)
+
+
+def _uninstall_with_manifest(tmp_path, monkeypatch, **arg_overrides):
+    """Write a minimal manifest and run `vip uninstall --yes` against it,
+    returning the kwargs the chained-cleanup ConnectClient was constructed
+    with (issue #563's --insecure/--ca-bundle must reach that client, not
+    just the scheme-resolution probe)."""
+    import argparse
+    import socket
+
+    from vip import cli
+
+    manifest = {
+        "version": 1,
+        "vip_version": "0.0.0",
+        "created_at": "t",
+        "updated_at": "t",
+        "host": socket.gethostname(),
+        "platform": "rhel-family",
+        "platform_id": "rhel",
+        "platform_version": "10",
+        "items": [],
+        "pending_system_packages": [],
+    }
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("VIP_CONFIG", raising=False)
+
+    calls = {}
+
+    class FakeConnectClient:
+        def __init__(self, url, api_key, insecure=False, ca_bundle=None, proxy=None):
+            calls["insecure"] = insecure
+            calls["ca_bundle"] = ca_bundle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def cleanup_vip_content(self):
+            return 0
+
+    import vip.clients.connect as connect_mod
+
+    monkeypatch.setattr(connect_mod, "ConnectClient", FakeConnectClient)
+
+    defaults = {
+        "yes": True,
+        "force_host": False,
+        "connect_url": "https://connect.example.com",
+        "api_key": None,
+        "insecure": False,
+        "ca_bundle": None,
+    }
+    defaults.update(arg_overrides)
+    args = argparse.Namespace(**defaults)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.run_uninstall(args)
+    assert exc.value.code == 0
+    return calls
+
+
+def test_insecure_flag_reaches_connect_client_with_no_vip_toml(tmp_path, monkeypatch):
+    # No vip.toml is written here -- the case issue #563 calls out as having
+    # nowhere else to put the setting -- so the flag must work standalone.
+    assert not (tmp_path / "vip.toml").exists()
+    calls = _uninstall_with_manifest(tmp_path, monkeypatch, insecure=True)
+    assert calls["insecure"] is True
+
+
+def test_ca_bundle_flag_reaches_connect_client(tmp_path, monkeypatch):
+    bundle = tmp_path / "ca.pem"
+    bundle.write_text("fake-pem")
+    calls = _uninstall_with_manifest(tmp_path, monkeypatch, ca_bundle=bundle)
+    assert calls["ca_bundle"] == bundle
+
+
+def test_insecure_and_ca_bundle_together_warns_and_insecure_wins(tmp_path, monkeypatch, recwarn):
+    bundle = tmp_path / "ca.pem"
+    bundle.write_text("fake-pem")
+    calls = _uninstall_with_manifest(tmp_path, monkeypatch, insecure=True, ca_bundle=bundle)
+    assert calls["insecure"] is True
+    assert calls["ca_bundle"] is None
+    messages = [str(w.message) for w in recwarn.list]
+    assert any("--insecure" in m and "--ca-bundle" in m for m in messages), messages
+
+
+def test_toml_only_conflict_warns_and_insecure_wins(tmp_path, monkeypatch, recwarn):
+    """[tls] insecure=true + ca_bundle in vip.toml, with NO CLI flags at all
+    (and no --connect-url, so run_uninstall loads vip.toml for the URL too),
+    must warn and resolve to insecure winning -- same as the CLI-flag
+    collision above. Pins a deliberate divergence from `verify`: verify's own
+    --config/./vip.toml path never calls _resolve_effective_ca_bundle (it
+    loads [tls] straight through vip.config.load_config()), so an identical
+    vip.toml warns here but would not warn for `vip verify --config vip.toml`.
+    """
+    bundle = tmp_path / "ca.pem"
+    bundle.write_text("fake-pem")
+    (tmp_path / "vip.toml").write_text(
+        f'[connect]\nurl = "https://connect.example.com"\n\n'
+        f'[tls]\ninsecure = true\nca_bundle = "{bundle}"\n'
+    )
+    calls = _uninstall_with_manifest(tmp_path, monkeypatch, connect_url=None)
+    assert calls["insecure"] is True
+    assert calls["ca_bundle"] is None
+    messages = [str(w.message) for w in recwarn.list]
+    assert any("--insecure" in m and "--ca-bundle" in m for m in messages), messages

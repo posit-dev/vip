@@ -10,9 +10,10 @@ auth/UI-sweep functions are monkeypatched.
 from __future__ import annotations
 
 import argparse
+import sys
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -28,6 +29,8 @@ def _make_args(**overrides) -> argparse.Namespace:
         "connect_url": None,
         "api_key": None,
         "workbench_url": None,
+        "insecure": False,
+        "ca_bundle": None,
     }
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
@@ -406,3 +409,164 @@ class TestWorkbenchUiEscalation:
         # otherwise an unparseable response silently re-orphans sessions (#467).
         ui_calls = self._run(tmp_path, monkeypatch, api_reachable=True, remaining=[], count=-1)
         assert ui_calls == ["https://wb.example.com"]
+
+
+class _FakeConnectClient:
+    """Stand-in for ConnectClient recording the TLS kwargs it was constructed with."""
+
+    instances: list[_FakeConnectClient] = []
+
+    def __init__(self, *args, insecure=False, ca_bundle=None, **kwargs):
+        self.args = args
+        self.insecure = insecure
+        self.ca_bundle = ca_bundle
+        type(self).instances.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def cleanup_vip_content(self):
+        return 0
+
+
+@pytest.fixture(autouse=True)
+def _reset_fake_connect_client():
+    _FakeConnectClient.instances = []
+    yield
+    _FakeConnectClient.instances = []
+
+
+class TestCleanupTLSFlags:
+    """--insecure/--ca-bundle (issue #563) parse on `vip cleanup` and reach the
+    ConnectClient that performs the actual cleanup, whether they come from the
+    CLI or from vip.toml's [tls] section."""
+
+    def _parse_cleanup(self, *argv: str) -> argparse.Namespace:
+        """Parse a `vip cleanup` command line and return the namespace.
+
+        Mirrors test_cli_verify.py's ``_parse_verify``: the parser lives
+        inside ``main()``, so reach it by stubbing ``run_cleanup`` and
+        capturing the namespace ``main()`` would have dispatched.
+        """
+        seen: list[argparse.Namespace] = []
+        with (
+            patch("vip.cli.run_cleanup", side_effect=seen.append),
+            patch.object(sys, "argv", ["vip", "cleanup", *argv]),
+        ):
+            from vip.cli import main
+
+            main()
+        assert seen, "run_cleanup was never reached"
+        return seen[0]
+
+    def test_insecure_flag_parses(self):
+        args = self._parse_cleanup("--connect-url", "https://c.example.com", "--insecure")
+        assert args.insecure is True
+
+    def test_ca_bundle_flag_parses_as_path(self, tmp_path):
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        args = self._parse_cleanup(
+            "--connect-url", "https://c.example.com", "--ca-bundle", str(bundle)
+        )
+        assert args.ca_bundle == bundle
+        assert isinstance(args.ca_bundle, Path)
+
+    def test_insecure_flag_reaches_connect_client_with_no_vip_toml(self, tmp_path, monkeypatch):
+        # No vip.toml is written here -- this is the case issue #563 calls out
+        # as having nowhere else to put the setting, so the flag must work
+        # standalone against a bare --connect-url.
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        assert not (tmp_path / "vip.toml").exists()
+        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+
+        vip.cli.run_cleanup(_make_args(connect_url="https://c.example.com", insecure=True))
+
+        assert _FakeConnectClient.instances[-1].insecure is True
+
+    def test_ca_bundle_flag_reaches_connect_client(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+
+        vip.cli.run_cleanup(_make_args(connect_url="https://c.example.com", ca_bundle=bundle))
+
+        assert _FakeConnectClient.instances[-1].ca_bundle == bundle
+
+    def test_toml_insecure_reaches_connect_client_with_no_flag(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text(
+            '[connect]\nurl = "https://c.example.com"\n\n[tls]\ninsecure = true\n'
+        )
+        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+
+        vip.cli.run_cleanup(_make_args())
+
+        assert _FakeConnectClient.instances[-1].insecure is True
+
+    def test_toml_ca_bundle_reaches_connect_client_with_no_flag(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        (tmp_path / "vip.toml").write_text(
+            f'[connect]\nurl = "https://c.example.com"\n\n[tls]\nca_bundle = "{bundle}"\n'
+        )
+        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+
+        vip.cli.run_cleanup(_make_args())
+
+        assert _FakeConnectClient.instances[-1].ca_bundle == bundle
+
+    def test_insecure_and_ca_bundle_together_warns_and_insecure_wins(
+        self, tmp_path, monkeypatch, recwarn
+    ):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+
+        vip.cli.run_cleanup(
+            _make_args(connect_url="https://c.example.com", insecure=True, ca_bundle=bundle)
+        )
+
+        client = _FakeConnectClient.instances[-1]
+        assert client.insecure is True
+        assert client.ca_bundle is None
+        messages = [str(w.message) for w in recwarn.list]
+        assert any("--insecure" in m and "--ca-bundle" in m for m in messages), messages
+
+    def test_toml_only_conflict_warns_and_insecure_wins(self, tmp_path, monkeypatch, recwarn):
+        """[tls] insecure=true + ca_bundle in vip.toml, with NO CLI flags at all,
+        must warn and resolve to insecure winning -- same as the CLI-flag
+        collision above. This pins a deliberate divergence from `verify`:
+        verify's own --config/./vip.toml path never calls
+        _resolve_effective_ca_bundle (it loads [tls] straight through
+        vip.config.load_config()), so an identical vip.toml warns here but
+        would not warn for `vip verify --config vip.toml`.
+        """
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        bundle = tmp_path / "ca.pem"
+        bundle.write_text("fake-pem")
+        (tmp_path / "vip.toml").write_text(
+            f'[connect]\nurl = "https://c.example.com"\n\n'
+            f'[tls]\ninsecure = true\nca_bundle = "{bundle}"\n'
+        )
+        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+
+        vip.cli.run_cleanup(_make_args())
+
+        client = _FakeConnectClient.instances[-1]
+        assert client.insecure is True
+        assert client.ca_bundle is None
+        messages = [str(w.message) for w in recwarn.list]
+        assert any("--insecure" in m and "--ca-bundle" in m for m in messages), messages
