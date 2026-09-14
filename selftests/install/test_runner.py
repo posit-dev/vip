@@ -353,7 +353,7 @@ def test_install_system_packages_zypper_invokes_correct_command(monkeypatch):
 
     def fake_run(args, check):
         captured.append(args)
-        return None
+        return
 
     monkeypatch.setattr(rn.subprocess, "run", fake_run)
     rn._install_system_packages("zypper", ("mozilla-nss", "libdrm2"))

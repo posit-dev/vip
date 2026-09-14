@@ -52,7 +52,7 @@ def test_isolation_survives_a_system_level_proxy(monkeypatch):
     Simulated here by making the system-config lookup return a proxy, since a
     real one cannot be assumed on any given machine.
     """
-    monkeypatch.setattr("urllib.request.getproxies_environment", lambda: {}, raising=False)
+    monkeypatch.setattr("urllib.request.getproxies_environment", dict, raising=False)
     monkeypatch.setattr(
         "urllib.request.getproxies_macosx_sysconf",
         lambda: {"http": "http://sysconf-gw:3128", "https": "http://sysconf-gw:3128"},

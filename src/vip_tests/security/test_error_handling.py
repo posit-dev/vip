@@ -38,8 +38,7 @@ _MISSING_ENDPOINT = "/__api__/v1/does-not-exist-vip-test"
 @when("I make an unauthenticated API request to Connect", target_fixture="api_response")
 def make_unauthed_request(vip_config):
     url = vip_config.connect.url.rstrip("/") + _AUTHED_ENDPOINT
-    resp = httpx.get(url, timeout=15, verify=vip_config.verify)
-    return resp
+    return httpx.get(url, timeout=15, verify=vip_config.verify)
 
 
 # ---------------------------------------------------------------------------
@@ -50,13 +49,12 @@ def make_unauthed_request(vip_config):
 @when("I make an API request to Connect with an invalid key", target_fixture="api_response")
 def make_bad_key_request(vip_config):
     url = vip_config.connect.url.rstrip("/") + _AUTHED_ENDPOINT
-    resp = httpx.get(
+    return httpx.get(
         url,
         headers={"Authorization": "Key vip-invalid-key-00000"},
         timeout=15,
         verify=vip_config.verify,
     )
-    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -67,8 +65,7 @@ def make_bad_key_request(vip_config):
 @when("I request a non-existent endpoint on Connect", target_fixture="api_response")
 def request_missing_endpoint(vip_config):
     url = vip_config.connect.url.rstrip("/") + _MISSING_ENDPOINT
-    resp = httpx.get(url, timeout=15, verify=vip_config.verify)
-    return resp
+    return httpx.get(url, timeout=15, verify=vip_config.verify)
 
 
 # ---------------------------------------------------------------------------

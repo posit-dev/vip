@@ -2235,25 +2235,25 @@ def test_markers_in_sync():
         re.DOTALL | re.MULTILINE,
     )
     assert markers_section, "Could not find markers list in pyproject.toml"
-    pyproject_markers = set(
+    pyproject_markers = {
         re.match(r"\s*['\"](\w+)", line).group(1)
         for line in markers_section.group(1).splitlines()
         if re.match(r"\s*['\"](\w+)", line)
-    )
+    }
 
     # Parse marker names registered via config.addinivalue_line in plugin.py.
     # Each call looks like:
     #   config.addinivalue_line("markers", "name...")          (single-line)
     #   config.addinivalue_line(\n    "markers",\n    "name..."\n)  (multi-line)
     plugin_text = (repo_root / "src" / "vip" / "plugin.py").read_text()
-    plugin_markers = set(
+    plugin_markers = {
         re.match(r"(\w+)", m).group(1)
         for m in re.findall(
             r'addinivalue_line\(\s*["\']markers["\'],\s*["\'](\w[^"\']*)["\']',
             plugin_text,
             re.DOTALL,
         )
-    )
+    }
 
     assert pyproject_markers == plugin_markers, (
         f"Marker mismatch between pyproject.toml and plugin.py.\n"

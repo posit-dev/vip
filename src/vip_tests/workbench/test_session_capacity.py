@@ -26,7 +26,7 @@ from vip import attest
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
-    ResourceProfileDisabled,
+    ResourceProfileDisabledError,
     _option_is_disabled,
     cap_auto_detected_profiles,
     capacity_session_prefix,
@@ -106,7 +106,7 @@ def _launch_session(
 ) -> None:
     """Open the New Session dialog, optionally select a resource profile, and launch.
 
-    Raises ``ResourceProfileDisabled`` if the selected profile is disabled for
+    Raises ``ResourceProfileDisabledError`` if the selected profile is disabled for
     the authenticated user.
     """
     page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)
@@ -142,7 +142,7 @@ def _launch_session(
                     page.keyboard.press("Escape")
                     page.keyboard.press("Escape")
                     expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
-                    raise ResourceProfileDisabled(profile)
+                    raise ResourceProfileDisabledError(profile)
                 option.click(timeout=TIMEOUT_QUICK)
         else:
             attest.unproven(f"Resource profile dropdown not available; cannot select '{profile}'")
@@ -206,7 +206,7 @@ def launch_sessions(page: Page, vip_config):
             name = f"{prefix}{label}_{i}"
             try:
                 _launch_session(page, name, profile)
-            except ResourceProfileDisabled as exc:
+            except ResourceProfileDisabledError as exc:
                 # Configured profile the current user cannot launch. Treat as
                 # an environment condition (entitlement/group restriction):
                 # record it and move on to the remaining profiles rather than

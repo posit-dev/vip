@@ -277,7 +277,7 @@ TERMINAL_SESSION_FAILURE_STATES = ("Failed",)
 # ---------------------------------------------------------------------------
 
 
-class ResourceProfileDisabled(Exception):
+class ResourceProfileDisabledError(Exception):
     """Raised when the target resource profile is present but disabled for the user.
 
     Workbench renders resource profiles the authenticated user is not entitled
@@ -1030,9 +1030,11 @@ def workbench_login(
         homepage_or_error = homepage_logo.or_(error_panel)
         try:
             homepage_or_error.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             if attempt == max_retries - 1:
-                raise AssertionError(f"Login failed after {max_retries} attempts: no response")
+                raise AssertionError(
+                    f"Login failed after {max_retries} attempts: no response"
+                ) from exc
             continue
 
         # Check which one appeared

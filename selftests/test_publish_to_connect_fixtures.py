@@ -142,7 +142,7 @@ class TestSharedShinyBundle:
             f"/v{__version__}/src/vip_tests/connect/shiny_manifest.json"
         )
 
-    def test_bundle_has_appR_and_manifest(self):
+    def test_bundle_has_appR_and_manifest(self):  # noqa: N802 -- mirrors the app.R filename
         """The shared builder returns an R app.R + manifest.json (not Python)."""
         from vip_tests.connect.bundles import build_shiny_bundle_files
 
@@ -160,7 +160,7 @@ class TestSharedShinyBundle:
         assert manifest["metadata"]["appmode"] == "shiny"
         assert manifest["platform"] == "4.6.0"  # newest of _R_VERSIONS
 
-    def test_manifest_checksum_matches_appR(self):
+    def test_manifest_checksum_matches_appR(self):  # noqa: N802 -- mirrors the app.R filename
         """The manifest's app.R checksum must match the app.R bytes we ship,
         or ``rsconnect deploy manifest`` rejects the bundle."""
         import hashlib
