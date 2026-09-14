@@ -1,9 +1,9 @@
 """Step definitions for product server health checks.
 
-This module previously measured test-runner-local resources (disk usage,
-/proc/meminfo) which reflect the machine running VIP, not the Posit product
-servers.  It now queries each configured product's health endpoint directly
-so that the checks measure the actual servers under test.
+This module queries each configured product's health endpoint directly.
+Test-runner-local resource metrics (disk usage, /proc/meminfo) reflect the
+machine running VIP, not the Posit product servers, so they would not
+measure the actual servers under test.
 
 Note: Posit products do not expose Prometheus-style memory/CPU metrics over
 HTTP in their standard API.  If your deployment fronts the products with a
