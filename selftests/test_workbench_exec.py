@@ -26,6 +26,7 @@ import vip_tests.workbench.exec as exec_mod
 from vip_tests.workbench.exec import (
     ExecError,
     _b64_write_cmd,
+    _console_submit_diagnostics,
     _deliver_console_line,
     _deliver_terminal_line,
     _detect_ide,
@@ -1587,3 +1588,52 @@ class TestDeliverTerminalLine:
         terminal_input = MagicMock()
         _deliver_terminal_line(page, terminal_input, self.LINE)
         assert page.keyboard.insert_text.call_count == 1
+
+
+class TestConsoleSubmitDiagnostics:
+    """The submit-failure note has to answer why Enter was eaten, because the
+    console dump cannot: live, a command landed intact and still refused to
+    submit, and nothing in the report said where focus was or what was on top."""
+
+    def test_reports_focus_and_visible_overlays(self):
+        page = MagicMock()
+        page.evaluate.return_value = {
+            "active": "textarea.ace_text-input",
+            "activeIsTextarea": True,
+            "overlays": ["div#rstudio_popup.ace_autocomplete"],
+        }
+        note = _console_submit_diagnostics(page)
+        assert "ace_text-input" in note
+        assert "focusIsTextarea=True" in note
+        assert "ace_autocomplete" in note
+
+    def test_reports_when_focus_is_not_the_hidden_textarea(self):
+        """If focus is not on Ace's textarea, Enter never reaches the editor at
+        all -- a different cause from a popup stealing it, and the note must be
+        able to tell them apart."""
+        page = MagicMock()
+        page.evaluate.return_value = {
+            "active": "div#rstudio_console_input",
+            "activeIsTextarea": False,
+            "overlays": [],
+        }
+        note = _console_submit_diagnostics(page)
+        assert "focusIsTextarea=False" in note
+        assert "visibleOverlays=[]" in note
+
+    def test_never_raises_when_evaluate_fails(self):
+        page = MagicMock()
+        page.evaluate.side_effect = RuntimeError("execution context destroyed")
+        note = _console_submit_diagnostics(page)
+        assert "unavailable" in note
+        assert "RuntimeError" in note
+
+    def test_submit_note_carries_the_diagnostics(self):
+        page = _AceFakePage(swallow_enters=99)
+        page.evaluate = MagicMock(
+            return_value={"active": "body", "activeIsTextarea": False, "overlays": []}
+        )
+        page.line = "1 + 1"
+        note = _submit_console_line(page, page.input, "1 + 1")
+        assert "not submitted" in note
+        assert "focusIsTextarea=False" in note

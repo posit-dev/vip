@@ -316,6 +316,54 @@ def _deliver_console_line(page: Page, console_input, line: str) -> str:
     )
 
 
+# Probe run when a console line refuses to submit. Reports where keyboard focus
+# actually sits and whether any floating overlay (a completion popup is the
+# leading suspect for consuming Enter) is visible at that moment. Class-name
+# matching is deliberately loose because RStudio's popup markup is GWT-generated
+# and its exact class is not documented anywhere we can rely on.
+_SUBMIT_DIAGNOSTIC_JS = """() => {
+  const describe = (el) => {
+    if (!el) return 'none';
+    const cls = (typeof el.className === 'string' ? el.className : '').trim();
+    return el.tagName.toLowerCase()
+      + (el.id ? '#' + el.id : '')
+      + (cls ? '.' + cls.split(/\\s+/).slice(0, 3).join('.') : '');
+  };
+  const active = document.activeElement;
+  const selector = '[class*="complet"],[class*="Complet"],[class*="popup"],'
+    + '[class*="Popup"],[class*="autocomplete"],[class*="AutoComplete"]';
+  const overlays = Array.from(document.querySelectorAll(selector))
+    .filter((el) => el.offsetParent !== null && el.getClientRects().length > 0)
+    .slice(0, 6)
+    .map(describe);
+  return {
+    active: describe(active),
+    activeIsTextarea: !!active && active.tagName === 'TEXTAREA',
+    overlays: overlays,
+  };
+}"""
+
+
+def _console_submit_diagnostics(page: Page) -> str:
+    """Describe the page state that explains a console line refusing to submit.
+
+    Answers the two questions the failure log cannot: does keyboard focus
+    actually sit on Ace's hidden textarea (if not, Enter never reaches the
+    editor), and is a floating overlay visible that could be consuming Enter for
+    itself. Never raises -- diagnostics must not be able to fail a test.
+    """
+    try:
+        state = page.evaluate(_SUBMIT_DIAGNOSTIC_JS)
+    except Exception as exc:  # pragma: no cover - defensive
+        return f"submit diagnostics unavailable ({type(exc).__name__})"
+    overlays = state.get("overlays") or []
+    return (
+        f"focus={state.get('active')!r} "
+        f"focusIsTextarea={state.get('activeIsTextarea')} "
+        f"visibleOverlays={overlays!r}"
+    )
+
+
 def _submit_console_line(page: Page, console_input, line: str) -> str:
     """Press Enter until *line* is no longer sitting in the console input.
 
@@ -341,8 +389,8 @@ def _submit_console_line(page: Page, console_input, line: str) -> str:
             return ""
     return (
         f"the command was not submitted: it was still in the console input after "
-        f"{_CONSOLE_SUBMIT_ATTEMPTS} Enter presses (a completion popup may be "
-        f"consuming Enter)"
+        f"{_CONSOLE_SUBMIT_ATTEMPTS} Enter presses. "
+        f"{_console_submit_diagnostics(page)}"
     )
 
 
