@@ -70,6 +70,7 @@ src/vip_tests/workbench/         # Auth, IDE launch, sessions, packages
 src/vip_tests/cross_product/     # SSL, monitoring, system resources
 src/vip_tests/performance/       # Load times, concurrency
 src/vip_tests/security/          # HTTPS, auth policy, secrets
+src/vip_tests/config_hygiene/    # VIP's own configuration (opt-in; excluded by default)
 ```
 
 Product tests cannot run in CI (no products available). They are collected with `--collect-only` as a dry run in CI.
