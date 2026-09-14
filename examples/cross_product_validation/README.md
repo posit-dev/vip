@@ -28,7 +28,7 @@ vip scaffold --output ./my-custom-tests
 vip verify --config vip.toml --extensions .
 
 # Dry-run: collect tests without executing
-vip verify --config vip.toml --extensions . --collect-only
+vip verify --config vip.toml --extensions . -- --collect-only
 
 # Skip the slow package-install scenarios
 # Edit conftest.py and set check_packages to return False

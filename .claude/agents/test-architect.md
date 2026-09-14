@@ -24,7 +24,7 @@ Work through each layer top-down:
 - Write scenarios in business language -- no URLs, status codes, or selectors
 - Always include a product tag: `@connect`, `@workbench`, or `@package_manager`
 - Place in the correct category directory under `src/vip_tests/`
-- Reuse existing Given steps from `src/vip_tests/conftest.py` for common guards
+- Reuse existing Given steps from `src/vip/fixtures.py` for common guards
 
 ### 2. Step Definitions (Layer 2)
 
@@ -63,8 +63,8 @@ When reviewing test code, verify:
 ## VIP-Specific Conventions
 
 - Tests must be non-destructive. Tag created content with `_vip_test` and clean up.
-- Use `pytest.skip("reason")` in Given steps when preconditions aren't met -- don't use assertions, which produce confusing failures instead of clean skips.
-- Fixtures are defined in `src/vip_tests/conftest.py` (session-scoped) and available everywhere.
+- Use `vip.attest.not_applicable("reason")` in Given steps when preconditions aren't met, or `vip.attest.unproven("reason")` when a check couldn't run -- don't use bare `pytest.skip()` or assertions, which produce confusing failures instead of clean, classified skips.
+- Fixtures are defined in `src/vip/fixtures.py` (session-scoped) and available everywhere.
 - Available clients: `connect_client`, `workbench_client`, `pm_client` (all session-scoped, `None` if unconfigured).
 - Selftests in `selftests/` verify framework behavior; product tests in `src/vip_tests/` verify deployments.
 
