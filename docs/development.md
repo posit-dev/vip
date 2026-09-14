@@ -32,10 +32,10 @@ just format         # ruff format
 Without just, run ruff directly:
 
 ```bash
-uv run ruff check src/ selftests/ examples/ docker/        # lint
-uv run ruff format --check src/ selftests/ examples/ docker/  # format check
-uv run ruff check --fix src/ selftests/ examples/ docker/  # auto-fix lint
-uv run ruff format src/ selftests/ examples/ docker/       # reformat
+uv run --extra dev ruff check src/ selftests/ examples/ docker/        # lint
+uv run --extra dev ruff format --check src/ selftests/ examples/ docker/  # format check
+uv run --extra dev ruff check --fix src/ selftests/ examples/ docker/  # auto-fix lint
+uv run --extra dev ruff format src/ selftests/ examples/ docker/       # reformat
 ```
 
 ## Type checking
