@@ -418,6 +418,18 @@ def test_ca_bundle_flag_reaches_connect_client(tmp_path, monkeypatch):
     assert calls["ca_bundle"] == bundle
 
 
+def test_toml_insecure_reaches_connect_client_with_connect_url_flag(tmp_path, monkeypatch):
+    """Review round 2 on #563: --connect-url plus a vip.toml carrying
+    [tls] insecure = true, with NO --insecure flag, must still reach the
+    chained-cleanup ConnectClient. Before this fix, cfg was only loaded when
+    --connect-url was omitted, so a --connect-url invocation had no route to
+    vip.toml's [tls] settings at all -- this is the combination that was
+    actually broken."""
+    (tmp_path / "vip.toml").write_text("[tls]\ninsecure = true\n")
+    calls = _uninstall_with_manifest(tmp_path, monkeypatch)
+    assert calls["insecure"] is True
+
+
 def test_insecure_and_ca_bundle_together_warns_and_insecure_wins(tmp_path, monkeypatch, recwarn):
     bundle = tmp_path / "ca.pem"
     bundle.write_text("fake-pem")

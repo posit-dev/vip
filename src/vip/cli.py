@@ -1101,20 +1101,25 @@ def run_uninstall(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    # Resolve Connect URL for chained cleanup. A CLI flag wins over vip.toml;
-    # wrapping it in ProductConfig routes a scheme-less --connect-url through
-    # the same _normalize_url every other entry point uses (it was previously
-    # handed to ConnectClient completely unnormalized). cfg carries the TLS
-    # settings (insecure/ca_bundle) for the probe-and-fallback below when the
-    # URL came from vip.toml; a CLI-flag-only invocation has no cfg to draw
-    # those from, but --insecure/--ca-bundle below still apply on their own
-    # (issue #563 -- a bare --connect-url run has nowhere else to put them).
+    # Load vip.toml (when present) unconditionally -- not just when
+    # --connect-url is omitted -- so its [tls]/[proxy] settings apply even to
+    # a --connect-url-only invocation. Review round 2 on #563: a user with
+    # [tls] insecure = true in vip.toml but no vip.toml-derived Connect URL
+    # (they pass --connect-url directly, e.g. because vip.toml configures a
+    # different product) previously got cfg=None and therefore no TLS
+    # settings at all -- --connect-url had nowhere to draw them from. Loading
+    # is silent when vip.toml simply doesn't exist (mirrors
+    # _load_cleanup_config's guard), so a --connect-url run with no vip.toml
+    # still emits no "Config file not found" warning; test_run_uninstall_
+    # silent_when_vip_toml_missing pins this for the no-config case.
     from vip.config import ProductConfig
 
     connect_arg = getattr(args, "connect_url", None)
-    connect_pc: ProductConfig | None = ProductConfig(url=connect_arg) if connect_arg else None
+
     cfg = None
-    if connect_pc is None:
+    env = os.environ.get("VIP_CONFIG")
+    config_path = Path(env) if env else Path("vip.toml")
+    if config_path.exists():
         if sys.version_info >= (3, 11):
             import tomllib as _tomllib
         else:
@@ -1127,11 +1132,20 @@ def run_uninstall(args: argparse.Namespace) -> None:
         except (_tomllib.TOMLDecodeError, ValueError) as exc:
             print(
                 f"warning: failed to load vip.toml for chained cleanup: {exc}; "
-                "continuing without chained Connect cleanup",
+                "continuing without vip.toml-derived settings",
                 file=sys.stderr,
             )
-        if cfg and cfg.connect and cfg.connect.url:
-            connect_pc = cfg.connect
+
+    # A CLI --connect-url wins over vip.toml's [connect] url; wrapping it in
+    # ProductConfig routes a scheme-less --connect-url through the same
+    # _normalize_url every other entry point uses (it was previously handed to
+    # ConnectClient completely unnormalized).
+    if connect_arg:
+        connect_pc: ProductConfig | None = ProductConfig(url=connect_arg)
+    elif cfg and cfg.connect and cfg.connect.url:
+        connect_pc = cfg.connect
+    else:
+        connect_pc = None
 
     # --insecure/--ca-bundle win over the corresponding vip.toml [tls] value,
     # same precedence _load_cleanup_config gives vip cleanup's equivalent flags.
@@ -2023,6 +2037,11 @@ def main() -> None:
         help="Connect URL for chained vip cleanup (default: config / autodetect).",
     )
     uninstall_parser.add_argument("--api-key", default=None)
+    # uninstall's chained cleanup only ever constructs a ConnectClient (no
+    # Playwright/browser path, unlike verify and cleanup's Workbench sweep),
+    # so its help text drops the Playwright-specific sentences verify's
+    # otherwise-identical help carries -- they'd promise an effect uninstall
+    # cannot produce.
     uninstall_tls_group = uninstall_parser.add_argument_group("TLS configuration")
     uninstall_tls_group.add_argument(
         "--insecure",
@@ -2031,7 +2050,6 @@ def main() -> None:
         help=(
             "Disable TLS certificate verification (equivalent to curl -k). "
             "Use only in trusted environments; this silently ignores certificate errors. "
-            "For Playwright browser contexts, this sets ignore_https_errors=True. "
             "Note: --ca-bundle is preferred when you have a custom CA certificate."
         ),
     )
@@ -2042,9 +2060,7 @@ def main() -> None:
         type=Path,
         help=(
             "Path to a custom CA certificate bundle (PEM) to trust. "
-            "Useful for self-signed or corporate CAs. "
-            "For Playwright, sets NODE_EXTRA_CA_CERTS before launching Chromium "
-            "(Chromium-level trust only; does not update the OS certificate store)."
+            "Useful for self-signed or corporate CAs."
         ),
     )
     uninstall_parser.set_defaults(func=run_uninstall)
