@@ -111,7 +111,8 @@ class TestLoadCookies:
     def test_parent_domain_cookie_preserves_domain(self, tmp_path):
         """A gateway cookie scoped to ``.current.posit.team`` must have its
         domain preserved so httpx routes it to subdomains like
-        ``pub.current.posit.team``."""
+        ``pub.current.posit.team``.
+        """
         state = tmp_path / "state.json"
         _write_storage_state(
             state,
@@ -179,7 +180,8 @@ class TestLoadCookies:
 
     def test_returns_empty_cookies_when_root_is_not_dict(self, tmp_path):
         """A valid JSON file whose top-level value is not a dict (e.g. a list)
-        must not raise AttributeError — return an empty jar."""
+        must not raise AttributeError — return an empty jar.
+        """
         state = tmp_path / "state.json"
         state.write_text('[{"name": "x", "value": "y"}]')  # JSON array, not object
         session = InteractiveAuthSession(storage_state_path=state)
@@ -191,7 +193,8 @@ class TestLoadCookies:
 
     def test_skips_non_dict_cookie_entries(self, tmp_path):
         """Non-dict entries in the cookies array (strings, ints, nulls) are
-        silently skipped rather than raising TypeError."""
+        silently skipped rather than raising TypeError.
+        """
         state = tmp_path / "state.json"
         state.write_text(
             '{"cookies": ["not-a-dict", 42, null, {"name": "ok", "value": "val",'
@@ -212,7 +215,8 @@ class TestLoadCookies:
 class TestBaseClientCookiesParameter:
     """BaseClient.__init__ accepts an optional ``cookies`` parameter and
     injects it into the underlying httpx.Client so all requests carry those
-    cookies.  Default (None) means no behavior change."""
+    cookies.  Default (None) means no behavior change.
+    """
 
     def test_connect_client_without_cookies_has_empty_jar(self):
         client = ConnectClient(base_url="https://connect.example.com", api_key="key")
@@ -256,7 +260,8 @@ class TestBaseClientCookiesParameter:
 
     def test_stored_cookies_accessible_via_property(self):
         """BaseClient must expose the injected cookies so subclasses can use them
-        in ad-hoc httpx requests (e.g. fetch_content)."""
+        in ad-hoc httpx requests (e.g. fetch_content).
+        """
         jar = httpx.Cookies()
         jar.set("ptd_auth", "gw-tok", domain=".posit.team", path="/")
 
@@ -285,7 +290,8 @@ class TestBaseClientCookiesParameter:
 
 class TestFetchContentWithGatewayCookies:
     """ConnectClient.fetch_content must include the gateway cookies so an OIDC
-    proxy does not redirect the content request to the IdP."""
+    proxy does not redirect the content request to the IdP.
+    """
 
     @staticmethod
     def _make_response(

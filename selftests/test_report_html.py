@@ -189,7 +189,8 @@ class TestRenderCard:
 
     def test_whitespace_only_skip_reason_falls_back_to_placeholder(self):
         """Guards an older results.json written before the plugin normalised
-        this: a truthy-but-blank reason would render as an empty line."""
+        this: a truthy-but-blank reason would render as an empty line.
+        """
         item = TestResult(nodeid="a.py::test_x", outcome="skipped", skip_reason="   ")
         html = self._card(item)
         assert "No reason recorded." in html
@@ -531,7 +532,8 @@ class TestPageOrchestration:
 
     def test_print_expand_script_included_once(self):
         """A printed report that omits its tracebacks is the failure mode here,
-        so guard against the script being dropped from a page."""
+        so guard against the script being dropped from a page.
+        """
         data = ReportData(results=[TestResult(nodeid="a", outcome="failed", longrepr="boom")])
         html = report_html.render_details_page(data, {})
         assert html.count("addEventListener('beforeprint'") == 1

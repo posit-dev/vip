@@ -336,6 +336,7 @@ def run_user_simulation(
         ``environment.parsed_options``.  Keys depend on the product
         (e.g. ``{"api_key": "..."}`` for Connect/Workbench,
         ``{"token": "..."}`` for Package Manager).
+
     """
     if not _locust_available():
         msg = (

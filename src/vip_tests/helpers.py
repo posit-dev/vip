@@ -85,6 +85,7 @@ def check_data_source_connectivity(data_sources, verify: bool | str = True) -> l
 
     Returns:
         List of result dicts, each with keys: name, type, ok, error.
+
     """
     results = []
     for ds in data_sources:

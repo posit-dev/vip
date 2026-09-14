@@ -522,7 +522,8 @@ class TestRealMarkerMechanics:
     """Guard the assumption the fakes above cannot: that the hook's strip + add_marker
     sequence is actually visible to pytest-xdist, which reads xdist_group via
     ``get_closest_marker`` and concatenates *every* xdist_group mark it finds via
-    ``iter_markers``. Exercised on a real pytest ``Item``, not a fake."""
+    ``iter_markers``. Exercised on a real pytest ``Item``, not a fake.
+    """
 
     def test_regroup_wins_via_get_closest_marker_and_leaves_no_duplicate(self, pytester):
         # Disable the vip plugin for the nested collection: its own _assign_xdist_group

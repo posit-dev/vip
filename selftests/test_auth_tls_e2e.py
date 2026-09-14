@@ -258,7 +258,8 @@ def test_resolve_url_scheme_does_not_downgrade_against_untrusted_real_cert(
     """A real self-signed listener: httpx.get(verify=True) fails with a
     genuine CERTIFICATE_VERIFY_FAILED, but a raw TCP connect to the same
     host:port succeeds -- resolve_url_scheme must keep https://, not
-    downgrade to plaintext http://."""
+    downgrade to plaintext http://.
+    """
     import vip.auth
     from vip.config import ConnectConfig
 
@@ -279,7 +280,8 @@ def test_resolve_url_scheme_downgrades_when_nothing_listens():
     """A real closed port: neither httpx.get nor a raw TCP connect succeeds --
     resolve_url_scheme must still downgrade to http://, exactly as before
     this fix. Uses 127.0.0.1:1 (a low port nothing binds to in this sandbox)
-    rather than a mock, so the TCP-level check is exercised for real too."""
+    rather than a mock, so the TCP-level check is exercised for real too.
+    """
     import vip.auth
     from vip.config import ConnectConfig
 

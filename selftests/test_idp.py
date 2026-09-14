@@ -108,7 +108,8 @@ class TestSnowflakeLogin:
 class TestKeycloakUsesTotpGetCode:
     def test_keycloak_calls_totp_get_code_not_input(self):
         """Keycloak strategy must obtain MFA codes via totp.get_code,
-        so VIP_TEST_TOTP_SECRET works automatically when set."""
+        so VIP_TEST_TOTP_SECRET works automatically when set.
+        """
         from vip.idp import _fill_keycloak_login
 
         # Build a Playwright page mock whose otp_field appears visible

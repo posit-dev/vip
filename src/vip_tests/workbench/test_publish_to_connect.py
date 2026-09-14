@@ -66,7 +66,8 @@ _REACHABILITY_POLL_S = 3
 
 def _log(message: str) -> None:
     """Emit a timestamped progress line so a long deploy step is not mistaken
-    for a hang. Visible under ``pytest -s`` / ``--verbose``."""
+    for a hang. Visible under ``pytest -s`` / ``--verbose``.
+    """
     print(f"    [{time.strftime('%H:%M:%S')}] vip-publish: {message}", flush=True)
 
 

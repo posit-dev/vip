@@ -103,7 +103,7 @@ class TestBareSkipDetection:
 
 
 class TestAttestImportDetection:
-    """ "attest" appearing anywhere is not evidence the file uses the helpers."""
+    """ "attest" appearing anywhere is not evidence the file uses the helpers."""  # noqa: D210
 
     def test_accepts_the_real_import(self):
         assert imports_attest("from vip import attest\n")

@@ -390,7 +390,7 @@ class TestRunStatusJsonMode:
         assert code == 1
 
     def test_json_is_valid_json(self, capsys):
-        """stdout must be valid JSON — no extra human-readable text mixed in."""
+        """Stdout must be valid JSON — no extra human-readable text mixed in."""
         config = _make_config()
         args = _make_args(json=True)
 

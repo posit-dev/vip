@@ -60,6 +60,7 @@ class KubernetesClient:
             If given, only nodes with ``kubernetes.io/hostname`` matching this
             value (or with an ``agentpool`` / ``node-pool`` label equal to this
             value) are counted.  Pass ``None`` to count all Ready nodes.
+
         """
         nodes = self._core.list_node().items
         ready_nodes = []

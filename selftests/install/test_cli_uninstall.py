@@ -209,7 +209,8 @@ def test_run_uninstall_warns_on_malformed_vip_toml(tmp_path, monkeypatch, capsys
 
 def test_install_then_uninstall_round_trip(tmp_path, monkeypatch):
     """Full cycle: vip install (skip-system, no chromium step needed) writes manifest;
-    vip uninstall --yes reads it and removes everything."""
+    vip uninstall --yes reads it and removes everything.
+    """
     import argparse
 
     from vip import cli
@@ -244,7 +245,8 @@ def test_install_then_uninstall_round_trip(tmp_path, monkeypatch):
 
 def test_run_uninstall_chained_cleanup_invokes_connect_client(tmp_path, monkeypatch):
     """When connect_url is set, run_uninstall constructs a callable that opens
-    ConnectClient and calls cleanup_vip_content."""
+    ConnectClient and calls cleanup_vip_content.
+    """
     import argparse
     import socket
 
