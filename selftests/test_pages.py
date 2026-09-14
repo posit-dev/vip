@@ -73,11 +73,11 @@ class TestParseWorkbenchVersion:
         ),
     ]
 
-    @pytest.mark.parametrize("footer,expected", REAL_FOOTERS)
+    @pytest.mark.parametrize(("footer", "expected"), REAL_FOOTERS)
     def test_extracts_version_from_real_footers(self, footer, expected):
         assert parse_workbench_version(footer) == expected
 
-    @pytest.mark.parametrize("footer,expected", REAL_FOOTERS)
+    @pytest.mark.parametrize(("footer", "expected"), REAL_FOOTERS)
     def test_parsed_output_feeds_product_version(self, footer, expected):
         # The whole point of the substring shape: it must parse with
         # ProductVersion (which then ignores the +build metadata for ordering).

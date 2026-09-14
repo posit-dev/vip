@@ -15,7 +15,7 @@ from vip.clients.workbench import WorkbenchClient, is_vip_session
 
 
 @pytest.mark.parametrize(
-    "label, expected",
+    ("label", "expected"),
     [
         ("VIP test_ide_launch.py - gw0-123", True),
         ("VIP foo", True),
@@ -862,7 +862,7 @@ def test_run_session_cleanup_returns_early_when_workbench_client_is_none(monkeyp
 
 
 @pytest.mark.parametrize(
-    "label, expected",
+    ("label", "expected"),
     [
         ("VIP test_git_ops.py - gw1-1785380284140718000", "gw1"),
         ("VIP test_ide_launch.py - gw0-123", "gw0"),
@@ -1013,7 +1013,7 @@ def test_capacity_session_prefix_carries_the_worker_id(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "label, expected",
+    ("label", "expected"),
     [
         # Every `_vip_<kind>_` scheme must be attributable, not just capacity.
         ("_vip_cap_gw1_1785380282_Small_0", "gw1"),

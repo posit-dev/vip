@@ -277,7 +277,7 @@ TERMINAL_SESSION_FAILURE_STATES = ("Failed",)
 # ---------------------------------------------------------------------------
 
 
-class ResourceProfileDisabled(Exception):
+class ResourceProfileDisabledError(Exception):
     """Raised when the target resource profile is present but disabled for the user.
 
     Workbench renders resource profiles the authenticated user is not entitled
@@ -448,6 +448,19 @@ def _on_login_page(url: str) -> bool:
     """Return True if *url* looks like a login or IdP page."""
     lower = url.lower()
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
+
+
+def _navigated_into_session(url: str) -> bool:
+    """Return True if *url* is inside a session, not the homepage.
+
+    Workbench's homepage is itself served under a "/s/<id>/" URL (its
+    "workspaces" view), so a bare "/s/" check can't tell the two apart. A
+    real session URL has no "workspaces" segment after the id.
+    """
+    segments = [s for s in urlparse(url).path.split("/") if s]
+    if len(segments) < 2 or segments[0] != "s":
+        return False
+    return "workspaces" not in segments
 
 
 def _external_idp_host(page_url: str, workbench_url: str) -> str | None:
@@ -781,7 +794,7 @@ def _refresh_cached_session(page: Page) -> bool:
     """
     try:
         refresh_auth_cache_from_storage_state(page.context.storage_state())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("Could not read storage state to refresh the auth cache: %s", exc)
     return True
 
@@ -910,7 +923,7 @@ def workbench_login(
             page.locator(f"{LoginPage.USERNAME}, button:has-text('Sign in')").first.wait_for(
                 state="visible", timeout=TIMEOUT_PAGE_LOAD
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
         # An OIDC sign-in page shows a "Sign in with ..." button and no username
@@ -981,7 +994,7 @@ def workbench_login(
         try:
             homepage_logo.wait_for(state="visible", timeout=TIMEOUT_QUICK)
             return
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     # Password authentication with retry logic
@@ -1000,7 +1013,7 @@ def workbench_login(
         # Wait for login form to be ready
         try:
             login_form.wait_for(state="visible", timeout=TIMEOUT_QUICK)
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
 
         # Fill and submit
@@ -1017,9 +1030,11 @@ def workbench_login(
         homepage_or_error = homepage_logo.or_(error_panel)
         try:
             homepage_or_error.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
             if attempt == max_retries - 1:
-                raise AssertionError(f"Login failed after {max_retries} attempts: no response")
+                raise AssertionError(
+                    f"Login failed after {max_retries} attempts: no response"
+                ) from exc
             continue
 
         # Check which one appeared
@@ -1063,7 +1078,7 @@ def _quit_vip_sessions_via_cookies(
             return scratch.quit_vip_sessions(owner=owner)
         finally:
             scratch.close()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return 0
 
 
@@ -1088,7 +1103,7 @@ def _session_api_reachable_via_cookies(
             return scratch.sessions_api_reachable()
         finally:
             scratch.close()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
 
 
@@ -1118,7 +1133,7 @@ def _vip_session_count_via_cookies(
             return scratch.count_vip_sessions(owner=owner)
         finally:
             scratch.close()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return -1
 
 
@@ -1157,7 +1172,7 @@ def _wb_cleanup_state(vip_config, workbench_client):
     if vip_config.workbench.api_key:
         try:
             workbench_client.quit_vip_sessions(owner=owner)
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
 
@@ -1180,7 +1195,7 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
         return
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-    except Exception:
+    except Exception:  # noqa: BLE001
         cookies = {}
     if not cookies:
         if not vip_config.workbench.api_key:
@@ -1269,7 +1284,7 @@ def quit_owned_sessions_via_page(
     """
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-    except Exception:
+    except Exception:  # noqa: BLE001
         return
     if not cookies:
         return

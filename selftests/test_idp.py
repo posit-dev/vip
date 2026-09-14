@@ -121,12 +121,14 @@ class TestKeycloakUsesTotpGetCode:
         page.locator.return_value.fill.return_value = None
         page.locator.return_value.click.return_value = None
 
-        with patch("vip.idp.totp.get_code", return_value="123456") as mock_get:
-            with patch(
+        with (
+            patch("vip.idp.totp.get_code", return_value="123456") as mock_get,
+            patch(
                 "builtins.input",
                 side_effect=AssertionError("input() must not be called; use totp.get_code"),
-            ):
-                _fill_keycloak_login(page, "user", "pass")
+            ),
+        ):
+            _fill_keycloak_login(page, "user", "pass")
 
         assert mock_get.called, "Keycloak strategy did not call totp.get_code"
 

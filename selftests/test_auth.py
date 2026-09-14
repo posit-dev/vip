@@ -102,25 +102,29 @@ class TestStartHeadlessAuthPlaywrightErrors:
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
         stub = self._make_playwright_stub(PlaywrightTimeoutError("timed out"))
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(AuthConfigError, match="timed out"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="timed out"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+            )
 
     def test_playwright_error_during_login_becomes_auth_config_error(self):
         from playwright.sync_api import Error as PlaywrightError
 
         stub = self._make_playwright_stub(PlaywrightError("net::ERR_NAME_NOT_RESOLVED"))
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(AuthConfigError, match="failed during login"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="failed during login"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+            )
 
     def test_missing_chromium_system_deps_gives_remediation(self):
         """Missing host libraries at chromium launch must surface the
@@ -133,13 +137,15 @@ class TestStartHeadlessAuthPlaywrightErrors:
             "Please install them with the following command:\n"
             "    sudo playwright install-deps"
         )
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with pytest.raises(AuthConfigError, match=r"vip install"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            pytest.raises(AuthConfigError, match=r"vip install"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+            )
 
     def test_no_display_at_interactive_launch_gives_remediation(self):
         """A headed launch with no display (e.g. --interactive-auth run
@@ -155,9 +161,11 @@ class TestStartHeadlessAuthPlaywrightErrors:
             "running.\nSet either 'headless: true' or use 'xvfb-run "
             "<your-playwright-app>' before running Playwright."
         )
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with pytest.raises(AuthConfigError, match="--headless-auth"):
-                start_interactive_auth(connect_url="https://c.example.com")
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            pytest.raises(AuthConfigError, match="--headless-auth"),
+        ):
+            start_interactive_auth(connect_url="https://c.example.com")
 
     def test_unrelated_playwright_launch_error_propagates(self):
         """Launch errors that aren't missing-deps must not be rewritten."""
@@ -167,13 +175,15 @@ class TestStartHeadlessAuthPlaywrightErrors:
         pw.start.return_value.chromium.launch.side_effect = PlaywrightError(
             "Browser closed unexpectedly"
         )
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with pytest.raises(PlaywrightError, match="Browser closed unexpectedly"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            pytest.raises(PlaywrightError, match="Browser closed unexpectedly"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+            )
 
 
 class TestSaveAuthCache:
@@ -1375,12 +1385,9 @@ class TestAuthTimeoutErrorHierarchy:
     def test_instance_is_caught_by_auth_config_error_except_clause(self):
         from vip.auth import AuthConfigError, AuthTimeoutError
 
-        try:
+        with pytest.raises(AuthConfigError) as excinfo:
             raise AuthTimeoutError("boom")
-        except AuthConfigError as exc:
-            assert isinstance(exc, AuthTimeoutError)
-        else:
-            pytest.fail("AuthTimeoutError was not caught by except AuthConfigError")
+        assert isinstance(excinfo.value, AuthTimeoutError)
 
 
 class TestClickWorkbenchOidcConfirm:
@@ -1681,12 +1688,14 @@ class TestResolveUrlScheme:
 
         pc = self._pc("connect.example.com")
 
-        with patch("vip.auth._tls_listener_present", return_value=True):
-            with patch(
+        with (
+            patch("vip.auth._tls_listener_present", return_value=True),
+            patch(
                 "httpx.get",
                 side_effect=httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED]"),
-            ):
-                result = resolve_url_scheme(pc)
+            ),
+        ):
+            result = resolve_url_scheme(pc)
 
         assert result == "https://connect.example.com"
         assert pc.url == "https://connect.example.com"
@@ -1701,9 +1710,11 @@ class TestResolveUrlScheme:
 
         pc = self._pc("connect.example.com")
 
-        with patch("vip.auth._tls_listener_present", return_value=True):
-            with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
-                resolve_url_scheme(pc)
+        with (
+            patch("vip.auth._tls_listener_present", return_value=True),
+            patch("httpx.get", side_effect=httpx.ConnectError("nope")),
+        ):
+            resolve_url_scheme(pc)
 
         out = capsys.readouterr().out
         assert "NOT falling back to plaintext" in out
@@ -2672,14 +2683,16 @@ class TestHeadlessAuthTLSFlags:
         stub = self._make_playwright_stub()
         browser = stub.start.return_value.chromium.launch.return_value
 
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(Exception):  # timeout or AuthConfigError
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                    insecure=True,
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="timed out"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+                insecure=True,
+            )
 
         browser.new_context.assert_called_once()
         kwargs = browser.new_context.call_args.kwargs
@@ -2690,14 +2703,16 @@ class TestHeadlessAuthTLSFlags:
         stub = self._make_playwright_stub()
         browser = stub.start.return_value.chromium.launch.return_value
 
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(Exception):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                    insecure=False,
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="timed out"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+                insecure=False,
+            )
 
         browser.new_context.assert_called_once()
         kwargs = browser.new_context.call_args.kwargs
@@ -2724,14 +2739,16 @@ class TestHeadlessAuthTLSFlags:
 
         monkeypatch.delenv("NODE_EXTRA_CA_CERTS", raising=False)
 
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(Exception):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                    ca_bundle=Path(ca_file),
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="timed out"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+                ca_bundle=Path(ca_file),
+            )
 
         assert len(captured) == 1
         assert captured[0] == str(ca_file)
@@ -2750,14 +2767,16 @@ class TestHeadlessAuthTLSFlags:
 
         stub = self._make_playwright_stub()
 
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(Exception):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                    ca_bundle=Path(ca_file),
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="timed out"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+                ca_bundle=Path(ca_file),
+            )
 
         assert os.environ.get("NODE_EXTRA_CA_CERTS") == prev_value
 
@@ -2779,9 +2798,11 @@ class TestAuthenticatedPage:
         context = browser.new_context.return_value
         page = context.new_page.return_value
 
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with authenticated_page(session) as yielded_page:
-                assert yielded_page is page
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            authenticated_page(session) as yielded_page,
+        ):
+            assert yielded_page is page
 
         browser.new_context.assert_called_once_with(
             storage_state=str(session.storage_state_path),
@@ -2798,9 +2819,11 @@ class TestAuthenticatedPage:
         browser = pw.start.return_value.chromium.launch.return_value
         context = browser.new_context.return_value
 
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with authenticated_page(session, insecure=True):
-                pass
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            authenticated_page(session, insecure=True),
+        ):
+            pass
 
         _, kwargs = browser.new_context.call_args
         assert kwargs["ignore_https_errors"] is True
@@ -2813,10 +2836,12 @@ class TestAuthenticatedPage:
         browser = pw.start.return_value.chromium.launch.return_value
         context = browser.new_context.return_value
 
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with pytest.raises(RuntimeError, match="boom"):
-                with authenticated_page(session):
-                    raise RuntimeError("boom")
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            pytest.raises(RuntimeError, match="boom"),
+            authenticated_page(session),
+        ):
+            raise RuntimeError("boom")
 
         context.close.assert_called_once()
         browser.close.assert_called_once()
@@ -2840,9 +2865,11 @@ class TestAuthenticatedPage:
 
         pw.start.return_value.chromium.launch.side_effect = capturing_launch
 
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with authenticated_page(session, ca_bundle=ca_file):
-                pass
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            authenticated_page(session, ca_bundle=ca_file),
+        ):
+            pass
 
         assert captured == [str(ca_file)]
         assert os.environ.get("NODE_EXTRA_CA_CERTS") is None
@@ -3395,14 +3422,12 @@ class TestRefreshAuthCacheFromStorageState:
     """
 
     def _existing_cache(self, tmp_path):
-        import os
-
         cache = tmp_path / ".vip-auth-cache.json"
         cache.write_text('{"cookies": [{"name": "dead", "value": "old"}], "origins": []}')
-        os.chmod(cache, 0o600)
+        cache.chmod(0o600)
         meta = cache.with_suffix(".meta.json")
         meta.write_text('{"api_key": null, "workbench_url": "https://wb.example.com"}')
-        os.chmod(meta, 0o600)
+        meta.chmod(0o600)
         return cache, meta
 
     def test_rewrites_an_existing_cache_with_the_live_state(self, tmp_path):

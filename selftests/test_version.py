@@ -99,10 +99,10 @@ class TestComparison:
     def test_le_ge_operators(self):
         v1 = ProductVersion("2026.06.0")
         v2 = ProductVersion("2026.06.1")
-        assert v1 <= v1
+        assert v1 <= v1  # noqa: PLR0124 -- deliberate reflexivity check for __le__
         assert v1 <= v2
         assert v2 >= v1
-        assert v2 >= v2
+        assert v2 >= v2  # noqa: PLR0124 -- deliberate reflexivity check for __ge__
 
     def test_comparison_with_non_product_version_not_implemented(self):
         v = ProductVersion("2026.06.0")
