@@ -167,6 +167,24 @@ def execute_uninstall_plan(
     yes: bool,
     cleanup_callable: Callable[[str], None] | None,
 ) -> int:
+    """Execute an uninstall plan, or just print it if `yes` is false.
+
+    With `yes=False`, prints the plan and returns 0 without touching the
+    filesystem or calling `cleanup_callable` — a pure dry run.
+
+    With `yes=True`, in order: if `plan.chained_cleanup` and
+    `cleanup_callable` are both set, calls `cleanup_callable(chained_cleanup)`
+    to run `vip cleanup` against that URL; any exception it raises is caught,
+    printed as a warning, and swallowed rather than propagated, so a failed
+    content cleanup does not stop the rest of uninstall or change this
+    function's return value. Then removes each existing directory in
+    `plan.playwright_cache_dirs`, deletes `manifest_path` if
+    `plan.delete_manifest` and it exists, and prints
+    `plan.system_remove_commands` for the user to run themselves (never runs
+    them). Always returns 0, even when the chained cleanup failed — check the
+    printed "(content cleanup: failed)" summary line, not the return code, to
+    detect that case.
+    """
     print(format_uninstall_plan(plan), end="")
     if not yes:
         print("\nDry run only. Pass --yes to execute.")
