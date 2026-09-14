@@ -20,6 +20,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_PAGE_LOAD,
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
+    _navigated_into_session,
     assert_homepage_loaded,
     unique_session_name,
     wait_for_session_active,
@@ -188,11 +189,22 @@ def user_resumes_session(page: Page, session_context: dict):
     # RStudio content here instead — the same readiness gate the fresh-launch
     # path already trusts (see ``rstudio_functional`` in test_ide_launch.py)
     # — so we only leave /s/<id> once the resume has demonstrably succeeded.
-    # A timeout here means resume did not demonstrably complete; report that
-    # as unproven rather than letting the bare Playwright assertion surface
-    # as an opaque hard failure (this file's established pattern — see
-    # session_becomes_active_again below).
-    page.wait_for_url("**/s/**", timeout=TIMEOUT_PAGE_LOAD)
+    #
+    # A bare ``page.wait_for_url("**/s/**")`` looks like it confirms that
+    # navigation, but doesn't: Workbench's own homepage is itself served
+    # under a "/s/<id>/" URL (its "workspaces" management view), so that
+    # glob is satisfied by the homepage's own URL and passes instantly even
+    # when Launch never navigated anywhere. Two live CI runs hit exactly
+    # that — the backend resumed in under 2 seconds both times (per the
+    # diagnostics collector), yet the browser was still sitting on the
+    # homepage's Projects table when the container check below timed out.
+    # ``_navigated_into_session`` requires an "/s/<id>/" URL that is *not*
+    # the homepage's "workspaces" view, so it can't be satisfied by staying
+    # put. A timeout here means resume did not demonstrably complete;
+    # report that as unproven rather than letting the bare Playwright
+    # assertion surface as an opaque hard failure (this file's established
+    # pattern — see session_becomes_active_again below).
+    page.wait_for_url(_navigated_into_session, timeout=TIMEOUT_PAGE_LOAD)
     try:
         expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_SESSION_START)
     except AssertionError as exc:
