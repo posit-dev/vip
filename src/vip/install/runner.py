@@ -32,6 +32,7 @@ def _now() -> str:
 
 
 def format_install_plan(plan: InstallPlan) -> str:
+    """Render *plan* as a human-readable dry-run summary, one line per action."""
     if plan.is_empty() and not plan.unsupported_warning:
         return "vip install: nothing to install.\n"
     lines = [
@@ -145,6 +146,7 @@ def _install_system_packages(manager: str, packages: tuple[str, ...]) -> None:
 
 
 def format_uninstall_plan(plan: UninstallPlan) -> str:
+    """Render *plan* as a human-readable dry-run summary, one line per action."""
     lines = ["vip uninstall plan:"]
     if plan.chained_cleanup:
         lines.append(f"  run vip cleanup against {plan.chained_cleanup}")

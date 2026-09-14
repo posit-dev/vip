@@ -36,6 +36,11 @@ def _platform_label() -> str:
 
 
 def main() -> None:
+    """Launch headless Chromium, exercise page interaction/JS, and screenshot it.
+
+    Raises ``RuntimeError`` on any unexpected page state; the caller (``docker run`` or a
+    GitHub Actions step) sees this as a non-zero exit.
+    """
     label = _platform_label()
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, channel="chromium-headless-shell")

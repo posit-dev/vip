@@ -61,6 +61,7 @@ def _badge_html(badge: Badge) -> str:
 
 
 def secondary_badges_html(markers: list[str]) -> str:
+    """The quiet IDE/slow badge chips for a card, in ``SECONDARY_BADGES`` order."""
     return "".join(_badge_html(badge) for badge in secondary_badges_for(markers))
 
 
@@ -73,6 +74,7 @@ def product_badges_html(item: TestResult) -> str:
 
 
 def steps_html(steps: list[str]) -> str:
+    """The collapsible "Test procedure" list for a card, or ``""`` if *steps* is empty."""
     if not steps:
         return ""
     items = "".join(f"<li>{_esc(s)}</li>" for s in steps)

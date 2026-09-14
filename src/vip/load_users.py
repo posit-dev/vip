@@ -54,10 +54,12 @@ class ConnectUser(HttpUser):
 
     @task(10)
     def list_content(self):
+        """Fetch the content listing."""
         self.client.get("/__api__/v1/content", headers=self._headers)
 
     @task(8)
     def get_content_item(self):
+        """Fetch the detail page for the content item found by ``on_start``, if any."""
         if self._content_guid:
             self.client.get(
                 f"/__api__/v1/content/{self._content_guid}",
@@ -67,14 +69,17 @@ class ConnectUser(HttpUser):
 
     @task(3)
     def get_current_user(self):
+        """Fetch the profile of the user identified by the client's API key."""
         self.client.get("/__api__/v1/user", headers=self._headers)
 
     @task(2)
     def list_users(self):
+        """Fetch the list of registered users."""
         self.client.get("/__api__/v1/users", headers=self._headers)
 
     @task(1)
     def server_settings(self):
+        """Fetch the server settings endpoint."""
         self.client.get("/__api__/server_settings")
 
 
@@ -89,15 +94,18 @@ class WorkbenchUser(HttpUser):
     abstract = True
 
     def on_start(self):
+        """Seed the API key header from the injected load-test credentials."""
         self._api_key = getattr(self.environment, "_vip_credentials", {}).get("api_key", "")
         self._headers = {"Authorization": f"Key {self._api_key}"}
 
     @task(8)
     def list_sessions(self):
+        """Fetch the list of active Workbench sessions."""
         self.client.get("/api/sessions", headers=self._headers)
 
     @task(5)
     def server_version(self):
+        """Fetch the Workbench server version."""
         # Workbench's documented version endpoint is /api/version (there is no
         # /api/server/settings — that path 404s). Requires an API token, which
         # on_start sets from the injected credentials.
@@ -105,6 +113,7 @@ class WorkbenchUser(HttpUser):
 
     @task(1)
     def health_check(self):
+        """Hit the Workbench health-check endpoint."""
         self.client.get("/health-check")
 
 
@@ -120,6 +129,7 @@ class PackageManagerUser(HttpUser):
     abstract = True
 
     def on_start(self):
+        """Seed the auth header and pre-fetch CRAN/PyPI repo names for later tasks."""
         self._token = getattr(self.environment, "_vip_credentials", {}).get("token", "")
         self._headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
         # Pre-fetch repo names by type so CRAN tasks hit R repos and PyPI
@@ -137,20 +147,24 @@ class PackageManagerUser(HttpUser):
 
     @task(3)
     def list_repos(self):
+        """Fetch the list of configured repositories."""
         self.client.get("/__api__/repos", headers=self._headers)
 
     @task(10)
     def fetch_cran_index(self):
+        """Fetch the CRAN ``PACKAGES`` index of the first repo found by ``on_start``, if any."""
         if self._cran_repos:
             repo = self._cran_repos[0]
             self.client.get(f"/{repo}/latest/src/contrib/PACKAGES")
 
     @task(5)
     def fetch_pypi_index(self):
+        """Fetch the PyPI simple-index page for numpy from the first repo found, if any."""
         if self._pypi_repos:
             repo = self._pypi_repos[0]
             self.client.get(f"/{repo}/latest/simple/numpy/")
 
     @task(1)
     def server_status(self):
+        """Fetch the Package Manager status endpoint."""
         self.client.get("/__api__/status")

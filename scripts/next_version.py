@@ -90,6 +90,11 @@ def _highest_tag() -> str | None:
 
 
 def main() -> None:
+    """Print the next calver release version, or verify a proposed one is newer.
+
+    In ``--verify VERSION`` mode, exits 1 (via ``::error::``) when *VERSION* is not
+    strictly newer than the last tag instead of computing a new version.
+    """
     parser = argparse.ArgumentParser(description="Compute the next calver VIP release version")
     parser.add_argument(
         "--last-tag",

@@ -89,6 +89,7 @@ UNPROVEN_DISPLAY_PREFIX = "UNPROVEN: "
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register VIP's command-line options for config, auth mode, and reporting."""
     group = parser.getgroup("vip", "Verified Installation of Posit")
     group.addoption(
         "--vip-config",
@@ -156,6 +157,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    """Load VIP's config, register its fixtures/markers/warning filters, and run browser auth.
+
+    Stashes the parsed ``VIPConfig`` and merged extension directories on ``config.stash``
+    for fixtures and collection hooks to read, and — outside xdist workers — performs
+    the ``--interactive-auth``/``--headless-auth`` browser login, stashing the resulting
+    session for ``pytest_sessionfinish`` to clean up.
+    """
     global _active_config
     _active_config = config
 
@@ -1367,6 +1375,12 @@ def _apply_unproven_exit_status(session: pytest.Session, exitstatus: int) -> int
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Clean up the auth session, apply the unproven exit status, and write the report.
+
+    Runs only on the xdist controller (workers return early after skipping cleanup).
+    Writes ``report/results.json`` (or the ``--vip-report`` path) plus any junit/sarif
+    siblings requested via ``--vip-format``, unless ``--vip-report`` is empty.
+    """
     # xdist workers skip all session-end cleanup (controller handles it).
     is_worker = hasattr(session.config, "workerinput")
 
