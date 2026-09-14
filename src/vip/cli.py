@@ -294,7 +294,7 @@ def _user_set_xdist(pytest_args: list[str]) -> tuple[bool, bool]:
     for a in pytest_args:
         if a in ("-n", "--numprocesses") or a.startswith(("-n", "--numprocesses=")):
             set_n = True
-        if a.startswith("--dist") or a == "no:xdist" or a.startswith("no:xdist"):
+        if a.startswith(("--dist", "no:xdist")) or a == "no:xdist":
             set_dist = True
     if "no:xdist" in pytest_args or any(x.startswith("no:xdist") for x in pytest_args):
         set_n = set_dist = True

@@ -825,7 +825,8 @@ def start_interactive_auth(
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
-    assert primary_url is not None  # guaranteed by the check above
+    if primary_url is None:
+        raise RuntimeError("unreachable: connect_url or workbench_url required, checked above")
     login_path = "/__login__" if connect_url else ""
 
     tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
@@ -1073,7 +1074,8 @@ def start_headless_auth(
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
-    assert primary_url is not None
+    if primary_url is None:
+        raise RuntimeError("unreachable: connect_url or workbench_url required, checked above")
     login_path = "/__login__" if connect_url else ""
 
     tmpdir = tempfile.mkdtemp(prefix="vip-auth-")

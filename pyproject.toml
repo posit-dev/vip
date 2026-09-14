@@ -214,4 +214,10 @@ line-length = 100
 src = ["src", "selftests", "examples"]
 
 [tool.ruff.lint]
-select = ["BLE", "E", "F", "I", "UP"]
+select = ["B", "BLE", "C4", "E", "F", "I", "ISC", "N", "PGH", "PIE", "RET", "S101", "TID", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"selftests/**" = ["S101"]
+"src/vip_tests/**" = ["S101"]
+"examples/**" = ["S101"]
+"docker/**" = ["S101"]

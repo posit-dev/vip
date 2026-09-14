@@ -65,7 +65,7 @@ def run_load_test(
     if tool == "locust":
         # Locust returns LoadTestResult directly (aggregate stats, no raw data).
         return _run_locust(url, headers, users, config)
-    elif tool == "threadpool" or (tool == "auto" and users <= 100):
+    if tool == "threadpool" or (tool == "auto" and users <= 100):
         raw = _run_threadpool(url, headers, users)
     elif tool == "async" or (tool == "auto" and users > 100):
         raw = _run_async(url, headers, users, max_connections=config.load_max_connections)
