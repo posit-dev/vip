@@ -10,7 +10,7 @@ VIP grew feature by feature. The result is a codebase that works but is hard for
 
 - Three modules carry most of the framework: `src/vip/auth.py` (2274 lines), `src/vip/cli.py` (2054), `src/vip/plugin.py` (1462). `src/vip_tests/workbench/conftest.py` is 1400 lines. The largest selftest file, `selftests/test_auth.py`, is 3464 lines.
 - Comments narrate history instead of explaining code. A grep for "previously", "used to", "no longer", "was moved" and similar phrases finds 82 hits in `src/vip` alone. A newcomer cannot tell which of these describe current behavior.
-- Error handling is untyped. `src/` has 129 `except Exception` blocks (33 in `auth.py`), no custom exception classes, and 38 scattered `typer.Exit` / `sys.exit` calls. Failures are hard to distinguish from one another in logs and reports.
+- Error handling is inconsistent. `src/` has 129 `except Exception` blocks (33 in `auth.py`). Six custom exception classes exist (`AuthConfigError`, `AuthTimeoutError`, `ProxyConfigError`, `PlaywrightInstallError`, `PackageQueryError`, `ManifestError`) but share no base, so callers cannot catch "any VIP error" and 37 `sys.exit` calls plus three duplicated `AuthConfigError` translations decide exit codes ad hoc. Failures are hard to distinguish from one another in logs and reports.
 - Static checks are thin. Ruff selects only `E`, `F`, `I`, `UP`. Mypy runs on `src/vip` only, with `ignore_missing_imports` and no strictness flags. `src/vip_tests` and `selftests` are not type-checked.
 - Repository hygiene has drifted. Two root markdown files (`CHRONICLE_TEST_PLAN.md`, `IMPLEMENTATION_GUIDE.md`) are referenced nowhere. Twenty-one implementation plans for closed issues ship under `thoughts/`. `validation_docs/` holds one-off demo notes.
 
@@ -115,32 +115,39 @@ A continuity ledger at `thoughts/ledgers/CONTINUITY_CLAUDE-vip-quality-program.m
 
 ## Error handling design (wave 2 target)
 
-The hierarchy is small on purpose:
+The hierarchy is small on purpose, and it adopts the six exception classes that already exist rather than replacing them. Existing names, module locations, and the `ValueError` ancestry that fifteen selftests pin are preserved; each class gains `VipError` (or a `VipError` subclass) as an additional base.
 
 ```
-VipError(Exception)                # base; carries a user-facing message
-  ConfigError(VipError)            # vip.toml / CLI flag problems
-  AuthError(VipError)              # login, SSO, TOTP, cached-session failures
-  ProductUnreachableError(VipError)# network / TLS / DNS before any test runs
-  InstallError(VipError)           # vip install / uninstall
-  ReportError(VipError)            # Quarto / Typst / results.json problems
+VipError(Exception)                        # new, src/vip/errors.py; carries a user-facing message
+  ConfigError(VipError)                    # new: vip.toml / CLI flag problems
+    ProxyConfigError(ConfigError, ValueError)     # existing, proxy.py; re-parented
+  AuthError(VipError)                      # new
+    AuthConfigError(AuthError, ValueError)        # existing, auth.py; re-parented
+      AuthTimeoutError(AuthConfigError)           # existing, unchanged
+  ProductUnreachableError(VipError)        # new: network / TLS / DNS before any test runs
+  InstallError(VipError)                   # new
+    PlaywrightInstallError(InstallError)          # existing, install/playwright.py; re-parented
+    PackageQueryError(InstallError)               # existing, install/packages.py; re-parented
+    ManifestError(InstallError)                   # existing, install/manifest.py; re-parented
+  ReportError(VipError)                    # new: Quarto / Typst / results.json problems
 ```
 
 Rules:
 
-- Framework code raises these. It does not call `sys.exit` or `typer.Exit` outside `cli.py`'s single top-level handler, which maps `VipError` to an exit code and a one-line message.
+- Framework code raises these. It does not call `sys.exit` or raise `SystemExit` outside the single top-level handler in `cli.py`'s `main()`, which maps `VipError` to an exit code and a one-line message. The CLI is `argparse`, not Typer; nothing in this program changes that. The three existing `AuthConfigError` translation sites (`cli.py`, two in `plugin.py`) collapse into that handler and the plugin's one auth entry point.
 - Test code (`src/vip_tests`) does not catch `VipError`. It lets pytest record the failure so the report shows the real cause.
 - `except Exception` survives only around third-party calls whose failure modes are genuinely unknown, and each site carries a one-line comment naming what is being tolerated and why. `BLE001` is enabled with `# noqa: BLE001` at those sites, so every remaining one is deliberate and greppable.
 - Playwright `TimeoutError` and httpx errors are caught by their concrete types and re-raised as the matching `VipError` subclass with the original as `__cause__`.
+- A function that today returns `None`, `False`, or an empty collection from inside an `except` block, making failure indistinguishable from "nothing found", raises instead. The Connect client's cleanup listing is the worked example.
 
 ## Structure design (wave 3 target)
 
 Seams are proposed by the structure reviewer and confirmed in the backlog, but the intended shape is:
 
-- `src/vip/auth/`: `__init__.py` re-exporting the current public names; `browser.py` (Playwright session lifecycle); `connect.py`, `workbench.py`, `packagemanager.py` (per-product login flows); `sso.py` (OIDC and SAML shared steps); `cache.py` (saved-session load, validate, store); `totp.py` moves in.
-- `src/vip/cli/`: one module per command group (`verify.py`, `report.py`, `install.py`, `scaffold.py`, `version.py`), plus `app.py` holding the Typer app and the single `VipError` handler.
+- `src/vip/auth/`: `__init__.py` re-exporting the current public names; `browser.py` (Chromium launch and Playwright session lifecycle); `flows.py` (`start_interactive_auth` and `start_headless_auth`, which each drive Connect and Workbench in one call and are not per-product); `workbench.py` (the only product-specific cluster: `_authenticate_workbench`, `_on_login_page`, `_wait_for_product_redirect`, `_click_workbench_oidc_confirm`); `sso.py` (OIDC and SAML shared steps); `cache.py` (saved-session load, validate, store); `apikey.py` (Connect API-key minting and probing); `totp.py` moves in. There is no Package Manager browser-auth code, so no `packagemanager.py`. The `AuthConfigError` cycle between `auth.py`, `idp.py`, and `totp.py` moves to `errors.py` in a pre-split PR.
+- `src/vip/cli/`: one module per subcommand (`verify.py`, `report.py`, `install.py`, `cleanup.py`, `auth.py`, `scaffold.py`, `version.py`), plus `app.py` holding the `argparse.ArgumentParser` construction and subcommand dispatch currently in `main()`, and the single `VipError` handler.
 - `src/vip/plugin/`: `hooks.py` (pytest hooks), `markers.py`, `results.py` (results.json writer), `skips.py` (version gating and if_applicable), `warnings.py`.
-- `src/vip_tests/workbench/conftest.py` splits into `fixtures/` by IDE and by concern (sessions, jobs, git), with `conftest.py` importing them.
+- `src/vip_tests/workbench/conftest.py` splits along the five clusters actually present: `login.py` (SSO, login, silent sign-in), `sessions.py` (wait, assert, state), `naming.py` (worker-owned session naming; `_VIP_OWNER_PATTERNS` in `clients/workbench.py` is updated in the same commit), `cleanup.py` (cookie-based session cleanup), `capacity.py` (profile detection). The IDE-launch skip-cascade hooks stay in `conftest.py`. There is no per-IDE fixture logic and no jobs or git code in this file. The `_on_login_page` helper duplicated between this file and `auth.py` is deduplicated first, preserving both keyword tuples; whether the conftest copy should also match `/saml/acs` is a behavior question filed as a separate issue.
 
 Every split keeps the old import path working through `__init__.py` re-exports until the docs rewrite in wave 4, then the re-exports are pruned in a final PR.
 
