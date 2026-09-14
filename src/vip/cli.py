@@ -578,8 +578,7 @@ def run_verify(args: argparse.Namespace) -> None:
         cmd.append("--api-auth")
     if getattr(args, "allow_unproven", False):
         cmd.append("--vip-allow-unproven")
-    for ext in args.extensions or []:
-        cmd.append(f"--vip-extensions={ext}")
+    cmd.extend(f"--vip-extensions={ext}" for ext in args.extensions or [])
     if args.categories:
         marker_expr = _normalize_categories(args.categories)
     else:

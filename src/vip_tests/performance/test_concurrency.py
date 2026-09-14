@@ -30,7 +30,6 @@ def _concurrent_requests(
     url: str, n: int, verify: bool | str = True, auth: httpx.Auth | None = None
 ) -> list[dict]:
     """Fire *n* GET requests concurrently and collect results."""
-    results = []
 
     def _fetch():
         start = time.monotonic()
@@ -42,9 +41,7 @@ def _concurrent_requests(
 
     with ThreadPoolExecutor(max_workers=n) as pool:
         futures = [pool.submit(_fetch) for _ in range(n)]
-        for f in as_completed(futures):
-            results.append(f.result())
-    return results
+        return [f.result() for f in as_completed(futures)]
 
 
 @when(
