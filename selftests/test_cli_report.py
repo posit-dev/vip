@@ -380,7 +380,8 @@ class TestSupportFileResolution:
         from vip.reporting import troubleshooting_path
 
         p = troubleshooting_path()
-        assert p is not None and p.exists()
+        assert p is not None
+        assert p.exists()
         assert p.name == "troubleshooting.toml"
 
     def test_feature_file_for_nodeid_resolves_installed_layout(self):
@@ -388,7 +389,8 @@ class TestSupportFileResolution:
 
         nodeid = "/opt/x/site-packages/vip_tests/connect/test_auth.py::test_connect_login_ui"
         p = feature_file_for_nodeid(nodeid)
-        assert p is not None and p.exists()
+        assert p is not None
+        assert p.exists()
         assert p.name == "test_auth.feature"
 
     def test_feature_file_for_nodeid_returns_none_when_absent(self):
@@ -405,6 +407,7 @@ class TestReportCLI:
             [sys.executable, "-m", "vip.cli", "--help"],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0
         assert "report" in result.stdout
@@ -414,6 +417,7 @@ class TestReportCLI:
             [sys.executable, "-m", "vip.cli", "report", "--help"],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0
         assert "--results" in result.stdout

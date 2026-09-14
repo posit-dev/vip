@@ -295,6 +295,9 @@ def r_install_succeeds(install_output, r_package_name):
     # Rscript exits 0 on success. If the package was not found or install
     # failed, the output typically contains "ERROR" or "Warning message".
     lowered = install_output.lower()
-    assert "error" not in lowered and "warning" not in lowered, (
+    assert "error" not in lowered, (
+        f"R package installation may have failed. Output:\n{install_output}"
+    )
+    assert "warning" not in lowered, (
         f"R package installation may have failed. Output:\n{install_output}"
     )

@@ -101,7 +101,10 @@ def test_output_drivers_are_exact_pinned_to_locked_version():
     for name in sorted(EXACT_PINS):
         assert name in reqs, f"{name} missing from [project.dependencies]"
         specs = list(reqs[name].specifier)
-        assert len(specs) == 1 and specs[0].operator == "==", (
+        assert len(specs) == 1, (
+            f"{name} must be exact-pinned with '==' (found '{reqs[name].specifier}')"
+        )
+        assert specs[0].operator == "==", (
             f"{name} must be exact-pinned with '==' (found '{reqs[name].specifier}')"
         )
         pinned = specs[0].version
@@ -166,7 +169,10 @@ def test_report_and_load_groups_are_capped():
 def _pinned_playwright_version() -> str:
     reqs = _runtime_requirements()
     specs = list(reqs["playwright"].specifier)
-    assert len(specs) == 1 and specs[0].operator == "==", (
+    assert len(specs) == 1, (
+        f"playwright must be exact-pinned with '==' (found '{reqs['playwright'].specifier}')"
+    )
+    assert specs[0].operator == "==", (
         f"playwright must be exact-pinned with '==' (found '{reqs['playwright'].specifier}')"
     )
     return specs[0].version

@@ -170,10 +170,7 @@ def _print_skip_notes(config_path: str | None) -> None:
     ]
     for name, pc in products:
         if not pc.is_configured:
-            if not pc.enabled:
-                reason = "disabled"
-            else:
-                reason = "no URL given"
+            reason = "disabled" if not pc.enabled else "no URL given"
             print(f"Note: {name} {reason} — {name} tests will not be collected.", flush=True)
 
 
@@ -367,10 +364,7 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     if explicit_provider:
         auth_provider: str | None = explicit_provider
     elif idp:
-        if inherited_provider in _IDP_PROVIDERS:
-            auth_provider = inherited_provider
-        else:
-            auth_provider = "oidc"
+        auth_provider = inherited_provider if inherited_provider in _IDP_PROVIDERS else "oidc"
     else:
         auth_provider = inherited_provider
 
@@ -578,8 +572,7 @@ def run_verify(args: argparse.Namespace) -> None:
         cmd.append("--api-auth")
     if getattr(args, "allow_unproven", False):
         cmd.append("--vip-allow-unproven")
-    for ext in args.extensions or []:
-        cmd.append(f"--vip-extensions={ext}")
+    cmd.extend(f"--vip-extensions={ext}" for ext in args.extensions or [])
     if args.categories:
         marker_expr = _normalize_categories(args.categories)
     else:
@@ -637,7 +630,7 @@ def run_verify(args: argparse.Namespace) -> None:
             subprocess_env = None
 
     try:
-        result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env)
+        result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env, check=False)
         sys.exit(result.returncode)
     except subprocess.TimeoutExpired:
         print(
@@ -860,7 +853,9 @@ def _quarto_render(document: str, report_dir: Path, env: dict[str, str]) -> int:
     surfaces.
     """
     try:
-        result = subprocess.run(["quarto", "render", document], cwd=str(report_dir), env=env)
+        result = subprocess.run(
+            ["quarto", "render", document], cwd=str(report_dir), env=env, check=False
+        )
     except FileNotFoundError:
         print(
             "Error: quarto was not found on PATH. Install Quarto "
@@ -1299,7 +1294,7 @@ def run_scaffold(args: argparse.Namespace) -> None:
 
 def _cleanup_workbench_sessions(
     workbench_url: str,
-    args: argparse.Namespace,
+    _args: argparse.Namespace,
     config: VIPConfig,
 ) -> None:
     """Authenticate to Workbench and quit orphaned VIP-named sessions.
@@ -1556,7 +1551,7 @@ def _format_version_details() -> str:
     )
 
 
-def run_version(args: argparse.Namespace) -> None:
+def run_version(_args: argparse.Namespace) -> None:
     """Print the vip version and the minimum supported Posit Team version."""
     print(_format_version_details())
 

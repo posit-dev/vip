@@ -419,7 +419,7 @@ class TestStopPluginHeartbeatBeforeGevent:
     """
 
     def test_stops_active_heartbeat(self, monkeypatch):
-        import vip.plugin as plugin
+        from vip import plugin
 
         hb = _RecordingHeartbeat()
         monkeypatch.setattr(plugin, "_current_heartbeat", hb)
@@ -427,7 +427,7 @@ class TestStopPluginHeartbeatBeforeGevent:
         assert hb.stopped is True
 
     def test_noop_when_no_heartbeat(self, monkeypatch):
-        import vip.plugin as plugin
+        from vip import plugin
 
         monkeypatch.setattr(plugin, "_current_heartbeat", None)
         # Must not raise even though no heartbeat is registered.
@@ -471,9 +471,13 @@ class TestStopPluginHeartbeatBeforeGevent:
                 for alias in node.names:
                     if alias.name == "gevent":
                         gevent_line = node.lineno
-            elif locust_line is None and isinstance(node, ast.ImportFrom):
-                if node.module and node.module.startswith("locust"):
-                    locust_line = node.lineno
+            elif (
+                locust_line is None
+                and isinstance(node, ast.ImportFrom)
+                and node.module
+                and node.module.startswith("locust")
+            ):
+                locust_line = node.lineno
 
         name = func.__name__
         assert helper_line is not None, f"{name} does not call the heartbeat helper"

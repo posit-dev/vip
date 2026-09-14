@@ -37,9 +37,7 @@ class InstallPlan:
             return False
         if self.playwright_step:
             return False
-        if self.claim_pending:
-            return False
-        return True
+        return not self.claim_pending
 
 
 # Maps old Debian package names to their t64 replacements.
