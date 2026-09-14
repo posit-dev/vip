@@ -176,9 +176,9 @@ def redact_proxy_url(url: str | None) -> str | None:
     through here first so the password never lands in stdout or CI logs.
     Returns the input unchanged when it has no userinfo. When the URL cannot be
     parsed at all, a ``user:pass@`` component is still stripped textually rather
-    than echoed verbatim -- the failure branch used to return the raw string, so
-    a malformed authenticated proxy (e.g. a typo'd port, ``http://u:p@gw:8O80``)
-    leaked its password into the :class:`ProxyConfigError` that names it.
+    than echoed verbatim, so a malformed authenticated proxy (e.g. a typo'd port,
+    ``http://u:p@gw:8O80``) never leaks its password into the
+    :class:`ProxyConfigError` that names it.
     """
     if not url:
         return url
