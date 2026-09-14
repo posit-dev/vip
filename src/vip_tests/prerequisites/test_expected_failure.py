@@ -1,8 +1,15 @@
-"""Expected failure test to demonstrate failure rendering in the VIP report.
+"""Intentional failure to demonstrate failure rendering in the VIP report.
 
-This test always fails in CI because Workbench is never configured in the
-preview workflow. It exists so that the report preview includes at least
-one failure, making it easy to verify how failures are displayed.
+This scenario fails by construction -- it does not depend on the state of
+any configured product -- so the example report always has at least one
+failure card to show what failure rendering looks like. It is disabled by
+default; the example-report workflow opts in via
+``VIP_ENABLE_EXPECTED_FAILURE_DEMO=1``.
+
+An earlier version of this test asserted that Workbench *was* configured,
+which only failed because CI never configured Workbench. Once CI started
+configuring Workbench, the test passed and the report lost its one example
+failure -- see https://github.com/posit-dev/vip/issues/73.
 """
 
 from __future__ import annotations
@@ -21,26 +28,25 @@ if not os.getenv("VIP_ENABLE_EXPECTED_FAILURE_DEMO"):
 
 @scenario(
     "test_expected_failure.feature",
-    "Workbench server is reachable but not configured",
+    "This check intentionally fails to demonstrate failure rendering",
 )
-def test_workbench_expected_failure():
+def test_intentional_failure():
     pass
 
 
-@given("Workbench is expected to be configured")
-def workbench_expected():
+@given("a check that is written to fail on purpose")
+def intentional_check():
     pass
 
 
-@when("I check the Workbench configuration", target_fixture="wb_configured")
-def check_workbench_config(vip_config):
-    return vip_config.workbench.is_configured
+@when("the check runs as part of this example report", target_fixture="demo_outcome")
+def run_intentional_check():
+    return {"expected": "pass", "actual": "fail (by design)"}
 
 
-@then("Workbench should be reachable")
-def workbench_reachable(wb_configured):
-    assert wb_configured, (
-        "Workbench is not configured. "
-        "This is an expected failure used to demonstrate report rendering. "
-        "Set [workbench] url in vip.toml to resolve."
+@then("it fails by design, not because anything is actually broken")
+def check_fails_by_design(demo_outcome):
+    assert demo_outcome["actual"] == demo_outcome["expected"], (
+        "This failure is intentional: it exists only to show how a failed check "
+        "renders in this example report. No product configuration will resolve it."
     )

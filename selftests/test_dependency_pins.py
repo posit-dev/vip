@@ -17,10 +17,16 @@ Three invariants are enforced so the policy cannot silently erode:
    unclassified dependency fails the suite rather than shipping uncapped).
 3. Each ``report``/``load`` optional-group dependency carries an upper bound,
    and every declared entry in those groups is listed in ``CAPPED_OPTIONAL``.
+
+A fourth invariant guards CI/local parity rather than the published wheel: the
+Dockerfile's ``mcr.microsoft.com/playwright/python`` base image tag must track
+the exact-pinned ``playwright`` version, so a ``docker run`` of the image
+exercises the same Playwright build as a local ``uv run vip``.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 try:
@@ -33,6 +39,7 @@ from packaging.requirements import Requirement
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 LOCKFILE = REPO_ROOT / "uv.lock"
+DOCKERFILE = REPO_ROOT / "Dockerfile"
 
 # Dependencies whose exact version determines a `vip` run's behaviour/output.
 EXACT_PINS = {
@@ -154,3 +161,37 @@ def test_report_and_load_groups_are_capped():
             assert operators & _BOUNDING_OPERATORS, (
                 f"{name} in [{group}] must carry an upper bound (found '{reqs[name].specifier}')"
             )
+
+
+def _pinned_playwright_version() -> str:
+    reqs = _runtime_requirements()
+    specs = list(reqs["playwright"].specifier)
+    assert len(specs) == 1 and specs[0].operator == "==", (
+        f"playwright must be exact-pinned with '==' (found '{reqs['playwright'].specifier}')"
+    )
+    return specs[0].version
+
+
+def _dockerfile_playwright_tag() -> str:
+    text = DOCKERFILE.read_text()
+    match = re.search(
+        r"^FROM mcr\.microsoft\.com/playwright/python:v([0-9.]+)-\S+",
+        text,
+        re.MULTILINE,
+    )
+    assert match, "Dockerfile is missing a FROM mcr.microsoft.com/playwright/python:vX.Y.Z-... line"
+    return match.group(1)
+
+
+def test_dockerfile_playwright_base_image_matches_pinned_version():
+    """Guards CI/local parity: the Dockerfile's Playwright base image must not
+    drift from the exact-pinned ``playwright`` package version (issue: the
+    Dockerfile fell two minor versions behind pyproject.toml's pin).
+    """
+    pinned = _pinned_playwright_version()
+    tag_version = _dockerfile_playwright_tag()
+    assert tag_version == pinned, (
+        f"Dockerfile FROM tag pins Playwright v{tag_version}, but pyproject.toml "
+        f"pins playwright=={pinned}; bump the Dockerfile's "
+        "mcr.microsoft.com/playwright/python tag to match"
+    )

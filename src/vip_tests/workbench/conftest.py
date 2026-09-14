@@ -14,6 +14,7 @@ import tempfile
 import time
 import warnings
 from pathlib import Path
+from typing import NoReturn
 from urllib.parse import urlparse
 
 import pytest
@@ -23,6 +24,7 @@ from playwright.sync_api import Locator, Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given
 
+from vip import attest
 from vip.auth import refresh_auth_cache_from_storage_state
 from vip.clients.workbench import WorkbenchClient
 from vip.plugin import _auth_session_key
@@ -246,6 +248,12 @@ TIMEOUT_CLEANUP = int(30_000 * timeout_scale())
 TIMEOUT_CODE_EXEC = int(30_000 * timeout_scale())
 TIMEOUT_IDE_LOAD = int(60_000 * timeout_scale())
 TIMEOUT_SESSION_START = int(90_000 * timeout_scale())
+# The silent-SSO click-through in _silent_sso_signin used TIMEOUT_PAGE_LOAD
+# (15s) until issue #263's diagnostic showed a SAML round-trip (IdP redirect,
+# assertion POST, Workbench's own validation) taking longer than that under
+# real IdP latency, which read as "no usable IdP session" and skipped a
+# login that was actually still completing.
+TIMEOUT_SSO_ROUNDTRIP = int(60_000 * timeout_scale())
 # Short window to detect whether an optional confirm/force-quit dialog appeared
 # in the UI session sweep. Used to gate (not to click) so an absent dialog does
 # not cost TIMEOUT_QUICK each iteration; a dialog that does appear is then
@@ -295,6 +303,84 @@ def _option_is_disabled(option: Locator) -> bool:
         option.get_attribute("aria-disabled") == "true"
         or option.get_attribute("data-disabled") is not None
     )
+
+
+# Cap on how many auto-detected resource profiles the capacity scenarios launch
+# at once (#631).  A deployment that *advertises* N profiles cannot necessarily
+# run all N concurrently: the CI Workbench container offers Default, Small,
+# Medium and Large, which together request 8 CPUs and 30 GB from a 4-vCPU
+# runner, so launching every one measured the runner's limits rather than the
+# deployment's.  An explicit ``workbench.session_profiles`` list is never
+# capped -- that list is a deliberate statement about the deployment.
+MAX_AUTO_DETECTED_PROFILES = 2
+
+_PROFILE_CPU_RE = re.compile(r"(\d+(?:\.\d+)?)\s*v?CPUs?\b", re.IGNORECASE)
+_PROFILE_MEM_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(G|M)i?B\b", re.IGNORECASE)
+
+
+def profile_size_key(name: str) -> tuple[float, float]:
+    """Sort key approximating a resource profile's size from its dropdown label.
+
+    Workbench renders each profile's allocation inline, e.g. ``Medium (2 CPUs,
+    8GB RAM)``, so the label alone orders them smallest-first without asking
+    the launcher.  A label carrying no parseable allocation sorts last: an
+    unknown size is the one we least want to launch when capping.
+    """
+    cpu = _PROFILE_CPU_RE.search(name)
+    mem = _PROFILE_MEM_RE.search(name)
+    cpus = float(cpu.group(1)) if cpu else float("inf")
+    if mem is None:
+        return (cpus, float("inf"))
+    # 1024, so these are mebibytes. The exact unit does not matter -- this is only
+    # ever a sort key -- but the name should not claim otherwise.
+    mebibytes = float(mem.group(1)) * (1024 if mem.group(2).upper() == "G" else 1)
+    return (cpus, mebibytes)
+
+
+def _quoted(names: list[str]) -> str:
+    """Render *names* as a quoted, comma-separated list.
+
+    Resource-profile labels embed their own commas, so an unquoted join produces
+    an unparseable run-on list in the warning.
+    """
+    return ", ".join(repr(n) for n in names)
+
+
+def cap_auto_detected_profiles(
+    names: list[str], *, limit: int = MAX_AUTO_DETECTED_PROFILES
+) -> list[str]:
+    """Return at most *limit* of the auto-detected *names*, smallest first.
+
+    Only for profiles discovered from the dropdown.  Launching every advertised
+    profile at once exhausts a modest host, and a session that loses that
+    contention fails the scenario for a reason that is not the deployment's
+    capacity -- which is how the CI nightly came to fail on a different profile
+    each run (#631).
+
+    Capping is reported through both ``warnings.warn`` and the logger, matching
+    :func:`oidc_login_lock`: VIP is a verification tool, so a run that
+    exercised fewer profiles than the deployment offers must say so rather than
+    report a narrower check as a full one.  ``limit`` of 0 or less disables the
+    cap.
+    """
+    if limit <= 0 or len(names) <= limit:
+        return list(names)
+    ordered = sorted(names, key=profile_size_key)
+    chosen, dropped = ordered[:limit], ordered[limit:]
+    # Labels contain commas of their own ("Medium (2 CPUs, 8GB RAM)"), so a bare
+    # ", " join reads as one run-on list. Quote each label to keep the boundaries
+    # visible.
+    message = (
+        f"Auto-detected {len(names)} enabled resource profiles; launching only the "
+        f"{limit} smallest ({_quoted(chosen)}) and skipping {_quoted(dropped)}. "
+        "Launching every advertised profile at once exhausts a modest host and fails "
+        "the scenario for a reason that is not the deployment's capacity. Set "
+        "workbench.session_profiles in vip.toml to choose the profiles explicitly; "
+        "an explicit list is never capped."
+    )
+    warnings.warn(message, stacklevel=2)
+    logger.warning(message)
+    return chosen
 
 
 # ---------------------------------------------------------------------------
@@ -364,6 +450,19 @@ def _on_login_page(url: str) -> bool:
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
 
 
+def _navigated_into_session(url: str) -> bool:
+    """Return True if *url* is inside a session, not the homepage.
+
+    Workbench's homepage is itself served under a "/s/<id>/" URL (its
+    "workspaces" view), so a bare "/s/" check can't tell the two apart. A
+    real session URL has no "workspaces" segment after the id.
+    """
+    segments = [s for s in urlparse(url).path.split("/") if s]
+    if len(segments) < 2 or segments[0] != "s":
+        return False
+    return "workspaces" not in segments
+
+
 def _external_idp_host(page_url: str, workbench_url: str) -> str | None:
     """Return the IdP host if sign-in has left the Workbench origin.
 
@@ -415,6 +514,35 @@ def _normalised_netloc(parsed) -> str:
     if port is None or port == _DEFAULT_PORTS.get(parsed.scheme.lower()):
         return host
     return f"{host}:{port}"
+
+
+def _skip_workbench_session_unproven(
+    *,
+    auth_mode: str,
+    workbench_auth_error: str | None,
+    landed_url: str,
+    idp_host: str | None = None,
+) -> NoReturn:
+    """Skip because a configured Workbench session could never be established.
+
+    This is #596's case: the operator asked for Workbench explicitly, auth did
+    not complete, and every browser test fell away. Reporting that as an
+    ordinary skip is what let a fully unverified product exit 0, so it is
+    raised as *unproven* -- the run stays green only under --allow-unproven.
+
+    Contrast the ``sso_only`` skip further down ``_workbench_login``, which
+    stays an ordinary skip on purpose: an SSO deployment genuinely has no
+    password form to exercise, so that check is not applicable rather than
+    unverified, and flagging it would fail every SSO deployment's own run.
+    """
+    attest.unproven(
+        _workbench_session_skip_message(
+            auth_mode=auth_mode,
+            workbench_auth_error=workbench_auth_error,
+            landed_url=landed_url,
+            idp_host=idp_host,
+        )
+    )
 
 
 def _workbench_session_skip_message(
@@ -646,7 +774,7 @@ def _silent_sso_signin(sso_button, homepage_logo, workbench_url: str) -> bool:
     with oidc_login_lock(workbench_url):
         sso_button.click()
         try:
-            homepage_logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
+            homepage_logo.wait_for(state="visible", timeout=TIMEOUT_SSO_ROUNDTRIP)
             return True
         except (PlaywrightTimeoutError, PlaywrightError):
             # Homepage never appeared: no usable IdP session (expired, or storage state
@@ -666,7 +794,7 @@ def _refresh_cached_session(page: Page) -> bool:
     """
     try:
         refresh_auth_cache_from_storage_state(page.context.storage_state())
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("Could not read storage state to refresh the auth cache: %s", exc)
     return True
 
@@ -769,6 +897,17 @@ def workbench_login(
     if homepage_logo.is_visible():
         return
 
+    # A valid session cookie can redirect straight into a running session's IDE
+    # view instead of the homepage -- that view has none of Homepage's chrome, so
+    # the check above misses it and the login-page probe below also misses it
+    # (it's neither a login page nor the homepage). Same case test_sessions.py
+    # handles when navigating back from a session: go to /home explicitly.
+    if "/s/" in page.url:
+        page.goto(f"{workbench_url}/home")
+        page.wait_for_load_state("load")
+        if homepage_logo.is_visible():
+            return
+
     # Check if we landed on a login/IdP page
     if _on_login_page(page.url):
         # The sign-in page renders client-side after ``load``; wait once for
@@ -784,7 +923,7 @@ def workbench_login(
             page.locator(f"{LoginPage.USERNAME}, button:has-text('Sign in')").first.wait_for(
                 state="visible", timeout=TIMEOUT_PAGE_LOAD
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
         # An OIDC sign-in page shows a "Sign in with ..." button and no username
@@ -818,23 +957,19 @@ def workbench_login(
             # password-login test) — skip gracefully.  Recompute the IdP host: the
             # click above can navigate off-origin before timing out, so where we
             # ended up is only knowable now, not before the attempt.
-            pytest.skip(
-                _workbench_session_skip_message(
-                    auth_mode=auth_mode,
-                    workbench_auth_error=workbench_auth_error,
-                    landed_url=page.url,
-                    idp_host=_external_idp_host(page.url, workbench_url),
-                )
+            _skip_workbench_session_unproven(
+                auth_mode=auth_mode,
+                workbench_auth_error=workbench_auth_error,
+                landed_url=page.url,
+                idp_host=_external_idp_host(page.url, workbench_url),
             )
 
         if auth_provider != "password":
-            pytest.skip(
-                _workbench_session_skip_message(
-                    auth_mode=auth_mode,
-                    workbench_auth_error=workbench_auth_error,
-                    landed_url=page.url,
-                    idp_host=_external_idp_host(page.url, workbench_url),
-                )
+            _skip_workbench_session_unproven(
+                auth_mode=auth_mode,
+                workbench_auth_error=workbench_auth_error,
+                landed_url=page.url,
+                idp_host=_external_idp_host(page.url, workbench_url),
             )
         # Even when auth_provider is reported as "password", the deployment may
         # actually present an SSO/OIDC sign-in page (a "Sign in with ..." button
@@ -859,7 +994,7 @@ def workbench_login(
         try:
             homepage_logo.wait_for(state="visible", timeout=TIMEOUT_QUICK)
             return
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     # Password authentication with retry logic
@@ -878,7 +1013,7 @@ def workbench_login(
         # Wait for login form to be ready
         try:
             login_form.wait_for(state="visible", timeout=TIMEOUT_QUICK)
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
 
         # Fill and submit
@@ -895,7 +1030,7 @@ def workbench_login(
         homepage_or_error = homepage_logo.or_(error_panel)
         try:
             homepage_or_error.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
-        except Exception:
+        except Exception:  # noqa: BLE001
             if attempt == max_retries - 1:
                 raise AssertionError(f"Login failed after {max_retries} attempts: no response")
             continue
@@ -941,7 +1076,7 @@ def _quit_vip_sessions_via_cookies(
             return scratch.quit_vip_sessions(owner=owner)
         finally:
             scratch.close()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return 0
 
 
@@ -966,7 +1101,7 @@ def _session_api_reachable_via_cookies(
             return scratch.sessions_api_reachable()
         finally:
             scratch.close()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
 
 
@@ -996,7 +1131,7 @@ def _vip_session_count_via_cookies(
             return scratch.count_vip_sessions(owner=owner)
         finally:
             scratch.close()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return -1
 
 
@@ -1035,7 +1170,7 @@ def _wb_cleanup_state(vip_config, workbench_client):
     if vip_config.workbench.api_key:
         try:
             workbench_client.quit_vip_sessions(owner=owner)
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
 
@@ -1058,7 +1193,7 @@ def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, ob
         return
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-    except Exception:
+    except Exception:  # noqa: BLE001
         cookies = {}
     if not cookies:
         if not vip_config.workbench.api_key:
@@ -1147,7 +1282,7 @@ def quit_owned_sessions_via_page(
     """
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-    except Exception:
+    except Exception:  # noqa: BLE001
         return
     if not cookies:
         return

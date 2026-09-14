@@ -114,4 +114,4 @@ class ProductVersion:
 # (Connect, Workbench, Package Manager) ship on a shared calendar version, so a
 # single floor covers the whole stack. Bump this only when dropping support for
 # an older release. Surfaced by ``vip version``.
-MINIMUM_SUPPORTED_POSIT_TEAM = "2026.04.0"
+MINIMUM_SUPPORTED_POSIT_TEAM = "2026.06.0"

@@ -6,9 +6,14 @@
 plans/
 selftests/
 examples/*
-# Keep the scaffold template: pyproject force-includes it into the wheel, so
-# `uv sync` inside the Docker builds needs it present in the build context.
+# Keep the scaffold templates and the shared AGENTS.md: pyproject
+# force-includes them into the wheel, so `uv sync` inside the Docker builds
+# needs them present in the build context. Every examples/ path listed under
+# [tool.hatch.build.targets.wheel.force-include] needs a negation here --
+# selftests/test_dockerignore_force_includes.py fails if one is missing.
 !examples/cross_product_validation
+!examples/custom_tests
+!examples/_shared
 .gitignore
 .gitattributes
 vip.toml

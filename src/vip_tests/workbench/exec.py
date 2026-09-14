@@ -245,7 +245,7 @@ def _console_input_text(console_input) -> str:
     """
     try:
         return console_input.text_content() or ""
-    except Exception:
+    except Exception:  # noqa: BLE001
         return ""
 
 
@@ -300,7 +300,7 @@ def _deliver_console_line(page: Page, console_input, line: str) -> str:
             console_input.focus()
             try:
                 page.keyboard.insert_text(line)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # Not every driver/build accepts atomic insertion; the next
                 # attempt is a keystroke type, so just move on.
                 continue
@@ -354,7 +354,7 @@ def _console_submit_diagnostics(page: Page) -> str:
     """
     try:
         state = page.evaluate(_SUBMIT_DIAGNOSTIC_JS)
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # noqa: BLE001  # pragma: no cover - defensive
         return f"submit diagnostics unavailable ({type(exc).__name__})"
     overlays = state.get("overlays") or []
     return (
@@ -414,7 +414,7 @@ def _deliver_terminal_line(page: Page, terminal_input, line: str) -> None:
     terminal_input.focus()
     try:
         page.keyboard.insert_text(line)
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Not every driver/build accepts atomic insertion; keystrokes still work.
         terminal_input.type(line)
 
@@ -598,7 +598,7 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
         return False
     try:
         start.first.click()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
 
     # Phase 1: poll the interpreter quickpick — discovery lags the click on a
@@ -622,7 +622,7 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
             row = quickpick.nth(i)
             try:
                 label = (row.text_content(timeout=_POSITRON_POLL_MS) or "").strip()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 continue
             if re.match(r"^R\b", label):
                 return row
@@ -644,10 +644,10 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
     # "never raises" contract holds even if the row/keyboard is detached.
     try:
         target.click()
-    except Exception:
+    except Exception:  # noqa: BLE001
         try:
             page.keyboard.press("Enter")
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     # Phase 2: wait (with the remaining budget) for the console to render.
@@ -670,7 +670,7 @@ def _activate_positron_console(page: Page) -> None:
     if tab.count() > 0:
         try:
             tab.first.click()
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
 
@@ -693,7 +693,7 @@ def _positron_console_state_label(page: Page) -> str | None:
             return None
         text = label.text_content(timeout=_POSITRON_PROMPT_POLL_MS)
         return text.strip() if text else None
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -942,11 +942,11 @@ def _focus_explorer(page: Page) -> None:
     """
     try:
         page.get_by_role("tab", name=re.compile(r"Explorer", re.I)).first.click()
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Fallback: click the first action item in the activity bar.
         try:
             page.locator(".activitybar .actions-container .action-item").first.click()
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
 
@@ -1029,7 +1029,7 @@ def _read_vscode_editor_text(page: Page, timeout: int = 30_000) -> str:
     try:
         page.keyboard.press("Control+End")
         page.keyboard.press("Meta+End")
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
     page.wait_for_timeout(150)
     return loc.inner_text()
@@ -1043,10 +1043,10 @@ def _close_active_editor(page: Page) -> None:
     """
     try:
         page.keyboard.press("Meta+W")
-    except Exception:
+    except Exception:  # noqa: BLE001
         try:
             page.keyboard.press("Control+W")
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
     page.wait_for_timeout(200)
 
@@ -1146,6 +1146,60 @@ def _ensure_terminal_open(page: Page, timeout: int = 30_000) -> None:
     expect(_visible_terminal_input(page)).to_be_visible(timeout=timeout)
 
 
+# Max characters of captured output quoted in a timeout message. Enough to show
+# a clone's progress lines or a shell error, without pasting a whole build log
+# into a pytest failure.
+_TIMEOUT_CONTENT_CHARS = 400
+
+
+def _timeout_diagnostics(
+    last_content: str | None,
+    last_readback_error: str | None,
+    readback_successes: int,
+) -> str:
+    """Explain a ``terminal_run`` timeout from what the polling loop observed.
+
+    A timeout only ever says the done marker never appeared. That is consistent
+    with three unrelated faults, and the caller cannot act until they are told
+    apart:
+
+    * the readback never worked -- the console never became usable, so nothing is
+      known about the command itself (report the readback error, not the command);
+    * the readback worked and the file was empty -- the command never started, so
+      the terminal never received the typed input;
+    * the readback worked and the file held output -- the command started and was
+      still running when the budget ran out, so the timeout is the thing to
+      question.
+
+    Returns a sentence for each case, with the captured output tail truncated to
+    :data:`_TIMEOUT_CONTENT_CHARS`.
+    """
+    if readback_successes == 0:
+        detail = last_readback_error or "no error recorded"
+        return (
+            "The capture file was never read back successfully "
+            f"({readback_successes} successful reads), so the command's own progress is "
+            f"unknown -- the console, not the command, is the likely fault. "
+            f"Last readback error: {detail}"
+        )
+
+    content = last_content or ""
+    if not content.strip():
+        return (
+            f"The capture file read back empty after {readback_successes} successful "
+            "reads, so the command appears never to have started -- suspect the "
+            "terminal never received the typed command."
+        )
+
+    tail = content[-_TIMEOUT_CONTENT_CHARS:]
+    elided = "..." if len(content) > _TIMEOUT_CONTENT_CHARS else ""
+    return (
+        f"The capture file read back after {readback_successes} successful reads but "
+        "never contained the done marker, so the command started and was still "
+        f"running when the budget expired. Last captured output: {elided}{tail!r}"
+    )
+
+
 def terminal_run(
     page: Page,
     cmd: str,
@@ -1241,6 +1295,14 @@ def terminal_run(
     deadline = time.monotonic() + timeout / 1000.0
     poll_interval = 1.0
 
+    # Readback bookkeeping, reported if this call times out. A timeout means the
+    # marker never appeared, but *why* splits three ways -- the command never
+    # started, it is still running, or it finished and the readback could not be
+    # read -- and only these values distinguish them. See _timeout_diagnostics.
+    last_content: str | None = None
+    last_readback_error: str | None = None
+    readback_successes = 0
+
     if ide == "vscode":
         # VS Code: poll the one-line sentinel file (donefile) in the Monaco
         # editor. It is a single line, so Monaco's viewport virtualization
@@ -1252,8 +1314,11 @@ def terminal_run(
                 _open_file_in_vscode_editor(page, donefile, timeout=5_000)
                 marker_text = _read_vscode_editor_text(page, timeout=5_000)
                 _close_active_editor(page)
-            except Exception:
+                readback_successes += 1
+                last_content = marker_text
+            except Exception as exc:  # noqa: BLE001
                 marker_text = ""
+                last_readback_error = f"{type(exc).__name__}: {exc}"
             parsed = _parse_done_marker(marker_text, done_marker)
             if parsed is not None:
                 _, exit_code = parsed
@@ -1266,7 +1331,7 @@ def terminal_run(
                     _close_active_editor(page)
                     out_parsed = _parse_done_marker(full, done_marker)
                     output = out_parsed[0] if out_parsed is not None else full
-                except Exception:
+                except Exception:  # noqa: BLE001
                     pass
                 if exit_code != 0:
                     raise ExecError(
@@ -1321,14 +1386,18 @@ def terminal_run(
                 attempt_ms = remaining_ms
             try:
                 content = read_file(page, tmpfile, timeout=attempt_ms, lang=readback_lang)
-            except ExecError:
+            except ExecError as exc:
+                last_readback_error = f"ExecError: {exc}"
                 if ide == "positron":
                     time.sleep(poll_interval)
                     continue
                 raise
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                last_readback_error = f"{type(exc).__name__}: {exc}"
                 time.sleep(poll_interval)
                 continue
+            readback_successes += 1
+            last_content = content
             parsed = _parse_done_marker(content, done_marker)
             if parsed is not None:
                 output, exit_code = parsed
@@ -1341,9 +1410,7 @@ def terminal_run(
 
     raise ExecError(
         f"terminal_run timed out after {timeout}ms waiting for done marker in {tmpfile!r}. "
-        "Either the command is still running, or it never reached the shell -- the "
-        "terminal widget cannot be read back to tell the two apart (see "
-        "_deliver_terminal_line)."
+        + _timeout_diagnostics(last_content, last_readback_error, readback_successes)
     )
 
 

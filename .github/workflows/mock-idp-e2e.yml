@@ -2,8 +2,8 @@ name: Mock-IdP E2E Tests
 
 # Exercises VIP's OIDC auth flows (--headless-auth and --interactive-auth)
 # against real Connect and Workbench containers fronted by a real, seeded
-# Keycloak realm -- no customer IdP required. See
-# thoughts/shared/plans/2026-06-30-issue-409-robust-cicd-design.md (Child A).
+# Keycloak realm -- no customer IdP required. This is Child A of the
+# robust-CI/CD epic (issue #409).
 #
 # Unlike the smoke workflows (password auth against bare containers), this
 # workflow is the only one that exercises the vip.idp Keycloak strategy and
@@ -44,6 +44,7 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -83,6 +84,7 @@ jobs:
   # tags when a new Workbench release ships; `release` always tracks newest.
   set-matrix:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions: {}
     outputs:
       versions: ${{ steps.pick.outputs.versions }}
@@ -90,7 +92,7 @@ jobs:
       - id: pick
         run: |
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo 'versions=["release", "2026.06.0", "2026.05.1"]' >> "$GITHUB_OUTPUT"
+            echo 'versions=["release", "2026.07.1", "2026.06.0"]' >> "$GITHUB_OUTPUT"
           else
             echo 'versions=["release"]' >> "$GITHUB_OUTPUT"
           fi
@@ -106,6 +108,9 @@ jobs:
     # `!=` first so the release leg yields '' rather than tripping the falsy-`||` trap.
     name: Mock-IdP E2E (headless-auth)${{ matrix.workbench-version != 'release' && format(' — Workbench {0}', matrix.workbench-version) || '' }}
     runs-on: ubuntu-latest
+    # Measured ~5.3 min median, up to 6.8 max (Keycloak + Connect + Workbench
+    # compose stack plus a real OIDC round-trip).
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -126,20 +131,22 @@ jobs:
 
       # RSW_VERSION is the Workbench image tag baked into the compose build
       # (FROM rstudio/rstudio-workbench:${RSW_VERSION}). `release` maps to the
-      # `latest` tag — the stack's existing default — so the PR/newest leg is
-      # unchanged; pinned versions map to the `jammy-<version>` tags.
+      # bare `jammy` tag, which Docker Hub rolls forward with every release, so
+      # the PR/newest leg always tracks current without a manual bump; `latest`
+      # is stale (last updated 2022-08-19, years behind `jammy`) and must not be
+      # used. Pinned versions map to the `jammy-<version>` tags.
       - name: Start mock-IdP stack (Keycloak + Connect + Workbench)
         env:
           RSC_LICENSE: ${{ secrets.CONNECT_LICENSE }}
           RSW_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
-          RSW_VERSION: ${{ matrix.workbench-version == 'release' && 'latest' || format('jammy-{0}', matrix.workbench-version) }}
+          RSW_VERSION: ${{ matrix.workbench-version == 'release' && 'jammy' || format('jammy-{0}', matrix.workbench-version) }}
         run: docker compose -f compose.mock-idp.yml up -d --build --wait
 
       # The default `docker` driver can't export to the GHA cache backend
       # (`type=gha` requires a buildx builder) -- see docker.yml for the same
       # pairing.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: Build VIP runner image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
@@ -175,19 +182,17 @@ jobs:
       # image's normal non-root convention doesn't buy anything here.
       #
       # --interactive-auth is intentionally NOT exercised by this job. This is
-      # a settled headless-only CI stance, not deferred work: unlike
-      # --headless-auth, it opens a headed browser and blocks waiting for a
-      # *human* to click through the IdP's login form (auth.py's
+      # a settled headless-only CI stance (issue #430), not deferred work:
+      # unlike --headless-auth, it opens a headed browser and blocks waiting
+      # for a *human* to click through the IdP's login form (auth.py's
       # start_interactive_auth has no form-filling logic of its own).
       # Automating it would need a second process driving the browser over
       # CDP (plus Xvfb, since this path insists on headless=False) while vip
       # verify blocks in the first process -- for thin marginal coverage,
       # since that second process's form-filling is test scaffolding that no
-      # production code path shares. See the decision record at
-      # thoughts/shared/plans/2026-07-08-issue-430-interactive-auth-headless-only.md
-      # and the unit tests in selftests/test_auth.py
-      # (TestStartInteractiveAuthPollLoop) covering the interactive-only
-      # login-detection logic this stance relies on.
+      # production code path shares. See the unit tests in
+      # selftests/test_auth.py (TestStartInteractiveAuthPollLoop) covering
+      # the interactive-only login-detection logic this stance relies on.
       # VIP_TEST_TOTP_SECRET is read from /certs/totp-secret.b32 at runtime
       # (generated by docker/keycloak/gen-totp-secret.sh into the shared
       # mock-idp-certs volume) rather than hardcoded here, since it must be
@@ -244,12 +249,263 @@ jobs:
         if: always()
         run: docker compose -f compose.mock-idp.yml down -v
 
+  # DIAGNOSTIC job for issue #263 (Workbench behind SAML on a separate
+  # hostname from Connect). This job's expected outcome is RED -- its
+  # purpose is to reproduce a suspected defect in `_authenticate_workbench`
+  # so the fix (to src/vip/auth.py) can be written against an observed
+  # failure rather than an inference.
+  #
+  # It therefore:
+  #   - runs only on workflow_dispatch (never push/PR/schedule), so it can
+  #     never block a merge or a nightly;
+  #   - sets `continue-on-error: true` at the job level, so even a failing
+  #     run reports green to anything that depends on this workflow;
+  #   - is deliberately NOT in the `status` job's `needs:` below, so it can
+  #     never affect that aggregation either.
+  # Once the auth.py fix lands and this job goes green on its own merits,
+  # promote it: drop `continue-on-error`, fold it into (or replace)
+  # `mock-idp-e2e` above, and add it to `status`'s `needs:`.
+  mock-idp-e2e-saml-diagnostic:
+    if: github.event_name == 'workflow_dispatch'
+    name: Mock-IdP E2E SAML diagnostic (issue #263, expected red)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Same as the headless-auth job's hostname step, plus the SAML lane's
+      # own hostname (docker/workbench/entrypoint-saml.sh,
+      # compose.mock-idp.yml's `workbench-saml` service).
+      - name: Add vip.test hostnames
+        run: |
+          echo "127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test workbench-saml.vip.test" | sudo tee -a /etc/hosts
+
+      # `--profile saml` additionally builds and starts `workbench-saml`
+      # (see compose.mock-idp.yml); the OIDC `workbench` service and
+      # everything else in the stack come up exactly as they do in the
+      # headless-auth job above.
+      # RSW_VERSION defaults to the bare `jammy` tag here for the same reason
+      # the headless-auth job above pins it explicitly: `latest` is stale
+      # (last updated 2022-08-19) and served a Workbench whose homepage
+      # predates VIP's current selectors entirely, which is what made this
+      # diagnostic's login test fail with an unrelated "Locator expected to
+      # be visible" against `#posit-logo` instead of actually exercising the
+      # #263 hypothesis. `jammy` rolls forward with every release.
+      - name: Start mock-IdP stack with SAML lane (Keycloak + Connect + Workbench + Workbench-SAML)
+        env:
+          RSC_LICENSE: ${{ secrets.CONNECT_LICENSE }}
+          RSW_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
+          RSW_VERSION: jammy
+        run: docker compose -f compose.mock-idp.yml --profile saml up -d --build --wait
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Build VIP runner image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          load: true
+          tags: vip-mock-idp-runner:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create output directory for test results
+        run: mkdir -m 777 -p mock-idp-out
+
+      # Two runs, mirroring Task 4 of the diagnostic plan: (a) Workbench-only
+      # against the SAML lane, (b) both products on separate hostnames --
+      # the actual #263 topology. `set -o pipefail` is required here: the
+      # default GHA bash shell runs `bash -e {0}` with no pipefail, so
+      # `docker run ... | tee file` would otherwise report this step as
+      # successful even when `vip verify` inside the container fails.
+      #
+      # Step (b) below carries `if: always()` so it still runs -- and its
+      # log still gets captured -- even when this step fails, which is the
+      # "continuing past failure so we get both logs" requirement. Neither
+      # step swallows its own exit code (no `|| true`), so a real failure
+      # here still fails the step, which is what lets "Surface stack logs on
+      # failure" below fire via the normal `if: failure()` idiom; the job's
+      # `continue-on-error: true` above is what keeps that from blocking
+      # anything downstream.
+      #
+      # NOTE: --interactive-auth is NOT covered by this diagnostic, for the
+      # same reason it is not exercised by the headless-auth job above (see
+      # that job's comment) -- it opens a headed browser and blocks on a
+      # human. Issue #263 was reported under --interactive-auth; this probes
+      # with --headless-auth because both modes share `_authenticate_workbench`
+      # in auth.py, which is where the leading hypothesis sits -- but a
+      # defect specific to the interactive-only prompt path would not show
+      # up here.
+      - name: Run SAML diagnostic (Workbench-only)
+        run: |
+          set -o pipefail
+          docker run --rm --network host --user root \
+            -v vip-mock-idp_mock-idp-certs:/certs:ro \
+            -v "${{ github.workspace }}/mock-idp-out:/app/out" \
+            -e VIP_TEST_USERNAME=vip_test \
+            -e VIP_TEST_PASSWORD=vip_test_password \
+            --entrypoint sh \
+            vip-mock-idp-runner:latest \
+            -c '
+              cp /certs/ca.crt /usr/local/share/ca-certificates/vip-mock-idp-ca.crt &&
+              update-ca-certificates &&
+              apt-get update -qq && apt-get install -qq -y libnss3-tools > /dev/null &&
+              mkdir -p "$HOME/.pki/nssdb" &&
+              certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password &&
+              certutil -d "sql:$HOME/.pki/nssdb" -A -t "C,," -n vip-mock-idp-ca -i /certs/ca.crt &&
+              export VIP_TEST_TOTP_SECRET="$(cat /certs/totp-secret.b32)" &&
+              exec uv run vip verify \
+                --workbench-url https://workbench-saml.vip.test:8788 \
+                --ca-bundle /certs/ca.crt \
+                --headless-auth --idp keycloak --provider saml \
+                --categories workbench \
+                --filter test_workbench_login \
+                --report out/results-saml-workbench-only.json \
+                -- --junitxml=out/mock-idp-results-saml-workbench-only.xml --vip-verbose
+            ' 2>&1 | tee mock-idp-out/saml-workbench-only.log
+
+          # TEMPORARY: a genuine Workbench auth failure surfaces as
+          # pytest.skip, so `vip verify` exits 0 and this step reports a
+          # false green even though the login test we care about never ran
+          # ("1 passed, 2 skipped"). The durable fix is #596 (a real vip
+          # verify exit-code contract); until that lands, assert directly
+          # that the login test(s) for the product URL(s) passed above
+          # actually executed. Checking named tests rather than the
+          # testsuite's skipped= count matters: prerequisites/
+          # test_expected_failure always skips unless
+          # VIP_ENABLE_EXPECTED_FAILURE_DEMO is set, so a count-based guard
+          # would fail every run regardless of #263. Deliberately duplicated
+          # in both steps so the whole block lifts out cleanly once #596
+          # ships.
+          python3 - mock-idp-out/mock-idp-results-saml-workbench-only.xml test_workbench_login <<'PY'
+          import sys, xml.etree.ElementTree as ET
+
+          xml_path, *required = sys.argv[1:]
+          cases = {tc.get("name", ""): tc for tc in ET.parse(xml_path).iter("testcase")}
+          problems = []
+          for want in required:
+              matched = [n for n in cases if want in n]
+              if not matched:
+                  problems.append(f"{want}: never collected")
+              problems += [f"{n}: skipped" for n in matched if cases[n].find("skipped") is not None]
+          if problems:
+              print("::error::The SAML workbench-only run did not execute its login test(s) -- " + "; ".join(problems) + " (see #596)")
+              sys.exit(1)
+          PY
+
+      - name: Run SAML diagnostic (Connect + Workbench, the #263 topology)
+        if: always()
+        run: |
+          set -o pipefail
+          docker run --rm --network host --user root \
+            -v vip-mock-idp_mock-idp-certs:/certs:ro \
+            -v "${{ github.workspace }}/mock-idp-out:/app/out" \
+            -e VIP_TEST_USERNAME=vip_test \
+            -e VIP_TEST_PASSWORD=vip_test_password \
+            --entrypoint sh \
+            vip-mock-idp-runner:latest \
+            -c '
+              cp /certs/ca.crt /usr/local/share/ca-certificates/vip-mock-idp-ca.crt &&
+              update-ca-certificates &&
+              apt-get update -qq && apt-get install -qq -y libnss3-tools > /dev/null &&
+              mkdir -p "$HOME/.pki/nssdb" &&
+              certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password &&
+              certutil -d "sql:$HOME/.pki/nssdb" -A -t "C,," -n vip-mock-idp-ca -i /certs/ca.crt &&
+              export VIP_TEST_TOTP_SECRET="$(cat /certs/totp-secret.b32)" &&
+              exec uv run vip verify \
+                --connect-url https://connect.vip.test:3939 \
+                --workbench-url https://workbench-saml.vip.test:8788 \
+                --ca-bundle /certs/ca.crt \
+                --headless-auth --idp keycloak --provider saml \
+                --categories "connect or workbench" \
+                --filter "test_connect_login_ui or test_workbench_login" \
+                --report out/results-saml-both.json \
+                -- --junitxml=out/mock-idp-results-saml-both.xml --vip-verbose
+            ' 2>&1 | tee mock-idp-out/saml-both.log
+
+          # TEMPORARY: a genuine Workbench auth failure surfaces as
+          # pytest.skip, so `vip verify` exits 0 and this step reports a
+          # false green even though the login test we care about never ran
+          # ("1 passed, 2 skipped"). The durable fix is #596 (a real vip
+          # verify exit-code contract); until that lands, assert directly
+          # that the login test(s) for the product URL(s) passed above
+          # actually executed. Checking named tests rather than the
+          # testsuite's skipped= count matters: prerequisites/
+          # test_expected_failure always skips unless
+          # VIP_ENABLE_EXPECTED_FAILURE_DEMO is set, so a count-based guard
+          # would fail every run regardless of #263. Deliberately duplicated
+          # in both steps so the whole block lifts out cleanly once #596
+          # ships.
+          python3 - mock-idp-out/mock-idp-results-saml-both.xml test_connect_login_ui test_workbench_login <<'PY'
+          import sys, xml.etree.ElementTree as ET
+
+          xml_path, *required = sys.argv[1:]
+          cases = {tc.get("name", ""): tc for tc in ET.parse(xml_path).iter("testcase")}
+          problems = []
+          for want in required:
+              matched = [n for n in cases if want in n]
+              if not matched:
+                  problems.append(f"{want}: never collected")
+              problems += [f"{n}: skipped" for n in matched if cases[n].find("skipped") is not None]
+          if problems:
+              print("::error::The SAML Connect+Workbench run did not execute its login test(s) -- " + "; ".join(problems) + " (see #596)")
+              sys.exit(1)
+          PY
+
+      # Same placement rationale as the headless-auth job's identical step:
+      # after both E2E attempts, not just after stack startup, so a login-flow
+      # failure -- not just a container-startup failure -- still surfaces logs.
+      - name: Surface stack logs on failure
+        if: failure()
+        run: docker compose -f compose.mock-idp.yml --profile saml logs
+
+      # The full dump above is ordered oldest-first and GH Actions caps step
+      # output, so on a long-running stack it can truncate before reaching
+      # anything from the actual login attempts (both E2E steps run several
+      # minutes after container startup). Get workbench-saml's own tail
+      # separately so its most recent -- and most relevant -- lines are not
+      # lost to that cap.
+      - name: Surface workbench-saml's recent logs on failure
+        if: failure()
+        run: docker compose -f compose.mock-idp.yml --profile saml logs --tail=300 workbench-saml
+
+      # rserver logs to a file once past its initial supervisor-managed
+      # startup burst (the compose-logs step above never shows anything
+      # beyond that burst), so read the file directly instead.
+      - name: Surface workbench-saml's rserver log file on failure
+        if: failure()
+        run: |
+          docker compose -f compose.mock-idp.yml --profile saml exec -T workbench-saml \
+            sh -c 'ls -la /var/log/rstudio/rstudio-server/ 2>&1; echo ---; cat /var/log/rstudio/rstudio-server/*.log 2>&1'
+
+      - name: Upload SAML diagnostic results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mock-idp-e2e-saml-diagnostic-results
+          path: mock-idp-out/
+          if-no-files-found: ignore
+
+      - name: Stop mock-IdP stack
+        if: always()
+        run: docker compose -f compose.mock-idp.yml --profile saml down -v
+
   status:
     name: Mock-IdP E2E Status
     if: always()
     needs: [changes, set-matrix, mock-idp-e2e]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Check result
         run: |
           if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
@@ -273,3 +529,13 @@ jobs:
             exit 1
           fi
           echo "Mock-IdP E2E tests passed or were legitimately out of scope"
+
+      # Nightly failures have no PR author to notice them; file (or update) a
+      # tracking issue instead of failing silently. Never fires on push/pull_request
+      # -- the author already sees those runs.
+      - name: Notify on scheduled failure
+        if: failure() && github.event_name == 'schedule'
+        uses: ./.github/actions/notify-on-scheduled-failure
+        with:
+          workflow-name: Mock-IdP E2E Tests
+          github-token: ${{ secrets.GITHUB_TOKEN }}

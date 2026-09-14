@@ -17,6 +17,109 @@ def _make_args(**overrides) -> argparse.Namespace:
     return argparse.Namespace(**defaults)
 
 
+class TestScaffoldList:
+    """``--list`` enumerates templates and exits without writing anything."""
+
+    def test_list_does_not_write_output_dir(self, tmp_path):
+        from vip.cli import run_scaffold
+
+        dest = tmp_path / "should_not_exist"
+        run_scaffold(_make_args(list=True, output=str(dest)))
+
+        assert not dest.exists()
+
+    def test_list_names_both_templates(self, capsys):
+        from vip.cli import run_scaffold
+
+        run_scaffold(_make_args(list=True))
+
+        out = capsys.readouterr().out
+        assert "minimal" in out
+        assert "cross-product" in out
+
+    def test_list_via_cli_exits_zero_without_output_flag(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "vip.cli", "scaffold", "--list"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert "minimal" in result.stdout
+        assert "cross-product" in result.stdout
+
+
+class TestScaffoldTemplateSelection:
+    """``--template`` selects between the registered scaffold templates."""
+
+    def test_default_template_is_cross_product(self, tmp_path):
+        from vip.cli import run_scaffold
+
+        dest = tmp_path / "default_tests"
+        run_scaffold(_make_args(output=str(dest)))
+
+        assert (dest / "test_gxp_validation.feature").is_file()
+        assert not (dest / "test_custom_check.feature").exists()
+
+    def test_minimal_template_scaffolds_expected_files(self, tmp_path):
+        from vip.cli import run_scaffold
+
+        dest = tmp_path / "minimal_tests"
+        run_scaffold(_make_args(output=str(dest), template="minimal"))
+
+        assert (dest / "test_custom_check.feature").is_file()
+        assert (dest / "test_custom_check.py").is_file()
+        assert (dest / "conftest.py").is_file()
+        assert (dest / "README.md").is_file()
+        assert (dest / "AGENTS.md").is_file()
+
+    def test_cross_product_template_includes_agents_md(self, tmp_path):
+        from vip.cli import run_scaffold
+
+        dest = tmp_path / "cross_tests"
+        run_scaffold(_make_args(output=str(dest), template="cross-product"))
+
+        assert (dest / "test_gxp_validation.feature").is_file()
+        assert (dest / "AGENTS.md").is_file()
+
+    def test_unknown_template_exits_nonzero_and_lists_valid_names(self, tmp_path, capsys):
+        import pytest
+
+        from vip.cli import run_scaffold
+
+        dest = tmp_path / "bad_tests"
+        with pytest.raises(SystemExit) as exc_info:
+            run_scaffold(_make_args(output=str(dest), template="bogus"))
+
+        assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "bogus" in err
+        assert "minimal" in err
+        assert "cross-product" in err
+        assert not dest.exists()
+
+
+class TestMinimalTemplateContract:
+    """Pins the two defects fixed in issue #608 so they can't silently regress."""
+
+    def test_minimal_step_file_has_product_marker(self, tmp_path):
+        from vip.cli import run_scaffold
+
+        dest = tmp_path / "minimal_marker_tests"
+        run_scaffold(_make_args(output=str(dest), template="minimal"))
+
+        step_text = (dest / "test_custom_check.py").read_text()
+        assert "pytest.mark.connect" in step_text
+
+    def test_minimal_template_does_not_hardcode_example_dot_com(self, tmp_path):
+        from vip.cli import run_scaffold
+
+        dest = tmp_path / "minimal_no_internet_tests"
+        run_scaffold(_make_args(output=str(dest), template="minimal"))
+
+        step_text = (dest / "test_custom_check.py").read_text()
+        assert "example.com" not in step_text
+
+
 class TestScaffoldCreatesExpectedFiles:
     """run_scaffold copies the expected files to the output directory."""
 

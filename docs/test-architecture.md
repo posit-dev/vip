@@ -19,7 +19,7 @@ graph TD
 
     subgraph "Layer 2: DSL"
         S["Step definitions<br/>(given / when / then)"]
-        FX["Fixtures<br/>(conftest.py)"]
+        FX["Fixtures<br/>(vip.fixtures)"]
         S
         FX
     end
@@ -138,22 +138,36 @@ A Then step has three outcomes, and picking the wrong one is how a suite loses i
 |---|---|---|
 | **Fail** | The deployment is wrong *and* an administrator can fix it | `x-powered-by` leaks a proxy's version — suppress it at the proxy |
 | **Warn** (`warnings.warn`) | The finding is real and worth recording, but nothing in the deployment's control can change it | Package Manager's own `server` header carries its version and has no setting to suppress it |
-| **Skip** | The thing under test isn't present or configured, so there was nothing to verify | No OpenVSX repository is configured |
+| **Skip** (`attest.not_applicable`) | The thing under test isn't present or configured, so there was nothing to verify | No OpenVSX repository is configured |
+| **Unproven** (`attest.unproven`) | VIP was asked to verify something and could not, so the result says nothing either way | A configured Workbench whose authentication never completed |
 
 Two failure modes to watch for, both of which have bitten this suite:
 
 - **A check that always fails.** Advice the product cannot satisfy turns a whole category red on every stock deployment and trains people to skim past it. Warn instead — the exposure stays on the record for a hardening baseline that cares.
 - **A check that can never fail.** If every branch of a Then step warns or skips, it is not a check. Whenever you downgrade one branch to a warning, confirm some other branch can still fail (see `no_version_headers` in `security/test_https.py`).
 
+**Skip and unproven are not the same statement.** A skip says "there was nothing here to check, and the run is still complete". Unproven says "this was supposed to be checked and was not, so treat the run as incomplete". Collapsing the two is how `vip verify` came to exit 0 against a configured product whose every test had silently fallen away (#596): to anyone reading the report, "we did not look" was indistinguishable from "we looked and it was fine".
+
+An unproven result carries through the whole pipeline -- its own `UNPROVEN` badge in the HTML report, an `UNPROVEN:`-prefixed message in JUnit, SARIF level `warning`, and exit code 6 from the run itself. `--allow-unproven` restores the old behaviour for pipelines that need it. Reach for `attest.unproven` whenever a *configured* capability goes unverified; reach for `attest.not_applicable` when skipping is the correct and final answer for this deployment. When in doubt, ask which one the person reading the report would want to be told.
+
 Skips carry the same burden of accuracy as failures. A skip reason states *why* there was nothing to verify, so it must be true: `test_repos.py` used to report "package not available — repo may not be synced yet" after probing only the first repo whose name matched, when a synced mirror sitting beside it served the package fine. Probe every candidate before concluding anything, and name all of them in the reason.
 
 ### Fixtures as glue
 
-Pytest fixtures (`conftest.py`) are the glue between layers. They provide:
+Pytest fixtures are the glue between layers. They provide:
 - **Configuration**: `vip_config`, `connect_url`, `test_username`
 - **Clients**: `connect_client`, `workbench_client`, `pm_client`
 - **Browser state**: `page`, `browser_context_args`
 - **Feature flags**: `email_enabled`, `monitoring_enabled`
+
+VIP's core fixtures live in `src/vip/fixtures.py`, not a `conftest.py`. pytest scopes
+`conftest.py` fixtures by directory ancestry, which would make them invisible to a test
+extension collected from outside `src/vip_tests` (see "Writing a Test Extension" below) —
+so `vip.plugin` registers `vip.fixtures` as part of VIP's own pytest plugin instead,
+making every fixture and shared "Given" step available everywhere `vip` is installed,
+regardless of where a test lives on disk. `src/vip_tests/conftest.py` still defines a
+handful of fixtures deliberately kept out of that global plugin (autouse Connect
+content-cleanup) — see that file's docstring for why.
 
 ## Layer 3: The Driver Port (protocols/interfaces)
 
@@ -307,20 +321,29 @@ Or in `vip.toml`:
 extension_dirs = ["./my-custom-tests"]
 ```
 
-Use `vip scaffold` to generate a ready-to-run reference implementation:
+Use `vip scaffold` to generate a ready-to-run reference implementation. Run `vip scaffold --list`
+to see the available templates:
 
 ```bash
-vip scaffold --output ./my-custom-tests
+vip scaffold --list
+vip scaffold --template minimal --output ./my-custom-tests
+vip scaffold --template cross-product --output ./my-custom-tests
 ```
 
-This creates `examples/cross_product_validation/` — a full GxP validation example that verifies
-R/Python runtime versions and package installability across Connect and Workbench. It follows the
-same four-layer architecture as the built-in suite.
+`--template` defaults to `cross-product` (the pre-existing behavior of `vip scaffold --output DIR`
+is unchanged). Two canonical templates ship with VIP:
 
-Two canonical examples ship with VIP:
+- `minimal` (`examples/custom_tests/`) — a single-scenario HTTP health check against your own
+  configured product; the best starting point for a new extension
+- `cross-product` (`examples/cross_product_validation/`) — a full GxP validation example that
+  verifies R/Python runtime versions and package installability across Connect and Workbench
 
-- `examples/custom_tests/` — minimal HTTP health-check (simplest possible extension)
-- `examples/cross_product_validation/` — cross-product runtime + package validation (GxP pattern)
+Both follow the same four-layer architecture as the built-in suite. Every scaffolded directory
+also gets an `AGENTS.md`, generated from a single shared source (`examples/_shared/AGENTS.md`),
+documenting the extension contract: the auto-skip rules, `min_version` gating, and an enumerated
+inventory of the public fixtures, registered markers, and client entry points an extension may
+use. It's the reference an AI coding assistant (or a human) should read before writing a new
+extension — a selftest guards it against drifting from the real fixtures and markers.
 
 **Key requirement for auto-skip to work in extensions:** apply `@pytest.mark.connect` and/or
 `@pytest.mark.workbench` decorators directly on every `@scenario` function. With pytest-bdd,

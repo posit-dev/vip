@@ -1,8 +1,5 @@
 ---
 title: "VIP Report"
-format:
-  html:
-    code-fold: true
 jupyter: python3
 ---
 
@@ -11,13 +8,16 @@ jupyter: python3
 ```{python}
 #| echo: false
 
-import html
-import json
 from pathlib import Path
-from IPython.display import Markdown, HTML, display
-from vip.reporting import load_results
+
+from IPython.display import HTML, Markdown, display
+
+from vip import report_html
+from vip.reporting import load_results, load_troubleshooting, troubleshooting_path
 
 data = load_results(Path("results.json"))
+_troubleshooting_path = troubleshooting_path()
+hints = load_troubleshooting(_troubleshooting_path) if _troubleshooting_path else {}
 
 if data.total == 0:
     display(Markdown("> **No results found.** Run `pytest` to generate results."))
@@ -30,454 +30,31 @@ if data.total == 0:
 
 ```{python}
 #| echo: false
-
-configured = data.configured_products()
-if not configured:
-    display(Markdown("No products configured. Set product URLs in `vip.toml`."))
-else:
-    rows = []
-    for p in configured:
-        name = p.name.replace("_", " ").title()
-        ver = p.version or "—"
-        rows.append(f"| {name} | {p.url} | {ver} |")
-    header = "| Product | URL | Version |\n|---|---|---|"
-    display(Markdown(header + "\n" + "\n".join(rows)))
+display(HTML(report_html.render_products_table(data)))
 ```
 
 ## Summary
 
 ```{python}
 #| echo: false
-
-status = "PASS" if data.failed == 0 and data.total > 0 else "FAIL" if data.failed > 0 else "NO RESULTS"
-status_class = "summary-status-pass" if status == "PASS" else "summary-status-fail" if status == "FAIL" else ""
-status_html = f'<span class="{status_class}">{status}</span>' if status_class else status
-
-display(Markdown(f"""
-| Metric | Count |
-|--------|-------|
-| **Total** | {data.total} |
-| **Passed** | {data.passed} |
-| **Failed** | {data.failed} |
-| **Skipped** | {data.skipped} |
-| **Status** | {status_html} |
-"""))
+display(HTML(report_html.render_summary_table(data)))
 ```
 
-## Results
+## Provenance
 
 ```{python}
 #| echo: false
-
-from collections import defaultdict
-from html import escape as _esc
-from IPython.display import HTML
-
-from vip.gherkin import parse_feature_file
-from vip.reporting import (
-    feature_file_for_nodeid,
-    load_troubleshooting,
-    troubleshooting_path,
-)
-
-_tp = troubleshooting_path()
-_hints = load_troubleshooting(_tp) if _tp else {}
-_feature_cache: dict[str, dict] = {}
-_error_idx = 0
-
-
-def _get_feature(nodeid: str) -> dict | None:
-    feature_file = feature_file_for_nodeid(nodeid)
-    key = str(feature_file) if feature_file else nodeid
-    if key not in _feature_cache:
-        if feature_file is not None:
-            _feature_cache[key] = parse_feature_file(feature_file)
-        else:
-            _feature_cache[key] = {}
-    return _feature_cache[key] or None
-
-
-def _get_steps(item) -> list[str]:
-    feature = _get_feature(item.nodeid)
-    if not feature or not feature.get("scenarios") or not item.scenario_title:
-        return []
-    for sc in feature["scenarios"]:
-        if sc["title"] == item.scenario_title and sc.get("steps"):
-            return sc["steps"]
-    return []
-
-
-_OUTCOME_STYLES = {
-    "passed": ("PASS", "#16a34a", "#f0fdf4", "#dcfce7"),
-    "failed": ("FAIL", "#dc2626", "#fef2f2", "#fecaca"),
-    "skipped": ("SKIP", "#6b7280", "#f9fafb", "#e5e7eb"),
-    "na_version": ("N/A", "#d97706", "#fffbeb", "#fde68a"),
-}
-
-_PRODUCT_BADGE_CSS = {
-    "connect": ("badge-connect", "Connect"),
-    "workbench": ("badge-workbench", "Workbench"),
-    "package_manager": ("badge-package-manager", "Package Manager"),
-    "security": ("badge-security", "Security"),
-    "prerequisites": ("badge-prerequisites", "Prerequisites"),
-}
-
-_OUTCOME_ORDER = ["failed", "passed", "skipped", "na_version"]
-_OUTCOME_LABELS = {
-    "failed": "Failed",
-    "passed": "Passed",
-    "skipped": "Skipped",
-    "na_version": "N/A (version)",
-}
-_OUTCOME_COLORS = {
-    "passed": "#16a34a",
-    "failed": "#dc2626",
-    "skipped": "#6b7280",
-    "na_version": "#d97706",
-}
-
-
-def _product_tag(item):
-    """Extract the primary product tag from markers for sub-grouping."""
-    for m in (item.markers or []):
-        if m in _PRODUCT_BADGE_CSS:
-            return m
-    # Fall back to category from nodeid path
-    parts = item.nodeid.split("/")
-    for p in parts:
-        if p in _PRODUCT_BADGE_CSS:
-            return p
-    return "other"
-
-
-if not data.results:
-    display(Markdown("No test results to display."))
-else:
-    # Group: status → product tag → items. Uses TestResult.status (not raw
-    # outcome) so N/A-by-version results get their own section instead of
-    # being folded into "Skipped".
-    _by_outcome = defaultdict(lambda: defaultdict(list))
-    for _item in data.results:
-        _by_outcome[_item.status][_product_tag(_item)].append(_item)
-
-    _html_parts = []
-    _html_parts.append("""
-<style>
-.vip-cat-section { margin-bottom: 2rem; }
-.vip-cat-header {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin: 0 0 0.25rem;
-  color: #1f2937;
-}
-.vip-cat-counts {
-  font-size: 0.8125rem;
-  color: #6b7280;
-  margin-bottom: 0.75rem;
-}
-.vip-test-card {
-  border: 1px solid #e5e7eb;
-  border-left: 4px solid #d1d5db;
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 0.5rem;
-  background: #fefefe;
-}
-.vip-test-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-.vip-test-scenario {
-  font-weight: 600;
-  font-size: 0.9375rem;
-  color: #1f2937;
-}
-.vip-badge {
-  display: inline-block;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  padding: 0.1rem 0.4rem;
-  border-radius: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-.vip-test-nodeid {
-  font-size: 0.75rem;
-  color: #9ca3af;
-  font-family: monospace;
-  margin-top: 0.125rem;
-}
-.vip-test-duration {
-  font-size: 0.75rem;
-  color: #9ca3af;
-  margin-left: 0.5rem;
-}
-.vip-test-description {
-  font-size: 0.8125rem;
-  color: #6b7280;
-  font-style: italic;
-  margin-top: 0.25rem;
-  margin-bottom: 0.25rem;
-}
-.vip-test-steps {
-  margin-top: 0.375rem;
-}
-.vip-test-steps summary {
-  cursor: pointer;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: #6b7280;
-  padding: 0.25rem 0;
-}
-.vip-test-steps summary:hover { color: #374151; }
-.vip-step-list {
-  margin: 0.25rem 0 0 1.25rem;
-  padding: 0;
-  list-style: none;
-}
-.vip-step-list li {
-  font-size: 0.8125rem;
-  font-family: monospace;
-  color: #374151;
-  line-height: 1.6;
-}
-.vip-step-list li::before {
-  content: "› ";
-  color: #9ca3af;
-}
-.vip-fail-details { margin-top: 0.5rem; margin-bottom: 0.5rem; }
-.vip-fail-details summary {
-  cursor: pointer; font-weight: 600; font-size: 0.8125rem;
-  color: #6b7280; padding: 0.25rem 0;
-}
-.vip-fail-details summary:hover { color: #374151; }
-.vip-fail-error-wrap { position: relative; margin-top: 0.375rem; }
-.vip-fail-error {
-  background: #1e1e1e; color: #d4d4d4; font-size: 0.8125rem;
-  line-height: 1.5; padding: 1rem; border-radius: 4px;
-  overflow-x: auto; margin: 0; white-space: pre-wrap; word-break: break-word;
-}
-.vip-copy-btn {
-  position: absolute; top: 0.5rem; right: 0.5rem;
-  background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.7);
-  border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;
-  padding: 0.2rem 0.5rem; font-size: 0.75rem; font-family: inherit;
-  cursor: pointer; transition: background 0.15s, color 0.15s; z-index: 1;
-}
-.vip-copy-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
-.vip-fail-hints {
-  background: #fffbeb; border: 1px solid #fbbf24; border-radius: 4px;
-  padding: 0.875rem 1rem; font-size: 0.875rem; color: #92400e;
-  margin-top: 0.5rem;
-}
-.vip-fail-hints ul, .vip-fail-hints ol { margin: 0.25rem 0 0.75rem 1.25rem; padding: 0; }
-.vip-fail-hints li { margin-bottom: 0.25rem; }
-.vip-fail-hints p { margin: 0.25rem 0; }
-.vip-fail-hints a { color: #92400e; text-decoration: underline; }
-</style>
-""")
-
-    for outcome in _OUTCOME_ORDER:
-        if outcome not in _by_outcome:
-            continue
-        product_groups = _by_outcome[outcome]
-        total_in_outcome = sum(len(v) for v in product_groups.values())
-        outcome_label = _OUTCOME_LABELS[outcome]
-        outcome_color = _OUTCOME_COLORS[outcome]
-
-        _html_parts.append(
-            f'<div class="vip-cat-section">'
-            f'<h3 class="vip-cat-header" style="color:{outcome_color}">'
-            f'{_esc(outcome_label)} ({total_in_outcome})</h3>'
-        )
-
-        for tag in sorted(product_groups.keys()):
-            items = product_groups[tag]
-            tag_css, tag_label = _PRODUCT_BADGE_CSS.get(tag, ("", tag.title()))
-            _html_parts.append(
-                f'<h4 style="margin:0.75rem 0 0.5rem;font-size:1rem;color:#374151">'
-                f'<span class="{tag_css}">{_esc(tag_label)}</span>'
-                f'<span class="vip-cat-counts" style="margin-left:0.5rem">'
-                f'{len(items)} tests</span></h4>'
-            )
-
-            for item in items:
-                label, fg, bg, border_bg = _OUTCOME_STYLES.get(
-                    item.status, ("?", "#6b7280", "#f9fafb", "#e5e7eb")
-                )
-                raw_title = item.scenario_title or (
-                    item.nodeid.split("::")[-1] if "::" in item.nodeid else item.nodeid
-                )
-                # Substitute <param> placeholders with pytest parametrize values
-                import re as _re
-                _param_match = _re.search(r"\[(.+)\]$", item.nodeid)
-                if _param_match and "<" in raw_title:
-                    param_val = _param_match.group(1)
-                    raw_title = _re.sub(r"<[^>]+>", param_val, raw_title)
-                title = _esc(raw_title)
-                nodeid = _esc(item.nodeid)
-                duration = f"{item.duration:.2f}s"
-                badge = (
-                    f'<span class="vip-badge" '
-                    f'style="color:{fg};background:{border_bg}">{label}</span>'
-                )
-
-                # Product/category badges from markers
-                product_badges = ""
-                if hasattr(item, "markers") and item.markers:
-                    for marker in item.markers:
-                        if marker in _PRODUCT_BADGE_CSS:
-                            css_class, display_name = _PRODUCT_BADGE_CSS[marker]
-                            product_badges += (
-                                f'<span class="{css_class}">{_esc(display_name)}</span>'
-                            )
-
-                # Feature description (first line only)
-                description_html = ""
-                if item.feature_description:
-                    first_line = item.feature_description.split("\n")[0].strip()
-                    if first_line:
-                        description_html = (
-                            f'<div class="vip-test-description">{_esc(first_line)}</div>'
-                        )
-
-                steps = _get_steps(item)
-                steps_html = ""
-                if steps:
-                    step_items = "".join(
-                        f"<li>{_esc(s)}</li>" for s in steps
-                    )
-                    steps_html = (
-                        f'<details class="vip-test-steps">'
-                        f"<summary>Test procedure</summary>"
-                        f'<ul class="vip-step-list">{step_items}</ul>'
-                        f"</details>"
-                    )
-
-                # Error traceback + troubleshooting hints (failed only)
-                error_html = ""
-                hints_html = ""
-                if item.outcome == "failed":
-                    if item.longrepr:
-                        eid = f"vip-error-{_error_idx}"
-                        _error_idx += 1
-                        error_html = (
-                            f'<details class="vip-fail-details">'
-                            f"<summary>Error traceback</summary>"
-                            f'<div class="vip-fail-error-wrap">'
-                            f'<button class="vip-copy-btn" data-target="{eid}"'
-                            f' title="Copy to clipboard">Copy</button>'
-                            f'<pre id="{eid}" class="vip-fail-error">'
-                            f"{_esc(item.longrepr)}</pre>"
-                            f"</div></details>"
-                        )
-                    hint = _hints.get(item.scenario_title, {}) if item.scenario_title else {}
-                    if hint:
-                        _hp = []
-                        if hint.get("likely_causes"):
-                            _hp.append("<strong>Likely causes:</strong><ul>")
-                            for c in hint["likely_causes"]:
-                                _hp.append(f"<li>{_esc(c)}</li>")
-                            _hp.append("</ul>")
-                        if hint.get("suggested_steps"):
-                            _hp.append("<strong>Suggested next steps:</strong><ol>")
-                            for s in hint["suggested_steps"]:
-                                _hp.append(f"<li>{_esc(s)}</li>")
-                            _hp.append("</ol>")
-                        if hint.get("docs_url"):
-                            _u = _esc(hint["docs_url"])
-                            _hp.append(
-                                f'<p><strong>Documentation:</strong> '
-                                f'<a href="{_u}" target="_blank" rel="noopener">{_u}</a></p>'
-                            )
-                        if _hp:
-                            hints_html = f'<div class="vip-fail-hints">{"".join(_hp)}</div>'
-
-                border = _OUTCOME_COLORS.get(item.status, "#d1d5db")
-                _html_parts.append(
-                    f'<div class="vip-test-card" style="border-left-color:{border}">'
-                    f'<div class="vip-test-header">'
-                    f"{badge}"
-                    f'<span class="vip-test-scenario">{title}</span>'
-                    f"{product_badges}"
-                    f"</div>"
-                    f'{description_html}'
-                    f'<div class="vip-test-nodeid">{nodeid}'
-                    f'<span class="vip-test-duration">{_esc(duration)}</span>'
-                    f"</div>"
-                    f"{steps_html}{error_html}{hints_html}"
-                    f"</div>"
-                )
-
-        _html_parts.append("</div>")  # close outcome section
-
-    # Copy-to-clipboard script for error tracebacks
-    _html_parts.append("""
-<script>
-document.querySelectorAll('.vip-copy-btn').forEach(function(btn) {
-  btn.addEventListener('click', function() {
-    var target = document.getElementById(btn.getAttribute('data-target'));
-    if (!target) return;
-    navigator.clipboard.writeText(target.textContent).then(function() {
-      btn.textContent = 'Copied!';
-      setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
-    });
-  });
-});
-</script>
-""")
-
-    display(HTML("\n".join(_html_parts)))
+display(HTML(report_html.render_provenance_table(data)))
 ```
 
-## Connect System Checks
+## Failures & Skips
 
 ```{python}
 #| echo: false
-
-checks_path = Path("connect_system_checks.json")
-if not checks_path.exists():
+if data.results:
     display(Markdown(
-        "_No Connect system checks report found. "
-        "Run `src/vip_tests/connect/test_system_checks.py` against a configured Connect instance._"
+        "Every check that did not pass, in full. Passing checks are counted "
+        "above — see [Detailed Results](details.qmd) for the complete listing."
     ))
-else:
-    checks_data = json.loads(checks_path.read_text())
-    run_info = checks_data.get("run", {})
-    results = checks_data.get("results", [])
-    passed = sum(1 for r in results if r.get("passed"))
-    failed = len(results) - passed
-
-    display(Markdown(
-        f"**Host:** {run_info.get('hostname', 'unknown')} · "
-        f"**Status:** {run_info.get('status', 'unknown')} · "
-        f"**Passed:** {passed} · **Failed:** {failed}"
-    ))
-
-    # Render as raw HTML rather than a large Markdown pipe table.
-    # Pandoc's pipe-table reader hangs on tables with many rows that
-    # contain long/pre-escaped cells (observed >3min on ~300 rows in CI);
-    # raw HTML is passed through verbatim.
-    _rows_html = []
-    for r in results:
-        group = html.escape(str(r.get("group", {}).get("name", "") or ""))
-        test = html.escape(str(r.get("test", {}).get("name", "") or ""))
-        status = "✅" if r.get("passed") else "❌"
-        raw_output = str(r.get("output", "") or "").strip()
-        raw_error = str(r.get("error", "") or "").strip()
-        raw_detail = raw_error if raw_error else raw_output
-        detail = html.escape(raw_detail).replace("\n", "<br>")
-        _rows_html.append(
-            f"<tr><td>{status}</td><td>{group}</td>"
-            f"<td>{test}</td><td>{detail}</td></tr>"
-        )
-
-    display(HTML(
-        "<table><thead><tr><th></th><th>Group</th>"
-        "<th>Check</th><th>Detail</th></tr></thead><tbody>"
-        + "".join(_rows_html)
-        + "</tbody></table>"
-    ))
+display(HTML(report_html.render_actionable_cards(data, hints)))
 ```

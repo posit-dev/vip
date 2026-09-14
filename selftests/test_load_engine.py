@@ -104,7 +104,7 @@ class _ThreadedHTTPServer(http.server.HTTPServer):
             request, client_address = item
             try:
                 self.finish_request(request, client_address)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 self.handle_error(request, client_address)
             finally:
                 self.shutdown_request(request)

@@ -120,7 +120,7 @@ def check_data_source_connectivity(data_sources, verify: bool | str = True) -> l
                             "Could not parse host:port from connection string; "
                             "only config presence was verified (no TCP check possible)."
                         )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             result["error"] = str(exc)
         results.append(result)
     return results

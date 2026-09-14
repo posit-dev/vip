@@ -117,6 +117,24 @@ class TestSilentSsoSignin:
         with pytest.raises(RuntimeError, match="page crashed"):
             wb._silent_sso_signin(_FakeButton(), _BrokenLogo(), "https://wb.x")
 
+    def test_waits_the_sso_roundtrip_timeout_not_the_page_load_one(self, monkeypatch):
+        # issue #263: a SAML round-trip (IdP redirect, assertion POST, Workbench's own
+        # validation) took longer than TIMEOUT_PAGE_LOAD (15s) under real IdP latency,
+        # which read as "no usable IdP session" and skipped a login that was still
+        # completing. Guard that the click-through waits the longer, dedicated budget.
+        import contextlib
+
+        captured: dict[str, int] = {}
+
+        class _TimeoutCapturingLogo:
+            def wait_for(self, *, state, timeout):  # noqa: ARG002
+                captured["timeout"] = timeout
+
+        monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
+        wb._silent_sso_signin(_FakeButton(), _TimeoutCapturingLogo(), "https://wb.x")
+        assert captured["timeout"] == wb.TIMEOUT_SSO_ROUNDTRIP
+        assert wb.TIMEOUT_SSO_ROUNDTRIP > wb.TIMEOUT_PAGE_LOAD
+
 
 class TestWorkbenchGroupName:
     def test_ide_marker_wins(self):

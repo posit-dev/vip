@@ -96,7 +96,7 @@ def _complete_sso_if_needed(page: Page) -> bool:
     # TIMEOUT_QUICK waiting for a logo that will never show (PR #492 review).
     try:
         on_login_page = any(kw in page.url.lower() for kw in _LOGIN_URL_KEYWORDS)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
     if not on_login_page:
         # Not a login page -> this is (or is becoming) the authenticated
@@ -111,27 +111,27 @@ def _complete_sso_if_needed(page: Page) -> bool:
         try:
             logo.wait_for(state="visible", timeout=TIMEOUT_QUICK)
             return True  # already authenticated (e.g. the in-test page)
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False  # not a login page, but no homepage logo either
     # The OIDC sign-in page renders a "Sign in with OpenID" button. Wait briefly
     # so a slow sign-in page is detected reliably rather than raced.
     try:
         sso_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE)).first
         sso_button.wait_for(state="visible", timeout=TIMEOUT_QUICK)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
     # A username field means this is a password form, not silent SSO -- nothing
     # we can complete headlessly, so don't click a blank submit.
     try:
         if page.locator(LoginPage.USERNAME).is_visible():
             return False
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
     try:
         sso_button.click()
         logo.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
         return True
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False  # no valid IdP session to complete SSO silently
 
 
@@ -152,7 +152,7 @@ def _wait_for_session_list(page: Page) -> None:
     for selector in (Homepage.NEW_SESSION_BUTTON, "[aria-label^='select ']"):
         try:
             page.locator(selector).first.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
 
@@ -211,7 +211,7 @@ def quit_vip_sessions_via_ui(
                 try:
                     page.locator(Homepage.session_checkbox(name)).first.click(timeout=TIMEOUT_QUICK)
                     selected.append(name)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     logger.warning(
                         "UI cleanup: could not select session %r at %s: %s", name, base_url, exc
                     )
@@ -220,7 +220,7 @@ def quit_vip_sessions_via_ui(
                 break
             try:
                 page.locator(Homepage.QUIT_BUTTON).first.click(timeout=TIMEOUT_QUICK)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "UI cleanup: could not click the Quit button at %s: %s", base_url, exc
                 )
@@ -234,21 +234,21 @@ def quit_vip_sessions_via_ui(
                 dialog = page.locator(sel)
                 try:
                     dialog.wait_for(state="visible", timeout=TIMEOUT_DIALOG_PROBE)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     continue
                 try:
                     dialog.first.click(timeout=TIMEOUT_QUICK)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     pass
             quit_names.update(selected)
             try:
                 page.reload(wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("UI cleanup: could not reload %s after quitting: %s", base_url, exc)
                 break
             _complete_sso_if_needed(page)  # a reload can bounce back to sign-in
             _wait_for_session_list(page)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning("UI cleanup at %s failed before completing: %s", base_url, exc)
     # One always-visible summary so the sweep is never a silent black box.
     if first_rows == 0:

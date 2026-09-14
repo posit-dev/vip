@@ -13,19 +13,21 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
+from vip import attest
 from vip_tests.workbench.conftest import (
     TIMEOUT_CLEANUP,
     TIMEOUT_DIALOG,
     TIMEOUT_PAGE_LOAD,
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
+    _navigated_into_session,
     assert_homepage_loaded,
     unique_session_name,
     wait_for_session_active,
     wait_for_session_suspended,
     workbench_login,
 )
-from vip_tests.workbench.pages import Homepage, NewSessionDialog
+from vip_tests.workbench.pages import Homepage, NewSessionDialog, RStudioSession
 
 pytestmark = pytest.mark.order(30)
 
@@ -175,11 +177,28 @@ def user_resumes_session(page: Page, session_context: dict):
     expect(launch_btn).to_be_visible(timeout=TIMEOUT_DIALOG)
     launch_btn.click()
 
-    # Wait for the navigation into the session URL to commit before going
-    # anywhere else. Navigating away from /s/<id> too quickly causes
-    # Workbench to abort the resume.
-    page.wait_for_url("**/s/**", timeout=TIMEOUT_PAGE_LOAD)
-    page.wait_for_load_state("load", timeout=TIMEOUT_PAGE_LOAD)
+    # Wait for actual RStudio content, not just the page's "load" event —
+    # that fires once the session shell is served, well before the backend
+    # finishes reattaching rsession (same readiness gate the fresh-launch
+    # path trusts; see ``rstudio_functional`` in test_ide_launch.py).
+    #
+    # The navigation check uses ``_navigated_into_session`` rather than a
+    # bare ``"**/s/**"`` glob, because Workbench's own homepage is also
+    # served under a "/s/<id>/" URL, so that glob can pass without the
+    # browser ever leaving the homepage. A timeout here means resume did
+    # not demonstrably complete; report that as unproven rather than
+    # letting the bare Playwright assertion surface as an opaque hard
+    # failure (this file's established pattern — see
+    # session_becomes_active_again below).
+    page.wait_for_url(_navigated_into_session, timeout=TIMEOUT_PAGE_LOAD)
+    try:
+        expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_SESSION_START)
+    except AssertionError as exc:
+        attest.unproven(
+            f"RStudio content did not render within {TIMEOUT_SESSION_START}ms of resuming "
+            f"the session — suspend/resume may not be supported in this Workbench "
+            f"configuration ({exc})"
+        )
 
     # Navigate back to homepage to observe the Active state. NB: Workbench's
     # /home may auto-redirect back to the recently-used session — that is OK
@@ -221,7 +240,7 @@ def session_becomes_active_again(page: Page, workbench_url: str, session_context
             page.reload(timeout=TIMEOUT_PAGE_LOAD)
             expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
 
-    pytest.skip(
+    attest.unproven(
         f"Session did not return to Active state after resume — "
         f"suspend/resume may not be supported in this Workbench configuration ({exc})"
     )

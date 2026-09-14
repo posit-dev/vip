@@ -54,8 +54,25 @@ class AuthConfigError(ValueError):
     """Raised for user-facing authentication configuration errors."""
 
 
+class AuthTimeoutError(AuthConfigError):
+    """Raised when a login round-trip does not complete before its deadline.
+
+    A subclass of :class:`AuthConfigError` so ``plugin.py``'s existing
+    ``except AuthConfigError`` handler (which converts it to a clean
+    ``pytest.UsageError`` rather than an ``INTERNALERROR`` traceback) picks
+    this up too, with no change to that handler required. See #263.
+    """
+
+
 # Prefix for VIP-managed API keys.  A timestamp is appended per run.
 _KEY_NAME_PREFIX = "_vip_interactive_"
+
+# Single timeout for an IdP login round-trip (browser leaves the product,
+# authenticates at the IdP, and lands back). Shared by the interactive poll
+# loop, the headless _wait_for_product_redirect poll, and
+# _authenticate_workbench's post-Connect SSO wait, so Workbench's wait can
+# never expire before the primary round-trip's window does.
+_IDP_ROUNDTRIP_TIMEOUT_SECONDS = 300
 
 # Orphan keys younger than this are left alone so a concurrent ``vip verify``
 # run does not have its freshly-minted key yanked out from under it.  Cleanup
@@ -249,7 +266,7 @@ class InteractiveAuthSession:
                     ca_bundle=self._ca_bundle,
                     proxy=self._proxy,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 print(f">>> Warning: Could not delete API key: {exc}")
 
         if self._tmpdir and os.path.isdir(self._tmpdir):
@@ -300,18 +317,18 @@ def authenticated_page(
         finally:
             try:
                 context.close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
     finally:
         if browser is not None:
             try:
                 browser.close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         if ca_bundle is not None:
             if _prev_node_ca is None:
@@ -506,7 +523,7 @@ def _load_cached_auth(
                 meta.get("requested_connect_url", "") or resolved_connect_url
             )
             cached_request_workbench_url = meta.get("workbench_url", "")
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     # Match against the *requested* Connect URL so that
@@ -648,7 +665,7 @@ def refresh_auth_cache_from_storage_state(
         os.chmod(tmp, 0o600)
         os.replace(tmp, path)
         return True
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("Could not refresh the auth cache at %s: %s", path, exc)
         if tmp is not None and tmp.exists():
             with contextlib.suppress(OSError):
@@ -845,7 +862,7 @@ def start_interactive_auth(
 
         # Poll until login completes
         base = primary_url.rstrip("/")
-        deadline = time.monotonic() + scaled(300)
+        deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
         login_completed = False
 
         # Login detection: for Connect check we left /__login__,
@@ -853,7 +870,7 @@ def start_interactive_auth(
         while time.monotonic() < deadline:
             try:
                 url = page.url
-            except Exception:
+            except Exception:  # noqa: BLE001
                 break
             if connect_url:
                 if base in url and "/__login__" not in url:
@@ -869,13 +886,16 @@ def start_interactive_auth(
                     break
             try:
                 page.wait_for_timeout(500)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 break
 
         if not login_completed:
-            raise RuntimeError(
-                "Login did not complete within 5 minutes. "
-                "Please rerun and complete authentication in the browser window."
+            state = _describe_final_page_state(page, primary_url)
+            raise AuthTimeoutError(
+                "Login did not complete within "
+                f"{_timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))}. "
+                "Please rerun and complete authentication in the browser window. "
+                f"Browser {state}."
             )
 
         # Mint Connect API key only if Connect is configured.  Keep the
@@ -926,12 +946,12 @@ def start_interactive_auth(
         if browser is not None:
             try:
                 browser.close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
         # auth calls (or test runs) are not silently affected.
@@ -1098,7 +1118,7 @@ def start_headless_auth(
                 _fill_product_login(page, username, password)
 
             # Wait for redirect back to the product.
-            _wait_for_product_redirect(page, primary_url)
+            _wait_for_product_redirect(page, primary_url, provider=provider)
         except PlaywrightTimeoutError as exc:
             raise AuthConfigError(
                 "Headless auth timed out during login. "
@@ -1127,7 +1147,7 @@ def start_headless_auth(
         # Visit Workbench so the storage state includes its session cookies.
         workbench_auth_error: str | None = None
         if workbench_url and connect_url:
-            workbench_auth_error = _authenticate_workbench(page, workbench_url)
+            workbench_auth_error = _authenticate_workbench(page, workbench_url, provider=provider)
 
         context.storage_state(path=str(storage_state_path))
 
@@ -1158,12 +1178,12 @@ def start_headless_auth(
         if browser is not None:
             try:
                 browser.close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
         # auth calls (or test runs) are not silently affected.
@@ -1199,7 +1219,7 @@ def _navigate_to_idp(page: Page, product_url: str) -> None:
             # Check if we left the product page.
             if not page.url.lower().startswith(product_base):
                 return
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
 
     # If we're still on the product page, wait briefly for auto-redirect.
@@ -1208,7 +1228,7 @@ def _navigate_to_idp(page: Page, product_url: str) -> None:
             lambda url: not url.lower().startswith(product_base),
             timeout=int(scaled(10_000)),
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
 
 
@@ -1237,16 +1257,22 @@ def _fill_product_login(page: Page, username: str, password: str) -> None:
     _log_verbose(">>> Product login form submitted.")
 
 
-def _wait_for_product_redirect(page: Page, product_url: str) -> None:
-    """Wait until the browser has returned to the product after IdP auth."""
+def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = "") -> None:
+    """Wait until the browser has returned to the product after IdP auth.
+
+    *provider* names the configured auth provider (``"oidc"``, ``"saml"``,
+    ``"oauth2"``) so a timeout error names the protocol that actually ran
+    instead of assuming OIDC (see #263). Leave it as "" when unknown here;
+    the message falls back to neutral wording.
+    """
     base = product_url.rstrip("/").lower()
-    deadline = time.monotonic() + scaled(300)  # 5-minute timeout
+    deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
     clicked_oidc_confirm = False
 
     while time.monotonic() < deadline:
         try:
             url = page.url.lower()
-        except Exception:
+        except Exception:  # noqa: BLE001
             break
         if url.startswith(base) and not _on_login_page(url):
             return
@@ -1259,12 +1285,16 @@ def _wait_for_product_redirect(page: Page, product_url: str) -> None:
                 clicked_oidc_confirm = True
         try:
             page.wait_for_timeout(500)
-        except Exception:
+        except Exception:  # noqa: BLE001
             break
 
-    raise RuntimeError(
-        "OIDC login did not complete within 5 minutes. "
-        "Check credentials, IdP configuration, and MFA setup."
+    label = _protocol_label(provider)
+    verb = f"{label} login" if label else "Login"
+    state = _describe_final_page_state(page, product_url)
+    raise AuthTimeoutError(
+        f"{verb} did not complete within "
+        f"{_timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))}. "
+        f"Check credentials, IdP configuration, and MFA setup. Browser {state}."
     )
 
 
@@ -1294,16 +1324,29 @@ def _click_workbench_oidc_confirm(page: Page) -> bool:
         return False
 
 
-_LOGIN_KEYWORDS = ("sign-in", "login", "auth-sign-in")
+_LOGIN_KEYWORDS = ("sign-in", "login", "auth-sign-in", "/saml/acs")
 
 
 def _on_login_page(url: str) -> bool:
-    """Return True if *url* looks like a login or IdP page."""
+    """Return True if *url* looks like a login page or an in-flight auth callback.
+
+    ``/saml/acs`` is Workbench's SAML Assertion Consumer Service endpoint --
+    the raw POST target the IdP redirects to before Workbench validates the
+    assertion and issues its own session cookie. Every caller here uses this
+    check to decide "is the round-trip actually finished", and landing on
+    that URL means it is not: :func:`_authenticate_workbench` and
+    :func:`_wait_for_product_redirect` must not treat ``networkidle`` firing
+    as completion while still on this URL, because Workbench's own
+    post-assertion redirect has not run yet -- accepting it early captures a
+    storage state with no valid Workbench session cookie, so a real SAML
+    login looks successful during --headless-auth but fails once
+    ``test_workbench_login`` reuses that state.
+    """
     lower = url.lower()
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
 
 
-def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
+def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "") -> str | None:
     """Navigate to Workbench to establish an SSO session.
 
     After the user authenticated to Connect via OIDC, the identity provider
@@ -1321,6 +1364,12 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
     If SSO does not resolve automatically (e.g. the auth-sign-in page
     requires a click), we attempt to click through.  The headed browser is
     still visible so the user can also intervene manually.
+
+    *provider* names the configured auth provider (``"oidc"``, ``"saml"``,
+    ``"oauth2"``), same convention as :func:`_wait_for_product_redirect`, so
+    the timeout reason names the protocol that actually ran instead of
+    assuming OIDC (see #263). Leave it as "" when unknown here; the message
+    falls back to neutral wording.
 
     Returns ``None`` on success, or a short string describing why
     Workbench authentication did not complete.  Callers stash this on
@@ -1345,7 +1394,7 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
     # Quick check — already on the Workbench dashboard?
     url = page.url
     if url.lower().startswith(wb_base) and not _on_login_page(url):
-        print(">>> Workbench authenticated via SSO.\n")
+        print(f">>> Workbench authenticated via SSO. Landed at: {url}\n")
         return None
 
     # We're likely on /auth-sign-in.  Try clicking a sign-in button to
@@ -1360,40 +1409,49 @@ def _authenticate_workbench(page: Page, workbench_url: str) -> str | None:
         try:
             page.click(selector, timeout=int(scaled(2_000)))
             break
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
 
     # Wait for the OIDC redirect chain to complete.
     print(">>> Waiting for Workbench SSO redirect chain ...")
     print(">>> If prompted, please complete authentication in the browser.\n")
 
-    deadline = time.monotonic() + scaled(120)  # 2-minute timeout
+    # Share the single round-trip timeout (see _IDP_ROUNDTRIP_TIMEOUT_SECONDS)
+    # rather than this function's own, shorter one.
+    deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
     last_url = url
     while time.monotonic() < deadline:
         try:
             page.wait_for_load_state("networkidle", timeout=int(scaled(5_000)))
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
         try:
             last_url = page.url
-        except Exception:
+        except Exception:  # noqa: BLE001
             break
         if last_url.lower().startswith(wb_base) and not _on_login_page(last_url):
-            print(">>> Workbench authenticated.\n")
+            print(f">>> Workbench authenticated. Landed at: {last_url}\n")
             return None
         try:
             page.wait_for_timeout(500)
-        except Exception:
+        except Exception:  # noqa: BLE001
             break
 
+    timeout_label = _timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))
+    try:
+        last_title = page.title()
+    except Exception:  # noqa: BLE001
+        last_title = "<unknown>"
+    label = _protocol_label(provider)
+    session_desc = f"{label} session" if label else "The login session"
     print(
-        ">>> Warning: Workbench authentication did not complete within 2 minutes.\n"
+        f">>> Warning: Workbench authentication did not complete within {timeout_label}.\n"
         ">>> Workbench browser tests may skip.\n"
     )
     return (
-        "Workbench authentication did not complete within 2 minutes "
-        f"(last URL: {_strip_url_query(last_url)}). "
-        "OIDC session may not be shared between Connect and Workbench, "
+        f"Workbench authentication did not complete within {timeout_label} "
+        f"(last URL: {_strip_url_query(last_url)}, page title: {last_title!r}). "
+        f"{session_desc} may not be shared between Connect and Workbench, "
         "or the auth-sign-in page required interaction."
     )
 
@@ -1414,8 +1472,60 @@ def _strip_url_query(url: str) -> str:
 
         parts = urlsplit(url)
         return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
-    except Exception:
+    except Exception:  # noqa: BLE001
         return url
+
+
+def _describe_final_page_state(page: Page, expected_origin: str) -> str:
+    """Best-effort description of where the browser ended up, for a
+    timeout error.
+
+    Before this, a redirect timeout said only "did not complete" -- never
+    where the browser actually was, so a SAML diagnostic run couldn't tell
+    whether it never left the IdP, bounced back to the product's own
+    sign-in page, or something else entirely (see #263). Every read here is
+    guarded: the page may already be closed or crashed by the time the
+    deadline fires, and a diagnostic must never itself raise and mask the
+    original timeout.
+    """
+    try:
+        url = _strip_url_query(page.url)
+    except Exception:  # noqa: BLE001
+        url = "<unknown -- page may be closed or crashed>"
+    try:
+        title = page.title()
+    except Exception:  # noqa: BLE001
+        title = "<unknown>"
+    return f"ended up at {url!r} (title: {title!r}); expected to land on {expected_origin!r}"
+
+
+_PROVIDER_LABELS = {"oidc": "OIDC", "saml": "SAML", "oauth2": "OAuth2"}
+
+
+def _protocol_label(provider: str) -> str:
+    """Human-readable protocol name for *provider*, or "" when it isn't a
+    recognized IdP-backed provider.
+
+    Callers use this to name the protocol actually configured in a timeout
+    error message, rather than hardcoding one that could be wrong (e.g.
+    "OIDC" during a SAML run); an unrecognized provider falls back to
+    neutral wording ("Login", not a wrong protocol name).
+    """
+    return _PROVIDER_LABELS.get(provider.strip().lower(), "")
+
+
+def _timeout_label(seconds: float) -> str:
+    """Human-readable minutes for a *scaled* timeout.
+
+    Derives the text from the real, already-scaled deadline (e.g.
+    ``scaled(300)``) so the reported minutes always match how long VIP
+    actually waits, including under ``VIP_TIMEOUT_SCALE``.
+    """
+    minutes = seconds / 60
+    if minutes == int(minutes):
+        n = int(minutes)
+        return f"{n} minute{'s' if n != 1 else ''}"
+    return f"{minutes:.1f} minutes"
 
 
 def _httpx_verify(insecure: bool, ca_bundle: Path | None) -> bool | str:
@@ -1555,7 +1665,7 @@ def _log_mint_cookie_diagnostic(page: Page, request_url: str) -> None:
     """
     try:
         current_url = page.url
-    except Exception:
+    except Exception:  # noqa: BLE001
         current_url = "<unknown>"
     print(f">>> Mint diagnostic: browser is on {current_url}")
     try:
@@ -1563,20 +1673,20 @@ def _log_mint_cookie_diagnostic(page: Page, request_url: str) -> None:
         print(f">>> Mint diagnostic: full cookie jar ({len(jar)} entries):")
         for entry in _summarize_cookies(jar):
             print(f"    {entry}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f">>> Mint diagnostic: could not read cookie jar: {exc}")
     try:
         scoped = page.context.cookies(request_url) or []
         print(f">>> Mint diagnostic: cookies sent to {request_url} ({len(scoped)} entries):")
         for entry in _summarize_cookies(scoped):
             print(f"    {entry}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f">>> Mint diagnostic: could not read scoped cookies: {exc}")
     try:
         doc_cookie = page.evaluate("() => document.cookie") or ""
         doc_names = [p.strip().partition("=")[0] for p in doc_cookie.split(";") if p.strip()]
         print(f">>> Mint diagnostic: document.cookie names: {doc_names}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f">>> Mint diagnostic: could not read document.cookie: {exc}")
 
 
@@ -1607,7 +1717,7 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
     """
     try:
         list_resp = client.get(f"/v1/users/{guid}/keys")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f">>> Warning: listing stale keys failed: {exc}")
         return
     if not list_resp.is_success:
@@ -1639,7 +1749,7 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
             continue  # belongs to a concurrent run
         try:
             client.delete(f"/v1/users/{guid}/keys/{key_id}")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             print(f">>> Warning: could not delete stale key {key_id}: {exc}")
 
 
@@ -1702,7 +1812,7 @@ def _body_snippet(resp, limit: int = 200) -> str:
     """
     try:
         text = _response_text(resp).strip()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return "<unreadable body>"
     text = " ".join(text.split())
     return text[:limit] if text else "<empty body>"

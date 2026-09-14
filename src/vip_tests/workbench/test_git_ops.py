@@ -174,7 +174,8 @@ def _wb_git_cleanup_state():
                 capture_output=True,
                 timeout=30,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
+            # Best-effort cleanup — don't mask the original failure/skip.
             pass
 
 

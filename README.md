@@ -122,6 +122,17 @@ vip verify --format json,junit,sarif
 # report/results.sarif   (--format sarif)  -> GitHub code scanning / secops
 ```
 
+Skip messages in the JUnit and SARIF output carry the actual skip reason
+instead of a generic "skipped" label. A check VIP was asked to run but could
+not -- a configured product whose authentication never completed, say -- is
+reported as **unproven** rather than as an ordinary skip: it carries an
+`UNPROVEN:` prefix in JUnit, SARIF level `warning`, and exits **6** so a
+pipeline can tell "the deployment is broken" (exit 1) from "the deployment
+could not be checked" (exit 6). Pass `--allow-unproven` to exit 0 anyway. `results.json` also records provenance
+for the run (VIP version, duration, Python version, platform, and whether the
+slow checks were excluded) so an archived report can be traced back to what
+produced it.
+
 The `--ci` preset bundles all three formats with concise tracebacks (`--tb=short`)
 and overrides `--format` if both are given. Run it without `--interactive-auth`/
 `--headless-auth` -- combining them is an error, since `--ci` is meant for

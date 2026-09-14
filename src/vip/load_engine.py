@@ -97,7 +97,7 @@ def _run_threadpool(url: str, headers: dict[str, str], n: int, timeout: float = 
                 "status": resp.status_code,
                 "error": None,
             }
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return {
                 "elapsed": time.monotonic() - start,
                 "status": None,
@@ -150,7 +150,7 @@ async def _async_load_test(
                         "status": resp.status_code,
                         "error": None,
                     }
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     return {
                         "elapsed": time.monotonic() - start,
                         "status": None,
