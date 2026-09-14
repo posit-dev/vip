@@ -175,6 +175,7 @@ def _wb_git_cleanup_state():
                 timeout=30,
             )
         except Exception:
+            # Best-effort cleanup — don't mask the original failure/skip.
             pass
 
 

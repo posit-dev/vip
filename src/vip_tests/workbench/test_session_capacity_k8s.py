@@ -134,6 +134,10 @@ def _parse_memory_gib(mem_str: str) -> float:
 
 @given("the Kubernetes cluster is configured", target_fixture="k8s_client")
 def k8s_cluster_configured(vip_config) -> KubernetesClient:
+    # Builds its own client instead of reusing the `kubernetes_client` fixture:
+    # the fixture collapses "not configured" and "construction failed" into the
+    # same `None`, but this step needs to tell them apart to report
+    # not_applicable vs. unproven (with the original exception message).
     k8s_cfg = vip_config.workbench.kubernetes
     if not k8s_cfg.is_configured:
         attest.not_applicable(
@@ -367,4 +371,5 @@ def cleanup_k8s_sessions(launched_sessions: list[dict], page: Page, workbench_ur
         try:
             expect(row).to_be_hidden(timeout=TIMEOUT_DIALOG)
         except Exception:
+            # Best-effort cleanup — don't mask the original failure/skip.
             pass
