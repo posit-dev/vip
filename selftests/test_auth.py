@@ -2673,7 +2673,7 @@ class TestHeadlessAuthTLSFlags:
         browser = stub.start.return_value.chromium.launch.return_value
 
         with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(Exception):  # timeout or AuthConfigError
+            with pytest.raises(AuthConfigError, match="timed out"):
                 start_headless_auth(
                     connect_url="https://c.example.com",
                     username="user",
@@ -2691,7 +2691,7 @@ class TestHeadlessAuthTLSFlags:
         browser = stub.start.return_value.chromium.launch.return_value
 
         with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(Exception):
+            with pytest.raises(AuthConfigError, match="timed out"):
                 start_headless_auth(
                     connect_url="https://c.example.com",
                     username="user",
@@ -2725,7 +2725,7 @@ class TestHeadlessAuthTLSFlags:
         monkeypatch.delenv("NODE_EXTRA_CA_CERTS", raising=False)
 
         with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(Exception):
+            with pytest.raises(AuthConfigError, match="timed out"):
                 start_headless_auth(
                     connect_url="https://c.example.com",
                     username="user",
@@ -2751,7 +2751,7 @@ class TestHeadlessAuthTLSFlags:
         stub = self._make_playwright_stub()
 
         with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(Exception):
+            with pytest.raises(AuthConfigError, match="timed out"):
                 start_headless_auth(
                     connect_url="https://c.example.com",
                     username="user",
@@ -3395,14 +3395,12 @@ class TestRefreshAuthCacheFromStorageState:
     """
 
     def _existing_cache(self, tmp_path):
-        import os
-
         cache = tmp_path / ".vip-auth-cache.json"
         cache.write_text('{"cookies": [{"name": "dead", "value": "old"}], "origins": []}')
-        os.chmod(cache, 0o600)
+        cache.chmod(0o600)
         meta = cache.with_suffix(".meta.json")
         meta.write_text('{"api_key": null, "workbench_url": "https://wb.example.com"}')
-        os.chmod(meta, 0o600)
+        meta.chmod(0o600)
         return cache, meta
 
     def test_rewrites_an_existing_cache_with_the_live_state(self, tmp_path):

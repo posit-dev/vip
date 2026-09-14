@@ -1606,12 +1606,7 @@ class TestRstudioEvalErrorPath:
         monkeypatch.setattr(
             exec_mod,
             "expect",
-            lambda *a, **k: MagicMock(
-                **{
-                    "to_be_visible": lambda **kw: None,
-                    "to_contain_text": boom,
-                }
-            ),
+            lambda *a, **k: MagicMock(to_be_visible=lambda **kw: None, to_contain_text=boom),
         )
         page = _AceFakePage()
         with pytest.raises(ExecError) as excinfo:
@@ -1629,12 +1624,7 @@ class TestRstudioEvalErrorPath:
         monkeypatch.setattr(
             exec_mod,
             "expect",
-            lambda *a, **k: MagicMock(
-                **{
-                    "to_be_visible": lambda **kw: None,
-                    "to_contain_text": boom,
-                }
-            ),
+            lambda *a, **k: MagicMock(to_be_visible=lambda **kw: None, to_contain_text=boom),
         )
         page = _AceFakePage(insert_text_noop=True, drop_tail_on_type=[20] * 8)
         with pytest.raises(ExecError) as excinfo:

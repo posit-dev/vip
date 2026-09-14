@@ -108,7 +108,10 @@ def _detect_products_in_steps(scenarios: list[dict[str, str | list[str]]]) -> se
     products_found: set[str] = set()
     for scenario in scenarios:
         for step in scenario.get("steps", []):
-            assert isinstance(step, str)
+            if not isinstance(step, str):
+                raise ValueError(
+                    f"scenario step must be a str, got {type(step).__name__}: {step!r}"
+                )
             for product, pattern in _PRODUCT_PATTERNS.items():
                 if pattern.search(step):
                     products_found.add(product)

@@ -269,7 +269,7 @@ class InteractiveAuthSession:
             except Exception as exc:  # noqa: BLE001
                 print(f">>> Warning: Could not delete API key: {exc}")
 
-        if self._tmpdir and os.path.isdir(self._tmpdir):
+        if self._tmpdir and Path(self._tmpdir).is_dir():
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
 
@@ -662,8 +662,8 @@ def refresh_auth_cache_from_storage_state(
         tmp = Path(tmp_name)
         with os.fdopen(fd, "w") as handle:
             handle.write(payload)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, path)
+        tmp.chmod(0o600)
+        tmp.replace(path)
         return True
     except Exception as exc:  # noqa: BLE001
         logger.debug("Could not refresh the auth cache at %s: %s", path, exc)
@@ -694,7 +694,7 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
 
     # Copy storage state to the cache location.
     _shutil.copy2(session.storage_state_path, cache_path)
-    os.chmod(cache_path, 0o600)
+    cache_path.chmod(0o600)
 
     # Write companion metadata.  ``connect_url`` keeps the resolved
     # form (used for API key cleanup); ``requested_connect_url`` keeps
@@ -711,7 +711,7 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         "workbench_url": session._workbench_url,
     }
     meta_path.write_text(json.dumps(meta))
-    os.chmod(meta_path, 0o600)
+    meta_path.chmod(0o600)
 
 
 def _resolve_str_if_inferred(
@@ -825,12 +825,13 @@ def start_interactive_auth(
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
-    assert primary_url is not None  # guaranteed by the check above
+    if primary_url is None:
+        raise RuntimeError("unreachable: connect_url or workbench_url required, checked above")
     login_path = "/__login__" if connect_url else ""
 
     tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
     storage_state_path = Path(tmpdir) / "vip-auth-state.json"
-    os.chmod(tmpdir, 0o700)
+    Path(tmpdir).chmod(0o700)
 
     key_name = f"{_KEY_NAME_PREFIX}{int(time.time())}"
 
@@ -939,7 +940,7 @@ def start_interactive_auth(
 
         return session
     except Exception:
-        if tmpdir and os.path.isdir(tmpdir):
+        if tmpdir and Path(tmpdir).is_dir():
             shutil.rmtree(tmpdir, ignore_errors=True)
         raise
     finally:
@@ -1073,12 +1074,13 @@ def start_headless_auth(
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
-    assert primary_url is not None
+    if primary_url is None:
+        raise RuntimeError("unreachable: connect_url or workbench_url required, checked above")
     login_path = "/__login__" if connect_url else ""
 
     tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
     storage_state_path = Path(tmpdir) / "vip-auth-state.json"
-    os.chmod(tmpdir, 0o700)
+    Path(tmpdir).chmod(0o700)
 
     key_name = f"{_KEY_NAME_PREFIX}{int(time.time())}"
 
@@ -1171,7 +1173,7 @@ def start_headless_auth(
 
         return session
     except Exception:
-        if tmpdir and os.path.isdir(tmpdir):
+        if tmpdir and Path(tmpdir).is_dir():
             shutil.rmtree(tmpdir, ignore_errors=True)
         raise
     finally:
