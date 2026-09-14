@@ -80,6 +80,24 @@ def current_host() -> str:
 
 
 def load(path: Path) -> Manifest | None:
+    """Load the manifest at ``path``, or ``None`` if there is nothing to load.
+
+    Returns ``None`` (not an error) when ``path`` doesn't exist or its contents
+    are empty/whitespace-only — both mean "no manifest has been written yet,"
+    which is the expected state before the first ``vip install``.
+
+    Raises ``ManifestError`` for every other way the file can fail to be a
+    usable manifest: invalid JSON, a missing or non-integer ``version``, a
+    ``version`` newer than this build's ``SCHEMA_VERSION`` (an older vip reading a
+    newer manifest), a non-array ``items`` or ``pending_system_packages`` field,
+    a ``pending_system_packages`` entry that isn't a string, a non-object
+    ``items`` entry, an ``items`` entry with an unrecognized ``kind``, or an
+    ``items`` entry missing a field its ``kind`` requires. Raising is
+    all-or-nothing: this function never returns a partially-populated
+    ``Manifest`` for a malformed file. ``vip_version``/``created_at``/``updated_at``/
+    ``host``/``platform``/``platform_id``/``platform_version`` are read leniently
+    with defaults, since none of them are needed to interpret ``items`` safely.
+    """
     if not path.exists():
         return None
     content = path.read_text().strip()
@@ -152,6 +170,16 @@ def load(path: Path) -> Manifest | None:
 
 
 def save(manifest: Manifest, path: Path) -> None:
+    """Write ``manifest`` to ``path`` atomically.
+
+    Serializes to a sibling ``path.with_suffix(path.suffix + ".tmp")`` file and
+    then ``os.replace``s it onto ``path``, so a reader of ``path`` never observes a
+    partially-written file and a crash mid-write leaves the previous manifest
+    at ``path`` untouched. If writing the temp file or the replace itself
+    raises, the temp file is removed on a best-effort basis (an ``OSError``
+    during that cleanup is swallowed) and the original exception is
+    re-raised, so callers see the real failure rather than a cleanup error.
+    """
     serialized = {
         "version": manifest.version,
         "vip_version": manifest.vip_version,

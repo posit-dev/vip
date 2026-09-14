@@ -74,6 +74,32 @@ def build_install_plan(
     playwright_cache_dir: Path,
     skip_system: bool,
 ) -> InstallPlan:
+    """Decide what ``vip install`` still needs to do, without doing any of it.
+
+    Pure: ``rpm_installed``/``dpkg_installed`` are injected callables (not called
+    directly against the system) and ``chromium_present`` is a precomputed bool,
+    so this function performs no I/O itself and is safe to call from tests.
+
+    Branches by ``platform_info.family``:
+    - ``rhel-family``/``debian-family``/``suse-family``: diffs the canonical package
+      list for that family against what's already present, and sets
+      ``system_step`` to only the missing packages (manager ``dnf``/``apt``/``zypper``
+      respectively). Any ``manifest`` package still marked pending that is now
+      present is moved into ``claim_pending`` instead of being requested again;
+      for ``debian-family`` this reconciliation also maps a manifest entry
+      recorded under a legacy package name (e.g. ``libasound2``) onto its
+      current replacement (``libasound2t64``) before checking presence.
+    - ``macos``: ``system_step`` is left ``None`` (no system-package step exists).
+    - ``unsupported``: ``system_step`` is left ``None`` and ``unsupported_warning`` is
+      set to a message naming the platform.
+
+    If ``skip_system`` is true, the platform branch above is skipped entirely
+    and ``system_step``/``claim_pending``/``unsupported_warning`` stay at their
+    defaults, regardless of platform family.
+
+    ``playwright_step`` is set whenever ``chromium_present`` is false, independent
+    of ``skip_system`` and platform family.
+    """
     family = platform_info.family
     system_step: SystemPackagesStep | None = None
     unsupported_warning: str | None = None
@@ -139,6 +165,22 @@ def build_uninstall_plan(
     manifest: Manifest,
     connect_url: str | None,
 ) -> UninstallPlan:
+    """Turn a ``Manifest`` into a plan the runner or a dry-run print can act on.
+
+    Pure and total: reads only ``manifest`` and ``connect_url``, performs no I/O,
+    and always succeeds. ``delete_manifest`` is unconditionally ``True`` since a
+    manifest always names itself for deletion once its contents are read.
+    ``playwright_cache_dirs`` and each manager's package list are deduplicated
+    (via ``set``) and sorted before being turned into commands, so plan output
+    is stable across repeated calls with the same manifest. A manager not in
+    ``{"dnf", "apt", "zypper"}`` is silently dropped from
+    ``system_remove_commands`` with no warning and no record kept anywhere —
+    ``UninstallPlan`` has no field for omitted packages, and the manifest that
+    named them is deleted unconditionally once uninstall runs, so nothing
+    about them survives past this call.
+    ``chained_cleanup`` is ``connect_url`` passed through unchanged and
+    unvalidated; the caller decides what it means to act on it.
+    """
     cache_dirs = tuple(
         sorted({i.cache_dir for i in manifest.items if isinstance(i, PlaywrightItem)})
     )
