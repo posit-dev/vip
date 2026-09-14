@@ -36,7 +36,7 @@ class TestParseTag:
         assert parse_tag("v0.58.12") == (0, 58, 12)
 
     def test_wrong_segment_count_rejected(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"is not a MAJOR\.MINOR\.PATCH version"):
             parse_tag("v2026.7")
 
 

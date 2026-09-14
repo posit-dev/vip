@@ -524,16 +524,14 @@ class TestRealMarkerMechanics:
     ``iter_markers``. Exercised on a real pytest ``Item``, not a fake."""
 
     def test_regroup_wins_via_get_closest_marker_and_leaves_no_duplicate(self, pytester):
-        import pytest as _pytest
-
         # Disable the vip plugin for the nested collection: its own _assign_xdist_group
         # would inject a "general" group and obscure the mechanic under test.
         modcol = pytester.getmodulecol("def test_x(): pass", configargs=["-p", "no:vip"])
         (item,) = pytester.genitems([modcol])
         # Simulate a pre-existing group, then apply exactly the hook's two operations.
-        item.add_marker(_pytest.mark.xdist_group("workbench"))
+        item.add_marker(pytest.mark.xdist_group("workbench"))
         item.own_markers = [m for m in item.own_markers if m.name != "xdist_group"]
-        item.add_marker(_pytest.mark.xdist_group("workbench_packages"))
+        item.add_marker(pytest.mark.xdist_group("workbench_packages"))
 
         # get_closest_marker is the path LoadGroupScheduling reads — it must see the new group.
         marker = item.get_closest_marker("xdist_group")

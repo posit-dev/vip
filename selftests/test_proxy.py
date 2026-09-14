@@ -230,7 +230,8 @@ def test_http_proxy_promotion_announces_itself_once(monkeypatch, capsys):
     assert err.count(">>> Notice:") == 1
     assert "http://gw:3128" in err
     # Both escape hatches have to be in the message a user actually sees.
-    assert "HTTPS_PROXY" in err and "NO_PROXY" in err
+    assert "HTTPS_PROXY" in err
+    assert "NO_PROXY" in err
 
 
 def test_promotion_notice_redacts_proxy_credentials(monkeypatch, capsys):
@@ -343,7 +344,7 @@ def test_from_dict_accepts_real_booleans():
 
 
 @pytest.mark.parametrize(
-    "url,expected",
+    ("url", "expected"),
     [
         ("https://connect.example.com/x", "http://p:8080"),
         ("https://directhost.example/x", None),  # exact NO_PROXY host bypasses
@@ -400,7 +401,8 @@ def test_build_mounts_selects_proxy_and_bypass():
             return getattr(pool, "_proxy_url", None) if pool else None
 
         proxied = chosen_proxy("https://connect.example.com/x")
-        assert proxied is not None and proxied.host == b"p"
+        assert proxied is not None
+        assert proxied.host == b"p"
         # NO_PROXY host must fall to a direct transport (no proxy on the pool).
         assert chosen_proxy("https://directhost.example/x") is None
     finally:
@@ -530,7 +532,8 @@ def test_env_reconcile_explicit_url_overrides_and_clears_ambient_no_proxy():
     env = {"HTTPS_PROXY": "http://other:9999", "NO_PROXY": "was.here", "no_proxy": "was.here"}
     out = proxy_env_for_subprocess(ProxyConfig(url="http://gw:3128"), env)
     assert out["HTTPS_PROXY"] == "http://gw:3128"  # ambient proxy overridden
-    assert "NO_PROXY" not in out and "no_proxy" not in out  # ambient NO_PROXY cleared
+    assert "NO_PROXY" not in out  # ambient NO_PROXY cleared
+    assert "no_proxy" not in out
 
 
 def test_env_reconcile_explicit_url_sets_no_proxy_from_config():
@@ -728,7 +731,7 @@ def test_scheme_qualified_no_proxy_keeps_its_scheme_in_the_browser():
 
 
 @pytest.mark.parametrize(
-    "no_proxy_host,bypass",
+    ("no_proxy_host", "bypass"),
     [
         # Wildcard host forms are matchable, and mean the same thing they mean
         # under ``all://`` -- just restricted to the one scheme.
@@ -758,7 +761,7 @@ def test_scheme_qualified_no_proxy_wildcard_forms_match_httpx(no_proxy_host, byp
 
 
 @pytest.mark.parametrize(
-    "no_proxy_host,bypass,direct_scheme",
+    ("no_proxy_host", "bypass", "direct_scheme"),
     [
         ("https://*", "https://*", "https"),
         ("http://*", "http://*", "http"),
@@ -816,7 +819,7 @@ def test_scheme_less_no_proxy_wildcard_emits_nothing_because_httpx_proxies_it():
 
 
 @pytest.mark.parametrize(
-    "no_proxy_host,bypass,direct,proxied",
+    ("no_proxy_host", "bypass", "direct", "proxied"),
     [
         # httpx normalises a scheme's DEFAULT port away at URL-parse time, so
         # ``https://*:443`` keeps port None and matches every https URL on ANY
@@ -895,7 +898,7 @@ def test_playwright_bypass_matches_httpx_for_ports(no_proxy_host, bypass, direct
 
 
 @pytest.mark.parametrize(
-    "no_proxy_host,pattern,bypass,direct,proxied",
+    ("no_proxy_host", "pattern", "bypass", "direct", "proxied"),
     [
         (
             "example.com",
@@ -1172,7 +1175,8 @@ def test_playwright_proxy_without_target_keeps_https_first_selection(monkeypatch
     monkeypatch.setenv("HTTP_PROXY", "http://http-gw:1")
     monkeypatch.setenv("HTTPS_PROXY", "http://https-gw:2")
     pw = playwright_proxy(build_proxy_map(ProxyConfig()))
-    assert pw is not None and pw["server"] == "http://https-gw:2"
+    assert pw is not None
+    assert pw["server"] == "http://https-gw:2"
 
 
 def test_playwright_proxy_prefers_https_env(monkeypatch):
@@ -1180,7 +1184,8 @@ def test_playwright_proxy_prefers_https_env(monkeypatch):
     monkeypatch.setenv("HTTPS_PROXY", "http://httpsproxy:2")
     monkeypatch.delenv("NO_PROXY", raising=False)
     pw = playwright_proxy(build_proxy_map(ProxyConfig()))
-    assert pw is not None and pw["server"] == "http://httpsproxy:2"
+    assert pw is not None
+    assert pw["server"] == "http://httpsproxy:2"
 
 
 def test_playwright_proxy_splits_authenticated_credentials():
@@ -1232,7 +1237,7 @@ def test_http_only_env_browser_and_httpx_agree_via_tunnel(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "url,expected",
+    ("url", "expected"),
     [
         ("http://alice:s3cret@proxy.corp:8080", "http://proxy.corp:8080"),
         ("http://alice:s3cret@proxy.corp", "http://proxy.corp"),
@@ -1249,7 +1254,7 @@ def test_redact_proxy_url_strips_userinfo(url, expected):
 
 
 @pytest.mark.parametrize(
-    "url,expected",
+    ("url", "expected"),
     [
         ("http://u:p@[fe80::1]:8080", "http://[fe80::1]:8080"),
         ("http://u:p@[fe80::1]", "http://[fe80::1]"),
@@ -1351,7 +1356,7 @@ def test_ui_test_browser_context_is_forced_direct_when_disabled(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def _split_scheme_proxies(monkeypatch):
     """HTTP_PROXY and HTTPS_PROXY pointing at different gateways."""
     for var in ("ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
@@ -1375,9 +1380,8 @@ def _launched_proxy(monkeypatch) -> dict:
     return seen
 
 
-def test_interactive_auth_browser_uses_the_proxy_for_its_login_target(
-    monkeypatch, _split_scheme_proxies
-):
+@pytest.mark.usefixtures("_split_scheme_proxies")
+def test_interactive_auth_browser_uses_the_proxy_for_its_login_target(monkeypatch):
     """The interactive login navigates the primary product URL, so an http://
     product must put the browser on the http proxy -- the same one the API-key
     mint and the product clients will use."""
@@ -1393,9 +1397,8 @@ def test_interactive_auth_browser_uses_the_proxy_for_its_login_target(
     )
 
 
-def test_headless_auth_browser_uses_the_proxy_for_its_login_target(
-    monkeypatch, _split_scheme_proxies
-):
+@pytest.mark.usefixtures("_split_scheme_proxies")
+def test_headless_auth_browser_uses_the_proxy_for_its_login_target(monkeypatch):
     """Same contract for the headless login path."""
     from vip.auth import start_headless_auth
 
@@ -1411,9 +1414,8 @@ def test_headless_auth_browser_uses_the_proxy_for_its_login_target(
     assert seen["proxy"]["server"] == "http://http-gw:1"
 
 
-def test_authenticated_page_uses_the_proxy_for_the_workbench_url(
-    monkeypatch, tmp_path, _split_scheme_proxies
-):
+@pytest.mark.usefixtures("_split_scheme_proxies")
+def test_authenticated_page_uses_the_proxy_for_the_workbench_url(monkeypatch, tmp_path):
     """``vip cleanup --workbench-url`` drives the Workbench UI, so its browser
     must take the route httpx would take to that same Workbench URL."""
     from vip.auth import InteractiveAuthSession, authenticated_page
@@ -1430,7 +1432,8 @@ def test_authenticated_page_uses_the_proxy_for_the_workbench_url(
     assert seen["proxy"]["server"] == "http://http-gw:1"
 
 
-def test_ui_browser_proxy_resolves_an_inferred_scheme_first(monkeypatch, _split_scheme_proxies):
+@pytest.mark.usefixtures("_split_scheme_proxies")
+def test_ui_browser_proxy_resolves_an_inferred_scheme_first(monkeypatch):
     """A scheme-less --workbench-url must be resolved before picking the proxy.
 
     ``browser_context_args`` is session-scoped and depends only on ``vip_config``,
@@ -1460,7 +1463,8 @@ def test_ui_browser_proxy_resolves_an_inferred_scheme_first(monkeypatch, _split_
     assert pw_proxy["server"] == "http://http-gw:1"
 
 
-def test_ui_test_browser_context_uses_the_proxy_for_the_product_url(_split_scheme_proxies):
+@pytest.mark.usefixtures("_split_scheme_proxies")
+def test_ui_test_browser_context_uses_the_proxy_for_the_product_url():
     """The in-suite UI tests drive the configured products, so their browser
     context must resolve the same proxy the API clients did."""
     from vip.config import VIPConfig

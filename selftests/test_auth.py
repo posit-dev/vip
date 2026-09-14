@@ -1375,12 +1375,9 @@ class TestAuthTimeoutErrorHierarchy:
     def test_instance_is_caught_by_auth_config_error_except_clause(self):
         from vip.auth import AuthConfigError, AuthTimeoutError
 
-        try:
+        with pytest.raises(AuthConfigError) as excinfo:
             raise AuthTimeoutError("boom")
-        except AuthConfigError as exc:
-            assert isinstance(exc, AuthTimeoutError)
-        else:
-            pytest.fail("AuthTimeoutError was not caught by except AuthConfigError")
+        assert isinstance(excinfo.value, AuthTimeoutError)
 
 
 class TestClickWorkbenchOidcConfirm:

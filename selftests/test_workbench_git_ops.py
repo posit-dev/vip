@@ -79,7 +79,8 @@ def test_do_clone_uses_custom_workdir(monkeypatch):
 
 def _git_ops_feature_path() -> Path:
     spec = find_spec("vip_tests")
-    assert spec and spec.submodule_search_locations
+    assert spec
+    assert spec.submodule_search_locations
     return Path(spec.submodule_search_locations[0]) / "workbench" / "test_git_ops.feature"
 
 

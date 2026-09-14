@@ -77,7 +77,7 @@ class FakeClock:
         return self.now
 
 
-@pytest.fixture()
+@pytest.fixture
 def clock(monkeypatch):
     fake = FakeClock()
     monkeypatch.setattr("vip_tests.package_manager.pages.ui.time.monotonic", fake)
@@ -136,7 +136,7 @@ class TestSlowSearch:
     def test_warning_is_actionable(self, clock):
         page = _page(clock, delay=53.8)
 
-        with pytest.warns(UserWarning) as record:
+        with pytest.warns(UserWarning, match="package search took 53.8s") as record:
             wait_for_search_results(page)
 
         message = str(record[0].message)
