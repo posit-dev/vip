@@ -350,7 +350,8 @@ def _uninstall_with_manifest(tmp_path, monkeypatch, **arg_overrides):
     """Write a minimal manifest and run `vip uninstall --yes` against it,
     returning the kwargs the chained-cleanup ConnectClient was constructed
     with (issue #563's --insecure/--ca-bundle must reach that client, not
-    just the scheme-resolution probe)."""
+    just the scheme-resolution probe).
+    """
     import argparse
     import socket
 
@@ -430,7 +431,8 @@ def test_toml_insecure_reaches_connect_client_with_connect_url_flag(tmp_path, mo
     chained-cleanup ConnectClient. Before this fix, cfg was only loaded when
     --connect-url was omitted, so a --connect-url invocation had no route to
     vip.toml's [tls] settings at all -- this is the combination that was
-    actually broken."""
+    actually broken.
+    """
     (tmp_path / "vip.toml").write_text("[tls]\ninsecure = true\n")
     calls = _uninstall_with_manifest(tmp_path, monkeypatch)
     assert calls["insecure"] is True

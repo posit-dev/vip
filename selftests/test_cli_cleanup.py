@@ -446,7 +446,8 @@ def _reset_fake_connect_client():
 class TestCleanupTLSFlags:
     """--insecure/--ca-bundle (issue #563) parse on `vip cleanup` and reach the
     ConnectClient that performs the actual cleanup, whether they come from the
-    CLI or from vip.toml's [tls] section."""
+    CLI or from vip.toml's [tls] section.
+    """
 
     def _parse_cleanup(self, *argv: str) -> argparse.Namespace:
         """Parse a `vip cleanup` command line and return the namespace.
