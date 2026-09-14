@@ -38,6 +38,25 @@ uv run ruff check --fix src/ selftests/ examples/ docker/  # auto-fix lint
 uv run ruff format src/ selftests/ examples/ docker/       # reformat
 ```
 
+### Pre-commit hooks (optional)
+
+`.pre-commit-config.yaml` runs `ruff --fix` and `ruff-format` on staged files
+before each commit, catching lint and format issues locally instead of
+waiting for CI. It's optional -- `just check` remains the CI-equivalent gate,
+and CI enforces both regardless of whether the hook is installed.
+
+`pre-commit` itself isn't in the `dev` extra, so install and run it with
+[uvx](https://docs.astral.sh/uv/guides/tools/) rather than `uv run`:
+
+```bash
+uvx pre-commit install
+```
+
+The hook's `rev: v0.15.0` pin must move together with the ruff version pinned
+in `ci.yml` and the `dev` extra's `ruff` range in `pyproject.toml` -- see
+AGENTS.md's "Common mistakes to avoid" for why letting them drift apart makes
+a PR pass locally and fail in CI, or the reverse.
+
 ## Type checking
 
 ```bash
