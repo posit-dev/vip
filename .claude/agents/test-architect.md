@@ -32,7 +32,7 @@ Work through each layer top-down:
 - Use `@scenario("file.feature", "Scenario name")` to link scenarios
 - Use `target_fixture` to pass state between steps
 - Keep steps under ~10 lines; push logic to the client layer
-- Reuse existing steps; check `src/vip_tests/conftest.py` and sibling test files
+- Reuse existing steps; check the sibling test files for the feature
 
 ### 3. Driver Port (Layer 3)
 
