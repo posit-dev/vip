@@ -858,6 +858,66 @@ def _stash_scenario_metadata(item: pytest.Item) -> None:
     }
 
 
+def _e_line_blocks(longrepr: str) -> list[list[str]]:
+    """Split *longrepr* into its contiguous runs of pytest ``E`` lines.
+
+    pytest separates the members of an exception chain with prose lines ("The
+    above exception was the direct cause of the following exception:", "During
+    handling of the above exception, another exception occurred:"), which are not
+    ``E`` lines. One contiguous run of ``E`` lines is therefore one exception,
+    and the last run is the exception the test actually raised.
+
+    Blocking matters because a continuation line can look exactly like an
+    exception header -- ``E    Connect: /metrics returned 403`` parses as type
+    ``Connect`` -- so "the last thing that looks like a type" is not a safe way
+    to find the last exception, but "the first line of the last block" is.
+    """
+    blocks: list[list[str]] = []
+    in_block = False
+    for line in longrepr.splitlines():
+        if re.match(r"^E\s", line):
+            if not in_block:
+                blocks.append([])
+            blocks[-1].append(line)
+            in_block = True
+        else:
+            in_block = False
+    return blocks
+
+
+def _parse_e_block(block: list[str]) -> tuple[str, str] | None:
+    """Parse one ``E``-line block into ``(exception_type, message)``, or None.
+
+    The block's first line carries the type; the remaining lines are
+    continuation text belonging to it.
+    """
+    head, rest = block[0], block[1:]
+
+    # "E   ExcType: message" (message may be empty). Continuation lines are
+    # joined so multi-line assertion detail survives into the concise output.
+    m = re.match(r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.*)", head)
+    if m:
+        msg_lines = [m.group(2).strip()]
+        for line in rest:
+            cont = re.match(r"^E\s{3,}(.+)", line)
+            if not cont:
+                break
+            msg_lines.append(cont.group(1).strip())
+        return m.group(1), "\n".join(line for line in msg_lines if line)
+
+    # Bare assertion from pytest's assertion rewriting: "E   assert 403 == 200".
+    m = re.match(r"^E\s+(assert\s+.+)", head)
+    if m:
+        return "AssertionError", m.group(1).strip()
+
+    # Bare exception type with no message: "E   ValueError" (no colon).
+    m = re.match(r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?)\s*$", head)
+    if m:
+        return m.group(1), ""
+
+    return None
+
+
 def _extract_exception_info(longrepr: str) -> tuple[str, str]:
     """Extract (exception_type, message) from a longrepr string.
 
@@ -867,39 +927,22 @@ def _extract_exception_info(longrepr: str) -> tuple[str, str]:
     - pytest's bare ``E   ExcType`` lines (exception with no message)
     - plain ``ExcType: message`` strings (e.g. from failures.json)
 
+    For a chained failure (``raise X from Y``, or an exception raised while
+    handling another) the *last* ``E`` block is reported, because that is the
+    exception the code actually raised. pytest prints the cause first, so
+    reporting the first block reports the cause and discards the diagnosis the
+    raising code built -- live, an RStudio console failure reported Playwright's
+    multi-kilobyte locator dump while the ExecError naming the real reason never
+    appeared anywhere in the report.
+
     Returns ``("UnknownError", <truncated string>)`` if parsing fails.
     """
-    # Look for pytest's "E   ExcType: message" line format (message may be empty).
-    # Multi-line assertion messages produce continuation "E   ..." lines that
-    # we join together so the concise output keeps the full details.
-    m = re.search(
-        r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.*)",
-        longrepr,
-        re.MULTILINE,
-    )
-    if m:
-        msg_lines = [m.group(2).strip()]
-        # Gather only the contiguous block of E-lines that follow immediately.
-        for line in longrepr[m.end() :].lstrip("\n").splitlines():
-            cont = re.match(r"^E\s{3,}(.+)", line)
-            if not cont:
-                break
-            msg_lines.append(cont.group(1).strip())
-        return m.group(1), "\n".join(line for line in msg_lines if line)
-
-    # Bare assertion from pytest's assertion rewriting: "E   assert 403 == 200"
-    m = re.search(r"^E\s+(assert\s+.+)", longrepr, re.MULTILINE)
-    if m:
-        return "AssertionError", m.group(1).strip()
-
-    # Bare exception type with no message: "E   ValueError" (no colon)
-    m = re.search(
-        r"^E\s+([\w.]+(?:Error|Exception|Timeout|Refused)?)\s*$",
-        longrepr,
-        re.MULTILINE,
-    )
-    if m:
-        return m.group(1), ""
+    # Walk the chain backwards: the raised exception first, falling back to
+    # earlier members if the last block is not in a recognised shape.
+    for block in reversed(_e_line_blocks(longrepr)):
+        parsed = _parse_e_block(block)
+        if parsed:
+            return parsed
 
     # Fall back to "ExcType: message" at the start of the string.
     m = re.match(r"([\w.]+(?:Error|Exception|Timeout|Refused)?):\s*(.+)", longrepr.strip())

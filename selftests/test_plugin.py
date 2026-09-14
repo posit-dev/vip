@@ -138,6 +138,56 @@ class TestExtractExceptionInfo:
         assert exc_type == "ValueError"
         assert exc_message == ""
 
+    def test_chained_exception_reports_what_was_raised_not_the_cause(self):
+        """``raise X from Y`` must report X. pytest prints the *cause* first, so
+        taking the first E-block reports Y and silently discards the diagnosis
+        the code went to the trouble of building (live: an RStudio console
+        failure reported Playwright's 8KB dump instead of the ExecError naming
+        the actual reason)."""
+        longrepr = (
+            "src/vip_tests/workbench/exec.py:410: in rstudio_eval\n"
+            "E   AssertionError: Locator expected to contain text '<<VIP-END-abc>>'\n"
+            "E   Actual value: R 4.4.3 ... XXXXXXXXXXXX\n"
+            "\n"
+            "The above exception was the direct cause of the following exception:\n"
+            "\n"
+            "src/vip_tests/workbench/exec.py:425: in rstudio_eval\n"
+            "E   vip_tests.workbench.exec.ExecError: R console did not return the "
+            "expected output within 30000 ms. Delivery diagnostics: the command was "
+            "not submitted.\n"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "vip_tests.workbench.exec.ExecError"
+        assert "not submitted" in exc_message
+
+    def test_implicitly_chained_exception_reports_what_was_raised(self):
+        """Same for implicit chaining (``__context__``), which pytest renders as
+        'During handling of the above exception, another exception occurred'."""
+        longrepr = (
+            "E   KeyError: 'missing'\n"
+            "\n"
+            "During handling of the above exception, another exception occurred:\n"
+            "\n"
+            "E   ValueError: config key absent\n"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "ValueError"
+        assert exc_message == "config key absent"
+
+    def test_playwright_dump_lines_are_not_mistaken_for_exception_types(self):
+        """Playwright's dump carries 'Actual value:', 'Call log:' and
+        'Aria snapshot:' lines. None are exception types, so none may displace
+        the real one -- they are continuation text of the block they follow."""
+        longrepr = (
+            "E   vip_tests.workbench.exec.ExecError: console never answered\n"
+            "E   Actual value: something\n"
+            "E   Call log: waiting for locator(...)\n"
+            "E   Aria snapshot: - textbox: cat(...)\n"
+        )
+        exc_type, exc_message = _extract_exception_info(longrepr)
+        assert exc_type == "vip_tests.workbench.exec.ExecError"
+        assert exc_message.startswith("console never answered")
+
     def test_unknown_format_falls_back(self):
         longrepr = "something weird happened"
         exc_type, exc_message = _extract_exception_info(longrepr)
