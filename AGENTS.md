@@ -26,8 +26,8 @@ Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `py
 Ruff is the linter and formatter. CI enforces both. Always run checks before committing:
 
 ``` bash
-uv run ruff check src/ selftests/ examples/ docker/
-uv run ruff format --check src/ selftests/ examples/ docker/
+uv run ruff check .
+uv run ruff format --check .
 ```
 
 Or with just:
@@ -36,7 +36,7 @@ Or with just:
 just check
 ```
 
-Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. All Python directories (`src/`, which includes `src/vip_tests/`, plus `selftests/`, `examples/` and `docker/`) must pass. `docker/` is easy to forget and holds `docker/playwright-smoke.py`. CI pins ruff to version 0.15.0 -- do not change the version without updating `.github/workflows/ci.yml`.
+Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. The whole repository must pass, not just `src/`, `selftests/`, `examples/` and `docker/` -- CI's ruff action already covers `scripts/` too, since it appends the repo root to its arguments, so run these commands from the repo root to match. CI pins ruff to version 0.15.0 -- do not change the version without updating `.github/workflows/ci.yml`.
 
 Auto-fix before committing:
 

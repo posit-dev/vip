@@ -27,19 +27,19 @@ relock:
 
 # Run ruff linter
 lint:
-    uv run ruff check src/ selftests/ examples/ docker/
+    uv run ruff check .
 
 # Run ruff formatter check (fails if files would change)
 format-check:
-    uv run ruff format --check src/ selftests/ examples/ docker/
+    uv run ruff format --check .
 
 # Auto-fix lint issues
 lint-fix:
-    uv run ruff check --fix src/ selftests/ examples/ docker/
+    uv run ruff check --fix .
 
 # Format code in place
 format:
-    uv run ruff format src/ selftests/ examples/ docker/
+    uv run ruff format .
 
 # Run all checks (lint + format)
 check: lint format-check
