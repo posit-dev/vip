@@ -20,6 +20,7 @@ def test_vip_install_dry_run_on_macos_or_unsupported(tmp_path: Path, monkeypatch
         ["uv", "run", "vip", "install", "--dry-run"],
         capture_output=True,
         text=True,
+        check=False,
     )
     # Either prints a plan or reports up-to-date; never errors.
     assert cp.returncode == 0

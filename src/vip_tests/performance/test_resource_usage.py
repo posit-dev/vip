@@ -76,7 +76,7 @@ def generate_traffic_and_measure_response_times(vip_config, vip_verbose):
                         file=sys.stderr,
                         flush=True,
                     )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 elapsed = time.monotonic() - start
                 results.append({"elapsed": elapsed, "status": None, "error": str(exc)})
                 if verbose:
@@ -158,7 +158,7 @@ def check_prometheus_endpoints(vip_config):
                 failures.append(
                     f"{product_name}: /metrics returned {resp.status_code} (expected 200)"
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             failures.append(f"{product_name}: /metrics request failed ({exc})")
 
     assert not failures, "Prometheus metrics endpoint check failed:\n" + "\n".join(failures)

@@ -73,7 +73,7 @@ def parse_feature_file(path: Path, *, relative_to: Path | None = None) -> dict:
             continue
 
         # Scenario / Scenario Outline.
-        if line.startswith("Scenario Outline:") or line.startswith("Scenario:"):
+        if line.startswith(("Scenario Outline:", "Scenario:")):
             if current_scenario is not None:
                 scenarios.append(current_scenario)
             prefix = "Scenario Outline:" if line.startswith("Scenario Outline:") else "Scenario:"

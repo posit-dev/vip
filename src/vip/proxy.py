@@ -176,15 +176,15 @@ def redact_proxy_url(url: str | None) -> str | None:
     through here first so the password never lands in stdout or CI logs.
     Returns the input unchanged when it has no userinfo. When the URL cannot be
     parsed at all, a ``user:pass@`` component is still stripped textually rather
-    than echoed verbatim -- the failure branch used to return the raw string, so
-    a malformed authenticated proxy (e.g. a typo'd port, ``http://u:p@gw:8O80``)
-    leaked its password into the :class:`ProxyConfigError` that names it.
+    than echoed verbatim, so a malformed authenticated proxy (e.g. a typo'd port,
+    ``http://u:p@gw:8O80``) never leaks its password into the
+    :class:`ProxyConfigError` that names it.
     """
     if not url:
         return url
     try:
         parsed = httpx.URL(url)
-    except Exception:
+    except Exception:  # noqa: BLE001
         # httpx.URL rejected the value (most often an invalid port). We still
         # must not surface an embedded password -- this return flows straight
         # into a ProxyConfigError message. Strip any ``user:pass@`` textually.
@@ -596,14 +596,17 @@ def playwright_proxy(proxy_map: ProxyMap, target_url: str | None = None) -> dict
     # bypass the target explicitly. Otherwise Chromium sends a plain-http request
     # for an http:// product to an https gateway that will 403/407 it, while
     # every httpx call to the same host goes direct.
-    if target_url and proxy_for_url(target_url, proxy_map) is None:
-        if not _matches_a_bypass_pattern(target_url, proxy_map):
-            # Only when nothing in the map already covers it -- a target the
-            # NO_PROXY patterns match is bypassed by those, and re-listing its
-            # exact host would just add noise Chromium has to parse.
-            target_host = _bypass_host_for_url(target_url)
-            if target_host and target_host not in bypass_hosts:
-                bypass_hosts.append(target_host)
+    if (
+        target_url
+        and proxy_for_url(target_url, proxy_map) is None
+        and not _matches_a_bypass_pattern(target_url, proxy_map)
+    ):
+        # Only when nothing in the map already covers it -- a target the
+        # NO_PROXY patterns match is bypassed by those, and re-listing its
+        # exact host would just add noise Chromium has to parse.
+        target_host = _bypass_host_for_url(target_url)
+        if target_host and target_host not in bypass_hosts:
+            bypass_hosts.append(target_host)
     proxy: dict[str, str] = {"server": server}
     username, password = _split_proxy_userinfo(server)
     if username is not None:
@@ -625,7 +628,7 @@ def _matches_a_bypass_pattern(url: str, proxy_map: ProxyMap) -> bool:
     """
     try:
         target = httpx.URL(url)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
     for pattern in sorted(URLPattern(k) for k in proxy_map):
         if pattern.matches(target):
@@ -650,7 +653,7 @@ def _bypass_host_for_url(url: str) -> str | None:
     """
     try:
         parsed = httpx.URL(url)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
     host, scheme = parsed.host, parsed.scheme
     if not host or not scheme:
@@ -709,7 +712,7 @@ def _split_proxy_userinfo(url: str) -> tuple[str | None, str | None]:
     """
     try:
         parsed = httpx.URL(url)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None, None
     if not (parsed.username or parsed.password):
         return None, None
@@ -749,7 +752,7 @@ def _primary_proxy_server(proxy_map: ProxyMap, target_url: str | None = None) ->
     if target_url:
         try:
             scheme = httpx.URL(target_url).scheme
-        except Exception:
+        except Exception:  # noqa: BLE001
             scheme = ""
         if scheme == "http":
             keys = ("http://", "all://", "https://")

@@ -170,10 +170,7 @@ def _print_skip_notes(config_path: str | None) -> None:
     ]
     for name, pc in products:
         if not pc.is_configured:
-            if not pc.enabled:
-                reason = "disabled"
-            else:
-                reason = "no URL given"
+            reason = "disabled" if not pc.enabled else "no URL given"
             print(f"Note: {name} {reason} — {name} tests will not be collected.", flush=True)
 
 
@@ -294,7 +291,7 @@ def _user_set_xdist(pytest_args: list[str]) -> tuple[bool, bool]:
     for a in pytest_args:
         if a in ("-n", "--numprocesses") or a.startswith(("-n", "--numprocesses=")):
             set_n = True
-        if a.startswith("--dist") or a == "no:xdist" or a.startswith("no:xdist"):
+        if a.startswith(("--dist", "no:xdist")) or a == "no:xdist":
             set_dist = True
     if "no:xdist" in pytest_args or any(x.startswith("no:xdist") for x in pytest_args):
         set_n = set_dist = True
@@ -388,7 +385,7 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
 
         try:
             existing = load_config(default_path)
-        except Exception:
+        except Exception:  # noqa: BLE001
             existing = None
         if existing is not None:
             if not idp and existing.auth.idp:
@@ -409,10 +406,7 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     if explicit_provider:
         auth_provider: str | None = explicit_provider
     elif idp:
-        if inherited_provider in _IDP_PROVIDERS:
-            auth_provider = inherited_provider
-        else:
-            auth_provider = "oidc"
+        auth_provider = inherited_provider if inherited_provider in _IDP_PROVIDERS else "oidc"
     else:
         auth_provider = inherited_provider
 
@@ -612,8 +606,7 @@ def run_verify(args: argparse.Namespace) -> None:
         cmd.append("--api-auth")
     if getattr(args, "allow_unproven", False):
         cmd.append("--vip-allow-unproven")
-    for ext in args.extensions or []:
-        cmd.append(f"--vip-extensions={ext}")
+    cmd.extend(f"--vip-extensions={ext}" for ext in args.extensions or [])
     if args.categories:
         marker_expr = _normalize_categories(args.categories)
     else:
@@ -667,11 +660,11 @@ def run_verify(args: argparse.Namespace) -> None:
             from vip.proxy import proxy_env_for_subprocess
 
             subprocess_env = proxy_env_for_subprocess(load_config(config_path).proxy, os.environ)
-        except Exception:
+        except Exception:  # noqa: BLE001
             subprocess_env = None
 
     try:
-        result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env)
+        result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env, check=False)
         sys.exit(result.returncode)
     except subprocess.TimeoutExpired:
         print(
@@ -790,14 +783,13 @@ def _resolve_report_dir() -> Path:
 
     The report directory is ``./report`` relative to the invocation, but a
     plain ``Path("report")`` also resolves that way when the caller is already
-    standing *inside* a report directory -- so ``vip report --results
-    results.json`` run from within ``report/`` used to create a nested
-    ``report/report/``, copy the templates into it, and render there. That left
-    a stray tree behind (papered over by a ``report/report/`` .gitignore entry)
-    and hid the rendered output one level deeper than the caller expected.
-
-    Treat a working directory already named ``report`` as the report directory
-    instead of descending into it.
+    standing *inside* a report directory. Treat a working directory already
+    named ``report`` as the report directory itself, instead of descending
+    into it: otherwise ``vip report --results results.json`` run from within
+    ``report/`` creates a nested ``report/report/``, copies the templates
+    into it, and renders there, leaving a stray tree behind (papered over by
+    a ``report/report/`` .gitignore entry) and hiding the rendered output one
+    level deeper than the caller expected.
     """
     cwd = Path.cwd()
     if cwd.name == "report":
@@ -895,7 +887,9 @@ def _quarto_render(document: str, report_dir: Path, env: dict[str, str]) -> int:
     surfaces.
     """
     try:
-        result = subprocess.run(["quarto", "render", document], cwd=str(report_dir), env=env)
+        result = subprocess.run(
+            ["quarto", "render", document], cwd=str(report_dir), env=env, check=False
+        )
     except FileNotFoundError:
         print(
             "Error: quarto was not found on PATH. Install Quarto "
@@ -970,7 +964,7 @@ def _collect_status(config: VIPConfig) -> dict:
                 "http_status": http_status,
                 "state": state,
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             products[name] = {
                 "configured": True,
                 "url": pc.url,
@@ -1101,17 +1095,17 @@ def run_uninstall(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    # Load vip.toml (when present) unconditionally -- not just when
-    # --connect-url is omitted -- so its [tls]/[proxy] settings apply even to
-    # a --connect-url-only invocation. Review round 2 on #563: a user with
-    # [tls] insecure = true in vip.toml but no vip.toml-derived Connect URL
-    # (they pass --connect-url directly, e.g. because vip.toml configures a
-    # different product) previously got cfg=None and therefore no TLS
-    # settings at all -- --connect-url had nowhere to draw them from. Loading
-    # is silent when vip.toml simply doesn't exist (mirrors
-    # _load_cleanup_config's guard), so a --connect-url run with no vip.toml
-    # still emits no "Config file not found" warning; test_run_uninstall_
-    # silent_when_vip_toml_missing pins this for the no-config case.
+    # Load vip.toml (when present) regardless of whether --connect-url was
+    # passed, so its [tls]/[proxy] settings apply to a --connect-url-only
+    # invocation too -- otherwise a deployment behind a self-signed cert with
+    # [tls] insecure = true in vip.toml has no route to that setting when the
+    # Connect URL itself comes from the CLI. Loading stays silent when
+    # vip.toml simply doesn't exist (mirrors _load_cleanup_config's guard);
+    # test_run_uninstall_silent_when_vip_toml_missing pins the no-config case.
+    # cfg carries the TLS settings (insecure/ca_bundle) for the
+    # probe-and-fallback below whether the Connect URL came from vip.toml or
+    # the CLI; with neither vip.toml present nor --insecure/--ca-bundle
+    # passed, it probes with defaults (verify=True).
     from vip.config import ProductConfig
 
     connect_arg = getattr(args, "connect_url", None)
@@ -1138,8 +1132,8 @@ def run_uninstall(args: argparse.Namespace) -> None:
 
     # A CLI --connect-url wins over vip.toml's [connect] url; wrapping it in
     # ProductConfig routes a scheme-less --connect-url through the same
-    # _normalize_url every other entry point uses (it was previously handed to
-    # ConnectClient completely unnormalized).
+    # _normalize_url every other entry point uses, so ConnectClient never
+    # sees an unnormalized URL.
     if connect_arg:
         connect_pc: ProductConfig | None = ProductConfig(url=connect_arg)
     elif cfg and cfg.connect and cfg.connect.url:
@@ -1387,8 +1381,7 @@ def _cleanup_workbench_sessions(
     ca_bundle = config.ca_bundle
     proxy = config.proxy
     # Same helper plugin.py uses, so this finds the session a prior `vip verify`
-    # from this directory cached.  These two used to build the path independently
-    # and disagreed for installed VIP -- see auth_cache_path.
+    # from this directory cached.
     cache_path = auth_cache_path()
 
     username = config.auth.username
@@ -1418,7 +1411,7 @@ def _cleanup_workbench_sessions(
     except AuthConfigError as exc:
         print(f"Error: could not authenticate to Workbench: {exc}", file=sys.stderr)
         sys.exit(1)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(
             f"Error: could not authenticate to Workbench at {workbench_url}: {exc}\n"
             "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD for non-interactive cleanup, "
@@ -1535,12 +1528,11 @@ def run_cleanup(args: argparse.Namespace) -> None:
     # "Config file not found" warning (env-based credentials still apply).
     config = _load_cleanup_config(args)
 
-    # A CLI flag wins over vip.toml, as before. Wrapping the CLI arg in
-    # ProductConfig routes it through the same _normalize_url a bare
-    # hostname gets from every other entry point (vip verify, vip status):
-    # previously a scheme-less --connect-url was handed to ConnectClient
-    # completely unnormalized (a bug in its own right -- httpx requires an
-    # absolute URL) and never got the probe-and-fallback treatment below.
+    # A CLI flag wins over vip.toml. Wrapping the CLI arg in ProductConfig
+    # routes it through the same _normalize_url a bare hostname gets from
+    # every other entry point (vip verify, vip status), so ConnectClient
+    # never receives a scheme-less URL -- httpx requires an absolute one --
+    # and the probe-and-fallback treatment below still applies.
     # config.connect/config.workbench are already normalized ProductConfig
     # instances -- every ProductConfig runs _normalize_url in its own
     # __post_init__ regardless of how it was constructed, including the bare
