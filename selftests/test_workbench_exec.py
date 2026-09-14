@@ -1470,10 +1470,12 @@ class _AceFakePage:
 
 
 class TestNormalizeConsoleText:
-    def test_strips_ace_rendering_whitespace(self):
-        """Ace renders spaces as NBSP and soft-wraps long lines, so comparing
-        typed vs landed must ignore whitespace entirely — only the characters
-        matter."""
+    def test_strips_ace_rendering_whitespace_at_the_edges(self):
+        """Ace renders spaces as NBSP and soft-wraps long lines by inserting
+        a newline that is not in the source. A newline landing at the very
+        end of a rendered line has no counterpart to match against, so it
+        must fully disappear, and a mid-line NBSP must still line up with
+        the ordinary space at the same position in the source."""
         assert _normalize_console_text('cat("a", "b")\n') == _normalize_console_text(
             'cat("a", "b")'
         )
@@ -1485,6 +1487,19 @@ class TestNormalizeConsoleText:
         assert _normalize_console_text('cat("45cbb")') != _normalize_console_text(
             'cat("45cbb0e569")'
         )
+
+    def test_collapses_soft_wrap_indentation_to_a_single_space(self):
+        """A single source space can land as a soft-wrap newline plus the
+        continuation line's indentation. That whole run must collapse back
+        to the one significant space the source actually has, or a long
+        line would false-positive on every eval."""
+        assert _normalize_console_text('cat("a \n    b")') == _normalize_console_text('cat("a b")')
+
+    def test_detects_a_dropped_space_inside_a_literal(self):
+        """The corruption this normalization exists to catch: a dropped
+        space inside an R string literal is a different command, not a
+        rendering artifact, and must compare as different."""
+        assert _normalize_console_text('cat("a b")') != _normalize_console_text('cat("ab")')
 
 
 class TestDeliverConsoleLine:

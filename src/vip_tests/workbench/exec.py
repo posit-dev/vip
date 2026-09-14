@@ -219,20 +219,39 @@ _ZERO_WIDTH_CHARS = "\u200b\u200c\u200d\ufeff"
 
 
 def _normalize_console_text(text: str) -> str:
-    """Reduce console text to just its characters, for typed-vs-landed comparison.
+    """Normalize renderer whitespace artifacts, for typed-vs-landed comparison.
 
-    Ace renders spaces as non-breaking spaces, soft-wraps long lines (inserting
-    newlines that are not in the source), and can splice zero-width characters
-    into its text layer -- none of which mean the command was corrupted. All
-    whitespace is therefore dropped rather than normalized: comparing the *same*
-    string against itself, the only thing a whitespace-insensitive check can miss
-    is whitespace-only corruption, which is a far smaller risk than falsely
-    reporting corruption every time Ace renders a space its own way.
+    Ace renders an ordinary space as a non-breaking space, soft-wraps long
+    lines by inserting newlines (often with continuation-line indentation)
+    that are not in the source, and can splice zero-width characters into its
+    text layer -- none of which mean the command was corrupted. Zero-width
+    characters are dropped outright, and every remaining run of whitespace
+    collapses to a single ordinary space, which absorbs all three artifacts
+    (non-breaking space, inserted newline, inserted indentation) without
+    discarding whitespace as a signal the way the old "drop it all" version did.
+
+    Collapsing *runs* rather than comparing whitespace character-for-character
+    is a deliberate, narrower concession: a single source space can land as
+    several rendered whitespace characters (a soft-wrap's newline plus its
+    continuation-line indentation), and comparing lengths there would
+    false-positive on every long line. But a single space is still a single
+    space after collapsing, so real corruption that drops it -- e.g.
+    ``cat("a b")`` landing as ``cat("ab")`` -- now normalizes to a visible
+    difference instead of disappearing. This is blind only to corruption that
+    turns one run of whitespace into a *different-sized* run (e.g. one space
+    becoming two), which is a far narrower gap than being blind to whitespace
+    entirely.
+
+    Leading and trailing whitespace is stripped rather than collapsed: a
+    command line has no meaningful leading/trailing space, but Ace's own
+    artifacts (a soft-wrap newline at the very end of a rendered line, for
+    instance) land exactly there, and collapsing would otherwise leave a
+    stray edge space that has no counterpart in the source to match against.
     """
     stripped = text
     for ch in _ZERO_WIDTH_CHARS:
         stripped = stripped.replace(ch, "")
-    return re.sub(r"\s+", "", stripped)
+    return re.sub(r"\s+", " ", stripped).strip()
 
 
 def _console_input_text(console_input) -> str:
