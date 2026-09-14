@@ -16,12 +16,12 @@ setup:
 # Same as `setup` — kept for muscle memory; vip install handles RHEL detection.
 setup-rhel: setup
 
-# Regenerate uv.lock with the pinned uv version (see UV_VERSION above).
 # Use this instead of a bare `uv lock`: `uvx` fetches the exact pinned uv, so
 # the lockfile is byte-reproducible even when your local uv is a different
 # version. This is also how you resolve a uv.lock merge conflict — take either
 # side, then relock:
 #   git checkout --theirs -- uv.lock && just relock
+# Regenerate uv.lock with the pinned uv version (see UV_VERSION above).
 relock:
     uvx --from uv=={{ UV_VERSION }} uv lock
 
@@ -104,9 +104,9 @@ report-selftest:
     uv run pytest selftests/
     cd report && uv run quarto render
 
-# Start the mock-IdP E2E stack (Keycloak + Connect + Workbench, real OIDC).
 # Requires RSC_LICENSE and RSW_LICENSE. Add vip.test hostnames to /etc/hosts
 # first: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test`.
+# Start the mock-IdP E2E stack (Keycloak + Connect + Workbench, real OIDC).
 mock-idp-up:
     docker compose -f compose.mock-idp.yml up -d --build --wait
     @docker compose -f compose.mock-idp.yml ps
@@ -115,17 +115,16 @@ mock-idp-up:
 mock-idp-down:
     docker compose -f compose.mock-idp.yml down -v
 
-# Start the mock-IdP E2E stack with the SAML Workbench lane also enabled
-# (issue #263: Workbench behind SAML on a separate hostname from Connect).
 # Same requirements as `mock-idp-up`, plus add workbench-saml.vip.test to
 # /etc/hosts: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test workbench-saml.vip.test`.
+# Start the mock-IdP E2E stack with the SAML Workbench lane also enabled (issue #263: Workbench behind SAML on a separate hostname from Connect).
 mock-idp-saml-up:
     docker compose -f compose.mock-idp.yml --profile saml up -d --build --wait
     @docker compose -f compose.mock-idp.yml --profile saml ps
 
-# Print the mock-IdP stack's auto-generated TOTP seed. Export it before
-# running `vip verify --headless-auth` locally:
+# Export it before running `vip verify --headless-auth` locally:
 #   export VIP_TEST_TOTP_SECRET=$(just mock-idp-totp-secret)
+# Print the mock-IdP stack's auto-generated TOTP seed.
 mock-idp-totp-secret:
     @docker run --rm -v vip-mock-idp_mock-idp-certs:/certs:ro alpine/openssl:3.5.4 cat /certs/totp-secret.b32
 
