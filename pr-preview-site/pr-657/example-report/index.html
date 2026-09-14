@@ -2885,10 +2885,10 @@ display: none !important;
 
 <section id="verified-installation-of-posit" class="level1">
 <h1>Verified Installation of Posit</h1>
-<p><strong>Deployment:</strong> CI Connect 2026.09.0 + WB 2026.09.0+174.pro3 + PM 2026.09.0 <strong>Generated:</strong> 2026-09-14 15:39:29 UTC</p>
+<p><strong>Deployment:</strong> CI Connect 2026.09.0 + WB 2026.09.0+174.pro3 + PM 2026.09.0 <strong>Generated:</strong> 2026-09-14 16:31:01 UTC</p>
 <section id="products-under-test" class="level2">
 <h2 class="anchored" data-anchor-id="products-under-test">Products Under Test</h2>
-<div id="04aaef3a" class="cell" data-execution_count="2">
+<div id="97eb6f1b" class="cell" data-execution_count="2">
 <div class="cell-output cell-output-display">
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -2925,7 +2925,7 @@ display: none !important;
 </section>
 <section id="summary" class="level2">
 <h2 class="anchored" data-anchor-id="summary">Summary</h2>
-<div id="25089066" class="cell" data-execution_count="3">
+<div id="1c42325f" class="cell" data-execution_count="3">
 <div class="cell-output cell-output-display">
 <table class="caption-top table table-sm table-striped small">
 <tbody>
@@ -2956,7 +2956,7 @@ display: none !important;
 </section>
 <section id="provenance" class="level2">
 <h2 class="anchored" data-anchor-id="provenance">Provenance</h2>
-<div id="2161b56f" class="cell" data-execution_count="4">
+<div id="b214d770" class="cell" data-execution_count="4">
 <div class="cell-output cell-output-display">
 <table class="caption-top table table-sm table-striped small">
 <tbody>
@@ -2966,7 +2966,7 @@ display: none !important;
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">Run duration</th>
-<td>62.8s</td>
+<td>62.9s</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">Python</th>
@@ -2991,14 +2991,14 @@ display: none !important;
 </section>
 <section id="failures-skips" class="level2">
 <h2 class="anchored" data-anchor-id="failures-skips">Failures &amp; Skips</h2>
-<div id="6dfd22ce" class="cell" data-execution_count="5">
+<div id="c02570b6" class="cell" data-execution_count="5">
 <div class="cell-output cell-output-display cell-output-markdown">
 <p>Every check that did not pass, in full. Passing checks are counted above — see <a href="./details.html">Detailed Results</a> for the complete listing.</p>
 </div>
 <div class="cell-output cell-output-display">
-<div class="vip-cat-section"><h3 class="vip-cat-header anchored" style="color:#dc2626">Failed (2)</h3><div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">User can log in to Workbench via the web UI</span><span class="badge-workbench">Workbench</span></div><div class="vip-test-meta">src/vip_tests/workbench/test_auth.py::test_workbench_login[chromium]<span class="vip-test-duration">4.96s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Workbench is accessible at the configured URL</li><li>When a user navigates to the Workbench login page and enters valid credentials</li><li>Then the Workbench homepage is displayed</li><li>And the current user element is visible and non-empty in the header</li></ul></details><div class="vip-fail-concise">test_workbench_login[chromium]: Login failed: Error: Temporary server error, please try again</div><details class="vip-fail-details"><summary>Full error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-0" title="Copy to clipboard">Copy</button><pre id="vip-error-0" class="vip-fail-error">fixturefunc = &lt;function navigate_and_login at 0x7fabf9fb1b10&gt;
+<div class="vip-cat-section"><h3 class="vip-cat-header anchored" style="color:#dc2626">Failed (2)</h3><div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">User can log in to Workbench via the web UI</span><span class="badge-workbench">Workbench</span></div><div class="vip-test-meta">src/vip_tests/workbench/test_auth.py::test_workbench_login[chromium]<span class="vip-test-duration">4.96s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given Workbench is accessible at the configured URL</li><li>When a user navigates to the Workbench login page and enters valid credentials</li><li>Then the Workbench homepage is displayed</li><li>And the current user element is visible and non-empty in the header</li></ul></details><div class="vip-fail-concise">test_workbench_login[chromium]: Login failed: Error: Temporary server error, please try again</div><details class="vip-fail-details"><summary>Full error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-0" title="Copy to clipboard">Copy</button><pre id="vip-error-0" class="vip-fail-error">fixturefunc = &lt;function navigate_and_login at 0x7f45909bdc70&gt;
 request = &lt;FixtureRequest for &lt;Function test_workbench_login[chromium]&gt;&gt;
-kwargs = {&#39;page&#39;: &lt;Page url=&#39;http://localhost:8787/auth-sign-in?appUri=%2F&amp;error=2&#39;&gt;, &#39;workbench_url&#39;: &#39;http://localhost:8787&#39;, &#39;test_username&#39;: &#39;testuser&#39;, &#39;test_password&#39;: &#39;r8K16f6cBtOrCwLG&#39;, ...}
+kwargs = {&#39;page&#39;: &lt;Page url=&#39;http://localhost:8787/auth-sign-in?appUri=%2F&amp;error=2&#39;&gt;, &#39;workbench_url&#39;: &#39;http://localhost:8787&#39;, &#39;test_username&#39;: &#39;testuser&#39;, &#39;test_password&#39;: &#39;DnHx6kZktEh2cKPf&#39;, ...}
 
     def call_fixture_func(
         fixturefunc: _FixtureFunc[FixtureValue], request: FixtureRequest, kwargs
@@ -3025,7 +3025,7 @@ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 page = &lt;Page url=&#39;http://localhost:8787/auth-sign-in?appUri=%2F&amp;error=2&#39;&gt;
 workbench_url = &#39;http://localhost:8787&#39;, username = &#39;testuser&#39;
-password = &#39;r8K16f6cBtOrCwLG&#39;, auth_provider = &#39;password&#39;
+password = &#39;DnHx6kZktEh2cKPf&#39;, auth_provider = &#39;password&#39;
 interactive_auth = False, auth_mode = &#39;none&#39;, workbench_auth_error = None
 max_retries = 3, retry_delay = 2.0
 
@@ -3235,10 +3235,10 @@ max_retries = 3, retry_delay = 2.0
 &gt;               raise AssertionError(f&quot;Login failed: {error_text or &#39;Unknown error&#39;}&quot;)
 E               AssertionError: Login failed: Error: Temporary server error, please try again
 
-src/vip_tests/workbench/conftest.py:1045: AssertionError</pre></div></details><div class="vip-fail-hints"><strong>Likely causes:</strong><ul><li>Incorrect test credentials in vip.toml or VIP_TEST_USERNAME/VIP_TEST_PASSWORD</li><li>Auth provider misconfiguration (SAML, OIDC, LDAP, PAM)</li><li>Workbench login page markup changed or is unreachable</li></ul><strong>Suggested next steps:</strong><ol><li>Verify credentials work by logging in manually at the Workbench URL</li><li>Check the auth provider configuration in rserver.conf / auth-pam or auth-saml settings</li><li>If using an external IdP, try `--interactive-auth` or `--headless-auth` instead of a password test</li></ol><p><strong>Documentation:</strong> <a href="https://docs.posit.co/ide/server-pro/authenticating_users/authenticating_users.html" target="_blank" rel="noopener">https://docs.posit.co/ide/server-pro/authenticating_users/authenticating_users.html</a></p></div></div><div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">This check intentionally fails to demonstrate failure rendering</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As someone evaluating a VIP report</div><div class="vip-test-meta">src/vip_tests/prerequisites/test_expected_failure.py::test_intentional_failure<span class="vip-test-duration">0.00s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given a check that is written to fail on purpose</li><li>When the check runs as part of this example report</li><li>Then it fails by design, not because anything is actually broken</li></ul></details><div class="vip-fail-concise">test_intentional_failure: This failure is intentional: it exists only to show how a failed check renders in this example report. No product configuration will resolve it.
+src/vip_tests/workbench/conftest.py:1057: AssertionError</pre></div></details><div class="vip-fail-hints"><strong>Likely causes:</strong><ul><li>Incorrect test credentials in vip.toml or VIP_TEST_USERNAME/VIP_TEST_PASSWORD</li><li>Auth provider misconfiguration (SAML, OIDC, LDAP, PAM)</li><li>Workbench login page markup changed or is unreachable</li></ul><strong>Suggested next steps:</strong><ol><li>Verify credentials work by logging in manually at the Workbench URL</li><li>Check the auth provider configuration in rserver.conf / auth-pam or auth-saml settings</li><li>If using an external IdP, try `--interactive-auth` or `--headless-auth` instead of a password test</li></ol><p><strong>Documentation:</strong> <a href="https://docs.posit.co/ide/server-pro/authenticating_users/authenticating_users.html" target="_blank" rel="noopener">https://docs.posit.co/ide/server-pro/authenticating_users/authenticating_users.html</a></p></div></div><div class="vip-test-card" style="border-left-color:#dc2626"><div class="vip-test-header"><span class="vip-badge" style="color:#dc2626;background:#fecaca">FAIL</span><span class="vip-test-scenario">This check intentionally fails to demonstrate failure rendering</span><span class="badge-prerequisites">Prerequisites</span></div><div class="vip-test-description">As someone evaluating a VIP report</div><div class="vip-test-meta">src/vip_tests/prerequisites/test_expected_failure.py::test_intentional_failure<span class="vip-test-duration">0.00s</span></div><details class="vip-test-steps"><summary>Test procedure</summary><ul class="vip-step-list"><li>Given a check that is written to fail on purpose</li><li>When the check runs as part of this example report</li><li>Then it fails by design, not because anything is actually broken</li></ul></details><div class="vip-fail-concise">test_intentional_failure: This failure is intentional: it exists only to show how a failed check renders in this example report. No product configuration will resolve it.
 assert &#39;fail (by design)&#39; == &#39;pass&#39;
 - pass
-+ fail (by design)</div><details class="vip-fail-details"><summary>Full error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-1" title="Copy to clipboard">Copy</button><pre id="vip-error-1" class="vip-fail-error">fixturefunc = &lt;function check_fails_by_design at 0x7fabfa0dee50&gt;
++ fail (by design)</div><details class="vip-fail-details"><summary>Full error traceback</summary><div class="vip-fail-error-wrap"><button class="vip-copy-btn" data-target="vip-error-1" title="Copy to clipboard">Copy</button><pre id="vip-error-1" class="vip-fail-error">fixturefunc = &lt;function check_fails_by_design at 0x7f4590aeafb0&gt;
 request = &lt;FixtureRequest for &lt;Function test_intentional_failure&gt;&gt;
 kwargs = {&#39;demo_outcome&#39;: {&#39;expected&#39;: &#39;pass&#39;, &#39;actual&#39;: &#39;fail (by design)&#39;}}
 
