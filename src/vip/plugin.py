@@ -1022,7 +1022,7 @@ def _format_concise_error(
     directly. All other exception types are prefixed with "an unexpected error
     occurred" to signal infrastructure or code issues.
     """
-    test_name = nodeid.split("::")[-1] if "::" in nodeid else nodeid
+    test_name = nodeid.rsplit("::", maxsplit=1)[-1] if "::" in nodeid else nodeid
 
     is_assertion = exc_type == "AssertionError" or exc_type.endswith(".AssertionError")
 
@@ -1120,7 +1120,7 @@ def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
         markers: list[str] = []
         try:
             markers = [m.name for m in item.iter_markers()]
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
         item_stash = getattr(item, "stash", None)

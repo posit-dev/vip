@@ -157,13 +157,13 @@ class ConnectClient(BaseClient):
                 resp = self._client.delete(f"/v1/content/{guid}")
                 if resp.status_code == 404:
                     return True
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
             try:
                 check = self._client.get(f"/v1/content/{guid}")
                 if check.status_code == 404:
                     return True
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
             if attempt < retries - 1:
                 time.sleep(settle_seconds)
@@ -266,7 +266,7 @@ class ConnectClient(BaseClient):
             resp = self._client.get(f"/v1/tags/{tag_id}/content")
             resp.raise_for_status()
             return resp.json().get("results", [])
-        except Exception:
+        except Exception:  # noqa: BLE001
             return []
 
     def cleanup_vip_content(self) -> int:
@@ -295,7 +295,7 @@ class ConnectClient(BaseClient):
                 resp.raise_for_status()
                 tag_id = resp.json()["id"]
             self._client.post(f"/v1/content/{guid}/tags", json={"tag_id": tag_id})
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     # -- R / Python versions ------------------------------------------------

@@ -1,4 +1,29 @@
-"""Load and validate VIP configuration."""
+"""Load and validate VIP configuration.
+
+The eight ``from_dict`` classmethods below (``ConnectConfig``,
+``WorkbenchKubernetesConfig``, ``WorkbenchExtensionsConfig``, ``GitTestConfig``,
+``WorkbenchConfig``, ``PackageManagerConfig``, ``AuthConfig``,
+``PerformanceConfig``) share one parsing convention, stated here once instead
+of eight times: a key missing from the raw dict falls back to the dataclass
+field's default via ``raw.get(key, default)``, and a key present in the raw
+dict that the classmethod doesn't recognize is silently ignored -- there is
+no unknown-key validation. Secret fields (``api_key``, ``token``,
+``password``) are passed through as given; when the raw dict leaves one
+empty, the owning dataclass's ``__post_init__`` -- not ``from_dict`` itself --
+resolves it from an environment variable.
+
+Exceptions to the above: ``WorkbenchConfig.from_dict``'s ``git_test`` key,
+when absent, does not fall back to the ``GitTestConfig`` field's ``None``
+default -- it synthesizes an anonymous-clone ``GitTestConfig`` pointing at
+``DEFAULT_PUBLIC_CLONE_URL``. ``WorkbenchExtensionsConfig.from_dict``'s
+``vscode``/``positron``/``jupyterlab`` and ``WorkbenchConfig.from_dict``'s
+``test_packages`` are validated via ``_as_str_list`` and raise ``ValueError``
+on a non-string/non-list value, rather than silently accepting anything.
+``GitTestConfig``'s ``token`` is not passed through as given: its
+``__post_init__`` clears it to ``""`` whenever ``auth_method == "none"``, even
+if one was supplied, and raises ``ValueError`` for an unsupported
+``auth_method``.
+"""
 
 from __future__ import annotations
 
@@ -567,10 +592,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     """
     if path is None:
         env = os.environ.get("VIP_CONFIG")
-        if env:
-            path = Path(env)
-        else:
-            path = Path("vip.toml")
+        path = Path(env) if env else Path("vip.toml")
 
     path = Path(path)
     if not path.exists():
@@ -579,7 +601,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         warnings.warn(f"Config file not found: {path}", stacklevel=2)
         return VIPConfig()
 
-    with open(path, "rb") as f:
+    with path.open("rb") as f:
         raw = tomllib.load(f)
 
     general = raw.get("general", {})

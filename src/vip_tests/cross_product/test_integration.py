@@ -66,7 +66,7 @@ def pm_url_in_integration_deploy_logs(integration_deploy_state, pm_url):
     if pm_url_in_log_lines(pm_url, output_lines):
         return
 
-    assert False, (
+    raise AssertionError(
         f"Package Manager URL {pm_url!r} was not found in the deployment logs.\n"
         "The scheme and host are matched case-insensitively, so this is not a case\n"
         "mismatch there. Remaining possibilities: a case difference in the URL path\n"

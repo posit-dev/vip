@@ -49,7 +49,7 @@ class ConnectUser(HttpUser):
                 items = resp.json()
                 if items:
                     self._content_guid = items[0].get("guid")
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     @task(10)
@@ -132,7 +132,7 @@ class PackageManagerUser(HttpUser):
                 from vip.load_engine import classify_repos
 
                 self._cran_repos, self._pypi_repos = classify_repos(resp.json())
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     @task(3)

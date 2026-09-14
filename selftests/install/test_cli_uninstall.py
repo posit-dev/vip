@@ -20,6 +20,7 @@ def test_vip_uninstall_no_manifest(tmp_path: Path):
         cwd=tmp_path,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert cp.returncode != 0
     assert "No .vip-install.json" in cp.stdout + cp.stderr
@@ -54,6 +55,7 @@ def test_vip_uninstall_dry_run_prints_plan(tmp_path: Path):
         cwd=tmp_path,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert cp.returncode == 0
     assert "Dry run" in cp.stdout
@@ -93,6 +95,7 @@ def test_vip_uninstall_yes_removes_manifest(tmp_path: Path):
         cwd=tmp_path,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert cp.returncode == 0, cp.stdout + cp.stderr
     assert not (tmp_path / ".vip-install.json").exists()
@@ -119,6 +122,7 @@ def test_vip_uninstall_host_mismatch_refuses(tmp_path: Path):
         cwd=tmp_path,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert cp.returncode != 0
     assert "host" in (cp.stdout + cp.stderr).lower()
