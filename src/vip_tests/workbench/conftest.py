@@ -450,6 +450,19 @@ def _on_login_page(url: str) -> bool:
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
 
 
+def _navigated_into_session(url: str) -> bool:
+    """Return True if *url* is inside a session, not the homepage.
+
+    Workbench's homepage is itself served under a "/s/<id>/" URL (its
+    "workspaces" view), so a bare "/s/" check can't tell the two apart. A
+    real session URL has no "workspaces" segment after the id.
+    """
+    segments = [s for s in urlparse(url).path.split("/") if s]
+    if len(segments) < 2 or segments[0] != "s":
+        return False
+    return "workspaces" not in segments
+
+
 def _external_idp_host(page_url: str, workbench_url: str) -> str | None:
     """Return the IdP host if sign-in has left the Workbench origin.
 
