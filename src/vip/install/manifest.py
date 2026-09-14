@@ -59,16 +59,30 @@ class Manifest:
                 self.pending_system_packages.append(n)
                 existing.add(n)
 
-    def claim_pending(self, names: Iterable[str], *, installed_at: str, manager: str) -> None:
-        names_set = set(names)
-        for n in names_set:
-            if n in self.pending_packages_set():
+    def claim_pending(
+        self, names: Iterable[tuple[str, str]], *, installed_at: str, manager: str
+    ) -> None:
+        """Claim pending packages now detected as installed.
+
+        Each entry pairs the manifest's pending name with the concrete package
+        name to record as installed. They're usually identical, but an alias
+        resolved via dpkg Provides (or a legacy renamed package) records the
+        real installed package name instead, so `vip uninstall` removes what
+        is actually there rather than a name apt/dnf/zypper don't recognize
+        (#621).
+        """
+        pairs = list(names)
+        pending_set = self.pending_packages_set()
+        claimed: set[str] = set()
+        for pending_name, concrete_name in pairs:
+            if pending_name in pending_set:
                 self.items.append(
-                    SystemPackageItem(manager=manager, name=n, installed_at=installed_at)
+                    SystemPackageItem(
+                        manager=manager, name=concrete_name, installed_at=installed_at
+                    )
                 )
-        self.pending_system_packages = [
-            p for p in self.pending_system_packages if p not in names_set
-        ]
+                claimed.add(pending_name)
+        self.pending_system_packages = [p for p in self.pending_system_packages if p not in claimed]
 
 
 def default_path(project_root: Path | None = None) -> Path:

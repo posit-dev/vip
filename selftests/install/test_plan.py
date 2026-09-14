@@ -35,7 +35,7 @@ def test_install_plan_rhel_all_missing(tmp_path: Path):
         platform_info=info,
         manifest=None,
         rpm_installed=lambda names: set(),
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
@@ -55,7 +55,7 @@ def test_install_plan_rhel_all_present(tmp_path: Path):
         platform_info=info,
         manifest=None,
         rpm_installed=lambda names: set(names),
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=True,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
@@ -71,7 +71,7 @@ def test_install_plan_skip_system_omits_system_step(tmp_path: Path):
         platform_info=info,
         manifest=None,
         rpm_installed=lambda names: set(),
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=True,
@@ -86,7 +86,7 @@ def test_install_plan_macos_skips_system(tmp_path: Path):
         platform_info=info,
         manifest=None,
         rpm_installed=lambda names: set(),
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
@@ -101,7 +101,7 @@ def test_install_plan_unsupported_skips_system(tmp_path: Path):
         platform_info=info,
         manifest=None,
         rpm_installed=lambda names: set(),
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
@@ -116,7 +116,7 @@ def test_install_plan_debian_uses_apt(tmp_path: Path):
         platform_info=info,
         manifest=None,
         rpm_installed=lambda names: set(),
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
@@ -135,7 +135,7 @@ def test_install_plan_suse_uses_zypper(tmp_path: Path):
         platform_info=info,
         manifest=None,
         rpm_installed=lambda names: set(),
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
@@ -153,7 +153,7 @@ def test_install_plan_suse_uses_rpm_for_present_check(tmp_path: Path):
         platform_info=info,
         manifest=None,
         rpm_installed=lambda names: {"mozilla-nss", "libdrm2"},
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
@@ -170,7 +170,7 @@ def test_install_plan_skips_already_installed_packages(tmp_path: Path):
         platform_info=info,
         manifest=None,
         rpm_installed=lambda names: {"nss", "libdrm"},
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
@@ -189,7 +189,7 @@ def test_install_plan_skips_packages_already_present_even_if_in_manifest(tmp_pat
         platform_info=info,
         manifest=m,
         rpm_installed=lambda names: {"nss"},
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
@@ -208,7 +208,7 @@ def test_install_plan_replans_manifest_package_when_missing_from_system(tmp_path
         platform_info=info,
         manifest=m,
         rpm_installed=lambda names: set(),  # nss is gone from system
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
@@ -225,13 +225,14 @@ def test_install_plan_pending_packages_now_present_get_claimed(tmp_path: Path):
         platform_info=info,
         manifest=m,
         rpm_installed=lambda names: {"nss"},  # libdrm still missing
-        dpkg_installed=lambda names: set(),
+        dpkg_installed=lambda names: {},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
     )
-    assert "nss" in plan.claim_pending
-    assert "libdrm" not in plan.claim_pending
+    claimed = dict(plan.claim_pending)
+    assert claimed.get("nss") == "nss"
+    assert "libdrm" not in claimed
     # libdrm is still in the install step.
     assert plan.system_step is not None
     assert "libdrm" in plan.system_step.packages
@@ -256,13 +257,76 @@ def test_install_plan_normalizes_legacy_pending_libasound2(tmp_path: Path):
         platform_info=info,
         manifest=m,
         rpm_installed=lambda names: set(),
-        dpkg_installed=lambda names: {"libasound2t64"},
+        dpkg_installed=lambda names: {"libasound2t64": "libasound2t64"},
         chromium_present=False,
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
     )
     # The legacy name should be normalized and claimed.
-    assert "libasound2t64" in plan.claim_pending
+    assert dict(plan.claim_pending).get("libasound2t64") == "libasound2t64"
+
+
+def test_install_plan_claims_alias_under_concrete_provider_name(tmp_path: Path):
+    """#621: a pending name resolved via dpkg Provides is claimed under the
+    concrete package that actually provides it, not the alias that was asked
+    for -- libcups2 isn't a real package to record/remove on Ubuntu 24.04,
+    libcups2t64 is."""
+    info = PlatformInfo(family="debian-family", id="ubuntu", version="24.04")
+    m = Manifest(
+        version=SCHEMA_VERSION,
+        vip_version="0.0.0",
+        created_at="",
+        updated_at="",
+        host="h",
+        platform="debian-family",
+        platform_id="ubuntu",
+        platform_version="24.04",
+        items=[],
+        pending_system_packages=["libcups2"],
+    )
+    plan = pl.build_install_plan(
+        platform_info=info,
+        manifest=m,
+        rpm_installed=lambda names: set(),
+        # libcups2 only resolves via Provides of the installed libcups2t64.
+        dpkg_installed=lambda names: {"libcups2": "libcups2t64"},
+        chromium_present=False,
+        playwright_cache_dir=tmp_path / "cache",
+        skip_system=False,
+    )
+    claimed = dict(plan.claim_pending)
+    assert claimed.get("libcups2") == "libcups2t64"
+
+
+def test_install_plan_claims_own_name_when_installed_directly(tmp_path: Path):
+    """A package installed under its own real name is still recorded under
+    that name, unchanged -- the alias-preserving fix must not rewrite the
+    common case where no Provides resolution was needed."""
+    info = PlatformInfo(family="debian-family", id="ubuntu", version="22.04")
+    m = Manifest(
+        version=SCHEMA_VERSION,
+        vip_version="0.0.0",
+        created_at="",
+        updated_at="",
+        host="h",
+        platform="debian-family",
+        platform_id="ubuntu",
+        platform_version="22.04",
+        items=[],
+        pending_system_packages=["libcups2"],
+    )
+    plan = pl.build_install_plan(
+        platform_info=info,
+        manifest=m,
+        rpm_installed=lambda names: set(),
+        # libcups2 resolves directly, no Provides fallback needed.
+        dpkg_installed=lambda names: {"libcups2": "libcups2"},
+        chromium_present=False,
+        playwright_cache_dir=tmp_path / "cache",
+        skip_system=False,
+    )
+    claimed = dict(plan.claim_pending)
+    assert claimed.get("libcups2") == "libcups2"
 
 
 def _full_manifest() -> Manifest:

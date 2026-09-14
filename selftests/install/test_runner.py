@@ -104,6 +104,26 @@ def test_execute_install_plan_records_pending_when_root_required(monkeypatch, tm
     assert set(saved.pending_system_packages) == {"nss", "libdrm"}
 
 
+def test_execute_install_plan_not_root_message_names_skip_system(monkeypatch, tmp_path, capsys):
+    """#621: a user stuck re-demanding the same packages forever needs the escape
+    hatch named in the failure message, not just 'Then re-run vip install'."""
+    plan = InstallPlan(
+        platform="debian-family",
+        platform_id="ubuntu",
+        platform_version="24.04",
+        system_step=SystemPackagesStep(manager="apt", packages=("libcups2",)),
+        playwright_step=None,
+    )
+    monkeypatch.setattr(rn, "is_root", lambda: False)
+    manifest_path = tmp_path / ".vip-install.json"
+    manifest = _empty_manifest()
+
+    rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+
+    assert rc == 2
+    assert "--skip-system" in capsys.readouterr().out
+
+
 def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):
     plan = InstallPlan(
         platform="rhel-family",
@@ -111,7 +131,7 @@ def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):
         platform_version="10",
         system_step=SystemPackagesStep(manager="dnf", packages=()),
         playwright_step=None,
-        claim_pending=("nss",),
+        claim_pending=(("nss", "nss"),),
     )
     manifest = _empty_manifest()
     manifest.pending_system_packages = ["nss", "libdrm"]
@@ -125,6 +145,42 @@ def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):
     assert "nss" in [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
     assert "nss" not in saved.pending_system_packages
     assert "libdrm" in saved.pending_system_packages
+
+
+def test_execute_install_plan_claims_alias_under_provider_name(monkeypatch, tmp_path: Path):
+    """#621: uninstall's generated command must name the concrete provider, not
+    the alias -- so the manifest item created here has to be libcups2t64, and
+    the pending alias libcups2 is what gets cleared."""
+    plan = InstallPlan(
+        platform="debian-family",
+        platform_id="ubuntu",
+        platform_version="24.04",
+        system_step=SystemPackagesStep(manager="apt", packages=()),
+        playwright_step=None,
+        claim_pending=(("libcups2", "libcups2t64"),),
+    )
+    manifest = _empty_manifest()
+    manifest.platform = "debian-family"
+    manifest.pending_system_packages = ["libcups2"]
+    manifest_path = tmp_path / ".vip-install.json"
+
+    rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+
+    from vip.install.manifest import load
+    from vip.install.plan import build_uninstall_plan
+
+    saved = load(manifest_path)
+    item_names = [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
+    assert "libcups2t64" in item_names
+    assert "libcups2" not in item_names
+    assert "libcups2" not in saved.pending_system_packages
+
+    uninstall_plan = build_uninstall_plan(manifest=saved, connect_url=None)
+    assert any("libcups2t64" in cmd for cmd in uninstall_plan.system_remove_commands)
+    assert not any(
+        "libcups2 " in cmd or cmd.endswith("libcups2")
+        for cmd in uninstall_plan.system_remove_commands
+    )
 
 
 def test_format_install_plan_unsupported_warning_visible_when_otherwise_empty():

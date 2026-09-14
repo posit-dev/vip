@@ -140,3 +140,7 @@ rhel10-smoke:
 # Build and run the openSUSE Leap headless Chromium smoke test
 opensuse-leap-smoke:
     ./scripts/opensuse-leap-smoke.sh
+
+# Build and run the Ubuntu 24.04 headless Chromium smoke test (also proves #621)
+ubuntu2404-smoke:
+    ./scripts/ubuntu2404-smoke.sh

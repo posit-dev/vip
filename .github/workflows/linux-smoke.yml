@@ -6,9 +6,11 @@ on:
     paths:
       - 'docker/rhel*/**'
       - 'docker/opensuse-leap/**'
+      - 'docker/ubuntu2404/**'
       - 'docker/playwright-smoke.py'
       - 'scripts/rhel-smoke.sh'
       - 'scripts/opensuse-leap-smoke.sh'
+      - 'scripts/ubuntu2404-smoke.sh'
       - 'justfile'
       - 'pyproject.toml'
       - 'uv.lock'
@@ -19,9 +21,11 @@ on:
     paths:
       - 'docker/rhel*/**'
       - 'docker/opensuse-leap/**'
+      - 'docker/ubuntu2404/**'
       - 'docker/playwright-smoke.py'
       - 'scripts/rhel-smoke.sh'
       - 'scripts/opensuse-leap-smoke.sh'
+      - 'scripts/ubuntu2404-smoke.sh'
       - 'justfile'
       - 'pyproject.toml'
       - 'uv.lock'
@@ -33,13 +37,16 @@ jobs:
   smoke:
     name: ${{ matrix.version }}
     runs-on: ubuntu-latest
-    # Builds a Docker image per distro (rhel9/rhel10/opensuse-leap) with system
-    # package installs; more variable than the plain docker.yml build.
+    # Builds a Docker image per distro (rhel9/rhel10/opensuse-leap/ubuntu2404)
+    # with system package installs; more variable than the plain docker.yml
+    # build. ubuntu2404's Dockerfile also proves the #621 t64-detection fix at
+    # build time (install, then dry-run must report nothing left to do), so a
+    # regression there fails this job's build step, not just the container run.
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        version: [rhel9, rhel10, opensuse-leap]
+        version: [rhel9, rhel10, opensuse-leap, ubuntu2404]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
