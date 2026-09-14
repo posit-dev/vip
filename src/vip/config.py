@@ -1,4 +1,16 @@
-"""Load and validate VIP configuration."""
+"""Load and validate VIP configuration.
+
+The seven ``from_dict`` classmethods below (``ConnectConfig``,
+``WorkbenchKubernetesConfig``, ``WorkbenchExtensionsConfig``, ``GitTestConfig``,
+``WorkbenchConfig``, ``PackageManagerConfig``, ``AuthConfig``) share one parsing
+convention, stated here once instead of seven times: a key missing from the raw
+dict falls back to the dataclass field's default via ``raw.get(key, default)``,
+and a key present in the raw dict that the classmethod doesn't recognize is
+silently ignored -- there is no unknown-key validation. Secret fields
+(``api_key``, ``token``, ``password``) are passed through as given; when the
+raw dict leaves one empty, the owning dataclass's ``__post_init__`` -- not
+``from_dict`` itself -- resolves it from an environment variable.
+"""
 
 from __future__ import annotations
 
