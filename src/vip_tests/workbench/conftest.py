@@ -208,7 +208,7 @@ def _ide_extension_skip_reason(ide: str, outcome: str | None) -> str | None:
 
 
 @pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
+def pytest_runtest_makereport(item: pytest.Item, call):
     """Record each IDE-launch scenario's outcome for the extensions cascade skip.
 
     Only ``test_ide_launch.py`` items carrying one of ``_IDE_MARKERS`` are
@@ -1043,7 +1043,7 @@ def workbench_login(
         homepage_or_error = homepage_logo.or_(error_panel)
         try:
             homepage_or_error.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if attempt == max_retries - 1:
                 raise AssertionError(
                     f"Login failed after {max_retries} attempts: no response"

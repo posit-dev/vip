@@ -72,10 +72,10 @@ def _make_self_signed(certdir: Path) -> tuple[Path, Path]:
 class _OkHandler(BaseHTTPRequestHandler):
     """Return 200 OK for every GET."""
 
-    def log_message(self, *args, **kwargs):  # noqa: D102
+    def log_message(self, *args, **kwargs):
         pass  # suppress output during tests
 
-    def do_GET(self):  # noqa: N802
+    def do_GET(self):
         body = b"ok"
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")

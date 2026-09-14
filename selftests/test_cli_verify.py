@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1264,7 +1265,7 @@ class TestVerifyLocalSnowflakeApiAuthGuard:
 class TestReorderHelpArgs:
     """`vip -h <subcommand>` should surface the subcommand's help, not top-level."""
 
-    COMMANDS = {"verify", "cleanup", "install", "auth", "report"}
+    COMMANDS: ClassVar[set[str]] = {"verify", "cleanup", "install", "auth", "report"}
 
     def test_help_before_subcommand_is_moved_after(self):
         from vip.cli import _reorder_help_args

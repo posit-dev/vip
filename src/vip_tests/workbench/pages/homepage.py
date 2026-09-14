@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from typing import TypeVar
+from typing import ClassVar, TypeVar
 
 from playwright.sync_api import Page
 
@@ -77,7 +77,7 @@ class NewSessionDialog:
     DATABRICKS_CREDENTIAL_BTN = "#databricks-credential-selection"
 
     # IDE name mapping for display names in tabs
-    IDE_DISPLAY_NAMES = {
+    IDE_DISPLAY_NAMES: ClassVar[dict[str, str]] = {
         "RStudio": "RStudio Pro",
         "VS Code": "VS Code",
         "JupyterLab": "JupyterLab",

@@ -336,7 +336,7 @@ class TestClassifyRepos:
 
     def test_empty_name_skipped(self):
         repos = [{"name": "", "type": "R"}, {"name": "good", "type": "R"}]
-        cran, pypi = classify_repos(repos)
+        cran, _pypi = classify_repos(repos)
         assert cran == ["good"]
 
     def test_empty_list(self):

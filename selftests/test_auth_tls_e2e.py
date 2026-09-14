@@ -77,14 +77,14 @@ class _ConnectMockHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self):  # noqa: N802
+    def do_GET(self):
         if self.path == "/__api__/v1/user":
             return self._send_json({"guid": _GUID})
         if self.path == f"/__api__/v1/users/{_GUID}/keys":
             return self._send_json([])  # no orphan keys
         return self._send_json({"error": f"unhandled GET {self.path}"}, status=404)
 
-    def do_POST(self):  # noqa: N802
+    def do_POST(self):
         if self.path == f"/__api__/v1/users/{_GUID}/keys":
             return self._send_json({"id": "1", "name": "x", "key": _API_KEY})
         return self._send_json({"error": f"unhandled POST {self.path}"}, status=404)
@@ -142,10 +142,10 @@ def _start_http_redirect_server(https_base: str) -> tuple[ThreadingHTTPServer, s
             self.send_header("Content-Length", "0")
             self.end_headers()
 
-        def do_GET(self) -> None:  # noqa: N802
+        def do_GET(self) -> None:
             self._redirect()
 
-        def do_POST(self) -> None:  # noqa: N802
+        def do_POST(self) -> None:
             self._redirect()
 
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _RedirectHandler)

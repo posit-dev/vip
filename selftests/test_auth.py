@@ -2634,7 +2634,7 @@ class TestCreateApiKeyViaSession:
             deletes.append(path.rsplit("/", 1)[-1])
             return self._httpx_response(status_code=204)
 
-        patcher, _cls, client_mock = self._patch_httpx_client(
+        patcher, _cls, _client_mock = self._patch_httpx_client(
             get_side_effect=get_side_effect,
             delete_side_effect=delete_side_effect,
             post_rv=created,

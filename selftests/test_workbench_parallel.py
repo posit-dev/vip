@@ -71,7 +71,7 @@ class _FakeLogo:
     def __init__(self, *, appears: bool):
         self._appears = appears
 
-    def wait_for(self, *, state, timeout):  # noqa: ARG002 - mirrors Playwright signature
+    def wait_for(self, *, state, timeout):
         if not self._appears:
             # Model the real timeout: Playwright raises PlaywrightTimeoutError, which is
             # what _silent_sso_signin catches. A different exception type must propagate.
@@ -111,7 +111,7 @@ class TestSilentSsoSignin:
         import contextlib
 
         class _BrokenLogo:
-            def wait_for(self, *, state, timeout):  # noqa: ARG002
+            def wait_for(self, *, state, timeout):
                 raise RuntimeError("page crashed mid-login")
 
         monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
@@ -128,7 +128,7 @@ class TestSilentSsoSignin:
         captured: dict[str, int] = {}
 
         class _TimeoutCapturingLogo:
-            def wait_for(self, *, state, timeout):  # noqa: ARG002
+            def wait_for(self, *, state, timeout):
                 captured["timeout"] = timeout
 
         monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
@@ -186,7 +186,7 @@ class _FakeConfig:
         cfg = self
 
         class _Stash:
-            def get(self, key, default=None):  # noqa: ARG002
+            def get(self, key, default=None):
                 return cfg._session
 
         return _Stash()

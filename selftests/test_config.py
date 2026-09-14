@@ -657,7 +657,7 @@ class TestGitTestConfig:
         assert cfg.auth_method == "https-token"
 
     def test_invalid_auth_method_raises(self):
-        with pytest.raises(ValueError, match="auth_method.*not supported"):
+        with pytest.raises(ValueError, match=r"auth_method.*not supported"):
             GitTestConfig(clone_url="https://github.com/org/repo.git", auth_method="ssh-key")
 
     def test_none_auth_method_is_valid(self):

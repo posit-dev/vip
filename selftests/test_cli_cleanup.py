@@ -13,6 +13,7 @@ import argparse
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -45,7 +46,7 @@ def _fake_session(tmp_path: Path) -> InteractiveAuthSession:
 class _FakeWorkbenchClient:
     """Stand-in for WorkbenchClient recording calls; instances are reusable."""
 
-    instances: list[_FakeWorkbenchClient] = []
+    instances: ClassVar[list[_FakeWorkbenchClient]] = []
 
     def __init__(self, base_url, *, cookies=None, insecure=False, ca_bundle=None, **_):
         self.base_url = base_url
@@ -417,7 +418,7 @@ class TestWorkbenchUiEscalation:
 class _FakeConnectClient:
     """Stand-in for ConnectClient recording the TLS kwargs it was constructed with."""
 
-    instances: list[_FakeConnectClient] = []
+    instances: ClassVar[list[_FakeConnectClient]] = []
 
     def __init__(self, *args, insecure=False, ca_bundle=None, **kwargs):
         self.args = args
