@@ -214,4 +214,4 @@ line-length = 100
 src = ["src", "selftests", "examples"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+select = ["BLE", "E", "F", "I", "UP"]

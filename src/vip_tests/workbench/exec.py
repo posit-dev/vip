@@ -359,7 +359,7 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
         return False
     try:
         start.first.click()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
 
     # Phase 1: poll the interpreter quickpick — discovery lags the click on a
@@ -383,7 +383,7 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
             row = quickpick.nth(i)
             try:
                 label = (row.text_content(timeout=_POSITRON_POLL_MS) or "").strip()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 continue
             if re.match(r"^R\b", label):
                 return row
@@ -405,10 +405,10 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
     # "never raises" contract holds even if the row/keyboard is detached.
     try:
         target.click()
-    except Exception:
+    except Exception:  # noqa: BLE001
         try:
             page.keyboard.press("Enter")
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     # Phase 2: wait (with the remaining budget) for the console to render.
@@ -431,7 +431,7 @@ def _activate_positron_console(page: Page) -> None:
     if tab.count() > 0:
         try:
             tab.first.click()
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
 
@@ -454,7 +454,7 @@ def _positron_console_state_label(page: Page) -> str | None:
             return None
         text = label.text_content(timeout=_POSITRON_PROMPT_POLL_MS)
         return text.strip() if text else None
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -703,11 +703,11 @@ def _focus_explorer(page: Page) -> None:
     """
     try:
         page.get_by_role("tab", name=re.compile(r"Explorer", re.I)).first.click()
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Fallback: click the first action item in the activity bar.
         try:
             page.locator(".activitybar .actions-container .action-item").first.click()
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
 
@@ -790,7 +790,7 @@ def _read_vscode_editor_text(page: Page, timeout: int = 30_000) -> str:
     try:
         page.keyboard.press("Control+End")
         page.keyboard.press("Meta+End")
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
     page.wait_for_timeout(150)
     return loc.inner_text()
@@ -804,10 +804,10 @@ def _close_active_editor(page: Page) -> None:
     """
     try:
         page.keyboard.press("Meta+W")
-    except Exception:
+    except Exception:  # noqa: BLE001
         try:
             page.keyboard.press("Control+W")
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
     page.wait_for_timeout(200)
 
@@ -1077,7 +1077,7 @@ def terminal_run(
                 _close_active_editor(page)
                 readback_successes += 1
                 last_content = marker_text
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 marker_text = ""
                 last_readback_error = f"{type(exc).__name__}: {exc}"
             parsed = _parse_done_marker(marker_text, done_marker)
@@ -1092,7 +1092,7 @@ def terminal_run(
                     _close_active_editor(page)
                     out_parsed = _parse_done_marker(full, done_marker)
                     output = out_parsed[0] if out_parsed is not None else full
-                except Exception:
+                except Exception:  # noqa: BLE001
                     pass
                 if exit_code != 0:
                     raise ExecError(
@@ -1153,7 +1153,7 @@ def terminal_run(
                     time.sleep(poll_interval)
                     continue
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 last_readback_error = f"{type(exc).__name__}: {exc}"
                 time.sleep(poll_interval)
                 continue

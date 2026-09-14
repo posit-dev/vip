@@ -205,7 +205,7 @@ def request_http(product, vip_config):
             http_url, follow_redirects=True, timeout=10, verify=vip_config.verify
         )
         final_url_scheme = resp_followed.url.scheme
-    except Exception:
+    except Exception:  # noqa: BLE001
         final_url_scheme = None
 
     return {

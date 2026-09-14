@@ -180,7 +180,7 @@ class ReportData:
 
             dt = datetime.fromisoformat(self.generated_at)
             return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        except Exception:
+        except Exception:  # noqa: BLE001
             return self.generated_at[:19] if self.generated_at else "N/A"
 
     def by_category(self) -> dict[str, list[TestResult]]:
@@ -395,7 +395,7 @@ def _installed_vip_tests_dir() -> Path | None:
     """Return the directory of the installed ``vip_tests`` package, if any."""
     try:
         import vip_tests
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
     location = getattr(vip_tests, "__file__", None)
     return Path(location).resolve().parent if location else None

@@ -226,7 +226,7 @@ def kubernetes_client(vip_config: VIPConfig) -> KubernetesClient | None:
         return None
     try:
         return KubernetesClient(namespace=k8s_cfg.namespace)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
