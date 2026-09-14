@@ -171,7 +171,7 @@ def test_deploy_gitbacked():
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def deploy_state():
     """Mutable dict to carry state across steps within a single scenario."""
     return {}

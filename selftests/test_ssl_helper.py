@@ -379,7 +379,7 @@ def test_cert_expires_at_handles_single_digit_day_double_space():
 
 
 @pytest.mark.parametrize(
-    "month_abbr,month_num",
+    ("month_abbr", "month_num"),
     [
         ("Jan", 1),
         ("Feb", 2),

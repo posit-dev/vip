@@ -23,7 +23,7 @@ import pytest
 
 
 class TestExtensionFixtureVisibility:
-    @pytest.fixture()
+    @pytest.fixture
     def ext_pytester(self, pytester):
         """pytester with a minimal vip.toml and no other collection targets."""
         pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')

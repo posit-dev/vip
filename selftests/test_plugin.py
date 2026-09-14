@@ -279,7 +279,7 @@ class TestPluginIntegration:
     plugin state (including a fresh ``_results`` list).
     """
 
-    @pytest.fixture()
+    @pytest.fixture
     def selftest_pytester(self, pytester):
         """pytester fixture pre-configured with VIP installed."""
         # Write a minimal vip.toml that has no products configured so all
@@ -1361,7 +1361,7 @@ class TestPluginIntegration:
 class TestXdistCompatibility:
     """Verify that JSON report generation works with and without xdist."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def selftest_pytester(self, pytester):
         pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
         return pytester
@@ -2338,7 +2338,7 @@ class TestAttestSkipHelpers:
     def test_unproven_raises_a_skip_carrying_the_sentinel(self):
         from vip import attest
 
-        with pytest.raises(BaseException) as exc:
+        with pytest.raises(BaseException, match="auth did not complete") as exc:
             attest.unproven("auth did not complete")
         assert exc.typename == "Skipped"
         assert attest.UNPROVEN_SENTINEL in str(exc.value)
@@ -2347,7 +2347,7 @@ class TestAttestSkipHelpers:
     def test_not_applicable_raises_a_plain_skip(self):
         from vip import attest
 
-        with pytest.raises(BaseException) as exc:
+        with pytest.raises(BaseException, match="Connect is not configured") as exc:
             attest.not_applicable("Connect is not configured")
         assert exc.typename == "Skipped"
         assert attest.UNPROVEN_SENTINEL not in str(exc.value)
@@ -2361,7 +2361,7 @@ class TestUnprovenExitStatus:
     whose checks all went unproven must not exit 0, whatever the cause.
     """
 
-    @pytest.fixture()
+    @pytest.fixture
     def selftest_pytester(self, pytester):
         pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
         return pytester
