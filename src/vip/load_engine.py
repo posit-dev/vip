@@ -298,7 +298,7 @@ def _log_request(
     request_type: str,
     name: str,
     response_time: float,
-    response_length: int,
+    response_length: int,  # noqa: ARG001 -- locust event kwarg
     exception: Exception | None = None,
     **_kwargs,
 ) -> None:
