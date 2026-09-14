@@ -157,7 +157,7 @@ def test_config_no_proxy_star_short_circuits_explicit_url():
 
 
 def test_config_no_proxy_star_short_circuits_env(monkeypatch):
-    """\"*" in config no_proxy also bypasses an env-derived proxy."""
+    """ "*" in config no_proxy also bypasses an env-derived proxy."""  # noqa: D210
     monkeypatch.setenv("HTTPS_PROXY", "http://envp:8080")
     monkeypatch.delenv("NO_PROXY", raising=False)
     assert build_proxy_map(ProxyConfig(no_proxy=["*"])) == {}

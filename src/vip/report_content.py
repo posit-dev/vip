@@ -224,12 +224,12 @@ def group_by_category(results: list[TestResult]) -> dict[str, list[TestResult]]:
 
 
 def category_label(category: str) -> str:
-    """\"package_manager" -> "Package Manager" for a section heading."""
+    """ "package_manager" -> "Package Manager" for a section heading."""  # noqa: D210
     return category.replace("_", " ").title()
 
 
 def outcome_counts_summary(items: list[TestResult]) -> str:
-    """\"6 passed, 1 failed, 2 skipped" — used in category/group sub-headers."""
+    """ "6 passed, 1 failed, 2 skipped" — used in category/group sub-headers."""  # noqa: D210
     counts = Counter(i.status for i in items)
     order = [
         ("passed", "passed"),
