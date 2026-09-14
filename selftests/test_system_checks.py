@@ -93,7 +93,7 @@ class TestRedactLicenseOutputs:
         assert redacted[0]["output"] == _REDACTED
 
     @pytest.mark.parametrize(
-        "group,test",
+        ("group", "test"),
         [
             ("", ""),
             ("Runtime", "r_version"),

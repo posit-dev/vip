@@ -152,7 +152,11 @@ def test_attempt_tls_defaults_to_full_verification(monkeypatch):
     _patch_connect(monkeypatch)
 
     seen: dict = {}
-    monkeypatch.setattr(ssl, "create_default_context", lambda: _recording_context_factory(seen)())
+    monkeypatch.setattr(
+        ssl,
+        "create_default_context",
+        lambda: _recording_context_factory(seen)(),  # noqa: PLW0108 -- stays lazy per call
+    )
 
     _attempt_tls("example.com", 443, min_version=ssl.TLSVersion.TLSv1_2)
 
@@ -167,7 +171,11 @@ def test_attempt_tls_insecure_disables_verification(monkeypatch):
     _patch_connect(monkeypatch)
 
     seen: dict = {}
-    monkeypatch.setattr(ssl, "create_default_context", lambda: _recording_context_factory(seen)())
+    monkeypatch.setattr(
+        ssl,
+        "create_default_context",
+        lambda: _recording_context_factory(seen)(),  # noqa: PLW0108 -- stays lazy per call
+    )
 
     result = _attempt_tls("example.com", 443, insecure=True, min_version=ssl.TLSVersion.TLSv1_2)
 
@@ -198,7 +206,7 @@ def test_attempt_tls_classifies_context_config_failure_as_client_unsupported(
         def maximum_version(self, value):
             raise ssl.SSLError("no protocols available")
 
-    monkeypatch.setattr(ssl, "create_default_context", lambda: _FakeContext())
+    monkeypatch.setattr(ssl, "create_default_context", _FakeContext)
     # Handshake won't run, but stub it anyway in case the helper reaches it.
     _patch_handshake(monkeypatch, None)
 
@@ -379,7 +387,7 @@ def test_cert_expires_at_handles_single_digit_day_double_space():
 
 
 @pytest.mark.parametrize(
-    "month_abbr,month_num",
+    ("month_abbr", "month_num"),
     [
         ("Jan", 1),
         ("Feb", 2),

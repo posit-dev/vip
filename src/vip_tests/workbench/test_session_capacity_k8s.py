@@ -27,7 +27,7 @@ from vip.clients.kubernetes import KubernetesClient
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
-    ResourceProfileDisabled,
+    ResourceProfileDisabledError,
     _option_is_disabled,
     k8s_session_prefix,
     quit_owned_sessions_via_page,
@@ -50,7 +50,7 @@ _NODE_SCALE_TIMEOUT_SECONDS = 300  # 5 minutes for a node to appear
 def _launch_session(page: Page, session_name: str, profile: str | None = None) -> None:
     """Open the New Session dialog and launch with an optional resource profile.
 
-    Raises ``ResourceProfileDisabled`` if the selected profile is disabled for
+    Raises ``ResourceProfileDisabledError`` if the selected profile is disabled for
     the authenticated user.
     """
     page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)
@@ -82,7 +82,7 @@ def _launch_session(page: Page, session_name: str, profile: str | None = None) -
                     page.keyboard.press("Escape")
                     page.keyboard.press("Escape")
                     expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
-                    raise ResourceProfileDisabled(profile)
+                    raise ResourceProfileDisabledError(profile)
                 option.click(timeout=TIMEOUT_QUICK)
         else:
             attest.unproven(f"Resource profile dropdown not available; cannot select '{profile}'")
@@ -134,6 +134,10 @@ def _parse_memory_gib(mem_str: str) -> float:
 
 @given("the Kubernetes cluster is configured", target_fixture="k8s_client")
 def k8s_cluster_configured(vip_config) -> KubernetesClient:
+    # Builds its own client instead of reusing the `kubernetes_client` fixture:
+    # the fixture collapses "not configured" and "construction failed" into the
+    # same `None`, but this step needs to tell them apart to report
+    # not_applicable vs. unproven (with the original exception message).
     k8s_cfg = vip_config.workbench.kubernetes
     if not k8s_cfg.is_configured:
         attest.not_applicable(
@@ -246,7 +250,7 @@ def launch_profiled_session(page: Page, vip_config) -> list[dict]:
     name = f"{k8s_session_prefix()}prof_0"
     try:
         _launch_session(page, name, profile=profile)
-    except ResourceProfileDisabled as exc:
+    except ResourceProfileDisabledError as exc:
         attest.not_applicable(
             f"Resource profile '{exc.profile}' is disabled for the "
             "authenticated user (likely a group/entitlement restriction)"
@@ -267,7 +271,7 @@ def launch_limited_session(page: Page, vip_config) -> list[dict]:
     name = f"{k8s_session_prefix()}lim_0"
     try:
         _launch_session(page, name, profile=profile)
-    except ResourceProfileDisabled as exc:
+    except ResourceProfileDisabledError as exc:
         attest.not_applicable(
             f"Resource profile '{exc.profile}' is disabled for the "
             "authenticated user (likely a group/entitlement restriction)"
@@ -366,5 +370,6 @@ def cleanup_k8s_sessions(launched_sessions: list[dict], page: Page, workbench_ur
         row = page.locator(Homepage.session_row(session["name"]))
         try:
             expect(row).to_be_hidden(timeout=TIMEOUT_DIALOG)
-        except Exception:
+        except Exception:  # noqa: BLE001
+            # Best-effort cleanup — don't mask the original failure/skip.
             pass

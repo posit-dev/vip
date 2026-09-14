@@ -20,6 +20,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_PAGE_LOAD,
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
+    _navigated_into_session,
     assert_homepage_loaded,
     unique_session_name,
     wait_for_session_active,
@@ -176,23 +177,20 @@ def user_resumes_session(page: Page, session_context: dict):
     expect(launch_btn).to_be_visible(timeout=TIMEOUT_DIALOG)
     launch_btn.click()
 
-    # Wait for the navigation into the session URL to commit before going
-    # anywhere else. Navigating away from /s/<id> too quickly causes
-    # Workbench to abort the resume — and the top-level document's "load"
-    # event is not sufficient proof that the resume itself has landed: it
-    # fires once the session *shell* page is served, well before the backend
-    # has finished reattaching rsession and streaming the IDE into it. Prior
-    # to this, the observation step bounced straight to /home and polled the
-    # homepage badge, which raced that reattachment and could itself be what
-    # aborted a resume that was still in flight (issue #648). Wait for actual
-    # RStudio content here instead — the same readiness gate the fresh-launch
-    # path already trusts (see ``rstudio_functional`` in test_ide_launch.py)
-    # — so we only leave /s/<id> once the resume has demonstrably succeeded.
-    # A timeout here means resume did not demonstrably complete; report that
-    # as unproven rather than letting the bare Playwright assertion surface
-    # as an opaque hard failure (this file's established pattern — see
+    # Wait for actual RStudio content, not just the page's "load" event —
+    # that fires once the session shell is served, well before the backend
+    # finishes reattaching rsession (same readiness gate the fresh-launch
+    # path trusts; see ``rstudio_functional`` in test_ide_launch.py).
+    #
+    # The navigation check uses ``_navigated_into_session`` rather than a
+    # bare ``"**/s/**"`` glob, because Workbench's own homepage is also
+    # served under a "/s/<id>/" URL, so that glob can pass without the
+    # browser ever leaving the homepage. A timeout here means resume did
+    # not demonstrably complete; report that as unproven rather than
+    # letting the bare Playwright assertion surface as an opaque hard
+    # failure (this file's established pattern — see
     # session_becomes_active_again below).
-    page.wait_for_url("**/s/**", timeout=TIMEOUT_PAGE_LOAD)
+    page.wait_for_url(_navigated_into_session, timeout=TIMEOUT_PAGE_LOAD)
     try:
         expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_SESSION_START)
     except AssertionError as exc:

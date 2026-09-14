@@ -54,7 +54,7 @@ def test_install_plan_rhel_all_present(tmp_path: Path):
     plan = pl.build_install_plan(
         platform_info=info,
         manifest=None,
-        rpm_installed=lambda names: set(names),
+        rpm_installed=set,
         dpkg_installed=lambda names: {},
         chromium_present=True,
         playwright_cache_dir=tmp_path / "cache",

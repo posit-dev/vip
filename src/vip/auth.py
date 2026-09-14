@@ -68,12 +68,10 @@ class AuthTimeoutError(AuthConfigError):
 _KEY_NAME_PREFIX = "_vip_interactive_"
 
 # Single timeout for an IdP login round-trip (browser leaves the product,
-# authenticates at the IdP, and lands back). Used by the interactive poll
-# loop, the headless _wait_for_product_redirect poll, and (for consistency)
-# _authenticate_workbench's post-Connect SSO wait. Workbench previously used
-# its own, shorter 2-minute timeout, which made it time out -- and skip
-# Workbench tests -- well before the primary round-trip's window closed.
-# See #596.
+# authenticates at the IdP, and lands back). Shared by the interactive poll
+# loop, the headless _wait_for_product_redirect poll, and
+# _authenticate_workbench's post-Connect SSO wait, so Workbench's wait can
+# never expire before the primary round-trip's window does.
 _IDP_ROUNDTRIP_TIMEOUT_SECONDS = 300
 
 # Orphan keys younger than this are left alone so a concurrent ``vip verify``
@@ -268,10 +266,10 @@ class InteractiveAuthSession:
                     ca_bundle=self._ca_bundle,
                     proxy=self._proxy,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 print(f">>> Warning: Could not delete API key: {exc}")
 
-        if self._tmpdir and os.path.isdir(self._tmpdir):
+        if self._tmpdir and Path(self._tmpdir).is_dir():
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
 
@@ -319,18 +317,18 @@ def authenticated_page(
         finally:
             try:
                 context.close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
     finally:
         if browser is not None:
             try:
                 browser.close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         if ca_bundle is not None:
             if _prev_node_ca is None:
@@ -525,7 +523,7 @@ def _load_cached_auth(
                 meta.get("requested_connect_url", "") or resolved_connect_url
             )
             cached_request_workbench_url = meta.get("workbench_url", "")
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     # Match against the *requested* Connect URL so that
@@ -664,10 +662,10 @@ def refresh_auth_cache_from_storage_state(
         tmp = Path(tmp_name)
         with os.fdopen(fd, "w") as handle:
             handle.write(payload)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, path)
+        tmp.chmod(0o600)
+        tmp.replace(path)
         return True
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("Could not refresh the auth cache at %s: %s", path, exc)
         if tmp is not None and tmp.exists():
             with contextlib.suppress(OSError):
@@ -696,7 +694,7 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
 
     # Copy storage state to the cache location.
     _shutil.copy2(session.storage_state_path, cache_path)
-    os.chmod(cache_path, 0o600)
+    cache_path.chmod(0o600)
 
     # Write companion metadata.  ``connect_url`` keeps the resolved
     # form (used for API key cleanup); ``requested_connect_url`` keeps
@@ -713,7 +711,7 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         "workbench_url": session._workbench_url,
     }
     meta_path.write_text(json.dumps(meta))
-    os.chmod(meta_path, 0o600)
+    meta_path.chmod(0o600)
 
 
 def _resolve_str_if_inferred(
@@ -827,12 +825,13 @@ def start_interactive_auth(
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
-    assert primary_url is not None  # guaranteed by the check above
+    if primary_url is None:
+        raise RuntimeError("unreachable: connect_url or workbench_url required, checked above")
     login_path = "/__login__" if connect_url else ""
 
     tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
     storage_state_path = Path(tmpdir) / "vip-auth-state.json"
-    os.chmod(tmpdir, 0o700)
+    Path(tmpdir).chmod(0o700)
 
     key_name = f"{_KEY_NAME_PREFIX}{int(time.time())}"
 
@@ -872,7 +871,7 @@ def start_interactive_auth(
         while time.monotonic() < deadline:
             try:
                 url = page.url
-            except Exception:
+            except Exception:  # noqa: BLE001
                 break
             if connect_url:
                 if base in url and "/__login__" not in url:
@@ -888,7 +887,7 @@ def start_interactive_auth(
                     break
             try:
                 page.wait_for_timeout(500)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 break
 
         if not login_completed:
@@ -941,19 +940,19 @@ def start_interactive_auth(
 
         return session
     except Exception:
-        if tmpdir and os.path.isdir(tmpdir):
+        if tmpdir and Path(tmpdir).is_dir():
             shutil.rmtree(tmpdir, ignore_errors=True)
         raise
     finally:
         if browser is not None:
             try:
                 browser.close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
         # auth calls (or test runs) are not silently affected.
@@ -1075,12 +1074,13 @@ def start_headless_auth(
 
     # Determine the primary login target.
     primary_url = connect_url or workbench_url
-    assert primary_url is not None
+    if primary_url is None:
+        raise RuntimeError("unreachable: connect_url or workbench_url required, checked above")
     login_path = "/__login__" if connect_url else ""
 
     tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
     storage_state_path = Path(tmpdir) / "vip-auth-state.json"
-    os.chmod(tmpdir, 0o700)
+    Path(tmpdir).chmod(0o700)
 
     key_name = f"{_KEY_NAME_PREFIX}{int(time.time())}"
 
@@ -1173,19 +1173,19 @@ def start_headless_auth(
 
         return session
     except Exception:
-        if tmpdir and os.path.isdir(tmpdir):
+        if tmpdir and Path(tmpdir).is_dir():
             shutil.rmtree(tmpdir, ignore_errors=True)
         raise
     finally:
         if browser is not None:
             try:
                 browser.close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
         # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
         # auth calls (or test runs) are not silently affected.
@@ -1221,7 +1221,7 @@ def _navigate_to_idp(page: Page, product_url: str) -> None:
             # Check if we left the product page.
             if not page.url.lower().startswith(product_base):
                 return
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
 
     # If we're still on the product page, wait briefly for auto-redirect.
@@ -1230,7 +1230,7 @@ def _navigate_to_idp(page: Page, product_url: str) -> None:
             lambda url: not url.lower().startswith(product_base),
             timeout=int(scaled(10_000)),
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
 
 
@@ -1274,7 +1274,7 @@ def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = 
     while time.monotonic() < deadline:
         try:
             url = page.url.lower()
-        except Exception:
+        except Exception:  # noqa: BLE001
             break
         if url.startswith(base) and not _on_login_page(url):
             return
@@ -1282,12 +1282,15 @@ def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = 
         # round-trip (form action "auth-openid-sign-in"). A human user
         # would click "Sign in with OpenID"; in headless mode we do it
         # for them. Click at most once so a stuck page doesn't loop.
-        if not clicked_oidc_confirm and url.startswith(base):
-            if _click_workbench_oidc_confirm(page):
-                clicked_oidc_confirm = True
+        if (
+            not clicked_oidc_confirm
+            and url.startswith(base)
+            and _click_workbench_oidc_confirm(page)
+        ):
+            clicked_oidc_confirm = True
         try:
             page.wait_for_timeout(500)
-        except Exception:
+        except Exception:  # noqa: BLE001
             break
 
     label = _protocol_label(provider)
@@ -1336,14 +1339,13 @@ def _on_login_page(url: str) -> bool:
     the raw POST target the IdP redirects to before Workbench validates the
     assertion and issues its own session cookie. Every caller here uses this
     check to decide "is the round-trip actually finished", and landing on
-    that URL means it is not: the completion checks in
-    :func:`_authenticate_workbench` and :func:`_wait_for_product_redirect`
-    previously accepted it as done the moment ``networkidle`` fired (before
-    Workbench's own post-assertion redirect ran), capturing a storage state
-    with no valid Workbench session cookie -- which is what made a real SAML
-    login look successful during --headless-auth but then fail for real once
-    ``test_workbench_login`` reused that state (issue #263 diagnostic, run
-    34510387889).
+    that URL means it is not: :func:`_authenticate_workbench` and
+    :func:`_wait_for_product_redirect` must not treat ``networkidle`` firing
+    as completion while still on this URL, because Workbench's own
+    post-assertion redirect has not run yet -- accepting it early captures a
+    storage state with no valid Workbench session cookie, so a real SAML
+    login looks successful during --headless-auth but fails once
+    ``test_workbench_login`` reuses that state.
     """
     lower = url.lower()
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
@@ -1412,7 +1414,7 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
         try:
             page.click(selector, timeout=int(scaled(2_000)))
             break
-        except Exception:
+        except Exception:  # noqa: BLE001
             continue
 
     # Wait for the OIDC redirect chain to complete.
@@ -1426,24 +1428,24 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
     while time.monotonic() < deadline:
         try:
             page.wait_for_load_state("networkidle", timeout=int(scaled(5_000)))
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
         try:
             last_url = page.url
-        except Exception:
+        except Exception:  # noqa: BLE001
             break
         if last_url.lower().startswith(wb_base) and not _on_login_page(last_url):
             print(f">>> Workbench authenticated. Landed at: {last_url}\n")
             return None
         try:
             page.wait_for_timeout(500)
-        except Exception:
+        except Exception:  # noqa: BLE001
             break
 
     timeout_label = _timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))
     try:
         last_title = page.title()
-    except Exception:
+    except Exception:  # noqa: BLE001
         last_title = "<unknown>"
     label = _protocol_label(provider)
     session_desc = f"{label} session" if label else "The login session"
@@ -1475,7 +1477,7 @@ def _strip_url_query(url: str) -> str:
 
         parts = urlsplit(url)
         return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
-    except Exception:
+    except Exception:  # noqa: BLE001
         return url
 
 
@@ -1493,11 +1495,11 @@ def _describe_final_page_state(page: Page, expected_origin: str) -> str:
     """
     try:
         url = _strip_url_query(page.url)
-    except Exception:
+    except Exception:  # noqa: BLE001
         url = "<unknown -- page may be closed or crashed>"
     try:
         title = page.title()
-    except Exception:
+    except Exception:  # noqa: BLE001
         title = "<unknown>"
     return f"ended up at {url!r} (title: {title!r}); expected to land on {expected_origin!r}"
 
@@ -1509,10 +1511,10 @@ def _protocol_label(provider: str) -> str:
     """Human-readable protocol name for *provider*, or "" when it isn't a
     recognized IdP-backed provider.
 
-    A timeout error used to hardcode "OIDC" even during a SAML run (see
-    #263); callers use this to name whatever is actually configured, and
-    fall back to neutral wording ("Login", not a wrong protocol) when the
-    provider isn't one of the known IdP-backed ones.
+    Callers use this to name the protocol actually configured in a timeout
+    error message, rather than hardcoding one that could be wrong (e.g.
+    "OIDC" during a SAML run); an unrecognized provider falls back to
+    neutral wording ("Login", not a wrong protocol name).
     """
     return _PROVIDER_LABELS.get(provider.strip().lower(), "")
 
@@ -1520,10 +1522,9 @@ def _protocol_label(provider: str) -> str:
 def _timeout_label(seconds: float) -> str:
     """Human-readable minutes for a *scaled* timeout.
 
-    The error text used to hardcode "5 minutes" / "2 minutes" while the
-    actual deadline was ``scaled(300)`` / ``scaled(120)`` -- under
-    ``VIP_TIMEOUT_SCALE=2`` VIP waited 10 minutes but claimed 5 (see #263).
-    This derives the text from the real, already-scaled value instead.
+    Derives the text from the real, already-scaled deadline (e.g.
+    ``scaled(300)``) so the reported minutes always match how long VIP
+    actually waits, including under ``VIP_TIMEOUT_SCALE``.
     """
     minutes = seconds / 60
     if minutes == int(minutes):
@@ -1669,7 +1670,7 @@ def _log_mint_cookie_diagnostic(page: Page, request_url: str) -> None:
     """
     try:
         current_url = page.url
-    except Exception:
+    except Exception:  # noqa: BLE001
         current_url = "<unknown>"
     print(f">>> Mint diagnostic: browser is on {current_url}")
     try:
@@ -1677,20 +1678,20 @@ def _log_mint_cookie_diagnostic(page: Page, request_url: str) -> None:
         print(f">>> Mint diagnostic: full cookie jar ({len(jar)} entries):")
         for entry in _summarize_cookies(jar):
             print(f"    {entry}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f">>> Mint diagnostic: could not read cookie jar: {exc}")
     try:
         scoped = page.context.cookies(request_url) or []
         print(f">>> Mint diagnostic: cookies sent to {request_url} ({len(scoped)} entries):")
         for entry in _summarize_cookies(scoped):
             print(f"    {entry}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f">>> Mint diagnostic: could not read scoped cookies: {exc}")
     try:
         doc_cookie = page.evaluate("() => document.cookie") or ""
         doc_names = [p.strip().partition("=")[0] for p in doc_cookie.split(";") if p.strip()]
         print(f">>> Mint diagnostic: document.cookie names: {doc_names}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f">>> Mint diagnostic: could not read document.cookie: {exc}")
 
 
@@ -1721,7 +1722,7 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
     """
     try:
         list_resp = client.get(f"/v1/users/{guid}/keys")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f">>> Warning: listing stale keys failed: {exc}")
         return
     if not list_resp.is_success:
@@ -1753,7 +1754,7 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
             continue  # belongs to a concurrent run
         try:
             client.delete(f"/v1/users/{guid}/keys/{key_id}")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             print(f">>> Warning: could not delete stale key {key_id}: {exc}")
 
 
@@ -1816,7 +1817,7 @@ def _body_snippet(resp, limit: int = 200) -> str:
     """
     try:
         text = _response_text(resp).strip()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return "<unreadable body>"
     text = " ".join(text.split())
     return text[:limit] if text else "<empty body>"
