@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import socket
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -173,7 +172,7 @@ def save(manifest: Manifest, path: Path) -> None:
     """Write ``manifest`` to ``path`` atomically.
 
     Serializes to a sibling ``path.with_suffix(path.suffix + ".tmp")`` file and
-    then ``os.replace``s it onto ``path``, so a reader of ``path`` never observes a
+    then ``Path.replace``s it onto ``path``, so a reader of ``path`` never observes a
     partially-written file and a crash mid-write leaves the previous manifest
     at ``path`` untouched. If writing the temp file or the replace itself
     raises, the temp file is removed on a best-effort basis (an ``OSError``
@@ -195,7 +194,7 @@ def save(manifest: Manifest, path: Path) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:
         tmp.write_text(json.dumps(serialized, indent=2, sort_keys=False) + "\n")
-        os.replace(tmp, path)
+        tmp.replace(path)
     except Exception:
         with contextlib.suppress(OSError):
             tmp.unlink(missing_ok=True)

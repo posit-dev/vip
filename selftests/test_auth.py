@@ -3395,14 +3395,12 @@ class TestRefreshAuthCacheFromStorageState:
     """
 
     def _existing_cache(self, tmp_path):
-        import os
-
         cache = tmp_path / ".vip-auth-cache.json"
         cache.write_text('{"cookies": [{"name": "dead", "value": "old"}], "origins": []}')
-        os.chmod(cache, 0o600)
+        cache.chmod(0o600)
         meta = cache.with_suffix(".meta.json")
         meta.write_text('{"api_key": null, "workbench_url": "https://wb.example.com"}')
-        os.chmod(meta, 0o600)
+        meta.chmod(0o600)
         return cache, meta
 
     def test_rewrites_an_existing_cache_with_the_live_state(self, tmp_path):
