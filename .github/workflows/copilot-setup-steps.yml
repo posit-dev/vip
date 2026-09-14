@@ -11,10 +11,18 @@ jobs:
   # The job MUST be called 'copilot-setup-steps' to be recognized by GitHub Copilot Agent
   copilot-setup-steps:
     runs-on: ubuntu-latest
-    # connect-smoke.yml's identical `uv sync --all-extras` + `vip install
-    # --skip-system` combination measures ~3.8 min median under
-    # timeout-minutes: 10; there is no 5-minute precedent for this pair of
-    # steps anywhere in the repo, only that 10-minute one.
+    # No job in this repo does exactly this bootstrap's step combination (uv
+    # sync --all-extras, vip install --skip-system, Quarto setup) at a
+    # comparably minimal scope to measure against. connect-smoke.yml's
+    # narrower `uv sync` (no --all-extras) + `vip install --skip-system` pair
+    # measures ~3.8 min median under timeout-minutes: 10; example-report.yml
+    # uses this job's exact `uv sync --all-extras` + `vip install
+    # --skip-system` pair plus the same Quarto setup action, but inside a much
+    # heavier job (spins up Connect/Workbench containers, renders the report)
+    # at timeout-minutes: 20, so its number doesn't transfer either. 10
+    # minutes here is a reasoned buffer over the connect-smoke.yml baseline
+    # for the extra --all-extras sync weight and the Quarto install, not a
+    # measurement of this exact combination.
     timeout-minutes: 10
 
     # Set minimal permissions for setup steps
@@ -29,6 +37,14 @@ jobs:
           persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      # AGENTS.md documents `vip report`, which shells out to a separate
+      # `quarto` executable (src/vip/cli.py) -- pyproject.toml only installs
+      # the Python/Jupyter side. Same action, same pin, same version as
+      # example-report.yml's Quarto install.
+      - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2
+        with:
+          version: 1.9.37
 
       # --all-extras pulls the dev extra (ruff, mypy, pip-audit) alongside the
       # base deps (pytest, pytest-bdd, playwright) -- see ci.yml's typecheck

@@ -26,8 +26,8 @@ Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `py
 Ruff is the linter and formatter. CI enforces both. Always run checks before committing:
 
 ``` bash
-uv run ruff check src/ selftests/ examples/ docker/
-uv run ruff format --check src/ selftests/ examples/ docker/
+uv run --extra dev ruff check src/ selftests/ examples/ docker/
+uv run --extra dev ruff format --check src/ selftests/ examples/ docker/
 ```
 
 Or with just:
