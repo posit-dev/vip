@@ -171,7 +171,8 @@ class TestIsTransientPackratCdnFailure:
     @pytest.mark.parametrize("host", tcd._KNOWN_PPM_CDN_HOSTS)
     def test_matches_every_code_and_host_combination(self, host, code):
         """Every (code, host) pair must match on its own -- a typo in any one
-        of the four codes or three hosts would otherwise pass undetected."""
+        of the four codes or three hosts would otherwise pass undetected.
+        """
         output = f"{code} some curl error talking to {host}\nUnable to fully restore the R packages"
         assert tcd._is_transient_packrat_cdn_failure(output) is True
         assert tcd._matched_transient_signature(output) == (code, host)
@@ -241,7 +242,8 @@ def _finished_task(*, code: int, output: list[str], error: str = "deploy failed"
 def _retry_properties(request) -> list[tuple[str, str]]:
     """Return the (name, value) pairs recorded via record_property on *request*'s
     node -- this is the real pytest mechanism, not a mock, so it also proves
-    wait_for_deploy's record_property calls are shaped the way pytest expects."""
+    wait_for_deploy's record_property calls are shaped the way pytest expects.
+    """
     return list(request.node.user_properties)
 
 
@@ -249,7 +251,8 @@ class TestWaitForDeployRetry:
     def test_matching_failure_is_retried_and_then_succeeds(self, record_property, request):
         """First attempt hits the transient signature; the retry succeeds; no
         pytest.fail is raised; wait_for_task is called exactly twice; the
-        retry is recorded via record_property even though the test passes."""
+        retry is recorded via record_property even though the test passes.
+        """
         connect_client = MagicMock()
         connect_client.wait_for_task.side_effect = [
             _finished_task(code=1, output=_REAL_TRANSIENT_CDN_FAILURE.splitlines()),
@@ -277,7 +280,8 @@ class TestWaitForDeployRetry:
         """Both attempts hit the transient signature: the suite still fails,
         only one retry is attempted (not an unbounded loop), and the failure
         message includes the FIRST attempt's output (where the triggering
-        signature actually lives)."""
+        signature actually lives).
+        """
         connect_client = MagicMock()
         connect_client.wait_for_task.side_effect = [
             _finished_task(code=1, output=_REAL_TRANSIENT_CDN_FAILURE.splitlines()),
@@ -302,7 +306,8 @@ class TestWaitForDeployRetry:
         """A PERSISTENT block against a known host (not a transient reset)
         also satisfies the triple-AND on every attempt. That's accepted: it
         burns exactly one wasted retry, then correctly fails -- it never
-        loops and never masks the failure."""
+        loops and never masks the failure.
+        """
         connect_client = MagicMock()
         connect_client.wait_for_task.side_effect = [
             _finished_task(code=1, output=_PERMANENT_HOST_BLOCK_FAILURE.splitlines()),
@@ -321,7 +326,8 @@ class TestWaitForDeployRetry:
     def test_non_matching_failure_is_not_retried(self, record_property, request):
         """A failure that doesn't match the signature fails on the first
         attempt, with no redeploy call at all -- assert on the call count,
-        not just the outcome -- and nothing is recorded."""
+        not just the outcome -- and nothing is recorded.
+        """
         connect_client = MagicMock()
         connect_client.wait_for_task.side_effect = [
             _finished_task(code=1, output=_APP_CRASH_FAILURE.splitlines()),
@@ -339,7 +345,8 @@ class TestWaitForDeployRetry:
     def test_matching_failure_without_redeploy_fails_immediately(self, record_property, request):
         """If a caller never set deploy_state['redeploy'] (shouldn't happen in
         practice), a matching failure must still fail cleanly instead of
-        raising KeyError, and nothing is recorded (no retry actually fired)."""
+        raising KeyError, and nothing is recorded (no retry actually fired).
+        """
         connect_client = MagicMock()
         connect_client.wait_for_task.side_effect = [
             _finished_task(code=1, output=_REAL_TRANSIENT_CDN_FAILURE.splitlines()),
@@ -354,7 +361,8 @@ class TestWaitForDeployRetry:
 
     def test_successful_first_attempt_never_calls_redeploy(self, record_property, request):
         """The common case: deploy succeeds first try, retry machinery never
-        engages, nothing is recorded."""
+        engages, nothing is recorded.
+        """
         connect_client = MagicMock()
         connect_client.wait_for_task.side_effect = [_finished_task(code=0, output=["OK"])]
         redeploy = MagicMock(return_value={"task_id": "task-2"})
@@ -369,7 +377,8 @@ class TestWaitForDeployRetry:
     def test_unfinished_task_fails_without_retry(self, record_property, request):
         """A deploy that never finishes (timeout) is unrelated to the CDN
         retry and must fail exactly as before -- no redeploy attempt, no
-        property recorded."""
+        property recorded.
+        """
         connect_client = MagicMock()
         connect_client.wait_for_task.side_effect = [
             {"finished": False, "output": ["still running"]},

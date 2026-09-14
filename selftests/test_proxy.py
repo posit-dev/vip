@@ -49,7 +49,8 @@ def test_env_map_matches_httpx(monkeypatch):
 
     Uses both http_proxy and https_proxy so the http->https promotion (see
     test_http_proxy_promoted_to_https) is a no-op here and parity is exact; the
-    promotion is the one deliberate divergence and has its own test."""
+    promotion is the one deliberate divergence and has its own test.
+    """
     from httpx._utils import get_environment_proxies
 
     for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
@@ -81,7 +82,8 @@ def test_lowercase_and_uppercase_env_are_equivalent(monkeypatch):
 
 def test_scheme_less_explicit_url_is_normalized(monkeypatch):
     """A bare host:port explicit proxy must default to http:// (like httpx env),
-    so httpx.Proxy() doesn't raise "Unknown scheme for proxy URL"."""
+    so httpx.Proxy() doesn't raise "Unknown scheme for proxy URL".
+    """
     import httpx
 
     proxy_map = build_proxy_map(ProxyConfig(url="proxy.corp:8080"))
@@ -93,7 +95,8 @@ def test_scheme_less_explicit_url_is_normalized(monkeypatch):
 
 def test_no_proxy_applies_in_env_mode(monkeypatch):
     """config.no_proxy bypass hosts must merge into an env-derived map too,
-    not only when an explicit url is set."""
+    not only when an explicit url is set.
+    """
     monkeypatch.setenv("HTTPS_PROXY", "http://server:8080")
     monkeypatch.delenv("NO_PROXY", raising=False)
     proxy_map = build_proxy_map(ProxyConfig(no_proxy=["directhost.example"]))
@@ -141,7 +144,8 @@ def test_no_proxy_star_short_circuits(monkeypatch):
 
 def test_config_no_proxy_star_short_circuits_explicit_url():
     """A "*" in the config no_proxy list bypasses everything, like NO_PROXY=* —
-    not a useless all://** pattern that leaves the explicit proxy still active."""
+    not a useless all://** pattern that leaves the explicit proxy still active.
+    """
     assert build_proxy_map(ProxyConfig(url="http://p:8080", no_proxy=["*"])) == {}
     assert (
         proxy_for_url(
@@ -153,7 +157,7 @@ def test_config_no_proxy_star_short_circuits_explicit_url():
 
 
 def test_config_no_proxy_star_short_circuits_env(monkeypatch):
-    """ "*" in config no_proxy also bypasses an env-derived proxy."""
+    """ "*" in config no_proxy also bypasses an env-derived proxy."""  # noqa: D210
     monkeypatch.setenv("HTTPS_PROXY", "http://envp:8080")
     monkeypatch.delenv("NO_PROXY", raising=False)
     assert build_proxy_map(ProxyConfig(no_proxy=["*"])) == {}
@@ -162,7 +166,8 @@ def test_config_no_proxy_star_short_circuits_env(monkeypatch):
 def test_http_proxy_promoted_to_https(monkeypatch):
     """A lone HTTP_PROXY must also carry https (the org's single outbound tunnel):
     the org points only http_proxy at their gateway and expects https to tunnel
-    through it via CONNECT. httpx alone would send https direct."""
+    through it via CONNECT. httpx alone would send https direct.
+    """
     for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy", "NO_PROXY"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://gw:3128")
@@ -173,7 +178,8 @@ def test_http_proxy_promoted_to_https(monkeypatch):
 
 def test_explicit_https_proxy_not_overridden_by_http(monkeypatch):
     """An explicit HTTPS_PROXY is a deliberate choice — promotion must not clobber
-    it, even when it differs from HTTP_PROXY."""
+    it, even when it differs from HTTP_PROXY.
+    """
     for var in ("ALL_PROXY", "all_proxy", "NO_PROXY"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://http-gw:1")
@@ -185,7 +191,8 @@ def test_explicit_https_proxy_not_overridden_by_http(monkeypatch):
 
 def test_all_proxy_not_promoted_over_http(monkeypatch):
     """ALL_PROXY already covers https, so an http_proxy alongside it must not add
-    a redundant/conflicting https:// key."""
+    a redundant/conflicting https:// key.
+    """
     for var in ("HTTPS_PROXY", "https_proxy", "NO_PROXY"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://http-gw:1")
@@ -214,7 +221,8 @@ def test_http_proxy_promotion_announces_itself_once(monkeypatch, capsys):
     every https call move onto that gateway and the only symptom is "curl works,
     VIP doesn't", with nothing naming the promotion or its escape hatches. The
     guard matters as much as the message: build_proxy_map runs once per client
-    construction and once per proxy_for_url caller."""
+    construction and once per proxy_for_url caller.
+    """
     import vip.proxy
 
     monkeypatch.setattr(vip.proxy, "_promotion_notice_emitted", False)
@@ -230,7 +238,8 @@ def test_http_proxy_promotion_announces_itself_once(monkeypatch, capsys):
     assert err.count(">>> Notice:") == 1
     assert "http://gw:3128" in err
     # Both escape hatches have to be in the message a user actually sees.
-    assert "HTTPS_PROXY" in err and "NO_PROXY" in err
+    assert "HTTPS_PROXY" in err
+    assert "NO_PROXY" in err
 
 
 def test_promotion_notice_redacts_proxy_credentials(monkeypatch, capsys):
@@ -257,7 +266,8 @@ def test_promotion_notice_survives_pytest_capture(pytester, monkeypatch):
     which is the run this notice most needs to reach. ``plugin.pytest_configure``
     primes the resolution on the controller precisely because output from
     ``pytest_configure`` is not captured. This test fails if that priming is
-    removed, which no unit test on ``vip.proxy`` alone would catch."""
+    removed, which no unit test on ``vip.proxy`` alone would catch.
+    """
     for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://gw.corp:3128")
@@ -279,7 +289,8 @@ def test_no_promotion_notice_without_a_configured_product(pytester, monkeypatch)
     VIP's plugin loads from an entry point in every venv VIP is installed into,
     and ``load_config`` returns defaults rather than bailing when there is no
     vip.toml. Ungated, a lone http_proxy would make any other project's pytest
-    run announce egress behavior for a run that makes no egress at all."""
+    run announce egress behavior for a run that makes no egress at all.
+    """
     for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy", "NO_PROXY", "no_proxy"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://gw.corp:3128")
@@ -343,7 +354,7 @@ def test_from_dict_accepts_real_booleans():
 
 
 @pytest.mark.parametrize(
-    "url,expected",
+    ("url", "expected"),
     [
         ("https://connect.example.com/x", "http://p:8080"),
         ("https://directhost.example/x", None),  # exact NO_PROXY host bypasses
@@ -400,7 +411,8 @@ def test_build_mounts_selects_proxy_and_bypass():
             return getattr(pool, "_proxy_url", None) if pool else None
 
         proxied = chosen_proxy("https://connect.example.com/x")
-        assert proxied is not None and proxied.host == b"p"
+        assert proxied is not None
+        assert proxied.host == b"p"
         # NO_PROXY host must fall to a direct transport (no proxy on the pool).
         assert chosen_proxy("https://directhost.example/x") is None
     finally:
@@ -414,7 +426,8 @@ def test_socks_proxy_without_the_extra_fails_with_vip_context(monkeypatch):
     Before the clients honored the environment at all, such a variable was inert
     for them; now build_mounts runs in BaseClient.__init__, so httpx's bare
     ImportError would land at fixture setup and error every product test with a
-    message that never names the environment variable behind it."""
+    message that never names the environment variable behind it.
+    """
     if importlib.util.find_spec("socksio") is not None:
         pytest.skip("httpx[socks] is installed, so httpx accepts a socks5:// proxy here")
     for var in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "NO_PROXY"):
@@ -433,7 +446,8 @@ def test_socks_proxy_without_the_extra_fails_with_vip_context(monkeypatch):
 
 def test_unknown_proxy_scheme_fails_with_vip_context():
     """httpx.Proxy rejects anything outside http/https/socks5 with a message that
-    says nothing about where VIP got the value."""
+    says nothing about where VIP got the value.
+    """
     with pytest.raises(ProxyConfigError) as excinfo:
         build_mounts({"https://": "ftp://gw.corp:2121"}, verify=True)
     message = str(excinfo.value)
@@ -444,7 +458,8 @@ def test_unknown_proxy_scheme_fails_with_vip_context():
 def test_malformed_proxy_url_fails_with_vip_context():
     """A typo'd port is the likeliest of the three ways httpx rejects a proxy URL,
     and the one that most easily escapes: httpx.InvalidURL derives from Exception,
-    not ValueError, so it slips past a `(ValueError, ImportError)` clause."""
+    not ValueError, so it slips past a `(ValueError, ImportError)` clause.
+    """
     assert not issubclass(httpx.InvalidURL, ValueError)
     with pytest.raises(ProxyConfigError) as excinfo:
         build_mounts({"http://": "http://gw:abc"}, verify=True)
@@ -462,7 +477,8 @@ def test_proxy_config_error_message_redacts_credentials():
 
 def test_proxy_config_error_is_a_value_error():
     """vip status catches broadly and reports config problems as a failed check;
-    keeping this a ValueError also leaves argument-error paths unchanged."""
+    keeping this a ValueError also leaves argument-error paths unchanged.
+    """  # noqa: D403 -- CLI name
     assert issubclass(ProxyConfigError, ValueError)
 
 
@@ -474,7 +490,8 @@ def test_proxy_config_error_is_a_value_error():
 def test_redact_proxy_url_strips_password_when_unparseable():
     """A malformed authenticated proxy (typo'd port) makes httpx.URL raise. The
     failure branch used to return the raw string, leaking the password into the
-    ProxyConfigError that names it. It must strip the userinfo textually instead."""
+    ProxyConfigError that names it. It must strip the userinfo textually instead.
+    """
     bad = "http://user:s3cr3t@proxy.corp:8O80"  # 8O80 -> invalid port -> httpx.URL raises
     with pytest.raises(httpx.InvalidURL):
         httpx.URL(bad)
@@ -485,7 +502,8 @@ def test_redact_proxy_url_strips_password_when_unparseable():
 
 def test_malformed_authenticated_proxy_error_does_not_leak_password():
     """End-to-end: an unparseable authenticated proxy URL must not surface its
-    password in the ProxyConfigError message (which reaches stdout/CI logs)."""
+    password in the ProxyConfigError message (which reaches stdout/CI logs).
+    """
     with pytest.raises(ProxyConfigError) as excinfo:
         build_mounts({"https://": "http://user:s3cr3t@gw.corp:8O80"}, verify=True)
     assert "s3cr3t" not in str(excinfo.value)
@@ -530,7 +548,8 @@ def test_env_reconcile_explicit_url_overrides_and_clears_ambient_no_proxy():
     env = {"HTTPS_PROXY": "http://other:9999", "NO_PROXY": "was.here", "no_proxy": "was.here"}
     out = proxy_env_for_subprocess(ProxyConfig(url="http://gw:3128"), env)
     assert out["HTTPS_PROXY"] == "http://gw:3128"  # ambient proxy overridden
-    assert "NO_PROXY" not in out and "no_proxy" not in out  # ambient NO_PROXY cleared
+    assert "NO_PROXY" not in out  # ambient NO_PROXY cleared
+    assert "no_proxy" not in out
 
 
 def test_env_reconcile_explicit_url_sets_no_proxy_from_config():
@@ -561,7 +580,8 @@ def test_env_reconcile_trust_env_merges_config_no_proxy():
 
 def test_env_reconcile_promotes_lone_http_proxy_to_https():
     """The pooled clients promote a lone HTTP_PROXY to carry https; the
-    env-honoring paths must get the same promotion via the child env."""
+    env-honoring paths must get the same promotion via the child env.
+    """
     out = proxy_env_for_subprocess(ProxyConfig(), {"HTTP_PROXY": "http://gw:3128"})
     assert out["HTTPS_PROXY"] == "http://gw:3128"
     assert out["https_proxy"] == "http://gw:3128"
@@ -585,7 +605,7 @@ def test_env_reconcile_does_not_mutate_input():
 
 
 def test_verify_with_env_ca_passes_through_false_and_str():
-    """insecure (False) and an explicit CA-bundle path are authoritative."""
+    """Insecure (False) and an explicit CA-bundle path are authoritative."""
     assert verify_with_env_ca(False) is False
     assert verify_with_env_ca("/etc/ssl/corp.pem") == "/etc/ssl/corp.pem"
 
@@ -597,7 +617,8 @@ def test_verify_with_env_ca_true_returns_context_honoring_env(monkeypatch):
     Uses a checked-in single-cert PEM fixture (selftests/fixtures/corp_ca.pem)
     rather than shelling out to openssl — the assertion only needs one
     recognisable CA in the store, and a fixture keeps this a pure-unit test with
-    no external-tool dependency."""
+    no external-tool dependency.
+    """
     import ssl
     from pathlib import Path
 
@@ -728,7 +749,7 @@ def test_scheme_qualified_no_proxy_keeps_its_scheme_in_the_browser():
 
 
 @pytest.mark.parametrize(
-    "no_proxy_host,bypass",
+    ("no_proxy_host", "bypass"),
     [
         # Wildcard host forms are matchable, and mean the same thing they mean
         # under ``all://`` -- just restricted to the one scheme.
@@ -758,7 +779,7 @@ def test_scheme_qualified_no_proxy_wildcard_forms_match_httpx(no_proxy_host, byp
 
 
 @pytest.mark.parametrize(
-    "no_proxy_host,bypass,direct_scheme",
+    ("no_proxy_host", "bypass", "direct_scheme"),
     [
         ("https://*", "https://*", "https"),
         ("http://*", "http://*", "http"),
@@ -816,7 +837,7 @@ def test_scheme_less_no_proxy_wildcard_emits_nothing_because_httpx_proxies_it():
 
 
 @pytest.mark.parametrize(
-    "no_proxy_host,bypass,direct,proxied",
+    ("no_proxy_host", "bypass", "direct", "proxied"),
     [
         # httpx normalises a scheme's DEFAULT port away at URL-parse time, so
         # ``https://*:443`` keeps port None and matches every https URL on ANY
@@ -895,7 +916,7 @@ def test_playwright_bypass_matches_httpx_for_ports(no_proxy_host, bypass, direct
 
 
 @pytest.mark.parametrize(
-    "no_proxy_host,pattern,bypass,direct,proxied",
+    ("no_proxy_host", "pattern", "bypass", "direct", "proxied"),
     [
         (
             "example.com",
@@ -1156,7 +1177,8 @@ def test_every_explicit_direct_request_reaches_chromium(cfg, monkeypatch):
 
 def test_no_extra_launch_args_when_nothing_is_configured(monkeypatch):
     """Nothing configured is not the same as explicitly off -- leave Chromium alone,
-    exactly as before this module existed."""
+    exactly as before this module existed.
+    """
     from vip.proxy import chromium_launch_args
 
     for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy"):
@@ -1172,7 +1194,8 @@ def test_playwright_proxy_without_target_keeps_https_first_selection(monkeypatch
     monkeypatch.setenv("HTTP_PROXY", "http://http-gw:1")
     monkeypatch.setenv("HTTPS_PROXY", "http://https-gw:2")
     pw = playwright_proxy(build_proxy_map(ProxyConfig()))
-    assert pw is not None and pw["server"] == "http://https-gw:2"
+    assert pw is not None
+    assert pw["server"] == "http://https-gw:2"
 
 
 def test_playwright_proxy_prefers_https_env(monkeypatch):
@@ -1180,7 +1203,8 @@ def test_playwright_proxy_prefers_https_env(monkeypatch):
     monkeypatch.setenv("HTTPS_PROXY", "http://httpsproxy:2")
     monkeypatch.delenv("NO_PROXY", raising=False)
     pw = playwright_proxy(build_proxy_map(ProxyConfig()))
-    assert pw is not None and pw["server"] == "http://httpsproxy:2"
+    assert pw is not None
+    assert pw["server"] == "http://httpsproxy:2"
 
 
 def test_playwright_proxy_splits_authenticated_credentials():
@@ -1189,7 +1213,8 @@ def test_playwright_proxy_splits_authenticated_credentials():
     userinfo in the server string, so leaving it there 407s the browser login
     while every httpx path (which parses the userinfo) authenticates fine. The
     ``server`` handed to Playwright must also be credential-free so the password
-    can't leak into browser logs."""
+    can't leak into browser logs.
+    """
     cfg = ProxyConfig(url="http://alice:s3cret@proxy.corp:8080")
     pw = playwright_proxy(build_proxy_map(cfg))
     assert pw is not None
@@ -1201,7 +1226,8 @@ def test_playwright_proxy_splits_authenticated_credentials():
 
 def test_playwright_proxy_no_credential_keys_when_unauthenticated():
     """A proxy with no userinfo must not sprout empty username/password keys —
-    Playwright would try to authenticate with a blank user and could 407."""
+    Playwright would try to authenticate with a blank user and could 407.
+    """
     pw = playwright_proxy(build_proxy_map(ProxyConfig(url="http://proxy.corp:8080")))
     assert pw is not None
     assert pw["server"] == "http://proxy.corp:8080"
@@ -1214,7 +1240,8 @@ def test_http_only_env_browser_and_httpx_agree_via_tunnel(monkeypatch):
     tunnel through that proxy on BOTH the httpx and browser paths, and they must
     agree — no browser-vs-API split, and no https-goes-direct dead end on a
     proxy-only network. Guards both the http->https promotion and the
-    _primary_proxy_server selection staying in lockstep with proxy_for_url."""
+    _primary_proxy_server selection staying in lockstep with proxy_for_url.
+    """
     for var in ("HTTPS_PROXY", "ALL_PROXY", "https_proxy", "all_proxy", "NO_PROXY"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://corp-proxy:3128")
@@ -1232,7 +1259,7 @@ def test_http_only_env_browser_and_httpx_agree_via_tunnel(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "url,expected",
+    ("url", "expected"),
     [
         ("http://alice:s3cret@proxy.corp:8080", "http://proxy.corp:8080"),
         ("http://alice:s3cret@proxy.corp", "http://proxy.corp"),
@@ -1249,7 +1276,7 @@ def test_redact_proxy_url_strips_userinfo(url, expected):
 
 
 @pytest.mark.parametrize(
-    "url,expected",
+    ("url", "expected"),
     [
         ("http://u:p@[fe80::1]:8080", "http://[fe80::1]:8080"),
         ("http://u:p@[fe80::1]", "http://[fe80::1]"),
@@ -1334,7 +1361,8 @@ def test_disabled_proxy_reaches_the_auth_browser(monkeypatch):
 
 def test_ui_test_browser_context_is_forced_direct_when_disabled(monkeypatch):
     """Same for the in-suite UI browsers, which take launch args from
-    ``browser_type_launch_args`` rather than from _launch_chromium."""
+    ``browser_type_launch_args`` rather than from _launch_chromium.
+    """
     from vip.config import VIPConfig
     from vip.fixtures import _ui_browser_launch_args
 
@@ -1351,7 +1379,7 @@ def test_ui_test_browser_context_is_forced_direct_when_disabled(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def _split_scheme_proxies(monkeypatch):
     """HTTP_PROXY and HTTPS_PROXY pointing at different gateways."""
     for var in ("ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
@@ -1375,12 +1403,12 @@ def _launched_proxy(monkeypatch) -> dict:
     return seen
 
 
-def test_interactive_auth_browser_uses_the_proxy_for_its_login_target(
-    monkeypatch, _split_scheme_proxies
-):
+@pytest.mark.usefixtures("_split_scheme_proxies")
+def test_interactive_auth_browser_uses_the_proxy_for_its_login_target(monkeypatch):
     """The interactive login navigates the primary product URL, so an http://
     product must put the browser on the http proxy -- the same one the API-key
-    mint and the product clients will use."""
+    mint and the product clients will use.
+    """
     from vip.auth import start_interactive_auth
 
     seen = _launched_proxy(monkeypatch)
@@ -1393,9 +1421,8 @@ def test_interactive_auth_browser_uses_the_proxy_for_its_login_target(
     )
 
 
-def test_headless_auth_browser_uses_the_proxy_for_its_login_target(
-    monkeypatch, _split_scheme_proxies
-):
+@pytest.mark.usefixtures("_split_scheme_proxies")
+def test_headless_auth_browser_uses_the_proxy_for_its_login_target(monkeypatch):
     """Same contract for the headless login path."""
     from vip.auth import start_headless_auth
 
@@ -1411,11 +1438,11 @@ def test_headless_auth_browser_uses_the_proxy_for_its_login_target(
     assert seen["proxy"]["server"] == "http://http-gw:1"
 
 
-def test_authenticated_page_uses_the_proxy_for_the_workbench_url(
-    monkeypatch, tmp_path, _split_scheme_proxies
-):
+@pytest.mark.usefixtures("_split_scheme_proxies")
+def test_authenticated_page_uses_the_proxy_for_the_workbench_url(monkeypatch, tmp_path):
     """``vip cleanup --workbench-url`` drives the Workbench UI, so its browser
-    must take the route httpx would take to that same Workbench URL."""
+    must take the route httpx would take to that same Workbench URL.
+    """
     from vip.auth import InteractiveAuthSession, authenticated_page
 
     state = tmp_path / "state.json"
@@ -1423,14 +1450,14 @@ def test_authenticated_page_uses_the_proxy_for_the_workbench_url(
     session = InteractiveAuthSession(storage_state_path=state, _workbench_url="http://wb.internal")
 
     seen = _launched_proxy(monkeypatch)
-    with pytest.raises(Exception, match="stop after launch"):
-        with authenticated_page(session):
-            pass
+    with pytest.raises(Exception, match="stop after launch"), authenticated_page(session):
+        pass
 
     assert seen["proxy"]["server"] == "http://http-gw:1"
 
 
-def test_ui_browser_proxy_resolves_an_inferred_scheme_first(monkeypatch, _split_scheme_proxies):
+@pytest.mark.usefixtures("_split_scheme_proxies")
+def test_ui_browser_proxy_resolves_an_inferred_scheme_first(monkeypatch):
     """A scheme-less --workbench-url must be resolved before picking the proxy.
 
     ``browser_context_args`` is session-scoped and depends only on ``vip_config``,
@@ -1460,9 +1487,11 @@ def test_ui_browser_proxy_resolves_an_inferred_scheme_first(monkeypatch, _split_
     assert pw_proxy["server"] == "http://http-gw:1"
 
 
-def test_ui_test_browser_context_uses_the_proxy_for_the_product_url(_split_scheme_proxies):
+@pytest.mark.usefixtures("_split_scheme_proxies")
+def test_ui_test_browser_context_uses_the_proxy_for_the_product_url():
     """The in-suite UI tests drive the configured products, so their browser
-    context must resolve the same proxy the API clients did."""
+    context must resolve the same proxy the API clients did.
+    """
     from vip.config import VIPConfig
     from vip.fixtures import _ui_browser_proxy
     from vip.proxy import playwright_proxy
@@ -1604,7 +1633,8 @@ def test_base_client_disabled_ignores_env_proxy(monkeypatch, logging_proxy):
 def test_fetch_content_routes_through_proxy_and_pins_trust_env(monkeypatch):
     """ConnectClient.fetch_content's ad-hoc httpx.get must carry the resolved
     proxy AND trust_env=False, so a NO_PROXY/disabled config can't silently
-    fall back to the ambient env proxy (parity with every other bare call)."""
+    fall back to the ambient env proxy (parity with every other bare call).
+    """
     import httpx
 
     from vip.clients.connect import ConnectClient
@@ -1635,7 +1665,8 @@ def test_fetch_content_routes_through_proxy_and_pins_trust_env(monkeypatch):
 
 def test_fetch_content_bypass_host_goes_direct_not_env_proxy(monkeypatch):
     """A NO_PROXY host in fetch_content must resolve to proxy=None with
-    trust_env=False, i.e. genuinely direct — not the ambient env proxy."""
+    trust_env=False, i.e. genuinely direct — not the ambient env proxy.
+    """
     import httpx
 
     from vip.clients.connect import ConnectClient

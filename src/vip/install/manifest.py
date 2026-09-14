@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import socket
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -19,6 +18,8 @@ class ManifestError(Exception):
 
 @dataclass
 class SystemPackageItem:
+    """One system package (RPM/deb) ``vip install`` added, so ``vip uninstall`` can remove it."""
+
     manager: str  # "dnf" | "apt" | "zypper"
     name: str
     installed_at: str
@@ -27,6 +28,8 @@ class SystemPackageItem:
 
 @dataclass
 class PlaywrightItem:
+    """One Playwright browser cache that ``vip install`` downloaded."""
+
     browser: str  # "chromium"
     cache_dir: str
     installed_at: str
@@ -38,6 +41,14 @@ Item = SystemPackageItem | PlaywrightItem
 
 @dataclass
 class Manifest:
+    """The parsed contents of ``.vip-install.json``: everything ``vip install`` added.
+
+    ``items`` records what has actually been installed and can be reversed by ``vip
+    uninstall``. ``pending_system_packages`` records packages the current process
+    could not install itself (non-root Linux, printed as a ``sudo`` command) so a later
+    ``vip install`` run can claim them once they exist, via ``claim_pending``.
+    """
+
     version: int
     vip_version: str
     created_at: str
@@ -50,9 +61,11 @@ class Manifest:
     pending_system_packages: list[str] = field(default_factory=list)
 
     def pending_packages_set(self) -> set[str]:
+        """Return ``pending_system_packages`` as a set for membership checks."""
         return set(self.pending_system_packages)
 
     def add_pending_packages(self, names: Iterable[str]) -> None:
+        """Add *names* to ``pending_system_packages``, skipping ones already present."""
         existing = self.pending_packages_set()
         for n in names:
             if n not in existing:
@@ -60,6 +73,11 @@ class Manifest:
                 existing.add(n)
 
     def claim_pending(self, names: Iterable[str], *, installed_at: str, manager: str) -> None:
+        """Move each of *names* that is pending into ``items`` as a claimed ``SystemPackageItem``.
+
+        Names not currently pending are ignored. Every name in *names* is removed from
+        ``pending_system_packages`` regardless of whether it was found there.
+        """
         names_set = set(names)
         for n in names_set:
             if n in self.pending_packages_set():
@@ -72,10 +90,12 @@ class Manifest:
 
 
 def default_path(project_root: Path | None = None) -> Path:
+    """Return the ``.vip-install.json`` path under *project_root*, defaulting to ``Path.cwd()``."""
     return (project_root or Path.cwd()) / ".vip-install.json"
 
 
 def current_host() -> str:
+    """Return this machine's hostname, used to gate ``vip uninstall`` on a manifest match."""
     return socket.gethostname()
 
 
@@ -173,7 +193,7 @@ def save(manifest: Manifest, path: Path) -> None:
     """Write ``manifest`` to ``path`` atomically.
 
     Serializes to a sibling ``path.with_suffix(path.suffix + ".tmp")`` file and
-    then ``os.replace``s it onto ``path``, so a reader of ``path`` never observes a
+    then ``Path.replace``s it onto ``path``, so a reader of ``path`` never observes a
     partially-written file and a crash mid-write leaves the previous manifest
     at ``path`` untouched. If writing the temp file or the replace itself
     raises, the temp file is removed on a best-effort basis (an ``OSError``
@@ -195,7 +215,7 @@ def save(manifest: Manifest, path: Path) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:
         tmp.write_text(json.dumps(serialized, indent=2, sort_keys=False) + "\n")
-        os.replace(tmp, path)
+        tmp.replace(path)
     except Exception:
         with contextlib.suppress(OSError):
             tmp.unlink(missing_ok=True)

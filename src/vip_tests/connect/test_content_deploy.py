@@ -113,7 +113,8 @@ def _matched_transient_signature(output: str) -> tuple[str, str] | None:
 
 def _is_transient_packrat_cdn_failure(output: str) -> bool:
     """Return True only for a packrat restore that failed via a connection-level
-    curl error against a known PPM/CDN host -- see the module comment above."""
+    curl error against a known PPM/CDN host -- see the module comment above.
+    """
     return _matched_transient_signature(output) is not None
 
 
@@ -171,7 +172,7 @@ def test_deploy_gitbacked():
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 def deploy_state():
     """Mutable dict to carry state across steps within a single scenario."""
     return {}

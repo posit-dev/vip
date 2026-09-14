@@ -574,7 +574,8 @@ class TestLoadConfigTLS:
 
     def test_cert_expiry_warning_days_negative_raises_valueerror(self, tmp_toml):
         """A negative threshold would silently pass for a cert already
-        inside any expiry window -- fail fast on the config typo instead."""
+        inside any expiry window -- fail fast on the config typo instead.
+        """
         path = tmp_toml("[tls]\ncert_expiry_warning_days = -1\n")
         with pytest.raises(ValueError, match="cert_expiry_warning_days must be >= 0"):
             load_config(path)
@@ -856,7 +857,8 @@ class TestLoadConfigProxy:
 
     def test_quoted_enabled_is_rejected(self, tmp_toml):
         """A quoted "false" is a truthy string, not a boolean — must fail loud,
-        not silently turn proxying on (the dangerous direction for this toggle)."""
+        not silently turn proxying on (the dangerous direction for this toggle).
+        """
         path = tmp_toml('[proxy]\nenabled = "false"\n')
         with pytest.raises(ValueError, match="enabled must be a boolean"):
             load_config(path)

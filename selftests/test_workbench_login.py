@@ -49,7 +49,8 @@ class _AuthFakeLocator:
 class _OidcLoginFakePage:
     """Models an OIDC-only sign-in page: a "Sign in with OpenID" button and no
     username field. *idp_valid* controls whether clicking the button reaches an
-    authenticated homepage (the logo becoming visible)."""
+    authenticated homepage (the logo becoming visible).
+    """
 
     def __init__(self, *, idp_valid: bool = True):
         self.url = "https://wb.example.com/auth-sign-in?appUri=&error=2"
@@ -206,7 +207,7 @@ def test_password_deployment_still_uses_the_login_form():
 
 
 @pytest.mark.parametrize(
-    "landed, configured",
+    ("landed", "configured"),
     [
         # A default port spelled out on one side only is the same origin.
         ("https://wb.example.com/auth-sign-in", "https://wb.example.com:443"),
@@ -229,7 +230,7 @@ def test_default_ports_do_not_look_like_an_external_idp(landed, configured):
 
 
 @pytest.mark.parametrize(
-    "landed, configured, expected",
+    ("landed", "configured", "expected"),
     [
         ("https://posit.okta.com/oauth2/v1/authorize", "https://wb.example.com", "posit.okta.com"),
         # A non-default port really is a different origin.

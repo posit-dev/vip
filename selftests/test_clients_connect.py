@@ -72,8 +72,8 @@ def _make_response(
 
 def test_fetch_content_follows_relative_redirect(monkeypatch):
     """A relative Location like /content/abc/notebook.html is resolved and
-    followed without raising UnsupportedProtocol."""
-
+    followed without raising UnsupportedProtocol.
+    """
     base_url = "https://connect.example.com"
     initial_url = f"{base_url}/content/abc/"
     resolved_url = f"{base_url}/content/abc/notebook.html"
@@ -106,8 +106,8 @@ def test_fetch_content_follows_relative_redirect(monkeypatch):
 
 def test_fetch_content_blocks_cross_origin_redirect(monkeypatch):
     """A redirect to a different hostname must not be followed (API key leak
-    prevention).  The function should return the redirect response itself."""
-
+    prevention).  The function should return the redirect response itself.
+    """
     base_url = "https://connect.example.com"
     initial_url = f"{base_url}/content/abc/"
 
@@ -297,7 +297,8 @@ def test_connect_client_verify_ca_bundle(monkeypatch, tmp_path):
 def test_connect_client_verify_true_by_default(monkeypatch):
     """ConnectClient without TLS flags: fetch_content pins trust_env=False (so the
     resolved proxy is authoritative) but passes an env-CA-aware SSLContext as
-    verify, so SSL_CERT_FILE/SSL_CERT_DIR are still honored rather than dropped."""
+    verify, so SSL_CERT_FILE/SSL_CERT_DIR are still honored rather than dropped.
+    """
     import ssl
 
     base_url = "https://connect.example.com"

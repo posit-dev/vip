@@ -59,7 +59,8 @@ class TestStartHeadlessAuthValidation:
 
     def test_valid_totp_seed_passes_validation(self, monkeypatch, tmp_path):
         """A valid seed must not block startup. Stub Playwright so the
-        test asserts only that validation does not raise."""
+        test asserts only that validation does not raise.
+        """
         monkeypatch.setenv("VIP_TEST_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 
         # Stub Playwright so we can exercise validation without a browser.
@@ -102,29 +103,34 @@ class TestStartHeadlessAuthPlaywrightErrors:
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
         stub = self._make_playwright_stub(PlaywrightTimeoutError("timed out"))
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(AuthConfigError, match="timed out"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="timed out"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+            )
 
     def test_playwright_error_during_login_becomes_auth_config_error(self):
         from playwright.sync_api import Error as PlaywrightError
 
         stub = self._make_playwright_stub(PlaywrightError("net::ERR_NAME_NOT_RESOLVED"))
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(AuthConfigError, match="failed during login"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="failed during login"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+            )
 
     def test_missing_chromium_system_deps_gives_remediation(self):
         """Missing host libraries at chromium launch must surface the
-        ``vip install`` remediation command (see issue #169)."""
+        ``vip install`` remediation command (see issue #169).
+        """
         from playwright.sync_api import Error as PlaywrightError
 
         pw = MagicMock()
@@ -133,18 +139,21 @@ class TestStartHeadlessAuthPlaywrightErrors:
             "Please install them with the following command:\n"
             "    sudo playwright install-deps"
         )
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with pytest.raises(AuthConfigError, match=r"vip install"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            pytest.raises(AuthConfigError, match=r"vip install"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+            )
 
     def test_no_display_at_interactive_launch_gives_remediation(self):
         """A headed launch with no display (e.g. --interactive-auth run
         directly on a headless server) must point at --headless-auth instead
-        of surfacing Playwright's raw XServer error (see issue #588)."""
+        of surfacing Playwright's raw XServer error (see issue #588).
+        """
         from playwright.sync_api import Error as PlaywrightError
 
         from vip.auth import start_interactive_auth
@@ -155,9 +164,11 @@ class TestStartHeadlessAuthPlaywrightErrors:
             "running.\nSet either 'headless: true' or use 'xvfb-run "
             "<your-playwright-app>' before running Playwright."
         )
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with pytest.raises(AuthConfigError, match="--headless-auth"):
-                start_interactive_auth(connect_url="https://c.example.com")
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            pytest.raises(AuthConfigError, match="--headless-auth"),
+        ):
+            start_interactive_auth(connect_url="https://c.example.com")
 
     def test_unrelated_playwright_launch_error_propagates(self):
         """Launch errors that aren't missing-deps must not be rewritten."""
@@ -167,13 +178,15 @@ class TestStartHeadlessAuthPlaywrightErrors:
         pw.start.return_value.chromium.launch.side_effect = PlaywrightError(
             "Browser closed unexpectedly"
         )
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with pytest.raises(PlaywrightError, match="Browser closed unexpectedly"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            pytest.raises(PlaywrightError, match="Browser closed unexpectedly"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+            )
 
 
 class TestSaveAuthCache:
@@ -183,7 +196,8 @@ class TestSaveAuthCache:
     Caching that state means subsequent runs short-circuit via the cache
     and never re-attempt the mint — the specific warning explaining why
     it failed is lost, and the user sees an opaque "set VIP_CONNECT_API_KEY"
-    warning for 4 hours."""
+    warning for 4 hours.
+    """
 
     def _make_session(self, tmp_path, *, connect_url: str, api_key: str | None):
         from vip.auth import InteractiveAuthSession
@@ -239,7 +253,8 @@ class TestSaveAuthCache:
         """Save the pre-resolve form too so a later cache load can
         match against what the caller actually asked for, even when
         ``_resolve_connect_api_base`` rewrote the dashboard URL to a
-        different API base."""
+        different API base.
+        """
         import json
 
         from vip.auth import InteractiveAuthSession, _save_auth_cache
@@ -272,7 +287,8 @@ class TestInteractiveAuthSessionCleanup:
 
     def _session_with_cache(self, tmp_path, *, api_key: str, cache_key: str | None):
         """Return a session whose ``_cache_path`` points at a cache whose
-        meta.json holds ``cache_key`` (or no cache file at all if None)."""
+        meta.json holds ``cache_key`` (or no cache file at all if None).
+        """
         import json
 
         from vip.auth import InteractiveAuthSession
@@ -298,7 +314,8 @@ class TestInteractiveAuthSessionCleanup:
 
     def test_skips_delete_when_cache_still_references_the_key(self, tmp_path):
         """Happy path: cache.meta.api_key == session.api_key → don't delete.
-        Next run will cache-hit and reuse the same key successfully."""
+        Next run will cache-hit and reuse the same key successfully.
+        """
         session, _ = self._session_with_cache(tmp_path, api_key="LIVE", cache_key="LIVE")
 
         with patch("vip.auth._delete_api_key") as deleter:
@@ -308,7 +325,8 @@ class TestInteractiveAuthSessionCleanup:
 
     def test_deletes_when_cache_file_is_missing(self, tmp_path):
         """No cache on disk → no future run will reference this key → delete it
-        now so we don't leave orphans accumulating between mint-time cleanups."""
+        now so we don't leave orphans accumulating between mint-time cleanups.
+        """
         session, _ = self._session_with_cache(tmp_path, api_key="LIVE", cache_key=None)
 
         with patch("vip.auth._delete_api_key") as deleter:
@@ -327,7 +345,8 @@ class TestInteractiveAuthSessionCleanup:
         """Meta without state is stale metadata — there is no cache the next
         run could actually load from, so our key is not reachable by
         future runs.  Delete it now so it doesn't orphan until the next
-        mint sweeps stale keys."""
+        mint sweeps stale keys.
+        """
         import json
 
         from vip.auth import InteractiveAuthSession
@@ -366,7 +385,8 @@ class TestInteractiveAuthSessionCleanup:
         """A corrupted cache state file is unusable — Playwright will fail to
         load it, so the next run won't actually reuse our key.  Treat the
         cache as unreachable and delete the key now rather than leaving
-        an orphan until the next mint-time sweep."""
+        an orphan until the next mint-time sweep.
+        """
         import json
 
         from vip.auth import InteractiveAuthSession
@@ -399,7 +419,8 @@ class TestInteractiveAuthSessionCleanup:
 
     def test_deletes_when_cache_references_a_different_key(self, tmp_path):
         """Concurrent run overwrote the cache with its own key → our key is
-        no longer referenced and should be deleted so it doesn't linger."""
+        no longer referenced and should be deleted so it doesn't linger.
+        """
         session, _ = self._session_with_cache(tmp_path, api_key="MINE", cache_key="OTHER")
 
         with patch("vip.auth._delete_api_key") as deleter:
@@ -416,7 +437,8 @@ class TestInteractiveAuthSessionCleanup:
 
     def test_deletes_when_session_has_no_cache_path(self, tmp_path):
         """Sessions created outside the caching flow (``_cache_path`` unset)
-        behave like before: delete on cleanup."""
+        behave like before: delete on cleanup.
+        """
         from vip.auth import InteractiveAuthSession
 
         state = tmp_path / "state.json"
@@ -455,7 +477,8 @@ class TestStartInteractiveAuthPollLoop:
     def _make_playwright_stub(urls: list[str]) -> MagicMock:
         """Stub sync_playwright() so ``page.url`` yields *urls* in order,
         then repeats the last value once exhausted. ``page.wait_for_timeout``
-        is a no-op so the loop iterates instantly."""
+        is a no-op so the loop iterates instantly.
+        """
 
         class _PageStub:
             def __init__(self, urls: list[str]):
@@ -480,7 +503,8 @@ class TestStartInteractiveAuthPollLoop:
 
     def test_connect_login_completes_once_login_path_is_left(self, monkeypatch):
         """Connect: login is detected once the URL contains the base URL
-        and no longer contains ``/__login__``."""
+        and no longer contains ``/__login__``.
+        """
         from vip.auth import start_interactive_auth
 
         stub = self._make_playwright_stub(
@@ -499,7 +523,8 @@ class TestStartInteractiveAuthPollLoop:
 
     def test_workbench_only_login_completes_off_signin_page(self, monkeypatch):
         """Workbench-only: login is detected once the URL is on the base
-        URL and is NOT a page whose URL contains sign-in/login/auth."""
+        URL and is NOT a page whose URL contains sign-in/login/auth.
+        """
         from vip.auth import start_interactive_auth
 
         stub = self._make_playwright_stub(
@@ -519,7 +544,8 @@ class TestStartInteractiveAuthPollLoop:
         """If the URL never satisfies the completion condition before the
         deadline, the loop must raise AuthTimeoutError (a clean pytest
         exit via plugin.py's AuthConfigError handler, not INTERNALERROR --
-        see #263) rather than continue or return silently."""
+        see #263) rather than continue or return silently.
+        """
         from vip import auth as auth_mod
 
         stub = self._make_playwright_stub(["https://wb.example.com/auth-sign-in"])
@@ -538,7 +564,8 @@ class TestStartInteractiveAuthPollLoop:
         """The timeout error must report where the browser actually ended
         up and what origin was expected, so a diagnostic run can tell IdP
         stall apart from a bounce back to the product's own sign-in page
-        (see #263)."""
+        (see #263).
+        """
         from vip import auth as auth_mod
 
         stub = self._make_playwright_stub(["https://wb.example.com/auth-sign-in"])
@@ -556,7 +583,8 @@ class TestStartInteractiveAuthPollLoop:
 
     def test_timeout_duration_reflects_vip_timeout_scale(self, monkeypatch):
         """VIP_TIMEOUT_SCALE=2 doubles the real wait to 10 minutes; the
-        error text must say 10, not the constant's nominal 5 (see #263)."""
+        error text must say 10, not the constant's nominal 5 (see #263).
+        """
         from vip import auth as auth_mod
 
         monkeypatch.setenv("VIP_TIMEOUT_SCALE", "2")
@@ -573,12 +601,14 @@ class TestStartInteractiveAuthPollLoop:
 class TestStartInteractiveAuthSchemeResolutionWiring:
     """*_scheme_inferred flags gate calls to resolve_url_scheme (issue #537):
     an explicit scheme must never be second-guessed, and an inferred one
-    must be resolved before Playwright or the mint client touch the URL."""
+    must be resolved before Playwright or the mint client touch the URL.
+    """
 
     @staticmethod
     def _playwright_stub(logged_in_url: str) -> MagicMock:
         """Stub sync_playwright() whose page is immediately "logged in" at
-        *logged_in_url* (must match the resolved primary_url + no /__login__)."""
+        *logged_in_url* (must match the resolved primary_url + no /__login__).
+        """
 
         class _PageStub:
             url = logged_in_url
@@ -596,7 +626,8 @@ class TestStartInteractiveAuthSchemeResolutionWiring:
 
     def test_inferred_scheme_is_resolved_before_use(self, monkeypatch):
         """A downgrade must reach both the browser (page.goto) and the mint
-        client -- not just one of the two."""
+        client -- not just one of the two.
+        """
         from vip.auth import start_interactive_auth
 
         monkeypatch.setattr(
@@ -655,7 +686,8 @@ class TestStartInteractiveAuthSchemeResolutionWiring:
     def test_default_is_not_inferred(self, monkeypatch):
         """The *_scheme_inferred parameters default to False so a caller that
         doesn't pass them (e.g. an older test or script) keeps today's
-        behaviour: no probing."""
+        behaviour: no probing.
+        """
         from vip.auth import start_interactive_auth
 
         monkeypatch.setattr(
@@ -715,7 +747,8 @@ class TestStartHeadlessAuthSchemeResolutionWiring:
         """See the interactive-auth counterpart's docstring: resolve_url_scheme
         is always called, but must no-op on its own for an explicit scheme --
         proved here by mocking httpx.get (the real network boundary) rather
-        than resolve_url_scheme itself."""
+        than resolve_url_scheme itself.
+        """
         from vip.auth import start_headless_auth
 
         self._stub_headless_playwright(monkeypatch)
@@ -796,7 +829,8 @@ class TestSchemeResolutionRealCodePath:
     ):
         """Same real load_config path, but scheme-less -- proves the other
         half of the invariant end-to-end too: an inferred scheme really does
-        get probed and can fall back, driven by the real provenance value."""
+        get probed and can fall back, driven by the real provenance value.
+        """
         from vip.auth import start_interactive_auth
         from vip.config import load_config
 
@@ -826,13 +860,15 @@ class TestAuthenticateWorkbench:
     crash the pytest session — Connect tests should still run.  The
     helper returns ``None`` on success or a short failure reason that
     callers stash on :class:`InteractiveAuthSession` so test-time skip
-    messages can quote the underlying cause."""
+    messages can quote the underlying cause.
+    """
 
     def test_playwright_error_on_goto_is_non_fatal(self, capsys):
         """A PlaywrightError from page.goto() (e.g. ERR_CONNECTION_REFUSED,
         redirect-to-http) must be caught, logged as a warning, and return
         a failure reason.  Otherwise the whole pytest session dies with
-        INTERNALERROR.  See issue #171."""
+        INTERNALERROR.  See issue #171.
+        """
         from playwright.sync_api import Error as PlaywrightError
 
         from vip.auth import _authenticate_workbench
@@ -854,7 +890,8 @@ class TestAuthenticateWorkbench:
     def test_returns_none_when_landed_on_dashboard(self):
         """SSO completed and the page is on the Workbench dashboard → success.
         The helper must return ``None`` so the caller doesn't stash a
-        bogus error on the session."""
+        bogus error on the session.
+        """
         from unittest.mock import PropertyMock
 
         from vip.auth import _authenticate_workbench
@@ -871,7 +908,8 @@ class TestAuthenticateWorkbench:
     def test_returns_reason_when_timeout_keeps_us_on_login(self, monkeypatch):
         """If the 2-minute redirect poll expires while we're still on
         /auth-sign-in, the helper must return a string explaining why so
-        the workbench fixture can surface it instead of guessing."""
+        the workbench fixture can surface it instead of guessing.
+        """
         from unittest.mock import PropertyMock
 
         from vip import auth as auth_mod
@@ -898,7 +936,8 @@ class TestAuthenticateWorkbench:
         login keywords) the instant ``networkidle`` fired, before
         Workbench's own post-assertion redirect ran -- capturing a storage
         state with no valid session cookie, so the real login test later
-        failed even though pre-test auth reported success."""
+        failed even though pre-test auth reported success.
+        """
         from unittest.mock import PropertyMock
 
         from vip import auth as auth_mod
@@ -923,7 +962,8 @@ class TestAuthenticateWorkbench:
         message.  OIDC/SAML redirects can carry ``code=``, ``state=``,
         and ``SAMLRequest=`` query parameters — sensitive auth artifacts
         that must not leak.  Path is preserved so the failure is still
-        debuggable."""
+        debuggable.
+        """
         from unittest.mock import PropertyMock
 
         from vip import auth as auth_mod
@@ -952,7 +992,8 @@ class TestAuthenticateWorkbench:
     def test_timeout_reason_includes_page_title(self, monkeypatch):
         """The returned reason must also surface the page title, so a
         stuck IdP confirmation page is distinguishable from a bounce back
-        to Workbench's own sign-in page from the URL alone (see #263)."""
+        to Workbench's own sign-in page from the URL alone (see #263).
+        """
         from unittest.mock import PropertyMock
 
         from vip import auth as auth_mod
@@ -973,7 +1014,8 @@ class TestAuthenticateWorkbench:
 
     def test_timeout_duration_reflects_vip_timeout_scale(self, monkeypatch):
         """VIP_TIMEOUT_SCALE=2 doubles the real wait; the reason must say
-        so instead of the constant's nominal duration (see #263)."""
+        so instead of the constant's nominal duration (see #263).
+        """
         from unittest.mock import PropertyMock
 
         from vip import auth as auth_mod
@@ -994,7 +1036,8 @@ class TestAuthenticateWorkbench:
 
     def test_saml_provider_names_saml_in_message(self, monkeypatch):
         """Mirrors TestWaitForProductRedirectTimeout.test_saml_provider_names_saml_in_message:
-        a SAML run's Workbench timeout reason must not hardcode OIDC (see #263)."""
+        a SAML run's Workbench timeout reason must not hardcode OIDC (see #263).
+        """
         from unittest.mock import PropertyMock
 
         from vip import auth as auth_mod
@@ -1015,7 +1058,8 @@ class TestAuthenticateWorkbench:
 
     def test_unrecognized_provider_uses_neutral_wording(self, monkeypatch):
         """No provider (the default) must not assert a protocol the caller
-        can't confirm — same convention as _wait_for_product_redirect."""
+        can't confirm — same convention as _wait_for_product_redirect.
+        """
         from unittest.mock import PropertyMock
 
         from vip import auth as auth_mod
@@ -1040,7 +1084,8 @@ class TestLoadCachedAuth:
     """_load_cached_auth must refuse to reuse a cache that was minted
     against different product URLs.  The cache file lives one-per-
     checkout-directory, so reusing it across sites would silently send
-    the wrong session cookies (and API key) to the new target."""
+    the wrong session cookies (and API key) to the new target.
+    """
 
     @staticmethod
     def _write_cache(tmp_path, *, connect_url: str, workbench_url: str = ""):
@@ -1094,7 +1139,8 @@ class TestLoadCachedAuth:
     def test_rejects_cache_when_workbench_was_not_recorded(self, tmp_path):
         """A cache minted with only Connect lacks Workbench cookies; a
         later run that now also wants Workbench would skip every
-        Workbench test on stale state.  Treat as a miss."""
+        Workbench test on stale state.  Treat as a miss.
+        """
         from vip.auth import _load_cached_auth
 
         cache = self._write_cache(tmp_path, connect_url="https://c.example.com")
@@ -1110,7 +1156,8 @@ class TestLoadCachedAuth:
     def test_url_match_normalizes_host_case_and_trailing_slash(self, tmp_path):
         """Scheme and netloc are case-insensitive per RFC 3986 and a
         single trailing slash on the path is not meaningful, so these
-        must still hit the cache."""
+        must still hit the cache.
+        """
         from vip.auth import _load_cached_auth
 
         cache = self._write_cache(
@@ -1131,7 +1178,8 @@ class TestLoadCachedAuth:
         """URL paths are case-sensitive: ``/Dashboard`` and ``/dashboard``
         can resolve to different Connect deployments when a sub-path
         mount is used.  Lowercasing the path (the prior behaviour) would
-        send stale storage state and API key to the wrong target."""
+        send stale storage state and API key to the wrong target.
+        """
         from vip.auth import _load_cached_auth
 
         cache = self._write_cache(
@@ -1151,7 +1199,8 @@ class TestLoadCachedAuth:
         """``/app/`` and ``/app//`` are not guaranteed to route to the same
         handler.  Only a single trailing slash is treated as cosmetic;
         extra slashes are preserved so a misconfigured URL doesn't
-        silently cache-hit against the canonical one."""
+        silently cache-hit against the canonical one.
+        """
         from vip.auth import _load_cached_auth
 
         cache = self._write_cache(
@@ -1172,7 +1221,8 @@ class TestLoadCachedAuth:
         sub-path dashboard URL to a different API base.  Cache match
         must compare against what the caller asked for, not what
         Connect resolved it to — otherwise every run cache-misses for
-        sub-path deployments."""
+        sub-path deployments.
+        """
         import json
         from pathlib import Path as _Path
 
@@ -1217,7 +1267,8 @@ class TestWaitForProductRedirect:
     @staticmethod
     def _page_with_urls(urls: list[str], *, oidc_button_visible: bool) -> MagicMock:
         """Stub a Page whose ``url`` returns each value in *urls* in order,
-        repeating the last value once the list is exhausted."""
+        repeating the last value once the list is exhausted.
+        """
         from unittest.mock import PropertyMock
 
         page = MagicMock()
@@ -1232,7 +1283,8 @@ class TestWaitForProductRedirect:
 
     def test_clicks_oidc_confirm_button_once(self):
         """When the Workbench OIDC confirmation page is up, click the
-        button and stop polling once the URL settles on the dashboard."""
+        button and stop polling once the URL settles on the dashboard.
+        """
         from vip.auth import _wait_for_product_redirect
 
         page = self._page_with_urls(
@@ -1251,7 +1303,8 @@ class TestWaitForProductRedirect:
 
     def test_does_not_click_when_button_absent(self):
         """If we land directly on the dashboard, the helper must not
-        try to click anything."""
+        try to click anything.
+        """
         from vip.auth import _wait_for_product_redirect
 
         page = self._page_with_urls(
@@ -1269,12 +1322,14 @@ class TestWaitForProductRedirectTimeout:
     protocol, state the real (scaled) duration, and report where the
     browser ended up.  Previously it hardcoded "OIDC" and "5 minutes" and
     said nothing about the final URL, so a SAML timeout was indistinguishable
-    from a stuck IdP page or a bounce back to /auth-sign-in (see #263)."""
+    from a stuck IdP page or a bounce back to /auth-sign-in (see #263).
+    """
 
     @staticmethod
     def _timed_out_page(monkeypatch, auth_mod, url: str, title: str = "Sign In") -> MagicMock:
         """A page stuck at *url* forever, with the deadline already expired
-        so the poll loop's body never runs (no real wall-clock wait)."""
+        so the poll loop's body never runs (no real wall-clock wait).
+        """
         from unittest.mock import PropertyMock
 
         page = MagicMock()
@@ -1302,7 +1357,8 @@ class TestWaitForProductRedirectTimeout:
 
     def test_unrecognized_provider_uses_neutral_wording(self, monkeypatch):
         """No provider (or one that isn't oidc/saml/oauth2) must not
-        assert a protocol the caller can't confirm."""
+        assert a protocol the caller can't confirm.
+        """
         from vip import auth as auth_mod
 
         page = self._timed_out_page(monkeypatch, auth_mod, "https://idp.example.com/login")
@@ -1335,7 +1391,8 @@ class TestWaitForProductRedirectTimeout:
 
     def test_duration_reflects_vip_timeout_scale(self, monkeypatch):
         """VIP_TIMEOUT_SCALE=2 doubles the real wait to 10 minutes; the
-        error text must say 10, not the constant's nominal 5 (see #263)."""
+        error text must say 10, not the constant's nominal 5 (see #263).
+        """
         from vip import auth as auth_mod
 
         monkeypatch.setenv("VIP_TIMEOUT_SCALE", "2")
@@ -1346,7 +1403,8 @@ class TestWaitForProductRedirectTimeout:
 
     def test_page_read_failure_does_not_mask_timeout(self, monkeypatch):
         """If the page is closed or crashed by the time the deadline fires,
-        the diagnostic reads must not raise and swallow the real timeout."""
+        the diagnostic reads must not raise and swallow the real timeout.
+        """
         from unittest.mock import PropertyMock
 
         from vip import auth as auth_mod
@@ -1365,7 +1423,8 @@ class TestAuthTimeoutErrorHierarchy:
     """AuthTimeoutError must subclass AuthConfigError -- that relationship
     is what lets plugin.py's existing ``except AuthConfigError`` handler
     convert a timeout into a clean ``pytest.UsageError`` instead of an
-    INTERNALERROR traceback, with no change to that handler (see #263)."""
+    INTERNALERROR traceback, with no change to that handler (see #263).
+    """
 
     def test_is_subclass_of_auth_config_error(self):
         from vip.auth import AuthConfigError, AuthTimeoutError
@@ -1375,18 +1434,16 @@ class TestAuthTimeoutErrorHierarchy:
     def test_instance_is_caught_by_auth_config_error_except_clause(self):
         from vip.auth import AuthConfigError, AuthTimeoutError
 
-        try:
+        with pytest.raises(AuthConfigError) as excinfo:
             raise AuthTimeoutError("boom")
-        except AuthConfigError as exc:
-            assert isinstance(exc, AuthTimeoutError)
-        else:
-            pytest.fail("AuthTimeoutError was not caught by except AuthConfigError")
+        assert isinstance(excinfo.value, AuthTimeoutError)
 
 
 class TestClickWorkbenchOidcConfirm:
     """_click_workbench_oidc_confirm targets the specific Workbench form
     (``action='auth-openid-sign-in'``) so unrelated submit buttons on
-    other login pages are not clicked by accident."""
+    other login pages are not clicked by accident.
+    """
 
     def test_clicks_when_button_visible(self):
         from vip.auth import _click_workbench_oidc_confirm
@@ -1421,7 +1478,8 @@ class TestClickWorkbenchOidcConfirm:
 
     def test_swallows_playwright_error(self):
         """Transient Playwright errors during the lookup must not crash
-        the surrounding wait loop."""
+        the surrounding wait loop.
+        """
         from playwright.sync_api import Error as PlaywrightError
 
         from vip.auth import _click_workbench_oidc_confirm
@@ -1458,7 +1516,8 @@ class TestHttpxVerify:
 
     def test_insecure_wins_over_ca_bundle(self, tmp_path):
         """When both insecure=True and a ca_bundle path are provided,
-        insecure wins — mirrors cli.py:391 logic."""
+        insecure wins — mirrors cli.py:391 logic.
+        """
         from vip.auth import _httpx_verify
 
         ca = tmp_path / "ca.pem"
@@ -1512,7 +1571,8 @@ class TestResolveUrlScheme:
 
     def test_explicit_http_never_probed(self):
         """An explicit http:// is authoritative -- never probed, never
-        upgraded."""
+        upgraded.
+        """
         from vip.auth import resolve_url_scheme
 
         pc = self._pc("http://connect.example.com")
@@ -1529,7 +1589,8 @@ class TestResolveUrlScheme:
         would otherwise be unreachable. This is the case the type-design
         review specifically flagged: swap the mock below for a ConnectError
         and the assertion must still hold, because provenance (not the
-        prefix or a mock's success) is what gates the probe."""
+        prefix or a mock's success) is what gates the probe.
+        """
         from vip.auth import resolve_url_scheme
 
         pc = self._pc("https://connect.example.com")
@@ -1566,7 +1627,8 @@ class TestResolveUrlScheme:
 
     def test_connection_failure_falls_back_to_http(self):
         """A connection-level failure (refused, DNS, TLS, timeout) -- the
-        server genuinely doesn't answer -- triggers the http:// fallback."""
+        server genuinely doesn't answer -- triggers the http:// fallback.
+        """
         from vip.auth import resolve_url_scheme
 
         pc = self._pc("connect.example.com")
@@ -1614,7 +1676,8 @@ class TestResolveUrlScheme:
     def test_mutates_pc_in_place_and_resets_inferred_flag(self):
         """After resolving, pc.url holds the final value and
         pc.url_scheme_inferred is reset to False -- resolution is a one-time
-        transition, not a repeatable state a second call re-enters."""
+        transition, not a repeatable state a second call re-enters.
+        """
         from vip.auth import resolve_url_scheme
 
         pc = self._pc("connect.example.com")
@@ -1628,7 +1691,8 @@ class TestResolveUrlScheme:
     def test_second_call_on_same_pc_is_a_pure_read_no_probe(self):
         """Once url_scheme_inferred is reset, a second call on the *same*
         ProductConfig must not touch the network at all -- not even a cache
-        lookup is needed, since the flag itself now says "nothing to do"."""
+        lookup is needed, since the flag itself now says "nothing to do".
+        """
         from vip.auth import resolve_url_scheme
 
         pc = self._pc("connect.example.com")
@@ -1643,7 +1707,8 @@ class TestResolveUrlScheme:
     def test_result_is_cached_across_different_pc_instances(self):
         """A *different* ProductConfig for the same URL (e.g. a fresh
         instance built from the same --connect-url at another call site)
-        still only probes once, via the module-level cache."""
+        still only probes once, via the module-level cache.
+        """
         from vip.auth import resolve_url_scheme
 
         pc1 = self._pc("connect.example.com")
@@ -1658,7 +1723,8 @@ class TestResolveUrlScheme:
 
     def test_probe_uses_follow_redirects_and_verify(self, tmp_path):
         """The probe itself must honour insecure/ca_bundle and follow
-        redirects, matching every other httpx call site in this module."""
+        redirects, matching every other httpx call site in this module.
+        """
         from vip.auth import resolve_url_scheme
 
         ca = tmp_path / "ca.pem"
@@ -1676,17 +1742,20 @@ class TestResolveUrlScheme:
         must NOT downgrade to http://. Downgrading here would send
         credentials to a real TLS-terminating server in the clear. See
         test_auth_tls_e2e.py for the same proof against a real self-signed
-        listener rather than this mock."""
+        listener rather than this mock.
+        """
         from vip.auth import resolve_url_scheme
 
         pc = self._pc("connect.example.com")
 
-        with patch("vip.auth._tls_listener_present", return_value=True):
-            with patch(
+        with (
+            patch("vip.auth._tls_listener_present", return_value=True),
+            patch(
                 "httpx.get",
                 side_effect=httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED]"),
-            ):
-                result = resolve_url_scheme(pc)
+            ),
+        ):
+            result = resolve_url_scheme(pc)
 
         assert result == "https://connect.example.com"
         assert pc.url == "https://connect.example.com"
@@ -1696,14 +1765,17 @@ class TestResolveUrlScheme:
         """The warning for this case must be distinguishable from the
         "nothing answered" warning and must name the actual fix -- silently
         printing the same generic message as the network-unreachable case
-        would leave a user with an untrusted cert no better off."""
+        would leave a user with an untrusted cert no better off.
+        """
         from vip.auth import resolve_url_scheme
 
         pc = self._pc("connect.example.com")
 
-        with patch("vip.auth._tls_listener_present", return_value=True):
-            with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
-                resolve_url_scheme(pc)
+        with (
+            patch("vip.auth._tls_listener_present", return_value=True),
+            patch("httpx.get", side_effect=httpx.ConnectError("nope")),
+        ):
+            resolve_url_scheme(pc)
 
         out = capsys.readouterr().out
         assert "NOT falling back to plaintext" in out
@@ -1717,7 +1789,8 @@ class TestResolveUrlScheme:
         """Two calls with the same URL but different insecure/ca_bundle must
         each probe -- a cached verify=True failure must not authorise a
         downgrade decision for a caller that actually passed a different
-        TLS configuration and might get a different, correct answer."""
+        TLS configuration and might get a different, correct answer.
+        """
         from vip.auth import resolve_url_scheme
 
         pc1 = self._pc("connect.example.com")
@@ -1732,7 +1805,8 @@ class TestResolveUrlScheme:
     def test_same_url_and_tls_settings_still_share_the_cache(self):
         """The cache-keying fix must not regress the existing dedup: two
         different ProductConfig instances with the same URL *and* the same
-        insecure/ca_bundle still cost only one probe."""
+        insecure/ca_bundle still cost only one probe.
+        """
         from vip.auth import resolve_url_scheme
 
         pc1 = self._pc("connect.example.com")
@@ -1763,7 +1837,8 @@ class TestResolveConnectApiBase:
 
     def test_root_url_returned_as_is(self):
         """When connect_url has no sub-path there's nothing to fall back to —
-        skip the probe entirely."""
+        skip the probe entirely.
+        """
         from vip.auth import _resolve_connect_api_base
 
         with patch("httpx.get") as mock_get:
@@ -1796,7 +1871,8 @@ class TestResolveConnectApiBase:
 
     def test_dashboard_path_mismatch_keeps_url(self):
         """Root API returns 200 but its dashboard_path is for a different
-        product — refuse to switch."""
+        product — refuse to switch.
+        """
         from vip.auth import _resolve_connect_api_base
 
         responses = [
@@ -1812,7 +1888,8 @@ class TestResolveConnectApiBase:
         """Root /__api__/server_settings returns 200 JSON but has no
         ``dashboard_path`` field — unverified.  Keep the original URL
         rather than risking a false-positive rewrite to a sibling
-        endpoint that just happens to answer JSON 200."""
+        endpoint that just happens to answer JSON 200.
+        """
         from vip.auth import _resolve_connect_api_base
 
         responses = [
@@ -1829,7 +1906,8 @@ class TestResolveConnectApiBase:
         """Root /__api__/server_settings returns a valid JSON 200 that
         isn't an object (list, scalar, null) — calling ``.get()`` on it
         would raise ``AttributeError``.  The resolver must treat this as
-        ambiguous and keep the original URL."""
+        ambiguous and keep the original URL.
+        """
         from vip.auth import _resolve_connect_api_base
 
         responses = [
@@ -1843,7 +1921,8 @@ class TestResolveConnectApiBase:
 
     def test_secondary_non_json_keeps_url(self):
         """Root /__api__/server_settings returns 200 but HTML — not Connect.
-        Refuse to switch."""
+        Refuse to switch.
+        """
         from vip.auth import _resolve_connect_api_base
 
         responses = [
@@ -1857,7 +1936,8 @@ class TestResolveConnectApiBase:
 
     def test_both_404_returns_original(self):
         """Both probes 404 → leave URL alone; existing mint diagnostics will
-        guide the user."""
+        guide the user.
+        """
         from vip.auth import _resolve_connect_api_base
 
         responses = [self._resp(404), self._resp(404)]
@@ -1955,7 +2035,8 @@ class TestCreateApiKeyViaSession:
     def test_happy_path_creates_key_and_sends_xsrf(self):
         """List is empty (no orphans), POST returns a key string.
         The httpx Client must be constructed with the XSRF header and
-        cookies extracted from the browser session."""
+        cookies extracted from the browser session.
+        """
         from vip.auth import _create_api_key_via_session
 
         page = self._page(
@@ -2024,7 +2105,8 @@ class TestCreateApiKeyViaSession:
     def test_follows_redirects(self):
         """follow_redirects=True must be set so an http->https (or trailing-
         slash) redirect isn't treated as a mint failure (issue #537).
-        Matches _resolve_connect_api_base's probes, which already do this."""
+        Matches _resolve_connect_api_base's probes, which already do this.
+        """
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -2189,7 +2271,8 @@ class TestCreateApiKeyViaSession:
     def test_xsrf_falls_back_to_legacy_cookie_name(self):
         """Servers in legacy cookie mode set ``RSC-XSRF-legacy`` instead of
         ``RSC-XSRF``.  The implementation must fall back to the legacy name
-        so Connect does not reject with ``HTTP 403 XSRF token mismatch``."""
+        so Connect does not reject with ``HTTP 403 XSRF token mismatch``.
+        """
         from vip.auth import _create_api_key_via_session
 
         page = self._page(
@@ -2245,7 +2328,8 @@ class TestCreateApiKeyViaSession:
 
     def test_xsrf_read_from_cookie_jar_including_httponly(self):
         """Connect marks RSC-XSRF HttpOnly — must come from page.context.cookies(),
-        not document.cookie (which is blind to HttpOnly cookies)."""
+        not document.cookie (which is blind to HttpOnly cookies).
+        """
         from vip.auth import _create_api_key_via_session
 
         page = self._page(
@@ -2275,7 +2359,8 @@ class TestCreateApiKeyViaSession:
 
     def test_create_failure_returns_none(self, capsys):
         """HTTP 500 on the create call must yield None, not an exception.
-        The warning must include a snippet of the response body."""
+        The warning must include a snippet of the response body.
+        """
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -2298,7 +2383,8 @@ class TestCreateApiKeyViaSession:
 
     def test_user_endpoint_403_warning_includes_body(self, capsys):
         """When cookie auth is rejected at /v1/user, the response body must
-        appear in the warning so users can diagnose the actual failure."""
+        appear in the warning so users can diagnose the actual failure.
+        """
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -2320,7 +2406,8 @@ class TestCreateApiKeyViaSession:
 
     def test_mint_failure_warning_includes_full_url_and_content_type(self, capsys):
         """The warning must print the full mint URL and Content-Type so the
-        user can distinguish Connect's 404 page from an upstream proxy 404."""
+        user can distinguish Connect's 404 page from an upstream proxy 404.
+        """
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -2356,7 +2443,8 @@ class TestCreateApiKeyViaSession:
     def test_mint_failure_404_probes_server_settings_and_hints_at_wrong_url(self, capsys):
         """When both /v1/user and /server_settings return 404, the diagnostic
         must suggest the connect_url path prefix is wrong — that's the only
-        plausible cause (the server settings endpoint is unauthenticated)."""
+        plausible cause (the server settings endpoint is unauthenticated).
+        """
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -2389,7 +2477,8 @@ class TestCreateApiKeyViaSession:
 
     def test_mint_failure_403_does_not_hint_at_wrong_url(self, capsys):
         """A 403 on /v1/user is auth rejection, not a routing problem — the
-        'wrong path prefix' hint must only fire when both endpoints 404."""
+        'wrong path prefix' hint must only fire when both endpoints 404.
+        """
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -2419,7 +2508,8 @@ class TestCreateApiKeyViaSession:
 
     def test_mint_failure_probe_transport_error_logged_not_raised(self, capsys):
         """If the /server_settings probe itself raises, that must not mask the
-        original /v1/user warning — log the probe failure and move on."""
+        original /v1/user warning — log the probe failure and move on.
+        """
         import httpx
 
         from vip.auth import _create_api_key_via_session
@@ -2449,7 +2539,7 @@ class TestCreateApiKeyViaSession:
         assert "probe timed out" in out
 
     def test_httpx_transport_error_returns_none(self, capsys):
-        """httpx connection failures (DNS, TCP, TLS) must return None, not bubble up.
+        """Httpx connection failures (DNS, TCP, TLS) must return None, not bubble up.
 
         The function is documented to return None on failure rather than raise,
         so vip verify can emit a warning and proceed to other checks.  Without
@@ -2497,7 +2587,8 @@ class TestCreateApiKeyViaSession:
 
     def test_unexpected_key_list_shape_does_not_crash(self):
         """If Connect returns a non-list for the keys endpoint, creation must
-        still succeed — cleanup is best-effort."""
+        still succeed — cleanup is best-effort.
+        """
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -2570,7 +2661,8 @@ class TestCreateApiKeyViaSession:
 
     def test_xsrf_cookie_with_trailing_slash_path_is_included(self):
         """RFC 6265: cookies() must be called with an endpoint URL (not bare
-        /__api__) so that path-scoped RSC-XSRF cookies are included."""
+        /__api__) so that path-scoped RSC-XSRF cookies are included.
+        """
         from vip.auth import _create_api_key_via_session
 
         page = MagicMock()
@@ -2609,7 +2701,8 @@ class TestCreateApiKeyViaSession:
 
     def test_xsrf_cookie_is_scoped_to_api_url(self):
         """cookies() must be called with a URL under /__api__ so that
-        cross-domain RSC-XSRF cookies from the IdP are excluded."""
+        cross-domain RSC-XSRF cookies from the IdP are excluded.
+        """
         from vip.auth import _create_api_key_via_session
 
         page = MagicMock()
@@ -2658,7 +2751,8 @@ class TestHeadlessAuthTLSFlags:
 
     def _make_playwright_stub(self) -> MagicMock:
         """Stub sync_playwright() that raises PlaywrightTimeoutError on goto
-        (so the test terminates quickly without completing auth)."""
+        (so the test terminates quickly without completing auth).
+        """
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
         pw = MagicMock()
@@ -2672,14 +2766,16 @@ class TestHeadlessAuthTLSFlags:
         stub = self._make_playwright_stub()
         browser = stub.start.return_value.chromium.launch.return_value
 
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(AuthConfigError, match="timed out"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                    insecure=True,
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="timed out"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+                insecure=True,
+            )
 
         browser.new_context.assert_called_once()
         kwargs = browser.new_context.call_args.kwargs
@@ -2690,14 +2786,16 @@ class TestHeadlessAuthTLSFlags:
         stub = self._make_playwright_stub()
         browser = stub.start.return_value.chromium.launch.return_value
 
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(AuthConfigError, match="timed out"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                    insecure=False,
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="timed out"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+                insecure=False,
+            )
 
         browser.new_context.assert_called_once()
         kwargs = browser.new_context.call_args.kwargs
@@ -2724,14 +2822,16 @@ class TestHeadlessAuthTLSFlags:
 
         monkeypatch.delenv("NODE_EXTRA_CA_CERTS", raising=False)
 
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(AuthConfigError, match="timed out"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                    ca_bundle=Path(ca_file),
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="timed out"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+                ca_bundle=Path(ca_file),
+            )
 
         assert len(captured) == 1
         assert captured[0] == str(ca_file)
@@ -2750,21 +2850,24 @@ class TestHeadlessAuthTLSFlags:
 
         stub = self._make_playwright_stub()
 
-        with patch("vip.auth.sync_playwright", return_value=stub):
-            with pytest.raises(AuthConfigError, match="timed out"):
-                start_headless_auth(
-                    connect_url="https://c.example.com",
-                    username="user",
-                    password="pass",
-                    ca_bundle=Path(ca_file),
-                )
+        with (
+            patch("vip.auth.sync_playwright", return_value=stub),
+            pytest.raises(AuthConfigError, match="timed out"),
+        ):
+            start_headless_auth(
+                connect_url="https://c.example.com",
+                username="user",
+                password="pass",
+                ca_bundle=Path(ca_file),
+            )
 
         assert os.environ.get("NODE_EXTRA_CA_CERTS") == prev_value
 
 
 class TestAuthenticatedPage:
     """Tests for authenticated_page(): the CLI cleanup escape hatch's
-    browser-driven Workbench UI access (see vip.cli.run_cleanup)."""
+    browser-driven Workbench UI access (see vip.cli.run_cleanup).
+    """
 
     def _make_session(self, tmp_path) -> InteractiveAuthSession:
         state_path = tmp_path / "vip-auth-state.json"
@@ -2779,9 +2882,11 @@ class TestAuthenticatedPage:
         context = browser.new_context.return_value
         page = context.new_page.return_value
 
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with authenticated_page(session) as yielded_page:
-                assert yielded_page is page
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            authenticated_page(session) as yielded_page,
+        ):
+            assert yielded_page is page
 
         browser.new_context.assert_called_once_with(
             storage_state=str(session.storage_state_path),
@@ -2798,9 +2903,11 @@ class TestAuthenticatedPage:
         browser = pw.start.return_value.chromium.launch.return_value
         context = browser.new_context.return_value
 
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with authenticated_page(session, insecure=True):
-                pass
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            authenticated_page(session, insecure=True),
+        ):
+            pass
 
         _, kwargs = browser.new_context.call_args
         assert kwargs["ignore_https_errors"] is True
@@ -2813,10 +2920,12 @@ class TestAuthenticatedPage:
         browser = pw.start.return_value.chromium.launch.return_value
         context = browser.new_context.return_value
 
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with pytest.raises(RuntimeError, match="boom"):
-                with authenticated_page(session):
-                    raise RuntimeError("boom")
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            pytest.raises(RuntimeError, match="boom"),
+            authenticated_page(session),
+        ):
+            raise RuntimeError("boom")
 
         context.close.assert_called_once()
         browser.close.assert_called_once()
@@ -2840,9 +2949,11 @@ class TestAuthenticatedPage:
 
         pw.start.return_value.chromium.launch.side_effect = capturing_launch
 
-        with patch("vip.auth.sync_playwright", return_value=pw):
-            with authenticated_page(session, ca_bundle=ca_file):
-                pass
+        with (
+            patch("vip.auth.sync_playwright", return_value=pw),
+            authenticated_page(session, ca_bundle=ca_file),
+        ):
+            pass
 
         assert captured == [str(ca_file)]
         assert os.environ.get("NODE_EXTRA_CA_CERTS") is None
@@ -2864,7 +2975,8 @@ def _jar(**cookies):
 
 class TestCookiesFromStorageState:
     """Playwright storage state is the only record of the cached browser
-    session, so the liveness probe has to read cookies straight out of it."""
+    session, so the liveness probe has to read cookies straight out of it.
+    """
 
     @staticmethod
     def _write(tmp_path, payload):
@@ -2924,7 +3036,8 @@ class TestCachedWorkbenchSessionIsLive:
     expires (the IdP session dies, or an admin invalidates it).  Without a
     liveness probe every Workbench test skips with a message that names no
     cause, because ``workbench_auth_error`` is only set on the fresh-auth
-    path.  See issue: samcofer's 106-skip run."""
+    path.  See issue: samcofer's 106-skip run.
+    """
 
     def test_live_session_is_reported_live(self, tmp_path):
         import httpx
@@ -2963,7 +3076,8 @@ class TestCachedWorkbenchSessionIsLive:
     @pytest.mark.parametrize("status", [401, 403])
     def test_unauthorized_without_redirect_is_reported_dead(self, status):
         """Some Workbench configs answer an expired session with a bare 401/403
-        instead of redirecting, so the URL check alone would miss it."""
+        instead of redirecting, so the URL check alone would miss it.
+        """
         import httpx
 
         from vip.auth import _cached_workbench_session_is_live
@@ -2980,7 +3094,8 @@ class TestCachedWorkbenchSessionIsLive:
         """An unreachable deployment is not a dead session.  Failing closed here
         would force an interactive browser re-auth that cannot succeed either,
         and would bury the real reachability error.  Fail open and let the
-        tests report the outage with their own message."""
+        tests report the outage with their own message.
+        """
         import httpx
 
         from vip.auth import _cached_workbench_session_is_live
@@ -3097,7 +3212,8 @@ class TestLoadCachedAuthProbesWorkbench:
 
     def test_probe_receives_tls_settings(self, tmp_path, monkeypatch):
         """``--insecure`` / ``--ca-bundle`` deployments must not fail the probe on
-        TLS and get sent through a pointless re-auth."""
+        TLS and get sent through a pointless re-auth.
+        """
         from vip import auth as auth_mod
 
         cache = self._write_cache(tmp_path, workbench_url="https://w.example.com")
@@ -3126,7 +3242,8 @@ class TestAuthCachePath:
     cache file.  plugin.py used ``Path(config.rootpath)`` while cli.py used
     ``Path.cwd()``; for a uv-tool install pytest's rootdir is the common
     ancestor of cwd and site-packages, which lands in ``$HOME`` — so the two
-    silently disagreed and ``vip cleanup`` looked in the wrong place."""
+    silently disagreed and ``vip cleanup`` looked in the wrong place.
+    """
 
     def test_resolves_relative_to_the_invocation_directory(self, tmp_path, monkeypatch):
         from vip.auth import auth_cache_path
@@ -3136,7 +3253,8 @@ class TestAuthCachePath:
 
     def test_call_sites_do_not_build_the_path_inline(self):
         """Invariant: the filename literal lives in one place.  A second inline
-        copy is how the two call sites drifted apart in the first place."""
+        copy is how the two call sites drifted apart in the first place.
+        """
         from pathlib import Path as _Path
 
         import vip.auth
@@ -3156,7 +3274,8 @@ class TestAuthCachePath:
 class TestStaleCacheTriggersReauth:
     """End-to-end wiring: a dead cached session must fall through to the real
     auth flow, not be handed to the tests.  The helper-level tests above prove
-    the probe verdict; this proves ``start_interactive_auth`` acts on it."""
+    the probe verdict; this proves ``start_interactive_auth`` acts on it.
+    """
 
     @staticmethod
     def _write_cache(tmp_path):
@@ -3227,7 +3346,8 @@ class TestProbeCookieScoping:
     """The storage state is a whole browser context: the auth flow visits the
     IdP and Connect as well as Workbench, so the file holds cookies for all of
     them.  The probe must apply normal cookie scoping rather than firing every
-    cookie at the Workbench host."""
+    cookie at the Workbench host.
+    """
 
     @staticmethod
     def _state(tmp_path, cookies):
@@ -3259,7 +3379,8 @@ class TestProbeCookieScoping:
 
     def test_idp_cookies_are_not_sent_to_workbench(self, tmp_path):
         """Sending the IdP's session cookie to the Workbench host is unintended
-        cross-host leakage; a browser would never do it."""
+        cross-host leakage; a browser would never do it.
+        """
         state = self._state(
             tmp_path,
             [
@@ -3277,7 +3398,8 @@ class TestProbeCookieScoping:
     def test_same_cookie_name_on_two_hosts_sends_the_workbench_value(self, tmp_path):
         """A flat name->value dict silently overwrites one host's cookie with
         another's.  Sending the IdP's value for a name Workbench also uses would
-        make a *live* session read as dead and force a pointless re-auth."""
+        make a *live* session read as dead and force a pointless re-auth.
+        """
         state = self._state(
             tmp_path,
             [
@@ -3293,7 +3415,8 @@ class TestProbeCookieScoping:
 
     def test_parent_domain_cookie_reaches_a_subdomain_host(self, tmp_path):
         """Leading-dot domains are host-suffix cookies and must still be sent,
-        or a deployment sharing a parent domain would read as signed out."""
+        or a deployment sharing a parent domain would read as signed out.
+        """
         state = self._state(
             tmp_path,
             [{"name": "shared", "value": "yes", "domain": ".example.com", "path": "/"}],
@@ -3323,7 +3446,8 @@ class TestProbeDetailNamesTheEvidence:
     """The cache-miss message quoted "sent back to the sign-in page" for every
     dead verdict, including bare 401/403 where no redirect happened.  A 401 and
     an expiry redirect point at different causes (a proxy stripping cookies vs a
-    dead session), so the message has to name what was actually seen."""
+    dead session), so the message has to name what was actually seen.
+    """
 
     def test_sign_in_redirect_detail(self):
         import httpx
@@ -3395,14 +3519,12 @@ class TestRefreshAuthCacheFromStorageState:
     """
 
     def _existing_cache(self, tmp_path):
-        import os
-
         cache = tmp_path / ".vip-auth-cache.json"
         cache.write_text('{"cookies": [{"name": "dead", "value": "old"}], "origins": []}')
-        os.chmod(cache, 0o600)
+        cache.chmod(0o600)
         meta = cache.with_suffix(".meta.json")
         meta.write_text('{"api_key": null, "workbench_url": "https://wb.example.com"}')
-        os.chmod(meta, 0o600)
+        meta.chmod(0o600)
         return cache, meta
 
     def test_rewrites_an_existing_cache_with_the_live_state(self, tmp_path):

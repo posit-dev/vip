@@ -159,6 +159,7 @@ def connect_client(
 
 @pytest.fixture(scope="session")
 def connect_url(vip_config: VIPConfig) -> str:
+    """The Connect base URL, with an inferred scheme if none was given."""
     return resolve_url_scheme(
         vip_config.connect,
         insecure=vip_config.insecure,
@@ -210,6 +211,7 @@ def workbench_client(
 
 @pytest.fixture(scope="session")
 def workbench_url(vip_config: VIPConfig) -> str:
+    """The Workbench base URL, with an inferred scheme if none was given."""
     return resolve_url_scheme(
         vip_config.workbench,
         insecure=vip_config.insecure,
@@ -260,6 +262,7 @@ def pm_client(vip_config: VIPConfig) -> Generator[PackageManagerClient | None]:
 
 @pytest.fixture(scope="session")
 def pm_url(vip_config: VIPConfig) -> str:
+    """The Package Manager base URL, with an inferred scheme if none was given."""
     return resolve_url_scheme(
         vip_config.package_manager,
         insecure=vip_config.insecure,
@@ -425,28 +428,31 @@ def browser_context_args(
         _prev = os.environ.get("NODE_EXTRA_CA_CERTS")
         os.environ["NODE_EXTRA_CA_CERTS"] = str(vip_config.ca_bundle)
 
-        def _restore_node_ca() -> None:
-            if _prev is None:
-                os.environ.pop("NODE_EXTRA_CA_CERTS", None)
-            else:
-                os.environ["NODE_EXTRA_CA_CERTS"] = _prev
+        yield browser_context_args
 
-        request.addfinalizer(_restore_node_ca)
-    return browser_context_args
+        if _prev is None:
+            os.environ.pop("NODE_EXTRA_CA_CERTS", None)
+        else:
+            os.environ["NODE_EXTRA_CA_CERTS"] = _prev
+    else:
+        yield browser_context_args
 
 
 @pytest.fixture(scope="session")
 def test_username(vip_config: VIPConfig) -> str:
+    """The username of the shared test account from ``[auth]`` in vip.toml."""
     return vip_config.auth.username
 
 
 @pytest.fixture(scope="session")
 def test_password(vip_config: VIPConfig) -> str:
+    """The password of the shared test account from ``[auth]`` in vip.toml."""
     return vip_config.auth.password
 
 
 @pytest.fixture(scope="session")
 def auth_provider(vip_config: VIPConfig) -> str:
+    """The configured auth provider, e.g. ``"password"``, ``"saml"``, ``"oidc"``, ``"oauth2"``."""
     return vip_config.auth.provider
 
 
@@ -457,11 +463,13 @@ def auth_provider(vip_config: VIPConfig) -> str:
 
 @pytest.fixture(scope="session")
 def expected_r_versions(vip_config: VIPConfig) -> list[str]:
+    """The R versions declared under ``[runtimes]`` in vip.toml."""
     return vip_config.runtimes.r_versions
 
 
 @pytest.fixture(scope="session")
 def expected_python_versions(vip_config: VIPConfig) -> list[str]:
+    """The Python versions declared under ``[runtimes]`` in vip.toml."""
     return vip_config.runtimes.python_versions
 
 
@@ -472,6 +480,7 @@ def expected_python_versions(vip_config: VIPConfig) -> list[str]:
 
 @pytest.fixture(scope="session")
 def performance_config(vip_config: VIPConfig) -> PerformanceConfig:
+    """The ``[performance]`` settings from vip.toml."""
     return vip_config.performance
 
 
@@ -482,6 +491,7 @@ def performance_config(vip_config: VIPConfig) -> PerformanceConfig:
 
 @pytest.fixture(scope="session")
 def data_sources(vip_config: VIPConfig):
+    """The ``DataSourceEntry`` list declared under ``[data_sources]`` in vip.toml."""
     return vip_config.data_sources
 
 
@@ -492,11 +502,13 @@ def data_sources(vip_config: VIPConfig):
 
 @pytest.fixture(scope="session")
 def email_enabled(vip_config: VIPConfig) -> bool:
+    """Whether ``[email] enabled`` is set in vip.toml."""
     return vip_config.email_enabled
 
 
 @pytest.fixture(scope="session")
 def chronicle_enabled(vip_config: VIPConfig) -> bool:
+    """Whether ``[chronicle] enabled`` is set in vip.toml."""
     return vip_config.chronicle_enabled
 
 
@@ -507,18 +519,21 @@ def chronicle_enabled(vip_config: VIPConfig) -> bool:
 
 @given("Connect is configured in vip.toml")
 def connect_configured(vip_config):
+    """Skip the scenario when Connect is not configured."""
     if not vip_config.connect.is_configured:
         pytest.skip("Connect is not configured")
 
 
 @given("Workbench is configured in vip.toml")
 def workbench_configured(vip_config):
+    """Skip the scenario when Workbench is not configured."""
     if not vip_config.workbench.is_configured:
         pytest.skip("Workbench is not configured")
 
 
 @given("Package Manager is configured in vip.toml")
 def package_manager_configured(vip_config):
+    """Skip the scenario when Package Manager is not configured."""
     if not vip_config.package_manager.is_configured:
         pytest.skip("Package Manager is not configured")
 

@@ -122,7 +122,7 @@ class TestExtractExceptionInfo:
         assert exc_message == "assert 403 == 200"
 
     def test_bare_assert_no_type_prefix(self):
-        """pytest assertion rewriting produces 'E   assert ...' without AssertionError prefix."""
+        """Pytest assertion rewriting produces 'E   assert ...' without AssertionError prefix."""
         longrepr = (
             "tests/connect/test_auth.py:10: in test_login\n"
             "E       assert 403 == 200\n"
@@ -279,9 +279,9 @@ class TestPluginIntegration:
     plugin state (including a fresh ``_results`` list).
     """
 
-    @pytest.fixture()
+    @pytest.fixture
     def selftest_pytester(self, pytester):
-        """pytester fixture pre-configured with VIP installed."""
+        """Pytester fixture pre-configured with VIP installed."""
         # Write a minimal vip.toml that has no products configured so all
         # product-marked tests get skipped.
         pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
@@ -417,7 +417,8 @@ class TestPluginIntegration:
 
     def test_bdd_given_configured_step_deselected(self, selftest_pytester):
         """A BDD scenario with 'Given Connect is configured in vip.toml'
-        should be deselected (not skipped) when Connect is not configured."""
+        should be deselected (not skipped) when Connect is not configured.
+        """
         selftest_pytester.makefile(
             ".feature",
             test_perf=(
@@ -454,7 +455,8 @@ class TestPluginIntegration:
 
     def test_bdd_given_configured_product_not_deselected(self, selftest_pytester):
         """A BDD scenario with 'Given Connect is configured' should run
-        when Connect IS configured."""
+        when Connect IS configured.
+        """
         selftest_pytester.makefile(
             ".toml",
             vip=(
@@ -528,7 +530,8 @@ class TestPluginIntegration:
 
     def test_bdd_parameterized_unconfigured_deselected(self, selftest_pytester):
         """A parameterized '<product> is configured' step should deselect
-        when the product is not configured."""
+        when the product is not configured.
+        """
         selftest_pytester.makefile(
             ".feature",
             test_param=(
@@ -700,7 +703,8 @@ class TestPluginIntegration:
 
     def test_skip_reason_not_forced_verbose_in_dot_mode(self, selftest_pytester):
         """Without ``-v`` the reporter stays in dot mode — the verbosity bump is
-        gated on the user already having asked for per-test lines."""
+        gated on the user already having asked for per-test lines.
+        """
         selftest_pytester.makepyfile(
             """
             import pytest
@@ -842,7 +846,8 @@ class TestPluginIntegration:
 
     def test_json_report_includes_skip_reason(self, selftest_pytester):
         """A marker-skipped test's reason lands in skip_reason, and longrepr is
-        dropped rather than storing pytest's absolute-path-carrying tuple form."""
+        dropped rather than storing pytest's absolute-path-carrying tuple form.
+        """
         selftest_pytester.makepyfile(
             """
             import pytest
@@ -865,7 +870,8 @@ class TestPluginIntegration:
 
     def test_json_report_na_version_skip_also_gets_skip_reason(self, selftest_pytester):
         """na_version skips (see _skip_version_unknown) are still skips, so they
-        get a skip_reason too -- it complements na_version, not replaces it."""
+        get a skip_reason too -- it complements na_version, not replaces it.
+        """
         selftest_pytester.makefile(
             ".toml",
             vip=(
@@ -928,7 +934,8 @@ class TestPluginIntegration:
 
     def test_json_report_includes_provenance_fields(self, selftest_pytester):
         """F9: results.json records the version/duration/environment that
-        produced it."""
+        produced it.
+        """
         import platform as _platform
 
         selftest_pytester.makepyfile(
@@ -958,7 +965,8 @@ class TestPluginIntegration:
     def test_json_report_basic_mode_true_when_slow_marker_excluded(self, selftest_pytester):
         """basic_mode reflects the resolved marker expression, not a dedicated
         flag -- `vip verify --basic` and a hand-written `-m "not slow"` both
-        set it, because both actually excluded the slow marker."""
+        set it, because both actually excluded the slow marker.
+        """
         selftest_pytester.makepyfile(
             """
             def test_plain():
@@ -1217,7 +1225,8 @@ class TestPluginIntegration:
 
     def test_unproven_skip_is_flagged_and_reason_is_clean(self, selftest_pytester):
         """The sentinel is an internal transport detail: it classifies the
-        skip and must not leak into the reason a human reads."""
+        skip and must not leak into the reason a human reads.
+        """
         selftest_pytester.makepyfile(
             """
             from vip import attest
@@ -1276,7 +1285,8 @@ class TestPluginIntegration:
 
     def test_unproven_from_a_fixture_is_flagged(self, selftest_pytester):
         """Real unproven skips fire from fixtures (the auth gate), which land
-        in the 'setup' phase rather than 'call'."""
+        in the 'setup' phase rather than 'call'.
+        """
         selftest_pytester.makepyfile(
             """
             import pytest
@@ -1344,7 +1354,8 @@ class TestPluginIntegration:
         """The summary is printed by the plugin, so it is reached by a bare
         `pytest` run too -- where the option is spelled --vip-allow-unproven.
         Naming only the `vip verify` alias sends those users to a flag pytest
-        rejects."""
+        rejects.
+        """
         selftest_pytester.makepyfile(
             """
             from vip import attest
@@ -1361,7 +1372,7 @@ class TestPluginIntegration:
 class TestXdistCompatibility:
     """Verify that JSON report generation works with and without xdist."""
 
-    @pytest.fixture()
+    @pytest.fixture
     def selftest_pytester(self, pytester):
         pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
         return pytester
@@ -1751,7 +1762,8 @@ class TestAuthTimeoutBecomesCleanUsageError:
     traceback (see #263). ``--headless-auth`` already routed its call
     through ``except AuthConfigError`` in ``pytest_configure``;
     ``--interactive-auth``'s call site had no try/except at all until this
-    fix, so its timeout used to crash the whole pytest session."""
+    fix, so its timeout used to crash the whole pytest session.
+    """
 
     _RAISE_TIMEOUT_CONFTEST = """
         import vip.auth
@@ -2062,7 +2074,8 @@ class TestRestoreWorkerAuth:
     """``_restore_worker_auth`` recreates the controller's auth state on each
     xdist worker.  When the controller rewrote ``connect.url`` (split sub-path
     dashboard + root API), workers must pick up the corrected URL or their
-    ``ConnectClient`` will 404 against the original sub-path."""
+    ``ConnectClient`` will 404 against the original sub-path.
+    """
 
     @staticmethod
     def _config(**worker_inputs):
@@ -2110,7 +2123,8 @@ class TestRestoreWorkerAuth:
 
     def test_empty_connect_url_keeps_existing(self):
         """Controller had no Connect URL to share — don't blank out the
-        worker's existing value."""
+        worker's existing value.
+        """
         from vip.config import ConnectConfig, VIPConfig
         from vip.plugin import _restore_worker_auth
 
@@ -2125,7 +2139,8 @@ class TestRestoreWorkerAuth:
     def test_connect_disabled_keeps_existing(self):
         """Workbench-only run: Connect is disabled.  Even if a stray
         ``vip_connect_url`` shows up in workerinput, don't enable Connect
-        by accident."""
+        by accident.
+        """
         from vip.config import ConnectConfig, VIPConfig
         from vip.plugin import _restore_worker_auth
 
@@ -2338,7 +2353,7 @@ class TestAttestSkipHelpers:
     def test_unproven_raises_a_skip_carrying_the_sentinel(self):
         from vip import attest
 
-        with pytest.raises(BaseException) as exc:
+        with pytest.raises(BaseException, match="auth did not complete") as exc:
             attest.unproven("auth did not complete")
         assert exc.typename == "Skipped"
         assert attest.UNPROVEN_SENTINEL in str(exc.value)
@@ -2347,7 +2362,7 @@ class TestAttestSkipHelpers:
     def test_not_applicable_raises_a_plain_skip(self):
         from vip import attest
 
-        with pytest.raises(BaseException) as exc:
+        with pytest.raises(BaseException, match="Connect is not configured") as exc:
             attest.not_applicable("Connect is not configured")
         assert exc.typename == "Skipped"
         assert attest.UNPROVEN_SENTINEL not in str(exc.value)
@@ -2361,7 +2376,7 @@ class TestUnprovenExitStatus:
     whose checks all went unproven must not exit 0, whatever the cause.
     """
 
-    @pytest.fixture()
+    @pytest.fixture
     def selftest_pytester(self, pytester):
         pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
         return pytester

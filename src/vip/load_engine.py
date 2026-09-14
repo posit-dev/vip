@@ -298,7 +298,7 @@ def _log_request(
     request_type: str,
     name: str,
     response_time: float,
-    response_length: int,
+    response_length: int,  # noqa: ARG001 -- locust event kwarg
     exception: Exception | None = None,
     **_kwargs,
 ) -> None:
@@ -336,6 +336,7 @@ def run_user_simulation(
         ``environment.parsed_options``.  Keys depend on the product
         (e.g. ``{"api_key": "..."}`` for Connect/Workbench,
         ``{"token": "..."}`` for Package Manager).
+
     """
     if not _locust_available():
         msg = (

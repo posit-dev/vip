@@ -111,6 +111,7 @@ class ProxyConfig:
 
     @classmethod
     def from_dict(cls, raw: dict) -> ProxyConfig:
+        """Build a ``ProxyConfig`` from a ``[proxy]`` TOML table, applying its defaults."""
         return cls(
             url=str(raw.get("url", "")),
             no_proxy=_as_host_list(raw.get("no_proxy", [])),
@@ -596,14 +597,17 @@ def playwright_proxy(proxy_map: ProxyMap, target_url: str | None = None) -> dict
     # bypass the target explicitly. Otherwise Chromium sends a plain-http request
     # for an http:// product to an https gateway that will 403/407 it, while
     # every httpx call to the same host goes direct.
-    if target_url and proxy_for_url(target_url, proxy_map) is None:
-        if not _matches_a_bypass_pattern(target_url, proxy_map):
-            # Only when nothing in the map already covers it -- a target the
-            # NO_PROXY patterns match is bypassed by those, and re-listing its
-            # exact host would just add noise Chromium has to parse.
-            target_host = _bypass_host_for_url(target_url)
-            if target_host and target_host not in bypass_hosts:
-                bypass_hosts.append(target_host)
+    if (
+        target_url
+        and proxy_for_url(target_url, proxy_map) is None
+        and not _matches_a_bypass_pattern(target_url, proxy_map)
+    ):
+        # Only when nothing in the map already covers it -- a target the
+        # NO_PROXY patterns match is bypassed by those, and re-listing its
+        # exact host would just add noise Chromium has to parse.
+        target_host = _bypass_host_for_url(target_url)
+        if target_host and target_host not in bypass_hosts:
+            bypass_hosts.append(target_host)
     proxy: dict[str, str] = {"server": server}
     username, password = _split_proxy_userinfo(server)
     if username is not None:

@@ -6,8 +6,8 @@
 # Install uv (if you don't have it)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install all dependencies (including dev tools like ruff)
-uv sync
+# Install all dependencies, including the dev tools (ruff, mypy) that live in the dev extra
+uv sync --extra dev
 
 # Or with pip
 pip install -e ".[dev]"
@@ -32,10 +32,10 @@ just format         # ruff format
 Without just, run ruff directly:
 
 ```bash
-uv run ruff check src/ selftests/ examples/ docker/        # lint
-uv run ruff format --check src/ selftests/ examples/ docker/  # format check
-uv run ruff check --fix src/ selftests/ examples/ docker/  # auto-fix lint
-uv run ruff format src/ selftests/ examples/ docker/       # reformat
+uv run --extra dev ruff check src/ selftests/ examples/ docker/        # lint
+uv run --extra dev ruff format --check src/ selftests/ examples/ docker/  # format check
+uv run --extra dev ruff check --fix src/ selftests/ examples/ docker/  # auto-fix lint
+uv run --extra dev ruff format src/ selftests/ examples/ docker/       # reformat
 ```
 
 ### Pre-commit hooks (optional)

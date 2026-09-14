@@ -130,6 +130,7 @@ class ProductConfig:
 
     @property
     def is_configured(self) -> bool:
+        """Return True if this product is enabled and has a URL to reach it."""
         return self.enabled and bool(self.url)
 
 
@@ -155,6 +156,7 @@ class ConnectConfig(ProductConfig):
 
     @classmethod
     def from_dict(cls, raw: dict) -> ConnectConfig:
+        """Build a ``ConnectConfig`` from a ``[connect]`` vip.toml table."""
         return cls(
             enabled=raw.get("enabled", True),
             url=raw.get("url", ""),
@@ -190,10 +192,12 @@ class WorkbenchKubernetesConfig:
 
     @property
     def is_configured(self) -> bool:
+        """Return True if Kubernetes capacity tests are enabled."""
         return self.enabled
 
     @classmethod
     def from_dict(cls, raw: dict) -> WorkbenchKubernetesConfig:
+        """Build a ``WorkbenchKubernetesConfig`` from a ``[workbench.kubernetes]`` table."""
         return cls(
             enabled=raw.get("enabled", False),
             namespace=raw.get("namespace", "posit-team"),
@@ -218,6 +222,11 @@ class WorkbenchExtensionsConfig:
 
     @classmethod
     def from_dict(cls, raw: dict) -> WorkbenchExtensionsConfig:
+        """Build a ``WorkbenchExtensionsConfig`` from a ``[workbench.extensions]`` table.
+
+        Raises ``ValueError`` if ``vscode``/``positron``/``jupyterlab`` is present but
+        is not a string or a list of strings.
+        """
         return cls(
             vscode=_as_str_list(raw.get("vscode", []), "workbench.extensions.vscode"),
             positron=_as_str_list(raw.get("positron", []), "workbench.extensions.positron"),
@@ -277,6 +286,7 @@ class GitTestConfig:
 
     @classmethod
     def from_dict(cls, raw: dict) -> GitTestConfig:
+        """Build a ``GitTestConfig`` from a ``[workbench.git_test]`` table."""
         return cls(
             clone_url=raw.get("clone_url", ""),
             auth_method=raw.get("auth_method", "https-token"),
@@ -340,6 +350,12 @@ class WorkbenchConfig(ProductConfig):
 
     @classmethod
     def from_dict(cls, raw: dict) -> WorkbenchConfig:
+        """Build a ``WorkbenchConfig`` from a ``[workbench]`` vip.toml table.
+
+        When ``git_test`` is absent, synthesizes a default ``GitTestConfig`` pointing
+        at ``DEFAULT_PUBLIC_CLONE_URL`` with ``auth_method="none"`` instead of using
+        the ``GitTestConfig`` field's own ``None`` default.
+        """
         git_test_raw = raw.get("git_test")
         return cls(
             enabled=raw.get("enabled", True),
@@ -387,6 +403,7 @@ class PackageManagerConfig(ProductConfig):
 
     @classmethod
     def from_dict(cls, raw: dict) -> PackageManagerConfig:
+        """Build a ``PackageManagerConfig`` from a ``[package_manager]`` vip.toml table."""
         return cls(
             enabled=raw.get("enabled", True),
             url=raw.get("url", ""),
@@ -419,6 +436,7 @@ class AuthConfig:
 
     @classmethod
     def from_dict(cls, raw: dict) -> AuthConfig:
+        """Build an ``AuthConfig`` from an ``[auth]`` vip.toml table."""
         return cls(
             provider=raw.get("provider", "password"),
             username=raw.get("username", ""),
@@ -475,6 +493,7 @@ class PerformanceConfig:
 
     @classmethod
     def from_dict(cls, raw: dict) -> PerformanceConfig:
+        """Build a ``PerformanceConfig`` from a ``[performance]`` vip.toml table."""
         return cls(
             page_load_timeout=raw.get("page_load_timeout", 10.0),
             download_timeout=raw.get("download_timeout", 30.0),
@@ -592,10 +611,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     """
     if path is None:
         env = os.environ.get("VIP_CONFIG")
-        if env:
-            path = Path(env)
-        else:
-            path = Path("vip.toml")
+        path = Path(env) if env else Path("vip.toml")
 
     path = Path(path)
     if not path.exists():
@@ -604,7 +620,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         warnings.warn(f"Config file not found: {path}", stacklevel=2)
         return VIPConfig()
 
-    with open(path, "rb") as f:
+    with path.open("rb") as f:
         raw = tomllib.load(f)
 
     general = raw.get("general", {})

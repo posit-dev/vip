@@ -161,9 +161,10 @@ def _strip_r_index(text: str) -> str:
 
     For example, ``[1] 1.0.6`` becomes ``1.0.6``.
     """
-    lines = []
-    for line in text.splitlines():
-        lines.append(re.sub(r"^\[\d+\]\s*", "", line) if re.match(r"^\[\d+\]", line) else line)
+    lines = [
+        re.sub(r"^\[\d+\]\s*", "", line) if re.match(r"^\[\d+\]", line) else line
+        for line in text.splitlines()
+    ]
     return "\n".join(lines).strip()
 
 
@@ -186,6 +187,7 @@ def _parse_done_marker(content: str, done_marker: str) -> tuple[str, int] | None
         ``(captured_output, exit_code)`` with the marker line removed (any
         leading output on that line is preserved), or ``None`` if the marker
         has not fully appeared in *content* yet.
+
     """
     prefix = f"{done_marker}:"
     lines = content.splitlines()
@@ -228,6 +230,7 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
             Acceptable-Usage-Policy prompt) is blocking the console before it
             can accept input.
         PlaywrightTimeoutError: Console input was not visible within *timeout*.
+
     """
     start, end = _make_sentinels()
     wrapped = _wrap_r_expr(expr, start, end)
@@ -334,6 +337,7 @@ def ensure_positron_console(page: Page, timeout: int = 45_000) -> bool:
 
     Returns:
         ``True`` if a console is running, ``False`` otherwise.
+
     """
     # One poll budget is shared across every phase below so the total wait is
     # bounded by *timeout* rather than a multiple of it.
@@ -494,6 +498,7 @@ def _wait_for_positron_console_prompt(page: Page, prompt: str, timeout: int) -> 
 
     Raises:
         ExecError: the prompt did not appear within *timeout* ms.
+
     """
     deadline = time.monotonic() + timeout / 1000.0
     active_line = page.locator(_POSITRON_CONSOLE_READY).first
@@ -558,6 +563,7 @@ def positron_eval_r(page: Page, expr: str, timeout: int = 30_000) -> str:
 
     Returns:
         Raw text between the VIP markers, stripped of whitespace.
+
     """
     start, end = _make_sentinels()
     wrapped = _wrap_r_expr(expr, start, end)
@@ -609,6 +615,7 @@ def positron_eval_python(page: Page, expr: str, timeout: int = 30_000) -> str:
 
     Returns:
         Raw text between the VIP markers, stripped of whitespace.
+
     """
     start, end = _make_sentinels()
     wrapped = _wrap_python_expr_inline(expr, start, end)
@@ -660,6 +667,7 @@ def jupyterlab_eval(page: Page, expr: str, lang: str = "python", timeout: int = 
 
     Returns:
         Raw text between the VIP markers, stripped of whitespace.
+
     """
     start, end = _make_sentinels()
     if lang.lower() == "r":
@@ -827,6 +835,7 @@ def read_file_via_vscode_editor(page: Page, path: str, timeout: int = 30_000) ->
 
     Returns:
         File contents as a string.
+
     """
     _open_file_in_vscode_editor(page, path, timeout=timeout)
     return _read_vscode_editor_text(page, timeout=timeout)
@@ -1017,6 +1026,7 @@ def terminal_run(
         The VS Code editor-open polling path is UNVALIDATED and pending a live
         git_ops run.  The open/close/re-read loop may be slow; it will be tuned
         during live validation.
+
     """
     done_marker = f"VIP_DONE_{uuid.uuid4().hex}"
     uid = uuid.uuid4().hex
@@ -1227,6 +1237,7 @@ def write_bundle(
 
     Raises:
         ExecError: A directory creation or file write command failed.
+
     """
     terminal_run(
         page,
@@ -1277,6 +1288,7 @@ def file_exists(page: Page, path: str, timeout: int = 30_000, *, lang: str = "r"
 
     Returns:
         True if the file exists, False otherwise.
+
     """
     ide = _detect_ide(page)
     if ide == "positron":
@@ -1332,6 +1344,7 @@ def read_file(page: Page, path: str, timeout: int = 30_000, *, lang: str = "r") 
 
     Raises:
         ExecError: If the expression output cannot be captured.
+
     """
     ide = _detect_ide(page)
     if ide == "positron":
