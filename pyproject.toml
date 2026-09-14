@@ -214,7 +214,10 @@ line-length = 100
 src = ["src", "selftests", "examples"]
 
 [tool.ruff.lint]
-select = ["B", "BLE", "C4", "E", "F", "I", "ISC", "N", "PGH", "PIE", "PTH", "RET", "S101", "TID", "UP"]
+select = ["B", "BLE", "C4", "E", "F", "I", "ISC", "N", "PERF", "PGH", "PIE", "PTH", "RET", "S101", "TID", "UP"]
+
+# PERF203: per-item try/except in cleanup and probe loops is deliberate (the loop must continue past a failing item), and the per-iteration cost it flags is gone on Python 3.11+.
+ignore = ["PERF203"]
 
 [tool.ruff.lint.per-file-ignores]
 "selftests/**" = ["S101"]

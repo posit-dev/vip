@@ -161,9 +161,10 @@ def _strip_r_index(text: str) -> str:
 
     For example, ``[1] 1.0.6`` becomes ``1.0.6``.
     """
-    lines = []
-    for line in text.splitlines():
-        lines.append(re.sub(r"^\[\d+\]\s*", "", line) if re.match(r"^\[\d+\]", line) else line)
+    lines = [
+        re.sub(r"^\[\d+\]\s*", "", line) if re.match(r"^\[\d+\]", line) else line
+        for line in text.splitlines()
+    ]
     return "\n".join(lines).strip()
 
 

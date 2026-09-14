@@ -124,8 +124,7 @@ def _read_all_tags(path: Path) -> list[str]:
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if stripped.startswith("@"):
-            for token in stripped.split():
-                tags.append(token.lstrip("@"))
+            tags.extend(token.lstrip("@") for token in stripped.split())
         elif stripped.startswith("Feature:"):
             break
     return tags
