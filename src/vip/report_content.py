@@ -77,6 +77,8 @@ def pluralize(count: int, noun: str = "test") -> str:
 
 @dataclass(frozen=True)
 class OutcomeStyle:
+    """The badge label, text color, and background color for one ``TestResult.status``."""
+
     label: str
     color: str
     background: str
@@ -118,6 +120,8 @@ def outcome_style(status: str) -> OutcomeStyle:
 
 @dataclass(frozen=True)
 class Badge:
+    """One marker pill rendered on a report card: its CSS class, label, and color."""
+
     css_class: str
     label: str
     color: str
@@ -267,6 +271,7 @@ class FeatureStepIndex:
         return self._cache[key] or None
 
     def steps_for(self, item: TestResult) -> list[str]:
+        """Return the Gherkin steps for *item*'s scenario, or ``[]`` if none can be found."""
         feature = self._feature(item.nodeid)
         if not feature or not feature.get("scenarios") or not item.scenario_title:
             return []

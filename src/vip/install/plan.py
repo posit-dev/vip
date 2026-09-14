@@ -12,18 +12,31 @@ from vip.install.manifest import Manifest, PlaywrightItem, SystemPackageItem
 
 @dataclass(frozen=True)
 class SystemPackagesStep:
+    """The system packages ``vip install`` still needs to install for one package manager."""
+
     manager: str  # "dnf" | "apt" | "zypper"
     packages: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class PlaywrightStep:
+    """The Playwright browser ``vip install`` still needs to download, and where to."""
+
     browser: str  # "chromium"
     cache_dir: str
 
 
 @dataclass(frozen=True)
 class InstallPlan:
+    """What ``vip install`` needs to do on this host, computed without doing any of it.
+
+    ``system_step``/``playwright_step`` are ``None`` when nothing is needed for that
+    part. ``claim_pending`` lists manifest packages that were pending (needed a manual
+    ``sudo`` install) and are now present, to be recorded as installed rather than
+    requested again. ``unsupported_warning`` is set only on an unsupported platform,
+    where ``system_step`` is left ``None`` instead of being computed.
+    """
+
     platform: str
     platform_id: str | None
     platform_version: str | None
@@ -33,6 +46,7 @@ class InstallPlan:
     unsupported_warning: str | None = None
 
     def is_empty(self) -> bool:
+        """Return True if this plan has no packages to install and nothing to claim."""
         if self.system_step and self.system_step.packages:
             return False
         if self.playwright_step:
@@ -152,6 +166,14 @@ def build_install_plan(
 
 @dataclass(frozen=True)
 class UninstallPlan:
+    """What ``vip uninstall`` needs to do, derived from a ``Manifest``.
+
+    ``delete_manifest`` is always ``True``. ``system_remove_commands`` covers only the
+    ``dnf``/``apt``/``zypper`` managers; a manifest item with any other manager is
+    silently omitted. ``chained_cleanup`` is the Connect URL to sweep VIP content
+    against, or ``None`` if uninstall should not chain into a Connect cleanup.
+    """
+
     delete_manifest: bool
     playwright_cache_dirs: tuple[str, ...]
     system_remove_commands: tuple[str, ...]

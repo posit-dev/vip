@@ -131,6 +131,11 @@ def _read_all_tags(path: Path) -> list[str]:
 
 
 def generate_matrix(tests_dir: Path, output: Path) -> dict:
+    """Build the test-area x product coverage matrix and write it as JSON to *output*.
+
+    Creates parent directories of *output* as needed and returns the same dict written
+    to disk.
+    """
     # area_key -> {product -> {scenarios: int, files: [str], conditional: bool}}
     area_data: dict[str, dict[str, dict]] = defaultdict(
         lambda: {p: {"scenarios": 0, "files": [], "conditional": False} for p in PRODUCTS}
@@ -259,6 +264,7 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
 
 
 def main() -> None:
+    """Parse ``--output`` and generate the feature matrix JSON for ``src/vip_tests``."""
     parser = argparse.ArgumentParser(description="Generate VIP feature matrix JSON")
     parser.add_argument(
         "--output",

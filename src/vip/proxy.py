@@ -111,6 +111,7 @@ class ProxyConfig:
 
     @classmethod
     def from_dict(cls, raw: dict) -> ProxyConfig:
+        """Build a ``ProxyConfig`` from a ``[proxy]`` TOML table, applying its defaults."""
         return cls(
             url=str(raw.get("url", "")),
             no_proxy=_as_host_list(raw.get("no_proxy", [])),
