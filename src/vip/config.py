@@ -604,7 +604,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
         warnings.warn(f"Config file not found: {path}", stacklevel=2)
         return VIPConfig()
 
-    with open(path, "rb") as f:
+    with path.open("rb") as f:
         raw = tomllib.load(f)
 
     general = raw.get("general", {})

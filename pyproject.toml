@@ -214,7 +214,7 @@ line-length = 100
 src = ["src", "selftests", "examples"]
 
 [tool.ruff.lint]
-select = ["B", "BLE", "C4", "E", "F", "I", "ISC", "N", "PGH", "PIE", "RET", "S101", "TID", "UP"]
+select = ["B", "BLE", "C4", "E", "F", "I", "ISC", "N", "PGH", "PIE", "PTH", "RET", "S101", "TID", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "selftests/**" = ["S101"]
