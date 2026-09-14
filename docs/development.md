@@ -6,8 +6,8 @@
 # Install uv (if you don't have it)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install all dependencies (including dev tools like ruff)
-uv sync
+# Install all dependencies, including the dev tools (ruff, mypy) that live in the dev extra
+uv sync --extra dev
 
 # Or with pip
 pip install -e ".[dev]"
