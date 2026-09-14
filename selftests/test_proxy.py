@@ -1425,9 +1425,8 @@ def test_authenticated_page_uses_the_proxy_for_the_workbench_url(monkeypatch, tm
     session = InteractiveAuthSession(storage_state_path=state, _workbench_url="http://wb.internal")
 
     seen = _launched_proxy(monkeypatch)
-    with pytest.raises(Exception, match="stop after launch"):
-        with authenticated_page(session):
-            pass
+    with pytest.raises(Exception, match="stop after launch"), authenticated_page(session):
+        pass
 
     assert seen["proxy"]["server"] == "http://http-gw:1"
 

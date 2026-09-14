@@ -170,10 +170,7 @@ def _print_skip_notes(config_path: str | None) -> None:
     ]
     for name, pc in products:
         if not pc.is_configured:
-            if not pc.enabled:
-                reason = "disabled"
-            else:
-                reason = "no URL given"
+            reason = "disabled" if not pc.enabled else "no URL given"
             print(f"Note: {name} {reason} — {name} tests will not be collected.", flush=True)
 
 
@@ -367,10 +364,7 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     if explicit_provider:
         auth_provider: str | None = explicit_provider
     elif idp:
-        if inherited_provider in _IDP_PROVIDERS:
-            auth_provider = inherited_provider
-        else:
-            auth_provider = "oidc"
+        auth_provider = inherited_provider if inherited_provider in _IDP_PROVIDERS else "oidc"
     else:
         auth_provider = inherited_provider
 

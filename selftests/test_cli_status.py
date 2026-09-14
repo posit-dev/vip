@@ -207,9 +207,9 @@ class TestRunStatusTextMode:
 
         with (
             patch("vip.config.load_config", return_value=config),
+            pytest.raises(SystemExit) as excinfo,
         ):
-            with pytest.raises(SystemExit) as excinfo:
-                run_status(args)
+            run_status(args)
 
         out = capsys.readouterr().out
         return out, excinfo.value.code
@@ -271,9 +271,9 @@ class TestRunStatusJsonMode:
 
         with (
             patch("vip.config.load_config", return_value=config),
+            pytest.raises(SystemExit) as excinfo,
         ):
-            with pytest.raises(SystemExit) as excinfo:
-                run_status(args)
+            run_status(args)
 
         output = capsys.readouterr().out
         parsed = json.loads(output)
@@ -396,11 +396,8 @@ class TestRunStatusJsonMode:
 
         from vip.cli import run_status
 
-        with (
-            patch("vip.config.load_config", return_value=config),
-        ):
-            with pytest.raises(SystemExit):
-                run_status(args)
+        with patch("vip.config.load_config", return_value=config), pytest.raises(SystemExit):
+            run_status(args)
 
         output = capsys.readouterr().out
         # Must not raise
@@ -413,11 +410,8 @@ class TestRunStatusJsonMode:
 
         from vip.cli import run_status
 
-        with (
-            patch("vip.config.load_config", return_value=config),
-        ):
-            with pytest.raises(SystemExit):
-                run_status(args)
+        with patch("vip.config.load_config", return_value=config), pytest.raises(SystemExit):
+            run_status(args)
 
         output = capsys.readouterr().out.strip()
         # Should be a single JSON object, not multiple lines of mixed text

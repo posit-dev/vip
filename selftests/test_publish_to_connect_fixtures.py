@@ -211,9 +211,12 @@ def test_cleanup_fixtures_are_autouse():
             if not is_fixture_call:
                 continue
             for kw in dec.keywords:
-                if kw.arg == "autouse" and isinstance(kw.value, ast.Constant):
-                    if kw.value.value is True:
-                        autouse_fixtures.add(node.name)
+                if (
+                    kw.arg == "autouse"
+                    and isinstance(kw.value, ast.Constant)
+                    and kw.value.value is True
+                ):
+                    autouse_fixtures.add(node.name)
 
     assert "_connect_content_cleanup" in autouse_fixtures, (
         "_connect_content_cleanup must be autouse=True"

@@ -1310,9 +1310,11 @@ class TestReorderHelpArgs:
     def test_help_with_separator_actually_shows_help(self):
         from vip.cli import main
 
-        with patch.object(sys, "argv", ["vip", "-h", "verify", "--", "-x"]):
-            with pytest.raises(SystemExit) as exc:
-                main()
+        with (
+            patch.object(sys, "argv", ["vip", "-h", "verify", "--", "-x"]),
+            pytest.raises(SystemExit) as exc,
+        ):
+            main()
         # argparse exits 0 after printing help; a nonzero/None code would mean
         # it fell through to running the command instead.
         assert exc.value.code == 0

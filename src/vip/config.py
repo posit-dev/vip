@@ -592,10 +592,7 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
     """
     if path is None:
         env = os.environ.get("VIP_CONFIG")
-        if env:
-            path = Path(env)
-        else:
-            path = Path("vip.toml")
+        path = Path(env) if env else Path("vip.toml")
 
     path = Path(path)
     if not path.exists():

@@ -1282,9 +1282,12 @@ def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = 
         # round-trip (form action "auth-openid-sign-in"). A human user
         # would click "Sign in with OpenID"; in headless mode we do it
         # for them. Click at most once so a stuck page doesn't loop.
-        if not clicked_oidc_confirm and url.startswith(base):
-            if _click_workbench_oidc_confirm(page):
-                clicked_oidc_confirm = True
+        if (
+            not clicked_oidc_confirm
+            and url.startswith(base)
+            and _click_workbench_oidc_confirm(page)
+        ):
+            clicked_oidc_confirm = True
         try:
             page.wait_for_timeout(500)
         except Exception:  # noqa: BLE001

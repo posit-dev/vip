@@ -23,10 +23,7 @@ def test_api_key_from_env():
 @given("a VIP configuration file is in use", target_fixture="config_path")
 def config_file_exists(request):
     config_option = request.config.getoption("--vip-config", default=None)
-    if config_option:
-        p = Path(config_option)
-    else:
-        p = Path("vip.toml")
+    p = Path(config_option) if config_option else Path("vip.toml")
     if not p.exists():
         pytest.skip("No VIP configuration file found")
     return p

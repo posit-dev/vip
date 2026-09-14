@@ -471,9 +471,13 @@ class TestStopPluginHeartbeatBeforeGevent:
                 for alias in node.names:
                     if alias.name == "gevent":
                         gevent_line = node.lineno
-            elif locust_line is None and isinstance(node, ast.ImportFrom):
-                if node.module and node.module.startswith("locust"):
-                    locust_line = node.lineno
+            elif (
+                locust_line is None
+                and isinstance(node, ast.ImportFrom)
+                and node.module
+                and node.module.startswith("locust")
+            ):
+                locust_line = node.lineno
 
         name = func.__name__
         assert helper_line is not None, f"{name} does not call the heartbeat helper"
