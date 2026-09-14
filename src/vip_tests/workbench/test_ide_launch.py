@@ -105,7 +105,7 @@ def session_context(page: Page, workbench_url: str, workbench_client):
             quit_btn = page.locator(Homepage.QUIT_BUTTON)
             if quit_btn.count() > 0:
                 quit_btn.click()
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Best-effort cleanup — don't mask the original failure/skip.
         pass
 
@@ -124,7 +124,7 @@ def _delete_jupyter_notebook_if_any(page: Page, workbench_client, ctx: dict) -> 
     try:
         cookies = {c["name"]: c["value"] for c in page.context.cookies()}
         workbench_client.delete_jupyter_notebook(page.url, notebook, cookies)
-    except Exception:
+    except Exception:  # noqa: BLE001
         pass
 
 

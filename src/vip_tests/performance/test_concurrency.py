@@ -30,21 +30,18 @@ def _concurrent_requests(
     url: str, n: int, verify: bool | str = True, auth: httpx.Auth | None = None
 ) -> list[dict]:
     """Fire *n* GET requests concurrently and collect results."""
-    results = []
 
     def _fetch():
         start = time.monotonic()
         try:
             resp = httpx.get(url, timeout=30, verify=verify, auth=auth)
             return {"status": resp.status_code, "elapsed": time.monotonic() - start, "error": None}
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return {"status": None, "elapsed": time.monotonic() - start, "error": str(exc)}
 
     with ThreadPoolExecutor(max_workers=n) as pool:
         futures = [pool.submit(_fetch) for _ in range(n)]
-        for f in as_completed(futures):
-            results.append(f.result())
-    return results
+        return [f.result() for f in as_completed(futures)]
 
 
 @when(

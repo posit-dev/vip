@@ -112,7 +112,7 @@ def pm_url_in_deploy_logs(pm_deploy_state, pm_url):
         return
 
     # Provide helpful output on failure.
-    assert False, (
+    raise AssertionError(
         f"Package Manager URL {pm_base!r} was not found in the deployment logs.\n"
         "Connect may not be configured to use Package Manager for R package installation.\n\n"
         f"--- Deployment output (last 30 lines) ---\n" + "\n".join(output_lines[-30:])

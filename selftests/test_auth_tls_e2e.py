@@ -66,7 +66,7 @@ _API_KEY = "vip-test-key-" + ("X" * 24)
 class _ConnectMockHandler(BaseHTTPRequestHandler):
     """Minimal Connect API surface used by ``_create_api_key_via_session``."""
 
-    def log_message(self, *args, **kwargs):  # noqa
+    def log_message(self, *args, **kwargs):
         pass
 
     def _send_json(self, payload: dict | list, status: int = 200) -> None:
@@ -133,7 +133,7 @@ def _start_http_redirect_server(https_base: str) -> tuple[ThreadingHTTPServer, s
     """
 
     class _RedirectHandler(BaseHTTPRequestHandler):
-        def log_message(self, *args, **kwargs):  # noqa
+        def log_message(self, *args, **kwargs):
             pass
 
         def _redirect(self) -> None:

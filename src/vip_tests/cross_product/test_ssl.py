@@ -60,10 +60,9 @@ def check_ssl_cert(product, vip_config):
 
     ctx = ssl.create_default_context()
     try:
-        with sock:
-            with ctx.wrap_socket(sock, server_hostname=hostname) as ssock:
-                cert = ssock.getpeercert()
-                return {"cert": cert, "error": None, "hostname": hostname}
+        with sock, ctx.wrap_socket(sock, server_hostname=hostname) as ssock:
+            cert = ssock.getpeercert()
+            return {"cert": cert, "error": None, "hostname": hostname}
     except ssl.SSLCertVerificationError as exc:
         return {"cert": None, "error": str(exc), "hostname": hostname}
     # Deliberately no broader ``except Exception`` here: a handshake failure
@@ -205,7 +204,7 @@ def request_http(product, vip_config):
             http_url, follow_redirects=True, timeout=10, verify=vip_config.verify
         )
         final_url_scheme = resp_followed.url.scheme
-    except Exception:
+    except Exception:  # noqa: BLE001
         final_url_scheme = None
 
     return {

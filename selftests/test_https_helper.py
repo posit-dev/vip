@@ -149,7 +149,7 @@ class TestNoVersionHeaders:
     def test_warning_names_the_product_and_the_remediation(self):
         headers = {"server": "Posit Package Manager v2026.06.0"}
 
-        with pytest.warns(UserWarning) as record:
+        with pytest.warns(UserWarning, match="discloses a version number") as record:
             no_version_headers(headers)
 
         message = str(record[0].message)
@@ -186,5 +186,8 @@ class TestNoVersionHeaders:
             "x-powered-by": "Express/4.18.2",
         }
 
-        with pytest.warns(UserWarning), pytest.raises(pytest.fail.Exception, match="x-powered-by"):
+        with (
+            pytest.warns(UserWarning, match="discloses a version number"),
+            pytest.raises(pytest.fail.Exception, match="x-powered-by"),
+        ):
             no_version_headers(headers)

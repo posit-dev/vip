@@ -73,7 +73,9 @@ class TestCapAutoDetectedProfiles:
         # Independent literal, not MAX_AUTO_DETECTED_PROFILES: the point of the
         # assertion is that the default cap is 2, so reading the constant here
         # would pin nothing.
-        with pytest.warns(UserWarning):
+        with pytest.warns(
+            UserWarning, match=r"Auto-detected 4 enabled resource profiles; launching only the 2"
+        ):
             assert cap_auto_detected_profiles(CI_PROFILES) == [
                 "Small (1 CPU, 2GB RAM)",
                 "Default (1 CPU, 4GB RAM)",
@@ -98,7 +100,9 @@ class TestCapAutoDetectedProfiles:
         assert cap_auto_detected_profiles(CI_PROFILES, limit=limit) == CI_PROFILES
 
     def test_warning_names_both_the_chosen_and_the_skipped_profiles(self):
-        with pytest.warns(UserWarning) as record:
+        with pytest.warns(
+            UserWarning, match=r"Auto-detected 4 enabled resource profiles; launching only the 1"
+        ) as record:
             cap_auto_detected_profiles(CI_PROFILES, limit=1)
         message = str(record[0].message)
         assert "Small (1 CPU, 2GB RAM)" in message
@@ -110,7 +114,9 @@ class TestCapAutoDetectedProfiles:
     def test_profile_labels_are_quoted_so_their_own_commas_do_not_run_together(self):
         # "Medium (2 CPUs, 8GB RAM)" contains a comma, so an unquoted join makes
         # the chosen/skipped lists unparseable in the warning.
-        with pytest.warns(UserWarning) as record:
+        with pytest.warns(
+            UserWarning, match=r"Auto-detected 4 enabled resource profiles; launching only the 2"
+        ) as record:
             cap_auto_detected_profiles(CI_PROFILES, limit=2)
         message = str(record[0].message)
         assert "'Small (1 CPU, 2GB RAM)', 'Default (1 CPU, 4GB RAM)'" in message
@@ -120,7 +126,9 @@ class TestCapAutoDetectedProfiles:
         # Same allocation, different names: a stable sort must not reshuffle
         # them, so the cap is deterministic across runs.
         names = ["Zeta (1 CPU, 2GB RAM)", "Alpha (1 CPU, 2GB RAM)"]
-        with pytest.warns(UserWarning):
+        with pytest.warns(
+            UserWarning, match=r"Auto-detected 2 enabled resource profiles; launching only the 1"
+        ):
             assert cap_auto_detected_profiles(names, limit=1) == ["Zeta (1 CPU, 2GB RAM)"]
 
     def test_single_profile_is_never_capped(self):
