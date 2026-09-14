@@ -36,7 +36,7 @@ Or with just:
 just check
 ```
 
-Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. All Python directories (`src/`, which includes `src/vip_tests/`, plus `selftests/`, `examples/` and `docker/`) must pass. `docker/` is easy to forget and holds `docker/playwright-smoke.py`. CI pins ruff to version 0.15.0 -- do not change the version without updating `.github/workflows/ci.yml`.
+Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. All Python directories (`src/`, which includes `src/vip_tests/`, plus `selftests/`, `examples/` and `docker/`) must pass. `docker/` is easy to forget and holds `docker/playwright-smoke.py`. The ruff version is pinned in three places that must move together: `.github/workflows/ci.yml`, `.pre-commit-config.yaml`, and the `dev` extra in `pyproject.toml`. Bump all three in the same commit -- do not change one without the others.
 
 Auto-fix before committing:
 
@@ -81,6 +81,45 @@ uv run vip verify --config vip.toml --categories package-manager -- -v
 ```
 
 Pass extra pytest args after `--` (e.g. `-k pattern` to filter, `-v` for verbose).
+
+### Reading the results
+
+`vip verify --ci` emits `results.json`, JUnit XML, and SARIF together, and switches to concise
+tracebacks (`--tb=short`) -- the preset CI and other tooling should use instead of parsing
+pytest's human-readable stdout:
+
+``` bash
+uv run vip verify --config vip.toml --ci
+```
+
+When a run has failures, VIP also writes `failures.json` next to `results.json`: a structured
+per-failure record (`test`, `scenario`, `feature`, `error_summary`) for whoever -- human or agent
+-- is triaging the run without re-running it.
+
+`scripts/generate-test-catalog.py` and `scripts/generate-feature-matrix.py` parse all 45 feature
+files under `src/vip_tests/` into the JSON the VIP website's test-catalog and feature-matrix pages
+render. Generate both with `just website-data`:
+
+``` bash
+just website-data
+```
+
+Their outputs (`website/src/data/test-catalog.json`, `website/src/data/feature-matrix.json`) are
+gitignored (`.gitignore:20-21`), so grepping the repo will not find them -- run `just website-data`
+first if you need the generated catalog rather than reading the raw `.feature` files by hand.
+
+### Known-flaky selftests
+
+`selftests/test_load_engine.py::TestThreadpool::test_all_succeed` and
+`TestAutoRouting::test_small_uses_threadpool` are known to flake on macOS on a clean tree. Neither
+carries the `_skip_high_concurrency_on_macos` marker in that file (that marker is reserved for the
+100+-request async/auto cases that reliably fail on macOS runners, per the comment above it); these
+two run at lower concurrency (20 and 50 requests) and only flake occasionally. If you hit one, rerun
+before assuming a real regression. This repo's convention for a genuinely environment-limited test
+is `pytest.mark.skipif(..., reason="...")` with a specific reason, as `_skip_high_concurrency_on_macos`
+does -- not `pytest.mark.xfail`, which does not appear anywhere in `selftests/`. Don't reach for
+`xfail` to silence one of these; either fix the underlying nondeterminism or extend the existing
+`skipif` pattern with a reason that explains why.
 
 ## How tests are structured
 
@@ -383,7 +422,7 @@ Register warning filters in `src/vip/plugin.py::pytest_configure` (via `config.a
 
 -   Forgetting to include `examples/` in ruff check paths.
 -   Using `Markdown()` without `display()` in Quarto `.qmd` files.
--   Changing ruff version locally without updating the pinned version in `ci.yml`.
+-   Changing the ruff version in only one of `ci.yml`, `.pre-commit-config.yaml`, or the `dev` extra in `pyproject.toml` -- all three must move together.
 -   Adding product SDK imports (use httpx directly).
 -   Writing tests that modify or delete existing customer content.
 -   Adding a Workbench scenario that ends the shared auth session (sign-out, session revocation, password change) without ordering it last *and* restoring the session afterwards. Under `--interactive-auth` / `--headless-auth` every Workbench scenario shares one account, so ending that session breaks every scenario still running on other xdist workers, plus the cached auth session on disk. `test_workbench_signout` is the worked example.

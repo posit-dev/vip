@@ -11,7 +11,11 @@ jobs:
   # The job MUST be called 'copilot-setup-steps' to be recognized by GitHub Copilot Agent
   copilot-setup-steps:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # connect-smoke.yml's identical `uv sync --all-extras` + `vip install
+    # --skip-system` combination measures ~3.8 min median under
+    # timeout-minutes: 10; there is no 5-minute precedent for this pair of
+    # steps anywhere in the repo, only that 10-minute one.
+    timeout-minutes: 10
 
     # Set minimal permissions for setup steps
     # Copilot Agent receives its own token with appropriate permissions
@@ -25,3 +29,25 @@ jobs:
           persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      # --all-extras pulls the dev extra (ruff, mypy, pip-audit) alongside the
+      # base deps (pytest, pytest-bdd, playwright) -- see ci.yml's typecheck
+      # and selftest jobs, which install the same way.
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(uv run playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      # Chromium runtime libs are already present on the ubuntu-latest image,
+      # so --skip-system only downloads the Playwright browser itself -- the
+      # same call the smoke workflows (e.g. connect-smoke.yml) make.
+      - name: Install Playwright browsers
+        run: uv run vip install --skip-system
