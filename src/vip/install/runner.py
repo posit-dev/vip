@@ -93,7 +93,7 @@ def execute_install_plan(
         else:
             cmd = "sudo apt install -y"
         print(f"\nNot running as root. Please run:\n  {cmd} {' '.join(system_step.packages)}")
-        print("Then re-run `vip install`.")
+        print("Then re-run `vip install`, or pass `--skip-system` to skip this check.")
         return 2
 
     # Run system step ourselves if root.

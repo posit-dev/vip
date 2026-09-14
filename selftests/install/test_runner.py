@@ -104,6 +104,26 @@ def test_execute_install_plan_records_pending_when_root_required(monkeypatch, tm
     assert set(saved.pending_system_packages) == {"nss", "libdrm"}
 
 
+def test_execute_install_plan_not_root_message_names_skip_system(monkeypatch, tmp_path, capsys):
+    """#621: a user stuck re-demanding the same packages forever needs the escape
+    hatch named in the failure message, not just 'Then re-run vip install'."""
+    plan = InstallPlan(
+        platform="debian-family",
+        platform_id="ubuntu",
+        platform_version="24.04",
+        system_step=SystemPackagesStep(manager="apt", packages=("libcups2",)),
+        playwright_step=None,
+    )
+    monkeypatch.setattr(rn, "is_root", lambda: False)
+    manifest_path = tmp_path / ".vip-install.json"
+    manifest = _empty_manifest()
+
+    rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+
+    assert rc == 2
+    assert "--skip-system" in capsys.readouterr().out
+
+
 def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):
     plan = InstallPlan(
         platform="rhel-family",
