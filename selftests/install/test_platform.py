@@ -34,7 +34,7 @@ def _pinned_playwright_version() -> str:
     return next(s.version for s in specifier if s.operator in (">=", ">", "~="))
 
 
-@pytest.fixture()
+@pytest.fixture
 def fake_os_release(tmp_path: Path, monkeypatch):
     def _write(content: str) -> Path:
         p = tmp_path / "os-release"

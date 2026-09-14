@@ -87,7 +87,7 @@ responsible for removing it (`connect_client.cleanup_content(guids)`).
 | `connect_url` | `str` | Resolved Connect base URL (scheme-checked). |
 | `workbench_client` | `WorkbenchClient \| None` | Authenticated httpx client for the Workbench API. `None` when Workbench is not configured. |
 | `workbench_url` | `str` | Resolved Workbench base URL. |
-| `kubernetes_client` | `KubernetesClient \| None` | Read-only Kubernetes client for session-capacity probes. `None` when Kubernetes is not configured. |
+| `kubernetes_client` | `KubernetesClient \| None` | Read-only Kubernetes client for session-capacity probes. `None` when Kubernetes is not configured, and also `None` if client construction fails -- the fixture collapses both cases. |
 | `pm_client` | `PackageManagerClient \| None` | Authenticated httpx client for the Package Manager API. `None` when Package Manager is not configured. |
 | `pm_url` | `str` | Resolved Package Manager base URL. |
 | `interactive_auth` | `bool` | Whether `--interactive-auth`/`--headless-auth` established a browser session. |
@@ -108,6 +108,13 @@ responsible for removing it (`connect_client.cleanup_content(guids)`).
 **`connect_client`, `workbench_client`, `pm_client`, and `kubernetes_client`
 can all be `None`.** Guard against that (skip or assert) before using one,
 the same way VIP's own tests do.
+
+`workbench/test_session_capacity_k8s.py` does not consume the
+`kubernetes_client` fixture. Because that fixture folds "Kubernetes is not
+configured" and "client construction failed" into the same `None`, and the
+test needs to report those two outcomes differently (`not_applicable` vs.
+`unproven`), it builds its own `KubernetesClient` instead. Follow that
+pattern if your own test needs the same distinction.
 
 ## Shared Gherkin steps
 

@@ -70,7 +70,7 @@ class TestWorkbenchSessionSkipIsUnproven:
         from vip.attest import UNPROVEN_SENTINEL
         from vip_tests.workbench.conftest import _skip_workbench_session_unproven
 
-        with pytest.raises(BaseException) as exc:
+        with pytest.raises(BaseException, match="timed out waiting for SSO redirect") as exc:
             _skip_workbench_session_unproven(
                 auth_mode="headless",
                 workbench_auth_error="timed out waiting for SSO redirect",
@@ -85,7 +85,7 @@ class TestWorkbenchSessionSkipIsUnproven:
         from vip.plugin import _classify_skip_reason
         from vip_tests.workbench.conftest import _skip_workbench_session_unproven
 
-        with pytest.raises(BaseException) as exc:
+        with pytest.raises(BaseException, match="timed out waiting for SSO redirect") as exc:
             _skip_workbench_session_unproven(
                 auth_mode="headless",
                 workbench_auth_error="timed out waiting for SSO redirect",

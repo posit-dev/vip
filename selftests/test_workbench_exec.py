@@ -940,7 +940,7 @@ class TestTerminalRun:
     def _patch_common(self, monkeypatch, ide="rstudio"):
         monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: ide)
         monkeypatch.setattr(exec_mod, "_ensure_terminal_open", lambda p, timeout=30_000: None)
-        monkeypatch.setattr(exec_mod.uuid, "uuid4", lambda: _FixedUUID())
+        monkeypatch.setattr(exec_mod.uuid, "uuid4", _FixedUUID)
 
     @staticmethod
     def _typed_cmd(page):

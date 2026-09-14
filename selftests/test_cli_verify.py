@@ -93,7 +93,8 @@ def _vip_tests_path() -> str:
     from importlib.util import find_spec
 
     spec = find_spec("vip_tests")
-    assert spec and spec.submodule_search_locations
+    assert spec
+    assert spec.submodule_search_locations
     return spec.submodule_search_locations[0]
 
 
@@ -370,19 +371,19 @@ class TestVerifyLocalMissingConfig:
     """Review #88: verify exits immediately when config file is missing."""
 
     def test_explicit_config_missing_exits(self, tmp_path):
+        from vip.cli import run_verify
+
         missing = str(tmp_path / "does_not_exist.toml")
         with pytest.raises(SystemExit) as exc_info:
-            from vip.cli import run_verify
-
             run_verify(_make_args(config=missing))
         assert exc_info.value.code == 1
 
     def test_no_config_no_urls_missing_default_exits(self, tmp_path, monkeypatch):
+        from vip.cli import run_verify
+
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         with pytest.raises(SystemExit) as exc_info:
-            from vip.cli import run_verify
-
             run_verify(_make_args())
         assert exc_info.value.code == 1
 
@@ -739,12 +740,12 @@ class TestVerifyLocalTestTimeout:
                 cmd, kwargs.get("timeout", DEFAULT_TEST_TIMEOUT_SECONDS)
             )
 
+        from vip.cli import run_verify
+
         with (
             patch("vip.cli.subprocess.run", side_effect=fake_run),
             pytest.raises(SystemExit) as exc_info,
         ):
-            from vip.cli import run_verify
-
             run_verify(_make_args(config=str(cfg)))
 
         assert exc_info.value.code == 1
@@ -1309,9 +1310,11 @@ class TestReorderHelpArgs:
     def test_help_with_separator_actually_shows_help(self):
         from vip.cli import main
 
-        with patch.object(sys, "argv", ["vip", "-h", "verify", "--", "-x"]):
-            with pytest.raises(SystemExit) as exc:
-                main()
+        with (
+            patch.object(sys, "argv", ["vip", "-h", "verify", "--", "-x"]),
+            pytest.raises(SystemExit) as exc,
+        ):
+            main()
         # argparse exits 0 after printing help; a nonzero/None code would mean
         # it fell through to running the command instead.
         assert exc.value.code == 0

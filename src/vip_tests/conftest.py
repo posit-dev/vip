@@ -1,12 +1,12 @@
 """Root conftest for VIP's own product tests.
 
 VIP's core fixtures (``vip_config``, ``connect_client``, etc.) and shared BDD
-step definitions used to live in this file. They moved to
-``src/vip/fixtures.py``, registered by ``vip.plugin.pytest_configure`` as its
-own pytest plugin -- see that module's docstring. pytest scopes
-``conftest.py`` fixtures by directory ancestry, so keeping them here made them
-invisible to any test collected outside ``src/vip_tests``, including every
-extension directory loaded via ``--vip-extensions`` (issue #609).
+step definitions live in ``src/vip/fixtures.py``, registered by
+``vip.plugin.pytest_configure`` as its own pytest plugin -- see that module's
+docstring. pytest scopes ``conftest.py`` fixtures by directory ancestry, so
+defining them here would make them invisible to any test collected outside
+``src/vip_tests``, including every extension directory loaded via
+``--vip-extensions`` (issue #609).
 
 This file intentionally does not re-export those names: a session-scoped
 fixture like ``connect_client`` must resolve to exactly one ``FixtureDef`` for

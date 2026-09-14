@@ -53,7 +53,8 @@ def test_format_install_plan_with_packages_and_browser(tmp_path: Path):
         playwright_step=PlaywrightStep(browser="chromium", cache_dir=str(tmp_path)),
     )
     text = rn.format_install_plan(plan)
-    assert "nss" in text and "libdrm" in text
+    assert "nss" in text
+    assert "libdrm" in text
     assert "chromium" in text
     assert "sudo dnf install" in text  # the user-facing command
 
@@ -316,7 +317,8 @@ def test_format_install_plan_with_zypper_packages(tmp_path: Path):
         playwright_step=PlaywrightStep(browser="chromium", cache_dir=str(tmp_path)),
     )
     text = rn.format_install_plan(plan)
-    assert "mozilla-nss" in text and "libdrm2" in text
+    assert "mozilla-nss" in text
+    assert "libdrm2" in text
     assert "sudo zypper -n install" in text
 
 
@@ -353,7 +355,6 @@ def test_install_system_packages_zypper_invokes_correct_command(monkeypatch):
 
     def fake_run(args, check):
         captured.append(args)
-        return None
 
     monkeypatch.setattr(rn.subprocess, "run", fake_run)
     rn._install_system_packages("zypper", ("mozilla-nss", "libdrm2"))

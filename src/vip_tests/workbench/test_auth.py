@@ -178,5 +178,5 @@ def redirected_to_login_page(page: Page):
     username_or_signin = username.or_(sign_in_button)
     try:
         username_or_signin.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
-    except Exception:
+    except Exception:  # noqa: BLE001
         expect(page).to_have_url(re.compile(r"sign-in|login|auth"), timeout=TIMEOUT_PAGE_LOAD)

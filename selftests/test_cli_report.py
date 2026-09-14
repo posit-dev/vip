@@ -81,6 +81,8 @@ class TestEnsureReportTemplates:
         report_dir.mkdir()
 
         assert _ensure_report_templates(report_dir) is True
+        # Not the drift guard (see test_pyproject_force_include_matches_template_list);
+        # this only verifies the copy actually happens for every listed file.
         for name in _REPORT_TEMPLATE_FILES:
             assert (report_dir / name).is_file(), f"missing {name}"
 
@@ -102,6 +104,8 @@ class TestEnsureReportTemplates:
         (report_dir / "index.qmd").write_text("x")
         assert _has_all_report_templates(report_dir) is False
 
+        # Not the drift guard (see test_pyproject_force_include_matches_template_list);
+        # this only verifies completeness detection once every file is present.
         for name in _REPORT_TEMPLATE_FILES:
             (report_dir / name).parent.mkdir(parents=True, exist_ok=True)
             (report_dir / name).write_text("x")
@@ -151,6 +155,8 @@ class TestTemplateRefresh:
         report_dir.mkdir()
         _ensure_report_templates(report_dir)
         sentinel = 946684800  # 2000-01-01, distinct from any freshly written mtime
+        # Not the drift guard (see test_pyproject_force_include_matches_template_list);
+        # this only verifies unchanged templates are not rewritten (checked below).
         for name in _REPORT_TEMPLATE_FILES:
             os.utime(report_dir / name, (sentinel, sentinel))
 
@@ -374,7 +380,8 @@ class TestSupportFileResolution:
         from vip.reporting import troubleshooting_path
 
         p = troubleshooting_path()
-        assert p is not None and p.exists()
+        assert p is not None
+        assert p.exists()
         assert p.name == "troubleshooting.toml"
 
     def test_feature_file_for_nodeid_resolves_installed_layout(self):
@@ -382,7 +389,8 @@ class TestSupportFileResolution:
 
         nodeid = "/opt/x/site-packages/vip_tests/connect/test_auth.py::test_connect_login_ui"
         p = feature_file_for_nodeid(nodeid)
-        assert p is not None and p.exists()
+        assert p is not None
+        assert p.exists()
         assert p.name == "test_auth.feature"
 
     def test_feature_file_for_nodeid_returns_none_when_absent(self):
@@ -399,6 +407,7 @@ class TestReportCLI:
             [sys.executable, "-m", "vip.cli", "--help"],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0
         assert "report" in result.stdout
@@ -408,6 +417,7 @@ class TestReportCLI:
             [sys.executable, "-m", "vip.cli", "report", "--help"],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0
         assert "--results" in result.stdout

@@ -79,12 +79,11 @@ def list_authenticated_repos(pm_client):
     target_fixture="unauth_response",
 )
 def query_without_token(pm_client, auth_repo):
-    resp = httpx.get(
+    return httpx.get(
         f"{pm_client.base_url}/__api__/repos/{auth_repo}/packages",
         timeout=15,
         verify=pm_client.verify,
     )
-    return resp
 
 
 @when(
@@ -92,8 +91,7 @@ def query_without_token(pm_client, auth_repo):
     target_fixture="auth_response",
 )
 def query_with_token(pm_client, vip_config, auth_repo):
-    resp = pm_client._client.get(f"{pm_client.base_url}/__api__/repos/{auth_repo}/packages")
-    return resp
+    return pm_client._client.get(f"{pm_client.base_url}/__api__/repos/{auth_repo}/packages")
 
 
 @then("at least one authenticated repository exists")
