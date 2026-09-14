@@ -26,20 +26,22 @@ relock:
     uvx --from uv=={{ UV_VERSION }} uv lock
 
 # Run ruff linter
+# --extra dev: ruff is in the dev extra, which a bare `uv sync` does not install;
+# without it, `uv run ruff` falls back to whatever ruff is on PATH instead of the pinned version.
 lint:
-    uv run ruff check src/ selftests/ examples/ docker/
+    uv run --extra dev ruff check src/ selftests/ examples/ docker/
 
 # Run ruff formatter check (fails if files would change)
 format-check:
-    uv run ruff format --check src/ selftests/ examples/ docker/
+    uv run --extra dev ruff format --check src/ selftests/ examples/ docker/
 
 # Auto-fix lint issues
 lint-fix:
-    uv run ruff check --fix src/ selftests/ examples/ docker/
+    uv run --extra dev ruff check --fix src/ selftests/ examples/ docker/
 
 # Format code in place
 format:
-    uv run ruff format src/ selftests/ examples/ docker/
+    uv run --extra dev ruff format src/ selftests/ examples/ docker/
 
 # Run all checks (lint + format)
 check: lint format-check
