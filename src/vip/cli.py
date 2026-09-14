@@ -630,7 +630,7 @@ def run_verify(args: argparse.Namespace) -> None:
             subprocess_env = None
 
     try:
-        result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env)
+        result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env, check=False)
         sys.exit(result.returncode)
     except subprocess.TimeoutExpired:
         print(
@@ -853,7 +853,9 @@ def _quarto_render(document: str, report_dir: Path, env: dict[str, str]) -> int:
     surfaces.
     """
     try:
-        result = subprocess.run(["quarto", "render", document], cwd=str(report_dir), env=env)
+        result = subprocess.run(
+            ["quarto", "render", document], cwd=str(report_dir), env=env, check=False
+        )
     except FileNotFoundError:
         print(
             "Error: quarto was not found on PATH. Install Quarto "

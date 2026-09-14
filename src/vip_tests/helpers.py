@@ -97,26 +97,25 @@ def check_data_source_connectivity(data_sources, verify: bool | str = True) -> l
                 # for those types.
                 resp = httpx.get(ds.connection_string, timeout=15, verify=verify)
                 result["ok"] = resp.status_code < 400
+            elif not ds.connection_string:
+                result["error"] = "connection_string is empty"
             else:
-                if not ds.connection_string:
-                    result["error"] = "connection_string is empty"
+                host_port = _extract_host_port(ds.connection_string, ds.type)
+                if host_port is not None:
+                    host, port = host_port
+                    reachable, err = _tcp_reachable(host, port)
+                    result["ok"] = reachable
+                    if not reachable:
+                        result["error"] = f"TCP connect to {host}:{port} failed: {err}"
                 else:
-                    host_port = _extract_host_port(ds.connection_string, ds.type)
-                    if host_port is not None:
-                        host, port = host_port
-                        reachable, err = _tcp_reachable(host, port)
-                        result["ok"] = reachable
-                        if not reachable:
-                            result["error"] = f"TCP connect to {host}:{port} failed: {err}"
-                    else:
-                        # Cannot parse host:port (e.g. embedded DB or unusual
-                        # connection string format).  Record config presence as
-                        # the only available signal and document the limitation.
-                        result["ok"] = True
-                        result["error"] = (
-                            "Could not parse host:port from connection string; "
-                            "only config presence was verified (no TCP check possible)."
-                        )
+                    # Cannot parse host:port (e.g. embedded DB or unusual
+                    # connection string format).  Record config presence as
+                    # the only available signal and document the limitation.
+                    result["ok"] = True
+                    result["error"] = (
+                        "Could not parse host:port from connection string; "
+                        "only config presence was verified (no TCP check possible)."
+                    )
         except Exception as exc:  # noqa: BLE001
             result["error"] = str(exc)
         results.append(result)

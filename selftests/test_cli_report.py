@@ -407,6 +407,7 @@ class TestReportCLI:
             [sys.executable, "-m", "vip.cli", "--help"],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0
         assert "report" in result.stdout
@@ -416,6 +417,7 @@ class TestReportCLI:
             [sys.executable, "-m", "vip.cli", "report", "--help"],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0
         assert "--results" in result.stdout

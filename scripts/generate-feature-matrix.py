@@ -182,7 +182,7 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
     product_specific_areas = []
     cross_cutting_areas = []
 
-    for area_key in sorted(area_data.keys(), key=lambda k: _area_name(k)):
+    for area_key in sorted(area_data.keys(), key=_area_name):
         cats = area_categories[area_key]
         is_cross_cutting = all(c in CROSS_CUTTING_CATEGORIES for c in cats)
 
