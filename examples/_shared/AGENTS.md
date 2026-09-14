@@ -87,7 +87,7 @@ responsible for removing it (`connect_client.cleanup_content(guids)`).
 | `connect_url` | `str` | Resolved Connect base URL (scheme-checked). |
 | `workbench_client` | `WorkbenchClient \| None` | Authenticated httpx client for the Workbench API. `None` when Workbench is not configured. |
 | `workbench_url` | `str` | Resolved Workbench base URL. |
-| `kubernetes_client` | `KubernetesClient \| None` | Read-only Kubernetes client for cross-product checks. `None` when Kubernetes is not configured, and also `None` if client construction fails -- the fixture collapses both cases. |
+| `kubernetes_client` | `KubernetesClient \| None` | Read-only Kubernetes client for session-capacity probes. `None` when Kubernetes is not configured, and also `None` if client construction fails -- the fixture collapses both cases. |
 | `pm_client` | `PackageManagerClient \| None` | Authenticated httpx client for the Package Manager API. `None` when Package Manager is not configured. |
 | `pm_url` | `str` | Resolved Package Manager base URL. |
 | `interactive_auth` | `bool` | Whether `--interactive-auth`/`--headless-auth` established a browser session. |
