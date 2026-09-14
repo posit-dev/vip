@@ -68,12 +68,10 @@ class AuthTimeoutError(AuthConfigError):
 _KEY_NAME_PREFIX = "_vip_interactive_"
 
 # Single timeout for an IdP login round-trip (browser leaves the product,
-# authenticates at the IdP, and lands back). Used by the interactive poll
-# loop, the headless _wait_for_product_redirect poll, and (for consistency)
-# _authenticate_workbench's post-Connect SSO wait. Workbench previously used
-# its own, shorter 2-minute timeout, which made it time out -- and skip
-# Workbench tests -- well before the primary round-trip's window closed.
-# See #596.
+# authenticates at the IdP, and lands back). Shared by the interactive poll
+# loop, the headless _wait_for_product_redirect poll, and
+# _authenticate_workbench's post-Connect SSO wait, so Workbench's wait can
+# never expire before the primary round-trip's window does.
 _IDP_ROUNDTRIP_TIMEOUT_SECONDS = 300
 
 # Orphan keys younger than this are left alone so a concurrent ``vip verify``
@@ -1336,14 +1334,13 @@ def _on_login_page(url: str) -> bool:
     the raw POST target the IdP redirects to before Workbench validates the
     assertion and issues its own session cookie. Every caller here uses this
     check to decide "is the round-trip actually finished", and landing on
-    that URL means it is not: the completion checks in
-    :func:`_authenticate_workbench` and :func:`_wait_for_product_redirect`
-    previously accepted it as done the moment ``networkidle`` fired (before
-    Workbench's own post-assertion redirect ran), capturing a storage state
-    with no valid Workbench session cookie -- which is what made a real SAML
-    login look successful during --headless-auth but then fail for real once
-    ``test_workbench_login`` reused that state (issue #263 diagnostic, run
-    34510387889).
+    that URL means it is not: :func:`_authenticate_workbench` and
+    :func:`_wait_for_product_redirect` must not treat ``networkidle`` firing
+    as completion while still on this URL, because Workbench's own
+    post-assertion redirect has not run yet -- accepting it early captures a
+    storage state with no valid Workbench session cookie, so a real SAML
+    login looks successful during --headless-auth but fails once
+    ``test_workbench_login`` reuses that state.
     """
     lower = url.lower()
     return any(kw in lower for kw in _LOGIN_KEYWORDS)
@@ -1509,10 +1506,10 @@ def _protocol_label(provider: str) -> str:
     """Human-readable protocol name for *provider*, or "" when it isn't a
     recognized IdP-backed provider.
 
-    A timeout error used to hardcode "OIDC" even during a SAML run (see
-    #263); callers use this to name whatever is actually configured, and
-    fall back to neutral wording ("Login", not a wrong protocol) when the
-    provider isn't one of the known IdP-backed ones.
+    Callers use this to name the protocol actually configured in a timeout
+    error message, rather than hardcoding one that could be wrong (e.g.
+    "OIDC" during a SAML run); an unrecognized provider falls back to
+    neutral wording ("Login", not a wrong protocol name).
     """
     return _PROVIDER_LABELS.get(provider.strip().lower(), "")
 
@@ -1520,10 +1517,9 @@ def _protocol_label(provider: str) -> str:
 def _timeout_label(seconds: float) -> str:
     """Human-readable minutes for a *scaled* timeout.
 
-    The error text used to hardcode "5 minutes" / "2 minutes" while the
-    actual deadline was ``scaled(300)`` / ``scaled(120)`` -- under
-    ``VIP_TIMEOUT_SCALE=2`` VIP waited 10 minutes but claimed 5 (see #263).
-    This derives the text from the real, already-scaled value instead.
+    Derives the text from the real, already-scaled deadline (e.g.
+    ``scaled(300)``) so the reported minutes always match how long VIP
+    actually waits, including under ``VIP_TIMEOUT_SCALE``.
     """
     minutes = seconds / 60
     if minutes == int(minutes):
