@@ -89,6 +89,7 @@ def job_context(page: Page, workbench_url: str):
             if quit_btn.count() > 0:
                 quit_btn.click()
     except Exception:
+        # Best-effort cleanup — don't mask the original failure/skip.
         pass
 
 

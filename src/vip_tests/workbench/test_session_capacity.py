@@ -272,4 +272,5 @@ def cleanup_sessions(
         try:
             expect(row).to_be_hidden(timeout=TIMEOUT_DIALOG)
         except Exception:
+            # Best-effort cleanup — don't mask the original failure/skip.
             pass
