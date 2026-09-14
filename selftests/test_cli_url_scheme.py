@@ -197,7 +197,7 @@ class TestRunUninstallSchemeResolution:
     def test_dry_run_never_probes(self, tmp_path, monkeypatch):
         """Without --yes, execute_uninstall_plan never calls cleanup_callable
         at all -- confirm no network call happens building up to that point."""
-        import vip.cli as cli
+        from vip import cli
 
         _write_manifest(tmp_path)
         monkeypatch.chdir(tmp_path)
@@ -213,8 +213,8 @@ class TestRunUninstallSchemeResolution:
         mock_get.assert_not_called()
 
     def test_yes_resolves_inferred_scheme_before_client_construction(self, tmp_path, monkeypatch):
-        import vip.cli as cli
         import vip.clients.connect as connect_mod
+        from vip import cli
 
         _write_manifest(tmp_path)
         monkeypatch.chdir(tmp_path)
@@ -256,8 +256,8 @@ class TestRunUninstallSchemeResolution:
         could print https:// and then use http:// -- the exact scheme
         mismatch this feature exists to prevent. The printed URL must match
         what ConnectClient actually receives."""
-        import vip.cli as cli
         import vip.clients.connect as connect_mod
+        from vip import cli
 
         _write_manifest(tmp_path)
         monkeypatch.chdir(tmp_path)
@@ -303,7 +303,7 @@ class TestRunUninstallSchemeResolution:
         it necessarily prints the unresolved (inferred https://) URL --
         nothing is actually cleaned up in a dry run, so there is no scheme
         mismatch to create."""
-        import vip.cli as cli
+        from vip import cli
 
         _write_manifest(tmp_path)
         monkeypatch.chdir(tmp_path)
@@ -321,8 +321,8 @@ class TestRunUninstallSchemeResolution:
         assert "run vip cleanup against https://connect.example.com" in printed
 
     def test_explicit_scheme_never_probes(self, tmp_path, monkeypatch):
-        import vip.cli as cli
         import vip.clients.connect as connect_mod
+        from vip import cli
 
         _write_manifest(tmp_path)
         monkeypatch.chdir(tmp_path)

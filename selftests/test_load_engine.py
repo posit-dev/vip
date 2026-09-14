@@ -419,7 +419,7 @@ class TestStopPluginHeartbeatBeforeGevent:
     """
 
     def test_stops_active_heartbeat(self, monkeypatch):
-        import vip.plugin as plugin
+        from vip import plugin
 
         hb = _RecordingHeartbeat()
         monkeypatch.setattr(plugin, "_current_heartbeat", hb)
@@ -427,7 +427,7 @@ class TestStopPluginHeartbeatBeforeGevent:
         assert hb.stopped is True
 
     def test_noop_when_no_heartbeat(self, monkeypatch):
-        import vip.plugin as plugin
+        from vip import plugin
 
         monkeypatch.setattr(plugin, "_current_heartbeat", None)
         # Must not raise even though no heartbeat is registered.
