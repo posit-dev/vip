@@ -57,7 +57,7 @@ jobs:
   # Emit the Package Manager tag list for the product job. PR/push runs test
   # only the latest release (single required check, unchanged). Scheduled/manual
   # runs fan out across the support window (current + 2 back). Bump the pinned
-  # tags here when a new PM release ships; `ubuntu2204` (no version suffix)
+  # tags here when a new PM release ships; `ubuntu-22.04` (no version prefix)
   # always resolves to the latest PM build. Pinned tags are pulled directly as
   # rstudio/rstudio-package-manager:<tag>. No pinned tag may be a *suffix* of
   # another — the resolved-version job-rename step below matches the running
@@ -123,7 +123,7 @@ jobs:
             --name packagemanager \
             -p 4242:4242 \
             -e RSPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
-            rstudio/rstudio-package-manager:${{ matrix.pm-version }}
+            posit/package-manager:${{ matrix.pm-version }}
           echo "PM_URL=http://localhost:4242" >> "$GITHUB_OUTPUT"
 
       # Wait for health check
