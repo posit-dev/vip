@@ -24,6 +24,7 @@ on:
 permissions:
   contents: read
   checks: write
+  packages: read
 
 jobs:
   changes:
@@ -60,29 +61,15 @@ jobs:
               - 'uv.lock'
               - '.github/workflows/connect-smoke.yml'
 
-  # Emit the Connect version list for the product job. PR/push runs test only
-  # the latest release (single required check, unchanged). Scheduled/manual runs
-  # fan out across the support window (current + 2 back). Bump the pinned tags
-  # here when a new Connect release ships; `release` always tracks the newest
-  # build. Versions >= 2026.04 resolve via with-connect to
-  # ghcr.io/posit-dev/connect:<version> (see posit-dev/with-connect main.py
-  # get_docker_tag(); re-check on any with-connect pin bump). Pinned version
-  # strings must not be substrings of one another — the resolved-version
-  # job-rename step below matches the running check by name substring.
+  # Emit the Connect version list for the product job. PR/push runs the current
+  # release only. Scheduled/manual runs fan out across the support window
+  # (current + 2 back). Bump the pinned tags when a new Connect release ships.
+  # Images are pulled directly from ghcr.io/posit-dev/connect.
   set-matrix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions: {}
-    outputs:
-      versions: ${{ steps.pick.outputs.versions }}
-    steps:
-      - id: pick
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo 'versions=["release", "2026.08.1", "2026.07.0"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'versions=["release"]' >> "$GITHUB_OUTPUT"
-          fi
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: connect
+      count: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 3 || 1 }}
 
   connect-smoke:
     needs: [changes, set-matrix]
@@ -105,12 +92,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Log in to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
       # Start Connect in Docker
       - name: Start Connect
         id: connect
         uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
-          version: ${{ matrix.connect-version }}
+          image: ghcr.io/posit-dev/connect:${{ matrix.connect-version }}
           license: ${{ secrets.CONNECT_LICENSE }}
 
       # Surface license errors as workflow annotations so expired keys
@@ -119,7 +111,7 @@ jobs:
         if: failure() && steps.connect.outcome == 'failure'
         run: |
           # Find the Connect container even if with-connect failed partway
-          CID=$(docker ps -aq --filter "ancestor=rstudio/rstudio-connect" | head -1)
+          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/connect" | head -1)
           if [ -z "${CID}" ]; then
             echo "::error title=Connect Startup Failed::Connect container not found. The with-connect action failed before creating a container."
             exit 1

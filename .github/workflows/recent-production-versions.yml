@@ -1,0 +1,67 @@
+name: Recent Production Image Versions
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: "Image name in ghcr.io/posit-dev"
+        required: true
+        type: string
+      count:
+        description: "Number of recent YYYY.MM product editions to return"
+        default: 3
+        required: false
+        type: number
+      include-preview:
+        description: "Append the preview tag to the version matrix"
+        default: false
+        required: false
+        type: boolean
+    outputs:
+      latest:
+        description: "Latest short production release tag"
+        value: ${{ jobs.resolve.outputs.latest }}
+      versions:
+        description: "JSON array of the latest short release tag from each requested month"
+        value: ${{ jobs.resolve.outputs.versions }}
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      latest: ${{ steps.versions.outputs.latest }}
+      versions: ${{ steps.versions.outputs.versions }}
+    steps:
+      - name: Resolve recent release versions
+        id: versions
+        env:
+          IMAGE: ${{ inputs.image }}
+          COUNT: ${{ inputs.count }}
+          INCLUDE_PREVIEW: ${{ inputs.include-preview }}
+        run: |
+          set -euo pipefail
+          token=$(curl --fail --silent --show-error \
+            "https://ghcr.io/token?service=ghcr.io&scope=repository:posit-dev/${IMAGE}:pull" \
+            | jq --raw-output .token)
+          mapfile -t versions < <(
+            curl --fail --silent --show-error \
+              -H "Authorization: Bearer ${token}" \
+              "https://ghcr.io/v2/posit-dev/${IMAGE}/tags/list?n=10000" \
+              | jq --raw-output '.tags[] | select(test("^[0-9]{4}\\.[0-9]{2}\\.[0-9]+$"))' \
+              | sort --version-sort --reverse \
+              | awk -F. '!seen[$1 "." $2]++' \
+              | head --lines "$COUNT"
+          )
+          if [ "${#versions[@]}" -lt "$COUNT" ]; then
+            echo "::error::Expected ${COUNT} product editions for ${IMAGE}; found ${#versions[@]}."
+            exit 1
+          fi
+          versions_json=$(printf '%s\n' "${versions[@]}" | jq --raw-input --slurp --compact-output 'split("\n") | map(select(length > 0))')
+          if [ "$INCLUDE_PREVIEW" = "true" ]; then
+            versions_json=$(jq --compact-output '. + ["preview"]' <<< "$versions_json")
+          fi
+          {
+            echo "latest=${versions[0]}"
+            echo "versions=$versions_json"
+          } >> "$GITHUB_OUTPUT"

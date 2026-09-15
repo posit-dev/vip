@@ -26,34 +26,48 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: connect-integration-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  set-matrix:
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: connect
+      count: 1
+      include-preview: true
+
   connect-integration:
     name: Integration tests against Connect ${{ matrix.connect-version }}
     runs-on: ubuntu-latest
     # Measured ~3.7 min per leg (release/preview); this is a drift detector, not
     # a merge gate, so a generous ceiling is fine.
     timeout-minutes: 15
+    needs: set-matrix
     strategy:
       fail-fast: false
       matrix:
-        # "release" = currently released stable, "preview" = nightly build.
-        connect-version: ["release", "preview"]
+        # The current production release and the nightly preview build.
+        connect-version: ${{ fromJSON(needs.set-matrix.outputs.versions) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Log in to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
       # Start Connect in Docker
       - name: Start Connect
         id: connect
         uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
-          version: ${{ matrix.connect-version }}
+          image: ${{ matrix.connect-version == 'preview' && 'ghcr.io/posit-dev/connect-preview:daily' || format('ghcr.io/posit-dev/connect:{0}', matrix.connect-version) }}
           license: ${{ secrets.CONNECT_LICENSE }}
 
       # Surface license errors as workflow annotations so expired keys
@@ -62,7 +76,10 @@ jobs:
         if: failure() && steps.connect.outcome == 'failure'
         run: |
           # Find the Connect container even if with-connect failed partway
-          CID=$(docker ps -aq --filter "ancestor=rstudio/rstudio-connect" | head -1)
+          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/connect" | head -1)
+          if [ -z "${CID}" ]; then
+            CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/connect-preview" | head -1)
+          fi
           if [ -z "${CID}" ]; then
             echo "::error title=Connect Startup Failed::Connect container not found. The with-connect action failed before creating a container."
             exit 1

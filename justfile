@@ -95,7 +95,7 @@ test-local *ARGS:
     docker compose up -d --wait
     uv run vip verify --config vip.toml.local --categories workbench {{ ARGS }}
 
-# Run VIP tests against the full local stack (requires RSC_LICENSE and RSPM_LICENSE).
+# Run VIP tests against the full local stack (requires PCT_LICENSE and PPM_LICENSE).
 # Passes URL flags directly so Connect and PM don't need to be enabled in vip.toml.local.
 test-local-full *ARGS:
     docker compose --profile full up -d --wait
@@ -106,9 +106,9 @@ report-selftest:
     uv run pytest selftests/
     cd report && uv run quarto render
 
-# Requires RSC_LICENSE and RSW_LICENSE. Add vip.test hostnames to /etc/hosts
-# first: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test`.
 # Start the mock-IdP E2E stack (Keycloak + Connect + Workbench, real OIDC).
+# Requires PCT_LICENSE and PWB_LICENSE. Add vip.test hostnames to /etc/hosts
+# first: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test`.
 mock-idp-up:
     docker compose -f compose.mock-idp.yml up -d --build --wait
     @docker compose -f compose.mock-idp.yml ps

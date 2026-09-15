@@ -18,6 +18,7 @@ on:
 permissions:
   contents: read
   checks: write
+  packages: read
 
 jobs:
   changes:
@@ -57,27 +58,13 @@ jobs:
   # Emit the Package Manager tag list for the product job. PR/push runs test
   # only the latest release (single required check, unchanged). Scheduled/manual
   # runs fan out across the support window (current + 2 back). Bump the pinned
-  # tags here when a new PM release ships; `ubuntu2204` (no version suffix)
-  # always resolves to the latest PM build. Pinned tags are pulled directly as
-  # rstudio/rstudio-package-manager:<tag>. No pinned tag may be a *suffix* of
-  # another — the resolved-version job-rename step below matches the running
-  # check by name ending in the tag, and `ubuntu2204` is deliberately a
-  # *prefix* of the versioned tags (e.g. `ubuntu2204-2026.08.0`), which an
-  # ``includes()`` match would have confused for a suffix collision too.
+  # tags here when a new PM release ships. Pinned tags use their short release
+  # version, including the current release, so every run is reproducible.
   set-matrix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions: {}
-    outputs:
-      versions: ${{ steps.pick.outputs.versions }}
-    steps:
-      - id: pick
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo 'versions=["ubuntu2204", "ubuntu2204-2026.08.0", "ubuntu2204-2026.06.0"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'versions=["ubuntu2204"]' >> "$GITHUB_OUTPUT"
-          fi
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: package-manager
+      count: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 3 || 1 }}
 
   packagemanager-smoke:
     needs: [changes, set-matrix]
@@ -114,6 +101,11 @@ jobs:
           fi
           echo "available=true" >> "$GITHUB_OUTPUT"
 
+      - name: Log in to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
       # Start Package Manager in Docker
       - name: Start Package Manager
         if: steps.license.outputs.available == 'true'
@@ -122,8 +114,8 @@ jobs:
           docker run -d \
             --name packagemanager \
             -p 4242:4242 \
-            -e RSPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
-            rstudio/rstudio-package-manager:${{ matrix.pm-version }}
+            -e PPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
+            ghcr.io/posit-dev/package-manager:${{ matrix.pm-version }}
           echo "PM_URL=http://localhost:4242" >> "$GITHUB_OUTPUT"
 
       # Wait for health check
