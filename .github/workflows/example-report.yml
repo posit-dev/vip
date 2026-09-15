@@ -3,6 +3,10 @@ name: Example Validation Report
 on:
   workflow_call:
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   build:
     name: Build example report
@@ -71,12 +75,17 @@ jobs:
         with:
           version: 1.9.37
 
+      - name: Log in to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
       # Start Connect in Docker
       - name: Start Connect
         id: connect
         uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
-          version: release
+          image: ghcr.io/posit-dev/connect:2026.09.0
           license: ${{ secrets.CONNECT_LICENSE }}
 
       # Start Workbench in Docker
@@ -86,13 +95,13 @@ jobs:
         uses: posit-dev/with-workbench@da367f7337b28c6748f7dd43d08706788353be8d # main
         with:
           license-key: ${{ secrets.WORKBENCH_LICENSE }}
-          version: release
+          image: ghcr.io/posit-dev/workbench:2026.09.0
 
       # Surface Workbench license errors
       - name: Check for Workbench license errors
         if: failure() && steps.wb-license.outputs.available == 'true' && steps.workbench.outcome == 'failure'
         run: |
-          CID=$(docker ps -aq --filter "ancestor=rstudio/rstudio-workbench" | head -1)
+          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/workbench" | head -1)
           if [ -z "${CID}" ]; then
             echo "::error title=Workbench Startup Failed::Workbench container not found."
             exit 1
@@ -223,8 +232,8 @@ jobs:
           docker run -d \
             --name packagemanager \
             -p 4242:4242 \
-            -e RSPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
-            rstudio/rstudio-package-manager:ubuntu2204
+            -e PPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
+            ghcr.io/posit-dev/package-manager:2026.09.0
           echo "PM_URL=http://localhost:4242" >> "$GITHUB_OUTPUT"
 
       # Wait for Package Manager health check
@@ -286,8 +295,7 @@ jobs:
       # Workbench resolve-version steps above: a silent fallback here would
       # have masked the stale-PM-version bug this step is fixing, and a
       # placeholder is no more meaningful than an explicit failure once the
-      # bare `ubuntu2204` tag (which always resolves to the latest build,
-      # per packagemanager-smoke.yml) is what was actually requested.
+      # pinned Package Manager release tag is what was actually requested.
       - name: Resolve Package Manager version
         if: steps.pm-license.outputs.available == 'true'
         id: pm-version

@@ -12,16 +12,16 @@
 #
 # License keys:
 #   Set these environment variables (or add them to .env):
-#     RSW_LICENSE        - Posit Workbench license key
-#     RSC_LICENSE        - Posit Connect license key
-#     RSPM_LICENSE       - Posit Package Manager license key
+#     PWB_LICENSE        - Posit Workbench license key
+#     PCT_LICENSE        - Posit Connect license key
+#     PPM_LICENSE        - Posit Package Manager license key
 #
 # Image versions:
 #   Image tags default to :latest for convenience. To pin versions for
 #   reproducible test environments, create a .env file (see .env.example):
-#     RSW_VERSION=2024.09.0
-#     RSC_VERSION=2024.09.0
-#     RSPM_VERSION=2024.09.0
+#     PWB_VERSION=2026.09.0
+#     PCT_VERSION=2026.09.0
+#     PPM_VERSION=2026.09.0
 #
 # Limitations:
 #   - K8s-specific features (session capacity with resource profiles,
@@ -30,11 +30,11 @@
 
 services:
   workbench:
-    image: rstudio/rstudio-workbench:${RSW_VERSION:-latest}
+    image: posit/workbench:${PWB_VERSION:-latest}
     ports:
       - "127.0.0.1:8787:8787"
     environment:
-      RSW_LICENSE: ${RSW_LICENSE:-}
+      PWB_LICENSE: ${PWB_LICENSE:-}
       VIP_TEST_USERNAME: ${VIP_TEST_USERNAME:-vip_test}
       VIP_TEST_PASSWORD: ${VIP_TEST_PASSWORD:-vip_test_password}
       WORKBENCH_JUPYTER_PATH: /usr/local/bin/jupyter
@@ -49,11 +49,11 @@ services:
       start_period: 30s
 
   connect:
-    image: ghcr.io/rstudio/rstudio-connect:${RSC_VERSION:-latest}
+    image: posit/connect:${PCT_VERSION:-latest}
     ports:
       - "127.0.0.1:3939:3939"
     environment:
-      RSC_LICENSE: ${RSC_LICENSE:-}
+      PCT_LICENSE: ${PCT_LICENSE:-}
     volumes:
       - connect-data:/var/lib/rstudio-connect
       - ./docker/connect/rstudio-connect.gcfg:/etc/rstudio-connect/rstudio-connect.gcfg:ro
@@ -68,11 +68,11 @@ services:
       - connect
 
   packagemanager:
-    image: rstudio/rstudio-pm:${RSPM_VERSION:-latest}
+    image: posit/package-manager:${PPM_VERSION:-latest}
     ports:
       - "127.0.0.1:4242:4242"
     environment:
-      RSPM_LICENSE: ${RSPM_LICENSE:-}
+      PPM_LICENSE: ${PPM_LICENSE:-}
     volumes:
       - pm-data:/var/lib/rstudio-pm
       - ./docker/packagemanager/rstudio-pm.gcfg:/etc/rstudio-pm/rstudio-pm.gcfg:ro

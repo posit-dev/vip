@@ -24,6 +24,7 @@ on:
 permissions:
   contents: read
   checks: write
+  packages: read
 
 jobs:
   changes:
@@ -63,26 +64,13 @@ jobs:
   # Emit the Workbench version list for the product job. PR/push runs test only
   # the latest release (single required check, unchanged). Scheduled/manual runs
   # fan out across the support window (current + 2 back). Bump the pinned tags
-  # here when a new Workbench release ships; `release` always tracks the newest
-  # build. with-workbench maps <version> to the
-  # rstudio/rstudio-workbench:jammy-<version> tag (see posit-dev/with-workbench
-  # main.py get_docker_tag(); re-check on any with-workbench pin bump). Pinned
-  # version strings must not be substrings of one another — the resolved-version
-  # job-rename step below matches the running check by name substring.
+  # here when a new Workbench release ships. Workbench images are pulled from
+  # ghcr.io/posit-dev/workbench using their short release-version tags.
   set-matrix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions: {}
-    outputs:
-      versions: ${{ steps.pick.outputs.versions }}
-    steps:
-      - id: pick
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo 'versions=["release", "2026.07.1", "2026.06.0"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'versions=["release"]' >> "$GITHUB_OUTPUT"
-          fi
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: workbench
+      count: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 3 || 1 }}
 
   workbench-smoke:
     needs: [changes, set-matrix]
@@ -106,20 +94,25 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Log in to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
       # Start Workbench in Docker
       - name: Start Workbench
         id: workbench
         uses: posit-dev/with-workbench@da367f7337b28c6748f7dd43d08706788353be8d # main
         with:
           license-key: ${{ secrets.WORKBENCH_LICENSE }}
-          version: ${{ matrix.workbench-version }}
+          image: ghcr.io/posit-dev/workbench:${{ matrix.workbench-version }}
 
       # Surface license errors as workflow annotations so expired keys
       # are immediately visible on the Actions run page.
       - name: Check for license errors
         if: failure() && steps.workbench.outcome == 'failure'
         run: |
-          CID=$(docker ps -aq --filter "ancestor=rstudio/rstudio-workbench" | head -1)
+          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/workbench" | head -1)
           if [ -z "${CID}" ]; then
             echo "::error title=Workbench Startup Failed::Workbench container not found. The with-workbench action failed before creating a container."
             exit 1

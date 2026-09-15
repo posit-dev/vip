@@ -5,8 +5,8 @@
 # -- so trusting the stack's shared CA and writing the OIDC rserver.conf
 # lines before rserver starts requires overriding the entrypoint, the same
 # pattern used for Connect (see docker/connect/Dockerfile.oidc).
-ARG RSW_VERSION=latest
-FROM rstudio/rstudio-workbench:${RSW_VERSION}
+ARG PWB_VERSION=latest
+FROM ghcr.io/posit-dev/workbench:${PWB_VERSION}
 
 COPY entrypoint-oidc.sh /usr/local/bin/entrypoint-oidc.sh
 COPY startup.sh /usr/local/bin/vip-create-test-user.sh

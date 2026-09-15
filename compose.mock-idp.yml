@@ -39,7 +39,7 @@
 #   just mock-idp-down      # tear down and remove the generated certs/volumes
 #
 # License keys (required, same as compose.yml):
-#   RSC_LICENSE, RSW_LICENSE
+#   PCT_LICENSE, PWB_LICENSE
 
 # Fixed project name so the `mock-idp-certs` volume has a deterministic name
 # regardless of the checkout directory -- the CI workflow mounts it into the
@@ -89,7 +89,7 @@ services:
       context: ./docker/connect
       dockerfile: Dockerfile.oidc
       args:
-        RSC_VERSION: ${RSC_VERSION:-latest}
+        PCT_VERSION: ${PCT_VERSION:-latest}
     # ghcr.io/posit-dev/connect's rsandbox privilege-separation subsystem
     # (which runs content under per-user OS accounts) needs a privileged
     # container -- confirmed against posit-dev/with-connect, which always
@@ -103,7 +103,7 @@ services:
       keycloak:
         condition: service_healthy
     environment:
-      RSC_LICENSE: ${RSC_LICENSE:-}
+      PCT_LICENSE: ${PCT_LICENSE:-}
     volumes:
       - connect-oidc-data:/var/lib/rstudio-connect
       - ./docker/connect/rstudio-connect-oidc.gcfg:/etc/rstudio-connect/rstudio-connect.gcfg:ro
@@ -126,14 +126,14 @@ services:
       context: ./docker/workbench
       dockerfile: Dockerfile.oidc
       args:
-        RSW_VERSION: ${RSW_VERSION:-latest}
+        PWB_VERSION: ${PWB_VERSION:-latest}
     depends_on:
       cert-init:
         condition: service_completed_successfully
       keycloak:
         condition: service_healthy
     environment:
-      RSW_LICENSE: ${RSW_LICENSE:-}
+      PWB_LICENSE: ${PWB_LICENSE:-}
       VIP_TEST_USERNAME: ${VIP_TEST_USERNAME:-vip_test}
       VIP_TEST_PASSWORD: ${VIP_TEST_PASSWORD:-vip_test_password}
     volumes:
