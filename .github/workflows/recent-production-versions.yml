@@ -12,7 +12,15 @@ on:
         default: 3
         required: false
         type: number
+      include-preview:
+        description: "Append the preview tag to the version matrix"
+        default: false
+        required: false
+        type: boolean
     outputs:
+      latest:
+        description: "Latest short production release tag"
+        value: ${{ jobs.resolve.outputs.latest }}
       versions:
         description: "JSON array of the latest short release tag from each requested month"
         value: ${{ jobs.resolve.outputs.versions }}
@@ -22,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {}
     outputs:
+      latest: ${{ steps.versions.outputs.latest }}
       versions: ${{ steps.versions.outputs.versions }}
     steps:
       - name: Resolve recent release versions
@@ -29,6 +38,7 @@ jobs:
         env:
           IMAGE: ${{ inputs.image }}
           COUNT: ${{ inputs.count }}
+          INCLUDE_PREVIEW: ${{ inputs.include-preview }}
         run: |
           set -euo pipefail
           token=$(curl --fail --silent --show-error \
@@ -47,4 +57,11 @@ jobs:
             echo "::error::Expected ${COUNT} product editions for ${IMAGE}; found ${#versions[@]}."
             exit 1
           fi
-          printf 'versions=%s\n' "$(printf '%s\n' "${versions[@]}" | jq --raw-input --slurp --compact-output 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+          versions_json=$(printf '%s\n' "${versions[@]}" | jq --raw-input --slurp --compact-output 'split("\n") | map(select(length > 0))')
+          if [ "$INCLUDE_PREVIEW" = "true" ]; then
+            versions_json=$(jq --compact-output '. + ["preview"]' <<< "$versions_json")
+          fi
+          {
+            echo "latest=${versions[0]}"
+            echo "versions=$versions_json"
+          } >> "$GITHUB_OUTPUT"

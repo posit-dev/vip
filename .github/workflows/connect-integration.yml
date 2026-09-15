@@ -33,17 +33,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  set-matrix:
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: connect
+      count: 1
+      include-preview: true
+
   connect-integration:
     name: Integration tests against Connect ${{ matrix.connect-version }}
     runs-on: ubuntu-latest
     # Measured ~3.7 min per leg (release/preview); this is a drift detector, not
     # a merge gate, so a generous ceiling is fine.
     timeout-minutes: 15
+    needs: set-matrix
     strategy:
       fail-fast: false
       matrix:
         # The current production release and the nightly preview build.
-        connect-version: ["2026.09.0", "preview"]
+        connect-version: ${{ fromJSON(needs.set-matrix.outputs.versions) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

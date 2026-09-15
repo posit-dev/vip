@@ -8,8 +8,27 @@ permissions:
   packages: read
 
 jobs:
+  connect-version:
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: connect
+      count: 1
+
+  workbench-version:
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: workbench
+      count: 1
+
+  package-manager-version:
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: package-manager
+      count: 1
+
   build:
     name: Build example report
+    needs: [connect-version, workbench-version, package-manager-version]
     runs-on: ubuntu-latest
     # Measured ~8 min: stands up Connect and Workbench containers, runs the
     # cross-product example suite, then renders the Quarto report.
@@ -85,7 +104,7 @@ jobs:
         id: connect
         uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
-          image: ghcr.io/posit-dev/connect:2026.09.0
+          image: ghcr.io/posit-dev/connect:${{ needs.connect-version.outputs.latest }}
           license: ${{ secrets.CONNECT_LICENSE }}
 
       # Start Workbench in Docker
@@ -95,7 +114,7 @@ jobs:
         uses: posit-dev/with-workbench@da367f7337b28c6748f7dd43d08706788353be8d # main
         with:
           license-key: ${{ secrets.WORKBENCH_LICENSE }}
-          image: ghcr.io/posit-dev/workbench:2026.09.0
+          image: ghcr.io/posit-dev/workbench:${{ needs.workbench-version.outputs.latest }}
 
       # Surface Workbench license errors
       - name: Check for Workbench license errors
@@ -233,7 +252,7 @@ jobs:
             --name packagemanager \
             -p 4242:4242 \
             -e PPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
-            ghcr.io/posit-dev/package-manager:2026.09.0
+            ghcr.io/posit-dev/package-manager:${{ needs.package-manager-version.outputs.latest }}
           echo "PM_URL=http://localhost:4242" >> "$GITHUB_OUTPUT"
 
       # Wait for Package Manager health check
