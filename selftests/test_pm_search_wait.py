@@ -113,7 +113,8 @@ class TestFastSearch:
 
     def test_uses_the_search_ceiling_not_the_page_load_one(self, clock):
         """The regression: at TIMEOUT_PAGE_LOAD this wait failed on a healthy
-        deployment whose PyPI search sat in the slow tail."""
+        deployment whose PyPI search sat in the slow tail.
+        """
         page = _page(clock, delay=1.0)
 
         wait_for_search_results(page)
@@ -125,7 +126,8 @@ class TestFastSearch:
 class TestSlowSearch:
     def test_search_past_the_threshold_warns_but_still_passes(self, clock):
         """The 53.8s observation: slow, not broken. It must be reported and
-        must not fail."""
+        must not fail.
+        """
         page = _page(clock, delay=53.8)
 
         with pytest.warns(UserWarning, match="package search took 53.8s"):
@@ -145,7 +147,8 @@ class TestSlowSearch:
 
     def test_just_under_the_threshold_stays_quiet(self, clock):
         """Boundary: SLOW_SEARCH_MS is the line, and a search below it is
-        unremarkable -- no warning noise on every normal run."""
+        unremarkable -- no warning noise on every normal run.
+        """
         page = _page(clock, delay=(SLOW_SEARCH_MS / 1000) - 0.1)
 
         with warnings.catch_warnings():
@@ -157,7 +160,8 @@ class TestNoResults:
     def test_timeout_raises_a_readable_assertion_not_a_playwright_error(self, clock):
         """A raw Playwright timeout surfaces as "an unexpected error occurred:
         Locator.wait_for: Timeout 15000ms exceeded", which tells an
-        administrator nothing. Fail with the diagnosis instead."""
+        administrator nothing. Fail with the diagnosis instead.
+        """
         page = _page(clock, delay=90.0, timeout_after=True)
 
         with pytest.raises(AssertionError) as exc_info:

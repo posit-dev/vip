@@ -12,6 +12,8 @@ No real browser is used: a tiny Page double models the sign-in page.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 from _pytest.outcomes import Skipped
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -49,7 +51,8 @@ class _AuthFakeLocator:
 class _OidcLoginFakePage:
     """Models an OIDC-only sign-in page: a "Sign in with OpenID" button and no
     username field. *idp_valid* controls whether clicking the button reaches an
-    authenticated homepage (the logo becoming visible)."""
+    authenticated homepage (the logo becoming visible).
+    """
 
     def __init__(self, *, idp_valid: bool = True):
         self.url = "https://wb.example.com/auth-sign-in?appUri=&error=2"
@@ -340,7 +343,10 @@ def test_restore_shared_session_returns_true_when_homepage_comes_back():
 class _RestorablePage:
     """A page whose SSO click gets back in, exposing a context storage state."""
 
-    STATE = {"cookies": [{"name": "fresh", "value": "new"}], "origins": []}
+    STATE: ClassVar[dict[str, list]] = {
+        "cookies": [{"name": "fresh", "value": "new"}],
+        "origins": [],
+    }
 
     def __init__(self, *, recovers: bool = True):
         self.url = "https://wb.example.com/auth-sign-in"

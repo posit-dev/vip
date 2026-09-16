@@ -8,6 +8,8 @@ coverage of the ``RStudioSession`` Workbench Jobs selectors.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import pytest
 
 from vip.version import ProductVersion
@@ -64,7 +66,7 @@ class TestParseWorkbenchVersion:
     """
 
     # (footer_text, expected_version_substring)
-    REAL_FOOTERS = [
+    REAL_FOOTERS: ClassVar[list[tuple[str, str]]] = [
         ('Posit Workbench 2026.01.0+392.pro5, "Apple Blossom" (7534b903).', "2026.01.0+392.pro5"),
         ('Posit Workbench 2026.06.0+242.pro13, "Blue Plumbago" (e0e0c3b7).', "2026.06.0+242.pro13"),
         (

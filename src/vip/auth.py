@@ -587,7 +587,8 @@ def _normalize_url(url: str | None) -> str:
 
     We lowercase only the scheme and netloc, preserve path case, strip
     a single trailing ``/`` from the path, and drop query/fragment
-    (auth cache keying off ``?foo=bar`` would be surprising)."""
+    (auth cache keying off ``?foo=bar`` would be surprising).
+    """
     if not url:
         return ""
 
@@ -616,7 +617,8 @@ def _cached_urls_match(
     A blank cached URL is only acceptable when the caller also did not
     request that product — a cache minted with Connect-only cannot serve
     a later run that now also wants Workbench (storage state would lack
-    Workbench cookies)."""
+    Workbench cookies).
+    """
     return _normalize_url(cached_connect) == _normalize_url(requested_connect) and (
         _normalize_url(cached_workbench) == _normalize_url(requested_workbench)
     )
@@ -1469,7 +1471,8 @@ def _strip_url_query(url: str) -> str:
     test reports.  If the redirect chain stalled mid-OIDC/SAML, the URL
     may carry sensitive parameters like ``code=``, ``state=``, or
     ``SAMLRequest=`` — we keep scheme/host/path for debugging but drop
-    the rest.  Returns the input unchanged when it can't be parsed."""
+    the rest.  Returns the input unchanged when it can't be parsed.
+    """
     if not url:
         return url
     try:
@@ -1574,7 +1577,6 @@ def _delete_api_key(
     proxy: ProxyConfig | None = None,
 ) -> None:
     """Delete the VIP API key using the key itself for authentication."""
-
     verify = _httpx_verify_env_aware(insecure, ca_bundle)
 
     base = connect_url.rstrip("/")
@@ -1785,7 +1787,6 @@ def _probe_server_settings(client, base: str, me_status: int, connect_url: str) 
 
     Best-effort: any transport error is logged and swallowed.
     """
-
     try:
         probe = client.get("/server_settings")
     except httpx.HTTPError as exc:
@@ -2171,7 +2172,6 @@ def _create_api_key_via_session(
     covered by selftests.  The ``_httpx_verify`` unit tests confirm the verify
     plumbing; manual testing against a staging cluster is needed to close #239.
     """
-
     verify = _httpx_verify_env_aware(insecure, ca_bundle)
     base = connect_url.rstrip("/") + "/__api__"
     me_url = f"{base}/v1/user"

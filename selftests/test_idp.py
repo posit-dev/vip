@@ -24,7 +24,7 @@ class TestGetIdpStrategy:
         assert callable(strategy)
 
     def test_unknown_idp_raises(self):
-        with pytest.raises(AuthConfigError, match="Unsupported IdP.*unknown.*keycloak.*okta"):
+        with pytest.raises(AuthConfigError, match=r"Unsupported IdP.*unknown.*keycloak.*okta"):
             get_idp_strategy("unknown")
 
     def test_case_insensitive_lookup(self):
@@ -108,7 +108,8 @@ class TestSnowflakeLogin:
 class TestKeycloakUsesTotpGetCode:
     def test_keycloak_calls_totp_get_code_not_input(self):
         """Keycloak strategy must obtain MFA codes via totp.get_code,
-        so VIP_TEST_TOTP_SECRET works automatically when set."""
+        so VIP_TEST_TOTP_SECRET works automatically when set.
+        """
         from vip.idp import _fill_keycloak_login
 
         # Build a Playwright page mock whose otp_field appears visible

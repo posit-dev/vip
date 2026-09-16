@@ -35,7 +35,8 @@ def test_make_http_request_classifies_protocol_error_as_refused(monkeypatch):
     """A plaintext request landing on a TLS-only port raises a protocol
     error, not ``httpx.ConnectError`` -- it must still classify as
     "refused" so ``https_enforced`` treats a missing plain-HTTP listener as
-    acceptable. #457."""
+    acceptable. #457.
+    """
 
     def fake_get(url, follow_redirects=False, timeout=10, **kwargs):
         raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
@@ -54,7 +55,8 @@ def test_make_http_request_classifies_read_error_as_refused(monkeypatch):
     ``RemoteProtocolError``, depending on the server and OS. ``ReadError``
     is an ``httpx.NetworkError``, NOT an ``httpx.ConnectError`` or
     ``httpx.ProtocolError``, which is why the except clause must catch
-    ``NetworkError`` rather than just ``ConnectError``. #457."""
+    ``NetworkError`` rather than just ``ConnectError``. #457.
+    """
 
     def fake_get(url, follow_redirects=False, timeout=10, **kwargs):
         raise httpx.ReadError("[Errno 54] Connection reset by peer")
@@ -109,7 +111,8 @@ def test_make_http_request_does_not_classify_connect_timeout_as_refused(monkeypa
 
 def test_make_http_request_does_not_classify_read_timeout_as_refused(monkeypatch):
     """A ``ReadTimeout`` means the port accepted the connection and never
-    answered -- a hung listener, a real bug, not "port closed". #457."""
+    answered -- a hung listener, a real bug, not "port closed". #457.
+    """
 
     def fake_get(url, follow_redirects=False, timeout=10, **kwargs):
         raise httpx.ReadTimeout("timed out")
@@ -160,7 +163,8 @@ class TestNoVersionHeaders:
 
     def test_x_powered_by_with_version_still_fails(self):
         """A fronting proxy leaking its version is actionable where it is set,
-        so it stays a failure -- otherwise this check can never fail at all."""
+        so it stays a failure -- otherwise this check can never fail at all.
+        """
         headers = {"x-powered-by": "Express/4.18.2"}
 
         with pytest.raises(pytest.fail.Exception, match="x-powered-by"):

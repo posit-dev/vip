@@ -30,6 +30,7 @@ def parse_feature_file(path: Path, *, relative_to: Path | None = None) -> dict:
     -------
     dict with keys: ``title``, ``description``, ``marker``, ``file``,
     ``scenarios`` (list of dicts with ``title`` and ``steps``).
+
     """
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()

@@ -90,7 +90,7 @@ def _no_ambient_proxy(monkeypatch):
 
 @pytest.fixture
 def pytester(pytester):
-    """pytester that disables pytest-playwright for nested in-process runs.
+    """Pytester that disables pytest-playwright for nested in-process runs.
 
     pytest-playwright (>=0.8.0) wraps every test in a soft-assertion scope via
     its ``pytest_runtest_call`` hook.  Our plugin integration tests run an inner

@@ -166,7 +166,6 @@ def _select_totp_authenticator(page: Page) -> None:
 
 def _fill_okta_login(page: Page, username: str, password: str) -> None:
     """Fill Okta's multi-step login form and handle optional MFA."""
-
     # Step 1: identifier page.
     _log_verbose(">>> Okta: waiting for identifier field ...")
     page.locator(_OKTA_IDENTIFIER).wait_for(timeout=_FORM_TIMEOUT)

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import ClassVar
 
 # Imported at collection time, on purpose. ``test_content_deploy`` is a
 # pytest-bdd module whose module-level ``@scenario`` decorators read
@@ -113,7 +114,7 @@ import json  # noqa: E402
 
 
 class TestSharedShinyBundle:
-    _R_VERSIONS = ["4.3.1", "4.6.0", "4.4.2"]
+    _R_VERSIONS: ClassVar[list[str]] = ["4.3.1", "4.6.0", "4.4.2"]
 
     def test_workbench_fixture_defined_in_conftest(self):
         """The Workbench shiny_bundle_spec fixture must exist in conftest."""
@@ -134,7 +135,8 @@ class TestSharedShinyBundle:
 
     def test_manifest_url_ref_matches_installed_version(self):
         """The Workbench fixture pins the download to the installed VIP tag, so a
-        released manifest always matches the app.R checksum shipped with it."""
+        released manifest always matches the app.R checksum shipped with it.
+        """
         from vip import __version__
         from vip_tests.connect.bundles import manifest_raw_url
 
@@ -162,7 +164,8 @@ class TestSharedShinyBundle:
 
     def test_manifest_checksum_matches_appR(self):  # noqa: N802 -- mirrors the app.R filename
         """The manifest's app.R checksum must match the app.R bytes we ship,
-        or ``rsconnect deploy manifest`` rejects the bundle."""
+        or ``rsconnect deploy manifest`` rejects the bundle.
+        """
         import hashlib
 
         from vip_tests.connect.bundles import build_shiny_bundle_files
@@ -175,7 +178,8 @@ class TestSharedShinyBundle:
 
     def test_connect_and_workbench_use_identical_bundle(self):
         """The Connect deploy test and Workbench publish test must ship the
-        byte-identical bundle -- both route through build_shiny_bundle_files."""
+        byte-identical bundle -- both route through build_shiny_bundle_files.
+        """
 
         # Connect's _get_bundle for the shiny item delegates to the shared builder.
         class _FakeConnect:

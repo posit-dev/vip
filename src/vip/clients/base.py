@@ -67,6 +67,7 @@ class BaseClient:
         use.  ``None`` reads the ambient proxy environment (httpx's default
         behaviour); pass ``ProxyConfig(enabled=False)`` or
         ``ProxyConfig(trust_env=False)`` to force a direct path.
+
     """
 
     def __init__(

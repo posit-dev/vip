@@ -30,7 +30,8 @@ from vip.config import ConnectConfig
 
 class TestCollectStatusSchemeResolution:
     """``vip status`` must not get stuck on a wrong inferred scheme, and must
-    not probe a URL the user gave a scheme for."""
+    not probe a URL the user gave a scheme for.
+    """
 
     def setup_method(self):
         import vip.auth
@@ -64,7 +65,8 @@ class TestCollectStatusSchemeResolution:
     def test_inferred_scheme_falls_back_before_client_construction(self):
         """A bare hostname that only serves plain HTTP must still report a
         real status, not 'fail' from ConnectClient choking on an https://
-        URL that doesn't answer."""
+        URL that doesn't answer.
+        """
         from vip.cli import _collect_status
 
         config = self._config("connect.example.com")
@@ -86,7 +88,8 @@ class TestRunCleanupSchemeResolution:
     """``vip cleanup --connect-url``/``--workbench-url`` route a bare hostname
     through the same normalization + fallback as every other entry point --
     previously a scheme-less CLI flag was handed to ConnectClient completely
-    unnormalized (httpx requires an absolute URL) and never got a fallback."""
+    unnormalized (httpx requires an absolute URL) and never got a fallback.
+    """
 
     def setup_method(self):
         import vip.auth
@@ -165,7 +168,8 @@ class TestRunCleanupSchemeResolution:
 
 def _write_manifest(tmp_path) -> None:
     """Write a minimal .vip-install.json matching the current host, per the
-    established pattern in selftests/install/test_cli_uninstall.py."""
+    established pattern in selftests/install/test_cli_uninstall.py.
+    """
     import json
     import socket
 
@@ -187,7 +191,8 @@ def _write_manifest(tmp_path) -> None:
 class TestRunUninstallSchemeResolution:
     """The chained-cleanup callable in ``vip uninstall`` resolves an inferred
     scheme lazily -- only when actually invoked (--yes), never during a
-    dry-run plan preview."""
+    dry-run plan preview.
+    """
 
     def setup_method(self):
         import vip.auth
@@ -196,7 +201,8 @@ class TestRunUninstallSchemeResolution:
 
     def test_dry_run_never_probes(self, tmp_path, monkeypatch):
         """Without --yes, execute_uninstall_plan never calls cleanup_callable
-        at all -- confirm no network call happens building up to that point."""
+        at all -- confirm no network call happens building up to that point.
+        """
         from vip import cli
 
         _write_manifest(tmp_path)
@@ -255,7 +261,8 @@ class TestRunUninstallSchemeResolution:
         inside cleanup_callable (the previous approach) meant a --yes run
         could print https:// and then use http:// -- the exact scheme
         mismatch this feature exists to prevent. The printed URL must match
-        what ConnectClient actually receives."""
+        what ConnectClient actually receives.
+        """
         import vip.clients.connect as connect_mod
         from vip import cli
 
@@ -302,7 +309,8 @@ class TestRunUninstallSchemeResolution:
         """A dry-run preview (no --yes) must not probe the network at all, so
         it necessarily prints the unresolved (inferred https://) URL --
         nothing is actually cleaned up in a dry run, so there is no scheme
-        mismatch to create."""
+        mismatch to create.
+        """
         from vip import cli
 
         _write_manifest(tmp_path)

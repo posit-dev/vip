@@ -366,15 +366,17 @@ class TestParseDoneMarker:
         assert _parse_done_marker(content, "VIP_DONE_abc") is None
 
     def test_marker_glued_to_output_with_no_trailing_newline(self):
-        """cmd's last line lacking a trailing newline glues the marker onto
+        """Cmd's last line lacking a trailing newline glues the marker onto
         it (`>>` appends raw bytes with no separator); the glued-on leading
-        text is real output and must be kept, not dropped."""
+        text is real output and must be kept, not dropped.
+        """
         content = "foobar" + "VIP_DONE_abc:0"
         assert _parse_done_marker(content, "VIP_DONE_abc") == ("foobar", 0)
 
     def test_returns_none_for_non_digit_suffix(self):
         """A marker line whose exit-code suffix isn't purely digits yet (a
-        partial write mid-poll) must be treated as still-running, not raise."""
+        partial write mid-poll) must be treated as still-running, not raise.
+        """
         content = "VIP_DONE_abc:"
         assert _parse_done_marker(content, "VIP_DONE_abc") is None
 
@@ -384,7 +386,8 @@ class TestParseDoneMarker:
         The raw form must parse as exit 0; the quoted form must be treated as
         still-running rather than silently misparsed. This is why
         ``_read_file_r_expr`` wraps its read expression in ``cat()`` -- so the
-        marker line R's console echoes back is always the raw form."""
+        marker line R's console echoes back is always the raw form.
+        """
         raw = "hello\nVIP_DONE_abc:0"
         quoted = 'hello\nVIP_DONE_abc:0"'
         assert _parse_done_marker(raw, "VIP_DONE_abc") == ("hello", 0)
@@ -401,7 +404,8 @@ class TestReadFileRExpr:
         """The read expression must be cat()'d, not left as a bare/auto-printed
         expression -- R's console auto-print wraps a bare character result in
         quotes and escapes embedded newlines as literal ``\\n``, which broke
-        the done-marker exit-code parse (see TestParseDoneMarker above)."""
+        the done-marker exit-code parse (see TestParseDoneMarker above).
+        """
         expr = _read_file_r_expr("/tmp/foo.txt")
         assert expr.startswith("cat(")
         assert "readLines(" in expr
@@ -446,7 +450,8 @@ class TestDetectIde:
     def test_positron_detected_via_variables_pane_without_console(self):
         """Positron opens without an auto-started console (issue #477): the console
         panel is absent on the Welcome page, but ``.positron-variables`` is always
-        present, so detection must not depend on a running console."""
+        present, so detection must not depend on a running console.
+        """
         page = _make_page_mock({PositronSession.VARIABLES_PANE, VSCodeSession.WORKBENCH})
         assert _detect_ide(page) == "positron"
 
@@ -571,7 +576,8 @@ class TestEnsurePositronConsole:
 
     def test_starts_console_when_quickpick_populates_asynchronously(self):
         """Interpreter discovery lags the Start click (~10s live). ensure must
-        poll the quickpick, then select an interpreter and confirm the console."""
+        poll the quickpick, then select an interpreter and confirm the console.
+        """
         page = _EnsureFakePage(quickpick_after=2, console_renders=True)
         assert ensure_positron_console(page, timeout=10_000) is True
         assert page.start_clicked == 1
@@ -580,7 +586,8 @@ class TestEnsurePositronConsole:
 
     def test_returns_false_when_no_interpreter_resolves(self):
         """Genuinely no interpreter available: quickpick never populates → False
-        (caller decides on an accurate skip, not a misleading 'not installed')."""
+        (caller decides on an accurate skip, not a misleading 'not installed').
+        """
         page = _EnsureFakePage(quickpick_after=None)
         assert ensure_positron_console(page, timeout=3_000) is False
         assert page.rows_clicked == 0
@@ -592,7 +599,8 @@ class TestEnsurePositronConsole:
 
     def test_never_raises_when_both_row_click_and_enter_fail(self):
         """Honour the "never raises" contract: if selecting the interpreter row
-        fails AND the Enter keyboard fallback also raises, return False."""
+        fails AND the Enter keyboard fallback also raises, return False.
+        """
         page = _EnsureFakePage(
             quickpick_after=0,
             console_renders=False,
@@ -605,7 +613,8 @@ class TestEnsurePositronConsole:
         """The poll budget is SHARED across discovery + render, so total waits
         never exceed ~timeout (not ~2x). Interpreter resolves after 2 polls but
         the console never renders; with timeout=5000ms / 1000ms poll the total
-        wait cycles must stay <= 5 (a per-loop budget would allow ~7)."""
+        wait cycles must stay <= 5 (a per-loop budget would allow ~7).
+        """
         page = _EnsureFakePage(quickpick_after=2, console_renders=False)
         assert ensure_positron_console(page, timeout=5_000) is False
         assert page.polls <= 5
@@ -848,7 +857,8 @@ class TestPositronConsoleStateLabel:
     is polled on every terminal_run iteration, so it can never raise, and its
     absence must mean "unknown", not "ready" (see the caveat in its
     docstring -- a healthy console was never directly observed in the
-    investigation, only a permanently-"Starting" one)."""
+    investigation, only a permanently-"Starting" one).
+    """
 
     def test_returns_stripped_text_when_present(self):
         page = MagicMock()
@@ -872,7 +882,8 @@ class TestPositronConsoleStateLabel:
 
     def test_never_raises_on_detached_node(self):
         """A detached element or closed page must not turn a diagnostic read
-        into a new failure mode -- swallow and report "unknown"."""
+        into a new failure mode -- swallow and report "unknown".
+        """
         page = MagicMock()
         page.locator.side_effect = RuntimeError("page closed")
 
@@ -880,7 +891,8 @@ class TestPositronConsoleStateLabel:
 
     def test_scoped_under_console_panel(self):
         """The selector must be scoped under CONSOLE_PANEL, not the bare
-        class name -- ``.state-label`` alone is not distinctive enough."""
+        class name -- ``.state-label`` alone is not distinctive enough.
+        """
         page = MagicMock()
         page.locator.return_value.first.count.return_value = 0
 
@@ -909,7 +921,8 @@ class TestVisibleTerminalInput:
     """A session may hold more than one terminal (VS Code's Python extension
     spawns one to activate a venv), so the input must be resolved by the
     ``:visible`` filter + ``.last`` -- a bare ``.xterm-helper-textarea`` locator
-    matches multiple elements and trips Playwright strict mode on click/type."""
+    matches multiple elements and trips Playwright strict mode on click/type.
+    """
 
     def test_filters_to_visible_and_last(self):
         from vip_tests.workbench.exec import _visible_terminal_input
@@ -935,7 +948,8 @@ class _FixedUUID:
 
 class TestTerminalRun:
     """Regression coverage for #439: fast-failing commands must raise
-    ExecError immediately with the real output, not a generic timeout."""
+    ExecError immediately with the real output, not a generic timeout.
+    """
 
     def _patch_common(self, monkeypatch, ide="rstudio"):
         monkeypatch.setattr(exec_mod, "_detect_ide", lambda p: ide)
@@ -954,7 +968,8 @@ class TestTerminalRun:
 
     def test_writes_done_marker_unconditionally(self, monkeypatch):
         """The marker must be appended with ``;`` so it is written even when
-        *cmd* fails -- ``&&`` silently drops it on non-zero exit (#439)."""
+        *cmd* fails -- ``&&`` silently drops it on non-zero exit (#439).
+        """
         self._patch_common(monkeypatch)
         monkeypatch.setattr(
             exec_mod, "read_file", MagicMock(return_value="ok\nVIP_DONE_deadbeef:0")
@@ -990,7 +1005,8 @@ class TestTerminalRun:
         redirect to only its last operand, so a short-circuited command (e.g.
         ``command -v python3 || command -v python``) sends its output to the
         visible terminal instead of the capture file -- terminal_run then returns
-        "" with exit 0 and the caller builds an empty ``'' -m venv`` invocation."""
+        "" with exit 0 and the caller builds an empty ``'' -m venv`` invocation.
+        """
         self._patch_common(monkeypatch)
         monkeypatch.setattr(
             exec_mod, "read_file", MagicMock(return_value="/usr/bin/python3\nVIP_DONE_deadbeef:0")
@@ -1005,7 +1021,8 @@ class TestTerminalRun:
 
     def test_raises_exec_error_immediately_on_nonzero_exit(self, monkeypatch):
         """Fast failure must surface as an immediate ExecError with the real
-        output, not a 120s timeout with the output discarded."""
+        output, not a 120s timeout with the output discarded.
+        """
         self._patch_common(monkeypatch)
         error_output = "fatal: destination path 'repo' already exists"
         mock_read_file = MagicMock(return_value=f"{error_output}\nVIP_DONE_deadbeef:128")
@@ -1101,7 +1118,8 @@ class TestTerminalRun:
         not handed the outer loop's entire remaining budget: read_file's
         Positron path blocks for its whole timeout before giving up, so one
         unresponsive attempt would otherwise starve every retry this loop is
-        meant to make (issue #390)."""
+        meant to make (issue #390).
+        """
         self._patch_common(monkeypatch, ide="positron")
         monkeypatch.setattr(exec_mod, "_positron_console_state_label", lambda p: None)
         mock_read_file = MagicMock(return_value="ok\nVIP_DONE_deadbeef:0")
@@ -1118,7 +1136,8 @@ class TestTerminalRun:
     def test_rstudio_attempt_timeout_is_not_capped(self, monkeypatch):
         """RStudio's console is ready immediately (no retry loop to protect),
         so its attempts must keep receiving the full remaining budget --
-        the cap is Positron-specific."""
+        the cap is Positron-specific.
+        """
         self._patch_common(monkeypatch, ide="rstudio")
         mock_read_file = MagicMock(return_value="ok\nVIP_DONE_deadbeef:0")
         monkeypatch.setattr(exec_mod, "read_file", mock_read_file)
@@ -1131,7 +1150,8 @@ class TestTerminalRun:
 
     def test_positron_never_polls_state_label_for_other_ides(self, monkeypatch):
         """The wedge check is Positron-specific; RStudio/VS Code must never
-        even query the state label."""
+        even query the state label.
+        """
         self._patch_common(monkeypatch, ide="rstudio")
         monkeypatch.setattr(
             exec_mod, "read_file", MagicMock(return_value="ok\nVIP_DONE_deadbeef:0")
@@ -1166,7 +1186,8 @@ class TestTerminalRun:
         """Regression coverage for issue #390: a console whose status label
         reads "Starting" for longer than _POSITRON_WEDGED_THRESHOLD_S must
         raise a specific, actionable ExecError well before the full timeout
-        elapses, instead of silently consuming the whole budget."""
+        elapses, instead of silently consuming the whole budget.
+        """
         self._patch_common(monkeypatch, ide="positron")
         monkeypatch.setattr(exec_mod, "read_file", MagicMock(return_value="still starting..."))
         monkeypatch.setattr(exec_mod, "_positron_console_state_label", lambda p: "Starting")
@@ -1187,7 +1208,8 @@ class TestTerminalRun:
         """A console whose status label is absent/unreadable (an older
         Positron build, or a genuinely healthy session where the investigation
         never observed the label at all) must fall back to today's behavior --
-        the plain timeout -- rather than being treated as wedged."""
+        the plain timeout -- rather than being treated as wedged.
+        """
         self._patch_common(monkeypatch, ide="positron")
         monkeypatch.setattr(exec_mod, "read_file", MagicMock(return_value="still running..."))
         monkeypatch.setattr(exec_mod, "_positron_console_state_label", lambda p: None)
@@ -1202,7 +1224,8 @@ class TestTerminalRun:
     def test_positron_wedge_timer_resets_when_label_changes(self, monkeypatch):
         """A status label that moves off "Starting" (even transiently) must
         reset the wedge timer -- only a *continuous* "Starting" reading is
-        evidence of a hang, not a single slow poll."""
+        evidence of a hang, not a single slow poll.
+        """
         self._patch_common(monkeypatch, ide="positron")
         monkeypatch.setattr(exec_mod, "read_file", MagicMock(return_value="still running..."))
         # Alternate between "Starting" and "Idle" on every call, so the
@@ -1234,7 +1257,8 @@ class TestTerminalRun:
     def test_writes_marker_to_sentinel_file(self, monkeypatch):
         """The marker is written to BOTH the output file and a one-line sentinel
         file. VS Code polls the sentinel to dodge Monaco's viewport
-        virtualization (which can hide the marker on a long output file)."""
+        virtualization (which can hide the marker on a long output file).
+        """
         self._patch_common(monkeypatch)
         monkeypatch.setattr(
             exec_mod, "read_file", MagicMock(return_value="ok\nVIP_DONE_deadbeef:0")
@@ -1250,7 +1274,8 @@ class TestTerminalRun:
     def test_vscode_returns_output_on_success(self, monkeypatch):
         """The VS Code editor-open polling path has its own copy of the
         marker-parsing logic and must be covered independently of the
-        RStudio/Positron ``read_file`` path exercised above."""
+        RStudio/Positron ``read_file`` path exercised above.
+        """
         self._patch_vscode(monkeypatch, "hello\nVIP_DONE_deadbeef:0")
         page = MagicMock()
 
@@ -1260,7 +1285,8 @@ class TestTerminalRun:
 
     def test_vscode_raises_exec_error_immediately_on_nonzero_exit(self, monkeypatch):
         """Regression guard: the VS Code branch must also raise ExecError
-        immediately on failure rather than looping until timeout (#439)."""
+        immediately on failure rather than looping until timeout (#439).
+        """
         error_output = "fatal: destination path 'repo' already exists"
         mock_read = self._patch_vscode(monkeypatch, f"{error_output}\nVIP_DONE_deadbeef:128")
         page = MagicMock()

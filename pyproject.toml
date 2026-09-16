@@ -62,7 +62,7 @@ load = [
     "python-socketio>=5.16.2,<6",  # CVE-2026-48804 fix; transitive via locust
 ]
 dev = [
-    "ruff>=0.15.0,<0.17",
+    "ruff==0.15.0",
     "mypy>=1.10",
     "pytest-cov>=6.0",
     "pip-audit>=2.7",
@@ -214,7 +214,7 @@ line-length = 100
 src = ["src", "selftests", "examples"]
 
 [tool.ruff.lint]
-select = ["B", "BLE", "C4", "E", "F", "I", "ISC", "N", "PERF", "PGH", "PIE", "PLC0207", "PLR0124", "PLR0402", "PLR1711", "PLR5501", "PLW0108", "PLW1510", "PT", "PTH", "RET", "S101", "SIM", "TID", "UP"]
+select = ["ARG001", "ARG002", "ARG005", "B", "BLE", "C4", "D101", "D102", "D103", "D202", "D209", "D210", "D403", "D413", "E", "F", "I", "ISC", "N", "PERF", "PGH", "PIE", "PLC0207", "PLR0124", "PLR0402", "PLR1711", "PLR5501", "PLW0108", "PLW1510", "PT", "PTH", "RET", "RUF001", "RUF002", "RUF003", "RUF012", "RUF023", "RUF043", "RUF059", "RUF100", "S101", "SIM", "TID", "UP"]
 
 # PERF203: per-item try/except in cleanup and probe loops is deliberate (the loop must continue past a failing item), and the per-iteration cost it flags is gone on Python 3.11+.
 ignore = [
@@ -224,7 +224,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"selftests/**" = ["S101"]
-"src/vip_tests/**" = ["S101"]
-"examples/**" = ["S101"]
-"docker/**" = ["S101"]
+"selftests/**" = ["ARG001", "ARG002", "ARG005", "D101", "D102", "D103", "S101"]
+"src/vip_tests/**" = ["ARG001", "ARG002", "ARG005", "D101", "D102", "D103", "S101"]
+"examples/**" = ["ARG001", "ARG002", "ARG005", "D101", "D102", "D103", "S101"]
+"docker/**" = ["ARG001", "ARG002", "ARG005", "S101"]

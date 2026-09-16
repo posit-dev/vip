@@ -147,7 +147,7 @@ def test_install_plan_suse_uses_zypper(tmp_path: Path):
 
 
 def test_install_plan_suse_uses_rpm_for_present_check(tmp_path: Path):
-    """openSUSE uses rpm under the hood, so rpm_installed must be the lookup."""
+    """openSUSE uses rpm under the hood, so rpm_installed must be the lookup."""  # noqa: D403 -- proper noun
     info = PlatformInfo(family="suse-family", id="opensuse-leap", version="15.6")
     plan = pl.build_install_plan(
         platform_info=info,

@@ -208,7 +208,7 @@ def _ide_extension_skip_reason(ide: str, outcome: str | None) -> str | None:
 
 
 @pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
+def pytest_runtest_makereport(item: pytest.Item, call):
     """Record each IDE-launch scenario's outcome for the extensions cascade skip.
 
     Only ``test_ide_launch.py`` items carrying one of ``_IDE_MARKERS`` are
@@ -438,6 +438,18 @@ def unique_session_name(filename: str) -> str:
     :func:`~vip.clients.workbench.session_owner`.
     """
     return f"VIP {filename} - {current_worker_id()}-{time.time_ns()}"
+
+
+def extract_repo_urls(output: str) -> list[str]:
+    """Extract URLs from R's ``getOption('repos')`` console output.
+
+    ``IGNORECASE`` on the scheme: R can echo the scheme in whatever case the
+    repos config carries (e.g. ``HTTPS://...``); without it, a scheme-cased
+    URL is silently dropped here before ``pm_url_matches_repo_urls`` ever gets
+    a chance to apply its own case-insensitive scheme/host comparison, making
+    that comparison unreachable for exactly the input it exists to handle.
+    """
+    return re.findall(r"https?://[^\s<>\"']+", output, re.IGNORECASE)
 
 
 # Keywords indicating the URL is a login/auth page (used for OIDC detection)
@@ -880,6 +892,7 @@ def workbench_login(
         pytest.skip: For non-password auth without a pre-loaded auth session,
             or when the session's storage state doesn't cover Workbench
         AssertionError: When password login fails after retries
+
     """
     homepage_logo = page.locator(Homepage.POSIT_LOGO)
 
@@ -1030,7 +1043,7 @@ def workbench_login(
         homepage_or_error = homepage_logo.or_(error_panel)
         try:
             homepage_or_error.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if attempt == max_retries - 1:
                 raise AssertionError(
                     f"Login failed after {max_retries} attempts: no response"

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -100,7 +101,8 @@ def _vip_tests_path() -> str:
 
 class TestVerifyLocalTestPath:
     """The CLI must pass the vip_tests package path to pytest so tests are
-    found even when running outside the source tree (pip install)."""
+    found even when running outside the source tree (pip install).
+    """
 
     def test_vip_tests_path_included_by_default(self, tmp_path):
         cfg = tmp_path / "vip.toml"
@@ -398,7 +400,8 @@ class TestVerifyLocalMissingConfig:
 class TestVerifyLocalConfigPath:
     """Regression: the resolved config path must be passed to pytest as an
     absolute path so downstream CWD/rootdir changes cannot cause pytest to
-    load a different (or missing) vip.toml (issue #170)."""
+    load a different (or missing) vip.toml (issue #170).
+    """
 
     def test_default_vip_toml_passed_as_absolute_path(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -1111,7 +1114,8 @@ class TestVerifyLocalTLSFlags:
 
 class TestVerifyLocalVersionFlags:
     """--connect-version, --workbench-version, --package-manager-version are
-    encoded in the temp config."""
+    encoded in the temp config.
+    """
 
     def test_connect_version_written_to_temp_config(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -1261,7 +1265,7 @@ class TestVerifyLocalSnowflakeApiAuthGuard:
 class TestReorderHelpArgs:
     """`vip -h <subcommand>` should surface the subcommand's help, not top-level."""
 
-    COMMANDS = {"verify", "cleanup", "install", "auth", "report"}
+    COMMANDS: ClassVar[set[str]] = {"verify", "cleanup", "install", "auth", "report"}
 
     def test_help_before_subcommand_is_moved_after(self):
         from vip.cli import _reorder_help_args
@@ -1382,7 +1386,8 @@ class TestVerifyDefaultXdist:
 
     def test_defaults_come_before_user_pytest_args(self, tmp_path):
         """Injected defaults are appended before user args, so an explicit
-        later -n/--dist in pytest_args still wins in edge cases."""
+        later -n/--dist in pytest_args still wins in edge cases.
+        """
         cfg = tmp_path / "vip.toml"
         cfg.write_text("[general]\n")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--tb=short"]))
@@ -1411,7 +1416,8 @@ class TestFormatFlag:
         patch ``vip.cli.sys.exit`` to a no-op so run_verify falls through to
         subprocess.run for the "happy path" tests above. An exit-path test has
         to call run_verify directly, like every other SystemExit assertion in
-        this file (see TestVerifyLocalCredentialCheck._run_and_expect_exit)."""
+        this file (see TestVerifyLocalCredentialCheck._run_and_expect_exit).
+        """
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         from vip.cli import run_verify
@@ -1430,7 +1436,8 @@ class TestFormatFlag:
         """--ci is a non-interactive preset; combining with --interactive-auth
         must exit rather than silently ignoring one of the two. Calls
         run_verify directly (real sys.exit) per the note on
-        test_unknown_format_rejected above."""
+        test_unknown_format_rejected above.
+        """
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         from vip.cli import run_verify
@@ -1463,7 +1470,8 @@ class TestFormatFlag:
 
 class TestVerifyProxyFlagWithConfig:
     """--proxy/--no-proxy have no consumer on a config-file run (they only feed the
-    generated temp config), so run_verify must warn rather than silently drop them."""
+    generated temp config), so run_verify must warn rather than silently drop them.
+    """
 
     def _write_config(self, tmp_path) -> str:
         cfg = tmp_path / "vip.toml"
@@ -1518,7 +1526,8 @@ class TestVerifyProxyFlagWithConfig:
 
     def test_no_warning_when_flags_reach_the_generated_config(self, capsys):
         """--proxy with a URL flag DOES take effect (it feeds _generate_temp_config),
-        so warning there would be wrong."""
+        so warning there would be wrong.
+        """
         _capture_call(
             _make_args(connect_url="https://connect.example.com", proxy="http://corp:8080")
         )

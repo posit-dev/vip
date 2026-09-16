@@ -18,6 +18,8 @@ class ManifestError(Exception):
 
 @dataclass
 class SystemPackageItem:
+    """One system package (RPM/deb) ``vip install`` added, so ``vip uninstall`` can remove it."""
+
     manager: str  # "dnf" | "apt" | "zypper"
     name: str
     installed_at: str
@@ -26,6 +28,8 @@ class SystemPackageItem:
 
 @dataclass
 class PlaywrightItem:
+    """One Playwright browser cache that ``vip install`` downloaded."""
+
     browser: str  # "chromium"
     cache_dir: str
     installed_at: str
@@ -37,6 +41,14 @@ Item = SystemPackageItem | PlaywrightItem
 
 @dataclass
 class Manifest:
+    """The parsed contents of ``.vip-install.json``: everything ``vip install`` added.
+
+    ``items`` records what has actually been installed and can be reversed by ``vip
+    uninstall``. ``pending_system_packages`` records packages the current process
+    could not install itself (non-root Linux, printed as a ``sudo`` command) so a later
+    ``vip install`` run can claim them once they exist, via ``claim_pending``.
+    """
+
     version: int
     vip_version: str
     created_at: str
@@ -49,9 +61,11 @@ class Manifest:
     pending_system_packages: list[str] = field(default_factory=list)
 
     def pending_packages_set(self) -> set[str]:
+        """Return ``pending_system_packages`` as a set for membership checks."""
         return set(self.pending_system_packages)
 
     def add_pending_packages(self, names: Iterable[str]) -> None:
+        """Add *names* to ``pending_system_packages``, skipping ones already present."""
         existing = self.pending_packages_set()
         for n in names:
             if n not in existing:
@@ -85,10 +99,12 @@ class Manifest:
 
 
 def default_path(project_root: Path | None = None) -> Path:
+    """Return the ``.vip-install.json`` path under *project_root*, defaulting to ``Path.cwd()``."""
     return (project_root or Path.cwd()) / ".vip-install.json"
 
 
 def current_host() -> str:
+    """Return this machine's hostname, used to gate ``vip uninstall`` on a manifest match."""
     return socket.gethostname()
 
 

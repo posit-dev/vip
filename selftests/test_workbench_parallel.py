@@ -71,7 +71,7 @@ class _FakeLogo:
     def __init__(self, *, appears: bool):
         self._appears = appears
 
-    def wait_for(self, *, state, timeout):  # noqa: ARG002 - mirrors Playwright signature
+    def wait_for(self, *, state, timeout):
         if not self._appears:
             # Model the real timeout: Playwright raises PlaywrightTimeoutError, which is
             # what _silent_sso_signin catches. A different exception type must propagate.
@@ -111,7 +111,7 @@ class TestSilentSsoSignin:
         import contextlib
 
         class _BrokenLogo:
-            def wait_for(self, *, state, timeout):  # noqa: ARG002
+            def wait_for(self, *, state, timeout):
                 raise RuntimeError("page crashed mid-login")
 
         monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
@@ -128,7 +128,7 @@ class TestSilentSsoSignin:
         captured: dict[str, int] = {}
 
         class _TimeoutCapturingLogo:
-            def wait_for(self, *, state, timeout):  # noqa: ARG002
+            def wait_for(self, *, state, timeout):
                 captured["timeout"] = timeout
 
         monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
@@ -186,7 +186,7 @@ class _FakeConfig:
         cfg = self
 
         class _Stash:
-            def get(self, key, default=None):  # noqa: ARG002
+            def get(self, key, default=None):
                 return cfg._session
 
         return _Stash()
@@ -522,7 +522,8 @@ class TestRealMarkerMechanics:
     """Guard the assumption the fakes above cannot: that the hook's strip + add_marker
     sequence is actually visible to pytest-xdist, which reads xdist_group via
     ``get_closest_marker`` and concatenates *every* xdist_group mark it finds via
-    ``iter_markers``. Exercised on a real pytest ``Item``, not a fake."""
+    ``iter_markers``. Exercised on a real pytest ``Item``, not a fake.
+    """
 
     def test_regroup_wins_via_get_closest_marker_and_leaves_no_duplicate(self, pytester):
         # Disable the vip plugin for the nested collection: its own _assign_xdist_group

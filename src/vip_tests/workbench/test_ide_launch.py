@@ -310,6 +310,7 @@ def _expect_ide_or_skip(
             ``"{ide_name} did not load within timeout — ..."`` is used.
             The string may contain ``{exc}`` which will be substituted with the
             caught ``PlaywrightTimeoutError`` instance.
+
     """
     effective_timeout = TIMEOUT_IDE_LOAD if timeout is None else timeout
     try:
@@ -461,7 +462,7 @@ def _run_jupyter_cell_and_get_output(
     cold kernel can be slow to produce its first result in Docker CI).  Retries
     exist only to recover a *lost* keystroke against an already-live kernel,
     which resolves in seconds, so they use the shorter ``TIMEOUT_DIALOG`` budget
-    — keeping the worst-case failure path bounded instead of ``attempts ×`` the
+    — keeping the worst-case failure path bounded instead of ``attempts x`` the
     full timeout.
     """
     cell_output = notebook_panel.locator(JupyterLabSession.CELL_OUTPUT).first
