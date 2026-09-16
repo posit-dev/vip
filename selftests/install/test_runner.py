@@ -108,7 +108,8 @@ def test_execute_install_plan_records_pending_when_root_required(monkeypatch, tm
 
 def test_execute_install_plan_not_root_message_names_skip_system(monkeypatch, tmp_path, capsys):
     """#621: a user stuck re-demanding the same packages forever needs the escape
-    hatch named in the failure message, not just 'Then re-run vip install'."""
+    hatch named in the failure message, not just 'Then re-run vip install'.
+    """
     plan = InstallPlan(
         platform="debian-family",
         platform_id="ubuntu",
@@ -152,7 +153,8 @@ def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):
 def test_execute_install_plan_claims_alias_under_provider_name(monkeypatch, tmp_path: Path):
     """#621: uninstall's generated command must name the concrete provider, not
     the alias -- so the manifest item created here has to be libcups2t64, and
-    the pending alias libcups2 is what gets cleared."""
+    the pending alias libcups2 is what gets cleared.
+    """
     plan = InstallPlan(
         platform="debian-family",
         platform_id="ubuntu",

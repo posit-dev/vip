@@ -270,7 +270,8 @@ def test_install_plan_claims_alias_under_concrete_provider_name(tmp_path: Path):
     """#621: a pending name resolved via dpkg Provides is claimed under the
     concrete package that actually provides it, not the alias that was asked
     for -- libcups2 isn't a real package to record/remove on Ubuntu 24.04,
-    libcups2t64 is."""
+    libcups2t64 is.
+    """
     info = PlatformInfo(family="debian-family", id="ubuntu", version="24.04")
     m = Manifest(
         version=SCHEMA_VERSION,
@@ -301,7 +302,8 @@ def test_install_plan_claims_alias_under_concrete_provider_name(tmp_path: Path):
 def test_install_plan_claims_own_name_when_installed_directly(tmp_path: Path):
     """A package installed under its own real name is still recorded under
     that name, unchanged -- the alias-preserving fix must not rewrite the
-    common case where no Provides resolution was needed."""
+    common case where no Provides resolution was needed.
+    """
     info = PlatformInfo(family="debian-family", id="ubuntu", version="22.04")
     m = Manifest(
         version=SCHEMA_VERSION,

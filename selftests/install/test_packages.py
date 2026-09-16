@@ -127,7 +127,8 @@ def _not_found():
 
 def test_installed_dpkg_detects_real_package_installed(monkeypatch):
     """Case 1: old name installed as a real package -> detected, self-mapped
-    (regression guard)."""
+    (regression guard).
+    """
     fake = FakeRun(
         {
             ("dpkg-query", "-W", "-f=${Status}", "libcups2"): _ok("install ok installed"),
@@ -140,7 +141,8 @@ def test_installed_dpkg_detects_real_package_installed(monkeypatch):
 
 def test_installed_dpkg_detects_name_present_only_as_provides(monkeypatch):
     """Case 2 (the bug): old name is not a real package, only Provides of
-    libcups2t64 -> detected and mapped to the concrete provider name."""
+    libcups2t64 -> detected and mapped to the concrete provider name.
+    """
     fake = FakeRun(
         {
             ("dpkg-query", "-W", "-f=${Status}", "libcups2"): _not_found(),
@@ -184,7 +186,8 @@ def test_installed_dpkg_provides_with_version_qualifier(monkeypatch):
 
 def test_installed_dpkg_provides_multiple_names(monkeypatch):
     """Case 5: a Provides field listing several names -> both detected, both
-    mapped to the one concrete provider."""
+    mapped to the one concrete provider.
+    """
     fake = FakeRun(
         {
             ("dpkg-query", "-W", "-f=${Status}", "libcups2"): _not_found(),
@@ -243,7 +246,8 @@ def test_installed_dpkg_nonzero_exit_treated_as_not_installed(monkeypatch):
 def test_installed_dpkg_detects_all_reported_t64_packages(monkeypatch):
     """Case 9: the issue's literal reproduction -- all four reported packages are
     detected via their t64 package's Provides, with no rename table involved,
-    and each is mapped to its own concrete t64 provider."""
+    and each is mapped to its own concrete t64 provider.
+    """
     old_names = ("libatk1.0-0", "libatk-bridge2.0-0", "libcups2", "libglib2.0-0")
     t64_names = ("libatk1.0-0t64", "libatk-bridge2.0-0t64", "libcups2t64", "libglib2.0-0t64")
 

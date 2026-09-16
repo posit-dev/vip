@@ -227,7 +227,8 @@ def test_pending_package_helpers():
 def test_claim_pending_records_concrete_name_not_alias():
     """#621: a pending alias (e.g. libcups2, resolved via dpkg Provides) is
     recorded under the concrete provider name, and the alias -- not the
-    concrete name -- is what gets cleared from pending."""
+    concrete name -- is what gets cleared from pending.
+    """
     m = _sample_manifest()
     m.pending_system_packages = ["libcups2"]
     m.claim_pending(
@@ -241,7 +242,8 @@ def test_claim_pending_records_concrete_name_not_alias():
 
 def test_claim_pending_ignores_unpending_alias():
     """A (pending_name, concrete_name) pair whose pending_name isn't actually
-    pending is not claimed and doesn't create an item."""
+    pending is not claimed and doesn't create an item.
+    """
     m = _sample_manifest()
     m.pending_system_packages = ["alsa-lib"]
     before_items = len(m.items)
