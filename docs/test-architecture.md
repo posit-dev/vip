@@ -288,6 +288,18 @@ sessions, runtime versions, packages, data sources, and Chronicle.
 runs the Workbench category minus its `@slow` scenarios. The mechanism is
 product-agnostic — tag any feature `@slow` to exclude it from basic runs.
 
+### Deployment smoke checks with `--smoke`
+
+`vip verify --smoke` runs only scenarios tagged `@smoke`. These are the
+repository-free checks that establish a configured product is reachable and its
+basic user-facing surface works. It composes with `--categories`, so
+`vip verify --smoke --categories package-manager` selects only Package Manager
+smoke scenarios. It can also compose with `--basic`.
+
+The smoke set is deliberately separate from `--basic`: `--basic` removes only
+`@slow` scenarios, while `--smoke` is an explicit positive selection. Repository
+and package-content checks should not be tagged `@smoke`.
+
 ## Adding a New Test: Layer-by-Layer Checklist
 
 1. **Layer 1 -- Feature file**: Write the Gherkin scenario with a `@product` tag. Focus on business intent, not implementation.

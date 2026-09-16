@@ -1,4 +1,4 @@
-@prerequisites
+@prerequisites @smoke
 Feature: Posit Team components are installed and reachable
   As a Posit Team administrator
   I want to verify that all configured components are running

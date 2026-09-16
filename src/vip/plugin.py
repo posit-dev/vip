@@ -225,6 +225,10 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers",
+        "smoke: cheap deployment smoke checks",
+    )
+    config.addinivalue_line(
+        "markers",
         "min_version(product, version): skip when product is below the specified version",
     )
     config.addinivalue_line(

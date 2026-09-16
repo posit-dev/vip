@@ -38,6 +38,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "provider": None,
         "performance_tests": False,
         "basic": False,
+        "smoke": False,
         "insecure": False,
         "ca_bundle": None,
         "proxy": None,
@@ -656,6 +657,28 @@ class TestBasicFlag:
         expr = _marker_expr(cmd)
         assert "workbench" in expr
         assert "not slow" in expr
+
+
+class TestSmokeFlag:
+    """--smoke selects the tests tagged with the smoke marker."""
+
+    def test_smoke_selects_smoke_tests(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), smoke=True))
+        assert _marker_expr(cmd) == "smoke"
+
+    def test_smoke_composes_with_categories(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), categories="package-manager", smoke=True))
+        assert _marker_expr(cmd) == "(package_manager) and smoke"
+
+    def test_smoke_composes_with_basic(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), smoke=True, basic=True))
+        assert _marker_expr(cmd) == "(smoke) and not slow"
 
 
 class TestExtraKeepFromArgs:
