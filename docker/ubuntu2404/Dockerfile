@@ -45,4 +45,16 @@ RUN uv run vip install
 RUN uv run vip install --dry-run | tee /tmp/dry-run.log \
     && grep -q "nothing to install" /tmp/dry-run.log
 
+# Prove the manifest records what is actually removable. apt satisfied the
+# requests for libcups2 and friends with their t64 packages, so recording the
+# requested name would make `vip uninstall` emit `apt remove libcups2` -- a
+# name that matches nothing on Noble and silently leaves the real package
+# installed, reporting success (#621).
+RUN python3 -c "\
+import json, sys; \
+names = {i['name'] for i in json.load(open('/app/.vip-install.json'))['items'] if i.get('manager') == 'apt'}; \
+stale = {'libcups2', 'libatk1.0-0', 'libatk-bridge2.0-0', 'libglib2.0-0'} & names; \
+missing = {'libcups2t64', 'libatk1.0-0t64', 'libatk-bridge2.0-0t64', 'libglib2.0-0t64'} - names; \
+sys.exit(f'manifest records unremovable aliases {sorted(stale)}, missing {sorted(missing)}') if stale or missing else print('manifest records concrete t64 names')"
+
 CMD ["uv", "run", "python", "/app/docker/playwright-smoke.py"]

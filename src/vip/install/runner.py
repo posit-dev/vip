@@ -71,8 +71,20 @@ def execute_install_plan(
     *,
     manifest: Manifest,
     manifest_path: Path,
+    resolve_installed: Callable[[tuple[str, ...]], dict[str, str]] | None = None,
 ) -> int:
-    """Execute an install plan. Returns CLI exit code (0=ok, 2=needs sudo)."""
+    """Execute an install plan. Returns CLI exit code (0=ok, 2=needs sudo).
+
+    ``resolve_installed`` maps requested package names to the concrete names the
+    package manager actually installed, and is queried after the system step so
+    the manifest records what is really removable. Only the Debian family needs
+    it: Ubuntu 24.04 satisfies a request for libcups2 with libcups2t64 and keeps
+    the old name only as a Provides entry, so recording the requested name makes
+    `vip uninstall` emit a name apt matches nothing against (#621). Injected
+    rather than called directly here to keep this function free of package-query
+    I/O, matching ``build_install_plan``. When omitted, requested names are
+    recorded unchanged.
+    """
     print(format_install_plan(plan), end="")
 
     system_step = plan.system_step
@@ -102,9 +114,14 @@ def execute_install_plan(
     # Run system step ourselves if root.
     if needs_root and system_step is not None and is_root():
         _install_system_packages(system_step.manager, system_step.packages)
+        concrete = resolve_installed(system_step.packages) if resolve_installed else {}
         for name in system_step.packages:
             manifest.items.append(
-                SystemPackageItem(manager=system_step.manager, name=name, installed_at=now)
+                SystemPackageItem(
+                    manager=system_step.manager,
+                    name=concrete.get(name, name),
+                    installed_at=now,
+                )
             )
         manifest.pending_system_packages = [
             p for p in manifest.pending_system_packages if p not in set(system_step.packages)

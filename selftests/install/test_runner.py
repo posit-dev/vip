@@ -367,6 +367,67 @@ def test_execute_install_plan_root_install_clears_pending(monkeypatch, tmp_path)
     assert names.count("libdrm") == 1
 
 
+def test_execute_install_plan_root_install_records_concrete_debian_name(monkeypatch, tmp_path):
+    """Root-install path must record the t64 name apt really installed, not the alias.
+
+    Ubuntu 24.04 resolves a request for libcups2 to libcups2t64 and keeps the
+    old name only as a Provides entry, so a manifest recording libcups2 makes
+    `vip uninstall` emit `apt remove libcups2`, which matches nothing and
+    silently leaves the real package behind (#621).
+    """
+    plan = InstallPlan(
+        platform="debian-family",
+        platform_id="ubuntu",
+        platform_version="24.04",
+        system_step=SystemPackagesStep(manager="apt", packages=("libcups2", "libdrm2")),
+        playwright_step=None,
+    )
+    monkeypatch.setattr(rn, "is_root", lambda: True)
+    monkeypatch.setattr(rn, "_install_system_packages", lambda manager, packages: None)
+    manifest = _empty_manifest()
+    manifest_path = tmp_path / ".vip-install.json"
+
+    rc = rn.execute_install_plan(
+        plan,
+        manifest=manifest,
+        manifest_path=manifest_path,
+        resolve_installed=lambda names: {"libcups2": "libcups2t64", "libdrm2": "libdrm2"},
+    )
+    assert rc == 0
+
+    from vip.install.manifest import load
+
+    names = [i.name for i in load(manifest_path).items if isinstance(i, SystemPackageItem)]
+    assert "libcups2t64" in names
+    assert "libcups2" not in names
+    assert "libdrm2" in names
+
+
+def test_execute_install_plan_root_install_without_resolver_keeps_requested_names(
+    monkeypatch, tmp_path
+):
+    """rpm/zypper families pass no resolver; requested names are recorded unchanged."""
+    plan = InstallPlan(
+        platform="rhel-family",
+        platform_id="rhel",
+        platform_version="10",
+        system_step=SystemPackagesStep(manager="dnf", packages=("nss",)),
+        playwright_step=None,
+    )
+    monkeypatch.setattr(rn, "is_root", lambda: True)
+    monkeypatch.setattr(rn, "_install_system_packages", lambda manager, packages: None)
+    manifest = _empty_manifest()
+    manifest_path = tmp_path / ".vip-install.json"
+
+    rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+    assert rc == 0
+
+    from vip.install.manifest import load
+
+    names = [i.name for i in load(manifest_path).items if isinstance(i, SystemPackageItem)]
+    assert names == ["nss"]
+
+
 def test_format_install_plan_with_zypper_packages(tmp_path: Path):
     plan = InstallPlan(
         platform="suse-family",
