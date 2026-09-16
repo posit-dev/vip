@@ -250,10 +250,10 @@ def test_installed_dpkg_detects_all_reported_t64_packages(monkeypatch):
     responses = {("dpkg-query", "-W", "-f=${Status}", name): _not_found() for name in old_names}
     bulk_lines = "\n".join(
         f"{t64_name}\tinstall ok installed\t{old_name}"
-        for old_name, t64_name in zip(old_names, t64_names)
+        for old_name, t64_name in zip(old_names, t64_names, strict=True)
     )
     responses[_BULK_QUERY] = _ok(bulk_lines + "\n")
     fake = FakeRun(responses)
     monkeypatch.setattr(pkg.subprocess, "run", fake)
     result = pkg.installed_dpkg(old_names)
-    assert result == dict(zip(old_names, t64_names))
+    assert result == dict(zip(old_names, t64_names, strict=True))
