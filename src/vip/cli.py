@@ -1054,7 +1054,13 @@ def run_install(args: argparse.Namespace) -> None:
                 platform_version=info.version,
             )
 
-        rc = execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+        rc = execute_install_plan(
+            plan,
+            manifest=manifest,
+            manifest_path=manifest_path,
+            # Only Debian resolves a requested name to a different installed one.
+            resolve_installed=installed_dpkg if info.family == "debian-family" else None,
+        )
     except (PlaywrightInstallError, PackageQueryError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)

@@ -63,6 +63,7 @@ CAPPED = {
     "pip",
     "tomli",
     "pyotp",
+    "anyio",
     # Report/Jupyter stack: moved from the [report] extra into base deps so a
     # bare install renders (issue #554), then trimmed to just the kernel
     # Quarto's execution engine actually needs -- no `jupyter`/`jupyterlab`
