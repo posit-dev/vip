@@ -113,7 +113,7 @@ safe to ignore), but an unknown schema major is refused. The two consumers of
   (`report/index.qmd`, `report/details.qmd`) -- only warns on an unknown major. It
   runs inside a notebook cell, where raising would surface as an unreadable
   traceback instead of a rendered report.
-- `vip trace` hard-errors on an unknown major (see `check_results_schema` in
+- `vip trace` hard-errors on an unknown major (see `validate_results_file` in
   `src/vip/traceability.py`). A traceability matrix built against a `results.json`
   whose shape it doesn't understand is not something you want silently degraded --
   it runs from a shell, where a clear error message is the right outcome.

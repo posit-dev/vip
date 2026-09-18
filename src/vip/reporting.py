@@ -266,7 +266,7 @@ def load_results(path: str | Path) -> ReportData:
             # None to iterate over. This loader is deliberately lenient --
             # it renders a report and must not raise inside a notebook cell.
             # `vip trace` refuses the same input instead, via
-            # traceability.check_results_rows: silently reading a malformed
+            # traceability.validate_results_file: silently reading a malformed
             # row as untagged would drop its control tags and report a gap
             # that does not exist.
             markers=r.get("markers") or [],
