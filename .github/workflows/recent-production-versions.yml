@@ -1,5 +1,15 @@
 name: Recent Production Image Versions
 
+# Resolve product versions from the registry instead of pinning them by hand.
+# Emits the newest short release tag (`latest`) and a JSON array of the newest
+# tag from each of the last `count` calendar months (`versions`), for use as a
+# matrix. All four product workflows call this, so a new Posit release lands in
+# CI without anyone editing a pinned list.
+#
+# ghcr.io/posit-dev/{connect,workbench,package-manager} are public, so the
+# registry token below is anonymous and no `packages: read` permission or
+# `docker login` is needed -- here or in any caller.
+
 on:
   workflow_call:
     inputs:
@@ -28,6 +38,7 @@ on:
 jobs:
   resolve:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions: {}
     outputs:
       latest: ${{ steps.versions.outputs.latest }}
@@ -41,9 +52,15 @@ jobs:
           INCLUDE_PREVIEW: ${{ inputs.include-preview }}
         run: |
           set -euo pipefail
+
           token=$(curl --fail --silent --show-error \
             "https://ghcr.io/token?service=ghcr.io&scope=repository:posit-dev/${IMAGE}:pull" \
             | jq --raw-output .token)
+
+          # One tag per YYYY.MM, newest patch first. Keeping it to one per month
+          # is also what guarantees no resolved version is a substring of
+          # another, which the job-rename steps in the calling workflows rely on
+          # to match their own check run by name.
           mapfile -t versions < <(
             curl --fail --silent --show-error \
               -H "Authorization: Bearer ${token}" \
@@ -51,17 +68,18 @@ jobs:
               | jq --raw-output '.tags[] | select(test("^[0-9]{4}\\.[0-9]{2}\\.[0-9]+$"))' \
               | sort --version-sort --reverse \
               | awk -F. '!seen[$1 "." $2]++' \
-              | head --lines "$COUNT"
+              | head --lines "${COUNT}"
           )
-          if [ "${#versions[@]}" -lt "$COUNT" ]; then
+          if [ "${#versions[@]}" -lt "${COUNT}" ]; then
             echo "::error::Expected ${COUNT} product editions for ${IMAGE}; found ${#versions[@]}."
             exit 1
           fi
+
           versions_json=$(printf '%s\n' "${versions[@]}" | jq --raw-input --slurp --compact-output 'split("\n") | map(select(length > 0))')
-          if [ "$INCLUDE_PREVIEW" = "true" ]; then
-            versions_json=$(jq --compact-output '. + ["preview"]' <<< "$versions_json")
+          if [ "${INCLUDE_PREVIEW}" = "true" ]; then
+            versions_json=$(jq --compact-output '. + ["preview"]' <<< "${versions_json}")
           fi
           {
             echo "latest=${versions[0]}"
-            echo "versions=$versions_json"
+            echo "versions=${versions_json}"
           } >> "$GITHUB_OUTPUT"

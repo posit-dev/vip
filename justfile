@@ -81,8 +81,30 @@ website-data:
     uv run python scripts/generate-test-catalog.py
     uv run python scripts/generate-feature-matrix.py
 
+# Catch a .env left over from before the Posit image migration. Compose reads
+# .env itself (this justfile sets no dotenv-load), and every license variable
+# there resolves through `${PWB_LICENSE:-}`, so a stale RSW_/RSC_/RSPM_ name
+# yields an unlicensed container that fails minutes later as an opaque
+# health-check timeout. Compose's `${VAR:?}` form would report it immediately
+# but also aborts `docker compose down`, so the check lives here instead.
+[private]
+_check-env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ -f .env ] || exit 0
+    stale=$(grep -oE '^(RSW|RSC|RSPM)_(LICENSE|VERSION)' .env || true)
+    if [ -n "$stale" ]; then
+        echo "error: .env still uses pre-migration variable names:" >&2
+        printf '  %s\n' $stale >&2
+        echo "  Rename them (see .env.example):" >&2
+        echo "    RSW_LICENSE  -> PWB_LICENSE     RSW_VERSION  -> PWB_VERSION" >&2
+        echo "    RSC_LICENSE  -> PCT_LICENSE     RSC_VERSION  -> PCT_VERSION" >&2
+        echo "    RSPM_LICENSE -> PPM_LICENSE     RSPM_VERSION -> PPM_VERSION" >&2
+        exit 1
+    fi
+
 # Start the local docker-compose dev environment
-compose-up *SERVICES:
+compose-up *SERVICES: _check-env
     docker compose up -d --wait {{ SERVICES }}
     @docker compose ps
 
@@ -91,13 +113,13 @@ compose-down:
     docker compose down
 
 # Run VIP tests against the local docker-compose environment (Workbench only by default)
-test-local *ARGS:
+test-local *ARGS: _check-env
     docker compose up -d --wait
     uv run vip verify --config vip.toml.local --categories workbench {{ ARGS }}
 
 # Run VIP tests against the full local stack (requires PCT_LICENSE and PPM_LICENSE).
 # Passes URL flags directly so Connect and PM don't need to be enabled in vip.toml.local.
-test-local-full *ARGS:
+test-local-full *ARGS: _check-env
     docker compose --profile full up -d --wait
     uv run vip verify --connect-url http://localhost:3939 --workbench-url http://localhost:8787 --package-manager-url http://localhost:4242 {{ ARGS }}
 
@@ -109,7 +131,7 @@ report-selftest:
 # Start the mock-IdP E2E stack (Keycloak + Connect + Workbench, real OIDC).
 # Requires PCT_LICENSE and PWB_LICENSE. Add vip.test hostnames to /etc/hosts
 # first: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test`.
-mock-idp-up:
+mock-idp-up: _check-env
     docker compose -f compose.mock-idp.yml up -d --build --wait
     @docker compose -f compose.mock-idp.yml ps
 
@@ -121,7 +143,7 @@ mock-idp-down:
 # Same requirements as `mock-idp-up`, plus add workbench-saml.vip.test to
 # /etc/hosts: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test workbench-saml.vip.test`.
 # Start the mock-IdP E2E stack with the SAML Workbench lane also enabled.
-mock-idp-saml-up:
+mock-idp-saml-up: _check-env
     docker compose -f compose.mock-idp.yml --profile saml up -d --build --wait
     @docker compose -f compose.mock-idp.yml --profile saml ps
 

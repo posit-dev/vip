@@ -162,14 +162,14 @@ services:
       context: ./docker/workbench
       dockerfile: Dockerfile.saml
       args:
-        RSW_VERSION: ${RSW_VERSION:-latest}
+        PWB_VERSION: ${PWB_VERSION:-latest}
     depends_on:
       cert-init:
         condition: service_completed_successfully
       keycloak:
         condition: service_healthy
     environment:
-      RSW_LICENSE: ${RSW_LICENSE:-}
+      PWB_LICENSE: ${PWB_LICENSE:-}
       VIP_TEST_USERNAME: ${VIP_TEST_USERNAME:-vip_test}
       VIP_TEST_PASSWORD: ${VIP_TEST_PASSWORD:-vip_test_password}
     volumes:

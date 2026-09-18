@@ -8,6 +8,7 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/packagemanager-smoke.yml'
+      - '.github/workflows/recent-production-versions.yml'
   pull_request:
   # Scheduled/manual runs fan the suite out across the Package Manager support
   # window (see the set-matrix job). PR/push runs stay single-version.
@@ -18,7 +19,6 @@ on:
 permissions:
   contents: read
   checks: write
-  packages: read
 
 jobs:
   changes:
@@ -54,12 +54,17 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/workflows/packagemanager-smoke.yml'
+              - '.github/workflows/recent-production-versions.yml'
 
-  # Emit the Package Manager tag list for the product job. PR/push runs test
-  # only the latest release (single required check, unchanged). Scheduled/manual
-  # runs fan out across the support window (current + 2 back). Bump the pinned
-  # tags here when a new PM release ships. Pinned tags use their short release
-  # version, including the current release, so every run is reproducible.
+  # Emit the Package Manager tag list for the product job. PR/push runs the
+  # current release only (single required check, unchanged); scheduled/manual
+  # runs fan out across the support window (current + 2 back). Nothing to bump
+  # by hand any more -- the tags are resolved from
+  # ghcr.io/posit-dev/package-manager's own tag list at run time, so a run is
+  # reproducible only in the sense that the resolved version is recorded in the
+  # job name and summary, not that it is fixed. PM skips some months (there is
+  # no 2026.07 release), so "current + 2 back" means the last three months that
+  # shipped, which is what the resolver returns.
   set-matrix:
     uses: ./.github/workflows/recent-production-versions.yml
     with:
@@ -101,11 +106,8 @@ jobs:
           fi
           echo "available=true" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to GitHub Container Registry
-        env:
-          GHCR_TOKEN: ${{ github.token }}
-        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-
+      # ghcr.io/posit-dev/package-manager is public, so the pull below is
+      # anonymous -- no `docker login` step and no `packages: read` permission.
       # Start Package Manager in Docker
       - name: Start Package Manager
         if: steps.license.outputs.available == 'true'

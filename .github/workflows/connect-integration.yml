@@ -26,7 +26,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: connect-integration-${{ github.ref }}
@@ -52,22 +51,22 @@ jobs:
       matrix:
         # The current production release and the nightly preview build.
         connect-version: ${{ fromJSON(needs.set-matrix.outputs.versions) }}
+    # Resolved once so the pull and the container lookup below cannot drift.
+    env:
+      CONNECT_IMAGE: ${{ matrix.connect-version == 'preview' && 'ghcr.io/posit-dev/connect-preview:daily' || format('ghcr.io/posit-dev/connect:{0}', matrix.connect-version) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Log in to GitHub Container Registry
-        env:
-          GHCR_TOKEN: ${{ github.token }}
-        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-
+      # Both Connect repositories on ghcr.io/posit-dev are public, so the pull
+      # below is anonymous -- no `docker login` and no `packages: read`.
       # Start Connect in Docker
       - name: Start Connect
         id: connect
         uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
-          image: ${{ matrix.connect-version == 'preview' && 'ghcr.io/posit-dev/connect-preview:daily' || format('ghcr.io/posit-dev/connect:{0}', matrix.connect-version) }}
+          image: ${{ env.CONNECT_IMAGE }}
           license: ${{ secrets.CONNECT_LICENSE }}
 
       # Surface license errors as workflow annotations so expired keys
@@ -75,11 +74,10 @@ jobs:
       - name: Check for license errors
         if: failure() && steps.connect.outcome == 'failure'
         run: |
-          # Find the Connect container even if with-connect failed partway
-          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/connect" | head -1)
-          if [ -z "${CID}" ]; then
-            CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/connect-preview" | head -1)
-          fi
+          # Find the Connect container even if with-connect failed partway.
+          # `ancestor` needs the tag: a tagless value normalizes to `:latest`
+          # and never matches a container started from a pinned version.
+          CID=$(docker ps -aq --filter "ancestor=${CONNECT_IMAGE}" | head -1)
           if [ -z "${CID}" ]; then
             echo "::error title=Connect Startup Failed::Connect container not found. The with-connect action failed before creating a container."
             exit 1
@@ -101,6 +99,16 @@ jobs:
             echo "::error title=Connect Startup Failed::Connect failed to start. Check the 'Start Connect' step logs for details."
           fi
           exit 1
+
+      # The posit Connect images ship a slim system-library set and no longer
+      # carry libsodium, which plumber Imports via the sodium package. See the
+      # long-form note on the matching step in connect-smoke.yml.
+      - name: Install content system libraries in the Connect container
+        env:
+          CID: ${{ steps.connect.outputs.CONTAINER_ID }}
+        run: |
+          docker exec --user 0 --env DEBIAN_FRONTEND=noninteractive "${CID}" bash -c \
+            'apt-get update -qq && apt-get install -y -qq --no-install-recommends libsodium23'
 
       # Resolve the actual Connect version for unambiguous job records
       - name: Resolve Connect version

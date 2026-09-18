@@ -8,6 +8,7 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/workbench-smoke.yml'
+      - '.github/workflows/recent-production-versions.yml'
   pull_request:
   # Scheduled/manual runs fan the suite out across the Workbench support window
   # (see the set-matrix job). PR/push runs stay single-version.
@@ -24,7 +25,6 @@ on:
 permissions:
   contents: read
   checks: write
-  packages: read
 
 jobs:
   changes:
@@ -60,12 +60,15 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/workflows/workbench-smoke.yml'
+              - '.github/workflows/recent-production-versions.yml'
 
-  # Emit the Workbench version list for the product job. PR/push runs test only
-  # the latest release (single required check, unchanged). Scheduled/manual runs
-  # fan out across the support window (current + 2 back). Bump the pinned tags
-  # here when a new Workbench release ships. Workbench images are pulled from
-  # ghcr.io/posit-dev/workbench using their short release-version tags.
+  # Emit the Workbench version list for the product job. PR/push runs the
+  # current release only (single required check, unchanged); scheduled/manual
+  # runs fan out across the support window (current + 2 back). Nothing to bump
+  # by hand any more -- the versions are resolved from
+  # ghcr.io/posit-dev/workbench's own tag list at run time. See
+  # recent-production-versions.yml for why the resolver emits one tag per month
+  # and what the job-rename step below depends on.
   set-matrix:
     uses: ./.github/workflows/recent-production-versions.yml
     with:
@@ -94,11 +97,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Log in to GitHub Container Registry
-        env:
-          GHCR_TOKEN: ${{ github.token }}
-        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-
+      # ghcr.io/posit-dev/workbench is public, so the pull below is anonymous
+      # -- no `docker login` step and no `packages: read` permission.
       # Start Workbench in Docker
       - name: Start Workbench
         id: workbench
@@ -112,7 +112,9 @@ jobs:
       - name: Check for license errors
         if: failure() && steps.workbench.outcome == 'failure'
         run: |
-          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/workbench" | head -1)
+          # `ancestor` needs the tag: a tagless value normalizes to `:latest`
+          # and never matches a container started from a pinned version.
+          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/workbench:${{ matrix.workbench-version }}" | head -1)
           if [ -z "${CID}" ]; then
             echo "::error title=Workbench Startup Failed::Workbench container not found. The with-workbench action failed before creating a container."
             exit 1

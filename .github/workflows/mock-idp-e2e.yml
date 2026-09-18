@@ -29,6 +29,7 @@ on:
       - 'compose.mock-idp.yml'
       - 'Dockerfile'
       - '.github/workflows/mock-idp-e2e.yml'
+      - '.github/workflows/recent-production-versions.yml'
   pull_request:
   schedule:
     - cron: "30 5 * * *" # daily at 5:30am UTC
@@ -36,7 +37,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: mock-idp-e2e-${{ github.ref }}
@@ -76,12 +76,14 @@ jobs:
               - 'compose.mock-idp.yml'
               - 'Dockerfile'
               - '.github/workflows/mock-idp-e2e.yml'
+              - '.github/workflows/recent-production-versions.yml'
 
   # Emit the Workbench version list for the E2E job. PR/push runs the current
-  # release only. Scheduled/manual runs fan out across the Workbench support
+  # release only; scheduled/manual runs fan out across the Workbench support
   # window (current + 2 back) — the same list as workbench-smoke.yml. Connect
   # stays pinned to its stack default here; its version matrix lives in
-  # connect-smoke.yml. Bump the pinned tags when a new Workbench release ships.
+  # connect-smoke.yml. Nothing to bump by hand any more — the versions are
+  # resolved from ghcr.io/posit-dev/workbench's own tag list at run time.
   set-matrix:
     uses: ./.github/workflows/recent-production-versions.yml
     with:
@@ -108,11 +110,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Log in to GitHub Container Registry
-        env:
-          GHCR_TOKEN: ${{ github.token }}
-        run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-
+      # The ghcr.io/posit-dev images the Compose stack builds from are public,
+      # so those pulls are anonymous -- no `docker login` and no
+      # `packages: read` permission.
       # All three services share one throwaway CA and terminate TLS under
       # *.vip.test -- both Connect's OpenIDConnectIssuer and Workbench's
       # auth-openid-issuer reject self-signed / bare-HTTP issuers. The runner
@@ -256,6 +256,7 @@ jobs:
   # `mock-idp-e2e` above, and add it to `status`'s `needs:`.
   mock-idp-e2e-saml-diagnostic:
     if: github.event_name == 'workflow_dispatch'
+    needs: set-matrix
     name: Mock-IdP E2E SAML diagnostic (issue #263, expected red)
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -275,18 +276,20 @@ jobs:
       # (see compose.mock-idp.yml); the OIDC `workbench` service and
       # everything else in the stack come up exactly as they do in the
       # headless-auth job above.
-      # RSW_VERSION defaults to the bare `jammy` tag here for the same reason
-      # the headless-auth job above pins it explicitly: `latest` is stale
-      # (last updated 2022-08-19) and served a Workbench whose homepage
-      # predates VIP's current selectors entirely, which is what made this
-      # diagnostic's login test fail with an unrelated "Locator expected to
-      # be visible" against `#posit-logo` instead of actually exercising the
-      # #263 hypothesis. `jammy` rolls forward with every release.
+      # PWB_VERSION must name a real release rather than a rolling tag: an
+      # earlier version of this job used a stale Workbench whose homepage
+      # predated VIP's current selectors, so the login test failed on
+      # "Locator expected to be visible" against `#posit-logo` instead of
+      # exercising the #263 hypothesis at all. The resolver's `latest` keeps
+      # it current without a manual bump. The license variables must match
+      # compose.mock-idp.yml's names -- under the old RSC_/RSW_ names both
+      # services start unlicensed and `--wait` fails here for a reason that
+      # has nothing to do with SAML.
       - name: Start mock-IdP stack with SAML lane (Keycloak + Connect + Workbench + Workbench-SAML)
         env:
-          RSC_LICENSE: ${{ secrets.CONNECT_LICENSE }}
-          RSW_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
-          RSW_VERSION: jammy
+          PCT_LICENSE: ${{ secrets.CONNECT_LICENSE }}
+          PWB_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
+          PWB_VERSION: ${{ needs.set-matrix.outputs.latest }}
         run: docker compose -f compose.mock-idp.yml --profile saml up -d --build --wait
 
       - name: Set up Docker Buildx
