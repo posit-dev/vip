@@ -15,7 +15,9 @@ RUN chmod +x /usr/local/bin/entrypoint-saml.sh /usr/local/bin/vip-create-test-us
 # ahead of supervisord rather than supervisord alone. The image's own
 # ENTRYPOINT is /usr/local/bin/entrypoint.sh -- it installs the sssd
 # supervisord program and then execs its argument -- and dropping it would
-# silently skip whatever base-image setup it grows next. compose.yml chains
-# it the same way for the password-auth stack.
+# silently skip whatever base-image setup it grows next. Only these two
+# wrapper images chain the stock entrypoint; compose.yml's password-auth
+# stack runs the image unmodified and provisions its test account through
+# the base image's own PWB_TESTUSER/PWB_TESTUSER_PASSWD variables.
 ENTRYPOINT ["/usr/local/bin/entrypoint-saml.sh"]
 CMD ["/usr/local/bin/entrypoint.sh", "/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
