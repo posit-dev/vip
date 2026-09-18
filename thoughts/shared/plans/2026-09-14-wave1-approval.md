@@ -36,11 +36,11 @@ Depends on: rebases trivially if #627 or #658 lands first (comment-only edit; bo
 Branch: comments-fixtures-proxy-plugin
 Title: docs(fixtures): add fixture docstrings and rewrite rationale comments
 Body:
-Adds docstrings to the connect_client/workbench_client/pm_client fixtures stating their None-when-unconfigured and cookie-injection contracts, and rewrites the long "used to/previously" rationale comments in fixtures.py, proxy.py, and plugin.py to lead with the invariant instead of the change history, per the comments review.
+Adds docstrings to the connect_client/workbench_client/pm_client fixtures stating their None-when-unconfigured and cookie-injection contracts, and rewrites the long "used to/previously" rationale comments in fixtures.py and proxy.py to lead with the invariant instead of the change history, per the comments review.
 
 Verified with `uvx ruff@0.15.0 check src/ selftests/ examples/ docker/`, `uv run --extra dev mypy src/vip`, `uv run pytest selftests/`, and `uv run pytest src/vip_tests/ --collect-only -q`; comment/docstring-only change.
 
-Files: src/vip/fixtures.py, src/vip/proxy.py, src/vip/plugin.py
+Files: src/vip/fixtures.py, src/vip/proxy.py
 Findings: comments#`connect_client`, `workbench_client`, `pm_client` fixtures have inline comments but no docstring; comments#Long "used to / previously" rationale comments in the three god-modules mix real invariants with change-history framing
 Depends on: rebases trivially if #627 lands first (comment-only edit; #627 also touches src/vip/plugin.py)
 
@@ -101,7 +101,7 @@ Depends on: none
 Branch: docs-remove-orphan-root-files
 Title: docs: delete orphaned root planning documents
 Body:
-Deletes CHRONICLE_TEST_PLAN.md, a scratch document that says in its own first line it should never have been committed, and IMPLEMENTATION_GUIDE.md, an orphaned planning doc that open PR #661 replaces with a short redirect stub before this PR lands, per the docs-hygiene review; both sit at the repo root next to README.md and AGENTS.md and read as current onboarding material even though neither is.
+Deletes CHRONICLE_TEST_PLAN.md, a scratch document that says in its own first line it should never have been committed, and IMPLEMENTATION_GUIDE.md, an orphaned planning doc that PR #661 replaced with a short redirect stub before this PR lands, per the docs-hygiene review; both sit at the repo root next to README.md and AGENTS.md and read as current onboarding material even though neither is.
 
 Verified with `uv run pytest selftests/ -v` and `uv run pytest src/vip_tests/ --collect-only -q` to confirm no import or doc-link references either file; history is preserved in git.
 
@@ -118,7 +118,9 @@ Deletes twenty implementation plans under thoughts/shared/plans/ that each targe
 
 Verified with `uv run pytest selftests/ -v` to confirm nothing in the test suite reads these plan files; history is preserved in git.
 
-Files: thoughts/shared/plans/2026-05-29-issue-298-custom-test-scaffolding.md, thoughts/shared/plans/2026-05-29-issue-301-workbench-in-session-execution.md, thoughts/shared/plans/2026-05-29-issue-302-workbench-jobs.md, thoughts/shared/plans/2026-05-29-issue-303-workbench-runtime-versions.md, thoughts/shared/plans/2026-05-29-issue-304-k8s-autoscaling-probes.md, thoughts/shared/plans/2026-05-29-issue-305-workbench-idle-session-auto-suspend.md, thoughts/shared/plans/2026-05-29-issue-306-workbench-git-ops.md, thoughts/shared/plans/2026-05-29-issue-307-workbench-to-connect-publishing.md, thoughts/shared/plans/2026-05-29-issue-308-workbench-small-gaps.md, thoughts/shared/plans/2026-06-01-issue-288-timeout-configuration.md, thoughts/shared/plans/2026-06-05-issue-344-error-summary-line-breaks.md, thoughts/shared/plans/2026-06-30-issue-409-robust-cicd-design.md, thoughts/shared/plans/2026-06-30-issue-410-better-version-gating-design.md, thoughts/shared/plans/2026-06-30-issue-411-remove-shiny-k8s-modes-design.md, thoughts/shared/plans/2026-07-08-issue-430-interactive-auth-headless-only.md, thoughts/shared/plans/2026-07-20-issue-484-workbench-parallel-design.md, thoughts/shared/plans/2026-07-20-issue-484-workbench-parallel-plan.md, thoughts/shared/plans/2026-07-21-issue-149-ci-integration-design.md, thoughts/shared/plans/2026-07-21-issue-149-ci-integration-plan.md, thoughts/shared/plans/2026-08-21-example-report-improvements.md
+Also rewrites three comments in .github/workflows/mock-idp-e2e.yml that cited plan files by path, two of them deleted here and one already missing, so each states its rationale inline with the issue number as the only pointer.
+
+Files: .github/workflows/mock-idp-e2e.yml, thoughts/shared/plans/2026-05-29-issue-298-custom-test-scaffolding.md, thoughts/shared/plans/2026-05-29-issue-301-workbench-in-session-execution.md, thoughts/shared/plans/2026-05-29-issue-302-workbench-jobs.md, thoughts/shared/plans/2026-05-29-issue-303-workbench-runtime-versions.md, thoughts/shared/plans/2026-05-29-issue-304-k8s-autoscaling-probes.md, thoughts/shared/plans/2026-05-29-issue-305-workbench-idle-session-auto-suspend.md, thoughts/shared/plans/2026-05-29-issue-306-workbench-git-ops.md, thoughts/shared/plans/2026-05-29-issue-307-workbench-to-connect-publishing.md, thoughts/shared/plans/2026-05-29-issue-308-workbench-small-gaps.md, thoughts/shared/plans/2026-06-01-issue-288-timeout-configuration.md, thoughts/shared/plans/2026-06-05-issue-344-error-summary-line-breaks.md, thoughts/shared/plans/2026-06-30-issue-409-robust-cicd-design.md, thoughts/shared/plans/2026-06-30-issue-410-better-version-gating-design.md, thoughts/shared/plans/2026-06-30-issue-411-remove-shiny-k8s-modes-design.md, thoughts/shared/plans/2026-07-08-issue-430-interactive-auth-headless-only.md, thoughts/shared/plans/2026-07-20-issue-484-workbench-parallel-design.md, thoughts/shared/plans/2026-07-20-issue-484-workbench-parallel-plan.md, thoughts/shared/plans/2026-07-21-issue-149-ci-integration-design.md, thoughts/shared/plans/2026-07-21-issue-149-ci-integration-plan.md, thoughts/shared/plans/2026-08-21-example-report-improvements.md
 Findings: docs-hygiene#Twenty implementation plans under thoughts/ target closed or merged work
 Depends on: none
 
@@ -261,7 +263,7 @@ Enables ruff's BLE001 (blind-except) rule and adds `# noqa: BLE001` to each of t
 
 Verified with `uvx ruff@0.15.0 check src/ selftests/ examples/ docker/` (clean with BLE001 enabled), `uv run --extra dev mypy src/vip`, `uv run pytest selftests/`, and `uv run pytest src/vip_tests/ --collect-only -q`; CI on this branch is green. Comment-only markers, no runtime behavior changes.
 
-Files: pyproject.toml, Found 121 errors., selftests/test_load_engine.py, src/vip_tests/connect/test_content_deploy.py, src/vip_tests/cross_product/test_resources.py, src/vip_tests/cross_product/test_ssl.py, src/vip_tests/helpers.py, src/vip_tests/performance/test_concurrency.py, src/vip_tests/performance/test_resource_usage.py, src/vip_tests/workbench/conftest.py, src/vip_tests/workbench/exec.py, src/vip_tests/workbench/test_auth.py, src/vip_tests/workbench/test_chronicle.py, src/vip_tests/workbench/test_git_ops.py, src/vip_tests/workbench/test_ide_extensions.py, src/vip_tests/workbench/test_ide_launch.py, src/vip_tests/workbench/test_jobs.py, src/vip_tests/workbench/test_publish_to_connect.py, src/vip_tests/workbench/test_runtime_versions.py, src/vip_tests/workbench/test_session_capacity_k8s.py, src/vip_tests/workbench/test_session_capacity.py, src/vip/auth.py, src/vip/cli.py, src/vip/clients/connect.py, src/vip/clients/workbench.py, src/vip/fixtures.py, src/vip/install/playwright.py, src/vip/load_engine.py, src/vip/load_users.py, src/vip/plugin.py, src/vip/proxy.py, src/vip/reporting.py, src/vip/workbench_ui.py
+Files: pyproject.toml, selftests/test_load_engine.py, src/vip_tests/connect/test_content_deploy.py, src/vip_tests/cross_product/test_resources.py, src/vip_tests/cross_product/test_ssl.py, src/vip_tests/helpers.py, src/vip_tests/performance/test_concurrency.py, src/vip_tests/performance/test_resource_usage.py, src/vip_tests/workbench/conftest.py, src/vip_tests/workbench/exec.py, src/vip_tests/workbench/test_auth.py, src/vip_tests/workbench/test_chronicle.py, src/vip_tests/workbench/test_git_ops.py, src/vip_tests/workbench/test_ide_extensions.py, src/vip_tests/workbench/test_ide_launch.py, src/vip_tests/workbench/test_jobs.py, src/vip_tests/workbench/test_publish_to_connect.py, src/vip_tests/workbench/test_runtime_versions.py, src/vip_tests/workbench/test_session_capacity_k8s.py, src/vip_tests/workbench/test_session_capacity.py, src/vip/auth.py, src/vip/cli.py, src/vip/clients/connect.py, src/vip/clients/workbench.py, src/vip/fixtures.py, src/vip/install/playwright.py, src/vip/load_engine.py, src/vip/load_users.py, src/vip/plugin.py, src/vip/proxy.py, src/vip/reporting.py, src/vip/workbench_ui.py
 Findings: typing-lint#Cheap, safe-to-enable-whole families; error-handling#`install/runner.py` carries a `noqa: BLE001` for a rule that is not enabled yet
 Depends on: none (marker lines rebase trivially over the wave 1a comment PRs that touch the same files)
 
@@ -296,7 +298,7 @@ Depends on: lint-small-families (shares pyproject.toml)
 Branch: lint-perf
 Title: chore(lint): enable PERF whole
 Body:
-Enables and fixes ruff's PERF family repo-wide, addressing the 14 flagged performance-anti-pattern sites, per the typing-lint review.
+Enables ruff's PERF family repo-wide and rewrites the six manual append loops it flags as list comprehensions, per the typing-lint review; the nine try/except-inside-a-loop sites (PERF203) are deliberately left as they are and the rule is ignored with a comment in pyproject.toml, because those loops must continue past a failing item and the per-iteration cost the rule flags disappears on Python 3.11+.
 
 Verified with `uvx ruff@0.15.0 check src/ selftests/ examples/ docker/`, `uv run pytest selftests/ -v`, and `uv run pytest src/vip_tests/ --collect-only -q`; CI on this branch is green.
 
@@ -309,7 +311,7 @@ Depends on: lint-pth (shares pyproject.toml)
 Branch: lint-pt
 Title: chore(lint): enable PT (pytest-style) whole
 Body:
-Enables and fixes ruff's PT family repo-wide (71 sites, 11 autofixable), aligning pytest idioms such as fixture and parametrize usage across the test suite, per the typing-lint review.
+Enables and fixes ruff's PT family repo-wide (66 sites, 11 autofixable), aligning pytest idioms such as fixture and parametrize usage across the test suite, per the typing-lint review.
 
 Verified with `uvx ruff@0.15.0 check src/ selftests/ examples/ docker/`, `uv run pytest selftests/ -v`, and `uv run pytest src/vip_tests/ --collect-only -q`; CI on this branch is green.
 
@@ -322,7 +324,7 @@ Depends on: lint-perf (shares pyproject.toml)
 Branch: lint-sim
 Title: chore(lint): enable SIM (simplify) whole
 Body:
-Enables and fixes ruff's SIM family repo-wide (80 sites), including turning 35 `try/except/pass` blocks into `contextlib.suppress`, per the typing-lint review.
+Enables and fixes ruff's SIM family repo-wide (45 sites: nested with statements, collapsible ifs, if-else-to-ternary, needless bools, and open() without a context manager), per the typing-lint review; SIM105 is ignored for now with a comment in pyproject.toml, because rewriting the 35 `try/except Exception: pass` blocks into `contextlib.suppress(Exception)` would remove the `# noqa: BLE001` markers that wave 2 uses to find and narrow every broad except, and the rule is re-enabled once that wave lands.
 
 Verified with `uvx ruff@0.15.0 check src/ selftests/ examples/ docker/`, `uv run pytest selftests/ -v`, and `uv run pytest src/vip_tests/ --collect-only -q`; CI on this branch is green.
 
@@ -361,7 +363,7 @@ Depends on: lint-pl-subset (shares pyproject.toml); comments-cli (shares src/vip
 Branch: lint-d-formatting
 Title: chore(lint): autofix pydocstyle formatting repo-wide
 Body:
-Enables ruff's D209/D413/D403/D202/D210 repo-wide and applies the autofix, correcting whitespace and capitalization on existing docstrings across all four linted directories with no content changes, per the typing-lint review.
+Enables ruff's D209/D413/D403/D202/D210 repo-wide and applies the autofix, correcting whitespace and capitalization on existing docstrings across the repository with no content changes, per the typing-lint review.
 
 Verified with `uvx ruff@0.15.0 check src/ selftests/ examples/ docker/`, `uv run pytest selftests/ -v`, and `uv run pytest src/vip_tests/ --collect-only -q`; CI on this branch is green.
 
@@ -374,7 +376,7 @@ Depends on: lint-arg-vip-only (shares pyproject.toml)
 Branch: lint-d-vip-docstrings
 Title: chore(lint): enable D101/D102/D103 for src/vip only
 Body:
-Enables ruff's D101/D102/D103 for src/vip only and adds the 92 missing docstrings the rule surfaces there, leaving src/vip_tests and selftests unselected since their 1621 hits are overwhelmingly `@scenario` stub functions where a docstring would be redundant with the Gherkin text or the test name, per the typing-lint review.
+Enables ruff's D101/D102/D103 for the framework and scripts only and adds the 90 missing docstrings the rules surface there, leaving src/vip_tests and selftests unselected since their 1621 hits are overwhelmingly `@scenario` stub functions where a docstring would be redundant with the Gherkin text or the test name, per the typing-lint review.
 
 Verified with `uvx ruff@0.15.0 check src/vip/`, `uv run --extra dev mypy src/vip`, and `uv run pytest selftests/ -v`; CI on this branch is green.
 
@@ -385,13 +387,13 @@ Depends on: lint-d-formatting (shares pyproject.toml and likely several src/vip/
 ## 1.29 lint-ruf-unused-noqa
 
 Branch: lint-ruf-unused-noqa
-Title: chore(lint): enable RUF100 last and delete two dead noqa comments
+Title: chore(lint): enable RUF100 last and delete 14 dead noqa comments
 Body:
-Enables ruff's RUF001/002/003/012/023/043/059 now and RUF100 (unused-noqa) last, after every family it references (ARG, B, BLE, D, N, PLC0415) has landed or been explicitly deferred, so `ruff --fix` doesn't delete `# noqa` comments that were pre-anchoring a rule this program enables later; deletes the two genuinely dead blanket noqas in test_auth_tls_e2e.py, per the typing-lint review's sequencing-trap finding.
+Enables ruff's RUF001/002/003/012/023/043/059 now and RUF100 (unused-noqa) last, after every family it references has landed or been explicitly deferred, so `ruff --fix` doesn't delete `# noqa` comments that were pre-anchoring a rule this program enables later, per the typing-lint review's sequencing-trap finding; deletes the 14 `# noqa` directives ruff now proves unused or pointing at rules that are per-file-ignored where they sit, annotates seven mutable class attributes as `ClassVar`, escapes two `pytest.raises(match=)` patterns that contained regex metacharacters, renames two unused unpacked variables, and sorts one `__slots__`.
 
 Verified with `uvx ruff@0.15.0 check src/ selftests/ examples/ docker/` and `uv run pytest selftests/ -v`; CI on this branch is green.
 
-Files: selftests/test_auth_tls_e2e.py
+Files: pyproject.toml and the ~24 sites listed by `uvx ruff@0.15.0 check --extend-select RUF100,RUF001,RUF002,RUF003,RUF012,RUF023,RUF043,RUF059 .`
 Findings: typing-lint#RUF100 (unused-noqa) will misfire until the families it references are enabled
 Depends on: lint-arg-vip-only, lint-small-families, lint-ble-enable-only, lint-d-vip-docstrings (all share pyproject.toml; also shares selftests/test_auth_tls_e2e.py with lint-small-families)
 
@@ -468,3 +470,18 @@ Depends on: typing-widen-mypy-scope (shares pyproject.toml); lint-arg-vip-only (
 ### Date-stamped empirical claim in a retry-match comment will go stale
 
 `src/vip_tests/connect/test_content_deploy.py:52-56` contains a comment beginning "Filed as insurance, not a fix for chronic pain: as of 2026-07-29, this will go stale as more runs accumulate: re-run `gh run list --workflow connect-smoke.yml`..." embedded in an otherwise well-reasoned 52-line comment block (lines 28-79) explaining a deliberately narrow retry-match pattern. The comment hands the reader a manual re-verification chore but nothing ever prompts that re-check. Months from now, a reader will either trust a rotted "fired exactly once" claim or have to rediscover this warning by reading 52 lines of comment first. The retry-match rationale itself is sound and does not need to change; only the empirical claim and its expiration warning should move out of the comment and into this issue (or a periodic-check reminder the team actually revisits), so the claim gets re-verified on a cadence instead of sitting in a comment nobody is prompted to reopen.
+
+## 1.34 ci-lint-repo-root
+
+Branch: ci-lint-repo-root
+Title: ci: lint the whole repo locally, matching what the ruff action checks
+Body:
+Points the justfile lint, format-check, lint-fix, and format recipes and AGENTS.md's documented ruff commands at the repo root instead of the four-directory list, because the ruff GitHub action appends the repo root to its arguments and therefore already lints scripts/ and every other Python file in CI; a clean local `just check` should mean a green CI lint job, and today it does not.
+
+Verified with `uvx ruff@0.15.0 check .` and `uvx ruff@0.15.0 format --check .` on main (clean after #680), `just check`, and `uv run pytest selftests/ -q`; CI on this branch is green.
+
+Also replaces AGENTS.md's hardcoded ruff rule list, stale since the lint ratchet began, with a pointer to the select list in pyproject.toml.
+
+Files: justfile, AGENTS.md
+Findings: discovered during 1.20 (#680 CI red on scripts/generate-feature-matrix.py S101); ci-tooling lens gap
+Depends on: none (Ian's open #656 edits the same justfile recipes to add --extra dev; rebase whichever lands second)
