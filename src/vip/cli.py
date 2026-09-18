@@ -815,10 +815,9 @@ def run_report(args: argparse.Namespace) -> None:
         # the source's sidecar across when it has one; otherwise remove the
         # stale local one, because no sidecar is a documented benign state
         # and a wrong one is a false tamper alarm.
-        src_sidecar = results_src.with_name(f"{results_src.name}.sha256")
         dest_sidecar = results_dest.with_name(f"{results_dest.name}.sha256")
         try:
-            _rehome_sidecar(src_sidecar, dest_sidecar, results_src.name, results_dest.name)
+            _rehome_sidecar(results_src, results_dest)
         except (OSError, UnicodeDecodeError) as exc:
             # UnicodeDecodeError as well as OSError: _rehome_sidecar reads with
             # encoding="utf-8-sig" and a corrupt sidecar would otherwise reach the
@@ -1693,70 +1692,43 @@ def _resolve_trace_format(explicit: str | None, out: Path | None) -> str:
     return explicit
 
 
-def _rehome_sidecar(src: Path, dest: Path, src_name: str, dest_name: str) -> None:
+def _rehome_sidecar(results_src: Path, results_dest: Path) -> None:
     """Move a checksum sidecar alongside a copied results file.
 
-    The digest is carried across unchanged -- recomputing it from the copy
-    would launder a tampered file into a verified one, which is the opposite
-    of what the sidecar is for. Only the recorded filename is rewritten, so a
-    source named run-42.json still verifies once copied to results.json.
+    A sidecar that verifies its source is rewritten as the one line VIP
+    writes, under the destination name, so a source called run-42.json still
+    verifies once copied to results.json. Writing the verified digest is not
+    the same as recomputing one from the copy: the digest went through
+    ``verify_results_checksum`` against the source bytes first, so a tampered
+    file never reaches this branch to be laundered into a verified one.
 
-    No source sidecar means the stale destination one is removed rather than
-    left behind: no sidecar is a documented benign state, a wrong one is a
-    false tamper alarm.
+    A sidecar that does *not* verify its source is copied through untouched
+    instead, so the destination reports the same problem the source had. The
+    rehome has no authority to resolve a disagreement the source could not,
+    and quietly deleting the sidecar would hide it.
 
-    Exact-name precedence is preserved across the rehome, because the
-    destination sidecar must never record two different digests under the
-    destination name. A source that names both ``results.json`` and
-    ``archive/results.json`` used to rewrite *both* lines, so the copy said
-    two things about one file and ``verify_results_checksum`` picked whichever
-    one agreed. Rewrite the exact matches when there are any; fall back to the
-    basename otherwise, using the same distinct-digest rule
-    ``verify_results_checksum`` applies: several basename matches that all
-    carry the same digest (compared case-insensitively) are unambiguous and
-    are rewritten together, same as a single match. Basename matches that
-    disagree on the digest are left alone -- the source never had the
-    authority to say which one describes the destination, so the copy does
-    not invent it, and verification reports that rather than guessing.
+    No source sidecar, or one with nothing in it, means the stale destination
+    one is removed rather than left behind: no sidecar is a documented benign
+    state, a wrong one is a false tamper alarm.
     """
-    from vip.traceability import sidecar_basename
+    import shutil
 
+    from vip.traceability import ResultsIntegrityError, verify_results_checksum
+
+    src = results_src.with_name(f"{results_src.name}.sha256")
+    dest = results_dest.with_name(f"{results_dest.name}.sha256")
     if not src.is_file():
         dest.unlink(missing_ok=True)
         return
-    parsed: list[tuple[str, str, str | None]] = []
-    for line in src.read_text(encoding="utf-8-sig").splitlines():
-        parts = line.split(None, 1)
-        if not parts:
-            continue
-        recorded = parts[1].strip().lstrip("*") if len(parts) > 1 else None
-        parsed.append((line, parts[0], recorded))
-
-    # A bare digest counts as an exact entry: it names no other file, so it
-    # can only be describing the one being copied.
-    rewrite = {i for i, (_, _, r) in enumerate(parsed) if r is None or r == src_name}
-    if not rewrite:
-        # Compare basenames, not the raw recorded name. A sidecar generated
-        # from a parent directory records a path, and copying that line
-        # through verbatim produces a rehomed sidecar that then fails
-        # verification at the destination -- the false tamper alarm this
-        # function exists to prevent.
-        src_base = sidecar_basename(src_name)
-        matches = [i for i, (_, _, r) in enumerate(parsed) if r and sidecar_basename(r) == src_base]
-        distinct = {parsed[i][1].lower() for i in matches}
-        rewrite = set(matches) if len(distinct) == 1 else set()
-    lines = [
-        f"{digest}  {dest_name}" if i in rewrite else raw
-        for i, (raw, digest, _) in enumerate(parsed)
-    ]
-    if not lines:
-        # A source that parses to zero entries (whitespace-only, truncated)
-        # would otherwise produce an empty destination sidecar, which
-        # verify_results_checksum refuses as the truncated-upload case. No
-        # sidecar is the documented benign state, so produce that instead.
-        dest.unlink(missing_ok=True)
+    try:
+        digest, _ = verify_results_checksum(results_src)
+    except ResultsIntegrityError:
+        if src.read_text(encoding="utf-8-sig").split():
+            shutil.copy2(src, dest)
+        else:
+            dest.unlink(missing_ok=True)
         return
-    dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    dest.write_text(f"{digest}  {results_dest.name}\n", encoding="utf-8")
 
 
 def run_trace(args: argparse.Namespace) -> None:

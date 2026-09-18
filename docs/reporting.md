@@ -133,11 +133,14 @@ Verify it with:
 shasum -a 256 -c results.json.sha256
 ```
 
-The recorded filename is matched on its exact value first, then on its basename.
-A sidecar generated from a directory above the results file records the path it
-was given (`<digest>  report/results.json`) and still verifies. A multi-file
-sidecar that names the file exactly keeps the stricter exact match, so it cannot
-be satisfied by a same-named file in another directory.
+One line is the whole accepted grammar. A sidecar generated from a directory
+above the results file records the path it was given (`<digest>
+report/results.json`) and still verifies, because the recorded name is compared
+on its basename, and uppercase hex from PowerShell's `Get-FileHash` verifies too.
+A sidecar covering several files (`shasum -a 256 a b > s`) is refused rather than
+searched for the matching line: choosing among entries needs tie-break rules
+nothing here produces, and choosing wrong attests to a different artifact.
+Regenerate it for `results.json` alone, or delete it to skip verification.
 
 This is tamper-evidence within a trusted pipeline, not tamper-proofing. Anyone who
 can edit `results.json` can also regenerate the sidecar to match, so it does not

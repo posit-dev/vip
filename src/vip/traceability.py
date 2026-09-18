@@ -630,10 +630,15 @@ def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
     ``sidecar_present`` to distinguish "verified" from "nothing to verify"
     rather than treating both as the same success.
 
-    Also raises when the entries selected for this file disagree with each
-    other: a sidecar that records two different digests under the same name
-    cannot attest to anything, so accepting the file because one of them
-    happens to match would be a false attestation.
+    VIP writes one line, ``<digest>  results.json``, and that single-entry
+    shape is the whole accepted grammar. A multi-file sidecar
+    (``shasum -a 256 a b > s``) is refused rather than searched for a matching
+    line: deciding which of several entries describes this file needs
+    tie-break rules that nothing in VIP produces, and getting them wrong
+    produces a false attestation in the field whose only job is to attest.
+    The two tolerances that stay are the ones an operator hits by accident --
+    a recorded path instead of a bare name, from running shasum a directory
+    up, and uppercase hex from PowerShell's Get-FileHash.
 
     This is tamper-evidence within a trusted pipeline, not tamper-proofing --
     anyone who can edit the results file can regenerate the sidecar. It catches
@@ -661,58 +666,30 @@ def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
             "Delete it to proceed without verification, or regenerate it."
         )
 
-    # Match on the recorded filename rather than taking the first line. A
-    # sidecar may legitimately cover several files (`shasum -a 256 a b > s`),
-    # and without this the first line's digest is compared against a file it
-    # does not describe -- a mismatch on a good file, or, when the digests
-    # happen to agree, `results_sha256_sidecar_verified: true` attesting to a
-    # comparison against some other file entirely.
-    named = [d for d, name in entries if name == p.name]
-    if not named:
-        # Fall back to comparing basenames. `shasum -a 256 report/results.json`
-        # run from a directory above the file records the path it was given
-        # rather than the bare name, and refusing that sidecar reads to an
-        # operator as a tamper alarm on a file nobody touched. Exact match
-        # stays the primary key, so a multi-file sidecar that already names
-        # this file exactly never reaches here and keeps its strict behaviour.
-        named = [d for d, name in entries if name and sidecar_basename(name) == p.name]
-    if not named:
-        if len(entries) == 1 and entries[0][1] is None:
-            # A bare digest with no filename: nothing to disagree with.
-            named = [entries[0][0]]
-        else:
-            recorded_names = ", ".join(sorted({n or "<unnamed>" for _, n in entries}))
-            raise ResultsIntegrityError(
-                f"checksum sidecar {sidecar} does not record an entry for {p.name}; "
-                f"it names {recorded_names}. Regenerate it, or delete it to proceed "
-                "without verification."
-            )
-
-    # A sidecar must never say two different things about one file. Several
-    # selected entries carrying *different* digests means one of them is
-    # describing some other artifact, and accepting the file because *any* of
-    # them agrees turns the sidecar into an attestation about a file it does
-    # not describe -- the exact false attestation the recorded-name match
-    # above exists to prevent, reintroduced through the basename fallback (or
-    # through a rehomed sidecar that ended up with two same-named lines).
-    # Several entries agreeing on one digest is not ambiguous and still
-    # verifies: `shasum` run twice, or a rehomed line beside its original,
-    # says the same thing twice.
-    distinct = {d.lower() for d in named}
-    if len(distinct) > 1:
-        listed = ", ".join(sorted(distinct))
+    if len(entries) > 1:
         raise ResultsIntegrityError(
-            f"checksum sidecar {sidecar} records {len(distinct)} different digests for "
-            f"{p.name} ({listed}); it cannot say which one describes this file. "
-            "Regenerate it, or delete it to proceed without verification."
+            f"checksum sidecar {sidecar} records {len(entries)} entries; expected one. "
+            f"Regenerate it for {p.name} alone, or delete it to proceed without "
+            "verification."
         )
 
+    recorded, name = entries[0]
+    # The recorded name is compared on its basename. `shasum -a 256
+    # report/results.json` run from a directory above records the path it was
+    # given, and refusing that reads to an operator as a tamper alarm on a
+    # file nobody touched. A bare digest names nothing, so there is nothing to
+    # disagree with.
+    if name is not None and sidecar_basename(name) != p.name:
+        raise ResultsIntegrityError(
+            f"checksum sidecar {sidecar} records an entry for {name}, not {p.name}. "
+            "Regenerate it, or delete it to proceed without verification."
+        )
     # Case-insensitive: hex is hex. PowerShell's Get-FileHash and 7-Zip emit
     # uppercase, and rejecting those as a mismatch reads to an operator as
     # "this evidence file was tampered with" over nothing but letter case.
-    if not any(d.lower() == digest for d in named):
+    if recorded.lower() != digest:
         raise ResultsIntegrityError(
-            f"checksum mismatch for {p}: sidecar records {named[0]}, file hashes to {digest}"
+            f"checksum mismatch for {p}: sidecar records {recorded}, file hashes to {digest}"
         )
     return digest, True
 
@@ -730,9 +707,10 @@ def sidecar_basename(name: str) -> str:
 def _parse_sidecar(text: str) -> list[tuple[str, str | None]]:
     """Parse shasum-format lines into ``(digest, filename or None)`` pairs.
 
-    One entry per line, not a flat ``.split()`` over the whole file: a
-    multi-file sidecar flattened that way puts the second file's digest where
-    a filename belongs and compares the wrong pair.
+    Returns every line so the caller can refuse a multi-entry sidecar by
+    count. Parsing per line rather than with a flat ``.split()`` over the
+    whole file is what makes that count right: flattened, a two-file sidecar
+    reads as a single entry whose "filename" is the second file's digest.
     """
     entries: list[tuple[str, str | None]] = []
     for line in text.splitlines():

@@ -104,19 +104,11 @@ class TestSidecarParsing:
         )
         assert verify_results_checksum(p) == (digest, True)
 
-    def test_multi_file_sidecar_matches_the_right_line(self, tmp_path):
-        """A flat .split() would compare the first line's digest to this file."""
-        p, digest = self._results(tmp_path)
-        p.with_name("results.json.sha256").write_text(
-            f"{'0' * 64}  failures.json\n{digest}  results.json\n"
-        )
-        assert verify_results_checksum(p) == (digest, True)
-
     def test_sidecar_naming_a_different_file_is_refused(self, tmp_path):
         """The false-attestation case: matching digest, wrong file."""
         p, digest = self._results(tmp_path)
         p.with_name("results.json.sha256").write_text(f"{digest}  totally_other.json\n")
-        with pytest.raises(ResultsIntegrityError, match="does not record an entry"):
+        with pytest.raises(ResultsIntegrityError, match="records an entry for"):
             verify_results_checksum(p)
 
     def test_bare_digest_without_a_filename_still_verifies(self, tmp_path):
@@ -141,29 +133,16 @@ class TestSidecarParsing:
         p.with_name("results.json.sha256").write_text(f"{digest}  report\\results.json\n")
         assert verify_results_checksum(p) == (digest, True)
 
-    def test_exact_match_still_wins_over_a_basename_collision(self, tmp_path):
-        """Exact match is the primary key: a basename fallback must not widen it.
 
-        The exact-name line carries a wrong digest and the path-qualified line
-        carries the right one. Correct behaviour stops at the exact match and
-        reports a mismatch. An implementation that ran the fallback
-        unconditionally would union both digests and wrongly verify.
-        """
-        p, digest = self._results(tmp_path)
-        p.with_name("results.json.sha256").write_text(
-            f"{'0' * 64}  results.json\n{digest}  archive/results.json\n"
-        )
-        with pytest.raises(ResultsIntegrityError, match="checksum mismatch"):
-            verify_results_checksum(p)
+class TestMultiEntrySidecar:
+    """VIP writes one line, and one line is the whole accepted grammar.
 
-
-class TestSidecarAmbiguity:
-    """A sidecar must never say two different things about one file.
-
-    Both selection paths -- the exact recorded name and the basename fallback
-    -- can collect several entries. Accepting the file because *any* of them
-    agrees means the attestation may describe a different artifact entirely,
-    which is the false attestation the recorded-name match exists to prevent.
+    Picking a line out of several needs tie-break rules -- exact name over
+    basename, agreeing digests over disagreeing ones -- that nothing in VIP
+    produces a sidecar to exercise. Getting one wrong verifies the file
+    against an entry describing some other artifact, which is a false
+    attestation in the one field whose only job is to attest. Refusing the
+    shape outright is the answer that cannot be wrong in that direction.
     """
 
     def _results(self, tmp_path):
@@ -171,22 +150,21 @@ class TestSidecarAmbiguity:
         p.write_text('{"schema_version": "1.0", "results": []}', encoding="utf-8")
         return p, hashlib.sha256(p.read_bytes()).hexdigest()
 
-    def test_two_path_qualified_entries_disagreeing_are_refused(self, tmp_path):
-        """The basename fallback must not verify against whichever line agrees."""
+    def test_a_second_entry_is_refused_even_when_one_line_matches(self, tmp_path):
         p, digest = self._results(tmp_path)
         p.with_name("results.json.sha256").write_text(
-            f"{digest}  archive/results.json\n{'0' * 64}  nightly/results.json\n"
+            f"{'0' * 64}  failures.json\n{digest}  results.json\n"
         )
-        with pytest.raises(ResultsIntegrityError, match="different digests"):
+        with pytest.raises(ResultsIntegrityError, match="records 2 entries"):
             verify_results_checksum(p)
 
-    def test_two_exact_entries_disagreeing_are_refused(self, tmp_path):
-        """A rehomed sidecar that grew a second same-named line is caught here."""
+    def test_a_second_entry_is_refused_even_when_the_two_agree(self, tmp_path):
+        """Saying the same thing twice is still not the shape VIP writes."""
         p, digest = self._results(tmp_path)
         p.with_name("results.json.sha256").write_text(
-            f"{'0' * 64}  results.json\n{digest}  results.json\n"
+            f"{digest}  results.json\n{digest.upper()}  results.json\n"
         )
-        with pytest.raises(ResultsIntegrityError, match="different digests"):
+        with pytest.raises(ResultsIntegrityError, match="records 2 entries"):
             verify_results_checksum(p)
 
     def test_the_message_says_how_to_proceed(self, tmp_path):
@@ -198,25 +176,6 @@ class TestSidecarAmbiguity:
             verify_results_checksum(p)
         assert "Regenerate it" in str(exc.value)
         assert "delete it" in str(exc.value)
-
-    def test_entries_that_agree_are_not_ambiguous(self, tmp_path):
-        """Saying the same thing twice is not a disagreement.
-
-        Case and path qualification both vary, because hex case is not a
-        mismatch and a path-qualified line describes the same file.
-        """
-        p, digest = self._results(tmp_path)
-        p.with_name("results.json.sha256").write_text(
-            f"{digest}  archive/results.json\n{digest.upper()}  nightly/results.json\n"
-        )
-        assert verify_results_checksum(p) == (digest, True)
-
-    def test_agreeing_exact_entries_still_verify(self, tmp_path):
-        p, digest = self._results(tmp_path)
-        p.with_name("results.json.sha256").write_text(
-            f"{digest}  results.json\n{digest.upper()}  results.json\n"
-        )
-        assert verify_results_checksum(p) == (digest, True)
 
 
 class TestStaleSidecarInvalidation:
@@ -254,12 +213,32 @@ class TestReportSidecarRehoming:
         dest = tmp_path / "out" / "results.json"
         dest.parent.mkdir()
         shutil.copy2(src, dest)
-        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
+        _rehome_sidecar(src, dest)
 
         assert verify_results_checksum(dest) == (digest, True)
 
-    def test_digest_is_carried_not_recomputed(self, tmp_path):
-        """Recomputing would launder a tampered file into a verified one."""
+    def test_an_uppercase_source_digest_is_rehomed(self, tmp_path):
+        """Get-FileHash emits uppercase; the rehomed line is still verifiable."""
+        src = tmp_path / "run-42.json"
+        src.write_text('{"results": []}', encoding="utf-8")
+        digest = hashlib.sha256(src.read_bytes()).hexdigest()
+        self._sidecar_for(src).write_text(f"{digest.upper()}  run-42.json\n", encoding="utf-8")
+
+        dest = tmp_path / "out" / "results.json"
+        dest.parent.mkdir()
+        shutil.copy2(src, dest)
+        _rehome_sidecar(src, dest)
+
+        assert verify_results_checksum(dest) == (digest, True)
+
+    def test_a_source_that_does_not_verify_is_preserved_not_laundered(self, tmp_path):
+        """Writing the verified digest must not become recomputing an unverified one.
+
+        The source file does not hash to what its sidecar records. Rewriting
+        the line from the copy's own bytes would turn a tampered file into a
+        verified one; the rehome instead passes the disagreement through, so
+        the destination reports exactly what the source would have.
+        """
         src = tmp_path / "results.json"
         src.write_text("tampered", encoding="utf-8")
         self._sidecar_for(src).write_text(f"{'0' * 64}  results.json\n", encoding="utf-8")
@@ -267,17 +246,35 @@ class TestReportSidecarRehoming:
         dest = tmp_path / "out" / "results.json"
         dest.parent.mkdir()
         shutil.copy2(src, dest)
-        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
+        _rehome_sidecar(src, dest)
 
         with pytest.raises(ResultsIntegrityError, match="checksum mismatch"):
             verify_results_checksum(dest)
 
+    def test_a_multi_entry_source_is_preserved_not_resolved(self, tmp_path):
+        """The rehome has no authority the source lacked."""
+        src = tmp_path / "results.json"
+        src.write_text('{"results": []}', encoding="utf-8")
+        digest = hashlib.sha256(src.read_bytes()).hexdigest()
+        self._sidecar_for(src).write_text(
+            f"{'0' * 64}  failures.json\n{digest}  results.json\n", encoding="utf-8"
+        )
+
+        dest = tmp_path / "out" / "results.json"
+        dest.parent.mkdir()
+        shutil.copy2(src, dest)
+        _rehome_sidecar(src, dest)
+
+        with pytest.raises(ResultsIntegrityError, match="records 2 entries"):
+            verify_results_checksum(dest)
+
     def test_missing_source_sidecar_removes_the_stale_destination_one(self, tmp_path):
+        src = tmp_path / "absent.json"
         dest = tmp_path / "results.json"
         dest.write_text('{"results": []}', encoding="utf-8")
         self._sidecar_for(dest).write_text(f"{'0' * 64}  results.json\n", encoding="utf-8")
 
-        _rehome_sidecar(tmp_path / "absent.json.sha256", self._sidecar_for(dest), "a", dest.name)
+        _rehome_sidecar(src, dest)
 
         assert not self._sidecar_for(dest).exists()
         _, present = verify_results_checksum(dest)
@@ -293,7 +290,7 @@ class TestReportSidecarRehoming:
         dest = tmp_path / "out" / "results.json"
         dest.parent.mkdir()
         shutil.copy2(src, dest)
-        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
+        _rehome_sidecar(src, dest)
 
         assert self._sidecar_for(dest).read_text().split()[1] == "results.json"
         assert verify_results_checksum(dest) == (digest, True)
@@ -308,99 +305,11 @@ class TestReportSidecarRehoming:
         dest.parent.mkdir()
         shutil.copy2(src, dest)
         self._sidecar_for(dest).write_text(f"{'0' * 64}  results.json\n", encoding="utf-8")
-        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
+        _rehome_sidecar(src, dest)
 
         assert not self._sidecar_for(dest).exists()
         _, present = verify_results_checksum(dest)
         assert present is False
-
-    def test_a_basename_collision_does_not_produce_two_destination_entries(self, tmp_path):
-        """Exact-name precedence has to survive the rehome, not just verification.
-
-        Rewriting every basename match turned one wrong exact entry plus one
-        right path-qualified entry into two `results.json` lines, and
-        verification's exact-match branch then found both and accepted the
-        agreeable one -- defeating the precedence
-        test_exact_match_still_wins_over_a_basename_collision protects.
-        """
-        src = tmp_path / "results.json"
-        src.write_text('{"results": []}', encoding="utf-8")
-        digest = hashlib.sha256(src.read_bytes()).hexdigest()
-        self._sidecar_for(src).write_text(
-            f"{'0' * 64}  results.json\n{digest}  archive/results.json\n", encoding="utf-8"
-        )
-
-        dest = tmp_path / "out" / "results.json"
-        dest.parent.mkdir()
-        shutil.copy2(src, dest)
-        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
-
-        rehomed = self._sidecar_for(dest).read_text().splitlines()
-        named = [line for line in rehomed if line.split(None, 1)[1].strip() == "results.json"]
-        assert len(named) == 1, f"the rehome invented a second results.json entry: {rehomed}"
-        with pytest.raises(ResultsIntegrityError, match="checksum mismatch"):
-            verify_results_checksum(dest)
-
-    def test_several_basename_matches_with_no_exact_entry_are_left_alone(self, tmp_path):
-        """The source never said which one describes the destination."""
-        src = tmp_path / "run-42.json"
-        src.write_text('{"results": []}', encoding="utf-8")
-        digest = hashlib.sha256(src.read_bytes()).hexdigest()
-        self._sidecar_for(src).write_text(
-            f"{digest}  archive/run-42.json\n{'0' * 64}  nightly/run-42.json\n", encoding="utf-8"
-        )
-
-        dest = tmp_path / "out" / "results.json"
-        dest.parent.mkdir()
-        shutil.copy2(src, dest)
-        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
-
-        assert "results.json" not in self._sidecar_for(dest).read_text()
-        with pytest.raises(ResultsIntegrityError, match="does not record an entry"):
-            verify_results_checksum(dest)
-
-    def test_several_basename_matches_that_agree_are_rehomed(self, tmp_path):
-        """Several basename matches with the *same* digest are unambiguous.
-
-        This mirrors verify_results_checksum's distinct-digest rule: several
-        entries agreeing on one digest is not ambiguous, even though the
-        basename fallback found more than one match.
-        """
-        src = tmp_path / "run-42.json"
-        src.write_text('{"results": []}', encoding="utf-8")
-        digest = hashlib.sha256(src.read_bytes()).hexdigest()
-        self._sidecar_for(src).write_text(
-            f"{digest}  archive/run-42.json\n{digest}  nightly/run-42.json\n", encoding="utf-8"
-        )
-
-        dest = tmp_path / "out" / "results.json"
-        dest.parent.mkdir()
-        shutil.copy2(src, dest)
-        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
-
-        assert verify_results_checksum(dest) == (digest, True)
-
-    def test_several_basename_matches_that_agree_case_insensitively_are_rehomed(self, tmp_path):
-        """Digest comparison is case-insensitive, matching verify_results_checksum.
-
-        PowerShell's Get-FileHash and 7-Zip emit uppercase hex; a sidecar
-        mixing an uppercase and a lowercase rendering of the same digest must
-        not be treated as disagreement.
-        """
-        src = tmp_path / "run-42.json"
-        src.write_text('{"results": []}', encoding="utf-8")
-        digest = hashlib.sha256(src.read_bytes()).hexdigest()
-        self._sidecar_for(src).write_text(
-            f"{digest.upper()}  archive/run-42.json\n{digest}  nightly/run-42.json\n",
-            encoding="utf-8",
-        )
-
-        dest = tmp_path / "out" / "results.json"
-        dest.parent.mkdir()
-        shutil.copy2(src, dest)
-        _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
-
-        assert verify_results_checksum(dest) == (digest, True)
 
     def test_undecodable_source_raises_unicode_error_for_the_caller(self, tmp_path):
         """The call site catches this; it must not escape as a bare traceback."""
@@ -410,5 +319,6 @@ class TestReportSidecarRehoming:
 
         dest = tmp_path / "out" / "results.json"
         dest.parent.mkdir()
+        shutil.copy2(src, dest)
         with pytest.raises(UnicodeDecodeError):
-            _rehome_sidecar(self._sidecar_for(src), self._sidecar_for(dest), src.name, dest.name)
+            _rehome_sidecar(src, dest)
