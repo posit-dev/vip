@@ -143,6 +143,7 @@ Registered in `src/vip/plugin.py` (`pytest_configure`):
 | `min_version(product, version)` | Skip when `product` is below `version`. |
 | `if_applicable` | Skip when the related feature is not configured. |
 | `api_auth` | Test requires only an API key, not browser credentials (relevant under `--api-auth`/`--no-auth`). |
+| `control(id)` | The compliance control this scenario evidences, for `vip trace`. Write it as a Gherkin tag -- `@control-11-10-a` becomes `control("11-10-a")` -- rather than applying the marker yourself. Any id works, including one pytest could not use as a marker name. |
 | `rstudio` | Workbench RStudio IDE scenario. |
 | `vscode` | Workbench VS Code IDE scenario. |
 | `jupyter` | Workbench JupyterLab IDE scenario. |

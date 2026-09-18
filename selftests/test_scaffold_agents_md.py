@@ -99,3 +99,20 @@ def test_agents_md_markers_all_resolve_in_plugin():
     assert not missing, (
         f"AGENTS.md documents markers that don't exist in src/vip/plugin.py: {sorted(missing)}"
     )
+
+
+def test_every_registered_marker_is_documented():
+    """The other direction, which the assertion above cannot catch.
+
+    AGENTS.md is described to extension authors as the inventory of markers
+    they may rely on, so a marker VIP registers and AGENTS.md omits is the
+    drift that costs them something: they cannot use what they are not told
+    about. Checked without an exemption list on purpose -- there is currently
+    no marker deliberately kept out of the table, and adding one should be a
+    decision someone makes here rather than an omission nothing notices.
+    """
+    undocumented = _real_marker_names() - _agents_md_marker_names()
+    assert not undocumented, (
+        "src/vip/plugin.py registers markers that examples/_shared/AGENTS.md "
+        f"does not document: {sorted(undocumented)}"
+    )
