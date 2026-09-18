@@ -231,13 +231,12 @@ class TestReportSidecarRehoming:
 
         assert verify_results_checksum(dest) == (digest, True)
 
-    def test_a_source_that_does_not_verify_is_preserved_not_laundered(self, tmp_path):
+    def test_a_source_that_does_not_verify_carries_nothing_across(self, tmp_path):
         """Writing the verified digest must not become recomputing an unverified one.
 
-        The source file does not hash to what its sidecar records. Rewriting
-        the line from the copy's own bytes would turn a tampered file into a
-        verified one; the rehome instead passes the disagreement through, so
-        the destination reports exactly what the source would have.
+        The source file does not hash to what its sidecar records, so there
+        is no attestation to carry. Rewriting the line from the copy's own
+        bytes would turn a tampered file into a verified one.
         """
         src = tmp_path / "results.json"
         src.write_text("tampered", encoding="utf-8")
@@ -246,12 +245,12 @@ class TestReportSidecarRehoming:
         dest = tmp_path / "out" / "results.json"
         dest.parent.mkdir()
         shutil.copy2(src, dest)
-        _rehome_sidecar(src, dest)
+        reason = _rehome_sidecar(src, dest)
 
-        with pytest.raises(ResultsIntegrityError, match="checksum mismatch"):
-            verify_results_checksum(dest)
+        assert "checksum mismatch" in reason
+        assert not self._sidecar_for(dest).exists()
 
-    def test_a_multi_entry_source_is_preserved_not_resolved(self, tmp_path):
+    def test_a_multi_entry_source_carries_nothing_across(self, tmp_path):
         """The rehome has no authority the source lacked."""
         src = tmp_path / "results.json"
         src.write_text('{"results": []}', encoding="utf-8")
@@ -263,10 +262,34 @@ class TestReportSidecarRehoming:
         dest = tmp_path / "out" / "results.json"
         dest.parent.mkdir()
         shutil.copy2(src, dest)
-        _rehome_sidecar(src, dest)
+        reason = _rehome_sidecar(src, dest)
 
-        with pytest.raises(ResultsIntegrityError, match="records 2 entries"):
-            verify_results_checksum(dest)
+        assert "records 2 entries" in reason
+        assert not self._sidecar_for(dest).exists()
+
+    def test_a_rename_must_not_repair_a_sidecar_that_named_another_file(self, tmp_path):
+        """The case that makes copying an unverified sidecar through unsafe.
+
+        The sidecar records the source's *correct* digest, but under the name
+        `results.json`, so it does not describe the source `run-42.json` and
+        verification refuses it. Copied verbatim beside the destination -- which
+        is called results.json -- that same sidecar verifies. A sidecar that
+        attested to nothing at the source would have become a passing
+        attestation at the destination purely by being moved.
+        """
+        src = tmp_path / "run-42.json"
+        src.write_text('{"results": []}', encoding="utf-8")
+        digest = hashlib.sha256(src.read_bytes()).hexdigest()
+        self._sidecar_for(src).write_text(f"{digest}  results.json\n", encoding="utf-8")
+
+        dest = tmp_path / "out" / "results.json"
+        dest.parent.mkdir()
+        shutil.copy2(src, dest)
+        reason = _rehome_sidecar(src, dest)
+
+        assert "records an entry for results.json" in reason
+        assert not self._sidecar_for(dest).exists()
+        assert verify_results_checksum(dest) == (digest, False)
 
     def test_missing_source_sidecar_removes_the_stale_destination_one(self, tmp_path):
         src = tmp_path / "absent.json"
@@ -311,8 +334,12 @@ class TestReportSidecarRehoming:
         _, present = verify_results_checksum(dest)
         assert present is False
 
-    def test_undecodable_source_raises_unicode_error_for_the_caller(self, tmp_path):
-        """The call site catches this; it must not escape as a bare traceback."""
+    def test_an_undecodable_source_is_reported_not_raised(self, tmp_path):
+        """A corrupt sidecar must not reach the user as a bare traceback.
+
+        verify_results_checksum turns the UnicodeDecodeError on this read into
+        a ResultsIntegrityError, so it arrives as a reason like any other.
+        """
         src = tmp_path / "results.json"
         src.write_text('{"results": []}', encoding="utf-8")
         self._sidecar_for(src).write_bytes(b"\xff\xfe\x00\x00 not utf-8")
@@ -320,5 +347,7 @@ class TestReportSidecarRehoming:
         dest = tmp_path / "out" / "results.json"
         dest.parent.mkdir()
         shutil.copy2(src, dest)
-        with pytest.raises(UnicodeDecodeError):
-            _rehome_sidecar(src, dest)
+        reason = _rehome_sidecar(src, dest)
+
+        assert "could not read checksum sidecar" in reason
+        assert not self._sidecar_for(dest).exists()

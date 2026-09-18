@@ -817,13 +817,21 @@ def run_report(args: argparse.Namespace) -> None:
         # and a wrong one is a false tamper alarm.
         dest_sidecar = results_dest.with_name(f"{results_dest.name}.sha256")
         try:
-            _rehome_sidecar(results_src, results_dest)
-        except (OSError, UnicodeDecodeError) as exc:
-            # UnicodeDecodeError as well as OSError: _rehome_sidecar reads with
-            # encoding="utf-8-sig" and a corrupt sidecar would otherwise reach the
-            # user as a traceback. verify_results_checksum already catches both on
-            # the identical read, and the two paths should agree.
+            unattested = _rehome_sidecar(results_src, results_dest)
+        except OSError as exc:
             print(f"Warning: could not update {dest_sidecar}: {exc}", file=sys.stderr)
+        else:
+            if unattested:
+                # Not an error: a plain `vip report` renders whatever it is
+                # given, and `--controls` already exited above on this input.
+                # But the operator asked to copy a file whose sidecar does not
+                # describe it, so say so here rather than let it surface later
+                # as a tamper alarm from `vip trace` on the copy.
+                print(
+                    f"Warning: the checksum sidecar beside {results_src} does not "
+                    f"verify it ({unattested}) Copied {results_dest.name} without one.",
+                    file=sys.stderr,
+                )
     elif not results_dest.exists():
         print(
             f"Error: no results found at {results_dest}. "
@@ -1680,8 +1688,13 @@ def _resolve_trace_format(explicit: str | None, out: Path | None) -> str:
     return explicit
 
 
-def _rehome_sidecar(results_src: Path, results_dest: Path) -> None:
+def _rehome_sidecar(results_src: Path, results_dest: Path) -> str | None:
     """Move a checksum sidecar alongside a copied results file.
+
+    Returns ``None`` when the destination ends up with the attestation the
+    source had, or the reason there was none to carry, which the caller
+    reports. A stale destination sidecar is always removed either way: no
+    sidecar is a documented benign state, a wrong one is a false tamper alarm.
 
     A sidecar that verifies its source is rewritten as the one line VIP
     writes, under the destination name, so a source called run-42.json still
@@ -1690,33 +1703,30 @@ def _rehome_sidecar(results_src: Path, results_dest: Path) -> None:
     ``verify_results_checksum`` against the source bytes first, so a tampered
     file never reaches this branch to be laundered into a verified one.
 
-    A sidecar that does *not* verify its source is copied through untouched
-    instead, so the destination reports the same problem the source had. The
-    rehome has no authority to resolve a disagreement the source could not,
-    and quietly deleting the sidecar would hide it.
-
-    No source sidecar, or one with nothing in it, means the stale destination
-    one is removed rather than left behind: no sidecar is a documented benign
-    state, a wrong one is a false tamper alarm.
+    A sidecar that does *not* verify its source attested to nothing, so
+    nothing is carried across. Copying it through was the obvious alternative
+    and is wrong, because the rename can repair it: a sidecar recording the
+    source's correct digest under the name ``results.json`` fails at a source
+    called ``run-42.json`` and then *verifies* once sat beside the copy, which
+    is exactly the false attestation the single-entry grammar exists to
+    prevent. Reporting the reason to the caller keeps the failure visible
+    where an operator reads it, at copy time, rather than deferring it to
+    whatever runs `vip trace` next.
     """
-    import shutil
-
     from vip.traceability import ResultsIntegrityError, verify_results_checksum
 
     src = results_src.with_name(f"{results_src.name}.sha256")
     dest = results_dest.with_name(f"{results_dest.name}.sha256")
     if not src.is_file():
         dest.unlink(missing_ok=True)
-        return
+        return None
     try:
         digest, _ = verify_results_checksum(results_src)
-    except ResultsIntegrityError:
-        if src.read_text(encoding="utf-8-sig").split():
-            shutil.copy2(src, dest)
-        else:
-            dest.unlink(missing_ok=True)
-        return
+    except ResultsIntegrityError as exc:
+        dest.unlink(missing_ok=True)
+        return str(exc)
     dest.write_text(f"{digest}  {results_dest.name}\n", encoding="utf-8")
+    return None
 
 
 def run_trace(args: argparse.Namespace) -> None:
