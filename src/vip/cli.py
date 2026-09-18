@@ -1731,10 +1731,7 @@ def _rehome_sidecar(results_src: Path, results_dest: Path) -> str | None:
 
 def run_trace(args: argparse.Namespace) -> None:
     """Join a results.json against a control list and emit a traceability matrix."""
-    import warnings
-
     from vip.report_content import traceability_warnings
-    from vip.reporting import load_results
     from vip.traceability import (
         ControlListError,
         ResultsIntegrityError,
@@ -1751,33 +1748,19 @@ def run_trace(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        # Checksum, schema and row shape, all before load_results ever indexes
-        # into the results list -- see validate_results_file for the order and
-        # why each gate has to run here rather than inside load_results.
-        results_sha256, sidecar_present = validate_results_file(results_path)
-        # load_results only warns (not raises) on an unknown schema major --
-        # it's also called from index.qmd/details.qmd/`vip report`, where that
-        # warning is the point. The gate above already hard-errors on the
-        # same condition, so suppress the redundant warning here only.
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            data = load_results(results_path)
+        # One read: the digest, the gates and the ReportData all come from the
+        # same bytes, so the provenance digest cannot end up describing a file
+        # the matrix was not built from. See validate_results_file.
+        validated = validate_results_file(results_path)
         controls = load_controls(args.controls)
     except (ResultsIntegrityError, ControlListError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
-    except (
-        json.JSONDecodeError,
-        OSError,
-        UnicodeDecodeError,
-        AttributeError,
-        KeyError,
-        TypeError,
-    ) as exc:
+    except (OSError, AttributeError, KeyError, TypeError) as exc:
         # A malformed results.json must not surface as a traceback -- this
         # catches structural failures (e.g. {"results": [{}]}) that pass JSON
-        # parsing and the schema gate but fail load_results' own field
-        # indexing.
+        # parsing and the gates but fail the row-to-TestResult step's own
+        # field indexing.
         print(f"Error: could not read results file {results_path}: {exc}", file=sys.stderr)
         sys.exit(1)
 
@@ -1786,15 +1769,15 @@ def run_trace(args: argparse.Namespace) -> None:
 
     try:
         matrix = build_traceability_matrix(
-            data,
+            validated.data,
             controls,
-            results_sha256=results_sha256,
-            results_sha256_sidecar_verified=sidecar_present or None,
+            results_sha256=validated.digest,
+            results_sha256_sidecar_verified=validated.sidecar_present or None,
         )
         rendered = render_json(matrix) if fmt == "json" else render_csv(matrix)
     except (AttributeError, KeyError, TypeError, ValueError) as exc:
         # Inside the guard, not outside it: a results.json can pass the
-        # checksum, the schema gate and load_results and still be structurally
+        # checksum, the schema gate and the load step and still be structurally
         # wrong in a way that only surfaces here -- an explicit `"markers":
         # null`, say. A compliance tool reporting that as a raw traceback is
         # the one presentation that tells an operator nothing.

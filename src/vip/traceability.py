@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from vip.reporting import RESULTS_SCHEMA_VERSION, ReportData
+from vip.reporting import RESULTS_SCHEMA_VERSION, ReportData, build_report_data
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -648,7 +648,18 @@ def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
     corruption, truncated uploads and casual editing.
     """
     p = Path(path)
-    digest = hashlib.sha256(p.read_bytes()).hexdigest()
+    return verify_checksum_of(p, p.read_bytes())
+
+
+def verify_checksum_of(path: str | Path, content: bytes) -> tuple[str, bool]:
+    """:func:`verify_results_checksum` against bytes the caller already read.
+
+    Separate so a caller that needs the file's contents anyway reads it once
+    and verifies exactly what it went on to use, rather than hashing one read
+    and parsing another.
+    """
+    p = Path(path)
+    digest = hashlib.sha256(content).hexdigest()
     sidecar = p.with_name(f"{p.name}.sha256")
     if not sidecar.is_file():
         return digest, False
@@ -729,20 +740,35 @@ def _parse_sidecar(text: str) -> list[tuple[str, str | None]]:
     return entries
 
 
-def validate_results_file(path: str | Path) -> tuple[str, bool]:
+@dataclass(frozen=True)
+class ValidatedResults:
+    """A results file that passed every gate, and the bytes it passed them as.
+
+    ``data`` is built from the same bytes ``digest`` describes. Keeping them
+    together is the point: a caller that re-read the path to get its
+    ``ReportData`` could put a digest in the matrix provenance that attests to
+    a file the matrix was not built from.
+    """
+
+    data: ReportData
+    digest: str
+    sidecar_present: bool
+
+
+def validate_results_file(path: str | Path) -> ValidatedResults:
     """Every gate a results file must pass before it can become evidence.
 
-    Returns what ``verify_results_checksum`` returns, ``(digest,
-    sidecar_present)``, so a caller has the digest for the matrix provenance
-    without hashing the file twice.
+    One read, one parse. The file is read once, that byte string is what gets
+    hashed, parsed and checked, and the returned ``ReportData`` is built from
+    it -- so nothing downstream can disagree with the digest about what the
+    file said.
 
-    Checksum, then schema, then row shape, in that order and over one JSON
-    parse. Order matters: the row check assumes rows of the current shape, so
-    an incompatible major has to be refused before it is applied. Both run
-    before ``reporting.load_results`` ever touches the file, because
-    ``load_results`` indexes fields directly (``r["nodeid"]``,
-    ``r["outcome"]``) and raises ``KeyError`` on anything else -- a
-    structurally wrong file has to be refused with a sentence, not a
+    Checksum, then schema, then row shape. Order matters: the row check
+    assumes rows of the current shape, so an incompatible major has to be
+    refused before it is applied. Both run before the rows are turned into
+    ``TestResult`` objects, because that step indexes fields directly
+    (``r["nodeid"]``, ``r["outcome"]``) and raises ``KeyError`` on anything
+    else -- a structurally wrong file has to be refused with a sentence, not a
     traceback.
 
     Every caller that treats a results file as evidence goes through here --
@@ -751,17 +777,21 @@ def validate_results_file(path: str | Path) -> tuple[str, bool]:
     lenient than the others about the same bytes.
     """
     p = Path(path)
-    digest, sidecar_present = verify_results_checksum(p)
-    raw = _read_results_json(p)
+    try:
+        content = p.read_bytes()
+    except OSError as exc:
+        raise ResultsIntegrityError(f"could not read results file {p}: {exc}") from exc
+    digest, sidecar_present = verify_checksum_of(p, content)
+    raw = _decode_results_json(p, content)
     _check_results_schema(p, raw.get("schema_version"))
     _check_results_rows(p, raw)
-    return digest, sidecar_present
+    return ValidatedResults(build_report_data(raw), digest, sidecar_present)
 
 
-def _read_results_json(p: Path) -> dict:
+def _decode_results_json(p: Path, content: bytes) -> dict:
     try:
-        raw = json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        raw = json.loads(content.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise ResultsIntegrityError(f"could not read results file {p}: {exc}") from exc
     if not isinstance(raw, dict):
         raise ResultsIntegrityError(f"could not read results file {p}: not a JSON object")
@@ -820,7 +850,7 @@ def _check_results_rows(p: Path, raw: dict) -> None:
 
 
 def matrix_from_env(
-    data: ReportData, results_path: str | Path, env: Mapping[str, str] | None = None
+    results_path: str | Path, env: Mapping[str, str] | None = None
 ) -> tuple[TraceabilityMatrix | None, str | None]:
     """The traceability matrix for a Quarto render, or the reason there isn't one.
 
@@ -828,6 +858,12 @@ def matrix_from_env(
     every render and means the report simply has no compliance section.
     Returns ``(matrix, None)`` on success and ``(None, message)`` when the
     section could not be built.
+
+    The results are loaded here rather than taken from the caller's own
+    ``load_results``, so the matrix is built from the bytes this function
+    hashed and verified. Passing the cell's ``data`` in would reintroduce the
+    gap the digest exists to close: two reads of one path can see two
+    different files, and only one of them would be the one attested to.
 
     The control list arrives by environment variable rather than as a file
     copied into the report directory, because that directory survives between
@@ -845,12 +881,12 @@ def matrix_from_env(
     if not controls_path:
         return None, None
     try:
-        digest, verified = validate_results_file(results_path)
+        validated = validate_results_file(results_path)
         matrix = build_traceability_matrix(
-            data,
+            validated.data,
             load_controls(controls_path),
-            results_sha256=digest,
-            results_sha256_sidecar_verified=verified or None,
+            results_sha256=validated.digest,
+            results_sha256_sidecar_verified=validated.sidecar_present or None,
         )
     except Exception as exc:  # noqa: BLE001 - a report must render regardless
         return None, str(exc)

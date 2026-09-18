@@ -216,9 +216,20 @@ def load_results(path: str | Path) -> ReportData:
     p = Path(path)
     if not p.exists():
         return ReportData()
+    return build_report_data(json.loads(p.read_text(encoding="utf-8")))
 
-    raw = json.loads(p.read_text(encoding="utf-8"))
 
+def build_report_data(raw: dict) -> ReportData:
+    """Build a ReportData from an already-parsed results payload.
+
+    Split out of :func:`load_results` so a caller that has the parsed JSON
+    already does not have to re-read and re-parse the file to get a
+    ``ReportData``. ``vip trace`` is the caller that needs this: it hashes the
+    results file to put the digest in the matrix provenance, so the
+    ``ReportData`` the matrix is built from has to come from the same bytes
+    that digest describes, not from a second read that could see a different
+    file.
+    """
     # Guard the type before splitting. This loader's documented contract is to
     # warn and carry on, never to raise: it runs inside the Quarto notebook
     # cells (report/index.qmd, details.qmd, vip-report.qmd) where an exception

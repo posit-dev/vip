@@ -68,7 +68,7 @@ display(HTML(report_html.render_actionable_cards(data, hints)))
 # detect.
 from vip.traceability import matrix_from_env
 
-_matrix, _trace_error = matrix_from_env(data, Path("results.json"))
+_matrix, _trace_error = matrix_from_env(Path("results.json"))
 if _matrix is not None:
     display(Markdown("## Compliance Traceability"))
     display(HTML(report_html.render_traceability(_matrix)))

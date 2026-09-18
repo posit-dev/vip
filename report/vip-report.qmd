@@ -46,7 +46,7 @@ hints = load_troubleshooting(_troubleshooting_path) if _troubleshooting_path els
 
 # See matrix_from_env for why the control list arrives by environment variable
 # and why nothing in this cell may raise.
-matrix, trace_error = matrix_from_env(data, Path("results.json"))
+matrix, trace_error = matrix_from_env(Path("results.json"))
 
 print("```{=typst}")
 print(report_typst.render_document(data, hints, matrix, trace_error))

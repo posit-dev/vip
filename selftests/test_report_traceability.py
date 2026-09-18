@@ -258,8 +258,8 @@ class TestMatrixFromEnv:
     tested without rendering a whole document.
     """
 
-    def _results(self, tmp_path):
-        data = json.dumps({"schema_version": "1.0", "results": []}, indent=2).encode()
+    def _results(self, tmp_path, rows=()):
+        data = json.dumps({"schema_version": "1.0", "results": list(rows)}, indent=2).encode()
         p = tmp_path / "results.json"
         p.write_bytes(data)
         p.with_name("results.json.sha256").write_text(
@@ -273,34 +273,47 @@ class TestMatrixFromEnv:
         return p
 
     def test_no_control_list_means_no_section(self, tmp_path):
-        assert matrix_from_env(ReportData(), self._results(tmp_path), env={}) == (None, None)
+        assert matrix_from_env(self._results(tmp_path), env={}) == (None, None)
 
     def test_a_control_list_builds_a_matrix(self, tmp_path):
-        results = self._results(tmp_path)
+        results = self._results(
+            tmp_path,
+            [{"nodeid": "t.py::ok", "outcome": "passed", "markers": ["control-ok"]}],
+        )
         controls = self._controls(tmp_path)
-        data = ReportData(results=[_result("t.py::ok", "ok")])
 
-        matrix, error = matrix_from_env(data, results, env={"VIP_CONTROLS": str(controls)})
+        matrix, error = matrix_from_env(results, env={"VIP_CONTROLS": str(controls)})
 
         assert error is None
         assert [e.control.control_id for e in matrix.entries] == ["ok"]
+        assert [m.nodeid for m in matrix.entries[0].matches] == ["t.py::ok"]
 
-    def test_the_digest_reaches_the_provenance(self, tmp_path):
-        """The cells verify rather than merely hash, so the attestation is real."""
-        results = self._results(tmp_path)
+    def test_the_digest_describes_the_bytes_the_matrix_was_built_from(self, tmp_path):
+        """One read, so the attestation and the matrix cannot disagree.
+
+        Loading the results separately from hashing them left a window where
+        the digest in the provenance block described a file the matrix had not
+        been built from.
+        """
+        results = self._results(
+            tmp_path,
+            [{"nodeid": "t.py::ok", "outcome": "passed", "markers": ["control-ok"]}],
+        )
         controls = self._controls(tmp_path)
 
-        matrix, _ = matrix_from_env(ReportData(), results, env={"VIP_CONTROLS": str(controls)})
+        matrix, _ = matrix_from_env(results, env={"VIP_CONTROLS": str(controls)})
 
-        expected = hashlib.sha256(results.read_bytes()).hexdigest()
-        assert matrix.provenance["results_sha256"] == expected
+        assert (
+            matrix.provenance["results_sha256"] == hashlib.sha256(results.read_bytes()).hexdigest()
+        )
         assert matrix.provenance["results_sha256_sidecar_verified"] is True
+        assert matrix.entries[0].matches
 
     def test_a_bad_control_list_returns_the_reason_instead_of_raising(self, tmp_path):
         results = self._results(tmp_path)
         controls = self._controls(tmp_path, "[controls.ok]\n")
 
-        matrix, error = matrix_from_env(ReportData(), results, env={"VIP_CONTROLS": str(controls)})
+        matrix, error = matrix_from_env(results, env={"VIP_CONTROLS": str(controls)})
 
         assert matrix is None
         assert "missing a description" in error
@@ -310,7 +323,7 @@ class TestMatrixFromEnv:
         results.with_name("results.json.sha256").write_text(f"{'0' * 64}  results.json\n")
         controls = self._controls(tmp_path)
 
-        matrix, error = matrix_from_env(ReportData(), results, env={"VIP_CONTROLS": str(controls)})
+        matrix, error = matrix_from_env(results, env={"VIP_CONTROLS": str(controls)})
 
         assert matrix is None
         assert "checksum mismatch" in error
@@ -320,7 +333,7 @@ class TestMatrixFromEnv:
         controls = self._controls(tmp_path)
 
         matrix, error = matrix_from_env(
-            ReportData(), tmp_path / "absent.json", env={"VIP_CONTROLS": str(controls)}
+            tmp_path / "absent.json", env={"VIP_CONTROLS": str(controls)}
         )
 
         assert matrix is None
