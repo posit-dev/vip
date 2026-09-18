@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from vip.reporting import RESULTS_SCHEMA_VERSION, ReportData, build_report_data
+from vip.reporting import RESULTS_SCHEMA_VERSION, ReportData, build_report_data, load_results
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -849,37 +849,49 @@ def _check_results_rows(p: Path, raw: dict) -> None:
             )
 
 
-def matrix_from_env(
-    results_path: str | Path, env: Mapping[str, str] | None = None
-) -> tuple[TraceabilityMatrix | None, str | None]:
-    """The traceability matrix for a Quarto render, or the reason there isn't one.
+@dataclass(frozen=True)
+class ReportInputs:
+    """Everything a Quarto document needs from the results file, read once.
 
-    Returns ``(None, None)`` when ``VIP_CONTROLS`` is unset, which is nearly
-    every render and means the report simply has no compliance section.
-    Returns ``(matrix, None)`` on success and ``(None, message)`` when the
-    section could not be built.
+    ``matrix`` is ``None`` on every render without a control list, which is
+    nearly all of them, and ``trace_error`` says why there is no matrix when
+    one was asked for.
+    """
 
-    The results are loaded here rather than taken from the caller's own
-    ``load_results``, so the matrix is built from the bytes this function
-    hashed and verified. Passing the cell's ``data`` in would reintroduce the
-    gap the digest exists to close: two reads of one path can see two
-    different files, and only one of them would be the one attested to.
+    data: ReportData
+    matrix: TraceabilityMatrix | None = None
+    trace_error: str | None = None
+
+
+def report_inputs(results_path: str | Path, env: Mapping[str, str] | None = None) -> ReportInputs:
+    """Load a results file for a report render, with its traceability matrix.
+
+    One read feeds both, so the summary, the failure listing, the provenance
+    and the matrix in a single rendered document all describe the same file.
+    Loading them separately -- the cell for the body, this function for the
+    matrix -- let one artifact combine a body from one read with a matrix and
+    a digest from another, which is the same inconsistency the digest exists
+    to rule out, one level up.
 
     The control list arrives by environment variable rather than as a file
     copied into the report directory, because that directory survives between
     runs: a copied controls.toml would make every later plain ``vip report``
     sprout a compliance section nobody asked for, built from a stale list.
 
-    Returning the failure instead of raising it is what lets both ``.qmd``
+    Recording the failure instead of raising it is what lets both ``.qmd``
     documents render the heading with a visible marker under it. An exception
     inside a notebook cell renders as a traceback rather than a report, and a
     compliance section that vanishes without saying so is the one outcome a
     regulated reader cannot detect. The catch is deliberately broad for the
     same reason.
+
+    The failure branch falls back to ``load_results``, a second read, because
+    the body must still render from something. Nothing can be inconsistent
+    there: that render carries no matrix and no digest to disagree with.
     """
     controls_path = (os.environ if env is None else env).get("VIP_CONTROLS")
     if not controls_path:
-        return None, None
+        return ReportInputs(load_results(results_path))
     try:
         validated = validate_results_file(results_path)
         matrix = build_traceability_matrix(
@@ -889,5 +901,5 @@ def matrix_from_env(
             results_sha256_sidecar_verified=validated.sidecar_present or None,
         )
     except Exception as exc:  # noqa: BLE001 - a report must render regardless
-        return None, str(exc)
-    return matrix, None
+        return ReportInputs(load_results(results_path), trace_error=str(exc))
+    return ReportInputs(validated.data, matrix=matrix)

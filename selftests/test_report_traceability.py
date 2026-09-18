@@ -25,7 +25,7 @@ from vip.report_content import (
     traceability_warnings,
 )
 from vip.reporting import ReportData, TestResult
-from vip.traceability import ControlSpec, build_traceability_matrix, matrix_from_env
+from vip.traceability import ControlSpec, build_traceability_matrix, report_inputs
 
 
 def _result(nodeid, control, outcome="passed", title="S", **kw):
@@ -250,12 +250,14 @@ class TestRiskIsVisibleInBothEditions:
         assert "Class II / banana" in report_typst.render_traceability(matrix)
 
 
-class TestMatrixFromEnv:
-    """The entry point both Quarto cells call, where neither may raise.
+class TestReportInputs:
+    """The one entry point both Quarto cells load through, where neither may raise.
 
     The cells used to hold this logic twice over, so the HTML and PDF
     editions could drift apart on the same inputs, and neither copy could be
-    tested without rendering a whole document.
+    tested without rendering a whole document. They also used to read the
+    results file twice per document -- once for the body, once for the matrix
+    -- which is what the one-read tests below pin down.
     """
 
     def _results(self, tmp_path, rows=()):
@@ -272,8 +274,18 @@ class TestMatrixFromEnv:
         p.write_text(body, encoding="utf-8")
         return p
 
-    def test_no_control_list_means_no_section(self, tmp_path):
-        assert matrix_from_env(self._results(tmp_path), env={}) == (None, None)
+    def test_no_control_list_still_loads_the_body(self, tmp_path):
+        """The common render: results for the report, no compliance section."""
+        results = self._results(
+            tmp_path,
+            [{"nodeid": "t.py::ok", "outcome": "passed", "markers": ["control-ok"]}],
+        )
+
+        inputs = report_inputs(results, env={})
+
+        assert inputs.matrix is None
+        assert inputs.trace_error is None
+        assert [r.nodeid for r in inputs.data.results] == ["t.py::ok"]
 
     def test_a_control_list_builds_a_matrix(self, tmp_path):
         results = self._results(
@@ -282,18 +294,20 @@ class TestMatrixFromEnv:
         )
         controls = self._controls(tmp_path)
 
-        matrix, error = matrix_from_env(results, env={"VIP_CONTROLS": str(controls)})
+        inputs = report_inputs(results, env={"VIP_CONTROLS": str(controls)})
 
-        assert error is None
-        assert [e.control.control_id for e in matrix.entries] == ["ok"]
-        assert [m.nodeid for m in matrix.entries[0].matches] == ["t.py::ok"]
+        assert inputs.trace_error is None
+        assert [e.control.control_id for e in inputs.matrix.entries] == ["ok"]
+        assert [m.nodeid for m in inputs.matrix.entries[0].matches] == ["t.py::ok"]
 
-    def test_the_digest_describes_the_bytes_the_matrix_was_built_from(self, tmp_path):
-        """One read, so the attestation and the matrix cannot disagree.
+    def test_the_body_and_the_matrix_come_from_one_read(self, tmp_path):
+        """A document must not describe two files.
 
-        Loading the results separately from hashing them left a window where
-        the digest in the provenance block described a file the matrix had not
-        been built from.
+        The body was loaded by the cell and the matrix by a second read, so a
+        results.json rewritten mid-render produced one artifact whose summary,
+        provenance and matrix disagreed -- and whose digest attested to only
+        one of them. Asserting identity, not equality: the body's results must
+        be the very objects the matrix was built from.
         """
         results = self._results(
             tmp_path,
@@ -301,40 +315,44 @@ class TestMatrixFromEnv:
         )
         controls = self._controls(tmp_path)
 
-        matrix, _ = matrix_from_env(results, env={"VIP_CONTROLS": str(controls)})
+        inputs = report_inputs(results, env={"VIP_CONTROLS": str(controls)})
 
-        assert (
-            matrix.provenance["results_sha256"] == hashlib.sha256(results.read_bytes()).hexdigest()
+        digest = hashlib.sha256(results.read_bytes()).hexdigest()
+        assert inputs.matrix.provenance["results_sha256"] == digest
+        assert inputs.matrix.provenance["results_sha256_sidecar_verified"] is True
+        matched = inputs.matrix.entries[0].matches[0]
+        assert matched.nodeid == inputs.data.results[0].nodeid
+
+    def test_a_bad_control_list_records_the_reason_and_still_loads_the_body(self, tmp_path):
+        """The body must render even when the compliance section cannot."""
+        results = self._results(
+            tmp_path,
+            [{"nodeid": "t.py::ok", "outcome": "passed", "markers": ["control-ok"]}],
         )
-        assert matrix.provenance["results_sha256_sidecar_verified"] is True
-        assert matrix.entries[0].matches
-
-    def test_a_bad_control_list_returns_the_reason_instead_of_raising(self, tmp_path):
-        results = self._results(tmp_path)
         controls = self._controls(tmp_path, "[controls.ok]\n")
 
-        matrix, error = matrix_from_env(results, env={"VIP_CONTROLS": str(controls)})
+        inputs = report_inputs(results, env={"VIP_CONTROLS": str(controls)})
 
-        assert matrix is None
-        assert "missing a description" in error
+        assert inputs.matrix is None
+        assert "missing a description" in inputs.trace_error
+        assert [r.nodeid for r in inputs.data.results] == ["t.py::ok"]
 
-    def test_a_failed_checksum_returns_the_reason_instead_of_raising(self, tmp_path):
+    def test_a_failed_checksum_records_the_reason_instead_of_raising(self, tmp_path):
         results = self._results(tmp_path)
         results.with_name("results.json.sha256").write_text(f"{'0' * 64}  results.json\n")
         controls = self._controls(tmp_path)
 
-        matrix, error = matrix_from_env(results, env={"VIP_CONTROLS": str(controls)})
+        inputs = report_inputs(results, env={"VIP_CONTROLS": str(controls)})
 
-        assert matrix is None
-        assert "checksum mismatch" in error
+        assert inputs.matrix is None
+        assert "checksum mismatch" in inputs.trace_error
 
-    def test_a_missing_results_file_returns_the_reason_instead_of_raising(self, tmp_path):
+    def test_a_missing_results_file_records_the_reason_instead_of_raising(self, tmp_path):
         """A render must not die on a path that is not there."""
         controls = self._controls(tmp_path)
 
-        matrix, error = matrix_from_env(
-            tmp_path / "absent.json", env={"VIP_CONTROLS": str(controls)}
-        )
+        inputs = report_inputs(tmp_path / "absent.json", env={"VIP_CONTROLS": str(controls)})
 
-        assert matrix is None
-        assert error
+        assert inputs.matrix is None
+        assert inputs.trace_error
+        assert inputs.data.total == 0
