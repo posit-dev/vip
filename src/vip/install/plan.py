@@ -42,7 +42,8 @@ class InstallPlan:
     platform_version: str | None
     system_step: SystemPackagesStep | None
     playwright_step: PlaywrightStep | None
-    claim_pending: tuple[str, ...] = ()
+    # (pending_name, concrete_name) pairs -- see build_install_plan's comment.
+    claim_pending: tuple[tuple[str, str], ...] = ()
     unsupported_warning: str | None = None
 
     def is_empty(self) -> bool:
@@ -59,20 +60,25 @@ class InstallPlan:
 _DEBIAN_RENAME_MAP: dict[str, str] = {"libasound2": "libasound2t64"}
 
 
-def _normalize_pending_debian(pending: set[str], current_packages: tuple[str, ...]) -> set[str]:
-    """Map legacy pending names to the current package list.
+def _normalize_pending_debian(
+    pending: set[str], current_packages: tuple[str, ...]
+) -> dict[str, str]:
+    """Map each pending name to the name to look up in the current package list.
 
-    If the manifest recorded "libasound2" but we now install "libasound2t64",
-    rewrite the pending entry so ``claim_pending`` can match.
+    Returns ``{pending_name: lookup_name}``. Usually identical, but if the
+    manifest recorded "libasound2" and we now install "libasound2t64", the
+    pending name stays "libasound2" (so ``Manifest.claim_pending`` can match
+    what's actually on disk) while the lookup name becomes "libasound2t64"
+    (so presence is checked against what's actually installed).
     """
     current = set(current_packages)
-    out: set[str] = set()
+    out: dict[str, str] = {}
     for name in pending:
         new_name = _DEBIAN_RENAME_MAP.get(name)
         if new_name and new_name in current and name not in current:
-            out.add(new_name)
+            out[name] = new_name
         else:
-            out.add(name)
+            out[name] = name
     return out
 
 
@@ -81,7 +87,7 @@ def build_install_plan(
     platform_info: plat.PlatformInfo,
     manifest: Manifest | None,
     rpm_installed: Callable[[tuple[str, ...]], set[str]],
-    dpkg_installed: Callable[[tuple[str, ...]], set[str]],
+    dpkg_installed: Callable[[tuple[str, ...]], dict[str, str]],
     chromium_present: bool,
     playwright_cache_dir: Path,
     skip_system: bool,
@@ -115,29 +121,42 @@ def build_install_plan(
     family = platform_info.family
     system_step: SystemPackagesStep | None = None
     unsupported_warning: str | None = None
-    claim_pending: tuple[str, ...] = ()
+    # Each entry pairs the manifest's pending name with the concrete package
+    # name to record as claimed. They're almost always identical; they differ
+    # when the pending name is an alias resolved via dpkg Provides (or a
+    # legacy renamed package), so the manifest ends up naming what is
+    # actually installed and removable, not the alias that was asked for.
+    claim_pending: tuple[tuple[str, str], ...] = ()
 
     pending = manifest.pending_packages_set() if manifest else set()
 
     if not skip_system:
         if family == "rhel-family":
             present = rpm_installed(plat.RHEL_PACKAGES)
-            claim_pending = tuple(sorted(pending & present))
+            claim_pending = tuple(sorted((n, n) for n in (pending & present)))
             missing = tuple(p for p in plat.RHEL_PACKAGES if p not in present)
             system_step = SystemPackagesStep(manager="dnf", packages=missing)
         elif family == "debian-family":
             packages = plat.debian_packages(platform_info)
-            present = dpkg_installed(packages)
+            resolved = dpkg_installed(packages)
+            present = set(resolved)
             # Normalize legacy pending names: if the manifest recorded
-            # "libasound2" but we now install "libasound2t64", treat the old
-            # name as claimable when the new name is present.
-            normalized_pending = _normalize_pending_debian(pending, packages)
-            claim_pending = tuple(sorted(normalized_pending & present))
+            # "libasound2" but we now install "libasound2t64", look up
+            # presence under the new name while still pairing the manifest's
+            # original pending name with the concrete name resolved.
+            pending_lookup = _normalize_pending_debian(pending, packages)
+            claim_pending = tuple(
+                sorted(
+                    (pending_name, resolved[lookup_name])
+                    for pending_name, lookup_name in pending_lookup.items()
+                    if lookup_name in present
+                )
+            )
             missing = tuple(p for p in packages if p not in present)
             system_step = SystemPackagesStep(manager="apt", packages=missing)
         elif family == "suse-family":
             present = rpm_installed(plat.SUSE_PACKAGES)
-            claim_pending = tuple(sorted(pending & present))
+            claim_pending = tuple(sorted((n, n) for n in (pending & present)))
             missing = tuple(p for p in plat.SUSE_PACKAGES if p not in present)
             system_step = SystemPackagesStep(manager="zypper", packages=missing)
         elif family == "macos":
