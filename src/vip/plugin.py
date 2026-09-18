@@ -542,13 +542,13 @@ def _install_progress_recolor(config: pytest.Config) -> None:
         # Swap _get_main_color to report this line's color, then restore it so
         # nothing else (summary line, past-edge writes) is affected.
         known = original_get_main_color()[1]
-        tr._get_main_color = lambda: (_current_line_color, known)  # type: ignore[method-assign]
+        tr._get_main_color = lambda: (_current_line_color, known)
         try:
             return original_fill(*args, **kwargs)
         finally:
-            tr._get_main_color = original_get_main_color  # type: ignore[method-assign]
+            tr._get_main_color = original_get_main_color
 
-    tr._write_progress_information_filling_space = recolored_fill  # type: ignore[method-assign]
+    tr._write_progress_information_filling_space = recolored_fill
 
 
 # The installed test package root.  pytest node paths are "/"-normalized
@@ -600,7 +600,7 @@ def _install_location_shortener(config: pytest.Config) -> None:
     def shortened(*args: Any, **kwargs: Any) -> str:
         return _shorten_location_line(original(*args, **kwargs))
 
-    tr._locationline = shortened  # type: ignore[method-assign]
+    tr._locationline = shortened
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
