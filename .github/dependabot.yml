@@ -1,7 +1,5 @@
 updates:
-- assignees:
-  - statik
-  commit-message:
+- commit-message:
     prefix: chore(deps)
   cooldown:
     default-days: 7
@@ -13,9 +11,7 @@ updates:
   package-ecosystem: uv
   schedule:
     interval: weekly
-- assignees:
-  - statik
-  commit-message:
+- commit-message:
     prefix: chore(deps)
   cooldown:
     default-days: 7
