@@ -203,6 +203,7 @@ markers = [
     "vscode: Workbench VS Code IDE scenario",
     "jupyter: Workbench JupyterLab IDE scenario",
     "positron: Workbench Positron IDE scenario",
+    "control(id): compliance control tag",
 ]
 
 [tool.mypy]

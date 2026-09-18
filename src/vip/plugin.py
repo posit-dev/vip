@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import platform
 import re
 import sys
@@ -32,12 +31,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from _pytest.pathlib import fnmatch_ex
 
 from vip.attest import UNPROVEN_SENTINEL
 from vip.attribution import collect_execution_metadata
 from vip.config import VIPConfig, load_config
-from vip.gherkin import CONTROL_TAG_PREFIX, read_feature_tags
+from vip.gherkin import CONTROL_TAG_PREFIX
 from vip.reporting import RESULTS_SCHEMA_VERSION
 from vip.version import ProductVersion
 
@@ -94,123 +92,42 @@ UNPROVEN_DISPLAY_PREFIX = "UNPROVEN: "
 # ---------------------------------------------------------------------------
 
 
-def _feature_roots(config: pytest.Config) -> list[Path]:
-    """Directories pytest is about to collect, plus any extension directories.
+@pytest.hookimpl(tryfirst=True)
+def pytest_bdd_apply_tag(tag: str, function: object) -> object:
+    """Turn an ``@control-<slug>`` Gherkin tag into one ``control(<slug>)`` mark.
 
-    Scanning these rather than walking rootpath keeps the pre-scan cheap in a
-    large monorepo and avoids registering controls from feature files that are
-    not part of this run. Extension directories are read from the merged
-    ``_ext_dirs_key`` stash (config file ``[general] extension_dirs`` plus
-    ``--vip-extensions``), not by re-reading the CLI option alone -- callers
-    must run this after ``config.stash[_ext_dirs_key]`` is populated in
-    ``pytest_configure``.
+    Every other tag returns None so pytest-bdd's own implementation runs
+    instead -- ``@slow``, ``@connect`` and friends keep becoming marks named
+    after themselves, which is what auto-skip and ``-m`` filtering rely on.
 
-    Relative args resolve against ``config.invocation_params.dir`` -- the
-    directory pytest itself resolves them against -- NOT ``config.rootpath``.
-    The two differ whenever pytest is invoked from a subdirectory, and
-    resolving against rootpath there produces a path that does not exist.
-    ``rglob`` on a missing path yields nothing silently, so no control marker
-    gets registered and ``--strict-markers`` aborts collection: the exact
-    failure this pre-scan exists to prevent.
+    Control slugs are chosen by the customer, so they cannot be registered by
+    name ahead of time, and an unregistered mark warns by default and aborts
+    collection outright under ``--strict-markers``, which regulated CI is
+    likely to enable. Carrying the slug as an argument to one registered
+    marker settles that without VIP having to predict the names: there is
+    exactly one marker to register, and the slug is no longer a Python
+    identifier, so ``@control-11.10(a)`` is as legal as ``@control-11-10-a``.
     """
-    invocation_dir = Path(config.invocation_params.dir)
-    roots: list[Path] = []
-    for arg in config.args:
-        candidate = Path(str(arg).split("::")[0])
-        roots.append(candidate if candidate.is_absolute() else invocation_dir / candidate)
-    roots.extend(Path(d) for d in config.stash.get(_ext_dirs_key, []))
-    if not roots:
-        roots = [Path(config.rootpath)]
-    # Deduplicate on the resolved path: a targeted run can pass many step
-    # files from one directory (connect-smoke.yml passes 14 paths, 9 of them
-    # siblings), and without this each one re-reads the same feature files.
-    seen: dict[Path, Path] = {}
-    for root in roots:
-        try:
-            key = root.resolve()
-        except OSError:
-            key = root
-        seen.setdefault(key, root)
-    return list(seen.values())
+    if not tag.startswith(CONTROL_TAG_PREFIX):
+        return None
+    return pytest.mark.control(tag[len(CONTROL_TAG_PREFIX) :])(function)
 
 
-def _walk_features(root: Path, ignore: list[str]) -> list[Path]:
-    """Every ``.feature`` file under *root*, skipping ``norecursedirs`` matches.
+def _control_marker_names(item: pytest.Item) -> list[str]:
+    """Marker names for the results file, with control marks written back as tags.
 
-    ``os.walk`` rather than ``rglob`` because only walk can prune a directory
-    before descending into it. Without pruning this descends into ``.venv``
-    (which ``uv`` puts inside the project by default), ``.git`` and
-    ``.worktrees`` on every pytest run in any environment where VIP is
-    installed -- thousands of files walked to find feature files that could
-    never be collected.
+    ``results.json`` records ``control-<slug>``, the Gherkin tag as authored,
+    because that is what ``vip.traceability`` joins a control list against.
+    The mark itself is ``control(<slug>)``, so the slug has to be read back
+    out of its arguments and re-prefixed here.
     """
-    features: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(root, onerror=lambda _: None):
-        dirnames[:] = [d for d in dirnames if not _is_ignored(Path(dirpath) / d, ignore)]
-        features.extend(Path(dirpath) / f for f in filenames if f.endswith(".feature"))
-    return sorted(features)
-
-
-def _is_ignored(path: Path, patterns: list[str]) -> bool:
-    """Whether *path* matches a ``norecursedirs`` pattern, the way pytest matches it.
-
-    Delegates to pytest's own ``fnmatch_ex`` so the two cannot drift: a pattern
-    containing a path separator matches against the whole path, while a bare
-    one matches the basename only. Matching the basename in both cases would
-    scan a directory pytest itself would never collect, which is how a control
-    tag from an ignored feature file ends up registered or warned about.
-    """
-    for pattern in patterns:
-        try:
-            if fnmatch_ex(pattern, path):
-                return True
-        except (TypeError, ValueError):
-            continue
-    return False
-
-
-def _discover_control_tags(config: pytest.Config) -> set[str]:
-    """Collect every @control-* tag from the feature files about to be collected."""
-    try:
-        ignore = list(config.getini("norecursedirs") or [])
-    except (ValueError, KeyError):
-        ignore = []
-    tags: set[str] = set()
-    seen_files: set[Path] = set()
-    for root in _feature_roots(config):
-        try:
-            if root.is_file():
-                if root.suffix == ".feature":
-                    features = [root]
-                else:
-                    # pytest-bdd suites are usually collected by their step
-                    # (.py) file, not the .feature file the tags live in --
-                    # e.g. a targeted `pytest test_x.py`. Scan only the
-                    # containing directory; do not walk upward or widen.
-                    features = sorted(root.parent.glob("*.feature"))
-            else:
-                features = _walk_features(root, ignore)
-        except OSError:
-            continue
-        for feature in features:
-            if feature in seen_files:
-                continue
-            seen_files.add(feature)
-            try:
-                found = read_feature_tags(feature)
-            except (OSError, UnicodeDecodeError):
-                continue
-            tags.update(t for t in found if t.startswith(CONTROL_TAG_PREFIX))
-    return tags
-
-
-# pytest derives a registered marker's name with
-# ``line.split(":")[0].split("(")[0].strip()``, so either character truncates
-# the name it registers under. Registering the truncated name is worse than
-# not registering at all: pytest-bdd still applies the full tag, and
-# --strict-markers then aborts collection against a marker list that looks
-# like it should have matched.
-_UNREGISTRABLE_TAG_CHARS = (":", "(")
+    names: list[str] = []
+    for mark in item.iter_markers():
+        if mark.name == "control" and mark.args:
+            names.append(f"{CONTROL_TAG_PREFIX}{mark.args[0]}")
+        else:
+            names.append(mark.name)
+    return names
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -362,6 +279,10 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "vscode: Workbench VS Code IDE scenario")
     config.addinivalue_line("markers", "jupyter: Workbench JupyterLab IDE scenario")
     config.addinivalue_line("markers", "positron: Workbench Positron IDE scenario")
+    # One marker for every compliance control. `pytest_bdd_apply_tag` above
+    # converts each @control-<slug> Gherkin tag into control(<slug>), so the
+    # customer's own slugs never need registering by name.
+    config.addinivalue_line("markers", "control(id): compliance control tag")
 
     # In concise mode, suppress the "short test summary info" section — the
     # inline concise error messages make it redundant.
@@ -399,28 +320,6 @@ def pytest_configure(config: pytest.Config) -> None:
     ext_dirs: list[str] = list(vip_cfg.extension_dirs)
     ext_dirs.extend(config.getoption("--vip-extensions") or [])
     config.stash[_ext_dirs_key] = ext_dirs
-
-    # Compliance control tags (@control-<slug>) become pytest markers via
-    # pytest-bdd's default pytest_bdd_apply_tag hook. Their slugs are chosen by
-    # the customer, so they cannot be registered by name ahead of time -- but an
-    # unregistered mark warns by default and aborts collection outright under
-    # --strict-markers, which regulated CI is likely to enable. Registering the
-    # tags we are about to collect satisfies both paths at once. Run after the
-    # ext_dirs stash above so _feature_roots sees both extension sources
-    # (config-file [general] extension_dirs and --vip-extensions), and still
-    # well before collection starts.
-    for tag in sorted(_discover_control_tags(config)):
-        bad = [c for c in _UNREGISTRABLE_TAG_CHARS if c in tag]
-        if bad:
-            warnings.warn(
-                f"VIP: control tag @{tag} contains {' and '.join(repr(c) for c in bad)}, "
-                "which pytest cannot register as a marker name. Rename the control id "
-                "to use only letters, digits, '-', '.' and '_' (e.g. @control-11-10-a); "
-                "otherwise this scenario will fail collection under --strict-markers.",
-                stacklevel=1,
-            )
-            continue
-        config.addinivalue_line("markers", f"{tag}: compliance control tag")
 
     _any_product_configured = any(
         pc.is_configured for pc in (vip_cfg.connect, vip_cfg.workbench, vip_cfg.package_manager)
@@ -1304,7 +1203,7 @@ def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
     if report.when == "call" or (report.when == "setup" and report.skipped):
         markers: list[str] = []
         try:
-            markers = [m.name for m in item.iter_markers()]
+            markers = _control_marker_names(item)
         except Exception:
             pass
 

@@ -314,10 +314,10 @@ but it alters what a non-Excel reader sees: any cell whose value begins with
 when opened in Excel. JSON output is not altered this way -- use it when exact
 fidelity to the underlying value matters more than spreadsheet safety.
 
-Control ids become pytest marker names, so they may use only letters, digits,
-`-`, `.` and `_`. A `:` or `(` in an id (`11.10(a)`, `iso:27001`) truncates the
-name pytest registers, which aborts collection under `--strict-markers`. VIP
-warns and skips registering such a tag. Write `11-10-a` instead.
+A control id is carried as an argument to a single registered `control` marker,
+not as a marker name of its own, so it is not bound by pytest's marker-naming
+rules: `11.10(a)` and `iso:27001` collect as cleanly as `11-10-a`, including
+under `--strict-markers`.
 
 ### In the rendered report
 

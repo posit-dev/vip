@@ -117,9 +117,9 @@ them -- its table has no width for a variable number of columns. A key may not
 start with `=`, `+`, `-` or `@`, because the key becomes a CSV header cell and
 a spreadsheet would evaluate it.
 
-Control ids become pytest marker names, so use only letters, digits, `-`, `.`
-and `_`. Write `11-10-a`, not `11.10(a)`: a `:` or `(` truncates the marker name
-pytest registers and breaks collection under `--strict-markers`.
+A control id is carried as an argument to a single `control` pytest marker
+rather than becoming a marker name, so any id collects: `11.10(a)` works as well
+as `11-10-a`. The ids here use the dashed form for readability, not necessity.
 
 ## Running it
 

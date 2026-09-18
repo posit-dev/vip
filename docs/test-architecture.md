@@ -110,17 +110,13 @@ auto-skip when a product is not configured. Getting this wrong mislabels the fea
 in those outputs rather than raising an error, so it is worth a glance when adding a
 tag.
 
-Control tags become registered pytest markers automatically. `vip.plugin` pre-scans
-the feature files about to be collected and registers every `@control-<slug>` tag it
-finds via `config.addinivalue_line("markers", ...)`, so a run under `--strict-markers`
-(which regulated CI is likely to enable) does not fail on an unrecognized marker.
-
-Keep the slug to letters, digits, `-`, `.` and `_`. pytest derives a registered
-marker's name by cutting at the first `:` or `(`, so `@control-11.10(a)` would
-register as `control-11.10` while pytest-bdd applies the full tag, and collection
-would then fail under `--strict-markers` against a marker list that looks like it
-should have matched. VIP warns and skips registering such a tag rather than
-registering the truncated name. Write `@control-11-10-a`.
+Control tags become marker arguments, not marker names. `vip.plugin` implements
+pytest-bdd's `pytest_bdd_apply_tag` hook and converts each `@control-<slug>` tag into
+a single `control(<slug>)` mark, leaving every other tag to pytest-bdd's own default.
+One registered marker therefore covers every control id a customer can write, so a run
+under `--strict-markers` (which regulated CI is likely to enable) never fails on an
+unrecognized marker, and the slug is free of pytest's marker-naming rules --
+`@control-11.10(a)` and `@control-iso:27001` are as legal as `@control-11-10-a`.
 
 Control tags flow into `results.json` only, as entries in a test's `markers` list.
 They do not appear in the `junit.xml` or `results.sarif` outputs produced by
