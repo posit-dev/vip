@@ -638,9 +638,10 @@ def verify_results_checksum(path: str | Path) -> tuple[str, bool]:
     line: deciding which of several entries describes this file needs
     tie-break rules that nothing in VIP produces, and getting them wrong
     produces a false attestation in the field whose only job is to attest.
-    The two tolerances that stay are the ones an operator hits by accident --
-    a recorded path instead of a bare name, from running shasum a directory
-    up, and uppercase hex from PowerShell's Get-FileHash.
+    The tolerances that stay are the ones an operator hits by accident: a
+    recorded path instead of a bare name, from running shasum a directory up,
+    uppercase hex from PowerShell's Get-FileHash, shasum's binary-mode ``*``
+    marker, and a UTF-8 BOM.
 
     This is tamper-evidence within a trusted pipeline, not tamper-proofing --
     anyone who can edit the results file can regenerate the sidecar. It catches
