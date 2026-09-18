@@ -415,11 +415,11 @@ Depends on: lint-ruf-unused-noqa (shares pyproject.toml)
 Branch: typing-warn-unused-ignores
 Title: chore(typing): enable warn_unused_ignores, delete stale ignores
 Body:
-Adds `warn_unused_ignores = true` to [tool.mypy] and deletes the 7 of 21 `type: ignore` comments in src/vip that mypy no longer needs, per the typing-lint review, so a newcomer trusts that every remaining `type: ignore` reflects a real, current complaint rather than a stale one from before pytest's or kubernetes's stubs improved.
+Adds `warn_unused_ignores = true` to [tool.mypy] and deletes the 7 stale `type: ignore` comments in src/vip that mypy proves it no longer needs, per the typing-lint review, so a newcomer trusts that every remaining `type: ignore` reflects a real, current complaint rather than a stale one from before pytest's or kubernetes's stubs improved.
 
 Verified with `uv run --extra dev mypy --warn-unused-ignores src/vip` (zero remaining warnings) and `uv run pytest selftests/ -v`; CI on this branch is green.
 
-Files: src/vip/clients/kubernetes.py
+Files: pyproject.toml, src/vip/clients/kubernetes.py, src/vip/plugin.py, src/vip/cli.py, src/vip/load_engine.py
 Findings: typing-lint#Seven of 21 `type: ignore` comments in src/vip are already stale
 Depends on: typing-mypy-free-flags (shares pyproject.toml); comments-cli (shares src/vip/cli.py); comments-fixtures-proxy-plugin (shares src/vip/plugin.py); lint-arg-vip-only (shares src/vip/load_engine.py)
 
@@ -441,11 +441,11 @@ Depends on: typing-warn-unused-ignores (shares pyproject.toml); lint-small-famil
 Branch: typing-strict-load-engine
 Title: chore(typing): apply strict mypy flags to the load module
 Body:
-Adds `disallow_untyped_defs`, `disallow_any_generics`, and `warn_return_any` scoped to load_engine.py and load_users.py via a per-module pyproject.toml override, fixing the 81 errors that concentrate there, per the typing-lint review, rather than reaching for `--strict` across all of src/vip where the rest is already nearly clean under those flags.
+Adds `disallow_untyped_defs`, `disallow_any_generics`, and `warn_return_any` scoped to load_engine.py and load_users.py via a per-module pyproject.toml override, fixing the 27 errors that concentrate there today, per the typing-lint review, rather than reaching for `--strict` across all of src/vip where the rest is already nearly clean under those flags.
 
 Verified with `uv run --extra dev mypy src/vip` (zero errors under the scoped strict flags) and `uv run pytest selftests/ -v`; CI on this branch is green.
 
-Files: src/vip/load_users.py
+Files: pyproject.toml, src/vip/load_engine.py, src/vip/load_users.py
 Findings: typing-lint#mypy strict-flag costs, individually
 Depends on: typing-widen-mypy-scope (shares pyproject.toml); lint-arg-vip-only (shares src/vip/load_engine.py); typing-warn-unused-ignores (both touch load_engine.py's type:ignore, resolved already in 1.31)
 
