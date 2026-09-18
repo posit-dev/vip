@@ -3,6 +3,134 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.9.2 (2026-09-17)
+
+### Bug Fixes
+
+- Match Package Manager URL case-insensitively in deploy logs ([`7204838`](https://github.com/posit-dev/vip/commit/7204838987619cbc6785ffe23d318613b7f8df6d))
+
+- Pin ruff to 0.15.0 across pyproject, justfile, and uv.lock ([`980a1cb`](https://github.com/posit-dev/vip/commit/980a1cb668333c54e6d8c9e2eb2da0d12b5dde68))
+
+- **cli**: Add --insecure/--ca-bundle to cleanup and uninstall ([`fc9a836`](https://github.com/posit-dev/vip/commit/fc9a8369db210f362b1f13221a619cf9a81d881c))
+
+- **lint**: Put D209 docstring closing quotes on their own line ([`f71ce9f`](https://github.com/posit-dev/vip/commit/f71ce9f5df64257afc8e75b31a474cf3b0f8f2d2))
+
+- **workbench**: Verify navigation before checking resumed session ([#655](https://github.com/posit-dev/vip/pull/655), [`ff81793`](https://github.com/posit-dev/vip/commit/ff81793d2971df8678d7c65b2e0c7010dbcf25e5))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 2 updates ([#697](https://github.com/posit-dev/vip/pull/697), [`ec42098`](https://github.com/posit-dev/vip/commit/ec42098919a49d255c97bf202af57c5edddd19d5))
+
+- **deps**: Bump the python-dependencies group with 2 updates ([#696](https://github.com/posit-dev/vip/pull/696), [`38dfbc8`](https://github.com/posit-dev/vip/commit/38dfbc89d9519ec57695386a7bc0c628a7058f73))
+
+- **lint**: Autofix pydocstyle formatting repo-wide ([`d20777f`](https://github.com/posit-dev/vip/commit/d20777f9116ba40516981a60038a8b8bf9ce0eea))
+
+- **lint**: Enable ARG for src/vip only ([`ba525fd`](https://github.com/posit-dev/vip/commit/ba525fdbf4cef0f50b71c5b48b33d0208452c850))
+
+- **lint**: Enable BLE001 and mark every existing broad except ([`ab77413`](https://github.com/posit-dev/vip/commit/ab774138335e7dcce6e45437361baeb42cb23478))
+
+- **lint**: Enable D101/D102/D103 for src/vip only ([`4d59e30`](https://github.com/posit-dev/vip/commit/4d59e3098c3a5a868747dd582770568fd7a5738a))
+
+- **lint**: Enable PERF whole ([`570c283`](https://github.com/posit-dev/vip/commit/570c283f9ca05ff95fc71f2901ec9b0884a70028))
+
+- **lint**: Enable PT (pytest-style) whole ([`1110d97`](https://github.com/posit-dev/vip/commit/1110d97ee4a00f662b82a9b983055a70eec849f7))
+
+- **lint**: Enable PTH (pathlib) whole ([`aeed758`](https://github.com/posit-dev/vip/commit/aeed7580dd18504e11ccf459b83a5a6b038b3ae2))
+
+- **lint**: Enable RUF100 last and delete 14 dead noqa comments ([`6c736ed`](https://github.com/posit-dev/vip/commit/6c736edc5830f729305c9530ad1ae8d4a99c9945))
+
+- **lint**: Enable SIM (simplify) whole ([`d413334`](https://github.com/posit-dev/vip/commit/d413334eb7b16075f2f930a29b09fbf0cce77aab))
+
+- **lint**: Enable nine small ruff families in one PR ([`67cc39f`](https://github.com/posit-dev/vip/commit/67cc39fd42efe08d8631e2cbfb29a57f5eb39ea5))
+
+- **lint**: Enable seven low-risk PL sub-rules ([`c153994`](https://github.com/posit-dev/vip/commit/c153994351b8f7fdd0e1a6d3e7e81ae7ebf414b8))
+
+### Continuous Integration
+
+- Bump Dockerfile's Playwright base image to the pinned version ([`25b941f`](https://github.com/posit-dev/vip/commit/25b941faef4ec374e5b81b292879bb6e9185d182))
+
+- Document 11 missing workflow files and fix just --list text ([`2ada540`](https://github.com/posit-dev/vip/commit/2ada540280ec13798c53323595200b4e33cba104))
+
+- Lint the whole repo locally, matching what the ruff action checks ([`d9386b9`](https://github.com/posit-dev/vip/commit/d9386b995763c6870d7be410ab8b62ece5220029))
+
+- Retry flaky curl/upload steps and pin lockfile syncs in CI ([`d9bc076`](https://github.com/posit-dev/vip/commit/d9bc0766e71e08f588f705bfb60d1b1856aa24bb))
+
+### Documentation
+
+- Delete history-narration comments with no surviving rationale ([`8d6d2c6`](https://github.com/posit-dev/vip/commit/8d6d2c61b3417942e37cae46eab9faa791304244))
+
+- Delete implementation plans for closed and merged issues ([`2053538`](https://github.com/posit-dev/vip/commit/2053538c7a42b38c97958b1cfbee7acef494f0bf))
+
+- Delete orphaned root planning documents ([`aef8d8e`](https://github.com/posit-dev/vip/commit/aef8d8e4c7934f8873e00023da8bb66f8bb5d70c))
+
+- Delete showboat transcripts for closed issues ([`f79b993`](https://github.com/posit-dev/vip/commit/f79b9930aac24673783b46a415d300977b48919e))
+
+- Delete six unlinked docs redirect stubs ([`7c4909e`](https://github.com/posit-dev/vip/commit/7c4909e7bd1916c761c3772785caa91f341cc671))
+
+- Document the pre-commit hook and how to install it ([`7b76e9d`](https://github.com/posit-dev/vip/commit/7b76e9d3e574a13e2e5457f9044b0a0366863ec4))
+
+- Fix commands and paths that no longer match the code ([`3fce888`](https://github.com/posit-dev/vip/commit/3fce8887e699406b52d3f082d6a82280fe407614))
+
+- Make agent-facing docs match the repo ([`fb6ee76`](https://github.com/posit-dev/vip/commit/fb6ee76758695af43ec94a16b50408346d39df72))
+
+- **auth**: Rewrite rationale comments to lead with the invariant ([`bb3eb68`](https://github.com/posit-dev/vip/commit/bb3eb68a6e350325a9c15a5fe9891c9c15222093))
+
+- **cli**: Rewrite history comments to state current behavior ([`a997260`](https://github.com/posit-dev/vip/commit/a99726059c4ecd34a5779befc229cb020cbaf63c))
+
+- **config**: Document the shared from_dict parsing convention ([`b09f5e1`](https://github.com/posit-dev/vip/commit/b09f5e1bfab8bd7474d6fabec66399499d6984a8))
+
+- **fixtures**: Add fixture docstrings and rewrite rationale comments ([`5afccb7`](https://github.com/posit-dev/vip/commit/5afccb72ba29cdfea2798644ab42360e15539060))
+
+- **install**: Add docstrings to plan, manifest, and runner functions ([`ccb1c75`](https://github.com/posit-dev/vip/commit/ccb1c7525b61509a086236bf8b10e64b53991fe7))
+
+- **workbench**: Add the best-effort cleanup comment to six blocks ([`f547906`](https://github.com/posit-dev/vip/commit/f547906dd7944bcae2f21afe50f8005cb5ea9512))
+
+### Testing
+
+- Correct the kubernetes_client fixture inventory doc ([`b9f0f8d`](https://github.com/posit-dev/vip/commit/b9f0f8dcbd11013baf6b964043efcaddfb1f0c7b))
+
+- Document config_hygiene as an eighth test category ([`637d81e`](https://github.com/posit-dev/vip/commit/637d81e1f20d5602f758738406e389aee3a6083b))
+
+- Point three constant-reusing tests at their real drift guard ([`7d027b9`](https://github.com/posit-dev/vip/commit/7d027b90bb1245d24864feb50282c2a5eefed36b))
+
+- **auth**: Add a SAML lane to the mock-IdP stack to reproduce #263 ([#595](https://github.com/posit-dev/vip/pull/595), [`5fcf0b6`](https://github.com/posit-dev/vip/commit/5fcf0b6f474511ae003477ee2d35a529649b9e97))
+
+
+## v2026.9.1 (2026-09-10)
+
+### Bug Fixes
+
+- **justfile**: Repair five recipes that fail on a fresh clone ([#639](https://github.com/posit-dev/vip/pull/639), [`0acd074`](https://github.com/posit-dev/vip/commit/0acd0743808e9ec51f48766ba08cd42ab44f5a95))
+
+- **workbench**: Cap auto-detected resource profiles in the capacity scenario ([#635](https://github.com/posit-dev/vip/pull/635), [`f062754`](https://github.com/posit-dev/vip/commit/f06275444296114edc9b2abb8fa68ec3e1c70e6e))
+
+- **workbench**: Exercise the real SSO login path in test_workbench_login ([`6c82f69`](https://github.com/posit-dev/vip/commit/6c82f693e8f8c0a4ff89f7ad1141fc2583ba7c72))
+
+- **workbench**: Explain a terminal_run timeout instead of only reporting it ([`e42dca5`](https://github.com/posit-dev/vip/commit/e42dca571f47348e49465aaee6327a6df8ed59e8))
+
+- **workbench**: Wait for RStudio content before leaving resumed session ([#652](https://github.com/posit-dev/vip/pull/652), [`28e726c`](https://github.com/posit-dev/vip/commit/28e726c3e77a2ec4901b84e49e66b07654c9fb3b))
+
+### Chores
+
+- Update supported product versions ([#653](https://github.com/posit-dev/vip/pull/653), [`c3ee55f`](https://github.com/posit-dev/vip/commit/c3ee55f57e2e6fb355adca684b0dc45034b46f9c))
+
+- **deps**: Bump anthropics/claude-code-action from 1.0.196 to 1.0.206 in the actions-dependencies group ([#629](https://github.com/posit-dev/vip/pull/629), [`830ef79`](https://github.com/posit-dev/vip/commit/830ef79d003cd26f8127d1adbb178cf0910e98bd))
+
+- **deps**: Bump the actions-dependencies group with 2 updates ([#651](https://github.com/posit-dev/vip/pull/651), [`ea32cd8`](https://github.com/posit-dev/vip/commit/ea32cd809e09d61fc29ae31ddd4e8249b1fead86))
+
+- **deps**: Bump the python-dependencies group across 1 directory with 6 updates ([#650](https://github.com/posit-dev/vip/pull/650), [`4546c0e`](https://github.com/posit-dev/vip/commit/4546c0ea8573f25f3916ed49b29515c6d1d963d8))
+
+### Continuous Integration
+
+- File a tracking issue when a scheduled smoke run fails ([#636](https://github.com/posit-dev/vip/pull/636), [`66a0c54`](https://github.com/posit-dev/vip/commit/66a0c54ca7835348e22fb8709257f05231e84526))
+
+- Set an explicit timeout-minutes on every job ([#637](https://github.com/posit-dev/vip/pull/637), [`f2f5f09`](https://github.com/posit-dev/vip/commit/f2f5f09279ceecdb359157cdb13dd410686d448d))
+
+### Testing
+
+- Classify every skip in eight files as unproven or not-applicable ([`220fa3c`](https://github.com/posit-dev/vip/commit/220fa3cd61e88d299d0727ba13f9ca7e44349145))
+
+
 ## v2026.9.0 (2026-09-03)
 
 ### Chores

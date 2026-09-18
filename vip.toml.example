@@ -46,7 +46,11 @@ url = "https://workbench.example.com"
 # api_key = "..."
 #
 # Session capacity testing (requires --interactive-auth).
-# If omitted, VIP auto-detects available profiles from the UI.
+# If omitted, VIP auto-detects available profiles from the UI and launches one
+# session in each of the two smallest, because a deployment that offers a set of
+# profiles cannot necessarily run all of them at once. List them explicitly to
+# test more than that -- an explicit list is never capped, and session_count
+# then applies per profile.
 # session_profiles = ["Small", "Medium", "Large"]
 # session_count = 3
 

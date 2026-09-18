@@ -46,6 +46,7 @@ jobs:
   ubuntu:
     name: ubuntu-24.04 (uv tool, root)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     # Bare ubuntu:24.04 as root faithfully replays the reported scenario: a full
     # `vip install` that apt-installs the Chromium system libs itself and then
     # runs the Playwright step. It is also the only CI job that exercises vip's
@@ -84,6 +85,7 @@ jobs:
   macos:
     name: macos-latest (uv tool)
     runs-on: macos-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

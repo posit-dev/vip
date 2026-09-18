@@ -71,7 +71,8 @@ def test_chromium_installed_falls_back_when_revision_unknown(tmp_path: Path, mon
 
 def test_expected_chromium_revision_reads_browsers_json():
     """The real Playwright in this venv has a browsers.json. Make sure we
-    return a non-empty revision string from it."""
+    return a non-empty revision string from it.
+    """
     rev = pw.expected_chromium_revision()
     assert rev is not None
     assert rev.isdigit()
@@ -116,7 +117,8 @@ class _FakePopen:
 
 def _popen_factory(**kwargs):
     """Returns a fake Popen constructor that ignores subprocess.Popen kwargs and
-    returns a _FakePopen seeded with the given outputs."""
+    returns a _FakePopen seeded with the given outputs.
+    """
 
     def factory(args, **_):
         return _FakePopen(args, **kwargs)
@@ -177,7 +179,8 @@ def test_install_chromium_raises_when_binary_missing(monkeypatch):
 
 def test_install_chromium_filters_beware_preamble_and_replaces(monkeypatch, capsys):
     """RHEL/unsupported-OS install path: BEWARE lines are dropped, vip prints
-    its own one-line summary."""
+    its own one-line summary.
+    """
     stderr_text = (
         "BEWARE: your OS is not officially supported by Playwright;\n"
         "downloading fallback build for ubuntu24.04-x64.\n"

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import ClassVar
 
 # Imported at collection time, on purpose. ``test_content_deploy`` is a
 # pytest-bdd module whose module-level ``@scenario`` decorators read
@@ -113,7 +114,7 @@ import json  # noqa: E402
 
 
 class TestSharedShinyBundle:
-    _R_VERSIONS = ["4.3.1", "4.6.0", "4.4.2"]
+    _R_VERSIONS: ClassVar[list[str]] = ["4.3.1", "4.6.0", "4.4.2"]
 
     def test_workbench_fixture_defined_in_conftest(self):
         """The Workbench shiny_bundle_spec fixture must exist in conftest."""
@@ -134,7 +135,8 @@ class TestSharedShinyBundle:
 
     def test_manifest_url_ref_matches_installed_version(self):
         """The Workbench fixture pins the download to the installed VIP tag, so a
-        released manifest always matches the app.R checksum shipped with it."""
+        released manifest always matches the app.R checksum shipped with it.
+        """
         from vip import __version__
         from vip_tests.connect.bundles import manifest_raw_url
 
@@ -142,7 +144,7 @@ class TestSharedShinyBundle:
             f"/v{__version__}/src/vip_tests/connect/shiny_manifest.json"
         )
 
-    def test_bundle_has_appR_and_manifest(self):
+    def test_bundle_has_appR_and_manifest(self):  # noqa: N802 -- mirrors the app.R filename
         """The shared builder returns an R app.R + manifest.json (not Python)."""
         from vip_tests.connect.bundles import build_shiny_bundle_files
 
@@ -160,9 +162,10 @@ class TestSharedShinyBundle:
         assert manifest["metadata"]["appmode"] == "shiny"
         assert manifest["platform"] == "4.6.0"  # newest of _R_VERSIONS
 
-    def test_manifest_checksum_matches_appR(self):
+    def test_manifest_checksum_matches_appR(self):  # noqa: N802 -- mirrors the app.R filename
         """The manifest's app.R checksum must match the app.R bytes we ship,
-        or ``rsconnect deploy manifest`` rejects the bundle."""
+        or ``rsconnect deploy manifest`` rejects the bundle.
+        """
         import hashlib
 
         from vip_tests.connect.bundles import build_shiny_bundle_files
@@ -175,7 +178,8 @@ class TestSharedShinyBundle:
 
     def test_connect_and_workbench_use_identical_bundle(self):
         """The Connect deploy test and Workbench publish test must ship the
-        byte-identical bundle -- both route through build_shiny_bundle_files."""
+        byte-identical bundle -- both route through build_shiny_bundle_files.
+        """
 
         # Connect's _get_bundle for the shiny item delegates to the shared builder.
         class _FakeConnect:
@@ -211,9 +215,12 @@ def test_cleanup_fixtures_are_autouse():
             if not is_fixture_call:
                 continue
             for kw in dec.keywords:
-                if kw.arg == "autouse" and isinstance(kw.value, ast.Constant):
-                    if kw.value.value is True:
-                        autouse_fixtures.add(node.name)
+                if (
+                    kw.arg == "autouse"
+                    and isinstance(kw.value, ast.Constant)
+                    and kw.value.value is True
+                ):
+                    autouse_fixtures.add(node.name)
 
     assert "_connect_content_cleanup" in autouse_fixtures, (
         "_connect_content_cleanup must be autouse=True"

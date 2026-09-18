@@ -40,6 +40,11 @@ def _label_for(category_id: str) -> str:
 
 
 def generate_catalog(tests_dir: Path, output: Path) -> dict:
+    """Parse every ``.feature`` file under *tests_dir* and write the catalog JSON to *output*.
+
+    Creates parent directories of *output* as needed and returns the same dict written
+    to disk.
+    """
     features_by_category: dict[str, list[dict]] = defaultdict(list)
 
     for feature_path in sorted(tests_dir.rglob("*.feature")):
@@ -81,6 +86,7 @@ def generate_catalog(tests_dir: Path, output: Path) -> dict:
 
 
 def main() -> None:
+    """Parse ``--output`` and generate the test catalog JSON for ``src/vip_tests``."""
     parser = argparse.ArgumentParser(description="Generate VIP test catalog JSON")
     parser.add_argument(
         "--output",

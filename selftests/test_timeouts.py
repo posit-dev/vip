@@ -56,7 +56,7 @@ class TestWorkbenchConftestConstants:
     """Verify that workbench conftest constants reflect VIP_TIMEOUT_SCALE."""
 
     def test_constants_scale_on_reload(self, monkeypatch):
-        import vip_tests.workbench.conftest as conftest
+        from vip_tests.workbench import conftest
 
         monkeypatch.setenv("VIP_TIMEOUT_SCALE", "2")
         importlib.reload(conftest)
@@ -65,18 +65,20 @@ class TestWorkbenchConftestConstants:
             assert conftest.TIMEOUT_IDE_LOAD == 120_000
             assert conftest.TIMEOUT_PAGE_LOAD == 30_000
             assert conftest.TIMEOUT_QUICK == 10_000
+            assert conftest.TIMEOUT_SSO_ROUNDTRIP == 120_000
         finally:
             monkeypatch.delenv("VIP_TIMEOUT_SCALE", raising=False)
             importlib.reload(conftest)
 
     def test_constants_default_at_scale_one(self, monkeypatch):
-        import vip_tests.workbench.conftest as conftest
+        from vip_tests.workbench import conftest
 
         monkeypatch.delenv("VIP_TIMEOUT_SCALE", raising=False)
         importlib.reload(conftest)
         try:
             assert conftest.TIMEOUT_SESSION_START == 90_000
             assert conftest.TIMEOUT_IDE_LOAD == 60_000
+            assert conftest.TIMEOUT_SSO_ROUNDTRIP == 60_000
         finally:
             importlib.reload(conftest)
 

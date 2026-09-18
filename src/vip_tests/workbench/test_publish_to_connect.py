@@ -66,7 +66,8 @@ _REACHABILITY_POLL_S = 3
 
 def _log(message: str) -> None:
     """Emit a timestamped progress line so a long deploy step is not mistaken
-    for a hang. Visible under ``pytest -s`` / ``--verbose``."""
+    for a hang. Visible under ``pytest -s`` / ``--verbose``.
+    """
     print(f"    [{time.strftime('%H:%M:%S')}] vip-publish: {message}", flush=True)
 
 
@@ -318,7 +319,7 @@ def open_vscode_session(page: Page, publish_context: dict):
     # Wait for VS Code to load.
     try:
         page.locator(VSCodeSession.WORKBENCH).wait_for(state="visible", timeout=TIMEOUT_IDE_LOAD)
-    except Exception:
+    except Exception:  # noqa: BLE001
         pytest.skip(
             "VS Code did not load within timeout — "
             "the IDE may not be installed on this Workbench instance"
@@ -564,7 +565,7 @@ def app_reachable_on_connect(publish_context: dict, connect_client):
     # deploy must not crash the check, so fall back to the recorded/derived URL.
     try:
         content = connect_client.get_content(guid)
-    except Exception:
+    except Exception:  # noqa: BLE001
         content = {}
 
     # Determine the content URL, never leaving it empty: recorded value first,
@@ -610,7 +611,7 @@ def app_reachable_on_connect(publish_context: dict, connect_client):
                 last_status = f"{status} (worker still booting)"
             else:
                 last_status = str(status)
-        except Exception as exc:  # transient during first-boot (conn reset, etc.)
+        except Exception as exc:  # noqa: BLE001  transient during first-boot (conn reset, etc.)
             last_status = repr(exc)
         time.sleep(_REACHABILITY_POLL_S)
 

@@ -37,6 +37,7 @@ def parse_feature_file(path: Path, *, relative_to: Path | None = None) -> dict:
     -------
     dict with keys: ``title``, ``description``, ``marker``, ``tags``,
     ``file``, ``scenarios`` (list of dicts with ``title`` and ``steps``).
+
     """
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
@@ -84,7 +85,7 @@ def parse_feature_file(path: Path, *, relative_to: Path | None = None) -> dict:
             continue
 
         # Scenario / Scenario Outline.
-        if line.startswith("Scenario Outline:") or line.startswith("Scenario:"):
+        if line.startswith(("Scenario Outline:", "Scenario:")):
             if current_scenario is not None:
                 scenarios.append(current_scenario)
             prefix = "Scenario Outline:" if line.startswith("Scenario Outline:") else "Scenario:"

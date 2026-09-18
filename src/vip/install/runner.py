@@ -32,6 +32,7 @@ def _now() -> str:
 
 
 def format_install_plan(plan: InstallPlan) -> str:
+    """Render *plan* as a human-readable dry-run summary, one line per action."""
     if plan.is_empty() and not plan.unsupported_warning:
         return "vip install: nothing to install.\n"
     lines = [
@@ -52,9 +53,11 @@ def format_install_plan(plan: InstallPlan) -> str:
         lines.append("  system packages to install (run yourself if not root):")
         lines.append(f"    {cmd} {' '.join(plan.system_step.packages)}")
     if plan.claim_pending:
-        lines.append(
-            "  pending packages now installed, will be claimed: " + " ".join(plan.claim_pending)
+        claimed = " ".join(
+            concrete if pending_name == concrete else f"{pending_name} (as {concrete})"
+            for pending_name, concrete in plan.claim_pending
         )
+        lines.append("  pending packages now installed, will be claimed: " + claimed)
     if plan.playwright_step:
         lines.append(
             f"  playwright: install {plan.playwright_step.browser} "
@@ -68,8 +71,20 @@ def execute_install_plan(
     *,
     manifest: Manifest,
     manifest_path: Path,
+    resolve_installed: Callable[[tuple[str, ...]], dict[str, str]] | None = None,
 ) -> int:
-    """Execute an install plan. Returns CLI exit code (0=ok, 2=needs sudo)."""
+    """Execute an install plan. Returns CLI exit code (0=ok, 2=needs sudo).
+
+    ``resolve_installed`` maps requested package names to the concrete names the
+    package manager actually installed, and is queried after the system step so
+    the manifest records what is really removable. Only the Debian family needs
+    it: Ubuntu 24.04 satisfies a request for libcups2 with libcups2t64 and keeps
+    the old name only as a Provides entry, so recording the requested name makes
+    `vip uninstall` emit a name apt matches nothing against (#621). Injected
+    rather than called directly here to keep this function free of package-query
+    I/O, matching ``build_install_plan``. When omitted, requested names are
+    recorded unchanged.
+    """
     print(format_install_plan(plan), end="")
 
     system_step = plan.system_step
@@ -93,15 +108,20 @@ def execute_install_plan(
         else:
             cmd = "sudo apt install -y"
         print(f"\nNot running as root. Please run:\n  {cmd} {' '.join(system_step.packages)}")
-        print("Then re-run `vip install`.")
+        print("Then re-run `vip install`, or pass `--skip-system` to skip this check.")
         return 2
 
     # Run system step ourselves if root.
     if needs_root and system_step is not None and is_root():
         _install_system_packages(system_step.manager, system_step.packages)
+        concrete = resolve_installed(system_step.packages) if resolve_installed else {}
         for name in system_step.packages:
             manifest.items.append(
-                SystemPackageItem(manager=system_step.manager, name=name, installed_at=now)
+                SystemPackageItem(
+                    manager=system_step.manager,
+                    name=concrete.get(name, name),
+                    installed_at=now,
+                )
             )
         manifest.pending_system_packages = [
             p for p in manifest.pending_system_packages if p not in set(system_step.packages)
@@ -145,18 +165,17 @@ def _install_system_packages(manager: str, packages: tuple[str, ...]) -> None:
 
 
 def format_uninstall_plan(plan: UninstallPlan) -> str:
+    """Render *plan* as a human-readable dry-run summary, one line per action."""
     lines = ["vip uninstall plan:"]
     if plan.chained_cleanup:
         lines.append(f"  run vip cleanup against {plan.chained_cleanup}")
     if plan.playwright_cache_dirs:
-        for d in plan.playwright_cache_dirs:
-            lines.append(f"  remove playwright cache: {d}")
+        lines.extend(f"  remove playwright cache: {d}" for d in plan.playwright_cache_dirs)
     if plan.delete_manifest:
         lines.append("  delete .vip-install.json")
     if plan.system_remove_commands:
         lines.append("  system packages to remove (run yourself):")
-        for cmd in plan.system_remove_commands:
-            lines.append(f"    {cmd}")
+        lines.extend(f"    {cmd}" for cmd in plan.system_remove_commands)
     return "\n".join(lines) + "\n"
 
 
@@ -167,6 +186,26 @@ def execute_uninstall_plan(
     yes: bool,
     cleanup_callable: Callable[[str], None] | None,
 ) -> int:
+    """Execute an uninstall plan, or just print it if ``yes`` is false.
+
+    With ``yes=False``, prints the plan and returns 0 without touching the
+    filesystem or calling ``cleanup_callable`` — a pure dry run.
+
+    With ``yes=True``, in order: if ``plan.chained_cleanup`` and
+    ``cleanup_callable`` are both set, calls ``cleanup_callable(chained_cleanup)``.
+    The caller (``vip uninstall``'s CLI wiring) binds this to a callable that only
+    deletes ``_vip_test``-tagged Connect content via ``client.cleanup_vip_content()``
+    — a subset of what ``vip cleanup`` does; it does not touch Workbench sessions.
+    Any exception the callable raises is caught, printed as a warning, and
+    swallowed rather than propagated, so a failed content cleanup does not stop
+    the rest of uninstall or change this function's return value. Then removes
+    each existing directory in ``plan.playwright_cache_dirs``, deletes
+    ``manifest_path`` if ``plan.delete_manifest`` and it exists, and prints
+    ``plan.system_remove_commands`` for the user to run themselves (never runs
+    them). Always returns 0, even when the chained cleanup failed — check the
+    printed "(content cleanup: failed)" summary line, not the return code, to
+    detect that case.
+    """
     print(format_uninstall_plan(plan), end="")
     if not yes:
         print("\nDry run only. Pass --yes to execute.")

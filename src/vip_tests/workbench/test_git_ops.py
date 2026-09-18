@@ -165,7 +165,7 @@ def _wb_git_cleanup_state():
     state: dict = {"pending": []}
     yield state
     # Best-effort cleanup using subprocess; Playwright pages are gone by now.
-    import subprocess  # noqa: PLC0415
+    import subprocess
 
     for auth_url, branch in state["pending"]:
         try:
@@ -173,8 +173,10 @@ def _wb_git_cleanup_state():
                 ["git", "push", auth_url, "--delete", branch],
                 capture_output=True,
                 timeout=30,
+                check=False,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
+            # Best-effort cleanup — don't mask the original failure/skip.
             pass
 
 

@@ -54,7 +54,7 @@ class ProductVersion:
     ``YYYY.MM.patch[-dev|-daily[.X]|-preview][+build]`` shape.
     """
 
-    __slots__ = ("_raw", "year", "month", "patch", "pre_kind", "pre_extra", "build")
+    __slots__ = ("_raw", "build", "month", "patch", "pre_extra", "pre_kind", "year")
 
     def __init__(self, raw: str) -> None:
         match = _VERSION_RE.match(raw.strip())
@@ -114,4 +114,4 @@ class ProductVersion:
 # (Connect, Workbench, Package Manager) ship on a shared calendar version, so a
 # single floor covers the whole stack. Bump this only when dropping support for
 # an older release. Surfaced by ``vip version``.
-MINIMUM_SUPPORTED_POSIT_TEAM = "2026.04.0"
+MINIMUM_SUPPORTED_POSIT_TEAM = "2026.06.0"

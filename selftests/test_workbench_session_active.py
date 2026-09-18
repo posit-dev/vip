@@ -43,7 +43,8 @@ class _FakeStatusLocator:
 class _FakeStatusPage:
     """Minimal Page stand-in: a status-row selector is "visible" iff its
     state word appears in *visible_states*.  Lets us exercise the terminal-
-    state detection without a live browser."""
+    state detection without a live browser.
+    """
 
     def __init__(self, *visible_states: str):
         self._visible = set(visible_states)
@@ -69,7 +70,8 @@ def test_failure_message_explains_active_was_expected():
 
 def test_failure_message_points_at_the_deployment_not_the_test():
     """The message must make clear the deployment could not launch the
-    session, so the reader does not chase a phantom locator/test bug."""
+    session, so the reader does not chase a phantom locator/test bug.
+    """
     msg = _session_failure_message("sess", "Failed").lower()
     assert "workbench could not launch" in msg
 
@@ -78,7 +80,8 @@ def test_failure_message_supports_a_non_active_expected_state():
     """The suspend path expects 'Suspended', not 'Active'.  The message must
     name the expected state and must NOT misattribute the cause to a failed
     launch: the session did launch (it reached Active) and then abnormally
-    exited during suspend."""
+    exited during suspend.
+    """
     msg = _session_failure_message("sess", "Failed", expected="Suspended")
     assert "Suspended" in msg
     assert "Failed" in msg
@@ -88,7 +91,8 @@ def test_failure_message_supports_a_non_active_expected_state():
 def test_wait_for_session_suspended_is_available():
     """The suspend step delegates to a fail-fast helper, mirroring
     wait_for_session_active, so a terminal 'Failed' is reported promptly
-    instead of as an opaque timeout."""
+    instead of as an opaque timeout.
+    """
     from vip_tests.workbench.conftest import wait_for_session_suspended
 
     assert callable(wait_for_session_suspended)
@@ -96,7 +100,8 @@ def test_wait_for_session_suspended_is_available():
 
 def test_raise_if_session_failed_raises_on_terminal_state():
     """The shared fail-fast helper raises an actionable AssertionError naming
-    both the terminal state observed and the state that was expected."""
+    both the terminal state observed and the state that was expected.
+    """
     from vip_tests.workbench.conftest import raise_if_session_failed
 
     page = _FakeStatusPage("Failed")
@@ -108,7 +113,8 @@ def test_raise_if_session_failed_raises_on_terminal_state():
 
 def test_raise_if_session_failed_is_a_noop_when_not_terminal():
     """When the session is not in a terminal state, the helper returns without
-    raising so the caller can keep polling/reloading."""
+    raising so the caller can keep polling/reloading.
+    """
     from vip_tests.workbench.conftest import raise_if_session_failed
 
     page = _FakeStatusPage("Active")
@@ -128,7 +134,8 @@ def test_status_selector_matches_legacy_div_markup():
 
 def test_status_selector_matches_2026_06_button_markup():
     """Workbench 2026.06 renders status as a button whose accessible name is
-    the status word (sourced from text or aria-label)."""
+    the status word (sourced from text or aria-label).
+    """
     sel = Homepage.session_row_status("s", "Failed")
     assert "button[aria-label='Failed']" in sel
     assert "button:text-is('Failed')" in sel
@@ -142,7 +149,8 @@ def test_capacity_failure_lists_counts_and_profiles():
 
 def test_capacity_failure_preserves_per_session_diagnostics():
     """The actionable per-session reason (terminal-state message) must survive
-    aggregation, not be discarded in favor of a bare profile list."""
+    aggregation, not be discarded in favor of a bare profile list.
+    """
     reason = _session_failure_message("_vip_cap_Small_0", "Failed")
     msg = format_capacity_failure(1, ["Small"], [reason])
     assert reason in msg
@@ -150,7 +158,8 @@ def test_capacity_failure_preserves_per_session_diagnostics():
 
 def test_capacity_failure_without_reasons_still_lists_profiles():
     """A timeout path may record a profile without a captured reason; the
-    profile list must still render."""
+    profile list must still render.
+    """
     msg = format_capacity_failure(2, ["Medium"], [])
     assert "1/2 sessions reached Active" in msg
     assert "Failed profiles: Medium" in msg

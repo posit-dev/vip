@@ -6,8 +6,8 @@
 # Install uv (if you don't have it)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install all dependencies (including dev tools like ruff)
-uv sync
+# Install all dependencies, including the dev tools (ruff, mypy) that live in the dev extra
+uv sync --extra dev
 
 # Or with pip
 pip install -e ".[dev]"
@@ -32,16 +32,40 @@ just format         # ruff format
 Without just, run ruff directly:
 
 ```bash
-uv run ruff check src/ src/vip_tests/        # lint
-uv run ruff format --check src/ src/vip_tests/  # format check
-uv run ruff check --fix src/ src/vip_tests/  # auto-fix lint
-uv run ruff format src/ src/vip_tests/       # reformat
+uv run --extra dev ruff check src/ selftests/ examples/ docker/        # lint
+uv run --extra dev ruff format --check src/ selftests/ examples/ docker/  # format check
+uv run --extra dev ruff check --fix src/ selftests/ examples/ docker/  # auto-fix lint
+uv run --extra dev ruff format src/ selftests/ examples/ docker/       # reformat
 ```
+
+### Pre-commit hooks (optional)
+
+`.pre-commit-config.yaml` runs `ruff --fix` and `ruff-format` on staged files
+before each commit, catching lint and format issues locally instead of
+waiting for CI. It's optional -- `just check` remains the CI-equivalent gate,
+and CI enforces both regardless of whether the hook is installed.
+
+`pre-commit` itself isn't in the `dev` extra, so install and run it with
+[uvx](https://docs.astral.sh/uv/guides/tools/) rather than `uv run`:
+
+```bash
+uvx pre-commit install
+```
+
+The hook's `rev: v0.15.0` pin must move together with the ruff version pinned
+in `ci.yml` and the `dev` extra's `ruff` range in `pyproject.toml` -- see
+AGENTS.md's "Common mistakes to avoid" for why letting them drift apart makes
+a PR pass locally and fail in CI, or the reverse.
 
 ## Type checking
 
 ```bash
-uv run mypy src/
+just typecheck
+
+# Without just. `--extra dev` matters: mypy lives in the dev extra, which a bare
+# `uv sync` does not install. The path is `src/vip/`, not `src/` -- CI does not
+# type-check `src/vip_tests/`.
+uv run --extra dev mypy src/vip/
 ```
 
 ## The lockfile

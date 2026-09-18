@@ -42,6 +42,7 @@ class TestScaffoldList:
             [sys.executable, "-m", "vip.cli", "scaffold", "--list"],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0
         assert "minimal" in result.stdout
@@ -257,6 +258,7 @@ class TestScaffoldCLI:
             [sys.executable, "-m", "vip.cli", "--help"],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert "scaffold" in result.stdout
 
@@ -265,6 +267,7 @@ class TestScaffoldCLI:
             [sys.executable, "-m", "vip.cli", "scaffold", "--help"],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0
         assert "--output" in result.stdout

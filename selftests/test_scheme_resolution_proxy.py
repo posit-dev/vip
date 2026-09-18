@@ -84,7 +84,8 @@ def test_proxy_error_warning_redacts_credentials(monkeypatch, capsys):
 
     resolve_url_scheme names the applicable proxy in its warning; an
     authenticated proxy (http://user:pass@host) must be redacted first so the
-    password never reaches stdout/CI logs."""
+    password never reaches stdout/CI logs.
+    """
 
     def boom(*a, **kw):
         raise httpx.ProxyError("proxy refused CONNECT")
@@ -120,7 +121,8 @@ def test_transport_error_warning_redacts_credentials(monkeypatch, capsys):
 
 def test_proxy_routed_transport_error_does_not_downgrade(monkeypatch):
     """With a proxy in effect, a non-ProxyError transport failure still must not
-    downgrade — the raw-socket tiebreak bypasses the proxy and would mislead."""
+    downgrade — the raw-socket tiebreak bypasses the proxy and would mislead.
+    """
 
     def boom(*a, **kw):
         raise httpx.ConnectTimeout("read timed out mid-tunnel")
@@ -227,7 +229,8 @@ def test_lone_http_proxy_with_no_proxy_host_downgrades_again(monkeypatch):
 
 def test_no_proxy_host_still_uses_direct_tiebreak(monkeypatch):
     """A host in NO_PROXY takes the direct path, so the tiebreak still applies
-    and a genuine no-listener case downgrades as before."""
+    and a genuine no-listener case downgrades as before.
+    """
     calls = {"get": 0, "tiebreak": 0}
 
     def boom(*a, **kw):

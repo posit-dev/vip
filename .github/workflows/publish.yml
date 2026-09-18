@@ -9,6 +9,7 @@ jobs:
   build:
     name: Build distribution
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       # Attest the artifacts here, in the job that produced them.
@@ -56,6 +57,7 @@ jobs:
     # GitHub release: a mistagged tag fails build and never publishes a release.
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       id-token: write
@@ -145,6 +147,7 @@ jobs:
     # without its matching release assets.
     needs: [build, release]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: pypi
       url: https://pypi.org/p/posit-vip
@@ -164,6 +167,8 @@ jobs:
     name: Smoke-test published package
     needs: publish
     runs-on: ubuntu-latest
+    # Includes up to 6 retries at 20s apart while waiting for PyPI to index.
+    timeout-minutes: 10
     # Installs from public PyPI and runs the CLI — needs no GITHUB_TOKEN scopes.
     permissions: {}
     steps:

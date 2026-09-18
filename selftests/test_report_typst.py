@@ -53,7 +53,8 @@ class TestLit:
         lit = report_typst._lit(HOSTILE)
         # The dangerous characters are present — inside the literal — and the
         # only unescaped double quotes are the delimiters.
-        assert lit.startswith('"') and lit.endswith('"')
+        assert lit.startswith('"')
+        assert lit.endswith('"')
         assert lit.count('"') - lit.count('\\"') == 2
 
 

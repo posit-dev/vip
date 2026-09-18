@@ -1,4 +1,4 @@
-"""Generate feature matrix JSON — test areas × products cross-tab.
+"""Generate feature matrix JSON — test areas x products cross-tab.
 
 USAGE:
     uv run python scripts/generate-feature-matrix.py [--output PATH]
@@ -108,7 +108,10 @@ def _detect_products_in_steps(scenarios: list[dict[str, str | list[str]]]) -> se
     products_found: set[str] = set()
     for scenario in scenarios:
         for step in scenario.get("steps", []):
-            assert isinstance(step, str)
+            if not isinstance(step, str):
+                raise ValueError(
+                    f"scenario step must be a str, got {type(step).__name__}: {step!r}"
+                )
             for product, pattern in _PRODUCT_PATTERNS.items():
                 if pattern.search(step):
                     products_found.add(product)
@@ -121,14 +124,18 @@ def _read_all_tags(path: Path) -> list[str]:
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if stripped.startswith("@"):
-            for token in stripped.split():
-                tags.append(token.lstrip("@"))
+            tags.extend(token.lstrip("@") for token in stripped.split())
         elif stripped.startswith("Feature:"):
             break
     return tags
 
 
 def generate_matrix(tests_dir: Path, output: Path) -> dict:
+    """Build the test-area x product coverage matrix and write it as JSON to *output*.
+
+    Creates parent directories of *output* as needed and returns the same dict written
+    to disk.
+    """
     # area_key -> {product -> {scenarios: int, files: [str], conditional: bool}}
     area_data: dict[str, dict[str, dict]] = defaultdict(
         lambda: {p: {"scenarios": 0, "files": [], "conditional": False} for p in PRODUCTS}
@@ -180,7 +187,7 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
     product_specific_areas = []
     cross_cutting_areas = []
 
-    for area_key in sorted(area_data.keys(), key=lambda k: _area_name(k)):
+    for area_key in sorted(area_data.keys(), key=_area_name):
         cats = area_categories[area_key]
         is_cross_cutting = all(c in CROSS_CUTTING_CATEGORIES for c in cats)
 
@@ -257,6 +264,7 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
 
 
 def main() -> None:
+    """Parse ``--output`` and generate the feature matrix JSON for ``src/vip_tests``."""
     parser = argparse.ArgumentParser(description="Generate VIP feature matrix JSON")
     parser.add_argument(
         "--output",

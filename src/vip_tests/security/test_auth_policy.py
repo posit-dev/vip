@@ -37,12 +37,11 @@ def provider_matches(auth_info):
 
 @when("I make an unauthenticated API request to Connect", target_fixture="unauth_response")
 def unauth_request(vip_config):
-    resp = httpx.get(
+    return httpx.get(
         f"{vip_config.connect.url}/__api__/v1/user",
         timeout=15,
         verify=vip_config.verify,
     )
-    return resp
 
 
 @then("the request is rejected with 401 or 403")

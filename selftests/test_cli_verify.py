@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -34,6 +35,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         "test_timeout": DEFAULT_TEST_TIMEOUT_SECONDS,
         "headless_auth": False,
         "idp": None,
+        "provider": None,
         "performance_tests": False,
         "basic": False,
         "insecure": False,
@@ -92,13 +94,15 @@ def _vip_tests_path() -> str:
     from importlib.util import find_spec
 
     spec = find_spec("vip_tests")
-    assert spec and spec.submodule_search_locations
+    assert spec
+    assert spec.submodule_search_locations
     return spec.submodule_search_locations[0]
 
 
 class TestVerifyLocalTestPath:
     """The CLI must pass the vip_tests package path to pytest so tests are
-    found even when running outside the source tree (pip install)."""
+    found even when running outside the source tree (pip install).
+    """
 
     def test_vip_tests_path_included_by_default(self, tmp_path):
         cfg = tmp_path / "vip.toml"
@@ -369,19 +373,19 @@ class TestVerifyLocalMissingConfig:
     """Review #88: verify exits immediately when config file is missing."""
 
     def test_explicit_config_missing_exits(self, tmp_path):
+        from vip.cli import run_verify
+
         missing = str(tmp_path / "does_not_exist.toml")
         with pytest.raises(SystemExit) as exc_info:
-            from vip.cli import run_verify
-
             run_verify(_make_args(config=missing))
         assert exc_info.value.code == 1
 
     def test_no_config_no_urls_missing_default_exits(self, tmp_path, monkeypatch):
+        from vip.cli import run_verify
+
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         with pytest.raises(SystemExit) as exc_info:
-            from vip.cli import run_verify
-
             run_verify(_make_args())
         assert exc_info.value.code == 1
 
@@ -396,7 +400,8 @@ class TestVerifyLocalMissingConfig:
 class TestVerifyLocalConfigPath:
     """Regression: the resolved config path must be passed to pytest as an
     absolute path so downstream CWD/rootdir changes cannot cause pytest to
-    load a different (or missing) vip.toml (issue #170)."""
+    load a different (or missing) vip.toml (issue #170).
+    """
 
     def test_default_vip_toml_passed_as_absolute_path(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -738,12 +743,12 @@ class TestVerifyLocalTestTimeout:
                 cmd, kwargs.get("timeout", DEFAULT_TEST_TIMEOUT_SECONDS)
             )
 
+        from vip.cli import run_verify
+
         with (
             patch("vip.cli.subprocess.run", side_effect=fake_run),
             pytest.raises(SystemExit) as exc_info,
         ):
-            from vip.cli import run_verify
-
             run_verify(_make_args(config=str(cfg)))
 
         assert exc_info.value.code == 1
@@ -917,6 +922,87 @@ class TestAuthCliFlags:
             Path(path).unlink(missing_ok=True)
 
 
+class TestProviderCliFlag:
+    """--provider always wins, overriding --idp's implied "oidc" and vip.toml."""
+
+    def test_explicit_provider_saml(self, tmp_path, monkeypatch):
+        """--provider saml is written to the temp config as-is."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", provider="saml")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "saml"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_explicit_provider_overrides_inherited_vip_toml(self, tmp_path, monkeypatch):
+        """--provider wins over a provider already declared in vip.toml."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "oauth2"\nidp = "okta"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(
+            _make_args(workbench_url="https://wb.example.com", provider="saml")
+        )
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "saml"  # CLI override
+            assert cfg.auth.idp == "okta"  # idp still inherited
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_inherited_provider_survives_with_no_provider_flag(self, tmp_path, monkeypatch):
+        """Without --provider, vip.toml's declared provider is unchanged."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "oauth2"\n')
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(workbench_url="https://wb.example.com"))
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "oauth2"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_idp_with_no_provider_still_defaults_to_oidc(self, tmp_path, monkeypatch):
+        """--idp alone (no --provider, no vip.toml) still implies "oidc"."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import _generate_temp_config
+        from vip.config import load_config
+
+        path = _generate_temp_config(_make_args(workbench_url="https://wb.example.com", idp="okta"))
+        try:
+            cfg = load_config(path)
+            assert cfg.auth.provider == "oidc"
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+    def test_invalid_provider_rejected(self, tmp_path, monkeypatch):
+        """An unknown --provider value must exit rather than reach pytest.
+
+        Uses run_verify directly (real sys.exit), like
+        TestFormatFlag.test_unknown_format_rejected.
+        """
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        from vip.cli import run_verify
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_verify(_make_args(workbench_url="https://wb.example.com", provider="bogus"))
+        assert exc_info.value.code == 2
+
+
 class TestVerifyLocalTLSFlags:
     """--insecure and --ca-bundle are encoded in the temp config."""
 
@@ -1028,7 +1114,8 @@ class TestVerifyLocalTLSFlags:
 
 class TestVerifyLocalVersionFlags:
     """--connect-version, --workbench-version, --package-manager-version are
-    encoded in the temp config."""
+    encoded in the temp config.
+    """
 
     def test_connect_version_written_to_temp_config(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -1178,7 +1265,7 @@ class TestVerifyLocalSnowflakeApiAuthGuard:
 class TestReorderHelpArgs:
     """`vip -h <subcommand>` should surface the subcommand's help, not top-level."""
 
-    COMMANDS = {"verify", "cleanup", "install", "auth", "report"}
+    COMMANDS: ClassVar[set[str]] = {"verify", "cleanup", "install", "auth", "report"}
 
     def test_help_before_subcommand_is_moved_after(self):
         from vip.cli import _reorder_help_args
@@ -1227,9 +1314,11 @@ class TestReorderHelpArgs:
     def test_help_with_separator_actually_shows_help(self):
         from vip.cli import main
 
-        with patch.object(sys, "argv", ["vip", "-h", "verify", "--", "-x"]):
-            with pytest.raises(SystemExit) as exc:
-                main()
+        with (
+            patch.object(sys, "argv", ["vip", "-h", "verify", "--", "-x"]),
+            pytest.raises(SystemExit) as exc,
+        ):
+            main()
         # argparse exits 0 after printing help; a nonzero/None code would mean
         # it fell through to running the command instead.
         assert exc.value.code == 0
@@ -1297,7 +1386,8 @@ class TestVerifyDefaultXdist:
 
     def test_defaults_come_before_user_pytest_args(self, tmp_path):
         """Injected defaults are appended before user args, so an explicit
-        later -n/--dist in pytest_args still wins in edge cases."""
+        later -n/--dist in pytest_args still wins in edge cases.
+        """
         cfg = tmp_path / "vip.toml"
         cfg.write_text("[general]\n")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--tb=short"]))
@@ -1326,7 +1416,8 @@ class TestFormatFlag:
         patch ``vip.cli.sys.exit`` to a no-op so run_verify falls through to
         subprocess.run for the "happy path" tests above. An exit-path test has
         to call run_verify directly, like every other SystemExit assertion in
-        this file (see TestVerifyLocalCredentialCheck._run_and_expect_exit)."""
+        this file (see TestVerifyLocalCredentialCheck._run_and_expect_exit).
+        """
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         from vip.cli import run_verify
@@ -1345,7 +1436,8 @@ class TestFormatFlag:
         """--ci is a non-interactive preset; combining with --interactive-auth
         must exit rather than silently ignoring one of the two. Calls
         run_verify directly (real sys.exit) per the note on
-        test_unknown_format_rejected above."""
+        test_unknown_format_rejected above.
+        """
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         from vip.cli import run_verify
@@ -1378,7 +1470,8 @@ class TestFormatFlag:
 
 class TestVerifyProxyFlagWithConfig:
     """--proxy/--no-proxy have no consumer on a config-file run (they only feed the
-    generated temp config), so run_verify must warn rather than silently drop them."""
+    generated temp config), so run_verify must warn rather than silently drop them.
+    """
 
     def _write_config(self, tmp_path) -> str:
         cfg = tmp_path / "vip.toml"
@@ -1433,7 +1526,8 @@ class TestVerifyProxyFlagWithConfig:
 
     def test_no_warning_when_flags_reach_the_generated_config(self, capsys):
         """--proxy with a URL flag DOES take effect (it feeds _generate_temp_config),
-        so warning there would be wrong."""
+        so warning there would be wrong.
+        """
         _capture_call(
             _make_args(connect_url="https://connect.example.com", proxy="http://corp:8080")
         )

@@ -26,8 +26,8 @@ Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `py
 Ruff is the linter and formatter. CI enforces both. Always run checks before committing:
 
 ``` bash
-uv run ruff check src/ src/vip_tests/ selftests/ examples/
-uv run ruff format --check src/ src/vip_tests/ selftests/ examples/
+uv run --extra dev ruff check .
+uv run --extra dev ruff format --check .
 ```
 
 Or with just:
@@ -36,7 +36,7 @@ Or with just:
 just check
 ```
 
-Ruff rules: `E`, `F`, `I`, `UP`. Line length is 100. All Python directories (`src/`, `src/vip_tests/`, `selftests/`, `examples/`) must pass. CI pins ruff to version 0.15.0 -- do not change the version without updating `.github/workflows/ci.yml`.
+Ruff's rule set is the `select` list in `pyproject.toml` under `[tool.ruff.lint]`; do not restate it here. Line length is 100. The whole repository must pass, not just `src/`, `selftests/`, `examples/` and `docker/` -- CI's ruff action already covers `scripts/` too, since it appends the repo root to its arguments, so run these commands from the repo root to match. The ruff version is pinned in three places that must move together: `.github/workflows/ci.yml`, `.pre-commit-config.yaml`, and the `dev` extra in `pyproject.toml`. Bump all three in the same commit -- do not change one without the others.
 
 Auto-fix before committing:
 
@@ -70,6 +70,7 @@ src/vip_tests/workbench/         # Auth, IDE launch, sessions, packages
 src/vip_tests/cross_product/     # SSL, monitoring, system resources
 src/vip_tests/performance/       # Load times, concurrency
 src/vip_tests/security/          # HTTPS, auth policy, secrets
+src/vip_tests/config_hygiene/    # VIP's own configuration (opt-in; excluded by default)
 ```
 
 Product tests cannot run in CI (no products available). They are collected with `--collect-only` as a dry run in CI.
@@ -81,6 +82,45 @@ uv run vip verify --config vip.toml --categories package-manager -- -v
 ```
 
 Pass extra pytest args after `--` (e.g. `-k pattern` to filter, `-v` for verbose).
+
+### Reading the results
+
+`vip verify --ci` emits `results.json`, JUnit XML, and SARIF together, and switches to concise
+tracebacks (`--tb=short`) -- the preset CI and other tooling should use instead of parsing
+pytest's human-readable stdout:
+
+``` bash
+uv run vip verify --config vip.toml --ci
+```
+
+When a run has failures, VIP also writes `failures.json` next to `results.json`: a structured
+per-failure record (`test`, `scenario`, `feature`, `error_summary`) for whoever -- human or agent
+-- is triaging the run without re-running it.
+
+`scripts/generate-test-catalog.py` and `scripts/generate-feature-matrix.py` parse all 45 feature
+files under `src/vip_tests/` into the JSON the VIP website's test-catalog and feature-matrix pages
+render. Generate both with `just website-data`:
+
+``` bash
+just website-data
+```
+
+Their outputs (`website/src/data/test-catalog.json`, `website/src/data/feature-matrix.json`) are
+gitignored (`.gitignore:20-21`), so grepping the repo will not find them -- run `just website-data`
+first if you need the generated catalog rather than reading the raw `.feature` files by hand.
+
+### Known-flaky selftests
+
+`selftests/test_load_engine.py::TestThreadpool::test_all_succeed` and
+`TestAutoRouting::test_small_uses_threadpool` are known to flake on macOS on a clean tree. Neither
+carries the `_skip_high_concurrency_on_macos` marker in that file (that marker is reserved for the
+100+-request async/auto cases that reliably fail on macOS runners, per the comment above it); these
+two run at lower concurrency (20 and 50 requests) and only flake occasionally. If you hit one, rerun
+before assuming a real regression. This repo's convention for a genuinely environment-limited test
+is `pytest.mark.skipif(..., reason="...")` with a specific reason, as `_skip_high_concurrency_on_macos`
+does -- not `pytest.mark.xfail`, which does not appear anywhere in `selftests/`. Don't reach for
+`xfail` to silence one of these; either fix the underlying nondeterminism or extend the existing
+`skipif` pattern with a reason that explains why.
 
 ## How tests are structured
 
@@ -314,14 +354,24 @@ Every render also produces `_output/vip-report.pdf` from `report/vip-report.qmd`
 ## CI workflows
 
 -   **`ci.yml`** -- on every PR/push: ruff lint/format (pinned to 0.15.0), mypy type-check, zizmor actions-lint, a runtime dependency audit, and selftests (Ubuntu + macOS, Python 3.10 and 3.12). A `changes` path-filter gates the expensive jobs, while `Lint & Format`, `Selftests Status` and `CI Status` always run as required checks. Uses uv cache. `CI Status` is the scope-aware aggregator for the four path-gated jobs (`Type Check`, `Actions Lint (zizmor)`, `Dependency Audit`, `Lockfile Guard`): none of them can be a required check directly, because each is conditional on `changes` and a failed change-detection job would skip them all and report a green gate. A legitimately skipped job counts as passing; only failure or cancellation is fatal.
--   **`preview.yml`** -- runs selftests, renders Quarto report, publishes PR preview to gh-pages via `rossjrw/pr-preview-action@v1`. Uses uv and Quarto caches. Its job is checking `report/` template changes.
--   **`example-report.yml`** -- builds the example report from one live deployment and uploads it as an artifact. Runs the smoke subset against Connect, Workbench and Package Manager and renders it with `vip report`. `website.yml` and `website-preview.yml` download the artifact into `website/dist/`, where `report.astro` embeds it. A control-list traceability matrix (`vip report --controls`) is documented and demonstrated separately, in `examples/21CFR_part11_validation/`, rather than published on the website -- see that directory's `VALIDATION-PACKAGE.md`.
+-   **`copilot-setup-steps.yml`** -- on `workflow_dispatch` and pushes that touch the workflow file itself, checks out the repo and installs uv so GitHub Copilot's coding agent has a working environment. The job must be named exactly `copilot-setup-steps` for Copilot to recognize it, and runs with `contents: read` only since Copilot supplies its own scoped token.
+-   **`security-audit.yml`** -- `schedule` (daily) plus `workflow_dispatch`; audits the full dependency tree (`uv sync --all-extras`, `pip-audit`), unlike `ci.yml`'s PR-time audit which is scoped to shipped runtime deps. A vulnerability here never blocks a PR -- it opens or refreshes a single tracking issue instead, so a newly disclosed CVE in the wild doesn't turn unrelated PRs red.
+-   **`preview.yml`** -- runs selftests, renders Quarto report, publishes PR preview to gh-pages via `rossjrw/pr-preview-action@v1`. Uses uv and Quarto caches.
+-   **`example-report.yml`** -- `workflow_call` only, no direct trigger; the reusable workflow that `preview.yml`, `website.yml`, and `website-preview.yml` all call to stand up Connect (required -- the job fails loudly if `CONNECT_LICENSE` is missing) and, when their license secrets are configured, Workbench and Package Manager, run the cross-product example suite, and render the Quarto report that becomes the published example report. A control-list traceability matrix (`vip report --controls`) is documented and demonstrated separately, in `examples/21CFR_part11_validation/`, rather than published on the website -- see that directory's `VALIDATION-PACKAGE.md`.
+-   **`website-preview.yml`** -- on PR open/reopen/synchronize (paths-gated to `website/`, `src/vip/`, `src/vip_tests/`, `report/`, `scripts/generate-test-catalog.py`, `scripts/generate-feature-matrix.py`) calls `example-report.yml`, builds the Astro site, and publishes a per-PR preview to `gh-pages` via `rossjrw/pr-preview-action`, posting a sticky comment with QR codes linking to the preview and the example report; on PR close it tears the preview down instead.
+-   **`website.yml`** -- on push to `main` (paths-gated) or `workflow_dispatch`; calls `example-report.yml`, builds the Astro site, renders the `se-overview`/`qa-overview` reveal.js decks into it, and deploys the result to GitHub Pages (`gh-pages`) via `JamesIves/github-pages-deploy-action`, excluding the PR-preview directories from cleanup.
 -   **`pr-title.yml`** -- validates PR titles follow conventional commit format. Squash merges use the PR title as the commit message.
 -   **`release.yml`** -- cuts VIP's calver release train: `schedule` (Thursday evenings) plus `workflow_dispatch` for out-of-band releases. `scripts/next_version.py` computes the version (`YYYY.M.0` for the first release of a calendar month, `YYYY.M.PATCH` for later ones that month); a scheduled or blank-`version` dispatch run exits cleanly when there are no commits since the last tag, while a dispatch run with an explicit `version` skips that gate but must still be strictly greater than the last release. `cliff.toml` (git-cliff) generates the `CHANGELOG.md` entry for the tag before it exists, so it lands inside the release commit rather than needing a second commit. `just relock` keeps `uv.lock`'s own `posit-vip` entry in sync with the version just stamped -- see docs/development.md ("Versioning and the release cadence") for the full rule and issue #559 for why the relock step matters.
+-   **`docker.yml`** -- on PR to `main` (build only, no push), push to `main`, or a `v*` tag; builds and pushes the container image to `ghcr.io/posit-dev/vip` with `latest`/semver/sha tags via `docker/metadata-action`, and smoke-tests the pushed image (`docker run ... version`) when the push was a version tag.
+-   **`publish.yml`** -- on push of a `v*` tag; builds the wheel/sdist, asserts the tag matches `pyproject.toml`'s version, attests build provenance for both the package and an exported locked-constraints file, publishes a GitHub release (constraints file attached before the release goes out of draft) with notes pulled from `CHANGELOG.md`, then publishes to PyPI via trusted publishing (`id-token: write`, no stored token) and smoke-tests the published package with a retry loop for PyPI indexing lag.
 -   **Smoke workflows** (`connect-smoke.yml`, `workbench-smoke.yml`, `packagemanager-smoke.yml`, `mock-idp-e2e.yml`) -- run the product suites against real containers. On PR/push each tests a single latest version (change-gated via a `changes` paths-filter job); on `schedule` (nightly, staggered hourly) and `workflow_dispatch` a `set-matrix` job fans each out across the product version support window (current + 2 back). Bump the pinned tags in each workflow's `set-matrix` step when a new product release ships. Each workflow's `*-status` aggregation job is scope-aware: it passes when the suite was legitimately out of scope (the PR's paths didn't match) but **fails** when the suite was in scope (`changes.relevant == 'true'`) yet did not succeed -- so a path-gated skip, an excluded actor, or a missing license secret can no longer report a green required check without the suite having run. The Connect, Workbench, and Package Manager `*-status` jobs are required merge checks.
     `mock-idp-e2e.yml` is structured the same way so `Mock-IdP E2E Status` can be promoted to a required check via a separate admin action.
     `workbench-smoke.yml` additionally splits into two tiers via a `suite` value: PR/push runs `gate` (the fast subset), the nightly schedule runs `full` (every Workbench file), and `workflow_dispatch` can pick either. The split is based on a measured run rather than taste — `full` buys 8 more real passes for ~523s more test time, which is worth a nightly but not a merge gate. Skip reasons do **not** appear in the log even with `-rs`, because VIP's plugin owns the terminal reporter; read them from `<skipped message=...>` in the uploaded `smoke-results.xml`.
     The three cross-cutting suites (`cross_product/test_resources`, `security/test_auth_policy`, `config_hygiene/test_secrets`) run in all three product workflows. `test_secrets` asserts no plaintext `api_key`/`password` in the generated `vip.toml`, so credentials must be passed to pytest as step `env` (`VIP_CONNECT_API_KEY`, `VIP_TEST_PASSWORD`) and never written into the config file.
+-   **`connect-integration.yml`** -- push to `main`, `schedule` (daily), and `workflow_dispatch`; deliberately no `pull_request` trigger and not a required check (decided in #421). Runs the full VIP Connect category (`vip verify --api-auth --categories connect`) against ephemeral `release` and `preview` (nightly build) Connect servers via `with-connect`, so an unreleased upstream build never blocks a PR. It's a drift detector, not a gate: failures post to Slack via the `SLACK_WEBHOOK_CONNECT_CI` secret instead of failing anyone's merge.
+-   **`install-flow-smoke.yml`** -- push to `main` or PR (paths-gated to `src/vip/install/**`, `src/vip/cli.py`, `pyproject.toml`, `uv.lock`) or `workflow_dispatch`; reproduces the documented default install flow from the README (`uv tool install posit-vip` then `vip install`) on Ubuntu-as-root and macOS. Distinct from the product smoke workflows above: `uv tool install` only puts vip's own entry point on `PATH`, a topology every other install test misses because it runs `uv run vip install` from inside the project venv.
+-   **`linux-smoke.yml`** -- push to `main` or PR (paths-gated to `docker/rhel*/`, `docker/opensuse-leap/`, `docker/ubuntu2404/`, `docker/playwright-smoke.py`, `scripts/rhel-smoke.sh`, `scripts/opensuse-leap-smoke.sh`, `scripts/ubuntu2404-smoke.sh`, `justfile`, `pyproject.toml`, `uv.lock`, `src/**`, `selftests/**`); builds a Docker image per distro (`rhel9`, `rhel10`, `opensuse-leap`, `ubuntu2404`) that exercises `vip install`'s `apt`/`zypper` system-package path, then runs the smoke script inside it. `ubuntu2404`'s Dockerfile also proves the #621 t64-detection fix at build time: it installs the four renamed packages under their old names, then a second `vip install --dry-run` must report nothing left to install and the written manifest must name the t64 packages apt actually installed rather than the requested aliases, failing the build (not just the container run) if either regresses.
+-   **`mac-smoke.yml`** -- push to `main` or PR (paths-gated to `docker/playwright-smoke.py`, `pyproject.toml`, `uv.lock`, `src/**`); runs `vip install` and a Playwright smoke script natively on `macos-latest`, the one CI job that exercises the install flow on real macOS rather than in a container.
 -   **`add-to-team-project.yml`** -- when a `team: connect`, `team: workbench`, or `team: package manager` label is added to an issue, adds it to that product team's org-level GitHub project board. Ported from rstudio/helm. Requires the cross-org `POSIT_PLATFORM_CLIENT_ID`/`POSIT_PLATFORM_PEM` app secrets.
 -   **`weekly-summary.yml`** -- Mondays (and on demand via `workflow_dispatch`) gathers the week's merged PRs, has Claude pick the highlights via Bedrock, and posts a Slack summary; `pull_request` runs are a dry run that builds and logs the payload without posting. Requires the `SLACK_WEBHOOK_VIP_WEEKLY_SUMMARY` secret and permission to assume the `gha-claude-code` AWS role (account `935931255537`). That role's OIDC trust is generated entirely from the `repositories` list in `pulumi/aws/account/aws-platform-team/aws_platform_team/iam.py` in `posit-dev/platform-infra`, so `posit-dev/vip` has to be listed there.
 
@@ -389,15 +439,15 @@ Register warning filters in `src/vip/plugin.py::pytest_configure` (via `config.a
 
 -   Forgetting to include `examples/` in ruff check paths.
 -   Using `Markdown()` without `display()` in Quarto `.qmd` files.
--   Changing ruff version locally without updating the pinned version in `ci.yml`.
+-   Changing the ruff version in only one of `ci.yml`, `.pre-commit-config.yaml`, or the `dev` extra in `pyproject.toml` -- all three must move together.
 -   Adding product SDK imports (use httpx directly).
 -   Writing tests that modify or delete existing customer content.
 -   Adding a Workbench scenario that ends the shared auth session (sign-out, session revocation, password change) without ordering it last *and* restoring the session afterwards. Under `--interactive-auth` / `--headless-auth` every Workbench scenario shares one account, so ending that session breaks every scenario still running on other xdist workers, plus the cached auth session on disk. `test_workbench_signout` is the worked example.
 -   Creating `.py` step files without a matching `.feature` file (or vice versa).
 -   Forgetting the `@connect`/`@workbench`/`@package_manager` tag in feature files (breaks auto-skip).
+-   Adding a bare `pytest.skip()` to a file listed in `selftests/test_skip_triage.py`. Every skip in those files has been deliberately classified, and `test_skip_triage.py` fails the build if a new unclassified one appears — use `attest.unproven()` or `attest.not_applicable()`.
 -   Reaching for a bare `pytest.skip()` when the real situation is "I could not check this". That is the failure mode #616 exists to close: an unverified deployment reporting itself as a passing one. If the product was configured and you still could not run the check, use `vip.attest.unproven()`.
 -   Using non-conventional PR titles (must be `type: description`).
 -   Relying on multi-line formatting to shorten lines -- `ruff format` will collapse list comprehensions back to one line if they fit within 100 chars. Extract a helper function instead.
--   Importing a pytest-bdd step module (anything under `src/vip_tests/**` that calls `@scenario` / `scenarios()`) from inside a selftest. `@scenario` inspects the caller's frame at import time, so importing it mid-test raises `IndexError: list index out of range` — and only under some orderings, so it passes locally and fails in CI under `pytest-randomly`. Put the helper you want to test in `conftest.py` and import it from there, or assert via `--collect-only` in a subprocess the way `selftests/test_workbench_ordering.py` does.
--   Running selftests with `-p no:randomly`. CI runs them randomized; disabling the plugin hides exactly the order-dependent failures it exists to catch.
+-   Importing a pytest-bdd step module (anything under `src/vip_tests/**` that calls `@scenario` / `scenarios()`) from inside a selftest. `@scenario` inspects the caller's frame at import time, so importing it mid-test raises `IndexError: list index out of range` — and only under some orderings, so it can pass in one run and fail in another as xdist redistributes tests across workers. Put the helper you want to test in `conftest.py` and import it from there, or assert via `--collect-only` in a subprocess the way `selftests/test_workbench_ordering.py` does.
 -   Bypassing `vip install` with raw `uv run playwright install --with-deps chromium` (or `playwright install chromium`) in setup recipes, Dockerfiles, CI workflows, or docs. The whole `vip uninstall` reversibility relies on the `.vip-install.json` manifest that only `vip install` writes -- a raw `playwright install` leaves no record. The only acceptable alternative is `uv run vip install --skip-system` (used by CI workflows where the runner already has system libs), which still records the Playwright cache.

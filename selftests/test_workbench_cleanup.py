@@ -15,7 +15,7 @@ from vip.clients.workbench import WorkbenchClient, is_vip_session
 
 
 @pytest.mark.parametrize(
-    "label, expected",
+    ("label", "expected"),
     [
         ("VIP test_ide_launch.py - gw0-123", True),
         ("VIP foo", True),
@@ -636,7 +636,8 @@ def test_complete_sso_false_when_not_on_login_page():
 class _DelayedLogoLocator:
     """Logo a one-shot is_visible() snapshot misses but a bounded wait_for()
     catches -- models the shadcn SPA mounting the logo a few seconds after the
-    page ``load`` event (issue #491)."""
+    page ``load`` event (issue #491).
+    """
 
     def __init__(self):
         self.waited = False
@@ -657,7 +658,8 @@ class _DelayedLogoLocator:
 
 class _HydrationRacePage:
     """Authenticated homepage whose logo mounts after ``load``; Workbench has
-    redirected the root URL into an active session's workspace (issue #491)."""
+    redirected the root URL into an active session's workspace (issue #491).
+    """
 
     def __init__(self, url="https://wb.example.com/s/abc123/workspaces/"):
         self.url = url
@@ -681,7 +683,8 @@ def test_complete_sso_true_when_logo_mounts_after_load():
     raced hydration and returned False, aborting the cleanup sweep with a
     misleading expired-session warning even though the session list was
     reachable. A bounded ``wait_for`` must detect the logo and report
-    authenticated."""
+    authenticated.
+    """
     from vip.workbench_ui import _complete_sso_if_needed
 
     page = _HydrationRacePage()
@@ -823,7 +826,8 @@ def test_run_session_cleanup_warns_when_no_cookies_and_no_api_key(monkeypatch, c
 def test_run_session_cleanup_no_warning_when_no_cookies_but_api_key_present(monkeypatch, caplog):
     """No browser cookies but an api_key is configured -> no warning (belt-and-suspenders
     end-of-run sweep will use the api_key), and no per-test sweep is attempted either
-    (cookies are required for the per-test cookie-authenticated sweep)."""
+    (cookies are required for the per-test cookie-authenticated sweep).
+    """
     from types import SimpleNamespace
 
     from vip_tests.workbench import conftest as wb
@@ -862,7 +866,7 @@ def test_run_session_cleanup_returns_early_when_workbench_client_is_none(monkeyp
 
 
 @pytest.mark.parametrize(
-    "label, expected",
+    ("label", "expected"),
     [
         ("VIP test_git_ops.py - gw1-1785380284140718000", "gw1"),
         ("VIP test_ide_launch.py - gw0-123", "gw0"),
@@ -1013,7 +1017,7 @@ def test_capacity_session_prefix_carries_the_worker_id(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "label, expected",
+    ("label", "expected"),
     [
         # Every `_vip_<kind>_` scheme must be attributable, not just capacity.
         ("_vip_cap_gw1_1785380282_Small_0", "gw1"),

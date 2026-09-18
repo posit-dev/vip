@@ -53,7 +53,8 @@ def test_format_install_plan_with_packages_and_browser(tmp_path: Path):
         playwright_step=PlaywrightStep(browser="chromium", cache_dir=str(tmp_path)),
     )
     text = rn.format_install_plan(plan)
-    assert "nss" in text and "libdrm" in text
+    assert "nss" in text
+    assert "libdrm" in text
     assert "chromium" in text
     assert "sudo dnf install" in text  # the user-facing command
 
@@ -83,7 +84,8 @@ def test_execute_install_plan_runs_playwright_and_writes_manifest(monkeypatch, t
 
 def test_execute_install_plan_records_pending_when_root_required(monkeypatch, tmp_path: Path):
     """When system_step has packages and the user isn't root, runner returns code 2
-    after writing pending packages to the manifest."""
+    after writing pending packages to the manifest.
+    """
     plan = InstallPlan(
         platform="rhel-family",
         platform_id="rhel",
@@ -104,6 +106,27 @@ def test_execute_install_plan_records_pending_when_root_required(monkeypatch, tm
     assert set(saved.pending_system_packages) == {"nss", "libdrm"}
 
 
+def test_execute_install_plan_not_root_message_names_skip_system(monkeypatch, tmp_path, capsys):
+    """#621: a user stuck re-demanding the same packages forever needs the escape
+    hatch named in the failure message, not just 'Then re-run vip install'.
+    """
+    plan = InstallPlan(
+        platform="debian-family",
+        platform_id="ubuntu",
+        platform_version="24.04",
+        system_step=SystemPackagesStep(manager="apt", packages=("libcups2",)),
+        playwright_step=None,
+    )
+    monkeypatch.setattr(rn, "is_root", lambda: False)
+    manifest_path = tmp_path / ".vip-install.json"
+    manifest = _empty_manifest()
+
+    rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+
+    assert rc == 2
+    assert "--skip-system" in capsys.readouterr().out
+
+
 def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):
     plan = InstallPlan(
         platform="rhel-family",
@@ -111,7 +134,7 @@ def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):
         platform_version="10",
         system_step=SystemPackagesStep(manager="dnf", packages=()),
         playwright_step=None,
-        claim_pending=("nss",),
+        claim_pending=(("nss", "nss"),),
     )
     manifest = _empty_manifest()
     manifest.pending_system_packages = ["nss", "libdrm"]
@@ -125,6 +148,43 @@ def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):
     assert "nss" in [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
     assert "nss" not in saved.pending_system_packages
     assert "libdrm" in saved.pending_system_packages
+
+
+def test_execute_install_plan_claims_alias_under_provider_name(monkeypatch, tmp_path: Path):
+    """#621: uninstall's generated command must name the concrete provider, not
+    the alias -- so the manifest item created here has to be libcups2t64, and
+    the pending alias libcups2 is what gets cleared.
+    """
+    plan = InstallPlan(
+        platform="debian-family",
+        platform_id="ubuntu",
+        platform_version="24.04",
+        system_step=SystemPackagesStep(manager="apt", packages=()),
+        playwright_step=None,
+        claim_pending=(("libcups2", "libcups2t64"),),
+    )
+    manifest = _empty_manifest()
+    manifest.platform = "debian-family"
+    manifest.pending_system_packages = ["libcups2"]
+    manifest_path = tmp_path / ".vip-install.json"
+
+    rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+
+    from vip.install.manifest import load
+    from vip.install.plan import build_uninstall_plan
+
+    saved = load(manifest_path)
+    item_names = [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
+    assert "libcups2t64" in item_names
+    assert "libcups2" not in item_names
+    assert "libcups2" not in saved.pending_system_packages
+
+    uninstall_plan = build_uninstall_plan(manifest=saved, connect_url=None)
+    assert any("libcups2t64" in cmd for cmd in uninstall_plan.system_remove_commands)
+    assert not any(
+        "libcups2 " in cmd or cmd.endswith("libcups2")
+        for cmd in uninstall_plan.system_remove_commands
+    )
 
 
 def test_format_install_plan_unsupported_warning_visible_when_otherwise_empty():
@@ -307,6 +367,67 @@ def test_execute_install_plan_root_install_clears_pending(monkeypatch, tmp_path)
     assert names.count("libdrm") == 1
 
 
+def test_execute_install_plan_root_install_records_concrete_debian_name(monkeypatch, tmp_path):
+    """Root-install path must record the t64 name apt really installed, not the alias.
+
+    Ubuntu 24.04 resolves a request for libcups2 to libcups2t64 and keeps the
+    old name only as a Provides entry, so a manifest recording libcups2 makes
+    `vip uninstall` emit `apt remove libcups2`, which matches nothing and
+    silently leaves the real package behind (#621).
+    """
+    plan = InstallPlan(
+        platform="debian-family",
+        platform_id="ubuntu",
+        platform_version="24.04",
+        system_step=SystemPackagesStep(manager="apt", packages=("libcups2", "libdrm2")),
+        playwright_step=None,
+    )
+    monkeypatch.setattr(rn, "is_root", lambda: True)
+    monkeypatch.setattr(rn, "_install_system_packages", lambda manager, packages: None)
+    manifest = _empty_manifest()
+    manifest_path = tmp_path / ".vip-install.json"
+
+    rc = rn.execute_install_plan(
+        plan,
+        manifest=manifest,
+        manifest_path=manifest_path,
+        resolve_installed=lambda names: {"libcups2": "libcups2t64", "libdrm2": "libdrm2"},
+    )
+    assert rc == 0
+
+    from vip.install.manifest import load
+
+    names = [i.name for i in load(manifest_path).items if isinstance(i, SystemPackageItem)]
+    assert "libcups2t64" in names
+    assert "libcups2" not in names
+    assert "libdrm2" in names
+
+
+def test_execute_install_plan_root_install_without_resolver_keeps_requested_names(
+    monkeypatch, tmp_path
+):
+    """rpm/zypper families pass no resolver; requested names are recorded unchanged."""
+    plan = InstallPlan(
+        platform="rhel-family",
+        platform_id="rhel",
+        platform_version="10",
+        system_step=SystemPackagesStep(manager="dnf", packages=("nss",)),
+        playwright_step=None,
+    )
+    monkeypatch.setattr(rn, "is_root", lambda: True)
+    monkeypatch.setattr(rn, "_install_system_packages", lambda manager, packages: None)
+    manifest = _empty_manifest()
+    manifest_path = tmp_path / ".vip-install.json"
+
+    rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+    assert rc == 0
+
+    from vip.install.manifest import load
+
+    names = [i.name for i in load(manifest_path).items if isinstance(i, SystemPackageItem)]
+    assert names == ["nss"]
+
+
 def test_format_install_plan_with_zypper_packages(tmp_path: Path):
     plan = InstallPlan(
         platform="suse-family",
@@ -316,7 +437,8 @@ def test_format_install_plan_with_zypper_packages(tmp_path: Path):
         playwright_step=PlaywrightStep(browser="chromium", cache_dir=str(tmp_path)),
     )
     text = rn.format_install_plan(plan)
-    assert "mozilla-nss" in text and "libdrm2" in text
+    assert "mozilla-nss" in text
+    assert "libdrm2" in text
     assert "sudo zypper -n install" in text
 
 
@@ -353,7 +475,6 @@ def test_install_system_packages_zypper_invokes_correct_command(monkeypatch):
 
     def fake_run(args, check):
         captured.append(args)
-        return None
 
     monkeypatch.setattr(rn.subprocess, "run", fake_run)
     rn._install_system_packages("zypper", ("mozilla-nss", "libdrm2"))

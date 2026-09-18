@@ -22,11 +22,13 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import scenarios, then, when
 
+from vip import attest
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
-    ResourceProfileDisabled,
+    ResourceProfileDisabledError,
     _option_is_disabled,
+    cap_auto_detected_profiles,
     capacity_session_prefix,
     format_capacity_failure,
     quit_owned_sessions_via_page,
@@ -104,7 +106,7 @@ def _launch_session(
 ) -> None:
     """Open the New Session dialog, optionally select a resource profile, and launch.
 
-    Raises ``ResourceProfileDisabled`` if the selected profile is disabled for
+    Raises ``ResourceProfileDisabledError`` if the selected profile is disabled for
     the authenticated user.
     """
     page.locator(Homepage.NEW_SESSION_BUTTON).first.click(timeout=TIMEOUT_DIALOG)
@@ -140,10 +142,10 @@ def _launch_session(
                     page.keyboard.press("Escape")
                     page.keyboard.press("Escape")
                     expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
-                    raise ResourceProfileDisabled(profile)
+                    raise ResourceProfileDisabledError(profile)
                 option.click(timeout=TIMEOUT_QUICK)
         else:
-            pytest.skip(f"Resource profile dropdown not available; cannot select '{profile}'")
+            attest.unproven(f"Resource profile dropdown not available; cannot select '{profile}'")
 
     # Fill session name.
     page.fill(NewSessionDialog.SESSION_NAME, session_name)
@@ -181,15 +183,17 @@ def launch_sessions(page: Page, vip_config):
                 # Every profile is offered but disabled for this user — nothing
                 # is launchable, so there is no capacity to exercise.
                 names = ", ".join(p.name for p in detected)
-                pytest.skip(
+                attest.not_applicable(
                     f"All resource profiles are disabled for the authenticated user: {names}"
                 )
-            profiles_to_test = enabled
+            # A host that advertises N profiles cannot necessarily run all N at
+            # once, so launch only the smallest few (#631).
+            profiles_to_test = cap_auto_detected_profiles(enabled)
         else:
             # No profiles dropdown — launch with default.
             profiles_to_test = [None]
         # When auto-detecting, launch 1 session per profile to avoid
-        # overwhelming the cluster with many profiles × session_count.
+        # overwhelming the cluster with many profiles x session_count.
         session_count = 1
 
     all_sessions: list[dict[str, str | None]] = []
@@ -202,7 +206,7 @@ def launch_sessions(page: Page, vip_config):
             name = f"{prefix}{label}_{i}"
             try:
                 _launch_session(page, name, profile)
-            except ResourceProfileDisabled as exc:
+            except ResourceProfileDisabledError as exc:
                 # Configured profile the current user cannot launch. Treat as
                 # an environment condition (entitlement/group restriction):
                 # record it and move on to the remaining profiles rather than
@@ -220,7 +224,7 @@ def launch_sessions(page: Page, vip_config):
         # skipped (not passed) on a correctly-restricted test account,
         # distinct from an actual capacity failure.
         names = ", ".join(disabled_profiles)
-        pytest.skip(
+        attest.not_applicable(
             f"Resource profile(s) '{names}' are disabled for the authenticated "
             "user (likely a group/entitlement restriction)"
         )
@@ -267,5 +271,6 @@ def cleanup_sessions(
         row = page.locator(Homepage.session_row(session["name"]))
         try:
             expect(row).to_be_hidden(timeout=TIMEOUT_DIALOG)
-        except Exception:
+        except Exception:  # noqa: BLE001
+            # Best-effort cleanup — don't mask the original failure/skip.
             pass

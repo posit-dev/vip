@@ -55,6 +55,12 @@ _MARKER_KEYWORDS = {"and", "or", "not"}
 # substring inside a larger token like ``_connect`` or ``1connect``.
 _IDENT_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z][A-Za-z0-9_-]*(?![A-Za-z0-9_-])")
 
+# Auth providers that imply IdP-based auth (used by both --idp's implied
+# default and --provider's own validation). Mirrors auth.py's own
+# _IDP_PROVIDERS, kept as a separate tuple here so cli.py doesn't need to
+# import vip.auth (and its playwright dependency) at module load time.
+_IDP_PROVIDERS = ("oidc", "saml", "oauth2")
+
 
 def _valid_categories_message() -> str:
     """Return a comma-separated string of preferred (hyphenated) category names."""
@@ -164,10 +170,7 @@ def _print_skip_notes(config_path: str | None) -> None:
     ]
     for name, pc in products:
         if not pc.is_configured:
-            if not pc.enabled:
-                reason = "disabled"
-            else:
-                reason = "no URL given"
+            reason = "disabled" if not pc.enabled else "no URL given"
             print(f"Note: {name} {reason} — {name} tests will not be collected.", flush=True)
 
 
@@ -288,11 +291,53 @@ def _user_set_xdist(pytest_args: list[str]) -> tuple[bool, bool]:
     for a in pytest_args:
         if a in ("-n", "--numprocesses") or a.startswith(("-n", "--numprocesses=")):
             set_n = True
-        if a.startswith("--dist") or a == "no:xdist" or a.startswith("no:xdist"):
+        if a.startswith(("--dist", "no:xdist")) or a == "no:xdist":
             set_dist = True
     if "no:xdist" in pytest_args or any(x.startswith("no:xdist") for x in pytest_args):
         set_n = set_dist = True
     return set_n, set_dist
+
+
+def _resolve_effective_ca_bundle(insecure: bool, ca_bundle: Path | None) -> Path | None:
+    """Apply --insecure/--ca-bundle precedence: insecure wins, ca_bundle is dropped.
+
+    Warns when both are set (mirrors curl's own precedence for -k combined with
+    --cacert). Shared by every command that accepts both flags -- ``verify`` (via
+    ``_generate_temp_config``), and ``cleanup``/``uninstall`` (via
+    ``_load_cleanup_config``/``run_uninstall``) -- so the collision is handled
+    identically everywhere instead of three independent copies drifting apart.
+
+    The warning fires on the collision regardless of where each value came
+    from. ``cleanup``/``uninstall`` call this *after* merging a CLI flag with
+    the corresponding ``vip.toml`` [tls] value (CLI wins per-field), so the
+    pair handed in here may be flag+flag, toml+toml, or one of each -- the
+    message therefore doesn't claim a CLI-only cause. This is a deliberate
+    divergence from ``verify``: its own ``--config``/default-``./vip.toml``
+    path loads ``[tls]`` straight through ``vip.config.load_config()`` and
+    never calls this helper at all, so an identical ``vip.toml`` with both
+    keys set warns for ``cleanup``/``uninstall`` but not for ``verify`` against
+    that same file. Covered by ``test_toml_only_conflict_warns_and_insecure_wins``
+    in ``selftests/test_cli_cleanup.py`` and its uninstall counterpart.
+    """
+    if insecure and ca_bundle:
+        import warnings
+
+        # stacklevel=2 attributes the warning to this helper's direct caller
+        # (_generate_temp_config / _load_cleanup_config / run_uninstall).
+        # Before this logic was extracted, the inline warnings.warn() in
+        # _generate_temp_config used stacklevel=2 to reach *its* caller
+        # instead -- one frame further up. No single stacklevel is correct
+        # for all three call sites (they sit at different depths from the
+        # command dispatch that ultimately triggered this), so this is a
+        # deliberate, accepted drift rather than an oversight.
+        warnings.warn(
+            "insecure and a ca_bundle are both configured (whether via "
+            "--insecure/--ca-bundle or [tls] insecure/ca_bundle in vip.toml); "
+            "insecure takes precedence and the ca_bundle will be ignored for "
+            "TLS verification.",
+            stacklevel=2,
+        )
+    return None if insecure else ca_bundle
 
 
 def _generate_temp_config(args: argparse.Namespace) -> str:
@@ -340,7 +385,7 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
 
         try:
             existing = load_config(default_path)
-        except Exception:
+        except Exception:  # noqa: BLE001
             existing = None
         if existing is not None:
             if not idp and existing.auth.idp:
@@ -349,17 +394,19 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
                 inherited_provider = existing.auth.provider
 
     # Resolve the provider:
-    # - With --idp set, the user wants IdP-based auth.  Keep an inherited
-    #   IdP-class value (saml/oauth2) so specific declarations survive; but
-    #   ignore inherited non-IdP providers (ldap) that would contradict the
-    #   CLI intent — auth.py's flow selection keys off provider, not idp.
-    # - Without --idp, just honour whatever vip.toml declared.
-    _IDP_PROVIDERS = ("oidc", "saml", "oauth2")
-    if idp:
-        if inherited_provider in _IDP_PROVIDERS:
-            auth_provider: str | None = inherited_provider
-        else:
-            auth_provider = "oidc"
+    # - An explicit --provider always wins, overriding both --idp's implied
+    #   "oidc" and anything inherited from vip.toml.
+    # - Otherwise, with --idp set, the user wants IdP-based auth.  Keep an
+    #   inherited IdP-class value (saml/oauth2) so specific declarations
+    #   survive; but ignore inherited non-IdP providers (ldap) that would
+    #   contradict the CLI intent — auth.py's flow selection keys off
+    #   provider, not idp.
+    # - Without --provider or --idp, just honour whatever vip.toml declared.
+    explicit_provider = getattr(args, "provider", None)
+    if explicit_provider:
+        auth_provider: str | None = explicit_provider
+    elif idp:
+        auth_provider = inherited_provider if inherited_provider in _IDP_PROVIDERS else "oidc"
     else:
         auth_provider = inherited_provider
 
@@ -373,15 +420,7 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
 
     insecure = getattr(args, "insecure", False)
     ca_bundle = getattr(args, "ca_bundle", None)
-    if insecure and ca_bundle:
-        import warnings
-
-        warnings.warn(
-            "--insecure and --ca-bundle are both set; --insecure takes precedence "
-            "and the ca-bundle path will be ignored for TLS verification.",
-            stacklevel=2,
-        )
-    effective_ca_bundle = None if insecure else ca_bundle
+    effective_ca_bundle = _resolve_effective_ca_bundle(insecure, ca_bundle)
     if insecure or effective_ca_bundle:
         lines.append("[tls]")
         if insecure:
@@ -422,6 +461,14 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
 
 def run_verify(args: argparse.Namespace) -> None:
     """Run VIP tests locally against URL args or a vip.toml config."""
+    provider = getattr(args, "provider", None)
+    if provider and provider not in _IDP_PROVIDERS:
+        print(
+            f"Error: unknown --provider value: {provider}. Valid: {', '.join(_IDP_PROVIDERS)}.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     config_path = args.config
     temp_config = None
 
@@ -579,8 +626,7 @@ def run_verify(args: argparse.Namespace) -> None:
         cmd.append("--api-auth")
     if getattr(args, "allow_unproven", False):
         cmd.append("--vip-allow-unproven")
-    for ext in args.extensions or []:
-        cmd.append(f"--vip-extensions={ext}")
+    cmd.extend(f"--vip-extensions={ext}" for ext in args.extensions or [])
     if args.categories:
         marker_expr = _normalize_categories(args.categories)
     else:
@@ -634,11 +680,11 @@ def run_verify(args: argparse.Namespace) -> None:
             from vip.proxy import proxy_env_for_subprocess
 
             subprocess_env = proxy_env_for_subprocess(load_config(config_path).proxy, os.environ)
-        except Exception:
+        except Exception:  # noqa: BLE001
             subprocess_env = None
 
     try:
-        result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env)
+        result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env, check=False)
         sys.exit(result.returncode)
     except subprocess.TimeoutExpired:
         print(
@@ -757,14 +803,13 @@ def _resolve_report_dir() -> Path:
 
     The report directory is ``./report`` relative to the invocation, but a
     plain ``Path("report")`` also resolves that way when the caller is already
-    standing *inside* a report directory -- so ``vip report --results
-    results.json`` run from within ``report/`` used to create a nested
-    ``report/report/``, copy the templates into it, and render there. That left
-    a stray tree behind (papered over by a ``report/report/`` .gitignore entry)
-    and hid the rendered output one level deeper than the caller expected.
-
-    Treat a working directory already named ``report`` as the report directory
-    instead of descending into it.
+    standing *inside* a report directory. Treat a working directory already
+    named ``report`` as the report directory itself, instead of descending
+    into it: otherwise ``vip report --results results.json`` run from within
+    ``report/`` creates a nested ``report/report/``, copies the templates
+    into it, and renders there, leaving a stray tree behind (papered over by
+    a ``report/report/`` .gitignore entry) and hiding the rendered output one
+    level deeper than the caller expected.
     """
     cwd = Path.cwd()
     if cwd.name == "report":
@@ -944,7 +989,9 @@ def _quarto_render(document: str, report_dir: Path, env: dict[str, str]) -> int:
     surfaces.
     """
     try:
-        result = subprocess.run(["quarto", "render", document], cwd=str(report_dir), env=env)
+        result = subprocess.run(
+            ["quarto", "render", document], cwd=str(report_dir), env=env, check=False
+        )
     except FileNotFoundError:
         print(
             "Error: quarto was not found on PATH. Install Quarto "
@@ -1019,7 +1066,7 @@ def _collect_status(config: VIPConfig) -> dict:
                 "http_status": http_status,
                 "state": state,
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             products[name] = {
                 "configured": True,
                 "url": pc.url,
@@ -1109,7 +1156,13 @@ def run_install(args: argparse.Namespace) -> None:
                 platform_version=info.version,
             )
 
-        rc = execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
+        rc = execute_install_plan(
+            plan,
+            manifest=manifest,
+            manifest_path=manifest_path,
+            # Only Debian resolves a requested name to a different installed one.
+            resolve_installed=installed_dpkg if info.family == "debian-family" else None,
+        )
     except (PlaywrightInstallError, PackageQueryError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -1150,19 +1203,25 @@ def run_uninstall(args: argparse.Namespace) -> None:
         )
         sys.exit(1)
 
-    # Resolve Connect URL for chained cleanup. A CLI flag wins over vip.toml;
-    # wrapping it in ProductConfig routes a scheme-less --connect-url through
-    # the same _normalize_url every other entry point uses (it was previously
-    # handed to ConnectClient completely unnormalized). cfg carries the TLS
-    # settings (insecure/ca_bundle) for the probe-and-fallback below when the
-    # URL came from vip.toml; a CLI-flag-only invocation has no cfg to draw
-    # those from, so it probes with defaults (verify=True).
+    # Load vip.toml (when present) regardless of whether --connect-url was
+    # passed, so its [tls]/[proxy] settings apply to a --connect-url-only
+    # invocation too -- otherwise a deployment behind a self-signed cert with
+    # [tls] insecure = true in vip.toml has no route to that setting when the
+    # Connect URL itself comes from the CLI. Loading stays silent when
+    # vip.toml simply doesn't exist (mirrors _load_cleanup_config's guard);
+    # test_run_uninstall_silent_when_vip_toml_missing pins the no-config case.
+    # cfg carries the TLS settings (insecure/ca_bundle) for the
+    # probe-and-fallback below whether the Connect URL came from vip.toml or
+    # the CLI; with neither vip.toml present nor --insecure/--ca-bundle
+    # passed, it probes with defaults (verify=True).
     from vip.config import ProductConfig
 
     connect_arg = getattr(args, "connect_url", None)
-    connect_pc: ProductConfig | None = ProductConfig(url=connect_arg) if connect_arg else None
+
     cfg = None
-    if connect_pc is None:
+    env = os.environ.get("VIP_CONFIG")
+    config_path = Path(env) if env else Path("vip.toml")
+    if config_path.exists():
         if sys.version_info >= (3, 11):
             import tomllib as _tomllib
         else:
@@ -1175,14 +1234,26 @@ def run_uninstall(args: argparse.Namespace) -> None:
         except (_tomllib.TOMLDecodeError, ValueError) as exc:
             print(
                 f"warning: failed to load vip.toml for chained cleanup: {exc}; "
-                "continuing without chained Connect cleanup",
+                "continuing without vip.toml-derived settings",
                 file=sys.stderr,
             )
-        if cfg and cfg.connect and cfg.connect.url:
-            connect_pc = cfg.connect
 
-    insecure = cfg.insecure if cfg else False
-    ca_bundle = cfg.ca_bundle if cfg else None
+    # A CLI --connect-url wins over vip.toml's [connect] url; wrapping it in
+    # ProductConfig routes a scheme-less --connect-url through the same
+    # _normalize_url every other entry point uses, so ConnectClient never
+    # sees an unnormalized URL.
+    if connect_arg:
+        connect_pc: ProductConfig | None = ProductConfig(url=connect_arg)
+    elif cfg and cfg.connect and cfg.connect.url:
+        connect_pc = cfg.connect
+    else:
+        connect_pc = None
+
+    # --insecure/--ca-bundle win over the corresponding vip.toml [tls] value,
+    # same precedence _load_cleanup_config gives vip cleanup's equivalent flags.
+    insecure = getattr(args, "insecure", False) or (cfg.insecure if cfg else False)
+    ca_bundle = getattr(args, "ca_bundle", None) or (cfg.ca_bundle if cfg else None)
+    ca_bundle = _resolve_effective_ca_bundle(insecure, ca_bundle)
     proxy = cfg.proxy if cfg else None
     yes = bool(getattr(args, "yes", False))
 
@@ -1210,7 +1281,7 @@ def run_uninstall(args: argparse.Namespace) -> None:
     if connect_pc is not None:
         api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
 
-        def cleanup_callable(_url: str) -> None:  # noqa: F811
+        def cleanup_callable(_url: str) -> None:
             from vip.auth import resolve_url_scheme
             from vip.clients.connect import ConnectClient
 
@@ -1225,7 +1296,9 @@ def run_uninstall(args: argparse.Namespace) -> None:
             resolved = resolve_url_scheme(
                 connect_pc, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
             )
-            with ConnectClient(resolved, api_key, proxy=proxy) as client:
+            with ConnectClient(
+                resolved, api_key, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
+            ) as client:
                 client.cleanup_vip_content()
 
     rc = execute_uninstall_plan(
@@ -1404,7 +1477,7 @@ def run_scaffold(args: argparse.Namespace) -> None:
 
 def _cleanup_workbench_sessions(
     workbench_url: str,
-    args: argparse.Namespace,
+    _args: argparse.Namespace,
     config: VIPConfig,
 ) -> None:
     """Authenticate to Workbench and quit orphaned VIP-named sessions.
@@ -1437,8 +1510,7 @@ def _cleanup_workbench_sessions(
     ca_bundle = config.ca_bundle
     proxy = config.proxy
     # Same helper plugin.py uses, so this finds the session a prior `vip verify`
-    # from this directory cached.  These two used to build the path independently
-    # and disagreed for installed VIP -- see auth_cache_path.
+    # from this directory cached.
     cache_path = auth_cache_path()
 
     username = config.auth.username
@@ -1468,7 +1540,7 @@ def _cleanup_workbench_sessions(
     except AuthConfigError as exc:
         print(f"Error: could not authenticate to Workbench: {exc}", file=sys.stderr)
         sys.exit(1)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(
             f"Error: could not authenticate to Workbench at {workbench_url}: {exc}\n"
             "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD for non-interactive cleanup, "
@@ -1527,7 +1599,7 @@ def _ensure_cli_logging() -> None:
         vip_logger.propagate = False
 
 
-def _load_cleanup_config() -> VIPConfig:
+def _load_cleanup_config(args: argparse.Namespace) -> VIPConfig:
     """Load ``vip.toml`` if present, else a default ``VIPConfig``.
 
     ``load_config`` warns when no config file exists, which is noise for
@@ -1536,14 +1608,25 @@ def _load_cleanup_config() -> VIPConfig:
     it returns a default ``VIPConfig`` whose ``__post_init__`` still picks up
     env-based credentials (``VIP_TEST_USERNAME``/``VIP_TEST_PASSWORD``,
     ``VIP_WORKBENCH_API_KEY``, etc.).
+
+    ``--insecure``/``--ca-bundle`` win over the corresponding ``[tls]`` value
+    already on the returned config, mirroring how a CLI ``--connect-url``
+    wins over ``[connect] url`` elsewhere in this command -- and letting the
+    flags work standalone with no ``vip.toml`` at all, which is the case
+    issue #563 calls out as having nowhere else to put them. The merged pair
+    still goes through ``_resolve_effective_ca_bundle`` so ``--insecure`` and
+    ``[tls] insecure`` both take the same precedence over a bundle as ``verify``.
     """
     from vip.config import VIPConfig, load_config
 
     env = os.environ.get("VIP_CONFIG")
     path = Path(env) if env else Path("vip.toml")
-    if path.exists():
-        return load_config()
-    return VIPConfig()
+    config = load_config() if path.exists() else VIPConfig()
+
+    config.insecure = getattr(args, "insecure", False) or config.insecure
+    config.ca_bundle = getattr(args, "ca_bundle", None) or config.ca_bundle
+    config.ca_bundle = _resolve_effective_ca_bundle(config.insecure, config.ca_bundle)
+    return config
 
 
 def run_cleanup(args: argparse.Namespace) -> None:
@@ -1572,14 +1655,13 @@ def run_cleanup(args: argparse.Namespace) -> None:
     # to supply TLS/auth settings for the Workbench path. Loaded quietly: an
     # explicit `vip cleanup --connect-url ...` with no vip.toml must not emit a
     # "Config file not found" warning (env-based credentials still apply).
-    config = _load_cleanup_config()
+    config = _load_cleanup_config(args)
 
-    # A CLI flag wins over vip.toml, as before. Wrapping the CLI arg in
-    # ProductConfig routes it through the same _normalize_url a bare
-    # hostname gets from every other entry point (vip verify, vip status):
-    # previously a scheme-less --connect-url was handed to ConnectClient
-    # completely unnormalized (a bug in its own right -- httpx requires an
-    # absolute URL) and never got the probe-and-fallback treatment below.
+    # A CLI flag wins over vip.toml. Wrapping the CLI arg in ProductConfig
+    # routes it through the same _normalize_url a bare hostname gets from
+    # every other entry point (vip verify, vip status), so ConnectClient
+    # never receives a scheme-less URL -- httpx requires an absolute one --
+    # and the probe-and-fallback treatment below still applies.
     # config.connect/config.workbench are already normalized ProductConfig
     # instances -- every ProductConfig runs _normalize_url in its own
     # __post_init__ regardless of how it was constructed, including the bare
@@ -1606,7 +1688,13 @@ def run_cleanup(args: argparse.Namespace) -> None:
             connect_pc, insecure=config.insecure, ca_bundle=config.ca_bundle, proxy=config.proxy
         )
         print(f"Cleaning up VIP test content on Connect at {connect_url}")
-        with ConnectClient(connect_url, api_key, proxy=config.proxy) as client:
+        with ConnectClient(
+            connect_url,
+            api_key,
+            insecure=config.insecure,
+            ca_bundle=config.ca_bundle,
+            proxy=config.proxy,
+        ) as client:
             deleted = client.cleanup_vip_content()
         print(f"Deleted {deleted} VIP test content item(s)")
 
@@ -1663,7 +1751,7 @@ def _format_version_details() -> str:
     )
 
 
-def run_version(args: argparse.Namespace) -> None:
+def run_version(_args: argparse.Namespace) -> None:
     """Print the vip version and the minimum supported Posit Team version."""
     print(_format_version_details())
 
@@ -1984,7 +2072,14 @@ def main() -> None:
         "--idp",
         default=None,
         help='Identity provider for --headless-auth: "keycloak", "okta", "snowflake". '
-        'Presence implies provider = "oidc" unless overridden in vip.toml.',
+        'Presence implies provider = "oidc" unless overridden by --provider or vip.toml.',
+    )
+    auth_group.add_argument(
+        "--provider",
+        default=None,
+        help=f"Auth provider for --headless-auth/--interactive-auth: "
+        f"{', '.join(_IDP_PROVIDERS)}. Overrides both --idp's implied "
+        f'"oidc" and any provider inherited from vip.toml.',
     )
     verify_parser.add_argument(
         "--interactive-auth",
@@ -2150,6 +2245,30 @@ def main() -> None:
             "interactive browser login."
         ),
     )
+    cleanup_tls_group = cleanup_parser.add_argument_group("TLS configuration")
+    cleanup_tls_group.add_argument(
+        "--insecure",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable TLS certificate verification (equivalent to curl -k). "
+            "Use only in trusted environments; this silently ignores certificate errors. "
+            "For Playwright browser contexts, this sets ignore_https_errors=True. "
+            "Note: --ca-bundle is preferred when you have a custom CA certificate."
+        ),
+    )
+    cleanup_tls_group.add_argument(
+        "--ca-bundle",
+        default=None,
+        metavar="PATH",
+        type=Path,
+        help=(
+            "Path to a custom CA certificate bundle (PEM) to trust. "
+            "Useful for self-signed or corporate CAs. "
+            "For Playwright, sets NODE_EXTRA_CA_CERTS before launching Chromium "
+            "(Chromium-level trust only; does not update the OS certificate store)."
+        ),
+    )
     cleanup_parser.set_defaults(func=run_cleanup)
 
     # vip install
@@ -2202,6 +2321,32 @@ def main() -> None:
         help="Connect URL for chained vip cleanup (default: config / autodetect).",
     )
     uninstall_parser.add_argument("--api-key", default=None)
+    # uninstall's chained cleanup only ever constructs a ConnectClient (no
+    # Playwright/browser path, unlike verify and cleanup's Workbench sweep),
+    # so its help text drops the Playwright-specific sentences verify's
+    # otherwise-identical help carries -- they'd promise an effect uninstall
+    # cannot produce.
+    uninstall_tls_group = uninstall_parser.add_argument_group("TLS configuration")
+    uninstall_tls_group.add_argument(
+        "--insecure",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable TLS certificate verification (equivalent to curl -k). "
+            "Use only in trusted environments; this silently ignores certificate errors. "
+            "Note: --ca-bundle is preferred when you have a custom CA certificate."
+        ),
+    )
+    uninstall_tls_group.add_argument(
+        "--ca-bundle",
+        default=None,
+        metavar="PATH",
+        type=Path,
+        help=(
+            "Path to a custom CA certificate bundle (PEM) to trust. "
+            "Useful for self-signed or corporate CAs."
+        ),
+    )
     uninstall_parser.set_defaults(func=run_uninstall)
 
     # vip report

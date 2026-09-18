@@ -35,6 +35,9 @@ jobs:
   connect-integration:
     name: Integration tests against Connect ${{ matrix.connect-version }}
     runs-on: ubuntu-latest
+    # Measured ~3.7 min per leg (release/preview); this is a drift detector, not
+    # a merge gate, so a generous ceiling is fine.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -88,9 +91,21 @@ jobs:
         env:
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
         run: |
-          RESPONSE=$(curl -sf \
-            -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
-            "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings")
+          RESOLVED=0
+          for i in $(seq 1 60); do
+            RESPONSE=$(curl -sf --connect-timeout 5 --max-time 15 \
+              -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
+              "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings") && { RESOLVED=1; break; }
+            if [ "${i}" -lt 60 ]; then
+              echo "Attempt ${i}: server_settings not reachable yet, retrying..."
+              sleep 2
+            fi
+          done
+          if [ "${RESOLVED}" != "1" ]; then
+            echo "ERROR: server_settings did not become reachable after 60 attempts"
+            exit 1
+          fi
+          echo "server_settings reachable (attempt ${i})"
           VERSION=$(echo "${RESPONSE}" | jq -r '.version')
           if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
             echo "ERROR: Could not resolve Connect version from server_settings"
@@ -106,7 +121,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Install Playwright browsers
         run: uv run vip install --skip-system
@@ -127,9 +142,13 @@ jobs:
         env:
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
 
-      # Upload test results for debugging failures
+      # Tolerant, unretried upload -- see connect-smoke.yml's "Upload test
+      # results" step for the full rationale, including why no safe retry
+      # was found.
       - name: Upload test results
+        id: upload-results
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: connect-integration-results-${{ matrix.connect-version }}
@@ -195,6 +214,7 @@ jobs:
   notify-on-failure:
     name: Notify Slack on failure
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: connect-integration
     if: ${{ failure() }}
     steps:

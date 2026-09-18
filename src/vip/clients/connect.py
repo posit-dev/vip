@@ -69,6 +69,7 @@ class ConnectClient(BaseClient):
     # -- Server info --------------------------------------------------------
 
     def server_settings(self) -> dict[str, Any]:
+        """Return the server's ``/server_settings`` payload."""
         resp = self._client.get("/server_settings")
         resp.raise_for_status()
         return resp.json()
@@ -92,16 +93,19 @@ class ConnectClient(BaseClient):
     # -- Users --------------------------------------------------------------
 
     def current_user(self) -> dict[str, Any]:
+        """Return the profile of the user identified by the client's API key."""
         resp = self._client.get("/v1/user")
         resp.raise_for_status()
         return resp.json()
 
     def list_users(self) -> list[dict[str, Any]]:
+        """Return all users registered on the server."""
         resp = self._client.get("/v1/users")
         resp.raise_for_status()
         return resp.json().get("results", [])
 
     def list_groups(self) -> list[dict[str, Any]]:
+        """Return all groups registered on the server."""
         resp = self._client.get("/v1/groups")
         resp.raise_for_status()
         return resp.json().get("results", [])
@@ -137,6 +141,7 @@ class ConnectClient(BaseClient):
         return None
 
     def delete_content(self, guid: str) -> None:
+        """Delete the content item identified by *guid*."""
         resp = self._client.delete(f"/v1/content/{guid}")
         resp.raise_for_status()
 
@@ -157,13 +162,13 @@ class ConnectClient(BaseClient):
                 resp = self._client.delete(f"/v1/content/{guid}")
                 if resp.status_code == 404:
                     return True
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
             try:
                 check = self._client.get(f"/v1/content/{guid}")
                 if check.status_code == 404:
                     return True
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
             if attempt < retries - 1:
                 time.sleep(settle_seconds)
@@ -183,11 +188,13 @@ class ConnectClient(BaseClient):
         return deleted
 
     def get_content(self, guid: str) -> dict[str, Any]:
+        """Return the metadata for the content item identified by *guid*."""
         resp = self._client.get(f"/v1/content/{guid}")
         resp.raise_for_status()
         return resp.json()
 
     def upload_bundle(self, guid: str, archive: bytes) -> dict[str, Any]:
+        """Upload a gzip source bundle *archive* to the content item *guid*."""
         resp = self._client.post(
             f"/v1/content/{guid}/bundles",
             content=archive,
@@ -197,6 +204,7 @@ class ConnectClient(BaseClient):
         return resp.json()
 
     def deploy_bundle(self, guid: str, bundle_id: str) -> dict[str, Any]:
+        """Trigger a deployment of a previously uploaded bundle for content *guid*."""
         resp = self._client.post(
             f"/v1/content/{guid}/deploy",
             json={"bundle_id": bundle_id},
@@ -205,6 +213,7 @@ class ConnectClient(BaseClient):
         return resp.json()
 
     def get_task(self, task_id: str) -> dict[str, Any]:
+        """Return the current state of the async task identified by *task_id*."""
         resp = self._client.get(f"/v1/tasks/{task_id}", params={"first": 0, "wait": 1})
         resp.raise_for_status()
         return resp.json()
@@ -266,7 +275,7 @@ class ConnectClient(BaseClient):
             resp = self._client.get(f"/v1/tags/{tag_id}/content")
             resp.raise_for_status()
             return resp.json().get("results", [])
-        except Exception:
+        except Exception:  # noqa: BLE001
             return []
 
     def cleanup_vip_content(self) -> int:
@@ -295,12 +304,13 @@ class ConnectClient(BaseClient):
                 resp.raise_for_status()
                 tag_id = resp.json()["id"]
             self._client.post(f"/v1/content/{guid}/tags", json={"tag_id": tag_id})
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
     # -- R / Python versions ------------------------------------------------
 
     def r_versions(self) -> list[str]:
+        """Return the R versions installed on the server, or ``[]`` if unavailable."""
         resp = self._client.get("/v1/server_settings/r")
         if resp.status_code == 200:
             installations = resp.json().get("installations", [])
@@ -308,6 +318,7 @@ class ConnectClient(BaseClient):
         return []
 
     def python_versions(self) -> list[str]:
+        """Return the Python versions installed on the server, or ``[]`` if unavailable."""
         resp = self._client.get("/v1/server_settings/python")
         if resp.status_code == 200:
             installations = resp.json().get("installations", [])
@@ -315,6 +326,7 @@ class ConnectClient(BaseClient):
         return []
 
     def quarto_versions(self) -> list[str]:
+        """Return the Quarto versions installed on the server, or ``[]`` if unavailable."""
         resp = self._client.get("/v1/server_settings/quarto")
         if resp.status_code == 200:
             installations = resp.json().get("installations", [])
@@ -494,6 +506,7 @@ class ConnectClient(BaseClient):
     # -- Email --------------------------------------------------------------
 
     def send_test_email(self, to: str) -> dict[str, Any]:
+        """Ask the server to send a test email to the address *to*."""
         resp = self._client.post("/v1/tasks/send-test-email", json={"to": to})
         resp.raise_for_status()
         return resp.json()

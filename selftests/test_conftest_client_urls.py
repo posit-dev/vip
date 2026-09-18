@@ -68,7 +68,8 @@ class TestUrlFixturesResolveTheRightProductConfig:
     def test_workbench_url_resolves_workbench_config_not_connect(self):
         """Regression guard: passing the wrong ProductConfig (e.g. connect's
         instead of workbench's) would silently resolve/mutate the wrong
-        product's URL."""
+        product's URL.
+        """
         vip_config = VIPConfig(
             connect=ConnectConfig(url="https://connect.example.com"),
             workbench=WorkbenchConfig(url="workbench.example.com"),

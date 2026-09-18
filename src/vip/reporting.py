@@ -28,6 +28,13 @@ RESULTS_SCHEMA_VERSION = "1.0"
 
 @dataclass
 class TestResult:
+    """One test's outcome from a VIP run, plus VIP's own attestation metadata.
+
+    ``unproven`` distinguishes "VIP was asked to verify this and could not" from an
+    ordinary skip ("there was nothing to verify"); ``skip_reason`` carries the
+    human-readable explanation with pytest's path-bearing longrepr noise stripped.
+    """
+
     nodeid: str
     outcome: str  # "passed", "failed", "skipped"
     duration: float = 0.0
@@ -137,6 +144,14 @@ class ProductInfo:
 
 @dataclass
 class ReportData:
+    """The whole content of one VIP run's ``results.json``: products, results, provenance.
+
+    The provenance fields (``vip_version``, ``run_duration_seconds``, ``python_version``,
+    ``platform``, ``basic_mode``) default to ``None`` rather than a concrete-looking value,
+    so a ``results.json`` written before these fields existed loads as "not recorded"
+    instead of silently claiming a value that was never measured.
+    """
+
     deployment_name: str = "Posit Team"
     generated_at: str = ""
     exit_status: int = 0
@@ -160,22 +175,27 @@ class ReportData:
 
     @property
     def total(self) -> int:
+        """The total number of results in this run."""
         return len(self.results)
 
     @property
     def passed(self) -> int:
+        """The number of results with outcome ``"passed"``."""
         return sum(1 for r in self.results if r.outcome == "passed")
 
     @property
     def failed(self) -> int:
+        """The number of results with outcome ``"failed"``."""
         return sum(1 for r in self.results if r.outcome == "failed")
 
     @property
     def skipped(self) -> int:
-        # N/A-by-version results are still pytest "skipped" outcomes, so they
-        # count toward the top-line skipped total; they get their own
-        # section/badge in the report via TestResult.status, but the summary
-        # count is not split out separately.
+        """The number of results with outcome ``"skipped"``, including N/A-by-version ones.
+
+        N/A-by-version results are still pytest "skipped" outcomes, so they count toward
+        this top-line total; they get their own section/badge in the report via
+        ``TestResult.status``, but the summary count is not split out separately.
+        """
         return sum(1 for r in self.results if r.outcome == "skipped")
 
     @property
@@ -198,16 +218,18 @@ class ReportData:
 
             dt = datetime.fromisoformat(self.generated_at)
             return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        except Exception:
+        except Exception:  # noqa: BLE001
             return self.generated_at[:19] if self.generated_at else "N/A"
 
     def by_category(self) -> dict[str, list[TestResult]]:
+        """Group ``results`` by category, preserving each category's first-seen order."""
         categories: dict[str, list[TestResult]] = {}
         for r in self.results:
             categories.setdefault(r.category, []).append(r)
         return categories
 
     def configured_products(self) -> list[ProductInfo]:
+        """Every product in ``products`` that is configured for this run."""
         return [p for p in self.products if p.configured]
 
 
@@ -472,7 +494,7 @@ def _installed_vip_tests_dir() -> Path | None:
     """Return the directory of the installed ``vip_tests`` package, if any."""
     try:
         import vip_tests
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
     location = getattr(vip_tests, "__file__", None)
     return Path(location).resolve().parent if location else None

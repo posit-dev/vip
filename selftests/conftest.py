@@ -88,9 +88,9 @@ def _no_ambient_proxy(monkeypatch):
     monkeypatch.setattr("httpx._utils.getproxies", getproxies_environment)
 
 
-@pytest.fixture()
+@pytest.fixture
 def pytester(pytester):
-    """pytester that disables pytest-playwright for nested in-process runs.
+    """Pytester that disables pytest-playwright for nested in-process runs.
 
     pytest-playwright (>=0.8.0) wraps every test in a soft-assertion scope via
     its ``pytest_runtest_call`` hook.  Our plugin integration tests run an inner
@@ -109,7 +109,7 @@ def pytester(pytester):
     return pytester
 
 
-@pytest.fixture()
+@pytest.fixture
 def tmp_toml(tmp_path: Path):
     """Helper that writes a TOML string to a temp file and returns the path."""
 
@@ -121,7 +121,7 @@ def tmp_toml(tmp_path: Path):
     return _write
 
 
-@pytest.fixture()
+@pytest.fixture
 def sample_results_json(tmp_path: Path) -> Path:
     """Write a sample results.json and return its path."""
     import json

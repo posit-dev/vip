@@ -16,30 +16,32 @@ setup:
 # Same as `setup` — kept for muscle memory; vip install handles RHEL detection.
 setup-rhel: setup
 
-# Regenerate uv.lock with the pinned uv version (see UV_VERSION above).
 # Use this instead of a bare `uv lock`: `uvx` fetches the exact pinned uv, so
 # the lockfile is byte-reproducible even when your local uv is a different
 # version. This is also how you resolve a uv.lock merge conflict — take either
 # side, then relock:
 #   git checkout --theirs -- uv.lock && just relock
+# Regenerate uv.lock with the pinned uv version (see UV_VERSION above).
 relock:
     uvx --from uv=={{ UV_VERSION }} uv lock
 
 # Run ruff linter
+# --extra dev: ruff is in the dev extra, which a bare `uv sync` does not install;
+# without it, `uv run ruff` falls back to whatever ruff is on PATH instead of the pinned version.
 lint:
-    uv run ruff check src/ selftests/ examples/ docker/
+    uv run --extra dev ruff check .
 
 # Run ruff formatter check (fails if files would change)
 format-check:
-    uv run ruff format --check src/ selftests/ examples/ docker/
+    uv run --extra dev ruff format --check .
 
 # Auto-fix lint issues
 lint-fix:
-    uv run ruff check --fix src/ selftests/ examples/ docker/
+    uv run --extra dev ruff check --fix .
 
 # Format code in place
 format:
-    uv run ruff format src/ selftests/ examples/ docker/
+    uv run --extra dev ruff format .
 
 # Run all checks (lint + format)
 check: lint format-check
@@ -48,12 +50,14 @@ check: lint format-check
 fix: lint-fix format
 
 # Run mypy type checker
+# --extra dev: mypy is in the dev extra, which a bare `uv sync` does not install.
 typecheck:
-    uv run mypy src/vip/
+    uv run --extra dev mypy src/vip/
 
 # Run selftests with coverage
+# --extra dev: pytest-cov is in the dev extra, which a bare `uv sync` does not install.
 coverage:
-    uv run pytest selftests/ --cov=src/vip --cov-report=term-missing
+    uv run --extra dev pytest selftests/ --cov=src/vip --cov-report=term-missing
 
 # Run selftests (no products required)
 selftest *ARGS:
@@ -61,15 +65,15 @@ selftest *ARGS:
 
 # Run the full VIP test suite against configured products
 test *ARGS:
-    uv run pytest tests/ {{ ARGS }}
+    uv run pytest src/vip_tests/ {{ ARGS }}
 
 # Run tests for a specific product (connect, workbench, package_manager)
 test-product PRODUCT:
-    uv run pytest tests/ -m {{ PRODUCT }}
+    uv run pytest src/vip_tests/ -m {{ PRODUCT }}
 
 # Generate the Quarto report from product test results
 report *ARGS:
-    uv run pytest tests/ {{ ARGS }}
+    uv run pytest src/vip_tests/ {{ ARGS }}
     cd report && uv run quarto render
 
 # Generate test catalog and feature matrix JSON for the website
@@ -102,9 +106,9 @@ report-selftest:
     uv run pytest selftests/
     cd report && uv run quarto render
 
-# Start the mock-IdP E2E stack (Keycloak + Connect + Workbench, real OIDC).
 # Requires RSC_LICENSE and RSW_LICENSE. Add vip.test hostnames to /etc/hosts
 # first: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test`.
+# Start the mock-IdP E2E stack (Keycloak + Connect + Workbench, real OIDC).
 mock-idp-up:
     docker compose -f compose.mock-idp.yml up -d --build --wait
     @docker compose -f compose.mock-idp.yml ps
@@ -113,9 +117,17 @@ mock-idp-up:
 mock-idp-down:
     docker compose -f compose.mock-idp.yml down -v
 
-# Print the mock-IdP stack's auto-generated TOTP seed. Export it before
-# running `vip verify --headless-auth` locally:
+# (issue #263: Workbench behind SAML on a separate hostname from Connect).
+# Same requirements as `mock-idp-up`, plus add workbench-saml.vip.test to
+# /etc/hosts: `127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test workbench-saml.vip.test`.
+# Start the mock-IdP E2E stack with the SAML Workbench lane also enabled.
+mock-idp-saml-up:
+    docker compose -f compose.mock-idp.yml --profile saml up -d --build --wait
+    @docker compose -f compose.mock-idp.yml --profile saml ps
+
+# Export it before running `vip verify --headless-auth` locally:
 #   export VIP_TEST_TOTP_SECRET=$(just mock-idp-totp-secret)
+# Print the mock-IdP stack's auto-generated TOTP seed.
 mock-idp-totp-secret:
     @docker run --rm -v vip-mock-idp_mock-idp-certs:/certs:ro alpine/openssl:3.5.4 cat /certs/totp-secret.b32
 
@@ -130,3 +142,7 @@ rhel10-smoke:
 # Build and run the openSUSE Leap headless Chromium smoke test
 opensuse-leap-smoke:
     ./scripts/opensuse-leap-smoke.sh
+
+# Build and run the Ubuntu 24.04 headless Chromium smoke test (also proves #621)
+ubuntu2404-smoke:
+    ./scripts/ubuntu2404-smoke.sh

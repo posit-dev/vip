@@ -21,7 +21,7 @@ from vip.clients.workbench import (
 
 
 @pytest.mark.parametrize(
-    "page_url, expected",
+    ("page_url", "expected"),
     [
         # Standard per-session proxy prefix, notebook open under /lab/tree.
         (

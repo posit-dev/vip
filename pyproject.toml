@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "2026.9.0"
+version = "2026.9.2"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -34,6 +34,7 @@ dependencies = [
     "pip>=26.1.2,<27",  # CVE-2026-3219, PYSEC-2026-196 fix; transitive via pip-api
     "mako>=1.3.12,<2",  # CVE-2026-44307 fix; transitive via pytest-bdd
     "idna>=3.15,<4",  # CVE-2026-45409 fix; transitive via httpx/requests/anyio
+    "anyio>=4.14.2,<5",  # CVE-2026-63374, CVE-2026-64847 fix; transitive via httpx
     # Report rendering (`vip report` shells out to quarto, which starts a
     # Jupyter kernel to execute report/*.qmd). Folded into base deps (was the
     # [report] extra) so a bare `uv tool install posit-vip` can render without
@@ -62,7 +63,7 @@ load = [
     "python-socketio>=5.16.2,<6",  # CVE-2026-48804 fix; transitive via locust
 ]
 dev = [
-    "ruff>=0.15.0,<0.17",
+    "ruff==0.16.6",
     "mypy>=1.10",
     "pytest-cov>=6.0",
     "pip-audit>=2.7",
@@ -216,4 +217,17 @@ line-length = 100
 src = ["src", "selftests", "examples"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+select = ["ARG001", "ARG002", "ARG005", "B", "BLE", "C4", "D101", "D102", "D103", "D202", "D209", "D210", "D403", "D413", "E", "F", "I", "ISC", "N", "PERF", "PGH", "PIE", "PLC0207", "PLR0124", "PLR0402", "PLR1711", "PLR5501", "PLW0108", "PLW1510", "PT", "PTH", "RET", "RUF001", "RUF002", "RUF003", "RUF012", "RUF023", "RUF043", "RUF059", "RUF100", "S101", "SIM", "TID", "UP"]
+
+# PERF203: per-item try/except in cleanup and probe loops is deliberate (the loop must continue past a failing item), and the per-iteration cost it flags is gone on Python 3.11+.
+ignore = [
+    "PERF203",
+    # SIM105: converting try/except Exception: pass to contextlib.suppress(Exception) would erase the noqa: BLE001 markers wave 2 narrows; re-enable after wave 2.
+    "SIM105",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"selftests/**" = ["ARG001", "ARG002", "ARG005", "D101", "D102", "D103", "S101"]
+"src/vip_tests/**" = ["ARG001", "ARG002", "ARG005", "D101", "D102", "D103", "S101"]
+"examples/**" = ["ARG001", "ARG002", "ARG005", "D101", "D102", "D103", "S101"]
+"docker/**" = ["ARG001", "ARG002", "ARG005", "S101"]

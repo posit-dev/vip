@@ -236,7 +236,8 @@ def steps_block(steps: list[str]) -> str:
     label = _text("Test procedure", size="8.5pt", weight='"bold"', fill='rgb("#6b7280")')
     out = _block(f"#{label}", above="6pt", below="3pt")
     for step in steps:
-        line = _call("vip-mono", "8pt", _lit("#374151"), _lit(f"› {step}"))
+        # The step marker is a deliberate typographic arrow in the rendered PDF.
+        line = _call("vip-mono", "8pt", _lit("#374151"), _lit(f"› {step}"))  # noqa: RUF001
         out += _block(f"#{line}", above="1.5pt", below="1.5pt", inset="(left: 10pt)")
     return out
 

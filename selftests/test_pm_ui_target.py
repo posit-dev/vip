@@ -33,7 +33,8 @@ from vip_tests.package_manager.test_ui import ui_target
 
 class FakePMClient:
     """Stand-in for ``PackageManagerClient``; see the twin in
-    ``test_pm_repo_selection.py``."""
+    ``test_pm_repo_selection.py``.
+    """
 
     def __init__(self, repos, serving=None):
         self._repos = repos
@@ -106,7 +107,8 @@ def test_returns_the_repo_that_serves_the_package(ecosystem, repo_names, package
 def test_null_repo_name_does_not_crash(ecosystem, repo_names, package):
     """``{"name": null}`` is valid JSON; ``.get("name", "")`` hands back None
     for it and ``.lower()`` then raises, taking the step down with an
-    AttributeError instead of skipping."""
+    AttributeError instead of skipping.
+    """
     client = FakePMClient(
         [{"name": None, "type": None}, _repo(repo_names[1])],
         serving={repo_names[1]: {package}},
@@ -123,7 +125,8 @@ def test_null_repo_name_does_not_crash(ecosystem, repo_names, package):
 @pytest.mark.parametrize(("ecosystem", "repo_names", "package"), ECOSYSTEMS)
 def test_nothing_configured_does_not_blame_syncing(ecosystem, repo_names, package):
     """The OpenVSX case from a real run: no repo of this ecosystem exists at
-    all, so "may not be synced yet" points at a stalled sync that isn't there."""
+    all, so "may not be synced yet" points at a stalled sync that isn't there.
+    """
     client = FakePMClient([_repo("unrelated-repo")], serving={})
 
     reason = _skip_reason(ui_target, client, ecosystem)
@@ -136,7 +139,8 @@ def test_nothing_configured_does_not_blame_syncing(ecosystem, repo_names, packag
 @pytest.mark.parametrize(("ecosystem", "repo_names", "package"), ECOSYSTEMS)
 def test_configured_but_unserved_names_every_repo_tried(ecosystem, repo_names, package):
     """The other state: repos exist and genuinely may still be syncing. Here
-    the reason must name them, so the administrator knows where to look."""
+    the reason must name them, so the administrator knows where to look.
+    """
     client = FakePMClient([_repo(n) for n in repo_names], serving={})
 
     reason = _skip_reason(ui_target, client, ecosystem)
@@ -156,7 +160,8 @@ def test_configured_but_unserved_names_every_repo_tried(ecosystem, repo_names, p
 def test_agrees_with_test_repos_when_nothing_is_configured(ecosystem, repo_names, package):
     """One deployment fact, one explanation. test_ui.py and test_repos.py ran
     in the same session and described an OpenVSX-less server two different
-    ways; the "nothing configured" reason must now match verbatim."""
+    ways; the "nothing configured" reason must now match verbatim.
+    """
     client = FakePMClient([_repo("unrelated-repo")], serving={})
 
     ui_reason = _skip_reason(ui_target, client, ecosystem)

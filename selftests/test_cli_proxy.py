@@ -9,6 +9,7 @@ ProxyConfig with the intended semantics.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from vip.cli import _generate_temp_config
 from vip.config import load_config
@@ -35,7 +36,7 @@ def _args(**overrides) -> argparse.Namespace:
 
 def test_no_proxy_flags_omits_section():
     path = _generate_temp_config(_args())
-    text = open(path).read()
+    text = Path(path).read_text()
     assert "[proxy]" not in text
     cfg = load_config(path)
     # Default: env-driven (trust_env True, no explicit url).
@@ -67,7 +68,7 @@ def test_proxy_and_no_proxy_flags():
 def test_empty_no_proxy_disables_proxying():
     """--no-proxy '' with no --proxy means enabled=false (force direct)."""
     path = _generate_temp_config(_args(no_proxy=""))
-    text = open(path).read()
+    text = Path(path).read_text()
     assert "[proxy]" in text
     assert "enabled = false" in text
     cfg = load_config(path)
@@ -78,7 +79,7 @@ def test_empty_no_proxy_disables_proxying():
 def test_whitespace_only_no_proxy_disables_proxying():
     """--no-proxy '   ' (whitespace only) must disable proxying, same as ''."""
     path = _generate_temp_config(_args(no_proxy="   "))
-    text = open(path).read()
+    text = Path(path).read_text()
     assert "enabled = false" in text
     cfg = load_config(path)
     assert cfg.proxy.enabled is False
@@ -87,7 +88,8 @@ def test_whitespace_only_no_proxy_disables_proxying():
 
 def test_no_proxy_without_proxy_still_lists_hosts():
     """--no-proxy with hosts but no --proxy records the bypass list (so it also
-    applies to an ambient env proxy)."""
+    applies to an ambient env proxy).
+    """
     path = _generate_temp_config(_args(no_proxy="localhost"))
     cfg = load_config(path)
     assert cfg.proxy.no_proxy == ["localhost"]

@@ -28,6 +28,7 @@ permissions:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -70,6 +71,7 @@ jobs:
   # job-rename step below matches the running check by name substring.
   set-matrix:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions: {}
     outputs:
       versions: ${{ steps.pick.outputs.versions }}
@@ -77,7 +79,7 @@ jobs:
       - id: pick
         run: |
           if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo 'versions=["release", "2026.06.0", "2026.05.1"]' >> "$GITHUB_OUTPUT"
+            echo 'versions=["release", "2026.08.1", "2026.07.0"]' >> "$GITHUB_OUTPUT"
           else
             echo 'versions=["release"]' >> "$GITHUB_OUTPUT"
           fi
@@ -92,6 +94,8 @@ jobs:
       || github.event_name == 'workflow_dispatch'
     name: Smoke test against Connect ${{ matrix.connect-version }}
     runs-on: ubuntu-latest
+    # Measured ~3.8 min median.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -141,10 +145,24 @@ jobs:
       # Resolve the actual Connect version for unambiguous job records
       - name: Resolve Connect version
         id: version
+        env:
+          VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
         run: |
-          RESPONSE=$(curl -sf \
-            -H "Authorization: Key ${{ steps.connect.outputs.CONNECT_API_KEY }}" \
-            "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings")
+          RESOLVED=0
+          for i in $(seq 1 60); do
+            RESPONSE=$(curl -sf --connect-timeout 5 --max-time 15 \
+              -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
+              "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings") && { RESOLVED=1; break; }
+            if [ "${i}" -lt 60 ]; then
+              echo "Attempt ${i}: server_settings not reachable yet, retrying..."
+              sleep 2
+            fi
+          done
+          if [ "${RESOLVED}" != "1" ]; then
+            echo "ERROR: server_settings did not become reachable after 60 attempts"
+            exit 1
+          fi
+          echo "server_settings reachable (attempt ${i})"
           VERSION=$(echo "${RESPONSE}" | jq -r '.version')
           if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
             echo "ERROR: Could not resolve Connect version from server_settings"
@@ -183,7 +201,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Resolve Playwright version
         id: playwright-version
@@ -277,9 +295,27 @@ jobs:
           SUITE: ${{ inputs.suite || (github.event_name == 'schedule' && 'full' || 'gate') }}
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
 
-      # Upload test results for debugging failures
+      # Upload test results for debugging failures. Every observed failure of
+      # this step was a transient "Failed to FinalizeArtifact" 403 from the
+      # artifact backend. continue-on-error is scoped to just this step -- it
+      # must never spread to the test step above, which stays the real,
+      # unmasked gate on this job's result.
+      #
+      # Deliberately NOT retried. A retry needs `overwrite: true` to survive
+      # CreateArtifact's name reservation from the first attempt, but
+      # continue-on-error hides whether that attempt's failure was this
+      # transient 403 or a genuine same-name collision (HTTP 409) -- and
+      # nothing inside a running job can reliably tell the two apart: a
+      # job's own step logs aren't available via the API until the job
+      # finishes, and whether the list-artifacts endpoint would even show a
+      # CreateArtifact-but-not-finalized name is unverified without a live
+      # run. Retrying with `overwrite: true` regardless would silently
+      # paper over a real collision, which is worse than the bug this fixes.
+      # See the PR description for the two fallbacks this chose between.
       - name: Upload test results
+        id: upload-results
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: connect-smoke-results-${{ matrix.connect-version }}
@@ -344,7 +380,14 @@ jobs:
     if: always()
     needs: [changes, set-matrix, connect-smoke]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Check smoke test result
         run: |
           if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
@@ -370,3 +413,13 @@ jobs:
             exit 1
           fi
           echo "Connect smoke tests passed or were legitimately out of scope"
+
+      # Nightly failures have no PR author to notice them; file (or update) a
+      # tracking issue instead of failing silently. Never fires on push/pull_request
+      # -- the author already sees those runs.
+      - name: Notify on scheduled failure
+        if: failure() && github.event_name == 'schedule'
+        uses: ./.github/actions/notify-on-scheduled-failure
+        with:
+          workflow-name: Connect Smoke Tests
+          github-token: ${{ secrets.GITHUB_TOKEN }}

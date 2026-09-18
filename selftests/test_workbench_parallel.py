@@ -34,9 +34,8 @@ class TestOidcLoginLock:
         # The lock must release even if the protected body raises, or a stale cross-worker
         # lock file would stall every other worker for the full timeout on each login.
         url = "https://wb.example.com/raises"
-        with pytest.raises(RuntimeError):
-            with wb.oidc_login_lock(url):
-                raise RuntimeError("boom inside the lock")
+        with pytest.raises(RuntimeError), wb.oidc_login_lock(url):
+            raise RuntimeError("boom inside the lock")
         other = FileLock(str(wb._login_lock_path(url)))
         other.acquire(timeout=1)  # would block/raise Timeout if the lock leaked
         other.release()
@@ -47,11 +46,13 @@ class TestOidcLoginLock:
         blocker.acquire()
         try:
             entered = False
-            with caplog.at_level(logging.WARNING):
+            with (
+                caplog.at_level(logging.WARNING),
                 # Surfaced as a warning too, so contention is visible in pytest's summary.
-                with pytest.warns(UserWarning, match="proceeding without it"):
-                    with wb.oidc_login_lock(url, timeout=0.2):
-                        entered = True
+                pytest.warns(UserWarning, match="proceeding without it"),
+                wb.oidc_login_lock(url, timeout=0.2),
+            ):
+                entered = True
             assert entered  # proceeded despite not holding the lock
             assert "proceeding without it" in caplog.text
         finally:
@@ -70,7 +71,7 @@ class _FakeLogo:
     def __init__(self, *, appears: bool):
         self._appears = appears
 
-    def wait_for(self, *, state, timeout):  # noqa: ARG002 - mirrors Playwright signature
+    def wait_for(self, *, state, timeout):
         if not self._appears:
             # Model the real timeout: Playwright raises PlaywrightTimeoutError, which is
             # what _silent_sso_signin catches. A different exception type must propagate.
@@ -110,12 +111,30 @@ class TestSilentSsoSignin:
         import contextlib
 
         class _BrokenLogo:
-            def wait_for(self, *, state, timeout):  # noqa: ARG002
+            def wait_for(self, *, state, timeout):
                 raise RuntimeError("page crashed mid-login")
 
         monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
         with pytest.raises(RuntimeError, match="page crashed"):
             wb._silent_sso_signin(_FakeButton(), _BrokenLogo(), "https://wb.x")
+
+    def test_waits_the_sso_roundtrip_timeout_not_the_page_load_one(self, monkeypatch):
+        # issue #263: a SAML round-trip (IdP redirect, assertion POST, Workbench's own
+        # validation) took longer than TIMEOUT_PAGE_LOAD (15s) under real IdP latency,
+        # which read as "no usable IdP session" and skipped a login that was still
+        # completing. Guard that the click-through waits the longer, dedicated budget.
+        import contextlib
+
+        captured: dict[str, int] = {}
+
+        class _TimeoutCapturingLogo:
+            def wait_for(self, *, state, timeout):
+                captured["timeout"] = timeout
+
+        monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
+        wb._silent_sso_signin(_FakeButton(), _TimeoutCapturingLogo(), "https://wb.x")
+        assert captured["timeout"] == wb.TIMEOUT_SSO_ROUNDTRIP
+        assert wb.TIMEOUT_SSO_ROUNDTRIP > wb.TIMEOUT_PAGE_LOAD
 
 
 class TestWorkbenchGroupName:
@@ -167,7 +186,7 @@ class _FakeConfig:
         cfg = self
 
         class _Stash:
-            def get(self, key, default=None):  # noqa: ARG002
+            def get(self, key, default=None):
                 return cfg._session
 
         return _Stash()
@@ -503,19 +522,18 @@ class TestRealMarkerMechanics:
     """Guard the assumption the fakes above cannot: that the hook's strip + add_marker
     sequence is actually visible to pytest-xdist, which reads xdist_group via
     ``get_closest_marker`` and concatenates *every* xdist_group mark it finds via
-    ``iter_markers``. Exercised on a real pytest ``Item``, not a fake."""
+    ``iter_markers``. Exercised on a real pytest ``Item``, not a fake.
+    """
 
     def test_regroup_wins_via_get_closest_marker_and_leaves_no_duplicate(self, pytester):
-        import pytest as _pytest
-
         # Disable the vip plugin for the nested collection: its own _assign_xdist_group
         # would inject a "general" group and obscure the mechanic under test.
         modcol = pytester.getmodulecol("def test_x(): pass", configargs=["-p", "no:vip"])
         (item,) = pytester.genitems([modcol])
         # Simulate a pre-existing group, then apply exactly the hook's two operations.
-        item.add_marker(_pytest.mark.xdist_group("workbench"))
+        item.add_marker(pytest.mark.xdist_group("workbench"))
         item.own_markers = [m for m in item.own_markers if m.name != "xdist_group"]
-        item.add_marker(_pytest.mark.xdist_group("workbench_packages"))
+        item.add_marker(pytest.mark.xdist_group("workbench_packages"))
 
         # get_closest_marker is the path LoadGroupScheduling reads — it must see the new group.
         marker = item.get_closest_marker("xdist_group")

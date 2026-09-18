@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import socket
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -19,6 +18,8 @@ class ManifestError(Exception):
 
 @dataclass
 class SystemPackageItem:
+    """One system package (RPM/deb) ``vip install`` added, so ``vip uninstall`` can remove it."""
+
     manager: str  # "dnf" | "apt" | "zypper"
     name: str
     installed_at: str
@@ -27,6 +28,8 @@ class SystemPackageItem:
 
 @dataclass
 class PlaywrightItem:
+    """One Playwright browser cache that ``vip install`` downloaded."""
+
     browser: str  # "chromium"
     cache_dir: str
     installed_at: str
@@ -38,6 +41,14 @@ Item = SystemPackageItem | PlaywrightItem
 
 @dataclass
 class Manifest:
+    """The parsed contents of ``.vip-install.json``: everything ``vip install`` added.
+
+    ``items`` records what has actually been installed and can be reversed by ``vip
+    uninstall``. ``pending_system_packages`` records packages the current process
+    could not install itself (non-root Linux, printed as a ``sudo`` command) so a later
+    ``vip install`` run can claim them once they exist, via ``claim_pending``.
+    """
+
     version: int
     vip_version: str
     created_at: str
@@ -50,36 +61,72 @@ class Manifest:
     pending_system_packages: list[str] = field(default_factory=list)
 
     def pending_packages_set(self) -> set[str]:
+        """Return ``pending_system_packages`` as a set for membership checks."""
         return set(self.pending_system_packages)
 
     def add_pending_packages(self, names: Iterable[str]) -> None:
+        """Add *names* to ``pending_system_packages``, skipping ones already present."""
         existing = self.pending_packages_set()
         for n in names:
             if n not in existing:
                 self.pending_system_packages.append(n)
                 existing.add(n)
 
-    def claim_pending(self, names: Iterable[str], *, installed_at: str, manager: str) -> None:
-        names_set = set(names)
-        for n in names_set:
-            if n in self.pending_packages_set():
+    def claim_pending(
+        self, names: Iterable[tuple[str, str]], *, installed_at: str, manager: str
+    ) -> None:
+        """Claim pending packages now detected as installed.
+
+        Each entry pairs the manifest's pending name with the concrete package
+        name to record as installed. They're usually identical, but an alias
+        resolved via dpkg Provides (or a legacy renamed package) records the
+        real installed package name instead, so `vip uninstall` removes what
+        is actually there rather than a name apt/dnf/zypper don't recognize
+        (#621).
+        """
+        pairs = list(names)
+        pending_set = self.pending_packages_set()
+        claimed: set[str] = set()
+        for pending_name, concrete_name in pairs:
+            if pending_name in pending_set:
                 self.items.append(
-                    SystemPackageItem(manager=manager, name=n, installed_at=installed_at)
+                    SystemPackageItem(
+                        manager=manager, name=concrete_name, installed_at=installed_at
+                    )
                 )
-        self.pending_system_packages = [
-            p for p in self.pending_system_packages if p not in names_set
-        ]
+                claimed.add(pending_name)
+        self.pending_system_packages = [p for p in self.pending_system_packages if p not in claimed]
 
 
 def default_path(project_root: Path | None = None) -> Path:
+    """Return the ``.vip-install.json`` path under *project_root*, defaulting to ``Path.cwd()``."""
     return (project_root or Path.cwd()) / ".vip-install.json"
 
 
 def current_host() -> str:
+    """Return this machine's hostname, used to gate ``vip uninstall`` on a manifest match."""
     return socket.gethostname()
 
 
 def load(path: Path) -> Manifest | None:
+    """Load the manifest at ``path``, or ``None`` if there is nothing to load.
+
+    Returns ``None`` (not an error) when ``path`` doesn't exist or its contents
+    are empty/whitespace-only — both mean "no manifest has been written yet,"
+    which is the expected state before the first ``vip install``.
+
+    Raises ``ManifestError`` for every other way the file can fail to be a
+    usable manifest: invalid JSON, a missing or non-integer ``version``, a
+    ``version`` newer than this build's ``SCHEMA_VERSION`` (an older vip reading a
+    newer manifest), a non-array ``items`` or ``pending_system_packages`` field,
+    a ``pending_system_packages`` entry that isn't a string, a non-object
+    ``items`` entry, an ``items`` entry with an unrecognized ``kind``, or an
+    ``items`` entry missing a field its ``kind`` requires. Raising is
+    all-or-nothing: this function never returns a partially-populated
+    ``Manifest`` for a malformed file. ``vip_version``/``created_at``/``updated_at``/
+    ``host``/``platform``/``platform_id``/``platform_version`` are read leniently
+    with defaults, since none of them are needed to interpret ``items`` safely.
+    """
     if not path.exists():
         return None
     content = path.read_text().strip()
@@ -152,6 +199,16 @@ def load(path: Path) -> Manifest | None:
 
 
 def save(manifest: Manifest, path: Path) -> None:
+    """Write ``manifest`` to ``path`` atomically.
+
+    Serializes to a sibling ``path.with_suffix(path.suffix + ".tmp")`` file and
+    then ``Path.replace``s it onto ``path``, so a reader of ``path`` never observes a
+    partially-written file and a crash mid-write leaves the previous manifest
+    at ``path`` untouched. If writing the temp file or the replace itself
+    raises, the temp file is removed on a best-effort basis (an ``OSError``
+    during that cleanup is swallowed) and the original exception is
+    re-raised, so callers see the real failure rather than a cleanup error.
+    """
     serialized = {
         "version": manifest.version,
         "vip_version": manifest.vip_version,
@@ -167,7 +224,7 @@ def save(manifest: Manifest, path: Path) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:
         tmp.write_text(json.dumps(serialized, indent=2, sort_keys=False) + "\n")
-        os.replace(tmp, path)
+        tmp.replace(path)
     except Exception:
         with contextlib.suppress(OSError):
             tmp.unlink(missing_ok=True)

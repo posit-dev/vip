@@ -23,9 +23,9 @@ import pytest
 
 
 class TestExtensionFixtureVisibility:
-    @pytest.fixture()
+    @pytest.fixture
     def ext_pytester(self, pytester):
-        """pytester with a minimal vip.toml and no other collection targets."""
+        """Pytester with a minimal vip.toml and no other collection targets."""
         pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
         return pytester
 
@@ -157,7 +157,8 @@ class TestExtensionFixtureVisibility:
     def test_extension_directory_gets_vips_browser_context_args_override(self, ext_pytester):
         """Same override contract for browser_context_args (the fixture's
         other half): --vip-insecure must reach ignore_https_errors for a test
-        collected outside vip_tests too."""
+        collected outside vip_tests too.
+        """
         ext_pytester.makefile(
             ".toml",
             vip='[general]\ndeployment_name = "Selftest"\n[tls]\ninsecure = true\n',

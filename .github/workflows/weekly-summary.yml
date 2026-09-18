@@ -91,7 +91,7 @@ jobs:
 
       - name: Configure AWS credentials
         if: steps.gather.outputs.has_prs == 'true'
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6
         with:
           role-to-assume: arn:aws:iam::935931255537:role/gha-claude-code
           role-session-name: vip-weekly-summary-${{ github.run_id }}
@@ -100,7 +100,7 @@ jobs:
       - name: Generate highlights with Claude
         if: steps.gather.outputs.has_prs == 'true'
         id: analyze
-        uses: anthropics/claude-code-action@e2a4b761cd77a1138a5b41410eda9b28581f9bcd # v1
+        uses: anthropics/claude-code-action@19dda84776b3518d98b8798e591daee763049ed3 # v1
         with:
           github_token: ${{ github.token }}
           use_bedrock: true

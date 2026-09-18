@@ -65,7 +65,7 @@ def run_load_test(
     if tool == "locust":
         # Locust returns LoadTestResult directly (aggregate stats, no raw data).
         return _run_locust(url, headers, users, config)
-    elif tool == "threadpool" or (tool == "auto" and users <= 100):
+    if tool == "threadpool" or (tool == "auto" and users <= 100):
         raw = _run_threadpool(url, headers, users)
     elif tool == "async" or (tool == "auto" and users > 100):
         raw = _run_async(url, headers, users, max_connections=config.load_max_connections)
@@ -97,7 +97,7 @@ def _run_threadpool(url: str, headers: dict[str, str], n: int, timeout: float = 
                 "status": resp.status_code,
                 "error": None,
             }
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return {
                 "elapsed": time.monotonic() - start,
                 "status": None,
@@ -150,7 +150,7 @@ async def _async_load_test(
                         "status": resp.status_code,
                         "error": None,
                     }
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     return {
                         "elapsed": time.monotonic() - start,
                         "status": None,
@@ -298,7 +298,7 @@ def _log_request(
     request_type: str,
     name: str,
     response_time: float,
-    response_length: int,
+    response_length: int,  # noqa: ARG001 -- locust event kwarg
     exception: Exception | None = None,
     **_kwargs,
 ) -> None:
@@ -336,6 +336,7 @@ def run_user_simulation(
         ``environment.parsed_options``.  Keys depend on the product
         (e.g. ``{"api_key": "..."}`` for Connect/Workbench,
         ``{"token": "..."}`` for Package Manager).
+
     """
     if not _locust_available():
         msg = (

@@ -15,28 +15,35 @@ set -eu
 #   keycloak.crt/.key      -- leaf cert for keycloak.vip.test
 #   connect.crt/.key       -- leaf cert for connect.vip.test
 #   workbench.crt/.key     -- leaf cert for workbench.vip.test
+#   workbench-saml.crt/.key -- leaf cert for workbench-saml.vip.test (issue #263 SAML lane)
 #
-# Idempotent: skips generation if ca.crt already exists, so re-running
-# `docker compose up` against a warm volume doesn't rotate certs underneath
-# a running Keycloak/Connect/Workbench.
+# Idempotent per-artifact: reuses ca.crt/ca.key if they already exist (so
+# re-running `docker compose up` against a warm volume never rotates the CA
+# underneath a running Keycloak/Connect/Workbench), but still generates any
+# leaf cert that's missing -- e.g. a volume warmed before workbench-saml was
+# added to DOMAINS otherwise skipped the whole script on a warm ca.crt and
+# left `just mock-idp-saml-up` with no workbench-saml.crt/.key to mount.
 
 OUT="${OUT:-/certs}"
-DOMAINS="keycloak connect workbench"
-
-if [ -f "${OUT}/ca.crt" ]; then
-  echo "gen-certs: ${OUT}/ca.crt already exists, skipping generation."
-  exit 0
-fi
+DOMAINS="keycloak connect workbench workbench-saml"
 
 mkdir -p "${OUT}"
 
-echo "gen-certs: generating CA ..."
-openssl req -x509 -newkey rsa:4096 -sha256 -days 30 -nodes \
-  -keyout "${OUT}/ca.key" -out "${OUT}/ca.crt" \
-  -subj "/CN=VIP Mock-IdP E2E CA"
+if [ -f "${OUT}/ca.crt" ]; then
+  echo "gen-certs: ${OUT}/ca.crt already exists, reusing CA."
+else
+  echo "gen-certs: generating CA ..."
+  openssl req -x509 -newkey rsa:4096 -sha256 -days 30 -nodes \
+    -keyout "${OUT}/ca.key" -out "${OUT}/ca.crt" \
+    -subj "/CN=VIP Mock-IdP E2E CA"
+fi
 
 for name in ${DOMAINS}; do
   domain="${name}.vip.test"
+  if [ -f "${OUT}/${name}.crt" ]; then
+    echo "gen-certs: ${OUT}/${name}.crt already exists, skipping."
+    continue
+  fi
   echo "gen-certs: generating leaf cert for ${domain} ..."
   openssl req -newkey rsa:2048 -sha256 -nodes \
     -keyout "${OUT}/${name}.key" -out "${OUT}/${name}.csr" \

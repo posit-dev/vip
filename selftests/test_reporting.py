@@ -48,7 +48,8 @@ class TestTestResult:
 
     def test_category_resolves_from_an_installed_wheel_path(self):
         """An installed wheel collects from site-packages, so the prefix depth
-        is not fixed and cannot be indexed by position."""
+        is not fixed and cannot be indexed by position.
+        """
         r = TestResult(
             nodeid=(
                 "/opt/venv/lib/python3.12/site-packages/vip_tests/"
@@ -65,7 +66,8 @@ class TestTestResult:
 
     def test_category_prefers_the_innermost_vip_tests_segment(self):
         """A collection path that nests one vip_tests inside another still
-        resolves to the real category, not the outer segment."""
+        resolves to the real category, not the outer segment.
+        """
         r = TestResult(
             nodeid="custom/vip_tests/x/vip_tests/workbench/test_b.py::test_y",
             outcome="passed",
@@ -600,7 +602,8 @@ class TestWriteJUnitXml:
 
     def test_ordinary_skip_message_is_plain(self, tmp_path):
         """A skip that is NOT na_version gets the plain 'skipped' message, not
-        the version-gate text."""
+        the version-gate text.
+        """
         out = tmp_path / "junit.xml"
         data = ReportData(
             results=[
@@ -619,7 +622,8 @@ class TestWriteJUnitXml:
 
     def test_failure_fallback_when_no_error_details(self, tmp_path):
         """A failed result with neither concise_error nor longrepr falls back
-        to a generic 'test failed' message."""
+        to a generic 'test failed' message.
+        """
         out = tmp_path / "junit.xml"
         data = ReportData(
             results=[
@@ -681,7 +685,8 @@ class TestWriteJUnitXml:
 
     def test_na_version_wording_is_fallback_without_skip_reason(self, tmp_path):
         """A na_version skip with no skip_reason (older results.json) keeps the
-        pre-existing wording rather than falling all the way to 'skipped'."""
+        pre-existing wording rather than falling all the way to 'skipped'.
+        """
         out = tmp_path / "junit.xml"
         data = ReportData(
             results=[
@@ -760,7 +765,8 @@ class TestWriteSarif:
 
     def test_ordinary_skip_message_is_plain(self, tmp_path):
         """A skip that is NOT na_version gets 'check skipped', not the
-        version-gate text."""
+        version-gate text.
+        """
         out = tmp_path / "results.sarif"
         data = ReportData(
             results=[
@@ -778,7 +784,8 @@ class TestWriteSarif:
 
     def test_failure_fallback_when_no_error_details(self, tmp_path):
         """A failed result with neither concise_error nor longrepr falls back
-        to a generic 'check failed' message."""
+        to a generic 'check failed' message.
+        """
         out = tmp_path / "results.sarif"
         data = ReportData(
             results=[

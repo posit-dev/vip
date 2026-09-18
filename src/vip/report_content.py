@@ -47,9 +47,7 @@ def substitute_param_placeholders(nodeid: str, title: str) -> str:
     pytest-bdd's Scenario Outline expansion leaves the Gherkin placeholder
     syntax (e.g. "Install <package> from CRAN") in ``scenario_title`` and puts
     the actual parametrize value in the nodeid's trailing ``[...]`` instead.
-    Hoisted out of the per-card loop both templates used to have — each did
-    ``import re as _re`` inside the loop (F13) — and shared, since both pages
-    need the identical substitution.
+    Shared, since both pages need the identical substitution.
     """
     if "<" not in title:
         return title
@@ -79,6 +77,8 @@ def pluralize(count: int, noun: str = "test") -> str:
 
 @dataclass(frozen=True)
 class OutcomeStyle:
+    """The badge label, text color, and background color for one ``TestResult.status``."""
+
     label: str
     color: str
     background: str
@@ -120,6 +120,8 @@ def outcome_style(status: str) -> OutcomeStyle:
 
 @dataclass(frozen=True)
 class Badge:
+    """One marker pill rendered on a report card: its CSS class, label, and color."""
+
     css_class: str
     label: str
     color: str
@@ -217,7 +219,8 @@ def results_for_product(results: list[TestResult], product: str) -> list[TestRes
 
 def group_by_category(results: list[TestResult]) -> dict[str, list[TestResult]]:
     """Group results by ``category_for`` (see its docstring for why not
-    ``ReportData.by_category``), preserving each category's first-seen order."""
+    ``ReportData.by_category``), preserving each category's first-seen order.
+    """
     groups: dict[str, list[TestResult]] = {}
     for item in results:
         groups.setdefault(category_for(item), []).append(item)
@@ -225,12 +228,12 @@ def group_by_category(results: list[TestResult]) -> dict[str, list[TestResult]]:
 
 
 def category_label(category: str) -> str:
-    """ "package_manager" -> "Package Manager" for a section heading."""
+    """ "package_manager" -> "Package Manager" for a section heading."""  # noqa: D210
     return category.replace("_", " ").title()
 
 
 def outcome_counts_summary(items: list[TestResult]) -> str:
-    """ "6 passed, 1 failed, 2 skipped" — used in category/group sub-headers."""
+    """ "6 passed, 1 failed, 2 skipped" — used in category/group sub-headers."""  # noqa: D210
     counts = Counter(i.status for i in items)
     order = [
         ("passed", "passed"),
@@ -268,6 +271,7 @@ class FeatureStepIndex:
         return self._cache[key] or None
 
     def steps_for(self, item: TestResult) -> list[str]:
+        """Return the Gherkin steps for *item*'s scenario, or ``[]`` if none can be found."""
         feature = self._feature(item.nodeid)
         if not feature or not feature.get("scenarios") or not item.scenario_title:
             return []
