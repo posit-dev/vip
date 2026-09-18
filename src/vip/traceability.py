@@ -11,7 +11,9 @@ import csv
 import hashlib
 import io
 import json
+import os
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -726,33 +728,68 @@ def _parse_sidecar(text: str) -> list[tuple[str, str | None]]:
     return entries
 
 
-def read_results_schema_version(path: str | Path) -> str | None:
-    """Read the top-level ``schema_version`` out of a results.json file.
+def validate_results_file(path: str | Path) -> tuple[str, bool]:
+    """Every gate a results file must pass before it can become evidence.
 
-    This is deliberately independent of ``load_results``: it must be callable
-    (and must raise cleanly) BEFORE ``load_results`` ever touches the file, so
-    an incompatible or structurally malformed results file is rejected by the
-    schema gate instead of crashing inside ``load_results``' own field
-    indexing (`r["nodeid"]`, `r["outcome"]`, ...).
+    Returns what ``verify_results_checksum`` returns, ``(digest,
+    sidecar_present)``, so a caller has the digest for the matrix provenance
+    without hashing the file twice.
+
+    Checksum, then schema, then row shape, in that order and over one JSON
+    parse. Order matters: the row check assumes rows of the current shape, so
+    an incompatible major has to be refused before it is applied. Both run
+    before ``reporting.load_results`` ever touches the file, because
+    ``load_results`` indexes fields directly (``r["nodeid"]``,
+    ``r["outcome"]``) and raises ``KeyError`` on anything else -- a
+    structurally wrong file has to be refused with a sentence, not a
+    traceback.
+
+    Every caller that treats a results file as evidence goes through here --
+    ``vip trace``, ``vip report --controls``, and the traceability cells in
+    both Quarto documents -- so none of them can end up stricter or more
+    lenient than the others about the same bytes.
     """
     p = Path(path)
+    digest, sidecar_present = verify_results_checksum(p)
+    raw = _read_results_json(p)
+    _check_results_schema(p, raw.get("schema_version"))
+    _check_results_rows(p, raw)
+    return digest, sidecar_present
+
+
+def _read_results_json(p: Path) -> dict:
     try:
         raw = json.loads(p.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
         raise ResultsIntegrityError(f"could not read results file {p}: {exc}") from exc
     if not isinstance(raw, dict):
         raise ResultsIntegrityError(f"could not read results file {p}: not a JSON object")
-    schema_version = raw.get("schema_version")
+    return raw
+
+
+def _check_results_schema(p: Path, schema_version: object) -> None:
+    """Refuse an unknown major schema version; accept an unknown minor.
+
+    A file with no schema_version predates versioning and is accepted.
+    """
     if schema_version is None:
-        return None
+        return
     if not isinstance(schema_version, str):
         raise ResultsIntegrityError(
             f"could not read results file {p}: schema_version={schema_version!r} is not a string"
         )
-    return schema_version
+    if not schema_version:
+        return
+    theirs = schema_version.split(".", 1)[0]
+    ours = RESULTS_SCHEMA_VERSION.split(".", 1)[0]
+    if theirs != ours:
+        raise ResultsIntegrityError(
+            f"results.json schema version {schema_version} is not supported by this "
+            f"vip (understands {RESULTS_SCHEMA_VERSION}); upgrade vip or regenerate the results"
+        )
 
 
-def check_results_rows(path: str | Path) -> None:
+def _check_results_rows(p: Path, raw: dict) -> None:
     """Refuse a results file whose rows are structurally wrong.
 
     ``reporting.load_results`` normalizes a malformed ``markers`` value to an
@@ -763,14 +800,6 @@ def check_results_rows(path: str | Path) -> None:
     for is reported as a GAP that does not exist -- the matrix asserting the
     suite is missing a check it actually has. Refuse the input instead.
     """
-    p = Path(path)
-    try:
-        raw = json.loads(p.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
-        raise ResultsIntegrityError(f"could not read results file {p}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ResultsIntegrityError(f"could not read results file {p}: not a JSON object")
-
     results = raw.get("results", [])
     if not isinstance(results, list):
         raise ResultsIntegrityError(f"{p} has results={type(results).__name__}; expected a list")
@@ -789,17 +818,39 @@ def check_results_rows(path: str | Path) -> None:
             )
 
 
-def check_results_schema(schema_version: str | None) -> None:
-    """Refuse an unknown major schema version; accept an unknown minor.
+def matrix_from_env(
+    data: ReportData, results_path: str | Path, env: Mapping[str, str] | None = None
+) -> tuple[TraceabilityMatrix | None, str | None]:
+    """The traceability matrix for a Quarto render, or the reason there isn't one.
 
-    A file with no schema_version predates versioning and is accepted.
+    Returns ``(None, None)`` when ``VIP_CONTROLS`` is unset, which is nearly
+    every render and means the report simply has no compliance section.
+    Returns ``(matrix, None)`` on success and ``(None, message)`` when the
+    section could not be built.
+
+    The control list arrives by environment variable rather than as a file
+    copied into the report directory, because that directory survives between
+    runs: a copied controls.toml would make every later plain ``vip report``
+    sprout a compliance section nobody asked for, built from a stale list.
+
+    Returning the failure instead of raising it is what lets both ``.qmd``
+    documents render the heading with a visible marker under it. An exception
+    inside a notebook cell renders as a traceback rather than a report, and a
+    compliance section that vanishes without saying so is the one outcome a
+    regulated reader cannot detect. The catch is deliberately broad for the
+    same reason.
     """
-    if not schema_version:
-        return
-    theirs = schema_version.split(".", 1)[0]
-    ours = RESULTS_SCHEMA_VERSION.split(".", 1)[0]
-    if theirs != ours:
-        raise ResultsIntegrityError(
-            f"results.json schema version {schema_version} is not supported by this "
-            f"vip (understands {RESULTS_SCHEMA_VERSION}); upgrade vip or regenerate the results"
+    controls_path = (os.environ if env is None else env).get("VIP_CONTROLS")
+    if not controls_path:
+        return None, None
+    try:
+        digest, verified = validate_results_file(results_path)
+        matrix = build_traceability_matrix(
+            data,
+            load_controls(controls_path),
+            results_sha256=digest,
+            results_sha256_sidecar_verified=verified or None,
         )
+    except Exception as exc:  # noqa: BLE001 - a report must render regardless
+        return None, str(exc)
+    return matrix, None

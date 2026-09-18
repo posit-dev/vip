@@ -8,6 +8,8 @@ output, so a reader of the PDF saw none of it.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -23,7 +25,7 @@ from vip.report_content import (
     traceability_warnings,
 )
 from vip.reporting import ReportData, TestResult
-from vip.traceability import ControlSpec, build_traceability_matrix
+from vip.traceability import ControlSpec, build_traceability_matrix, matrix_from_env
 
 
 def _result(nodeid, control, outcome="passed", title="S", **kw):
@@ -150,7 +152,7 @@ class TestTraceabilityRenderFailure:
         message into Markdown.
         """
         qmd = (Path(__file__).parent.parent / "report" / "index.qmd").read_text()
-        assert "display(HTML(report_html.render_traceability_error(exc)))" in qmd
+        assert "display(HTML(report_html.render_traceability_error(_trace_error)))" in qmd
         assert "TRACEABILITY_RENDER_FAILURE" not in qmd, (
             "the .qmd must not format the failure message itself; "
             "report_html.render_traceability_error owns the escaping"
@@ -246,3 +248,80 @@ class TestRiskIsVisibleInBothEditions:
         matrix = build_traceability_matrix(data, controls)
         assert "Class II / banana" in report_html.render_traceability(matrix)
         assert "Class II / banana" in report_typst.render_traceability(matrix)
+
+
+class TestMatrixFromEnv:
+    """The entry point both Quarto cells call, where neither may raise.
+
+    The cells used to hold this logic twice over, so the HTML and PDF
+    editions could drift apart on the same inputs, and neither copy could be
+    tested without rendering a whole document.
+    """
+
+    def _results(self, tmp_path):
+        data = json.dumps({"schema_version": "1.0", "results": []}, indent=2).encode()
+        p = tmp_path / "results.json"
+        p.write_bytes(data)
+        p.with_name("results.json.sha256").write_text(
+            f"{hashlib.sha256(data).hexdigest()}  results.json\n"
+        )
+        return p
+
+    def _controls(self, tmp_path, body='[controls.ok]\ndescription = "d"\n'):
+        p = tmp_path / "controls.toml"
+        p.write_text(body, encoding="utf-8")
+        return p
+
+    def test_no_control_list_means_no_section(self, tmp_path):
+        assert matrix_from_env(ReportData(), self._results(tmp_path), env={}) == (None, None)
+
+    def test_a_control_list_builds_a_matrix(self, tmp_path):
+        results = self._results(tmp_path)
+        controls = self._controls(tmp_path)
+        data = ReportData(results=[_result("t.py::ok", "ok")])
+
+        matrix, error = matrix_from_env(data, results, env={"VIP_CONTROLS": str(controls)})
+
+        assert error is None
+        assert [e.control.control_id for e in matrix.entries] == ["ok"]
+
+    def test_the_digest_reaches_the_provenance(self, tmp_path):
+        """The cells verify rather than merely hash, so the attestation is real."""
+        results = self._results(tmp_path)
+        controls = self._controls(tmp_path)
+
+        matrix, _ = matrix_from_env(ReportData(), results, env={"VIP_CONTROLS": str(controls)})
+
+        expected = hashlib.sha256(results.read_bytes()).hexdigest()
+        assert matrix.provenance["results_sha256"] == expected
+        assert matrix.provenance["results_sha256_sidecar_verified"] is True
+
+    def test_a_bad_control_list_returns_the_reason_instead_of_raising(self, tmp_path):
+        results = self._results(tmp_path)
+        controls = self._controls(tmp_path, "[controls.ok]\n")
+
+        matrix, error = matrix_from_env(ReportData(), results, env={"VIP_CONTROLS": str(controls)})
+
+        assert matrix is None
+        assert "missing a description" in error
+
+    def test_a_failed_checksum_returns_the_reason_instead_of_raising(self, tmp_path):
+        results = self._results(tmp_path)
+        results.with_name("results.json.sha256").write_text(f"{'0' * 64}  results.json\n")
+        controls = self._controls(tmp_path)
+
+        matrix, error = matrix_from_env(ReportData(), results, env={"VIP_CONTROLS": str(controls)})
+
+        assert matrix is None
+        assert "checksum mismatch" in error
+
+    def test_a_missing_results_file_returns_the_reason_instead_of_raising(self, tmp_path):
+        """A render must not die on a path that is not there."""
+        controls = self._controls(tmp_path)
+
+        matrix, error = matrix_from_env(
+            ReportData(), tmp_path / "absent.json", env={"VIP_CONTROLS": str(controls)}
+        )
+
+        assert matrix is None
+        assert error

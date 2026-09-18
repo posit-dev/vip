@@ -857,43 +857,31 @@ def run_report(args: argparse.Namespace) -> None:
     # file fails before Quarto starts, rather than inside a notebook cell
     # where the .qmd can only degrade to a warning.
     if getattr(args, "controls", None):
-        from vip.traceability import (
-            ControlListError,
-            ResultsIntegrityError,
-            check_results_rows,
-            check_results_schema,
-            load_controls,
-            read_results_schema_version,
-            verify_results_checksum,
-        )
+        from vip.traceability import ControlListError, ResultsIntegrityError, load_controls
+        from vip.traceability import validate_results_file as _validate
 
         controls_path = Path(args.controls).resolve()
         try:
             # --controls turns the report into a compliance artifact, so it
-            # inherits `vip trace`'s strictness about its evidence. Plain
-            # `vip report` stays lenient on purpose: `load_results` normalizes
-            # a malformed `markers` to an empty list and only warns on an
-            # unknown schema major, because a report must render regardless.
-            # That leniency is wrong here for one specific reason -- a row
-            # whose markers cannot be read looks untagged, so the control it
-            # was tagged for is printed as a GAP that does not exist, and the
-            # matrix claims the suite is missing a check it actually has.
-            # Refuse the file rather than render a compliance section that
-            # understates coverage. Same order as run_trace: the schema gate
-            # runs first, because the row check assumes current-shape rows.
-            check_results_schema(read_results_schema_version(results_dest))
-            check_results_rows(results_dest)
-            # The sidecar too, not only the schema and the rows. A compliance
-            # render is an evidence artifact, so it inherits `vip trace`'s
-            # strictness in full rather than in part.
-            verify_results_checksum(results_dest)
+            # inherits `vip trace`'s strictness about its evidence, through the
+            # same entry point. Plain `vip report` stays lenient on purpose:
+            # `load_results` normalizes a malformed `markers` to an empty list
+            # and only warns on an unknown schema major, because a report must
+            # render regardless. That leniency is wrong here for one specific
+            # reason -- a row whose markers cannot be read looks untagged, so
+            # the control it was tagged for is printed as a GAP that does not
+            # exist, and the matrix claims the suite is missing a check it
+            # actually has. Validating the control list here too means a
+            # malformed one fails before Quarto starts, rather than inside a
+            # notebook cell that can only degrade to a visible marker.
+            _validate(results_dest)
             load_controls(controls_path)
         except (ResultsIntegrityError, ControlListError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
-        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
-            # read_results_schema_version raises these raw. A malformed
-            # results.json must not reach the user as a traceback.
+        except (OSError, UnicodeDecodeError) as exc:
+            # A results file that cannot even be read must not reach the user
+            # as a traceback.
             print(f"Error: could not read results file {results_dest}: {exc}", file=sys.stderr)
             sys.exit(1)
         env["VIP_CONTROLS"] = str(controls_path)
@@ -1735,18 +1723,16 @@ def run_trace(args: argparse.Namespace) -> None:
     """Join a results.json against a control list and emit a traceability matrix."""
     import warnings
 
+    from vip.report_content import traceability_warnings
     from vip.reporting import load_results
     from vip.traceability import (
         ControlListError,
         ResultsIntegrityError,
         build_traceability_matrix,
-        check_results_rows,
-        check_results_schema,
         load_controls,
-        read_results_schema_version,
         render_csv,
         render_json,
-        verify_results_checksum,
+        validate_results_file,
     )
 
     results_path = Path(args.results)
@@ -1755,22 +1741,13 @@ def run_trace(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        results_sha256, sidecar_present = verify_results_checksum(results_path)
-        # Read and validate the schema version BEFORE load_results ever
-        # indexes into the results list. load_results assumes current-shape
-        # rows (r["nodeid"], r["outcome"], ...) and raises KeyError on
-        # anything else, so the schema gate must run first or an
-        # incompatible/malformed file crashes before it can be refused
-        # cleanly.
-        check_results_schema(read_results_schema_version(results_path))
-        # Structural validation before load_results normalizes the problem
-        # away. load_results turns a malformed `markers` into an empty list so
-        # the Quarto report still renders; for a matrix that silently converts
-        # a tagged scenario into a coverage gap.
-        check_results_rows(results_path)
+        # Checksum, schema and row shape, all before load_results ever indexes
+        # into the results list -- see validate_results_file for the order and
+        # why each gate has to run here rather than inside load_results.
+        results_sha256, sidecar_present = validate_results_file(results_path)
         # load_results only warns (not raises) on an unknown schema major --
         # it's also called from index.qmd/details.qmd/`vip report`, where that
-        # warning is the point. The check above already hard-errors on the
+        # warning is the point. The gate above already hard-errors on the
         # same condition, so suppress the redundant warning here only.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
@@ -1821,43 +1798,19 @@ def run_trace(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
 
-    # A covered control whose scenarios ran and failed also counts toward
-    # "0 gaps". Coverage records that a scenario ran, not that it passed, and
-    # a compliance matrix that stays silent here is the more expensive of the
-    # two ways this tool can mislead.
-    failing = matrix.covered_with_failure
-    if failing:
+    # The three ways a control can count toward "0 gaps" without being
+    # evidence: nothing ran, what ran did not pass, or VIP was asked to check
+    # it and could not. Taken from report_content, which renders the same
+    # three lines into the HTML and PDF editions, so a compliance run cannot
+    # word the same finding one way on screen and another in the archived
+    # artifact.
+    caveats = traceability_warnings(matrix)
+    for line in caveats:
+        print(f"Warning: {line}", file=sys.stderr)
+    if caveats:
         print(
-            f"Warning: {len(failing)} covered control(s) had a scenario that did not "
-            f"pass: {', '.join(failing)}. Coverage records that a scenario ran, not "
-            "that it passed.",
-            file=sys.stderr,
-        )
-
-    # A covered control whose every scenario was skipped still counts toward
-    # "0 gaps". True, and on its own misleading: a scenario that runs and
-    # skips itself still counts as covering its control, so the greenest
-    # matrix this tool can print is one produced by verifying nothing.
-    unexecuted = matrix.covered_without_execution
-    if unexecuted:
-        print(
-            f"Warning: {len(unexecuted)} covered control(s) have no scenario that ran "
-            f"(all skipped): {', '.join(unexecuted)}. Coverage records that a scenario "
-            "is tagged, not that it was executed.",
-            file=sys.stderr,
-        )
-
-    # The third condition, and the only one that catches a control whose
-    # scenarios ran and passed while part of the control went unchecked. The
-    # two warnings above stay silent on that case, because an unproven skip is
-    # neither an execution nor a failure.
-    unproven = matrix.covered_with_unproven
-    if unproven:
-        print(
-            f"Warning: {len(unproven)} covered control(s) had a scenario VIP "
-            f"could not verify: {', '.join(unproven)}. An unproven check was asked "
-            "for and could not be run, which is not the same as one that found "
-            "nothing to test.",
+            "Coverage records that a scenario is tagged for a control, not that it "
+            "ran or that it passed.",
             file=sys.stderr,
         )
 

@@ -423,8 +423,8 @@ def render_provenance_table(data: ReportData) -> str:
 def render_traceability_error(error: object) -> str:
     """The visible marker shown when the traceability section could not be built.
 
-    ``error`` is the exception that stopped it -- a missing or malformed
-    control list, a checksum that failed verification. Its message carries
+    ``error`` says what stopped it -- a missing or malformed control list, a
+    checksum that failed verification. That message carries
     the ``VIP_CONTROLS`` path and control ids read straight out of a
     customer-authored ``controls.toml``, which makes it the same fully
     untrusted text ``render_traceability`` describes, and it goes through
