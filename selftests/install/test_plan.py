@@ -239,7 +239,12 @@ def test_install_plan_pending_packages_now_present_get_claimed(tmp_path: Path):
 
 
 def test_install_plan_normalizes_legacy_pending_libasound2(tmp_path: Path):
-    """Old manifest with pending 'libasound2' gets claimed as 'libasound2t64' on 24.04."""
+    """Old manifest with pending 'libasound2' gets claimed as 'libasound2t64' on 24.04.
+
+    The pair must keep the manifest's original pending name ("libasound2"),
+    not the normalized lookup name -- otherwise ``Manifest.claim_pending``
+    can never match it against what's actually recorded pending on disk.
+    """
     info = PlatformInfo(family="debian-family", id="ubuntu", version="24.04")
     m = Manifest(
         version=SCHEMA_VERSION,
@@ -262,8 +267,17 @@ def test_install_plan_normalizes_legacy_pending_libasound2(tmp_path: Path):
         playwright_cache_dir=tmp_path / "cache",
         skip_system=False,
     )
-    # The legacy name should be normalized and claimed.
-    assert dict(plan.claim_pending).get("libasound2t64") == "libasound2t64"
+    # The pair pending_name=libasound2 is what's actually recorded pending;
+    # concrete_name=libasound2t64 is what's actually installed and removable.
+    assert dict(plan.claim_pending).get("libasound2") == "libasound2t64"
+
+    # And that pair must actually clear the manifest's pending entry and
+    # record the concrete name as installed -- the bug this guards against
+    # passed the assertion above while leaving the manifest untouched.
+    m.claim_pending(plan.claim_pending, installed_at="2026-04-30T15:00:00Z", manager="apt")
+    assert m.pending_packages_set() == set()
+    items = [it for it in m.items if isinstance(it, SystemPackageItem)]
+    assert any(it.name == "libasound2t64" for it in items)
 
 
 def test_install_plan_claims_alias_under_concrete_provider_name(tmp_path: Path):
