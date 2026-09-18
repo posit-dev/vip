@@ -558,7 +558,7 @@ class ControlRow:
     """``(scenario title, status, when it ran)`` for each matched scenario."""
 
 
-def display_coverage(entry) -> str:  # noqa: ANN001 - vip.traceability.ControlEntry
+def display_coverage(entry) -> str:
     """Flatten coverage, execution and outcome into the one value the report shows.
 
     Ordered by how loudly each fact demotes the control, because the matrix
@@ -579,7 +579,7 @@ def display_coverage(entry) -> str:  # noqa: ANN001 - vip.traceability.ControlEn
     return entry.coverage
 
 
-def control_rows(matrix) -> list[ControlRow]:  # noqa: ANN001 - TraceabilityMatrix
+def control_rows(matrix) -> list[ControlRow]:
     """Every control in the matrix, ready for a backend to render as a table."""
     rows = []
     for entry in matrix.entries:
@@ -604,7 +604,7 @@ def control_rows(matrix) -> list[ControlRow]:  # noqa: ANN001 - TraceabilityMatr
     return rows
 
 
-def traceability_summary_rows(matrix) -> list[tuple[str, str]]:  # noqa: ANN001
+def traceability_summary_rows(matrix) -> list[tuple[str, str]]:
     """Label/value counts for the section's summary table.
 
     Counts straight from ``matrix.entries`` rather than via :func:`control_rows`,
@@ -649,7 +649,7 @@ TRACEABILITY_CAVEAT = (
 TRACEABILITY_RENDER_FAILURE = "Could not render the traceability section: {error}"
 
 
-def traceability_warnings(matrix) -> list[str]:  # noqa: ANN001
+def traceability_warnings(matrix) -> list[str]:
     """Lines naming controls that look covered but are not evidence.
 
     Three independent conditions, so three lines rather than one combined

@@ -198,5 +198,6 @@ def test_example_collects(tmp_path):
         capture_output=True,
         text=True,
         cwd=REPO,
+        check=False,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr

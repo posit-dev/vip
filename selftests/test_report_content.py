@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 
 import pytest
 
@@ -464,7 +465,7 @@ class TestExecutionProvenanceRows:
     auditor.
     """
 
-    EXECUTION = {
+    EXECUTION: ClassVar[dict] = {
         "hostname": "runner-07",
         "git": {
             "commit": "a1b2c3d4e5f6",
@@ -492,7 +493,8 @@ class TestExecutionProvenanceRows:
 
     def test_an_absent_execution_block_omits_the_rows_entirely(self):
         """``--vip-no-attribution`` asked for this; five "not recorded" rows
-        would read as a broken run rather than a deliberate one."""
+        would read as a broken run rather than a deliberate one.
+        """
         rows = self._rows(None)
         for label in ("Performed by", "Run host", "Commit", "Branch", "CI run"):
             assert label not in rows
@@ -502,7 +504,8 @@ class TestExecutionProvenanceRows:
 
     def test_a_dirty_tree_is_flagged_next_to_the_commit(self):
         """Evidence from an uncommitted tree cannot be reproduced from the
-        commit alone, so the caveat belongs in the same cell."""
+        commit alone, so the caveat belongs in the same cell.
+        """
         execution = {**self.EXECUTION, "git": {**self.EXECUTION["git"], "dirty": True}}
         assert self._rows(execution)["Commit"] == "a1b2c3d4e5f6 (uncommitted changes present)"
 
@@ -517,19 +520,22 @@ class TestExecutionProvenanceRows:
     )
     def test_every_inherited_identity_says_where_it_came_from(self, source, expected):
         """A CI actor is often a service account. Unlabelled, it would read in
-        the archived artifact exactly like a named accountable operator."""
+        the archived artifact exactly like a named accountable operator.
+        """
         execution = {**self.EXECUTION, "performed_by": {"identity": "bd", "source": source}}
         assert self._rows(execution)["Performed by"] == expected
 
     def test_an_identity_with_no_source_is_never_rendered_bare(self):
         """A malformed block must not read as an explicitly named operator,
-        nor render the literal string "None"."""
+        nor render the literal string "None".
+        """
         execution = {**self.EXECUTION, "performed_by": {"identity": "bd"}}
         assert self._rows(execution)["Performed by"] == "bd (source not recorded)"
 
     def test_an_unrecognized_source_is_still_labelled(self):
         """A source this version does not know about is not an explicitly named
-        operator, and must not be promoted to one by rendering it bare."""
+        operator, and must not be promoted to one by rendering it bare.
+        """
         execution = {**self.EXECUTION, "performed_by": {"identity": "bd", "source": "buildkite"}}
         assert self._rows(execution)["Performed by"] == "bd (buildkite)"
 
@@ -540,7 +546,8 @@ class TestExecutionProvenanceRows:
 
     def test_a_missing_field_inside_a_present_block_follows_the_none_contract(self):
         """Present-but-partial is different from absent: the row stays, and the
-        backend renders NOT_RECORDED rather than a fabricated value."""
+        backend renders NOT_RECORDED rather than a fabricated value.
+        """
         rows = self._rows({"hostname": "runner-07"})
         assert rows["Run host"] == "runner-07"
         assert rows["Performed by"] is None

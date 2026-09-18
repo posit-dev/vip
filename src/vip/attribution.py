@@ -179,7 +179,7 @@ def _performed_by(env: Mapping[str, str]) -> dict[str, Any] | None:
             return {"identity": value, "source": source}
     try:
         login = getpass.getuser().strip()
-    except Exception:
+    except Exception:  # noqa: BLE001
         # getpass.getuser() raises on a container with no passwd entry and no
         # LOGNAME/USER/LNAME/USERNAME set. Same never-fail contract as the rest
         # of this module.

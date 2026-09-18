@@ -1906,7 +1906,7 @@ def run_trace(args: argparse.Namespace) -> None:
         # a full disk would destroy a previously good matrix at this path.
         tmp = out.with_name(f"{out.name}.tmp")
         tmp.write_text(rendered, encoding="utf-8")
-        os.replace(tmp, out)
+        tmp.replace(out)
     except (OSError, UnicodeError) as exc:
         print(f"Error: could not write {out}: {exc}", file=sys.stderr)
         sys.exit(1)

@@ -22,7 +22,8 @@ def test_results_carry_per_test_timestamps(pytester):
     assert data["results"], "expected at least one result"
     for entry in data["results"]:
         started, finished = entry["started_at"], entry["finished_at"]
-        assert started is not None and finished is not None
+        assert started is not None
+        assert finished is not None
         # Parses as ISO 8601 and is timezone-aware UTC.
         start_dt = datetime.fromisoformat(started)
         finish_dt = datetime.fromisoformat(finished)

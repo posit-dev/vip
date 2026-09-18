@@ -73,14 +73,14 @@ def test_missing_controls_table_is_an_error(tmp_path):
 def test_numeric_description_is_an_error(tmp_path):
     p = tmp_path / "controls.toml"
     p.write_text("[controls.x]\ndescription = 5\n")
-    with pytest.raises(ControlListError, match="x.*expected a string"):
+    with pytest.raises(ControlListError, match=r"x.*expected a string"):
         load_controls(p)
 
 
 def test_list_description_is_an_error(tmp_path):
     p = tmp_path / "controls.toml"
     p.write_text('[controls.y]\ndescription = ["a", "b"]\n')
-    with pytest.raises(ControlListError, match="y.*expected a string"):
+    with pytest.raises(ControlListError, match=r"y.*expected a string"):
         load_controls(p)
 
 
@@ -106,14 +106,14 @@ def test_empty_controls_table_is_an_error(tmp_path):
 def test_list_verification_is_an_error(tmp_path):
     p = tmp_path / "controls.toml"
     p.write_text('[controls.x]\ndescription = "d"\nverification = ["automated"]\n')
-    with pytest.raises(ControlListError, match="x.*expected a string"):
+    with pytest.raises(ControlListError, match=r"x.*expected a string"):
         load_controls(p)
 
 
 def test_dict_verification_is_an_error(tmp_path):
     p = tmp_path / "controls.toml"
     p.write_text('[controls.x]\ndescription = "d"\n[controls.x.verification]\nauto = true\n')
-    with pytest.raises(ControlListError, match="x.*expected a string"):
+    with pytest.raises(ControlListError, match=r"x.*expected a string"):
         load_controls(p)
 
 
@@ -159,7 +159,8 @@ class TestUnknownKeysAndExtras:
 
     def test_a_misspelled_known_key_is_caught_rather_than_dropped(self, tmp_path):
         """The failure this actually prevents: a reference that silently
-        vanishes from the matrix a reviewer reads."""
+        vanishes from the matrix a reviewer reads.
+        """
         path = self._write(tmp_path, 'referance = "21 CFR 11.10(e)"')
         with pytest.raises(ControlListError, match="unknown key referance"):
             load_controls(path)
@@ -178,7 +179,8 @@ class TestUnknownKeysAndExtras:
 
     def test_a_non_string_extra_value_is_rejected_like_the_built_ins(self, tmp_path):
         """TOML reads a bare date as datetime.date, which the JSON encoder
-        refuses and the CSV writer silently stringifies."""
+        refuses and the CSV writer silently stringifies.
+        """
         path = self._write(tmp_path, "[controls.c1.extra]\nqualified = 2024-01-01")
         with pytest.raises(ControlListError, match="expected a string"):
             load_controls(path)
@@ -195,7 +197,8 @@ class TestUnknownKeysAndExtras:
     @pytest.mark.parametrize("prefix", ["=", "+", "-", "@", "\\t", "\\r", "\\n"])
     def test_a_formula_leading_extra_key_is_rejected(self, tmp_path, prefix):
         """TOML allows a quoted key, so the column *name* is attacker-reachable
-        and lands in the CSV header, which row-value neutralization misses."""
+        and lands in the CSV header, which row-value neutralization misses.
+        """
         path = self._write(tmp_path, f'[controls.c1.extra]\n"{prefix}HYPERLINK(1)" = "v"')
         with pytest.raises(ControlListError, match="reads as a formula"):
             load_controls(path)

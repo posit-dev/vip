@@ -36,6 +36,8 @@ class ControlListError(Exception):
 
 @dataclass
 class ControlSpec:
+    """One control read from a ``controls.toml`` file."""
+
     control_id: str
     description: str
     reference: str | None = None
@@ -215,6 +217,8 @@ NON_EXECUTING_STATUSES = frozenset({"skipped", "na_version", "unproven"})
 
 @dataclass
 class ControlEntry:
+    """One control joined against the scenarios tagged with its slug."""
+
     control: ControlSpec
     matches: list[ControlMatch] = field(default_factory=list)
     # "covered" | "gap" | "not_automatable"
@@ -278,6 +282,8 @@ class ControlEntry:
 
 @dataclass
 class TraceabilityMatrix:
+    """Every control joined against a loaded ``results.json``."""
+
     entries: list[ControlEntry] = field(default_factory=list)
     unrecognized_tags: list[str] = field(default_factory=list)
     provenance: dict = field(default_factory=dict)
@@ -285,10 +291,12 @@ class TraceabilityMatrix:
 
     @property
     def gap_count(self) -> int:
+        """How many controls no tagged scenario covers."""
         return sum(1 for e in self.entries if e.coverage == "gap")
 
     @property
     def covered_count(self) -> int:
+        """How many controls at least one tagged scenario covers."""
         return sum(1 for e in self.entries if e.coverage == "covered")
 
     @property

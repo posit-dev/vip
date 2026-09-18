@@ -274,7 +274,7 @@ class TestExtraColumns:
         matrix = self._matrix({"c1": {"phase": "OQ"}, "c2": {"owner": "QA"}})
         rows = list(csv.reader(io.StringIO(render_csv(matrix))))
         assert all(len(r) == len(rows[0]) for r in rows)
-        by_id = {r[0]: dict(zip(rows[0], r)) for r in rows[1:]}
+        by_id = {r[0]: dict(zip(rows[0], r, strict=True)) for r in rows[1:]}
         assert by_id["c1"]["owner"] == ""
         assert by_id["c2"]["phase"] == ""
 
@@ -285,7 +285,8 @@ class TestExtraColumns:
 
     def test_a_formula_leading_header_cell_is_neutralized(self):
         """load_controls rejects such a key, so this covers the other door: a
-        ControlSpec built in code rather than loaded from TOML."""
+        ControlSpec built in code rather than loaded from TOML.
+        """
         csv_text = render_csv(self._matrix({"c1": {"=HYPERLINK(1)": "v"}}))
         header = next(csv.reader(io.StringIO(csv_text)))
         assert header[-1] == "'=HYPERLINK(1)"

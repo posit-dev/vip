@@ -57,6 +57,7 @@ def _run(*args, cwd=None):
         capture_output=True,
         text=True,
         cwd=cwd,
+        check=False,
     )
 
 

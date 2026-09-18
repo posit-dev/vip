@@ -1569,7 +1569,8 @@ class TestDisablingTheResultsFile:
     @pytest.mark.parametrize("fmt", ["junit", "sarif", "json,junit"])
     def test_asking_for_a_sibling_format_while_disabling_the_source_is_refused(self, tmp_path, fmt):
         """junit.xml and results.sarif are built by reloading results.json, so
-        the combination would run the whole suite and produce nothing."""
+        the combination would run the whole suite and produce nothing.
+        """
         cfg = tmp_path / "vip.toml"
         cfg.write_text("[general]\n")
         with pytest.raises(SystemExit) as exc:
@@ -1591,7 +1592,7 @@ class TestDisablingTheResultsFile:
             self._run_for_real_exit(_make_args(config=str(cfg), report="", format="junit"))
 
     def test_disabling_the_report_with_json_alone_is_allowed(self):
-        """json *is* results.json, so there is no sibling left to strand."""
+        """Json *is* results.json, so there is no sibling left to strand."""
         assert "--vip-report=" in _capture_cmd(_make_args(report="", format="json"))
 
 

@@ -46,6 +46,7 @@ def test_sidecar_verifies_with_shasum(pytester):
             cwd=report.parent,
             capture_output=True,
             text=True,
+            check=False,
         )
     except FileNotFoundError:
         pytest.skip("shasum binary not found on PATH")

@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import httpx
 import pytest
 
@@ -53,7 +55,7 @@ class _RecordingClient:
     self._client, so MockTransport on the pooled client cannot see it.
     """
 
-    instances: list["_RecordingClient"] = []
+    instances: ClassVar[list["_RecordingClient"]] = []
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs

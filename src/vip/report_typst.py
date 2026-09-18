@@ -554,7 +554,7 @@ def _stacked(parts: list[str]) -> str:
     return "[" + "#linebreak()".join(f"#{part}" for part in parts) + "]"
 
 
-def render_traceability(matrix) -> str:  # noqa: ANN001 - TraceabilityMatrix
+def render_traceability(matrix) -> str:
     """The compliance traceability section as Typst markup.
 
     Every customer-supplied value passes through ``_lit`` (this module's
@@ -572,8 +572,10 @@ def render_traceability(matrix) -> str:  # noqa: ANN001 - TraceabilityMatrix
             ]
         ),
     ]
-    for warning in traceability_warnings(matrix):
-        parts.append(_paragraph(warning, fill='rgb("#dc2626")', weight='"bold"'))
+    parts.extend(
+        _paragraph(warning, fill='rgb("#dc2626")', weight='"bold"')
+        for warning in traceability_warnings(matrix)
+    )
 
     rows = []
     for row in control_rows(matrix):
@@ -615,7 +617,7 @@ def render_traceability(matrix) -> str:  # noqa: ANN001 - TraceabilityMatrix
     return "".join(parts)
 
 
-def render_document(data: ReportData, hints: dict[str, dict], matrix=None, trace_error=None) -> str:  # noqa: ANN001
+def render_document(data: ReportData, hints: dict[str, dict], matrix=None, trace_error=None) -> str:
     """The whole PDF body, preamble included, ready to emit as a ``{=typst}`` block.
 
     ``matrix`` is a ``vip.traceability.TraceabilityMatrix`` or ``None``. When

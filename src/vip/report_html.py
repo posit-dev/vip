@@ -444,7 +444,7 @@ def render_traceability_error(error: object) -> str:
     return f"<p class='trace-warning'>{message}</p>"
 
 
-def render_traceability(matrix) -> str:  # noqa: ANN001 - vip.traceability.TraceabilityMatrix
+def render_traceability(matrix) -> str:
     """The compliance traceability section: summary counts, then one row per control.
 
     Every customer-supplied value goes through ``_esc``. A control list is
@@ -459,8 +459,10 @@ def render_traceability(matrix) -> str:  # noqa: ANN001 - vip.traceability.Trace
         f"<p class='trace-caveat'>{_esc(TRACEABILITY_CAVEAT)}</p>",
         f"<table><tbody>{summary}</tbody></table>",
     ]
-    for warning in traceability_warnings(matrix):
-        parts.append(f"<p class='trace-warning'><strong>{_esc(warning)}</strong></p>")
+    parts.extend(
+        f"<p class='trace-warning'><strong>{_esc(warning)}</strong></p>"
+        for warning in traceability_warnings(matrix)
+    )
 
     rows = []
     for row in control_rows(matrix):
