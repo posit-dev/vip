@@ -35,26 +35,21 @@ services:
       - "127.0.0.1:8787:8787"
     environment:
       PWB_LICENSE: ${PWB_LICENSE:-}
-      VIP_TEST_USERNAME: ${VIP_TEST_USERNAME:-vip_test}
-      VIP_TEST_PASSWORD: ${VIP_TEST_PASSWORD:-vip_test_password}
+      # The image provisions the test account itself: /usr/local/bin/startup.sh
+      # (run by the supervisord `rstudio-workbench` program) creates
+      # PWB_TESTUSER at PWB_TESTUSER_UID, defaulting to 10000, before rserver
+      # starts. This service used to bind-mount docker/workbench/startup.sh at
+      # /etc/cont-init.d/99-vip-setup instead, which never ran: no Workbench
+      # image has a cont-init.d/s6 hook, not the current one and not the frozen
+      # 2022-08-19 rstudio `:latest` it replaced, so local Workbench came up
+      # with no vip_test account at all. Keep the VIP_TEST_* names as the
+      # developer-facing knob, since that is what vip.toml.local and the
+      # product tests read on the host side.
+      PWB_TESTUSER: ${VIP_TEST_USERNAME:-vip_test}
+      PWB_TESTUSER_PASSWD: ${VIP_TEST_PASSWORD:-vip_test_password}
       WORKBENCH_JUPYTER_PATH: /usr/local/bin/jupyter
     volumes:
       - workbench-home:/home
-      - ./docker/workbench/startup.sh:/usr/local/bin/vip-create-test-user.sh:ro
-    # The Workbench image runs no pre-start hook. Its ENTRYPOINT is
-    # /usr/local/bin/entrypoint.sh, which installs an sssd supervisord program
-    # and then `exec "$$@"`, and its supervisord.conf defines no cont-init
-    # runner -- so /etc/cont-init.d does not exist and the 99-vip-setup mount
-    # this service used to make there never created the vip_test account. That
-    # was already true of the rstudio `:latest` this replaced (a frozen
-    # 2022-08-19 build with ENTRYPOINT unset and nothing but a process monitor
-    # in supervisord.conf), so local Workbench has never had the test user; the
-    # OIDC and SAML lanes avoid the problem by wrapping the image with their own
-    # entrypoint. Chain the same script in front of the stock entrypoint here,
-    # which needs no build step. `command` has to restate the image's own CMD,
-    # because overriding `entrypoint` in Compose discards it.
-    entrypoint: ["/bin/bash", "-c", "bash /usr/local/bin/vip-create-test-user.sh && exec \"$$@\"", "--"]
-    command: ["/usr/local/bin/entrypoint.sh", "/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8787"]
       interval: 10s

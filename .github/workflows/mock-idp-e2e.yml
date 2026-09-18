@@ -81,17 +81,27 @@ jobs:
   # Emit the Workbench version list for the E2E job. PR/push runs the current
   # release only; scheduled/manual runs fan out across the Workbench support
   # window (current + 2 back) — the same list as workbench-smoke.yml. Connect
-  # stays pinned to its stack default here; its version matrix lives in
-  # connect-smoke.yml. Nothing to bump by hand any more — the versions are
-  # resolved from ghcr.io/posit-dev/workbench's own tag list at run time.
+  # gets no matrix here; its version matrix lives in connect-smoke.yml. Nothing
+  # to bump by hand any more — the versions are resolved from
+  # ghcr.io/posit-dev/workbench's own tag list at run time.
   set-matrix:
     uses: ./.github/workflows/recent-production-versions.yml
     with:
       image: workbench
       count: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 3 || 1 }}
 
+  # Connect has no matrix in this workflow, but it still needs a pinned tag:
+  # compose.mock-idp.yml defaults PCT_VERSION to `latest`, so leaving it unset
+  # would run every Workbench leg against a mutable Connect and reintroduce
+  # exactly the drift this PR removes elsewhere. One resolved production tag.
+  connect-version:
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: connect
+      count: 1
+
   mock-idp-e2e:
-    needs: [set-matrix, changes]
+    needs: [set-matrix, connect-version, changes]
     if: >-
       needs.changes.outputs.relevant == 'true'
       || github.event_name == 'schedule'
@@ -129,6 +139,7 @@ jobs:
           PCT_LICENSE: ${{ secrets.CONNECT_LICENSE }}
           PWB_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
           PWB_VERSION: ${{ matrix.workbench-version }}
+          PCT_VERSION: ${{ needs.connect-version.outputs.latest }}
         run: docker compose -f compose.mock-idp.yml up -d --build --wait
 
       # The default `docker` driver can't export to the GHA cache backend
@@ -256,7 +267,7 @@ jobs:
   # `mock-idp-e2e` above, and add it to `status`'s `needs:`.
   mock-idp-e2e-saml-diagnostic:
     if: github.event_name == 'workflow_dispatch'
-    needs: set-matrix
+    needs: [set-matrix, connect-version]
     name: Mock-IdP E2E SAML diagnostic (issue #263, expected red)
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -290,6 +301,7 @@ jobs:
           PCT_LICENSE: ${{ secrets.CONNECT_LICENSE }}
           PWB_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
           PWB_VERSION: ${{ needs.set-matrix.outputs.latest }}
+          PCT_VERSION: ${{ needs.connect-version.outputs.latest }}
         run: docker compose -f compose.mock-idp.yml --profile saml up -d --build --wait
 
       - name: Set up Docker Buildx
@@ -488,7 +500,7 @@ jobs:
   status:
     name: Mock-IdP E2E Status
     if: always()
-    needs: [changes, set-matrix, mock-idp-e2e]
+    needs: [changes, set-matrix, connect-version, mock-idp-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -504,10 +516,16 @@ jobs:
             echo "Change-detection job failed; cannot confirm E2E scope"
             exit 1
           fi
-          # A failed set-matrix skips (not fails) mock-idp-e2e, which the
-          # check below would otherwise read as a clean skip.
+          # A failed version resolver skips (not fails) mock-idp-e2e, which the
+          # check below would otherwise read as a clean skip. Both resolvers
+          # count: the E2E job needs the Workbench matrix and the pinned
+          # Connect tag.
           if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
             echo "Version-matrix job failed; cannot confirm E2E scope"
+            exit 1
+          fi
+          if [ "${{ needs.connect-version.result }}" = "failure" ] || [ "${{ needs.connect-version.result }}" = "cancelled" ]; then
+            echo "Connect version resolver failed; cannot confirm E2E scope"
             exit 1
           fi
           # If auth paths changed, the E2E suite was in scope and MUST have

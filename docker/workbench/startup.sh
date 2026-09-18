@@ -2,16 +2,19 @@
 set -euo pipefail
 # Create a test user for VIP on first boot.
 #
-# The Workbench image has no cont-init.d/s6 pre-start hook, so every caller
-# has to run this itself before the stock entrypoint: the OIDC and SAML lanes
-# COPY it to /usr/local/bin/vip-create-test-user.sh and call it from their own
-# entrypoint, and compose.yml bind-mounts it to the same path and chains it
-# ahead of /usr/local/bin/entrypoint.sh. It must exit cleanly rather than exec
+# Only the OIDC and SAML lanes use this. They COPY it to
+# /usr/local/bin/vip-create-test-user.sh and call it from their own entrypoint,
+# because they need the OS account to exist before rserver starts and the image
+# has no cont-init.d/s6 pre-start hook. It must exit cleanly rather than exec
 # anything, because the caller execs the real entrypoint afterwards.
 #
-# Exiting non-zero stops the whole container: compose.yml chains this with
-# `&&`, and entrypoint-oidc.sh / entrypoint-saml.sh treat a failed
-# postcondition as fatal. The risky path is a recreate against a warm /home
+# compose.yml does NOT use this: the password-auth stack sets the image's own
+# PWB_TESTUSER/PWB_TESTUSER_PASSWD instead, which /usr/local/bin/startup.sh in
+# the image acts on. Prefer that interface for any new caller that can wait
+# until supervisord starts.
+#
+# Exiting non-zero stops the whole container, because both callers treat a
+# failed postcondition as fatal. The risky path is a recreate against a warm /home
 # volume -- /etc/passwd lives in the image layer and resets while /home
 # survives, so the `id` check below misses and `useradd -m` runs over an
 # existing home directory. On Ubuntu 24.04 that only warns and exits 0

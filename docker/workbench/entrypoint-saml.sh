@@ -63,10 +63,10 @@ EOF
 # without one it rejects the session ("Error converting userIdentifier to
 # username" / "Failed to get user details."). This image has no
 # cont-init.d/s6-overlay to run docker/workbench/startup.sh for us, so call
-# the same script directly. Neither does compose.yml's password-auth stack:
-# it bind-mounts the script to this same path and chains it ahead of the
-# stock entrypoint, because no Workbench image has ever honored the
-# /etc/cont-init.d mount that stack used to rely on.
+# the same script directly rather than through the image's own
+# PWB_TESTUSER/PWB_TESTUSER_PASSWD inputs (which compose.yml uses): those are
+# handled by the image's startup.sh under supervisord, which runs after this
+# entrypoint and after the rserver.conf edits below.
 # It is installed as vip-create-test-user.sh, NOT startup.sh: the stock image
 # already ships its own /usr/local/bin/startup.sh (the supervisord
 # "rstudio-workbench" program runs it to create the rstudio user and exec
