@@ -144,7 +144,8 @@ class TestExtractExceptionInfo:
         taking the first E-block reports Y and silently discards the diagnosis
         the code went to the trouble of building (live: an RStudio console
         failure reported Playwright's 8KB dump instead of the ExecError naming
-        the actual reason)."""
+        the actual reason).
+        """
         longrepr = (
             "src/vip_tests/workbench/exec.py:410: in rstudio_eval\n"
             "E   AssertionError: Locator expected to contain text '<<VIP-END-abc>>'\n"
@@ -163,7 +164,8 @@ class TestExtractExceptionInfo:
 
     def test_implicitly_chained_exception_reports_what_was_raised(self):
         """Same for implicit chaining (``__context__``), which pytest renders as
-        'During handling of the above exception, another exception occurred'."""
+        'During handling of the above exception, another exception occurred'.
+        """
         longrepr = (
             "E   KeyError: 'missing'\n"
             "\n"
@@ -178,7 +180,8 @@ class TestExtractExceptionInfo:
     def test_playwright_dump_lines_are_not_mistaken_for_exception_types(self):
         """Playwright's dump carries 'Actual value:', 'Call log:' and
         'Aria snapshot:' lines. None are exception types, so none may displace
-        the real one -- they are continuation text of the block they follow."""
+        the real one -- they are continuation text of the block they follow.
+        """
         longrepr = (
             "E   vip_tests.workbench.exec.ExecError: console never answered\n"
             "E   Actual value: something\n"
