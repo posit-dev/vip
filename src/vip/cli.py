@@ -582,8 +582,13 @@ def run_verify(args: argparse.Namespace) -> None:
 
     if config_path:
         cmd.append(f"--vip-config={config_path}")
-    if args.report:
-        cmd.append(f"--vip-report={args.report}")
+    # Forward even an empty value. `--vip-report=` is how the plugin is told to
+    # write no report at all, and skipping the flag instead left the plugin on
+    # its own default -- so `vip verify --report ''` wrote report/results.json,
+    # the one thing it was asked not to do. Nothing else reads args.report, and
+    # argparse's default is a non-empty path, so the empty string is the only
+    # invocation whose behavior changes.
+    cmd.append(f"--vip-report={args.report}")
 
     fmt = "json,junit,sarif" if getattr(args, "ci", False) else getattr(args, "format", "json")
     requested = [f.strip().lower() for f in fmt.split(",") if f.strip()]
@@ -592,6 +597,21 @@ def run_verify(args: argparse.Namespace) -> None:
         print(
             f"Error: unknown --format value(s): {', '.join(unknown)}. "
             f"Valid: {', '.join(sorted(VALID_FORMATS))}.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    # junit.xml and results.sarif are written as siblings of results.json and
+    # are built by reloading it, so they cannot exist without it. Before
+    # --report '' was honored the two flags could be combined and junit still
+    # appeared; now the combination would run the whole suite and produce
+    # nothing. Refuse it up front instead.
+    siblings = [f for f in requested if f != "json"]
+    if not args.report and siblings:
+        source = "--ci" if getattr(args, "ci", False) else "--format"
+        print(
+            f"Error: --report '' disables the results file, but {source} asks for "
+            f"{', '.join(siblings)}, which {'are' if len(siblings) > 1 else 'is'} "
+            "written from it. Drop one of the two.",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -812,7 +832,51 @@ def run_report(args: argparse.Namespace) -> None:
         if not results_src.exists():
             print(f"Error: results file not found: {results_src}", file=sys.stderr)
             sys.exit(1)
+        if getattr(args, "controls", None):
+            # Verify the SOURCE before the copy, not only the destination
+            # after it. _rehome_sidecar is right to discard an empty or
+            # unreadable source sidecar rather than manufacture one at the
+            # destination -- but a missing destination sidecar is legal and
+            # benign, so the gate below would then wave through the very
+            # input `vip trace` refuses as a truncated attestation. The
+            # compliance render must never be more permissive than
+            # `vip trace` on identical bytes. A source with genuinely no
+            # sidecar stays benign here, exactly as it is for `vip trace`.
+            from vip.traceability import ResultsIntegrityError, verify_results_checksum
+
+            try:
+                verify_results_checksum(results_src)
+            except ResultsIntegrityError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                sys.exit(1)
+            except (OSError, UnicodeDecodeError) as exc:
+                print(f"Error: could not read results file {results_src}: {exc}", file=sys.stderr)
+                sys.exit(1)
         shutil.copy2(results_src, results_dest)
+        # Keep the checksum sidecar with the results it describes. Copying a
+        # results.json from a CI artifact over the local one leaves the
+        # previous run's sidecar in place, and the next `vip trace` then
+        # reports a checksum mismatch on a file nobody tampered with. Carry
+        # the source's sidecar across when it has one; otherwise remove the
+        # stale local one, because no sidecar is a documented benign state
+        # and a wrong one is a false tamper alarm.
+        dest_sidecar = results_dest.with_name(f"{results_dest.name}.sha256")
+        try:
+            unattested = _rehome_sidecar(results_src, results_dest)
+        except OSError as exc:
+            print(f"Warning: could not update {dest_sidecar}: {exc}", file=sys.stderr)
+        else:
+            if unattested:
+                # Not an error: a plain `vip report` renders whatever it is
+                # given, and `--controls` already exited above on this input.
+                # But the operator asked to copy a file whose sidecar does not
+                # describe it, so say so here rather than let it surface later
+                # as a tamper alarm from `vip trace` on the copy.
+                print(
+                    f"Warning: the checksum sidecar beside {results_src} does not "
+                    f"verify it ({unattested}) Copied {results_dest.name} without one.",
+                    file=sys.stderr,
+                )
     elif not results_dest.exists():
         print(
             f"Error: no results found at {results_dest}. "
@@ -836,6 +900,44 @@ def run_report(args: argparse.Namespace) -> None:
     # import vip.gherkin / vip.reporting) or the Jupyter stack. sys.executable
     # is the vip install itself, which always has both. See issue #554.
     env = {**os.environ, "QUARTO_PYTHON": sys.executable}
+
+    # Scope the control list to this render via the environment. Copying
+    # controls.toml into the report directory was the obvious alternative and
+    # is wrong: that directory survives between runs, so one
+    # `vip report --controls ...` would leave a file behind that every later
+    # plain `vip report` silently picks up, growing a compliance section
+    # nobody asked for out of a stale list. Validate it here so a malformed
+    # file fails before Quarto starts, rather than inside a notebook cell
+    # where the .qmd can only degrade to a warning.
+    if getattr(args, "controls", None):
+        from vip.traceability import ControlListError, ResultsIntegrityError, load_controls
+        from vip.traceability import validate_results_file as _validate
+
+        controls_path = Path(args.controls).resolve()
+        try:
+            # --controls turns the report into a compliance artifact, so it
+            # inherits `vip trace`'s strictness about its evidence, through the
+            # same entry point. Plain `vip report` stays lenient on purpose:
+            # `load_results` normalizes a malformed `markers` to an empty list
+            # and only warns on an unknown schema major, because a report must
+            # render regardless. That leniency is wrong here for one specific
+            # reason -- a row whose markers cannot be read looks untagged, so
+            # the control it was tagged for is printed as a GAP that does not
+            # exist, and the matrix claims the suite is missing a check it
+            # actually has. Validating the control list here too means a
+            # malformed one fails before Quarto starts, rather than inside a
+            # notebook cell that can only degrade to a visible marker.
+            _validate(results_dest)
+            load_controls(controls_path)
+        except (ResultsIntegrityError, ControlListError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        except (OSError, UnicodeDecodeError) as exc:
+            # A results file that cannot even be read must not reach the user
+            # as a traceback.
+            print(f"Error: could not read results file {results_dest}: {exc}", file=sys.stderr)
+            sys.exit(1)
+        env["VIP_CONTROLS"] = str(controls_path)
 
     # The HTML pages and the PDF render as separate quarto invocations on
     # purpose. One combined `quarto render` ties their fates together: on a
@@ -1220,6 +1322,10 @@ _SCAFFOLD_TEMPLATES: dict[str, tuple[str, str]] = {
         "cross_product_validation",
         "R/Python runtime versions and package installability across Connect and Workbench",
     ),
+    "21cfr-part11-validation": (
+        "21CFR_part11_validation",
+        "Compliance control tagging plus a controls.toml for `vip trace`",
+    ),
 }
 _DEFAULT_SCAFFOLD_TEMPLATE = "cross-product"
 
@@ -1273,6 +1379,14 @@ def _scaffold_next_steps(template: str, dest: Path) -> str:
             f"  3. Run the extension:\n"
             f"       vip verify --config vip.toml --extensions {dest}\n"
             f"\nSee {dest / 'README.md'} for full customization instructions."
+        )
+    if template == "21cfr-part11-validation":
+        return (
+            f"\nNext steps:\n"
+            f"  1. Replace {dest / 'controls.toml'} with your own control list.\n"
+            f"  2. Tag your scenarios with @control-<slug> matching those ids.\n"
+            f"  3. Run: vip verify --extensions {dest}\n"
+            f"  4. Run: vip trace --controls {dest / 'controls.toml'}\n"
         )
     return (
         f"\nNext steps:\n"
@@ -1331,7 +1445,16 @@ def run_scaffold(args: argparse.Namespace) -> None:
             else:
                 dest.unlink()
 
-        shutil.copytree(src, dest)
+        # Skip build/test detritus. A source checkout that has run the example
+        # accumulates __pycache__ and .pytest_cache beside it, and without this
+        # they land in the customer's brand-new extension directory. Harmless
+        # but scruffy, and it makes the scaffold output differ depending on
+        # whether the VIP checkout happened to have run its own tests.
+        shutil.copytree(
+            src,
+            dest,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", ".pytest_cache"),
+        )
 
         # AGENTS.md is shared across every template (single source of truth), so
         # it's copied in separately rather than living inside each template dir.
@@ -1633,6 +1756,167 @@ def run_version(_args: argparse.Namespace) -> None:
     print(_format_version_details())
 
 
+def _resolve_trace_format(explicit: str | None, out: Path | None) -> str:
+    """Pick the matrix output format: explicit flag, then --output suffix, then csv.
+
+    Inferring from the suffix is what stops `--output matrix.json` writing CSV
+    bytes into a .json file and reporting success -- the archived artifact then
+    fails to parse in whatever downstream consumer reads it, and unlike the
+    stdout case the caller never sees the bytes to notice.
+    """
+    inferred = {".json": "json", ".csv": "csv"}.get(out.suffix.lower()) if out else None
+    if explicit is None:
+        return inferred or "csv"
+    if out is not None and inferred and inferred != explicit:
+        print(
+            f"Warning: --format {explicit} does not match the {out.suffix} extension of "
+            f"{out}; writing {explicit}.",
+            file=sys.stderr,
+        )
+    return explicit
+
+
+def _rehome_sidecar(results_src: Path, results_dest: Path) -> str | None:
+    """Move a checksum sidecar alongside a copied results file.
+
+    Returns ``None`` when the destination ends up with the attestation the
+    source had, or the reason there was none to carry, which the caller
+    reports. A stale destination sidecar is always removed either way: no
+    sidecar is a documented benign state, a wrong one is a false tamper alarm.
+
+    A sidecar that verifies its source is rewritten as the one line VIP
+    writes, under the destination name, so a source called run-42.json still
+    verifies once copied to results.json. Writing the verified digest is not
+    the same as recomputing one from the copy: the digest went through
+    ``verify_results_checksum`` against the source bytes first, so a tampered
+    file never reaches this branch to be laundered into a verified one.
+
+    A sidecar that does *not* verify its source attested to nothing, so
+    nothing is carried across. Copying it through was the obvious alternative
+    and is wrong, because the rename can repair it: a sidecar recording the
+    source's correct digest under the name ``results.json`` fails at a source
+    called ``run-42.json`` and then *verifies* once sat beside the copy, which
+    is exactly the false attestation the single-entry grammar exists to
+    prevent. Reporting the reason to the caller keeps the failure visible
+    where an operator reads it, at copy time, rather than deferring it to
+    whatever runs `vip trace` next.
+    """
+    from vip.traceability import ResultsIntegrityError, verify_results_checksum
+
+    src = results_src.with_name(f"{results_src.name}.sha256")
+    dest = results_dest.with_name(f"{results_dest.name}.sha256")
+    if not src.is_file():
+        dest.unlink(missing_ok=True)
+        return None
+    try:
+        digest, _ = verify_results_checksum(results_src)
+    except ResultsIntegrityError as exc:
+        dest.unlink(missing_ok=True)
+        return str(exc)
+    dest.write_text(f"{digest}  {results_dest.name}\n", encoding="utf-8")
+    return None
+
+
+def run_trace(args: argparse.Namespace) -> None:
+    """Join a results.json against a control list and emit a traceability matrix."""
+    from vip.report_content import traceability_warnings
+    from vip.traceability import (
+        ControlListError,
+        ResultsIntegrityError,
+        build_traceability_matrix,
+        load_controls,
+        render_csv,
+        render_json,
+        validate_results_file,
+    )
+
+    results_path = Path(args.results)
+    if not results_path.is_file():
+        print(f"Error: results file not found: {results_path}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        # One read: the digest, the gates and the ReportData all come from the
+        # same bytes, so the provenance digest cannot end up describing a file
+        # the matrix was not built from. See validate_results_file.
+        validated = validate_results_file(results_path)
+        controls = load_controls(args.controls)
+    except (ResultsIntegrityError, ControlListError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except (OSError, AttributeError, KeyError, TypeError) as exc:
+        # A malformed results.json must not surface as a traceback -- this
+        # catches structural failures (e.g. {"results": [{}]}) that pass JSON
+        # parsing and the gates but fail the row-to-TestResult step's own
+        # field indexing.
+        print(f"Error: could not read results file {results_path}: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    out = Path(args.output) if args.output else None
+    fmt = _resolve_trace_format(args.format, out)
+
+    try:
+        matrix = build_traceability_matrix(
+            validated.data,
+            controls,
+            results_sha256=validated.digest,
+            results_sha256_sidecar_verified=validated.sidecar_present or None,
+        )
+        rendered = render_json(matrix) if fmt == "json" else render_csv(matrix)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        # Inside the guard, not outside it: a results.json can pass the
+        # checksum, the schema gate and the load step and still be structurally
+        # wrong in a way that only surfaces here -- an explicit `"markers":
+        # null`, say. A compliance tool reporting that as a raw traceback is
+        # the one presentation that tells an operator nothing.
+        print(f"Error: could not build the matrix from {results_path}: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if matrix.unrecognized_tags:
+        joined = ", ".join(matrix.unrecognized_tags)
+        print(
+            f"Warning: control tags present in results but absent from the control list: {joined}",
+            file=sys.stderr,
+        )
+
+    # The three ways a control can count toward "0 gaps" without being
+    # evidence: nothing ran, what ran did not pass, or VIP was asked to check
+    # it and could not. Taken from report_content, which renders the same
+    # three lines into the HTML and PDF editions, so a compliance run cannot
+    # word the same finding one way on screen and another in the archived
+    # artifact.
+    caveats = traceability_warnings(matrix)
+    for line in caveats:
+        print(f"Warning: {line}", file=sys.stderr)
+    if caveats:
+        print(
+            "Coverage records that a scenario is tagged for a control, not that it "
+            "ran or that it passed.",
+            file=sys.stderr,
+        )
+
+    if out is None:
+        sys.stdout.write(rendered)
+        return
+
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        # Write via a temp file in the destination directory, then replace.
+        # `write_text` truncates before it encodes, so a UnicodeEncodeError or
+        # a full disk would destroy a previously good matrix at this path.
+        tmp = out.with_name(f"{out.name}.tmp")
+        tmp.write_text(rendered, encoding="utf-8")
+        tmp.replace(out)
+    except (OSError, UnicodeError) as exc:
+        print(f"Error: could not write {out}: {exc}", file=sys.stderr)
+        sys.exit(1)
+    print(
+        f"Wrote {out} ({len(matrix.entries)} controls, {matrix.gap_count} gaps, "
+        f"{len(matrix.covered_with_failure)} failing, "
+        f"{len(matrix.covered_with_unproven)} not verified)"
+    )
+
+
 def main() -> None:
     """Main entry point for the VIP CLI."""
     from vip import __version__
@@ -1862,7 +2146,9 @@ def main() -> None:
     verify_parser.add_argument(
         "--report",
         default="report/results.json",
-        help="Write JSON results to this path for Quarto report generation"
+        help="Write JSON results to this path for Quarto report generation."
+        " Pass an empty string to write no results file, which also rules out"
+        " the junit/sarif siblings built from it."
         " (default: report/results.json)",
     )
     verify_parser.add_argument(
@@ -2074,6 +2360,14 @@ def main() -> None:
         help="Path to results.json (default: report/results.json)",
     )
     report_parser.add_argument(
+        "--controls",
+        default=None,
+        help=(
+            "Path to a controls.toml control list. Adds a compliance traceability "
+            "section to the HTML report and the PDF. Applies to this render only."
+        ),
+    )
+    report_parser.add_argument(
         "--open",
         action="store_true",
         default=False,
@@ -2144,6 +2438,37 @@ def main() -> None:
     )
     scaffold_parser.set_defaults(func=run_scaffold)
 
+    # vip trace
+    trace_parser = subparsers.add_parser(
+        "trace",
+        help="Generate a compliance traceability matrix from test results",
+        description=(
+            "Join a results.json against a control list (controls.toml) and emit a "
+            "control-to-scenario traceability matrix as CSV or JSON.\n\n"
+            "Scenarios declare the control they satisfy with an @control-<slug> "
+            "Gherkin tag. Controls with no matching scenario are reported as coverage "
+            'gaps, except those marked verification = "manual" or "procedural", '
+            "which are reported as not verifiable by automated test."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    trace_parser.add_argument(
+        "--results",
+        default="report/results.json",
+        help="Path to results.json (default: report/results.json)",
+    )
+    trace_parser.add_argument(
+        "--controls", required=True, help="Path to the controls.toml control list"
+    )
+    trace_parser.add_argument(
+        "--format",
+        choices=("csv", "json"),
+        default=None,
+        help="Output format (default: inferred from --output's extension, else csv)",
+    )
+    trace_parser.add_argument("--output", default=None, help="Write to this path instead of stdout")
+    trace_parser.set_defaults(func=run_trace)
+
     # Map command names to their parsers for context-appropriate help
     subcommand_parsers = {
         "version": version_parser,
@@ -2155,6 +2480,7 @@ def main() -> None:
         "report": report_parser,
         "status": status_parser,
         "scaffold": scaffold_parser,
+        "trace": trace_parser,
     }
 
     argv = _reorder_help_args(sys.argv[1:], set(subcommand_parsers))

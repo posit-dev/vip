@@ -37,13 +37,19 @@ prints survives inside it.
 from pathlib import Path
 
 from vip import report_typst
-from vip.reporting import load_results, load_troubleshooting, troubleshooting_path
+from vip.reporting import load_troubleshooting, troubleshooting_path
+from vip.traceability import report_inputs
 
-data = load_results(Path("results.json"))
+# One read for the whole document, so the body and the traceability matrix
+# cannot describe two different files. See report_inputs for that, for why the
+# control list arrives by environment variable, and for why nothing here may
+# raise.
+_inputs = report_inputs(Path("results.json"))
+data, matrix, trace_error = _inputs.data, _inputs.matrix, _inputs.trace_error
 _troubleshooting_path = troubleshooting_path()
 hints = load_troubleshooting(_troubleshooting_path) if _troubleshooting_path else {}
 
 print("```{=typst}")
-print(report_typst.render_document(data, hints))
+print(report_typst.render_document(data, hints, matrix, trace_error))
 print("```")
 ````

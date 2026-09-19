@@ -17,6 +17,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import platform
 import re
@@ -32,7 +33,10 @@ from typing import Any
 import pytest
 
 from vip.attest import UNPROVEN_SENTINEL
+from vip.attribution import collect_execution_metadata
 from vip.config import VIPConfig, load_config
+from vip.gherkin import CONTROL_TAG_PREFIX
+from vip.reporting import RESULTS_SCHEMA_VERSION
 from vip.version import ProductVersion
 
 # ---------------------------------------------------------------------------
@@ -86,6 +90,44 @@ UNPROVEN_DISPLAY_PREFIX = "UNPROVEN: "
 # ---------------------------------------------------------------------------
 # Plugin hooks
 # ---------------------------------------------------------------------------
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_bdd_apply_tag(tag: str, function: object) -> object:
+    """Turn an ``@control-<slug>`` Gherkin tag into one ``control(<slug>)`` mark.
+
+    Every other tag returns None so pytest-bdd's own implementation runs
+    instead -- ``@slow``, ``@connect`` and friends keep becoming marks named
+    after themselves, which is what auto-skip and ``-m`` filtering rely on.
+
+    Control slugs are chosen by the customer, so they cannot be registered by
+    name ahead of time, and an unregistered mark warns by default and aborts
+    collection outright under ``--strict-markers``, which regulated CI is
+    likely to enable. Carrying the slug as an argument to one registered
+    marker settles that without VIP having to predict the names: there is
+    exactly one marker to register, and the slug is no longer a Python
+    identifier, so ``@control-11.10(a)`` is as legal as ``@control-11-10-a``.
+    """
+    if not tag.startswith(CONTROL_TAG_PREFIX):
+        return None
+    return pytest.mark.control(tag[len(CONTROL_TAG_PREFIX) :])(function)
+
+
+def _control_marker_names(item: pytest.Item) -> list[str]:
+    """Marker names for the results file, with control marks written back as tags.
+
+    ``results.json`` records ``control-<slug>``, the Gherkin tag as authored,
+    because that is what ``vip.traceability`` joins a control list against.
+    The mark itself is ``control(<slug>)``, so the slug has to be read back
+    out of its arguments and re-prefixed here.
+    """
+    names: list[str] = []
+    for mark in item.iter_markers():
+        if mark.name == "control" and mark.args:
+            names.append(f"{CONTROL_TAG_PREFIX}{mark.args[0]}")
+        else:
+            names.append(mark.name)
+    return names
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -153,6 +195,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         default=False,
         help="Show full pytest tracebacks instead of concise error messages.",
+    )
+    group.addoption(
+        "--vip-no-attribution",
+        action="store_true",
+        default=False,
+        help="Omit host/git/CI attribution from results.json.",
     )
 
 
@@ -239,6 +287,10 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "vscode: Workbench VS Code IDE scenario")
     config.addinivalue_line("markers", "jupyter: Workbench JupyterLab IDE scenario")
     config.addinivalue_line("markers", "positron: Workbench Positron IDE scenario")
+    # One marker for every compliance control. `pytest_bdd_apply_tag` above
+    # converts each @control-<slug> Gherkin tag into control(<slug>), so the
+    # customer's own slugs never need registering by name.
+    config.addinivalue_line("markers", "control(id): compliance control tag")
 
     # In concise mode, suppress the "short test summary info" section — the
     # inline concise error messages make it redundant.
@@ -1064,6 +1116,41 @@ def _extract_skip_reason(longrepr: object) -> str | None:
     return message.strip() or None
 
 
+def _safe_execution_metadata(config: pytest.Config) -> dict[str, Any] | None:
+    """Attribution for results.json, or None if it was disabled or failed.
+
+    ``collect_execution_metadata`` promises never to fail a run, and its own
+    probes are individually guarded. This is the belt-and-braces at the call
+    site: it is evaluated while building the results payload, which sits
+    ABOVE the try/except that writes the file, so anything escaping it takes
+    down results.json, the checksum sidecar, junit.xml, results.sarif and
+    failures.json together -- every artifact of an otherwise successful
+    verification run, lost for a provenance field. Provenance is never worth
+    that, so the catch here is deliberately broad.
+    """
+    if config.getoption("--vip-no-attribution", default=False):
+        return None
+    try:
+        return collect_execution_metadata()
+    except Exception as exc:  # noqa: BLE001 - see docstring
+        warnings.warn(f"VIP: could not collect execution attribution: {exc}", stacklevel=1)
+        return None
+
+
+def _epoch_to_iso(value: float | None) -> str | None:
+    """Convert a pytest report epoch float to a UTC ISO 8601 string.
+
+    Returns None rather than raising for a missing or unrepresentable value:
+    a provenance field is never worth failing a verification run over.
+    """
+    if value is None:
+        return None
+    try:
+        return datetime.fromtimestamp(value, timezone.utc).isoformat()
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
 def _format_concise_error(
     nodeid: str,
     exc_type: str,
@@ -1172,7 +1259,7 @@ def pytest_runtest_makereport(item: pytest.Item, call):  # noqa: ARG001
     if report.when == "call" or (report.when == "setup" and report.skipped):
         markers: list[str] = []
         try:
-            markers = [m.name for m in item.iter_markers()]
+            markers = _control_marker_names(item)
         except Exception:  # noqa: BLE001
             pass
 
@@ -1341,6 +1428,8 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
                     "scenario_title": getattr(report, "vip_scenario_title", None),
                     "feature_description": getattr(report, "vip_feature_description", None),
                     "na_version": getattr(report, "vip_na_version", False),
+                    "started_at": _epoch_to_iso(getattr(report, "start", None)),
+                    "finished_at": _epoch_to_iso(getattr(report, "stop", None)),
                     "unproven": unproven,
                 }
             )
@@ -1470,6 +1559,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     basic_mode = "not slow" in (session.config.getoption("markexpr", default="") or "")
 
     payload = {
+        "schema_version": RESULTS_SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "deployment_name": cfg.deployment_name,
         "exit_status": exitstatus,
@@ -1480,15 +1570,43 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         "basic_mode": basic_mode,
         "products": products,
         "results": results,
+        "execution": _safe_execution_metadata(session.config),
     }
 
     try:
         p = Path(report_path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(payload, indent=2))
+        # Invalidate any sidecar from a previous run BEFORE overwriting the
+        # results it describes. Otherwise a sidecar write that fails below
+        # leaves the old digest next to the new file, and the next `vip trace`
+        # reports a checksum mismatch -- a tamper alarm on a file the pipeline
+        # legitimately produced. No sidecar is a documented, benign state; a
+        # wrong one is not.
+        #
+        # Guarded separately from the results write: the sidecar path may be
+        # unremovable (a directory, a read-only mount), and results.json is
+        # what the user actually asked for. Letting an unlink failure abort
+        # the write would trade the whole evidence file for a checksum.
+        sidecar = p.with_name(f"{p.name}.sha256")
+        try:
+            sidecar.unlink(missing_ok=True)
+        except OSError:
+            pass
+        # Hash the exact bytes written, not a re-serialization: the sidecar is
+        # only useful if it verifies against the file actually on disk.
+        data = json.dumps(payload, indent=2).encode("utf-8")
+        p.write_bytes(data)
     except OSError as exc:
         warnings.warn(f"VIP: could not write report to {report_path}: {exc}", stacklevel=1)
         return
+
+    # A checksum is an optional artifact and must never suppress the outputs the
+    # user actually asked for (junit/sarif via --vip-format, and failures.json).
+    try:
+        digest = hashlib.sha256(data).hexdigest()
+        sidecar.write_text(f"{digest}  {p.name}\n", encoding="utf-8")
+    except OSError as exc:
+        warnings.warn(f"VIP: could not write checksum sidecar for {p}: {exc}", stacklevel=1)
 
     fmt = session.config.getoption("--vip-format", default="json")
     try:
