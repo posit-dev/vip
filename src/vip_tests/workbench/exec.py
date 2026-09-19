@@ -312,6 +312,7 @@ def _deliver_console_line(page: Page, console_input, line: str) -> str:
         "" when the line was verified to have landed intact, otherwise a
         human-readable note describing the mismatch, for the caller to fold into
         its own failure message.
+
     """
     want = _normalize_console_text(line)
     landed = ""
@@ -402,6 +403,7 @@ def _submit_console_line(page: Page, console_input, line: str) -> str:
     Returns:
         "" once the line is gone, otherwise a note for the caller's failure
         message.
+
     """
     want = _normalize_console_text(line)
     for _ in range(_CONSOLE_SUBMIT_ATTEMPTS):

@@ -1501,10 +1501,10 @@ class TestNormalizeConsoleText:
         a newline that is not in the source. A newline landing at the very
         end of a rendered line has no counterpart to match against, so it
         must fully disappear, and a mid-line NBSP must still line up with
-        the ordinary space at the same position in the source."""
-        assert _normalize_console_text('cat("a", "b")\n') == _normalize_console_text(
-            'cat("a", "b")'
-        )
+        the ordinary space at the same position in the source.
+        """
+        rendered = 'cat("a", "b")\n'  # noqa: RUF001 - NBSP is the Ace-rendered input under test
+        assert _normalize_console_text(rendered) == _normalize_console_text('cat("a", "b")')
 
     def test_strips_zero_width_characters(self):
         assert _normalize_console_text("ab​c") == "abc"
@@ -1518,13 +1518,15 @@ class TestNormalizeConsoleText:
         """A single source space can land as a soft-wrap newline plus the
         continuation line's indentation. That whole run must collapse back
         to the one significant space the source actually has, or a long
-        line would false-positive on every eval."""
+        line would false-positive on every eval.
+        """
         assert _normalize_console_text('cat("a \n    b")') == _normalize_console_text('cat("a b")')
 
     def test_detects_a_dropped_space_inside_a_literal(self):
         """The corruption this normalization exists to catch: a dropped
         space inside an R string literal is a different command, not a
-        rendering artifact, and must compare as different."""
+        rendering artifact, and must compare as different.
+        """
         assert _normalize_console_text('cat("a b")') != _normalize_console_text('cat("ab")')
 
 
@@ -1533,7 +1535,8 @@ class TestDeliverConsoleLine:
 
     def test_atomic_insert_is_tried_first_and_needs_no_retype(self):
         """A single insert_text carries the whole line, so the editor never sees
-        the intermediate states its auto-close and completion popup react to."""
+        the intermediate states its auto-close and completion popup react to.
+        """
         page = _AceFakePage()
         note = _deliver_console_line(page, page.input, self.LINE)
         assert note == ""
@@ -1550,7 +1553,8 @@ class TestDeliverConsoleLine:
     def test_retypes_when_the_line_lands_corrupted(self):
         """The live failure: the tail of the command never arrived and Ace's
         auto-close left a stray `")`. Verification must catch that and re-send
-        rather than submitting a truncated command."""
+        rather than submitting a truncated command.
+        """
         page = _AceFakePage(insert_text_noop=True, drop_tail_on_type=[29, 0])
         note = _deliver_console_line(page, page.input, self.LINE)
         assert note == ""
@@ -1560,7 +1564,8 @@ class TestDeliverConsoleLine:
     def test_returns_diagnostic_without_raising_when_never_verified(self):
         """Verification must only ever help: if the readback never matches, say
         so in a note and let the caller's marker assertion be the judge. Raising
-        here would turn a console we simply cannot read into a hard failure."""
+        here would turn a console we simply cannot read into a hard failure.
+        """
         page = _AceFakePage(insert_text_noop=True, drop_tail_on_type=[29] * 8)
         note = _deliver_console_line(page, page.input, self.LINE)
         assert note != ""
@@ -1580,7 +1585,8 @@ class TestSubmitConsoleLine:
     def test_retries_enter_when_the_completion_popup_eats_it(self):
         """RStudio opens a path-completion popup on the quotes in the marker
         literals; while it is open Enter accepts the completion instead of
-        submitting, leaving the command sitting in the input."""
+        submitting, leaving the command sitting in the input.
+        """
         page = _AceFakePage(swallow_enters=1)
         page.line = "1 + 1"
         note = _submit_console_line(page, page.input, "1 + 1")
@@ -1600,7 +1606,8 @@ class TestConsoleVerificationToleratesAceHelperNodes:
     of filler characters) inside its editor DOM, so the input is never textually
     equal to the command nor ever textually empty. Both checks must therefore
     ask "is the command present / gone", not "does the text match / is it empty",
-    or every single eval would report a bogus mismatch and burn every retry."""
+    or every single eval would report a bogus mismatch and burn every retry.
+    """
 
     ACE_JUNK = "X" * 512
 
@@ -1624,7 +1631,8 @@ class TestRstudioEvalErrorPath:
     def test_raises_execerror_not_raw_assertionerror_on_missing_marker(self, monkeypatch):
         """Playwright's expect() raises AssertionError, not TimeoutError, so the
         original ``except PlaywrightTimeoutError`` never fired and the failure
-        surfaced as an 8KB console dump instead of the intended diagnosis."""
+        surfaced as an 8KB console dump instead of the intended diagnosis.
+        """
 
         def boom(*args, **kwargs):
             raise AssertionError("Locator expected to contain text ...")
@@ -1642,7 +1650,8 @@ class TestRstudioEvalErrorPath:
     def test_error_message_carries_the_delivery_diagnostic(self, monkeypatch):
         """When the command demonstrably never landed intact, that fact belongs
         in the failure message — it is the difference between a one-line
-        diagnosis and re-deriving it from a console dump."""
+        diagnosis and re-deriving it from a console dump.
+        """
 
         def boom(*args, **kwargs):
             raise AssertionError("Locator expected to contain text ...")
@@ -1663,7 +1672,8 @@ class TestDeliverTerminalLine:
 
     def test_prefers_one_atomic_insert(self):
         """xterm.js relays a single input event to the PTY as one write, so the
-        command cannot be torn apart mid-flight the way keystrokes can."""
+        command cannot be torn apart mid-flight the way keystrokes can.
+        """
         page = MagicMock()
         terminal_input = MagicMock()
         _deliver_terminal_line(page, terminal_input, self.LINE)
@@ -1681,7 +1691,8 @@ class TestDeliverTerminalLine:
     def test_never_resends(self):
         """Re-sending a shell command that may already have run would run it
         twice -- the ``destination path already exists`` failure class in #438.
-        Delivery is one-shot by design; loss surfaces as a done-marker timeout."""
+        Delivery is one-shot by design; loss surfaces as a done-marker timeout.
+        """
         page = MagicMock()
         terminal_input = MagicMock()
         _deliver_terminal_line(page, terminal_input, self.LINE)
@@ -1691,7 +1702,8 @@ class TestDeliverTerminalLine:
 class TestConsoleSubmitDiagnostics:
     """The submit-failure note has to answer why Enter was eaten, because the
     console dump cannot: live, a command landed intact and still refused to
-    submit, and nothing in the report said where focus was or what was on top."""
+    submit, and nothing in the report said where focus was or what was on top.
+    """
 
     def test_reports_focus_and_visible_overlays(self):
         page = MagicMock()
@@ -1708,7 +1720,8 @@ class TestConsoleSubmitDiagnostics:
     def test_reports_when_focus_is_not_the_hidden_textarea(self):
         """If focus is not on Ace's textarea, Enter never reaches the editor at
         all -- a different cause from a popup stealing it, and the note must be
-        able to tell them apart."""
+        able to tell them apart.
+        """
         page = MagicMock()
         page.evaluate.return_value = {
             "active": "div#rstudio_console_input",
