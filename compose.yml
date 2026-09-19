@@ -59,6 +59,12 @@ services:
 
   connect:
     image: ghcr.io/posit-dev/connect:${PCT_VERSION:-latest}
+    # Same requirement compose.mock-idp.yml documents for this image: the
+    # rsandbox privilege-separation subsystem needs a privileged container.
+    # Without it Connect exits at startup with "Unable to execute commands
+    # with Applications.RunAs" (rsandbox: Operation not permitted), before it
+    # ever reaches licensing.
+    privileged: true
     ports:
       - "127.0.0.1:3939:3939"
     environment:
