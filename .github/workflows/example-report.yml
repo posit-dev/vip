@@ -3,23 +3,6 @@ name: Example Validation Report
 on:
   workflow_call:
 
-# This workflow is only ever reached through `workflow_call`, and a called
-# workflow may only maintain or reduce its caller's permissions, never elevate
-# them. preview.yml, website-preview.yml and website.yml each grant
-# `contents: write` (the preview pair also `pull-requests: write`), which
-# leaves every unlisted scope -- `packages` included -- at `none`. Requesting
-# `packages: read` here was therefore an elevation, and all three callers died
-# with `startup_failure` before a single job ran. A startup failure emits no
-# check run, so the three broken workflows showed up nowhere in the PR's
-# checks.
-#
-# `contents: read` is a reduction of every caller's `contents: write`, so it
-# both starts and hands this workflow the smallest token that works. Dropping
-# the block entirely would start too, but would inherit the caller's write
-# token into a job that checks out PR code and runs third-party actions and
-# container builds, for no reason: nothing below pushes, comments, or updates
-# a check. Artifact upload uses the runtime token, not this one, and the
-# ghcr.io/posit-dev images are public and pulled anonymously.
 permissions:
   contents: read
 

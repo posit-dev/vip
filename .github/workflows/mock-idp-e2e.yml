@@ -287,12 +287,7 @@ jobs:
       # (see compose.mock-idp.yml); the OIDC `workbench` service and
       # everything else in the stack come up exactly as they do in the
       # headless-auth job above.
-      # PWB_VERSION must name a real release rather than a rolling tag: an
-      # earlier version of this job used a stale Workbench whose homepage
-      # predated VIP's current selectors, so the login test failed on
-      # "Locator expected to be visible" against `#posit-logo` instead of
-      # exercising the #263 hypothesis at all. The resolver's `latest` keeps
-      # it current without a manual bump. The license variables must match
+      # The license variables must match
       # compose.mock-idp.yml's names -- under the old RSC_/RSW_ names both
       # services start unlicensed and `--wait` fails here for a reason that
       # has nothing to do with SAML.

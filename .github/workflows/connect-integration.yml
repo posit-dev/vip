@@ -51,7 +51,6 @@ jobs:
       matrix:
         # The current production release and the nightly preview build.
         connect-version: ${{ fromJSON(needs.set-matrix.outputs.versions) }}
-    # Resolved once so the pull and the container lookup below cannot drift.
     env:
       CONNECT_IMAGE: ${{ matrix.connect-version == 'preview' && 'ghcr.io/posit-dev/connect-preview:daily' || format('ghcr.io/posit-dev/connect:{0}', matrix.connect-version) }}
     steps:
@@ -59,9 +58,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # Both Connect repositories on ghcr.io/posit-dev are public, so the pull
-      # below is anonymous -- no `docker login` and no `packages: read`.
-      # Start Connect in Docker
       - name: Start Connect
         id: connect
         uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
