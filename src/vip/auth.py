@@ -33,6 +33,7 @@ from playwright.sync_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
 
+from vip.errors import AuthConfigError, AuthTimeoutError
 from vip.proxy import (
     ProxyConfig,
     build_proxy_map,
@@ -48,20 +49,6 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from vip.config import ProductConfig
-
-
-class AuthConfigError(ValueError):
-    """Raised for user-facing authentication configuration errors."""
-
-
-class AuthTimeoutError(AuthConfigError):
-    """Raised when a login round-trip does not complete before its deadline.
-
-    A subclass of :class:`AuthConfigError` so ``plugin.py``'s existing
-    ``except AuthConfigError`` handler (which converts it to a clean
-    ``pytest.UsageError`` rather than an ``INTERNALERROR`` traceback) picks
-    this up too, with no change to that handler required. See #263.
-    """
 
 
 # Prefix for VIP-managed API keys.  A timestamp is appended per run.

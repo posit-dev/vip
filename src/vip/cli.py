@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from vip.errors import VipError
 from vip.reporting import VALID_FORMATS
 from vip.timeouts import scaled
 
@@ -2166,7 +2167,11 @@ def main() -> None:
         else:
             parser.print_help()
         sys.exit(1)
-    args.func(args)
+    try:
+        args.func(args)
+    except VipError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(exc.exit_code)
 
 
 if __name__ == "__main__":
