@@ -805,7 +805,7 @@ def _refresh_cached_session(page: Page) -> bool:
     and must not be reported as one.
     """
     try:
-        refresh_auth_cache_from_storage_state(page.context.storage_state())
+        refresh_auth_cache_from_storage_state(dict(page.context.storage_state()))
     except Exception as exc:  # noqa: BLE001
         logger.debug("Could not read storage state to refresh the auth cache: %s", exc)
     return True
@@ -1172,7 +1172,7 @@ def _wb_cleanup_state(vip_config, workbench_client):
     if cookies:
         _quit_vip_sessions_via_cookies(
             str(state["base_url"]),
-            cookies,  # type: ignore[arg-type]
+            cookies,
             insecure=vip_config.insecure,
             ca_bundle=vip_config.ca_bundle,
             proxy=vip_config.proxy,

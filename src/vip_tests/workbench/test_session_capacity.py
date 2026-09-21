@@ -243,6 +243,7 @@ def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Pa
     reasons = []
     for session in launched_sessions:
         name = session["name"]
+        assert name is not None
         profile = session["profile"] or "default"
         # Fails fast when a session reaches a terminal state (e.g. Failed),
         # so a fully-broken launcher records all profiles quickly instead of
@@ -268,7 +269,9 @@ def cleanup_sessions(
     )
 
     for session in launched_sessions:
-        row = page.locator(Homepage.session_row(session["name"]))
+        name = session["name"]
+        assert name is not None
+        row = page.locator(Homepage.session_row(name))
         try:
             expect(row).to_be_hidden(timeout=TIMEOUT_DIALOG)
         except Exception:  # noqa: BLE001

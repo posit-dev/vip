@@ -212,6 +212,17 @@ ignore_missing_imports = true
 check_untyped_defs = true
 no_implicit_optional = true
 warn_unused_ignores = true
+explicit_package_bases = true
+namespace_packages = true
+mypy_path = "src"
+
+# vip_tests/selftests widen mypy's scope but never opted into wave 1's
+# stricter global flags; scoping these two off keeps the widening cheap
+# (real bugs only) instead of surfacing untyped test-double/fixture noise.
+[[tool.mypy.overrides]]
+module = ["vip_tests.*", "selftests.*"]
+check_untyped_defs = false
+no_implicit_optional = false
 
 [tool.ruff]
 line-length = 100

@@ -103,6 +103,7 @@ def test_execute_install_plan_records_pending_when_root_required(monkeypatch, tm
     from vip.install.manifest import load
 
     saved = load(manifest_path)
+    assert saved is not None
     assert set(saved.pending_system_packages) == {"nss", "libdrm"}
 
 
@@ -145,6 +146,7 @@ def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):
     from vip.install.manifest import load
 
     saved = load(manifest_path)
+    assert saved is not None
     assert "nss" in [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
     assert "nss" not in saved.pending_system_packages
     assert "libdrm" in saved.pending_system_packages
@@ -174,6 +176,7 @@ def test_execute_install_plan_claims_alias_under_provider_name(monkeypatch, tmp_
     from vip.install.plan import build_uninstall_plan
 
     saved = load(manifest_path)
+    assert saved is not None
     item_names = [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
     assert "libcups2t64" in item_names
     assert "libcups2" not in item_names
@@ -467,6 +470,7 @@ def test_execute_install_plan_zypper_non_root_writes_pending(monkeypatch, tmp_pa
     from vip.install.manifest import load
 
     saved = load(manifest_path)
+    assert saved is not None
     assert set(saved.pending_system_packages) == {"mozilla-nss", "libdrm2"}
 
 

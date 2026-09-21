@@ -167,7 +167,7 @@ class _FakeItem:
         self.path = path
         self.own_markers = [_FakeMarker("xdist_group"), _FakeMarker("workbench")]
         self._markers = [_FakeMarker(n) for n in marker_names]
-        self.added = []
+        self.added: list[tuple[str, tuple]] = []
 
     def iter_markers(self):
         return list(self._markers)

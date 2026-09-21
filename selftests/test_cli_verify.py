@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,7 +15,7 @@ from vip.cli import DEFAULT_TEST_TIMEOUT_SECONDS
 
 def _make_args(**overrides) -> argparse.Namespace:
     """Build a minimal args namespace for run_verify."""
-    defaults = {
+    defaults: dict[str, Any] = {
         "config": None,
         "connect_url": None,
         "connect_version": None,

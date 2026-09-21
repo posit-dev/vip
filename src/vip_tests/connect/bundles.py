@@ -53,7 +53,7 @@ def _latest_version(versions: list[str]) -> str:
     """
 
     def key(v: str) -> tuple:
-        parts = []
+        parts: list[tuple[int, int] | tuple[int, str]] = []
         for p in v.split("."):
             try:
                 parts.append((0, int(p)))
