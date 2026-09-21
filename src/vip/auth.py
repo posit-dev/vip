@@ -253,7 +253,7 @@ class InteractiveAuthSession:
                     ca_bundle=self._ca_bundle,
                     proxy=self._proxy,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except (httpx.HTTPError, ValueError, KeyError) as exc:
                 print(f">>> Warning: Could not delete API key: {exc}")
 
         if self._tmpdir and Path(self._tmpdir).is_dir():
@@ -304,18 +304,18 @@ def authenticated_page(
         finally:
             try:
                 context.close()
-            except Exception:  # noqa: BLE001
+            except PlaywrightError:
                 pass
     finally:
         if browser is not None:
             try:
                 browser.close()
-            except Exception:  # noqa: BLE001
+            except PlaywrightError:
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except Exception:  # noqa: BLE001
+            except PlaywrightError:
                 pass
         if ca_bundle is not None:
             if _prev_node_ca is None:
@@ -510,7 +510,7 @@ def _load_cached_auth(
                 meta.get("requested_connect_url", "") or resolved_connect_url
             )
             cached_request_workbench_url = meta.get("workbench_url", "")
-        except Exception:  # noqa: BLE001
+        except (OSError, ValueError, AttributeError):
             pass
 
     # Match against the *requested* Connect URL so that
@@ -654,7 +654,7 @@ def refresh_auth_cache_from_storage_state(
         tmp.chmod(0o600)
         tmp.replace(path)
         return True
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, TypeError, ValueError) as exc:
         logger.debug("Could not refresh the auth cache at %s: %s", path, exc)
         if tmp is not None and tmp.exists():
             with contextlib.suppress(OSError):
@@ -860,7 +860,7 @@ def start_interactive_auth(
         while time.monotonic() < deadline:
             try:
                 url = page.url
-            except Exception:  # noqa: BLE001
+            except PlaywrightError:
                 break
             if connect_url:
                 if base in url and "/__login__" not in url:
@@ -876,7 +876,7 @@ def start_interactive_auth(
                     break
             try:
                 page.wait_for_timeout(500)
-            except Exception:  # noqa: BLE001
+            except PlaywrightError:
                 break
 
         if not login_completed:
@@ -936,12 +936,12 @@ def start_interactive_auth(
         if browser is not None:
             try:
                 browser.close()
-            except Exception:  # noqa: BLE001
+            except PlaywrightError:
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except Exception:  # noqa: BLE001
+            except PlaywrightError:
                 pass
         # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
         # auth calls (or test runs) are not silently affected.
@@ -1169,12 +1169,12 @@ def start_headless_auth(
         if browser is not None:
             try:
                 browser.close()
-            except Exception:  # noqa: BLE001
+            except PlaywrightError:
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except Exception:  # noqa: BLE001
+            except PlaywrightError:
                 pass
         # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
         # auth calls (or test runs) are not silently affected.
@@ -1210,7 +1210,7 @@ def _navigate_to_idp(page: Page, product_url: str) -> None:
             # Check if we left the product page.
             if not page.url.lower().startswith(product_base):
                 return
-        except Exception:  # noqa: BLE001
+        except PlaywrightError:
             continue
 
     # If we're still on the product page, wait briefly for auto-redirect.
@@ -1219,7 +1219,7 @@ def _navigate_to_idp(page: Page, product_url: str) -> None:
             lambda url: not url.lower().startswith(product_base),
             timeout=int(scaled(10_000)),
         )
-    except Exception:  # noqa: BLE001
+    except PlaywrightError:
         pass
 
 
@@ -1263,7 +1263,7 @@ def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = 
     while time.monotonic() < deadline:
         try:
             url = page.url.lower()
-        except Exception:  # noqa: BLE001
+        except PlaywrightError:
             break
         if url.startswith(base) and not _on_login_page(url):
             return
@@ -1279,7 +1279,7 @@ def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = 
             clicked_oidc_confirm = True
         try:
             page.wait_for_timeout(500)
-        except Exception:  # noqa: BLE001
+        except PlaywrightError:
             break
 
     label = _protocol_label(provider)
@@ -1403,7 +1403,7 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
         try:
             page.click(selector, timeout=int(scaled(2_000)))
             break
-        except Exception:  # noqa: BLE001
+        except PlaywrightError:
             continue
 
     # Wait for the OIDC redirect chain to complete.
@@ -1417,24 +1417,24 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
     while time.monotonic() < deadline:
         try:
             page.wait_for_load_state("networkidle", timeout=int(scaled(5_000)))
-        except Exception:  # noqa: BLE001
+        except PlaywrightError:
             pass
         try:
             last_url = page.url
-        except Exception:  # noqa: BLE001
+        except PlaywrightError:
             break
         if last_url.lower().startswith(wb_base) and not _on_login_page(last_url):
             print(f">>> Workbench authenticated. Landed at: {last_url}\n")
             return None
         try:
             page.wait_for_timeout(500)
-        except Exception:  # noqa: BLE001
+        except PlaywrightError:
             break
 
     timeout_label = _timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))
     try:
         last_title = page.title()
-    except Exception:  # noqa: BLE001
+    except PlaywrightError:
         last_title = "<unknown>"
     label = _protocol_label(provider)
     session_desc = f"{label} session" if label else "The login session"
@@ -1467,7 +1467,7 @@ def _strip_url_query(url: str) -> str:
 
         parts = urlsplit(url)
         return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
-    except Exception:  # noqa: BLE001
+    except ValueError:
         return url
 
 
@@ -1485,11 +1485,11 @@ def _describe_final_page_state(page: Page, expected_origin: str) -> str:
     """
     try:
         url = _strip_url_query(page.url)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 -- diagnostic-only; see docstring, must never mask the timeout
         url = "<unknown -- page may be closed or crashed>"
     try:
         title = page.title()
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 -- diagnostic-only; see docstring, must never mask the timeout
         title = "<unknown>"
     return f"ended up at {url!r} (title: {title!r}); expected to land on {expected_origin!r}"
 
@@ -1659,7 +1659,7 @@ def _log_mint_cookie_diagnostic(page: Page, request_url: str) -> None:
     """
     try:
         current_url = page.url
-    except Exception:  # noqa: BLE001
+    except PlaywrightError:
         current_url = "<unknown>"
     print(f">>> Mint diagnostic: browser is on {current_url}")
     try:
@@ -1667,20 +1667,20 @@ def _log_mint_cookie_diagnostic(page: Page, request_url: str) -> None:
         print(f">>> Mint diagnostic: full cookie jar ({len(jar)} entries):")
         for entry in _summarize_cookies(jar):
             print(f"    {entry}")
-    except Exception as exc:  # noqa: BLE001
+    except PlaywrightError as exc:
         print(f">>> Mint diagnostic: could not read cookie jar: {exc}")
     try:
         scoped = page.context.cookies(request_url) or []
         print(f">>> Mint diagnostic: cookies sent to {request_url} ({len(scoped)} entries):")
         for entry in _summarize_cookies(scoped):
             print(f"    {entry}")
-    except Exception as exc:  # noqa: BLE001
+    except PlaywrightError as exc:
         print(f">>> Mint diagnostic: could not read scoped cookies: {exc}")
     try:
         doc_cookie = page.evaluate("() => document.cookie") or ""
         doc_names = [p.strip().partition("=")[0] for p in doc_cookie.split(";") if p.strip()]
         print(f">>> Mint diagnostic: document.cookie names: {doc_names}")
-    except Exception as exc:  # noqa: BLE001
+    except PlaywrightError as exc:
         print(f">>> Mint diagnostic: could not read document.cookie: {exc}")
 
 
@@ -1711,7 +1711,7 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
     """
     try:
         list_resp = client.get(f"/v1/users/{guid}/keys")
-    except Exception as exc:  # noqa: BLE001
+    except httpx.HTTPError as exc:
         print(f">>> Warning: listing stale keys failed: {exc}")
         return
     if not list_resp.is_success:
@@ -1743,7 +1743,7 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
             continue  # belongs to a concurrent run
         try:
             client.delete(f"/v1/users/{guid}/keys/{key_id}")
-        except Exception as exc:  # noqa: BLE001
+        except httpx.HTTPError as exc:
             print(f">>> Warning: could not delete stale key {key_id}: {exc}")
 
 
@@ -1805,7 +1805,7 @@ def _body_snippet(resp, limit: int = 200) -> str:
     """
     try:
         text = _response_text(resp).strip()
-    except Exception:  # noqa: BLE001
+    except (PlaywrightError, AttributeError):
         return "<unreadable body>"
     text = " ".join(text.split())
     return text[:limit] if text else "<empty body>"
