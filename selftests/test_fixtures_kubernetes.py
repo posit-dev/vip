@@ -2,17 +2,16 @@
 
 Unlike a genuinely unconfigured deployment (``is_configured`` is ``False``,
 which still yields ``None``), a *misconfigured* one -- the ``kubernetes`` SDK
-missing, or an invalid/missing kubeconfig -- must fail loudly with a
-:class:`ConfigError` instead of masquerading as "not configured" and silently
-skipping every capacity test. See #609's sibling fixtures for the
-``.__wrapped__`` pattern this uses to call a ``@pytest.fixture``-decorated
-function directly, bypassing pytest's "fixtures cannot be called directly"
-guard.
+missing, an invalid/missing kubeconfig, or any other construction failure --
+must fail loudly with a :class:`ConfigError` instead of masquerading as "not
+configured" and silently skipping every capacity test. See #609's sibling
+fixtures for the ``.__wrapped__`` pattern this uses to call a
+``@pytest.fixture``-decorated function directly, bypassing pytest's "fixtures
+cannot be called directly" guard.
 """
 
 from __future__ import annotations
 
-import sys
 from unittest.mock import patch
 
 import pytest
@@ -50,11 +49,7 @@ class TestKubernetesClientFixture:
         class _FakeConfigError(Exception):
             pass
 
-        fake_kubernetes_config = type(sys)("kubernetes.config")
-        fake_kubernetes_config.ConfigException = _FakeConfigError
-
         with (
-            patch.dict(sys.modules, {"kubernetes.config": fake_kubernetes_config}),
             patch(
                 "vip.fixtures.KubernetesClient",
                 side_effect=_FakeConfigError("invalid kube-config"),
@@ -63,22 +58,19 @@ class TestKubernetesClientFixture:
         ):
             fixtures.kubernetes_client.__wrapped__(vip_config)
 
-    def test_unexpected_exception_propagates_unconverted(self):
-        """A bug in construction is not a config problem -- it must not be
-        misreported as one.
+    def test_raises_config_error_on_unreadable_kubeconfig(self):
+        """Not every kubeconfig failure is ``kubernetes.config.ConfigException``
+        -- an unreadable or malformed file surfaces as ``OSError``/``yaml.YAMLError``
+        from deeper in the SDK's loader, and must convert just the same.
         """
-        vip_config = _config(enabled=True)
-
-        class _FakeConfigError(Exception):
-            pass
-
-        fake_kubernetes_config = type(sys)("kubernetes.config")
-        fake_kubernetes_config.ConfigException = _FakeConfigError
+        vip_config = _config(enabled=True, namespace="custom-ns")
 
         with (
-            patch.dict(sys.modules, {"kubernetes.config": fake_kubernetes_config}),
-            patch("vip.fixtures.KubernetesClient", side_effect=TypeError("unexpected bug")),
-            pytest.raises(TypeError, match="unexpected bug"),
+            patch(
+                "vip.fixtures.KubernetesClient",
+                side_effect=PermissionError("kubeconfig not readable"),
+            ),
+            pytest.raises(ConfigError, match="custom-ns"),
         ):
             fixtures.kubernetes_client.__wrapped__(vip_config)
 

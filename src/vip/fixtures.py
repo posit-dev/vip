@@ -225,21 +225,19 @@ def workbench_url(vip_config: VIPConfig) -> str:
 def kubernetes_client(vip_config: VIPConfig) -> KubernetesClient | None:
     """Kubernetes client for capacity tests; ``None`` when K8s is not configured.
 
-    ``is_configured`` above already covers "K8s isn't set up", so the only
-    ways ``KubernetesClient.__init__`` can fail past that point are the ones
-    it documents itself (see ``clients/kubernetes.py``): the ``kubernetes``
-    SDK isn't installed (``RuntimeError``, from ``_require_sdk``), or the
-    kubeconfig it loads is missing or invalid (``kubernetes.config.ConfigException``,
-    from ``load_kube_config``). Both are real construction failures, so both
-    are raised as a :class:`ConfigError` instead of being
-    swallowed into the same ``None`` a genuinely unconfigured deployment
-    returns -- that swallowing is exactly what let a broken K8s setup
-    masquerade as "not configured" and skip every capacity test instead of
-    failing loudly. Any other exception is a bug, not a config problem, and
-    propagates unconverted. ``ConfigException`` is imported lazily: it lives
-    in the optional ``kubernetes`` package, and by the time a non-``RuntimeError``
-    exception reaches here that import is known to succeed (``_require_sdk``
-    already imported ``kubernetes`` without raising).
+    ``is_configured`` above already covers "K8s isn't set up", so everything
+    ``KubernetesClient.__init__`` can raise past that point -- the ``kubernetes``
+    SDK not installed (``RuntimeError``, from ``_require_sdk``), a missing or
+    invalid kubeconfig (``kubernetes.config.ConfigException``), or a kubeconfig
+    file that exists but can't be read or parsed (``OSError``, ``yaml.YAMLError``)
+    -- is a real construction failure, not "not configured". Each is raised as
+    a :class:`ConfigError` instead of being swallowed into the same ``None`` a
+    genuinely unconfigured deployment returns -- that swallowing is exactly
+    what let a broken K8s setup masquerade as "not configured" and skip every
+    capacity test instead of failing loudly. ``RuntimeError`` gets its own
+    branch because ``_require_sdk``'s message is already a complete,
+    user-facing explanation; every other failure is wrapped with the
+    namespace for context.
     """
     k8s_cfg = vip_config.workbench.kubernetes
     if not k8s_cfg.is_configured:
@@ -249,10 +247,6 @@ def kubernetes_client(vip_config: VIPConfig) -> KubernetesClient | None:
     except RuntimeError as exc:
         raise ConfigError(str(exc)) from exc
     except Exception as exc:
-        from kubernetes.config import ConfigException
-
-        if not isinstance(exc, ConfigException):
-            raise
         raise ConfigError(
             f"Kubernetes configuration is invalid for namespace {k8s_cfg.namespace!r}: {exc}"
         ) from exc
