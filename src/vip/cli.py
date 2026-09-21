@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from vip.errors import VipError
+from vip.errors import ProductUnreachableError, VipError
 from vip.reporting import VALID_FORMATS
 from vip.timeouts import scaled
 
@@ -1434,11 +1434,18 @@ def _cleanup_workbench_sessions(
             workbench_url, cookies=cookies, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
         )
         try:
-            api_reachable = client.sessions_api_reachable()
+            try:
+                api_reachable = client.sessions_api_reachable()
+            except ProductUnreachableError:
+                api_reachable = False
+
             if api_reachable:
                 quit_count = client.quit_vip_sessions()
                 print(f"Quit {quit_count} VIP Workbench session(s) via the API")
-                remaining = client.count_vip_sessions()
+                try:
+                    remaining = client.count_vip_sessions()
+                except ProductUnreachableError:
+                    remaining = -1  # unknown — escalate below
             else:
                 remaining = -1  # unknown — escalate below
 

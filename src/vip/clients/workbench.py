@@ -369,7 +369,11 @@ class WorkbenchClient(BaseClient):
         """
         try:
             resp = self._client.get("/api/sessions")
-            sessions = resp.json() if resp.status_code == 200 else []
+            if resp.status_code != 200:
+                raise ProductUnreachableError(f"GET /api/sessions returned {resp.status_code}")
+            sessions = resp.json()
+        except ProductUnreachableError:
+            raise
         except Exception as exc:
             raise ProductUnreachableError(f"could not list Workbench sessions: {exc}") from exc
         if not isinstance(sessions, list):
