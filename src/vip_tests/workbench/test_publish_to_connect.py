@@ -209,7 +209,7 @@ def test_deploy_python_shiny_via_terminal():
     "User deploys via Posit Publisher extension",
 )
 def test_publish_via_publisher():
-    attest.not_applicable(
+    attest.unproven(
         "Posit Publisher extension UI scenario requires an IDE extension installation "
         "primitive that does not yet exist. Tracked as a follow-up capability gap."
     )
@@ -519,7 +519,7 @@ def deploy_python_shiny_via_terminal(
 @when("the user deploys via the Posit Publisher extension UI")
 def deploy_via_publisher_ui(page: Page):
     """Placeholder — blocked until IDE extension installation primitive exists."""
-    attest.not_applicable(
+    attest.unproven(
         "Posit Publisher extension UI scenario requires an IDE extension installation "
         "primitive that does not yet exist. Tracked as a follow-up capability gap."
     )
