@@ -135,7 +135,12 @@ def mint_connect_key(args: argparse.Namespace) -> None:
     session = start_interactive_auth(args.url)
 
     if not session.api_key:
-        raise AuthError("Failed to mint API key")
+        # Kept as a direct print+exit rather than raise AuthError: this command's
+        # success output is JSON on stdout, so its failure output stays JSON on
+        # stderr too instead of the central handler's plain-text "Error: ..." --
+        # a script parsing this command's failures expects {"error": "..."}.
+        print(json.dumps({"error": "Failed to mint API key"}), file=sys.stderr)
+        sys.exit(1)
 
     result = {
         "api_key": session.api_key,
@@ -216,7 +221,7 @@ def _check_credentials(
     if needs_creds:
         products = " and ".join(needs_creds)
         raise ConfigError(
-            f"\033[1m{products} tests selected but no credentials provided.\033[0m\n"
+            f"{products} tests selected but no credentials provided.\n"
             "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD (optionally with --headless-auth),\n"
             "or use --interactive-auth, or --no-auth to skip tests that require "
             "authentication."
@@ -508,12 +513,10 @@ def run_verify(args: argparse.Namespace) -> None:
     config_path = str(Path(config_path).resolve())
 
     if args.interactive_auth and args.headless_auth:
-        raise ConfigError(
-            "\033[1m--interactive-auth and --headless-auth are mutually exclusive.\033[0m"
-        )
+        raise ConfigError("--interactive-auth and --headless-auth are mutually exclusive.")
 
     if args.no_auth and args.api_auth:
-        raise ConfigError("\033[1m--no-auth and --api-auth are mutually exclusive.\033[0m")
+        raise ConfigError("--no-auth and --api-auth are mutually exclusive.")
 
     if getattr(args, "ci", False) and (args.interactive_auth or args.headless_auth):
         raise ConfigError(
@@ -523,8 +526,7 @@ def run_verify(args: argparse.Namespace) -> None:
 
     if args.api_auth and _config_idp(config_path) == "snowflake":
         raise ConfigError(
-            "\033[1m--api-auth is not supported with the Snowflake identity "
-            "provider.\033[0m\n"
+            "--api-auth is not supported with the Snowflake identity provider.\n"
             "A Posit Team Native App authenticates through the Snowpark Container "
             "Services ingress and has no standalone product API key for --api-auth to "
             "use.\n"
