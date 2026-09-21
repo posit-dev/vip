@@ -36,7 +36,7 @@ def _concurrent_requests(
         try:
             resp = httpx.get(url, timeout=30, verify=verify, auth=auth)
             return {"status": resp.status_code, "elapsed": time.monotonic() - start, "error": None}
-        except Exception as exc:  # noqa: BLE001
+        except httpx.HTTPError as exc:
             return {"status": None, "elapsed": time.monotonic() - start, "error": str(exc)}
 
     with ThreadPoolExecutor(max_workers=n) as pool:

@@ -637,7 +637,7 @@ def content_renders_expected_output(connect_client, deploy_state):
         assert resp.status_code < 400, f"Plumber API returned HTTP {resp.status_code}"
         try:
             body = resp.json()
-        except Exception as exc:  # noqa: BLE001
+        except json.JSONDecodeError as exc:
             pytest.fail(f"Plumber response is not valid JSON: {exc}\nBody: {resp.text[:500]}")
         # Connect wraps scalar values in lists; accept both "VIP test OK" and ["VIP test OK"].
         raw = body.get(expected["key"])
