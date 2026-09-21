@@ -23,7 +23,7 @@ scenarios("test_https.feature")
 # Shared diagnostic text
 # ---------------------------------------------------------------------------
 
-# CA-bundle guidance reused in the cert-verification skip below.
+# CA-bundle guidance reused in the cert-verification branch below.
 # src/vip_tests/cross_product/test_ssl.py has a similar message in the
 # ``modern_tls_succeeds`` step — keep the two in sync when updating guidance.
 _CERT_TRUST_HINT = (
