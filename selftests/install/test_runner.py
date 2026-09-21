@@ -361,6 +361,7 @@ def test_execute_install_plan_root_install_clears_pending(monkeypatch, tmp_path)
     from vip.install.manifest import load
 
     saved = load(manifest_path)
+    assert saved is not None
     assert "nss" not in saved.pending_system_packages
     assert "libdrm" not in saved.pending_system_packages
     assert "alsa-lib" in saved.pending_system_packages  # not part of system_step
@@ -400,7 +401,9 @@ def test_execute_install_plan_root_install_records_concrete_debian_name(monkeypa
 
     from vip.install.manifest import load
 
-    names = [i.name for i in load(manifest_path).items if isinstance(i, SystemPackageItem)]
+    saved = load(manifest_path)
+    assert saved is not None
+    names = [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
     assert "libcups2t64" in names
     assert "libcups2" not in names
     assert "libdrm2" in names
@@ -427,7 +430,9 @@ def test_execute_install_plan_root_install_without_resolver_keeps_requested_name
 
     from vip.install.manifest import load
 
-    names = [i.name for i in load(manifest_path).items if isinstance(i, SystemPackageItem)]
+    saved = load(manifest_path)
+    assert saved is not None
+    names = [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
     assert names == ["nss"]
 
 
