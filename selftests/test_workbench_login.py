@@ -12,6 +12,7 @@ No real browser is used: a tiny Page double models the sign-in page.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar
 
 import pytest
@@ -22,7 +23,7 @@ from vip_tests.workbench.conftest import workbench_login
 
 
 class _AuthFakeLocator:
-    def __init__(self, *, visible: bool = False, on_click=None):
+    def __init__(self, *, visible: Callable[[], bool] = lambda: False, on_click=None):
         self._visible = visible
         self._on_click = on_click
 

@@ -205,7 +205,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         if not quarto_versions:
             attest.not_applicable("No Quarto installations available on Connect")
         r_versions = connect_client.r_versions()
-        manifest: dict = {
+        manifest = {
             "version": 1,
             "metadata": {
                 "appmode": "quarto-static",

@@ -321,11 +321,12 @@ def _parse_uninstall(monkeypatch, *argv: str):
     ``main()``, so reach it by stubbing ``run_uninstall`` and capturing the
     namespace ``main()`` would have dispatched -- no manifest file needed.
     """
+    import argparse
     import sys
 
     from vip import cli
 
-    seen = []
+    seen: list[argparse.Namespace] = []
     monkeypatch.setattr(cli, "run_uninstall", seen.append)
     monkeypatch.setattr(sys, "argv", ["vip", "uninstall", *argv])
     cli.main()

@@ -84,7 +84,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run mypy
-        run: uv run mypy src/vip/
+        run: uv run mypy src/vip src/vip_tests selftests
 
   actions-lint:
     name: Actions Lint (zizmor)

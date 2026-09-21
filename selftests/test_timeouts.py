@@ -93,7 +93,7 @@ class TestBaseClientTimeout:
         from vip.clients.base import BaseClient
 
         client = BaseClient("http://example.com")
-        effective = client._client.timeout.read  # type: ignore[union-attr]
+        effective = client._client.timeout.read
         assert effective == 60.0
         client.close()
 
@@ -103,6 +103,6 @@ class TestBaseClientTimeout:
         from vip.clients.base import BaseClient
 
         client = BaseClient("http://example.com", timeout=5.0)
-        effective = client._client.timeout.read  # type: ignore[union-attr]
+        effective = client._client.timeout.read
         assert effective == 5.0
         client.close()

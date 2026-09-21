@@ -67,7 +67,8 @@ def _redact_sensitive_outputs(results: list[dict[str, Any]]) -> list[dict[str, A
         if "license" in group_name.lower() or "license" in test_name.lower():
             r = {**r, "output": _REDACTED, "error": _REDACTED}
         else:
-            scrubbed = {k: _scrub_secrets(r[k]) for k in ("output", "error") if k in r}
+            keys = ("output", "error")
+            scrubbed: dict[str, Any] = {k: _scrub_secrets(r[k]) for k in keys if k in r}
             r = {**r, **scrubbed}
         redacted.append(r)
     return redacted

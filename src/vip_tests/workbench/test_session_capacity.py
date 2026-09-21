@@ -17,6 +17,7 @@ Requires ``--interactive-auth`` or ``--headless-auth`` since session launching i
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypedDict
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -52,6 +53,15 @@ class DetectedProfile:
 
     name: str
     disabled: bool
+
+
+class LaunchedSession(TypedDict):
+    """A session this scenario launched. ``name`` is always set; ``profile`` is
+    ``None`` when no profile dropdown was offered (default profile).
+    """
+
+    name: str
+    profile: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +206,7 @@ def launch_sessions(page: Page, vip_config):
         # overwhelming the cluster with many profiles x session_count.
         session_count = 1
 
-    all_sessions: list[dict[str, str | None]] = []
+    all_sessions: list[LaunchedSession] = []
     disabled_profiles: list[str] = []
     prefix = capacity_session_prefix()
     for profile in profiles_to_test:
@@ -238,7 +248,7 @@ def launch_sessions(page: Page, vip_config):
 
 
 @then("all launched sessions reach Active state")
-def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Page):
+def all_sessions_active(launched_sessions: list[LaunchedSession], page: Page):
     failures = []
     reasons = []
     for session in launched_sessions:
@@ -261,14 +271,15 @@ def all_sessions_active(launched_sessions: list[dict[str, str | None]], page: Pa
 
 @then("I clean up all launched sessions")
 def cleanup_sessions(
-    launched_sessions: list[dict[str, str | None]], page: Page, workbench_url: str, vip_config
+    launched_sessions: list[LaunchedSession], page: Page, workbench_url: str, vip_config
 ):
     quit_owned_sessions_via_page(
         page, workbench_url, insecure=vip_config.insecure, ca_bundle=vip_config.ca_bundle
     )
 
     for session in launched_sessions:
-        row = page.locator(Homepage.session_row(session["name"]))
+        name = session["name"]
+        row = page.locator(Homepage.session_row(name))
         try:
             expect(row).to_be_hidden(timeout=TIMEOUT_DIALOG)
         except Exception:  # noqa: BLE001
