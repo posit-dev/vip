@@ -62,10 +62,11 @@ a PR pass locally and fail in CI, or the reverse.
 ```bash
 just typecheck
 
-# Without just. `--extra dev` matters: mypy lives in the dev extra, which a bare
-# `uv sync` does not install. The path is `src/vip/`, not `src/` -- CI does not
-# type-check `src/vip_tests/`.
-uv run --extra dev mypy src/vip/
+# Without just. `--all-extras`, not `--extra dev`: src/vip/load_engine.py imports
+# locust, which lives in the `load` extra, and ignore_missing_imports silently
+# drops that import's real errors when it isn't installed. CI also type-checks
+# src/vip_tests/ and selftests/, not just src/vip/.
+uv run --all-extras mypy src/vip src/vip_tests selftests
 ```
 
 ## The lockfile
