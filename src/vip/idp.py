@@ -13,6 +13,7 @@ from playwright.sync_api import Error, Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from vip import totp
+from vip.errors import AuthConfigError
 from vip.timeouts import scaled, timeout_scale
 
 # Keycloak selectors — validated by PPM's e2e test suite.
@@ -197,8 +198,6 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     # input[name='credentials.passcode'] field.  We poll for state
     # changes by comparing against the pre-submit snapshot.
     import time as _time
-
-    from vip.auth import AuthConfigError
 
     pre_submit_url = page.url
     deadline = _time.monotonic() + 30
@@ -410,8 +409,6 @@ def get_idp_strategy(idp: str) -> Callable[[Page, str, str], None]:
     The *idp* value is normalized (stripped, lowercased) before lookup.
     Raises ``AuthConfigError`` if *idp* is not supported.
     """
-    from vip.auth import AuthConfigError
-
     normalized = idp.strip().lower()
     strategy = _IDP_STRATEGIES.get(normalized)
     if strategy is None:
