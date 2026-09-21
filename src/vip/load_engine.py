@@ -373,7 +373,7 @@ def run_user_simulation(
 
     # Pass credentials via a custom attribute on the environment.
     env = Environment(user_classes=[concrete])
-    env._vip_credentials = credentials or {}
+    env._vip_credentials = credentials or {}  # type: ignore[attr-defined]
     if verbose:
         env.events.request.add_listener(_log_request)
         _stderr(
