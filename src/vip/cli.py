@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from vip.errors import VipError
+from vip.errors import AuthError, ConfigError, InstallError, ReportError, VipError
 from vip.reporting import VALID_FORMATS
 from vip.timeouts import scaled
 
@@ -111,11 +111,9 @@ def _normalize_categories(expr: str) -> str:
             return word
         if word in VALID_CATEGORIES:
             return VALID_CATEGORIES[word]
-        print(
-            f"Error: unknown category '{word}'. Valid categories: {_valid_categories_message()}",
-            file=sys.stderr,
+        raise ConfigError(
+            f"unknown category '{word}'. Valid categories: {_valid_categories_message()}"
         )
-        sys.exit(1)
 
     result = _IDENT_RE.sub(_replace, expr)
     # After substitution, only whitespace and parentheses should remain
@@ -123,12 +121,10 @@ def _normalize_categories(expr: str) -> str:
     # from malformed tokens like ``_connect`` or ``1connect``) are invalid.
     leftover = _IDENT_RE.sub("", result).replace("(", "").replace(")", "").strip()
     if leftover:
-        print(
-            f"Error: invalid characters in category expression: '{expr}'. "
-            f"Valid categories: {_valid_categories_message()}",
-            file=sys.stderr,
+        raise ConfigError(
+            f"invalid characters in category expression: '{expr}'. "
+            f"Valid categories: {_valid_categories_message()}"
         )
-        sys.exit(1)
     return result
 
 
@@ -139,8 +135,7 @@ def mint_connect_key(args: argparse.Namespace) -> None:
     session = start_interactive_auth(args.url)
 
     if not session.api_key:
-        print(json.dumps({"error": "Failed to mint API key"}), file=sys.stderr)
-        sys.exit(1)
+        raise AuthError("Failed to mint API key")
 
     result = {
         "api_key": session.api_key,
@@ -162,8 +157,7 @@ def _print_skip_notes(config_path: str | None) -> None:
     try:
         cfg = load_config(config_path)
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
+        raise ConfigError(str(exc)) from exc
     products = [
         ("Connect", cfg.connect),
         ("Workbench", cfg.workbench),
@@ -191,8 +185,7 @@ def _check_credentials(
     try:
         cfg = load_config(config_path)
     except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
+        raise ConfigError(str(exc)) from exc
     if interactive_auth:
         return
 
@@ -222,15 +215,12 @@ def _check_credentials(
 
     if needs_creds:
         products = " and ".join(needs_creds)
-        print(
-            f"\033[1mError: {products} tests selected but no credentials provided.\033[0m\n"
+        raise ConfigError(
+            f"\033[1m{products} tests selected but no credentials provided.\033[0m\n"
             "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD (optionally with --headless-auth),\n"
             "or use --interactive-auth, or --no-auth to skip tests that require "
-            "authentication.",
-            file=sys.stderr,
-            flush=True,
+            "authentication."
         )
-        sys.exit(1)
 
 
 def _config_idp(config_path: str | None) -> str:
@@ -464,11 +454,10 @@ def run_verify(args: argparse.Namespace) -> None:
     """Run VIP tests locally against URL args or a vip.toml config."""
     provider = getattr(args, "provider", None)
     if provider and provider not in _IDP_PROVIDERS:
-        print(
-            f"Error: unknown --provider value: {provider}. Valid: {', '.join(_IDP_PROVIDERS)}.",
-            file=sys.stderr,
+        raise ConfigError(
+            f"unknown --provider value: {provider}. Valid: {', '.join(_IDP_PROVIDERS)}.",
+            exit_code=2,
         )
-        sys.exit(2)
 
     config_path = args.config
     temp_config = None
@@ -500,20 +489,17 @@ def run_verify(args: argparse.Namespace) -> None:
 
     # Fail fast when a config file is expected but doesn't exist.
     if config_path and not Path(config_path).is_file():
-        print(f"Error: config file not found: {config_path}", file=sys.stderr)
-        sys.exit(1)
+        raise ConfigError(f"config file not found: {config_path}")
     if not config_path:
         # No explicit config and no URL args — check the default resolution.
         env = os.environ.get("VIP_CONFIG")
         default = Path(env) if env else Path("vip.toml")
         if not default.is_file():
-            print(f"Error: config file not found: {default}", file=sys.stderr)
-            print(
+            raise ConfigError(
+                f"config file not found: {default}\n"
                 "Provide a config file with --config, or pass product URLs directly "
-                "(e.g. --connect-url https://connect.example.com).",
-                file=sys.stderr,
+                "(e.g. --connect-url https://connect.example.com)."
             )
-            sys.exit(1)
         # Pin the resolved default so pytest loads the same file the CLI
         # validated, regardless of pytest's rootdir or subprocess CWD.
         config_path = str(default.resolve())
@@ -522,42 +508,29 @@ def run_verify(args: argparse.Namespace) -> None:
     config_path = str(Path(config_path).resolve())
 
     if args.interactive_auth and args.headless_auth:
-        print(
-            "\033[1mError: --interactive-auth and --headless-auth are mutually exclusive.\033[0m",
-            file=sys.stderr,
-            flush=True,
+        raise ConfigError(
+            "\033[1m--interactive-auth and --headless-auth are mutually exclusive.\033[0m"
         )
-        sys.exit(1)
 
     if args.no_auth and args.api_auth:
-        print(
-            "\033[1mError: --no-auth and --api-auth are mutually exclusive.\033[0m",
-            file=sys.stderr,
-            flush=True,
-        )
-        sys.exit(1)
+        raise ConfigError("\033[1m--no-auth and --api-auth are mutually exclusive.\033[0m")
 
     if getattr(args, "ci", False) and (args.interactive_auth or args.headless_auth):
-        print(
-            "Error: --ci requires non-interactive execution and cannot be combined "
-            "with --interactive-auth/--headless-auth.",
-            file=sys.stderr,
+        raise ConfigError(
+            "--ci requires non-interactive execution and cannot be combined "
+            "with --interactive-auth/--headless-auth."
         )
-        sys.exit(1)
 
     if args.api_auth and _config_idp(config_path) == "snowflake":
-        print(
-            "\033[1mError: --api-auth is not supported with the Snowflake identity "
+        raise ConfigError(
+            "\033[1m--api-auth is not supported with the Snowflake identity "
             "provider.\033[0m\n"
             "A Posit Team Native App authenticates through the Snowpark Container "
             "Services ingress and has no standalone product API key for --api-auth to "
             "use.\n"
             "Use --headless-auth to run the full suite, or --no-auth for the stateless "
-            "checks that do not require a login.",
-            file=sys.stderr,
-            flush=True,
+            "checks that do not require a login."
         )
-        sys.exit(1)
 
     # Print notes for products that are not configured so the user knows
     # upfront which categories will be skipped.
@@ -590,12 +563,11 @@ def run_verify(args: argparse.Namespace) -> None:
     requested = [f.strip().lower() for f in fmt.split(",") if f.strip()]
     unknown = [f for f in requested if f not in VALID_FORMATS]
     if unknown:
-        print(
-            f"Error: unknown --format value(s): {', '.join(unknown)}. "
+        raise ConfigError(
+            f"unknown --format value(s): {', '.join(unknown)}. "
             f"Valid: {', '.join(sorted(VALID_FORMATS))}.",
-            file=sys.stderr,
+            exit_code=2,
         )
-        sys.exit(2)
     cmd.append(f"--vip-format={','.join(requested)}")
     if args.interactive_auth:
         cmd.append("--interactive-auth")
@@ -668,12 +640,10 @@ def run_verify(args: argparse.Namespace) -> None:
         result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env, check=False)
         sys.exit(result.returncode)
     except subprocess.TimeoutExpired:
-        print(
-            f"Error: tests timed out after {args.test_timeout} seconds. "
-            "Increase with --test-timeout or investigate hung tests.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise VipError(
+            f"tests timed out after {args.test_timeout} seconds. "
+            "Increase with --test-timeout or investigate hung tests."
+        ) from None
     finally:
         if temp_config:
             Path(temp_config).unlink(missing_ok=True)
@@ -811,24 +781,18 @@ def run_report(args: argparse.Namespace) -> None:
 
     if results_src.resolve() != results_dest.resolve():
         if not results_src.exists():
-            print(f"Error: results file not found: {results_src}", file=sys.stderr)
-            sys.exit(1)
+            raise ReportError(f"results file not found: {results_src}")
         shutil.copy2(results_src, results_dest)
     elif not results_dest.exists():
-        print(
-            f"Error: no results found at {results_dest}. "
-            "Run 'vip verify' first, or pass --results PATH.",
-            file=sys.stderr,
+        raise ReportError(
+            f"no results found at {results_dest}. Run 'vip verify' first, or pass --results PATH."
         )
-        sys.exit(1)
 
     if not _ensure_report_templates(report_dir):
-        print(
-            "Error: could not locate the VIP report templates. "
-            "Reinstall posit-vip so the bundled report is available.",
-            file=sys.stderr,
+        raise ReportError(
+            "could not locate the VIP report templates. "
+            "Reinstall posit-vip so the bundled report is available."
         )
-        sys.exit(1)
 
     # Pin Quarto's Jupyter kernel to the interpreter running `vip`. Quarto
     # otherwise discovers Python via the ambient VIRTUAL_ENV (set by `uv run`
@@ -854,12 +818,10 @@ def run_report(args: argparse.Namespace) -> None:
 
     output = report_dir / "_output" / "index.html"
     if not output.exists():
-        print(
-            "Error: no report was produced. Ensure Quarto is installed "
-            "(https://quarto.org/docs/get-started/) and re-run.",
-            file=sys.stderr,
+        raise ReportError(
+            "no report was produced. Ensure Quarto is installed "
+            "(https://quarto.org/docs/get-started/) and re-run."
         )
-        sys.exit(1)
 
     print(f"Report generated: {output}")
 
@@ -892,12 +854,10 @@ def _quarto_render(document: str, report_dir: Path, env: dict[str, str]) -> int:
             ["quarto", "render", document], cwd=str(report_dir), env=env, check=False
         )
     except FileNotFoundError:
-        print(
-            "Error: quarto was not found on PATH. Install Quarto "
-            "(https://quarto.org/docs/get-started/) and re-run.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise ReportError(
+            "quarto was not found on PATH. Install Quarto "
+            "(https://quarto.org/docs/get-started/) and re-run."
+        ) from None
     return result.returncode
 
 
@@ -1063,8 +1023,7 @@ def run_install(args: argparse.Namespace) -> None:
             resolve_installed=installed_dpkg if info.family == "debian-family" else None,
         )
     except (PlaywrightInstallError, PackageQueryError) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
+        raise InstallError(str(exc)) from exc
     sys.exit(rc)
 
 
@@ -1083,24 +1042,19 @@ def run_uninstall(args: argparse.Namespace) -> None:
     try:
         manifest = load(manifest_path)
     except ManifestError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
+        raise InstallError(str(exc)) from exc
 
     if manifest is None:
-        print(
+        raise InstallError(
             f"No {manifest_path.name} found. Nothing to uninstall, or vip was "
-            "installed by a different mechanism.",
-            file=sys.stderr,
+            "installed by a different mechanism."
         )
-        sys.exit(1)
 
     if manifest.host != current_host() and not getattr(args, "force_host", False):
-        print(
-            f"Error: manifest host {manifest.host!r} does not match current host "
-            f"{current_host()!r}. Pass --force-host to override.",
-            file=sys.stderr,
+        raise InstallError(
+            f"manifest host {manifest.host!r} does not match current host "
+            f"{current_host()!r}. Pass --force-host to override."
         )
-        sys.exit(1)
 
     # Load vip.toml (when present) regardless of whether --connect-url was
     # passed, so its [tls]/[proxy] settings apply to a --connect-url-only
@@ -1298,11 +1252,7 @@ def run_scaffold(args: argparse.Namespace) -> None:
     template = getattr(args, "template", None) or _DEFAULT_SCAFFOLD_TEMPLATE
     if template not in _SCAFFOLD_TEMPLATES:
         valid = ", ".join(sorted(_SCAFFOLD_TEMPLATES))
-        print(
-            f"Error: unknown template {template!r}. Valid templates: {valid}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise ConfigError(f"unknown template {template!r}. Valid templates: {valid}")
     dirname, _description = _SCAFFOLD_TEMPLATES[template]
 
     # One ExitStack spans every read of a bundled resource: the paths handed
@@ -1311,20 +1261,14 @@ def run_scaffold(args: argparse.Namespace) -> None:
     with contextlib.ExitStack() as stack:
         src = _resolve_scaffold_source(dirname, stack)
         if src is None:
-            print(
-                f"Error: could not locate examples/{dirname}/. "
-                "Ensure VIP is installed from source or as a wheel built with examples.",
-                file=sys.stderr,
+            raise VipError(
+                f"could not locate examples/{dirname}/. "
+                "Ensure VIP is installed from source or as a wheel built with examples."
             )
-            sys.exit(1)
 
         dest = Path(args.output)
         if dest.exists() and not args.force:
-            print(
-                f"Error: destination already exists: {dest}\nPass --force to overwrite.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+            raise ConfigError(f"destination already exists: {dest}\nPass --force to overwrite.")
 
         if dest.exists():
             if dest.is_dir() and not dest.is_symlink():
@@ -1416,16 +1360,13 @@ def _cleanup_workbench_sessions(
                 proxy=proxy,
             )
     except AuthConfigError as exc:
-        print(f"Error: could not authenticate to Workbench: {exc}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as exc:  # noqa: BLE001
-        print(
-            f"Error: could not authenticate to Workbench at {workbench_url}: {exc}\n"
+        raise AuthError(f"could not authenticate to Workbench: {exc}") from exc
+    except Exception as exc:
+        raise AuthError(
+            f"could not authenticate to Workbench at {workbench_url}: {exc}\n"
             "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD for non-interactive cleanup, "
-            "or run this command where a browser can open for an interactive login.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+            "or run this command where a browser can open for an interactive login."
+        ) from exc
 
     try:
         print(f"Cleaning up orphaned Workbench sessions at {workbench_url}")
@@ -1551,12 +1492,10 @@ def run_cleanup(args: argparse.Namespace) -> None:
     )
 
     if not connect_pc.url and not workbench_pc.url:
-        print(
-            "Error: no Connect or Workbench URL found. Pass --connect-url / "
-            "--workbench-url, or set [connect] url / [workbench] url in vip.toml.",
-            file=sys.stderr,
+        raise ConfigError(
+            "no Connect or Workbench URL found. Pass --connect-url / "
+            "--workbench-url, or set [connect] url / [workbench] url in vip.toml."
         )
-        sys.exit(1)
 
     if connect_pc.url:
         from vip.auth import resolve_url_scheme
