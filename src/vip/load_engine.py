@@ -99,7 +99,7 @@ def _run_threadpool(
                 "status": resp.status_code,
                 "error": None,
             }
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             return {
                 "elapsed": time.monotonic() - start,
                 "status": None,
@@ -152,7 +152,7 @@ async def _async_load_test(
                         "status": resp.status_code,
                         "error": None,
                     }
-                except httpx.HTTPError as exc:
+                except (httpx.HTTPError, httpx.InvalidURL) as exc:
                     return {
                         "elapsed": time.monotonic() - start,
                         "status": None,
