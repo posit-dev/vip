@@ -212,6 +212,8 @@ def quit_vip_sessions_via_ui(
                     page.locator(Homepage.session_checkbox(name)).first.click(timeout=TIMEOUT_QUICK)
                     selected.append(name)
                 except Exception as exc:  # noqa: BLE001
+                    # A row can detach or a click can time out for any Playwright reason
+                    # between listing and clicking; skip this session, not the whole sweep.
                     logger.warning(
                         "UI cleanup: could not select session %r at %s: %s", name, base_url, exc
                     )
@@ -221,6 +223,8 @@ def quit_vip_sessions_via_ui(
             try:
                 page.locator(Homepage.QUIT_BUTTON).first.click(timeout=TIMEOUT_QUICK)
             except Exception as exc:  # noqa: BLE001
+                # Same rationale as the row-click above, but with no Quit click there is
+                # nothing left to do this iteration, so stop instead of continuing on.
                 logger.warning(
                     "UI cleanup: could not click the Quit button at %s: %s", base_url, exc
                 )
@@ -244,11 +248,16 @@ def quit_vip_sessions_via_ui(
             try:
                 page.reload(wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
             except Exception as exc:  # noqa: BLE001
+                # A reload can fail for any navigation reason; without it the session list
+                # can't be re-checked, so stop the sweep instead of looping on stale state.
                 logger.warning("UI cleanup: could not reload %s after quitting: %s", base_url, exc)
                 break
             _complete_sso_if_needed(page)  # a reload can bounce back to sign-in
             _wait_for_session_list(page)
     except Exception as exc:  # noqa: BLE001
+        # This sweep is a best-effort fallback (see docstring); any unexpected failure in
+        # the navigate/select/quit/reload sequence is caught here so a broken deployment
+        # never fails the test run itself.
         logger.warning("UI cleanup at %s failed before completing: %s", base_url, exc)
     # One always-visible summary so the sweep is never a silent black box.
     if first_rows == 0:
