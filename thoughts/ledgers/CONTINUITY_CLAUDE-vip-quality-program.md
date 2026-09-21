@@ -26,16 +26,17 @@ Bring posit-dev/vip to newcomer-readable, typed-error, CI-enforced quality via m
 ## State
 - Done:
   - [x] Design spec committed (dbbdfb32)
-- Now: [→] RESUMED 2026-09-18 (new session, Sonnet 5). Ian approved everything and said finish wave 1, then leave a resume prompt for wave 2. Close-out commit 2abfd22c pushed; draft planning PR #701 opened. 94 leftover local worktrees found; audited, 30 confirmed-merged session worktrees + their local branches removed, 61 pre-existing unrelated worktrees left untouched. Dispatching 1.30-1.33 (mypy chain) now.
-- Next (if resumed): 1.30-1.33 mypy PRs (typing-mypy-free-flags, typing-warn-unused-ignores, typing-widen-mypy-scope, typing-strict-load-engine), then waves 2-4 each with a fresh batch approval. Wave 1a: 17/18 MERGED same day; 1.7 parked on Ian's #661. Wave 1a: Batch A dispatched 2026-09-14 (1.1-1.6, 1.8-1.10). Batch B pending (1.11, 1.12, 1.14, 1.15, 1.16, 1.18). 1.13 after 1.12 merges; 1.17 after 1.16 merges; 1.7 after Ian's #661 merges.
-- Next: finish 1a (#674, #676, 1.17, then 1.13; 1.7 waits on Ian's #661 and does NOT block 1b since it touches only root md files), then dispatch wave 1b chain starting with lint-ble-enable-only (1.19)
+  - [x] Wave 1 FULLY COMPLETE 2026-09-21: 1.30-1.33 merged (#702, #703, #705, #706). All 53 wave-1 backlog PRs now landed.
+- Now: [→] RESUMED 2026-09-21. Ian approved (1) the #703 fix, (2) merging #702/#703 once green, (3) proceeding with 1.32/1.33, (4) the wave 2 batch — all "yes". Wave 2 approved but not yet dispatched; 2.1 errors-hierarchy must land first (see "Wave 2 approval: APPROVED" section above).
+- Next: dispatch wave 2, starting with 2.1 errors-hierarchy (everything else in wave 2 except 2.10/2.11 depends on it; those two are independent and can start anytime).
 - Remaining:
   - [x] Phase 1 reviews: comments, error-handling, structure, typing-lint, selftests, product-tests, docs-hygiene, ci-tooling (75 findings, 2026-09-14)
-  - [x] Phase 2: backlog merged (53 PRs: 1a 18, 1b 15, 2 11, 3 8, 4 1), check_waves OK
-  - [x] Wave 1 approved by Ian ("keep going, merge as they land", 2026-09-14). Phase 2 docs committed 350d4b34, branch quality-program-design pushed; planning PR not yet opened (title/body pending Ian)
+  - [x] Phase 2: backlog merged (53 PRs: 1a 18, 1b 15 including the mypy chain), check_waves OK
+  - [x] Wave 1 approved by Ian ("keep going, merge as they land", 2026-09-14)
   - [x] Wave 1a: 18 of 18 PRs merged 2026-09-14 (#662-#679, #693)
-  - [x] Wave 1b chain: 11/15 merged (lint complete; 4 mypy PRs deferred by Ian) (#678, #680, #682, #684-#690, #692); ALL lint PRs done; 1.30-1.33 (mypy) not dispatched, Ian asked to stop soon (23:10)
-  - [ ] DEFERRED by Ian 2026-09-14: Wave 2 (11 PRs), Wave 3 (8 PRs), Wave 4 (1 PR), five GitHub issue drafts
+  - [x] Wave 1b chain: 15 of 15 merged — lint families 2026-09-14/18 (#678, #680, #682, #684-#690, #692), mypy chain 2026-09-18/21 (#702, #703, #705, #706)
+  - [ ] APPROVED, not dispatched: Wave 2 (11 PRs, error handling)
+  - [ ] DEFERRED, no fresh approval yet: Wave 3 (8 PRs, structure), Wave 4 (1 PR, docs), five GitHub issue drafts
 
 ## Wave 1a PR tracker
 | row | slug | PR | review | state |
@@ -78,7 +79,10 @@ Notes: a stale `+refs/heads/auth-cache-validation` fetch refspec in the shared .
 | 1.27 | lint-d-formatting | #689 | approve (AST proof: 2421 docstrings, 10 D403 diffs only) | MERGED d20777f9 |
 | 1.28 | lint-d-vip-docstrings | #690 | approve (90/90 verified) | MERGED 4d59e309 |
 | 1.29 | lint-ruf-unused-noqa | #692 | approve | MERGED 6c736edc |
-| 1.30-1.33 | typing-mypy-free-flags, typing-warn-unused-ignores, typing-widen-mypy-scope, typing-strict-load-engine | | | DEFERRED (Ian stopped after #692) |
+| 1.30 | typing-mypy-free-flags | #702 | coordinator-reviewed (2-line pyproject.toml diff) | MERGED 2026-09-21 |
+| 1.31 | typing-warn-unused-ignores | #703 | coordinator-reviewed; caught 1 real regression (see below) before merge | MERGED 2026-09-21 |
+| 1.32 | typing-widen-mypy-scope | #705 | 2 independent /code-review passes; 3 real findings fixed (see below) | MERGED 2026-09-21 |
+| 1.33 | typing-strict-load-engine | #706 | 1 /code-review pass; 2 real findings fixed (see below) | MERGED 2026-09-21 |
 
 ## Open Questions
 - Wave 4 docs rewrite must update AGENTS.md's 'Ruff rules: E, F, I, UP' sentence (now BLE, B, C4, ISC, N, PGH, PIE, PTH, RET, S101, TID, + later families) and docs/development.md:35-38's four-directory ruff commands (same stale list #683 fixes in AGENTS.md/justfile).
@@ -92,19 +96,29 @@ Notes: a stale `+refs/heads/auth-cache-validation` fetch refspec in the shared .
 - Reviews: thoughts/shared/reviews/2026-09-14-*.md
 - Backlog: thoughts/shared/plans/2026-09-14-quality-program-backlog.md
 - Baseline: selftests 1951/3 on ff81793d; 1952/3 after #675; 1984/3 on f71ce9f5 (Ian merged #656/#657/#658 at 15:08 and pushed a D209 fix f71ce9f5; #658 brought 32 selftests)
-- Test commands: `just check`, `uv run --extra dev mypy src/vip`, `uv run pytest selftests/`, `uv run pytest src/vip_tests/ --collect-only --quiet`
+- Test commands: `just check`, `uv run --all-extras mypy src/vip src/vip_tests selftests` (post-1.32/1.33; `--extra dev` alone misses locust-import errors in load_engine.py), `uv run pytest selftests/`, `uv run pytest src/vip_tests/ --collect-only --quiet`
 
 ## WAVE 1 FINAL STATE 2026-09-18
 
 Planning close-out: commit 2abfd22c pushed, draft PR #701 opened (design/reviews/backlog/ledger). 30 leftover session worktrees + local branches removed (verified merged via `gh pr view --json state` first, not git ancestry, since this repo squash-merges); 61 pre-existing unrelated worktrees left untouched.
 
-Mypy chain (1.30-1.33), attempted in order:
-- **1.30 typing-mypy-free-flags → #702**: implemented, correct, opened draft. BLOCKED from merge (see CI-red finding below), not by anything wrong with the PR itself.
-- **1.31 typing-warn-unused-ignores → #703**: implemented on top of #702's branch; corrected the approved body's stale "7 of 21 type: ignore" (current count is 7 of 17) and its Files line (actually touches pyproject.toml + kubernetes.py + plugin.py + cli.py + load_engine.py, not just kubernetes.py). Opened draft. Same BLOCKED status.
-- **1.32 typing-widen-mypy-scope: NOT COMPLETED, no PR opened.** The approved body's "14 errors in 9 files" was measured against base mypy config only. Stacked on top of 1.30+1.31's new global flags (`check_untyped_defs`, `no_implicit_optional`), widening scope to `src/vip_tests`+`selftests` surfaces 187 errors in 32 files instead — those two flags apply globally and now hit untyped test doubles/fixtures that were never in scope for wave 1. Tried scoping them off for the test trees via `[[tool.mypy.overrides]]` (`module = "vip_tests.*"` worked, `module = "selftests.*"` and `module = "test_*"` did not — `selftests/` has no `__init__.py`, so mypy's dotted-module matching doesn't reach it; needs `--namespace-packages`/`explicit_package_bases`, `files=` overrides, or per-file glob investigation this session didn't have budget for). Abandoned uncommitted in a disposable worktree, now removed; no data lost, nothing pushed.
-- **1.33 typing-strict-load-engine: NOT STARTED** (depends on 1.32). Already corrected in the approval file from a stale "81 errors" claim to the real current count of 27 (measured 2026-09-18) and the Files line expanded to include pyproject.toml + load_engine.py (was load_users.py only).
+## MYPY CHAIN (1.30-1.33): COMPLETE 2026-09-21
 
-## BLOCKER: CI is red on main, unrelated to this program
-`origin/main` at `a449a98b` fails ruff (`Lint & Format`, a required check) with 20 hits (17 D209, 2 D413, 1 RUF001) in `selftests/test_workbench_exec.py`, `selftests/test_plugin.py`, `src/vip_tests/workbench/exec.py`. Root cause: Ian's own PR #681 ("fix(workbench): deliver RStudio console commands atomically") added docstrings/strings after wave-1's lint ratchet landed that don't comply with it (19 of 20 are `--fix`-able). Confirmed via `gh pr view 702 --json statusCheckRollup`: `Lint & Format` = FAILURE, `mergeStateStatus` = BLOCKED. This blocks a normal merge of #702, #703, and any future wave-1/2/3 PR until fixed — not something I fixed unilaterally since it's outside wave 1's approved backlog and touches Ian's own PR's files; needs his decision (see final report).
+Resumed 2026-09-21. Root cause of the 1.32 blocker found: `selftests/` has no `__init__.py`, so without `explicit_package_bases = true` + `namespace_packages = true` in `[tool.mypy]`, mypy assigns files there a bare module name (no `selftests.` prefix) — that's why `module = "selftests.*"` never matched. Fixed by adding those two settings plus `mypy_path = "src"`, which also required `[[tool.mypy.overrides]] module = ["vip_tests.*", "selftests.*"] check_untyped_defs = false` to keep the widened scope cheap (real bugs only) instead of surfacing ~188 errors of untyped test-double/fixture noise from 1.30/1.31's new global flags.
 
-## INCIDENT (see above, 2026-09-18): recovered, feedback filed, memory updated. No data confirmed lost; branch fix-rstudio-console-delivery-603 fully restored to its own HEAD.
+- **1.30 → #702, 1.31 → #703**: unblocked by rebasing (merge commits, not force-push — the global no-force-push rule caught an initial `git rebase` attempt) onto main once Ian's own #704 fixed the #681 lint regression that had been blocking them. #703's fresh CI (with `uv sync --all-extras`, unlike a `--extra dev`-only local run) caught a real regression: 1.31 had deleted a genuinely-needed `env._vip_credentials = ...  # type: ignore[attr-defined]` in `load_engine.py`, masked locally because `locust` (the `load` extra) wasn't installed. Restored with Ian's explicit approval of the commit message, both merged.
+- **1.32 → #705**: implemented per the root-cause fix above; real error count after correctly scoping the override was 22 across 12 files (not the approved body's stale "14 in 9", which predated 1.30/1.31's flags). Also fixed `just typecheck` to `--all-extras` (it was `--extra dev`, the same locust-masking gap that hit 1.31). **Incident**: a backgrounded `/code-review` fork reviewing this PR ran its live-verification edits in a *different*, unrelated worktree (`vip-typing-strict-load-engine`, 1.33's worktree) instead of this one — caught because a `git add -A` in that worktree vacuumed up the stray edit into a 1.33 commit; fixed with a follow-up commit there, feedback filed. The review (redone once contamination was fixed) then found 3 real issues in #705 itself: 3 more unguarded `Manifest | None` call sites in `test_runner.py` (same bug class already partially fixed, missed instances); a no-op `no_implicit_optional = false` half of the override (dropped); `test_session_capacity.py`'s `dict[str, str | None]` conflating two different-nullability fields (replaced with a `LaunchedSession` TypedDict). All fixed before merge.
+- **1.33 → #706**: strict flags (`disallow_untyped_defs`, `disallow_any_generics`, `warn_return_any`) scoped to `vip.load_engine`/`vip.load_users` via per-module override; real count was 27 (matching the approval file's already-corrected figure). A second independent review found 2 more real issues: removing `_wb_cleanup_state`'s `type: ignore` in 1.32 wasn't a real fix since the function was untyped and the widened-scope override skipped its body entirely (silently unchecked) — fixed properly by fully typing the fixture chain (`_wb_cleanup_state`/`_run_session_cleanup`/`_cleanup_sessions`) with a new `_WbCleanupState` TypedDict, confirmed by deliberately breaking the type and watching mypy catch it; and `docs/development.md` still documented the pre-1.32 mypy command (violates the "check .md files, update if necessary" rule) — updated.
+
+Both reviews independently confirmed the known macOS flake in `selftests/test_workbench_cleanup.py` (caplog/Playwright `Connection.run` interaction) — clean on rerun each time, not a regression.
+
+## BLOCKER: RESOLVED 2026-09-21
+Ian had already merged `fix(lint): repair the D209/D413 violations #681 landed on main (#704)` on 2026-09-19; main is green again (verified `uvx ruff@0.15.0 check .` clean on origin/main 75878c50). Resumed 2026-09-21: rebased #702 and #703 onto current main via merge commits (never force-pushed — the global no-force-push rule caught an initial `git rebase` attempt; reset to the pushed tip and merged origin/main in instead, both fast-forward pushes). #702 green. #703's fresh CI (with `uv sync --all-extras`, unlike my local venv) caught a real regression 1.31 introduced: it deleted `env._vip_credentials = ...  # type: ignore[attr-defined]` in `load_engine.py:376` as "unused" based on a local mypy run where the `locust` extra wasn't installed (`ignore_missing_imports` masked the real error). Restored the ignore, commit `0c9a1bd2` (Ian approved the message), pushed. Ian approved: (1) that commit, (2) merging #702/#703 once green, (3) proceeding with 1.32/1.33, (4) the wave 2 batch below — all four "yes" 2026-09-21.
+
+## Mypy `selftests.*` override root cause: FOUND 2026-09-21
+`selftests/` has no `__init__.py`. Without `explicit_package_bases = true` + `namespace_packages = true` in `[tool.mypy]`, mypy assigns a bare module name (`test_workbench_cleanup`, no `selftests.` prefix) to files there, so `module = "selftests.*"` in `[[tool.mypy.overrides]]` never matches anything. Verified via `--verbose` (`BuildSource(... module='test_workbench_cleanup')` without the flags vs `module='selftests.test_workbench_cleanup'` with them). Fix: add both flags to `[tool.mypy]` in 1.32; then `module = "selftests.*"` and `module = "vip_tests.*"` overrides both work. Unblocks 1.32 and 1.33.
+
+## Wave 2 approval: APPROVED 2026-09-21
+Drafted `thoughts/shared/plans/2026-09-14-wave2-approval.md` (11 PRs, error-handling wave, grounded in the actual error-handling/product-tests review findings — e.g. `errors-hierarchy` reconciles with the pre-existing `AuthConfigError` rather than replacing it, corrects the design doc's Typer assumption to argparse's `args.func(args)` dispatch). Ian approved as drafted, 2026-09-21. Not yet dispatched — 2.1 `errors-hierarchy` must land first (everything except 2.10/2.11 depends on it); 2.10/2.11 are independent and can start anytime.
+
+## INCIDENT (2026-09-18): recovered, feedback filed, memory updated. No data confirmed lost; branch fix-rstudio-console-delivery-603 fully restored to its own HEAD.
