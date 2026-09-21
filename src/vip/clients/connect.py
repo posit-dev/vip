@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from vip.clients.base import BaseClient
+from vip.errors import ProductUnreachableError
 from vip.proxy import ProxyConfig
 from vip.timeouts import scaled
 
@@ -264,7 +265,12 @@ class ConnectClient(BaseClient):
         return task
 
     def list_vip_content(self) -> list[dict[str, Any]]:
-        """Return all content items tagged with the VIP test tag."""
+        """Return all content items tagged with the VIP test tag.
+
+        Raises :class:`ProductUnreachableError` if the tag lookup or content
+        fetch fails -- an empty result must mean "no tagged content exists",
+        never "we couldn't tell".
+        """
         try:
             resp = self._client.get("/v1/tags", params={"name": _VIP_CONTENT_TAG})
             resp.raise_for_status()
@@ -275,13 +281,15 @@ class ConnectClient(BaseClient):
             resp = self._client.get(f"/v1/tags/{tag_id}/content")
             resp.raise_for_status()
             return resp.json().get("results", [])
-        except Exception:  # noqa: BLE001
-            return []
+        except Exception as exc:
+            raise ProductUnreachableError(f"could not list VIP-tagged content: {exc}") from exc
 
     def cleanup_vip_content(self) -> int:
         """Delete all content tagged with the VIP test tag.
 
-        Returns the number of items deleted.  Never raises.
+        Returns the number of items deleted.  Raises :class:`ProductUnreachableError`
+        if the tag lookup fails -- callers must not treat that the same as
+        "nothing was tagged".
         """
         guids = [item.get("guid") for item in self.list_vip_content()]
         return self.cleanup_content(guids)

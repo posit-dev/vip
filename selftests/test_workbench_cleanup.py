@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from vip.clients.workbench import WorkbenchClient, is_vip_session
+from vip.errors import ProductUnreachableError
 
 
 @pytest.mark.parametrize(
@@ -220,6 +221,34 @@ def test_quit_vip_sessions_no_warning_when_fully_cleaned(caplog):
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
+def test_quit_vip_sessions_does_not_raise_when_final_warning_check_fails():
+    """A failed final re-check must not surface as an unhandled raise.
+
+    ``_warn_if_vip_sessions_remain`` now raises ``ProductUnreachableError`` on
+    a failed listing (rather than silently returning). It is a best-effort
+    diagnostic, so ``quit_vip_sessions`` must swallow that and still return
+    its count instead of failing the whole sweep over a warning it could not
+    log.
+    """
+    list_calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/sessions":
+            list_calls["n"] += 1
+            # Always still listed for the retry loop itself, so it exhausts
+            # its budget with a target remaining; the final warning re-check
+            # (one call past the retry loop) then fails outright.
+            if list_calls["n"] <= 2:
+                return httpx.Response(200, json=[{"id": "a", "label": "VIP stuck"}])
+            return httpx.Response(503)
+        return httpx.Response(200)
+
+    wc = _client_with_handler(handler)
+    quit_count = wc.quit_vip_sessions(retries=2, settle_seconds=0)
+
+    assert quit_count == 1
+
+
 def test_count_vip_sessions_counts_only_vip():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -240,30 +269,34 @@ def test_count_vip_sessions_zero_when_no_vip_sessions():
     assert wc.count_vip_sessions() == 0
 
 
-def test_count_vip_sessions_minus_one_on_non_200():
+def test_count_vip_sessions_raises_on_non_200():
     wc = _client_with_handler(lambda r: httpx.Response(503))
-    assert wc.count_vip_sessions() == -1
+    with pytest.raises(ProductUnreachableError):
+        wc.count_vip_sessions()
 
 
-def test_count_vip_sessions_minus_one_on_transport_error():
+def test_count_vip_sessions_raises_on_transport_error():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("boom")
 
     wc = _client_with_handler(handler)
-    assert wc.count_vip_sessions() == -1
+    with pytest.raises(ProductUnreachableError):
+        wc.count_vip_sessions()
 
 
-def test_count_vip_sessions_minus_one_on_non_list_json():
+def test_count_vip_sessions_raises_on_non_list_json():
     # A 200 whose body is a JSON object (not the expected array) must read as
-    # "unknown" (-1), never as "confirmed clean" (0) — else the caller would
-    # suppress the UI escalation and re-orphan sessions (issue #467).
+    # "unknown" (raise), never as "confirmed clean" (0) — else the caller
+    # would suppress the UI escalation and re-orphan sessions (issue #467).
     wc = _client_with_handler(lambda r: httpx.Response(200, json={"error": "nope"}))
-    assert wc.count_vip_sessions() == -1
+    with pytest.raises(ProductUnreachableError):
+        wc.count_vip_sessions()
 
 
-def test_count_vip_sessions_minus_one_on_non_json_body():
+def test_count_vip_sessions_raises_on_non_json_body():
     wc = _client_with_handler(lambda r: httpx.Response(200, text="<html>app</html>"))
-    assert wc.count_vip_sessions() == -1
+    with pytest.raises(ProductUnreachableError):
+        wc.count_vip_sessions()
 
 
 def test_sessions_api_reachable_true_on_200():
@@ -276,24 +309,30 @@ def test_sessions_api_reachable_false_on_404():
     assert wc.sessions_api_reachable() is False
 
 
-def test_sessions_api_reachable_false_on_transport_error():
+def test_sessions_api_reachable_raises_on_transport_error():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("boom")
 
     wc = _client_with_handler(handler)
-    assert wc.sessions_api_reachable() is False
+    with pytest.raises(ProductUnreachableError):
+        wc.sessions_api_reachable()
 
 
 def test_sessions_api_reachable_false_on_redirect_to_login():
-    # 302 is < 400 but is not a usable session list (e.g. auth bounce).
+    # 302 is < 400 but is not a usable session list (e.g. auth bounce). This is
+    # a well-formed "not reachable" answer, not a failed API call, so it stays
+    # a plain False rather than raising.
     wc = _client_with_handler(lambda r: httpx.Response(302, headers={"location": "/auth-sign-in"}))
     assert wc.sessions_api_reachable() is False
 
 
-def test_sessions_api_reachable_false_on_200_html():
-    # Some deployments serve the SPA (200 HTML) for unknown API paths.
+def test_sessions_api_reachable_raises_on_200_html():
+    # Some deployments serve the SPA (200 HTML) for unknown API paths -- the
+    # body fails to parse as JSON, which is the same undetermined-failure case
+    # as a transport error, so it raises rather than returning False.
     wc = _client_with_handler(lambda r: httpx.Response(200, text="<html>app</html>"))
-    assert wc.sessions_api_reachable() is False
+    with pytest.raises(ProductUnreachableError):
+        wc.sessions_api_reachable()
 
 
 def test_sessions_api_reachable_false_on_200_non_list_json():
