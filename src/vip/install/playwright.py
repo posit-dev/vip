@@ -53,6 +53,7 @@ def expected_chromium_revision() -> str | None:
 
         browsers_json = Path(playwright.__file__).parent / "driver" / "package" / "browsers.json"
     except Exception:  # noqa: BLE001
+        # Broad on purpose: whatever fails, callers already treat None as "revision unknown".
         return None
     try:
         data = json.loads(browsers_json.read_text())
