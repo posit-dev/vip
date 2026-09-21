@@ -24,6 +24,7 @@ import pytest
 from playwright.sync_api import Page, expect
 from pytest_bdd import given, scenario, then, when
 
+from vip import attest
 from vip.clients.connect import _VIP_CONTENT_TAG
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
@@ -208,11 +209,9 @@ def test_deploy_python_shiny_via_terminal():
     "User deploys via Posit Publisher extension",
 )
 def test_publish_via_publisher():
-    pytest.skip(
-        reason=(
-            "Posit Publisher extension UI scenario requires an IDE extension installation "
-            "primitive that does not yet exist. Tracked as a follow-up capability gap."
-        )
+    attest.not_applicable(
+        "Posit Publisher extension UI scenario requires an IDE extension installation "
+        "primitive that does not yet exist. Tracked as a follow-up capability gap."
     )
 
 
@@ -282,7 +281,7 @@ def open_vscode_session(page: Page, publish_context: dict):
                 cancel.click(timeout=TIMEOUT_QUICK)
         except (PlaywrightTimeoutError, PlaywrightError):
             pass
-        pytest.skip("VS Code IDE not available in this Workbench deployment")
+        attest.not_applicable("VS Code IDE not available in this Workbench deployment")
 
     ide_tab.click(timeout=TIMEOUT_QUICK)
 
@@ -296,7 +295,7 @@ def open_vscode_session(page: Page, publish_context: dict):
                 cancel.click(timeout=TIMEOUT_QUICK)
         except (PlaywrightTimeoutError, PlaywrightError):
             pass
-        pytest.skip(
+        attest.not_applicable(
             "VS Code tab opened but Launch button did not appear — "
             "the IDE may not be installed or fully available on this Workbench instance"
         )
@@ -319,8 +318,8 @@ def open_vscode_session(page: Page, publish_context: dict):
     # Wait for VS Code to load.
     try:
         page.locator(VSCodeSession.WORKBENCH).wait_for(state="visible", timeout=TIMEOUT_IDE_LOAD)
-    except Exception:  # noqa: BLE001
-        pytest.skip(
+    except PlaywrightTimeoutError:
+        attest.not_applicable(
             "VS Code did not load within timeout — "
             "the IDE may not be installed on this Workbench instance"
         )
@@ -427,32 +426,34 @@ def deploy_python_shiny_via_terminal(
             code_m = re.search(r"exited with status (\d+)", msg)
             code = int(code_m.group(1)) if code_m else None
             if code == 23:
-                pytest.skip(
+                attest.unproven(
                     f"The Workbench session cannot resolve the Connect host "
                     f"{connect_url!r} (DNS failure — the URL the test host uses may "
                     "differ from what the session can resolve, e.g. split-horizon DNS)"
                 )
             if code == 24:
-                pytest.skip(
+                attest.unproven(
                     f"The Workbench session does not trust the Connect TLS certificate "
                     f"at {connect_url!r} (self-signed / internal CA not in the session's "
                     "trust store); rsconnect would reject the connection"
                 )
             if code == 25:
-                pytest.skip(
+                attest.unproven(
                     f"The Workbench session cannot reach Connect at {connect_url!r} "
                     "(connection refused/timeout — egress firewall or internal-only "
                     "Connect hostname unreachable from the session)"
                 )
             if code == 22:
-                pytest.skip("Neither uv nor python3/python is available in the Workbench session")
+                attest.unproven(
+                    "Neither uv nor python3/python is available in the Workbench session"
+                )
             if code == 26:
-                pytest.skip(
+                attest.unproven(
                     "rsconnect-python could not be installed in the Workbench session "
                     "(no PyPI or internal package mirror reachable — likely air-gapped)"
                 )
             if code == 21:
-                pytest.skip(
+                attest.unproven(
                     f"Could not download the Shiny manifest from "
                     f"{shiny_bundle_spec['manifest_url']} or its main-branch fallback "
                     f"{shiny_bundle_spec['manifest_url_fallback']} "
@@ -518,7 +519,7 @@ def deploy_python_shiny_via_terminal(
 @when("the user deploys via the Posit Publisher extension UI")
 def deploy_via_publisher_ui(page: Page):
     """Placeholder — blocked until IDE extension installation primitive exists."""
-    pytest.skip(
+    attest.not_applicable(
         "Posit Publisher extension UI scenario requires an IDE extension installation "
         "primitive that does not yet exist. Tracked as a follow-up capability gap."
     )
@@ -601,7 +602,7 @@ def app_reachable_on_connect(publish_context: dict, connect_client):
                 saw_startup_error = True
                 last_status = "500 (Connect StartupError — app failed to boot)"
             elif status in _CONNECT_AUTH_STATUSES:
-                pytest.skip(
+                attest.unproven(
                     f"Connect returned HTTP {status} for {url!r}: the API key cannot "
                     "view the deployed content (unauthenticated / locked / lacks "
                     "view permission). This is an auth/permission environment "
