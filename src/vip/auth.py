@@ -253,7 +253,7 @@ class InteractiveAuthSession:
                     ca_bundle=self._ca_bundle,
                     proxy=self._proxy,
                 )
-            except (httpx.HTTPError, ValueError, KeyError) as exc:
+            except (httpx.HTTPError, httpx.InvalidURL, ValueError, KeyError, AttributeError) as exc:
                 print(f">>> Warning: Could not delete API key: {exc}")
 
         if self._tmpdir and Path(self._tmpdir).is_dir():
@@ -304,18 +304,18 @@ def authenticated_page(
         finally:
             try:
                 context.close()
-            except PlaywrightError:
+            except (PlaywrightError, OSError, RuntimeError):
                 pass
     finally:
         if browser is not None:
             try:
                 browser.close()
-            except PlaywrightError:
+            except (PlaywrightError, OSError, RuntimeError):
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except PlaywrightError:
+            except (PlaywrightError, OSError, RuntimeError):
                 pass
         if ca_bundle is not None:
             if _prev_node_ca is None:
@@ -654,7 +654,7 @@ def refresh_auth_cache_from_storage_state(
         tmp.chmod(0o600)
         tmp.replace(path)
         return True
-    except (OSError, TypeError, ValueError) as exc:
+    except Exception as exc:  # noqa: BLE001 -- cleanup path; never raises, see docstring
         logger.debug("Could not refresh the auth cache at %s: %s", path, exc)
         if tmp is not None and tmp.exists():
             with contextlib.suppress(OSError):
@@ -936,12 +936,12 @@ def start_interactive_auth(
         if browser is not None:
             try:
                 browser.close()
-            except PlaywrightError:
+            except (PlaywrightError, OSError, RuntimeError):
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except PlaywrightError:
+            except (PlaywrightError, OSError, RuntimeError):
                 pass
         # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
         # auth calls (or test runs) are not silently affected.
@@ -1169,12 +1169,12 @@ def start_headless_auth(
         if browser is not None:
             try:
                 browser.close()
-            except PlaywrightError:
+            except (PlaywrightError, OSError, RuntimeError):
                 pass
         if pw is not None:
             try:
                 pw.stop()
-            except PlaywrightError:
+            except (PlaywrightError, OSError, RuntimeError):
                 pass
         # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
         # auth calls (or test runs) are not silently affected.
@@ -1711,7 +1711,7 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
     """
     try:
         list_resp = client.get(f"/v1/users/{guid}/keys")
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, httpx.InvalidURL) as exc:
         print(f">>> Warning: listing stale keys failed: {exc}")
         return
     if not list_resp.is_success:
@@ -1743,7 +1743,7 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
             continue  # belongs to a concurrent run
         try:
             client.delete(f"/v1/users/{guid}/keys/{key_id}")
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             print(f">>> Warning: could not delete stale key {key_id}: {exc}")
 
 
