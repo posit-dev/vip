@@ -1123,7 +1123,7 @@ def run_uninstall(args: argparse.Namespace) -> None:
         if sys.version_info >= (3, 11):
             import tomllib as _tomllib
         else:
-            import tomli as _tomllib  # type: ignore[no-redef]
+            import tomli as _tomllib
 
         try:
             from vip.config import load_config
