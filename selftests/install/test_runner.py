@@ -10,6 +10,7 @@ from vip.install.manifest import (
     Manifest,
     PlaywrightItem,
     SystemPackageItem,
+    load,
 )
 from vip.install.plan import (
     InstallPlan,
@@ -30,6 +31,13 @@ def _empty_manifest() -> Manifest:
         platform_id="rhel",
         platform_version="10",
     )
+
+
+def _load_manifest(path: Path) -> Manifest:
+    """Load a manifest that the test just wrote and must exist."""
+    saved = load(path)
+    assert saved is not None
+    return saved
 
 
 def test_format_install_plan_empty():
@@ -75,10 +83,7 @@ def test_execute_install_plan_runs_playwright_and_writes_manifest(monkeypatch, t
     rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
 
     assert invoked == ["pw"]
-    from vip.install.manifest import load
-
-    saved = load(manifest_path)
-    assert saved is not None
+    saved = _load_manifest(manifest_path)
     assert any(isinstance(i, PlaywrightItem) for i in saved.items)
 
 
@@ -100,10 +105,7 @@ def test_execute_install_plan_records_pending_when_root_required(monkeypatch, tm
     rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
 
     assert rc == 2
-    from vip.install.manifest import load
-
-    saved = load(manifest_path)
-    assert saved is not None
+    saved = _load_manifest(manifest_path)
     assert set(saved.pending_system_packages) == {"nss", "libdrm"}
 
 
@@ -143,10 +145,7 @@ def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):
 
     rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
 
-    from vip.install.manifest import load
-
-    saved = load(manifest_path)
-    assert saved is not None
+    saved = _load_manifest(manifest_path)
     assert "nss" in [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
     assert "nss" not in saved.pending_system_packages
     assert "libdrm" in saved.pending_system_packages
@@ -172,11 +171,9 @@ def test_execute_install_plan_claims_alias_under_provider_name(monkeypatch, tmp_
 
     rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
 
-    from vip.install.manifest import load
     from vip.install.plan import build_uninstall_plan
 
-    saved = load(manifest_path)
-    assert saved is not None
+    saved = _load_manifest(manifest_path)
     item_names = [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
     assert "libcups2t64" in item_names
     assert "libcups2" not in item_names
@@ -358,10 +355,7 @@ def test_execute_install_plan_root_install_clears_pending(monkeypatch, tmp_path)
     rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
     assert rc == 0
 
-    from vip.install.manifest import load
-
-    saved = load(manifest_path)
-    assert saved is not None
+    saved = _load_manifest(manifest_path)
     assert "nss" not in saved.pending_system_packages
     assert "libdrm" not in saved.pending_system_packages
     assert "alsa-lib" in saved.pending_system_packages  # not part of system_step
@@ -399,10 +393,7 @@ def test_execute_install_plan_root_install_records_concrete_debian_name(monkeypa
     )
     assert rc == 0
 
-    from vip.install.manifest import load
-
-    saved = load(manifest_path)
-    assert saved is not None
+    saved = _load_manifest(manifest_path)
     names = [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
     assert "libcups2t64" in names
     assert "libcups2" not in names
@@ -428,10 +419,7 @@ def test_execute_install_plan_root_install_without_resolver_keeps_requested_name
     rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
     assert rc == 0
 
-    from vip.install.manifest import load
-
-    saved = load(manifest_path)
-    assert saved is not None
+    saved = _load_manifest(manifest_path)
     names = [i.name for i in saved.items if isinstance(i, SystemPackageItem)]
     assert names == ["nss"]
 
@@ -472,10 +460,7 @@ def test_execute_install_plan_zypper_non_root_writes_pending(monkeypatch, tmp_pa
     )
     rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
     assert rc == 2
-    from vip.install.manifest import load
-
-    saved = load(manifest_path)
-    assert saved is not None
+    saved = _load_manifest(manifest_path)
     assert set(saved.pending_system_packages) == {"mozilla-nss", "libdrm2"}
 
 

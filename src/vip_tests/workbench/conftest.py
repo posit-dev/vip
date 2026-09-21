@@ -14,7 +14,7 @@ import tempfile
 import time
 import warnings
 from pathlib import Path
-from typing import NoReturn
+from typing import NoReturn, TypedDict
 from urllib.parse import urlparse
 
 import pytest
@@ -27,6 +27,7 @@ from pytest_bdd import given
 from vip import attest
 from vip.auth import refresh_auth_cache_from_storage_state
 from vip.clients.workbench import WorkbenchClient
+from vip.config import VIPConfig
 from vip.plugin import _auth_session_key
 from vip.timeouts import timeout_scale
 from vip.workbench_ui import (
@@ -1150,8 +1151,19 @@ def _vip_session_count_via_cookies(
         return -1
 
 
+class _WbCleanupState(TypedDict):
+    """Mutable state ``_cleanup_sessions`` writes and ``_wb_cleanup_state``'s
+    teardown reads: the most recent authenticated cookies, the Workbench base
+    URL they belong to, and a cached API-reachability probe result.
+    """
+
+    cookies: dict[str, str] | None
+    base_url: str | None
+    api_reachable: bool | None
+
+
 @pytest.fixture(scope="session", autouse=True)
-def _wb_cleanup_state(vip_config, workbench_client):
+def _wb_cleanup_state(vip_config: VIPConfig, workbench_client: WorkbenchClient | None):
     """End-of-run safety net: sweep any VIP sessions left behind.
 
     Holds the most recent authenticated cookies captured by the per-test
@@ -1159,7 +1171,7 @@ def _wb_cleanup_state(vip_config, workbench_client):
     run) it does one final ``quit_vip_sessions`` sweep, catching sessions
     orphaned when a per-test cleanup failed outright (e.g. the page crashed).
     """
-    state: dict[str, object] = {"cookies": None, "base_url": None, "api_reachable": None}
+    state: _WbCleanupState = {"cookies": None, "base_url": None, "api_reachable": None}
     yield state
     if workbench_client is None:
         return
@@ -1189,7 +1201,12 @@ def _wb_cleanup_state(vip_config, workbench_client):
             pass
 
 
-def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, object]) -> None:
+def _run_session_cleanup(
+    page: Page,
+    workbench_client: WorkbenchClient | None,
+    vip_config: VIPConfig,
+    state: _WbCleanupState,
+) -> None:
     """Quit any VIP-named Workbench sessions created during the test.
 
     Factored out of the ``_cleanup_sessions`` fixture body so it can be unit
@@ -1311,7 +1328,12 @@ def quit_owned_sessions_via_page(
 
 
 @pytest.fixture(autouse=True)
-def _cleanup_sessions(page, workbench_client, vip_config, _wb_cleanup_state):
+def _cleanup_sessions(
+    page: Page,
+    workbench_client: WorkbenchClient | None,
+    vip_config: VIPConfig,
+    _wb_cleanup_state: _WbCleanupState,
+):
     """Quit any VIP-named Workbench sessions created during the test."""
     yield
     _run_session_cleanup(page, workbench_client, vip_config, _wb_cleanup_state)

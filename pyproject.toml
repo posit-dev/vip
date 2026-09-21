@@ -226,6 +226,15 @@ mypy_path = "src"
 module = ["vip_tests.*", "selftests.*"]
 check_untyped_defs = false
 
+# The load-test engine is the one place VIP builds and executes dynamic,
+# heavily-generic locust/gevent plumbing; strict flags scoped here catch what
+# --strict finds cheaply, without taking on --strict's cost across all of src/vip.
+[[tool.mypy.overrides]]
+module = ["vip.load_engine", "vip.load_users"]
+disallow_untyped_defs = true
+disallow_any_generics = true
+warn_return_any = true
+
 [tool.ruff]
 line-length = 100
 src = ["src", "selftests", "examples"]
