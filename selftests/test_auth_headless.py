@@ -43,7 +43,7 @@ class TestStartHeadlessAuthValidation:
         def boom(*a, **kw):
             raise AssertionError("Playwright launched despite invalid seed")
 
-        monkeypatch.setattr("vip.auth.sync_playwright", boom)
+        monkeypatch.setattr("vip.auth.flows.sync_playwright", boom)
 
         with pytest.raises(AuthConfigError, match="VIP_TEST_TOTP_SECRET"):
             start_headless_auth(
@@ -70,7 +70,7 @@ class TestStartHeadlessAuthValidation:
         # error path, without us needing to fake a full successful flow.
         page.goto.side_effect = PlaywrightTimeoutError("timed out")
 
-        monkeypatch.setattr("vip.auth.sync_playwright", lambda: pw)
+        monkeypatch.setattr("vip.auth.flows.sync_playwright", lambda: pw)
 
         # Should NOT raise an AuthConfigError mentioning the seed; the
         # timeout path is the expected failure here.
@@ -101,7 +101,7 @@ class TestStartHeadlessAuthPlaywrightErrors:
 
         stub = self._make_playwright_stub(PlaywrightTimeoutError("timed out"))
         with (
-            patch("vip.auth.sync_playwright", return_value=stub),
+            patch("vip.auth.flows.sync_playwright", return_value=stub),
             pytest.raises(AuthConfigError, match="timed out"),
         ):
             start_headless_auth(
@@ -115,7 +115,7 @@ class TestStartHeadlessAuthPlaywrightErrors:
 
         stub = self._make_playwright_stub(PlaywrightError("net::ERR_NAME_NOT_RESOLVED"))
         with (
-            patch("vip.auth.sync_playwright", return_value=stub),
+            patch("vip.auth.flows.sync_playwright", return_value=stub),
             pytest.raises(AuthConfigError, match="failed during login"),
         ):
             start_headless_auth(
@@ -137,7 +137,7 @@ class TestStartHeadlessAuthPlaywrightErrors:
             "    sudo playwright install-deps"
         )
         with (
-            patch("vip.auth.sync_playwright", return_value=pw),
+            patch("vip.auth.flows.sync_playwright", return_value=pw),
             pytest.raises(AuthConfigError, match=r"vip install"),
         ):
             start_headless_auth(
@@ -162,7 +162,7 @@ class TestStartHeadlessAuthPlaywrightErrors:
             "<your-playwright-app>' before running Playwright."
         )
         with (
-            patch("vip.auth.sync_playwright", return_value=pw),
+            patch("vip.auth.flows.sync_playwright", return_value=pw),
             pytest.raises(AuthConfigError, match="--headless-auth"),
         ):
             start_interactive_auth(connect_url="https://c.example.com")
@@ -176,7 +176,7 @@ class TestStartHeadlessAuthPlaywrightErrors:
             "Browser closed unexpectedly"
         )
         with (
-            patch("vip.auth.sync_playwright", return_value=pw),
+            patch("vip.auth.flows.sync_playwright", return_value=pw),
             pytest.raises(PlaywrightError, match="Browser closed unexpectedly"),
         ):
             start_headless_auth(
@@ -196,20 +196,20 @@ class TestStartHeadlessAuthSchemeResolutionWiring:
         # ``_sanitize_url(page.url)`` is called unconditionally (its result
         # is only *printed* conditionally) and expects a real string.
         page.url = "https://connect.example.com/"
-        monkeypatch.setattr("vip.auth.sync_playwright", lambda: pw)
-        monkeypatch.setattr("vip.auth._fill_product_login", lambda *a, **kw: None)
-        monkeypatch.setattr("vip.auth._wait_for_product_redirect", lambda *a, **kw: None)
+        monkeypatch.setattr("vip.auth.flows.sync_playwright", lambda: pw)
+        monkeypatch.setattr("vip.auth.flows._fill_product_login", lambda *a, **kw: None)
+        monkeypatch.setattr("vip.auth.flows._wait_for_product_redirect", lambda *a, **kw: None)
         return page
 
     def test_inferred_scheme_is_resolved_before_use(self, monkeypatch):
         from vip.auth import start_headless_auth
 
         self._stub_headless_playwright(monkeypatch)
-        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr("vip.auth.flows._resolve_connect_api_base", lambda *a, **kw: a[0])
         mint = MagicMock(return_value="FAKE_KEY")
-        monkeypatch.setattr("vip.auth._create_api_key_via_session", mint)
+        monkeypatch.setattr("vip.auth.flows._create_api_key_via_session", mint)
         resolve = MagicMock(return_value="http://connect.example.com")
-        monkeypatch.setattr("vip.auth.resolve_url_scheme", resolve)
+        monkeypatch.setattr("vip.auth.flows.resolve_url_scheme", resolve)
 
         session = start_headless_auth(
             connect_url="https://connect.example.com",
@@ -235,8 +235,10 @@ class TestStartHeadlessAuthSchemeResolutionWiring:
         from vip.auth import start_headless_auth
 
         self._stub_headless_playwright(monkeypatch)
-        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
-        monkeypatch.setattr("vip.auth._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY")
+        monkeypatch.setattr("vip.auth.flows._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr(
+            "vip.auth.flows._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY"
+        )
 
         with patch("httpx.get") as mock_get:
             session = start_headless_auth(
@@ -271,7 +273,7 @@ class TestHeadlessAuthTLSFlags:
         browser = stub.start.return_value.chromium.launch.return_value
 
         with (
-            patch("vip.auth.sync_playwright", return_value=stub),
+            patch("vip.auth.flows.sync_playwright", return_value=stub),
             pytest.raises(AuthConfigError, match="timed out"),
         ):
             start_headless_auth(
@@ -291,7 +293,7 @@ class TestHeadlessAuthTLSFlags:
         browser = stub.start.return_value.chromium.launch.return_value
 
         with (
-            patch("vip.auth.sync_playwright", return_value=stub),
+            patch("vip.auth.flows.sync_playwright", return_value=stub),
             pytest.raises(AuthConfigError, match="timed out"),
         ):
             start_headless_auth(
@@ -327,7 +329,7 @@ class TestHeadlessAuthTLSFlags:
         monkeypatch.delenv("NODE_EXTRA_CA_CERTS", raising=False)
 
         with (
-            patch("vip.auth.sync_playwright", return_value=stub),
+            patch("vip.auth.flows.sync_playwright", return_value=stub),
             pytest.raises(AuthConfigError, match="timed out"),
         ):
             start_headless_auth(
@@ -355,7 +357,7 @@ class TestHeadlessAuthTLSFlags:
         stub = self._make_playwright_stub()
 
         with (
-            patch("vip.auth.sync_playwright", return_value=stub),
+            patch("vip.auth.flows.sync_playwright", return_value=stub),
             pytest.raises(AuthConfigError, match="timed out"),
         ):
             start_headless_auth(

@@ -13,7 +13,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/vip/auth.py'
+      - 'src/vip/auth/**'
       - 'src/vip/idp.py'
       - 'src/vip/totp.py'
       - 'src/vip/cli.py'
@@ -59,7 +59,7 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'src/vip/auth.py'
+              - 'src/vip/auth/**'
               - 'src/vip/idp.py'
               - 'src/vip/totp.py'
               - 'src/vip/cli.py'
@@ -252,7 +252,7 @@ jobs:
   # DIAGNOSTIC job for issue #263 (Workbench behind SAML on a separate
   # hostname from Connect). This job's expected outcome is RED -- its
   # purpose is to reproduce a suspected defect in `_authenticate_workbench`
-  # so the fix (to src/vip/auth.py) can be written against an observed
+  # so the fix (to src/vip/auth/) can be written against an observed
   # failure rather than an inference.
   #
   # It therefore:

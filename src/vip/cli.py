@@ -64,7 +64,7 @@ _MARKER_KEYWORDS = {"and", "or", "not"}
 _IDENT_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z][A-Za-z0-9_-]*(?![A-Za-z0-9_-])")
 
 # Auth providers that imply IdP-based auth (used by both --idp's implied
-# default and --provider's own validation). Mirrors auth.py's own
+# default and --provider's own validation). Mirrors vip.auth.flows' own
 # _IDP_PROVIDERS, kept as a separate tuple here so cli.py doesn't need to
 # import vip.auth (and its playwright dependency) at module load time.
 _IDP_PROVIDERS = ("oidc", "saml", "oauth2")
@@ -402,7 +402,7 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     # - Otherwise, with --idp set, the user wants IdP-based auth.  Keep an
     #   inherited IdP-class value (saml/oauth2) so specific declarations
     #   survive; but ignore inherited non-IdP providers (ldap) that would
-    #   contradict the CLI intent — auth.py's flow selection keys off
+    #   contradict the CLI intent — vip.auth's flow selection keys off
     #   provider, not idp.
     # - Without --provider or --idp, just honour whatever vip.toml declared.
     explicit_provider = getattr(args, "provider", None)
