@@ -95,8 +95,11 @@ def _click_workbench_oidc_confirm(page: Page) -> bool:
 _LOGIN_KEYWORDS = ("sign-in", "login", "auth-sign-in", "/saml/acs")
 
 
-def _on_login_page(url: str) -> bool:
+def _on_login_page(url: str, keywords: tuple[str, ...] = _LOGIN_KEYWORDS) -> bool:
     """Return True if *url* looks like a login page or an in-flight auth callback.
+
+    *keywords* defaults to this module's tuple. The Workbench test helpers pass
+    their own tuple, which matches any ``auth`` URL but not ``/saml/acs``.
 
     ``/saml/acs`` is Workbench's SAML Assertion Consumer Service endpoint --
     the raw POST target the IdP redirects to before Workbench validates the
@@ -111,7 +114,7 @@ def _on_login_page(url: str) -> bool:
     ``test_workbench_login`` reuses that state.
     """
     lower = url.lower()
-    return any(kw in lower for kw in _LOGIN_KEYWORDS)
+    return any(kw in lower for kw in keywords)
 
 
 def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "") -> str | None:

@@ -369,9 +369,10 @@ def test_quit_vip_sessions_via_ui_never_raises_on_failure():
 
 
 def test_session_api_reachable_via_cookies_delegates_and_never_raises(monkeypatch):
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
-    monkeypatch.setattr(wb.WorkbenchClient, "sessions_api_reachable", lambda self: True)
+    monkeypatch.setattr(cleanup.WorkbenchClient, "sessions_api_reachable", lambda self: True)
     assert (
         wb._session_api_reachable_via_cookies(
             "https://wb.example.com", {"c": "v"}, insecure=False, ca_bundle=None
@@ -382,7 +383,7 @@ def test_session_api_reachable_via_cookies_delegates_and_never_raises(monkeypatc
     def boom(self):
         raise RuntimeError("nope")
 
-    monkeypatch.setattr(wb.WorkbenchClient, "sessions_api_reachable", boom)
+    monkeypatch.setattr(cleanup.WorkbenchClient, "sessions_api_reachable", boom)
     assert (
         wb._session_api_reachable_via_cookies(
             "https://wb.example.com", {}, insecure=False, ca_bundle=None
@@ -773,14 +774,15 @@ def test_run_session_cleanup_escalates_to_ui_when_api_leaves_leftovers(monkeypat
     """
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     ui_calls: list[tuple] = []
 
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: True)
-    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: 1)
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 1))
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", lambda *a, **k: True)
+    monkeypatch.setattr(cleanup, "_vip_session_count_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 1))
 
     page = _fake_page([{"name": "a", "value": "b"}])
     workbench_client = SimpleNamespace(base_url="https://wb.example.com")
@@ -796,14 +798,15 @@ def test_run_session_cleanup_skips_ui_when_api_sweep_fully_cleans(monkeypatch):
     """API reachable and confirmed zero VIP sessions remaining -> no UI escalation."""
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     ui_calls: list[tuple] = []
 
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: True)
-    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: 0)
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", lambda *a, **k: True)
+    monkeypatch.setattr(cleanup, "_vip_session_count_via_cookies", lambda *a, **k: 0)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
 
     page = _fake_page([{"name": "a", "value": "b"}])
     workbench_client = SimpleNamespace(base_url="https://wb.example.com")
@@ -818,14 +821,15 @@ def test_run_session_cleanup_escalates_when_api_unreachable(monkeypatch):
     """Existing behavior preserved: an unreachable API still escalates to the UI."""
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     ui_calls: list[tuple] = []
 
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 0)
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: False)
-    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: -1)
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_cookies", lambda *a, **k: 0)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", lambda *a, **k: False)
+    monkeypatch.setattr(cleanup, "_vip_session_count_via_cookies", lambda *a, **k: -1)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
 
     page = _fake_page([{"name": "a", "value": "b"}])
     workbench_client = SimpleNamespace(base_url="https://wb.example.com")
@@ -840,15 +844,16 @@ def test_run_session_cleanup_warns_when_no_cookies_and_no_api_key(monkeypatch, c
     """No browser cookies and no [workbench] api_key -> warn, do not attempt any sweep."""
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     def _fail(*a, **k):
         pytest.fail("no sweep should be attempted without cookies or an api_key")
 
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _fail)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_vip_session_count_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_ui", _fail)
 
     page = _fake_page([])
     workbench_client = SimpleNamespace(base_url="https://wb.example.com")
@@ -869,15 +874,16 @@ def test_run_session_cleanup_no_warning_when_no_cookies_but_api_key_present(monk
     """
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     def _fail(*a, **k):
         pytest.fail("no cookie-based sweep should run without cookies")
 
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _fail)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_vip_session_count_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_ui", _fail)
 
     page = _fake_page([])
     workbench_client = SimpleNamespace(base_url="https://wb.example.com")
@@ -1013,24 +1019,25 @@ def test_run_session_cleanup_scopes_every_sweep_to_this_worker(monkeypatch):
     """The per-test cleanup must pass its own worker id to all three sweeps."""
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
-        wb,
+        cleanup,
         "_quit_vip_sessions_via_cookies",
         lambda *a, **k: seen.setdefault("quit", k.get("owner")),
     )
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: True)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", lambda *a, **k: True)
     monkeypatch.setattr(
-        wb,
+        cleanup,
         "_vip_session_count_via_cookies",
         lambda *a, **k: (seen.setdefault("count", k.get("owner")), 1)[1],
     )
     monkeypatch.setattr(
-        wb,
+        cleanup,
         "_quit_vip_sessions_via_ui",
         lambda *a, **k: (seen.setdefault("ui", k.get("owner")), 0)[1],
     )
@@ -1088,12 +1095,13 @@ def test_capacity_page_cleanup_is_worker_scoped(monkeypatch):
     module inside a test trips ``@scenario``'s frame inspection and fails under
     pytest-randomly.
     """
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw1")
     seen: dict[str, object] = {}
     monkeypatch.setattr(
-        wb,
+        cleanup,
         "_quit_vip_sessions_via_cookies",
         lambda *a, **k: seen.setdefault("owner", k.get("owner")),
     )

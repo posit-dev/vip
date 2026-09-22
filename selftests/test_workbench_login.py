@@ -384,10 +384,11 @@ class _RestorablePage:
 def test_successful_restore_refreshes_the_cached_auth_session(monkeypatch):
     """Otherwise the next run finds a signed-out cache and re-auths interactively."""
     from vip_tests.workbench import conftest as wb
+    from vip_tests.workbench import login
 
     saved: list[dict] = []
     monkeypatch.setattr(
-        wb, "refresh_auth_cache_from_storage_state", lambda state: saved.append(state) or True
+        login, "refresh_auth_cache_from_storage_state", lambda state: saved.append(state) or True
     )
 
     assert wb.restore_shared_session(_RestorablePage(), "https://wb.example.com") is True
@@ -397,10 +398,11 @@ def test_successful_restore_refreshes_the_cached_auth_session(monkeypatch):
 def test_failed_restore_does_not_touch_the_cache(monkeypatch):
     """A dead session must not overwrite whatever the cache still holds."""
     from vip_tests.workbench import conftest as wb
+    from vip_tests.workbench import login
 
     saved: list[dict] = []
     monkeypatch.setattr(
-        wb, "refresh_auth_cache_from_storage_state", lambda state: saved.append(state) or True
+        login, "refresh_auth_cache_from_storage_state", lambda state: saved.append(state) or True
     )
 
     assert (
