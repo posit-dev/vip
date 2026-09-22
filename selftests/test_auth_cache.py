@@ -448,7 +448,7 @@ class TestLoadCachedAuthProbesWorkbench:
 
         cache = self._write_cache(tmp_path, workbench_url="https://w.example.com")
         monkeypatch.setattr(
-            auth_mod,
+            auth_mod.cache,
             "_cached_workbench_session_is_live",
             lambda *a, **kw: auth_mod._ProbeResult(False, "Workbench answered 401"),
         )
@@ -469,7 +469,7 @@ class TestLoadCachedAuthProbesWorkbench:
 
         cache = self._write_cache(tmp_path, workbench_url="https://w.example.com")
         monkeypatch.setattr(
-            auth_mod,
+            auth_mod.cache,
             "_cached_workbench_session_is_live",
             lambda *a, **kw: auth_mod._ProbeResult(True),
         )
@@ -488,7 +488,7 @@ class TestLoadCachedAuthProbesWorkbench:
 
         cache = self._write_cache(tmp_path, workbench_url="https://w.example.com")
         monkeypatch.setattr(
-            auth_mod,
+            auth_mod.cache,
             "_cached_workbench_session_is_live",
             lambda *a, **kw: auth_mod._ProbeResult(None, "could not reach Workbench"),
         )
@@ -510,7 +510,7 @@ class TestLoadCachedAuthProbesWorkbench:
         def boom(*a, **kw):
             raise AssertionError("probed Workbench on a Connect-only run")
 
-        monkeypatch.setattr(auth_mod, "_cached_workbench_session_is_live", boom)
+        monkeypatch.setattr(auth_mod.cache, "_cached_workbench_session_is_live", boom)
 
         session = auth_mod._load_cached_auth(
             cache,
@@ -534,7 +534,7 @@ class TestLoadCachedAuthProbesWorkbench:
             seen["ca_bundle"] = ca_bundle
             return auth_mod._ProbeResult(True)
 
-        monkeypatch.setattr(auth_mod, "_cached_workbench_session_is_live", record)
+        monkeypatch.setattr(auth_mod.cache, "_cached_workbench_session_is_live", record)
 
         auth_mod._load_cached_auth(
             cache,
@@ -567,7 +567,7 @@ class TestAuthCachePath:
         """
         from pathlib import Path as _Path
 
-        import vip.auth
+        import vip.auth.cache
         import vip.cli
         import vip.plugin
 
@@ -578,7 +578,7 @@ class TestAuthCachePath:
                 "call vip.auth.auth_cache_path() instead"
             )
 
-        assert ".vip-auth-cache.json" in _Path(vip.auth.__file__).read_text()
+        assert ".vip-auth-cache.json" in _Path(vip.auth.cache.__file__).read_text()
 
 
 class TestStaleCacheTriggersReauth:
@@ -612,7 +612,7 @@ class TestStaleCacheTriggersReauth:
 
         cache = self._write_cache(tmp_path)
         monkeypatch.setattr(
-            auth_mod,
+            auth_mod.cache,
             "_cached_workbench_session_is_live",
             lambda *a, **kw: auth_mod._ProbeResult(False, "Workbench answered 401"),
         )
@@ -623,7 +623,7 @@ class TestStaleCacheTriggersReauth:
             reached.append(True)
             raise RuntimeError("browser flow reached")
 
-        monkeypatch.setattr(auth_mod, "sync_playwright", sentinel)
+        monkeypatch.setattr(auth_mod.flows, "sync_playwright", sentinel)
 
         with pytest.raises(RuntimeError, match="browser flow reached"):
             auth_mod.start_interactive_auth(workbench_url="https://w.example.com", cache_path=cache)
@@ -635,7 +635,7 @@ class TestStaleCacheTriggersReauth:
 
         cache = self._write_cache(tmp_path)
         monkeypatch.setattr(
-            auth_mod,
+            auth_mod.cache,
             "_cached_workbench_session_is_live",
             lambda *a, **kw: auth_mod._ProbeResult(True),
         )
@@ -643,7 +643,7 @@ class TestStaleCacheTriggersReauth:
         def boom(*args, **kwargs):
             raise AssertionError("launched a browser despite a live cached session")
 
-        monkeypatch.setattr(auth_mod, "sync_playwright", boom)
+        monkeypatch.setattr(auth_mod.flows, "sync_playwright", boom)
 
         session = auth_mod.start_interactive_auth(
             workbench_url="https://w.example.com", cache_path=cache
@@ -803,7 +803,7 @@ class TestProbeDetailNamesTheEvidence:
             json.dumps({"api_key": None, "workbench_url": "https://w.example.com"})
         )
         monkeypatch.setattr(
-            auth_mod,
+            auth_mod.cache,
             "_cached_workbench_session_is_live",
             lambda *a, **kw: auth_mod._ProbeResult(False, "Workbench answered 401 Unauthorized"),
         )

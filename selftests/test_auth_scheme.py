@@ -50,11 +50,13 @@ class TestSchemeResolutionRealCodePath:
         assert cfg.connect.url_scheme_inferred is False  # real provenance, not hand-set
 
         monkeypatch.setattr(
-            "vip.auth.sync_playwright",
+            "vip.auth.flows.sync_playwright",
             lambda: self._playwright_stub("https://connect.example.com/"),
         )
-        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
-        monkeypatch.setattr("vip.auth._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY")
+        monkeypatch.setattr("vip.auth.flows._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr(
+            "vip.auth.flows._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY"
+        )
 
         with patch("httpx.get") as mock_get:
             session = start_interactive_auth(
@@ -80,11 +82,13 @@ class TestSchemeResolutionRealCodePath:
         assert cfg.connect.url_scheme_inferred is True
 
         monkeypatch.setattr(
-            "vip.auth.sync_playwright",
+            "vip.auth.flows.sync_playwright",
             lambda: self._playwright_stub("http://connect.example.com/"),
         )
-        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
-        monkeypatch.setattr("vip.auth._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY")
+        monkeypatch.setattr("vip.auth.flows._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr(
+            "vip.auth.flows._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY"
+        )
 
         with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
             session = start_interactive_auth(
@@ -165,7 +169,7 @@ class TestResolveUrlScheme:
 
     @pytest.fixture(autouse=True)
     def _no_real_tls_listener(self):
-        with patch("vip.auth._tls_listener_present", return_value=False):
+        with patch("vip.auth.scheme._tls_listener_present", return_value=False):
             yield
 
     @staticmethod
@@ -354,7 +358,7 @@ class TestResolveUrlScheme:
         pc = self._pc("connect.example.com")
 
         with (
-            patch("vip.auth._tls_listener_present", return_value=True),
+            patch("vip.auth.scheme._tls_listener_present", return_value=True),
             patch(
                 "httpx.get",
                 side_effect=httpx.ConnectError("[SSL: CERTIFICATE_VERIFY_FAILED]"),
@@ -377,7 +381,7 @@ class TestResolveUrlScheme:
         pc = self._pc("connect.example.com")
 
         with (
-            patch("vip.auth._tls_listener_present", return_value=True),
+            patch("vip.auth.scheme._tls_listener_present", return_value=True),
             patch("httpx.get", side_effect=httpx.ConnectError("nope")),
         ):
             resolve_url_scheme(pc)

@@ -48,7 +48,7 @@ jobs:
               # shared across all smoke workflows:
               - 'src/vip_tests/prerequisites/**'
               # shared core — affects all products:
-              - 'src/vip/auth.py'
+              - 'src/vip/auth/**'
               - 'src/vip/idp.py'
               - 'src/vip/config.py'
               - 'src/vip/plugin.py'

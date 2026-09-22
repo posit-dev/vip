@@ -53,7 +53,7 @@ class TestInteractiveAuthSessionCleanup:
         """
         session, _ = self._session_with_cache(tmp_path, api_key="LIVE", cache_key="LIVE")
 
-        with patch("vip.auth._delete_api_key") as deleter:
+        with patch("vip.auth.browser._delete_api_key") as deleter:
             session.cleanup()
 
         deleter.assert_not_called()
@@ -64,7 +64,7 @@ class TestInteractiveAuthSessionCleanup:
         """
         session, _ = self._session_with_cache(tmp_path, api_key="LIVE", cache_key=None)
 
-        with patch("vip.auth._delete_api_key") as deleter:
+        with patch("vip.auth.browser._delete_api_key") as deleter:
             session.cleanup()
 
         deleter.assert_called_once_with(
@@ -104,7 +104,7 @@ class TestInteractiveAuthSessionCleanup:
             _cache_path=cache,
         )
 
-        with patch("vip.auth._delete_api_key") as deleter:
+        with patch("vip.auth.browser._delete_api_key") as deleter:
             session.cleanup()
 
         deleter.assert_called_once_with(
@@ -140,7 +140,7 @@ class TestInteractiveAuthSessionCleanup:
             _cache_path=cache,
         )
 
-        with patch("vip.auth._delete_api_key") as deleter:
+        with patch("vip.auth.browser._delete_api_key") as deleter:
             session.cleanup()
 
         deleter.assert_called_once_with(
@@ -158,7 +158,7 @@ class TestInteractiveAuthSessionCleanup:
         """
         session, _ = self._session_with_cache(tmp_path, api_key="MINE", cache_key="OTHER")
 
-        with patch("vip.auth._delete_api_key") as deleter:
+        with patch("vip.auth.browser._delete_api_key") as deleter:
             session.cleanup()
 
         deleter.assert_called_once_with(
@@ -185,7 +185,7 @@ class TestInteractiveAuthSessionCleanup:
             _connect_url="https://c.example.com",
         )
 
-        with patch("vip.auth._delete_api_key") as deleter:
+        with patch("vip.auth.browser._delete_api_key") as deleter:
             session.cleanup()
 
         deleter.assert_called_once_with(
@@ -248,9 +248,11 @@ class TestStartInteractiveAuthPollLoop:
                 "https://connect.example.com/",
             ]
         )
-        monkeypatch.setattr("vip.auth.sync_playwright", lambda: stub)
-        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
-        monkeypatch.setattr("vip.auth._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY")
+        monkeypatch.setattr("vip.auth.flows.sync_playwright", lambda: stub)
+        monkeypatch.setattr("vip.auth.flows._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr(
+            "vip.auth.flows._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY"
+        )
 
         session = start_interactive_auth(connect_url="https://connect.example.com")
 
@@ -268,7 +270,7 @@ class TestStartInteractiveAuthPollLoop:
                 "https://wb.example.com/",
             ]
         )
-        monkeypatch.setattr("vip.auth.sync_playwright", lambda: stub)
+        monkeypatch.setattr("vip.auth.flows.sync_playwright", lambda: stub)
 
         session = start_interactive_auth(workbench_url="https://wb.example.com")
 
@@ -284,13 +286,13 @@ class TestStartInteractiveAuthPollLoop:
         from vip import auth as auth_mod
 
         stub = self._make_playwright_stub(["https://wb.example.com/auth-sign-in"])
-        monkeypatch.setattr(auth_mod, "sync_playwright", lambda: stub)
+        monkeypatch.setattr(auth_mod.flows, "sync_playwright", lambda: stub)
 
         # First call computes the deadline, second is the loop's own
         # `while time.monotonic() < deadline` check — make it already
         # expired so the loop body never runs and page.url is never read.
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.flows.time, "monotonic", lambda: next(times))
 
         with pytest.raises(auth_mod.AuthTimeoutError, match="did not complete within 5 minutes"):
             auth_mod.start_interactive_auth(workbench_url="https://wb.example.com")
@@ -304,10 +306,10 @@ class TestStartInteractiveAuthPollLoop:
         from vip import auth as auth_mod
 
         stub = self._make_playwright_stub(["https://wb.example.com/auth-sign-in"])
-        monkeypatch.setattr(auth_mod, "sync_playwright", lambda: stub)
+        monkeypatch.setattr(auth_mod.flows, "sync_playwright", lambda: stub)
 
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.flows.time, "monotonic", lambda: next(times))
 
         with pytest.raises(auth_mod.AuthTimeoutError) as exc_info:
             auth_mod.start_interactive_auth(workbench_url="https://wb.example.com")
@@ -324,10 +326,10 @@ class TestStartInteractiveAuthPollLoop:
 
         monkeypatch.setenv("VIP_TIMEOUT_SCALE", "2")
         stub = self._make_playwright_stub(["https://wb.example.com/auth-sign-in"])
-        monkeypatch.setattr(auth_mod, "sync_playwright", lambda: stub)
+        monkeypatch.setattr(auth_mod.flows, "sync_playwright", lambda: stub)
 
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.flows.time, "monotonic", lambda: next(times))
 
         with pytest.raises(auth_mod.AuthTimeoutError, match="did not complete within 10 minutes"):
             auth_mod.start_interactive_auth(workbench_url="https://wb.example.com")
@@ -366,14 +368,14 @@ class TestStartInteractiveAuthSchemeResolutionWiring:
         from vip.auth import start_interactive_auth
 
         monkeypatch.setattr(
-            "vip.auth.sync_playwright",
+            "vip.auth.flows.sync_playwright",
             lambda: self._playwright_stub("http://connect.example.com/"),
         )
-        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr("vip.auth.flows._resolve_connect_api_base", lambda *a, **kw: a[0])
         mint = MagicMock(return_value="FAKE_KEY")
-        monkeypatch.setattr("vip.auth._create_api_key_via_session", mint)
+        monkeypatch.setattr("vip.auth.flows._create_api_key_via_session", mint)
         resolve = MagicMock(return_value="http://connect.example.com")
-        monkeypatch.setattr("vip.auth.resolve_url_scheme", resolve)
+        monkeypatch.setattr("vip.auth.flows.resolve_url_scheme", resolve)
 
         session = start_interactive_auth(
             connect_url="https://connect.example.com",
@@ -403,11 +405,13 @@ class TestStartInteractiveAuthSchemeResolutionWiring:
         from vip.auth import start_interactive_auth
 
         monkeypatch.setattr(
-            "vip.auth.sync_playwright",
+            "vip.auth.flows.sync_playwright",
             lambda: self._playwright_stub("https://connect.example.com/"),
         )
-        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
-        monkeypatch.setattr("vip.auth._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY")
+        monkeypatch.setattr("vip.auth.flows._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr(
+            "vip.auth.flows._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY"
+        )
 
         with patch("httpx.get") as mock_get:
             session = start_interactive_auth(
@@ -426,11 +430,13 @@ class TestStartInteractiveAuthSchemeResolutionWiring:
         from vip.auth import start_interactive_auth
 
         monkeypatch.setattr(
-            "vip.auth.sync_playwright",
+            "vip.auth.flows.sync_playwright",
             lambda: self._playwright_stub("https://connect.example.com/"),
         )
-        monkeypatch.setattr("vip.auth._resolve_connect_api_base", lambda *a, **kw: a[0])
-        monkeypatch.setattr("vip.auth._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY")
+        monkeypatch.setattr("vip.auth.flows._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr(
+            "vip.auth.flows._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY"
+        )
 
         with patch("httpx.get") as mock_get:
             start_interactive_auth(connect_url="https://connect.example.com")
@@ -505,7 +511,7 @@ class TestAuthenticateWorkbench:
 
         # Force the deadline loop to exit immediately so the test finishes fast.
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.workbench.time, "monotonic", lambda: next(times))
 
         result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
 
@@ -534,7 +540,7 @@ class TestAuthenticateWorkbench:
         )
 
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.workbench.time, "monotonic", lambda: next(times))
 
         result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
 
@@ -562,7 +568,7 @@ class TestAuthenticateWorkbench:
         )
 
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.workbench.time, "monotonic", lambda: next(times))
 
         result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
 
@@ -589,7 +595,7 @@ class TestAuthenticateWorkbench:
         page.title.return_value = "Sign in to Workbench"
 
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.workbench.time, "monotonic", lambda: next(times))
 
         result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
 
@@ -611,7 +617,7 @@ class TestAuthenticateWorkbench:
         type(page).url = PropertyMock(return_value="https://wb.example.com/auth-sign-in")
 
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.workbench.time, "monotonic", lambda: next(times))
 
         result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
 
@@ -632,7 +638,7 @@ class TestAuthenticateWorkbench:
         type(page).url = PropertyMock(return_value="https://wb.example.com/auth-sign-in")
 
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.workbench.time, "monotonic", lambda: next(times))
 
         result = auth_mod._authenticate_workbench(page, "https://wb.example.com", provider="saml")
 
@@ -654,7 +660,7 @@ class TestAuthenticateWorkbench:
         type(page).url = PropertyMock(return_value="https://wb.example.com/auth-sign-in")
 
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.workbench.time, "monotonic", lambda: next(times))
 
         result = auth_mod._authenticate_workbench(page, "https://wb.example.com")
 
@@ -744,7 +750,7 @@ class TestWaitForProductRedirectTimeout:
         type(page).url = PropertyMock(return_value=url)
         page.title.return_value = title
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.sso.time, "monotonic", lambda: next(times))
         return page
 
     def test_saml_provider_names_saml_in_message(self, monkeypatch):
@@ -821,7 +827,7 @@ class TestWaitForProductRedirectTimeout:
         type(page).url = PropertyMock(side_effect=RuntimeError("page closed"))
         page.title.side_effect = RuntimeError("page closed")
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.sso.time, "monotonic", lambda: next(times))
 
         with pytest.raises(auth_mod.AuthTimeoutError, match="did not complete"):
             auth_mod._wait_for_product_redirect(page, "https://wb.example.com", provider="oidc")
@@ -917,7 +923,7 @@ class TestAuthenticatedPage:
         page = context.new_page.return_value
 
         with (
-            patch("vip.auth.sync_playwright", return_value=pw),
+            patch("vip.auth.browser.sync_playwright", return_value=pw),
             authenticated_page(session) as yielded_page,
         ):
             assert yielded_page is page
@@ -938,7 +944,7 @@ class TestAuthenticatedPage:
         context = browser.new_context.return_value
 
         with (
-            patch("vip.auth.sync_playwright", return_value=pw),
+            patch("vip.auth.browser.sync_playwright", return_value=pw),
             authenticated_page(session, insecure=True),
         ):
             pass
@@ -955,7 +961,7 @@ class TestAuthenticatedPage:
         context = browser.new_context.return_value
 
         with (
-            patch("vip.auth.sync_playwright", return_value=pw),
+            patch("vip.auth.browser.sync_playwright", return_value=pw),
             pytest.raises(RuntimeError, match="boom"),
             authenticated_page(session),
         ):
@@ -984,7 +990,7 @@ class TestAuthenticatedPage:
         pw.start.return_value.chromium.launch.side_effect = capturing_launch
 
         with (
-            patch("vip.auth.sync_playwright", return_value=pw),
+            patch("vip.auth.browser.sync_playwright", return_value=pw),
             authenticated_page(session, ca_bundle=ca_file),
         ):
             pass
