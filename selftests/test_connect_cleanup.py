@@ -9,8 +9,10 @@ base URL includes the ``/__api__`` prefix so request paths look like
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from vip.clients.connect import ConnectClient
+from vip.errors import ProductUnreachableError
 
 
 def _client_with_handler(handler) -> ConnectClient:
@@ -125,11 +127,19 @@ def test_cleanup_vip_content_lists_by_tag_then_deletes():
     assert ("GET", "/__api__/v1/content/b") in calls
 
 
-def test_cleanup_vip_content_no_raise_when_tag_lookup_fails():
+def test_cleanup_vip_content_raises_when_tag_lookup_fails():
+    """A failed tag lookup must raise, not silently report "0 deleted".
+
+    Before this fix, ``list_vip_content`` swallowed the failure and returned
+    ``[]``, which ``cleanup_vip_content`` could not distinguish from "nothing
+    was tagged" -- see error-handling review finding on connect.py:269.
+    """
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/v1/tags"):
             return httpx.Response(500)
         return httpx.Response(200)
 
     cc = _client_with_handler(handler)
-    assert cc.cleanup_vip_content() == 0
+    with pytest.raises(ProductUnreachableError):
+        cc.cleanup_vip_content()
