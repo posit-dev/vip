@@ -10,7 +10,7 @@ A type-design review on #562 pointed out that ``resolve_url_scheme`` used to
 take a bare ``url: str`` and trust the caller to have checked
 ``ProductConfig.url_scheme_inferred`` first. It now takes the whole
 ``ProductConfig`` and checks provenance itself (see ``TestResolveUrlScheme``
-in ``test_auth.py`` for the full behavior matrix), which means there is no
+in ``test_auth_scheme.py`` for the full behavior matrix), which means there is no
 longer a separate helper with its own logic to test in
 isolation -- these fixtures are now a single direct call. What is still
 worth pinning down here is that each fixture passes the *right*

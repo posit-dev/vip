@@ -245,7 +245,7 @@ def test_mint_follows_http_to_https_redirect(connect_http_redirect_server: str):
 # listening" (safe to downgrade to http://) or "a real TLS listener is here
 # but this client doesn't trust its certificate" (must NOT downgrade -- that
 # would send the caller's credentials to a real server in the clear). The
-# unit tests in test_auth.py mock that decision directly; these two prove it
+# unit tests in test_auth_scheme.py mock that decision directly; these two prove it
 # against a real socket in each state, since the whole point of deciding via
 # a raw TCP connect (rather than exception introspection) is that it must
 # work regardless of what real, uncontrived cause makes the TLS handshake
