@@ -735,7 +735,7 @@ def _resolve_str_if_inferred(
     # known wart, not a bug: the clean fix is changing start_interactive_auth/
     # start_headless_auth to take ProductConfig objects directly instead of
     # a string + a separate bool, which would touch ~15 call sites across
-    # test_auth.py plus plugin.py/cli.py -- out of scope for this bug fix.
+    # the auth selftests plus plugin.py/cli.py -- out of scope for this bug fix.
     pc = ProductConfig(url=url)
     pc.url_scheme_inferred = inferred
     return resolve_url_scheme(pc, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
