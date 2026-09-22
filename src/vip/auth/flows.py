@@ -28,9 +28,8 @@ from vip.auth.sso import (
     _fill_product_login,
     _navigate_to_idp,
     _timeout_label,
-    _wait_for_product_redirect,
 )
-from vip.auth.workbench import _authenticate_workbench
+from vip.auth.workbench import _authenticate_workbench, _wait_for_product_redirect
 from vip.errors import AuthConfigError, AuthTimeoutError
 from vip.proxy import (
     ProxyConfig,

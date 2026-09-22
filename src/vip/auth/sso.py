@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import time
-
 from playwright.sync_api import (
     Error as PlaywrightError,
 )
@@ -11,7 +9,6 @@ from playwright.sync_api import (
     Page,
 )
 
-from vip.errors import AuthTimeoutError
 from vip.timeouts import scaled
 
 # Single timeout for an IdP login round-trip (browser leaves the product,
@@ -83,53 +80,6 @@ def _fill_product_login(page: Page, username: str, password: str) -> None:
     page.locator(password_selectors).first.fill(password)
     page.locator(submit_selectors).first.click()
     _log_verbose(">>> Product login form submitted.")
-
-
-def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = "") -> None:
-    """Wait until the browser has returned to the product after IdP auth.
-
-    *provider* names the configured auth provider (``"oidc"``, ``"saml"``,
-    ``"oauth2"``) so a timeout error names the protocol that actually ran
-    instead of assuming OIDC (see #263). Leave it as "" when unknown here;
-    the message falls back to neutral wording.
-    """
-    # Imported here because vip.auth.workbench imports this module's helpers.
-    from vip.auth.workbench import _click_workbench_oidc_confirm, _on_login_page
-
-    base = product_url.rstrip("/").lower()
-    deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
-    clicked_oidc_confirm = False
-
-    while time.monotonic() < deadline:
-        try:
-            url = page.url.lower()
-        except PlaywrightError:
-            break
-        if url.startswith(base) and not _on_login_page(url):
-            return
-        # Workbench lands on an OIDC confirmation page after the IdP
-        # round-trip (form action "auth-openid-sign-in"). A human user
-        # would click "Sign in with OpenID"; in headless mode we do it
-        # for them. Click at most once so a stuck page doesn't loop.
-        if (
-            not clicked_oidc_confirm
-            and url.startswith(base)
-            and _click_workbench_oidc_confirm(page)
-        ):
-            clicked_oidc_confirm = True
-        try:
-            page.wait_for_timeout(500)
-        except PlaywrightError:
-            break
-
-    label = _protocol_label(provider)
-    verb = f"{label} login" if label else "Login"
-    state = _describe_final_page_state(page, product_url)
-    raise AuthTimeoutError(
-        f"{verb} did not complete within "
-        f"{_timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))}. "
-        f"Check credentials, IdP configuration, and MFA setup. Browser {state}."
-    )
 
 
 def _strip_url_query(url: str) -> str:

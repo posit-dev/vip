@@ -23,8 +23,11 @@ from vip.auth.cache import (
 )
 from vip.auth.flows import start_headless_auth, start_interactive_auth
 from vip.auth.scheme import _httpx_verify, _scheme_resolution_cache, resolve_url_scheme
-from vip.auth.sso import _wait_for_product_redirect
-from vip.auth.workbench import _authenticate_workbench, _click_workbench_oidc_confirm
+from vip.auth.workbench import (
+    _authenticate_workbench,
+    _click_workbench_oidc_confirm,
+    _wait_for_product_redirect,
+)
 from vip.errors import AuthConfigError, AuthTimeoutError
 
 __all__ = [

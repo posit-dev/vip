@@ -750,7 +750,7 @@ class TestWaitForProductRedirectTimeout:
         type(page).url = PropertyMock(return_value=url)
         page.title.return_value = title
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.sso.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.workbench.time, "monotonic", lambda: next(times))
         return page
 
     def test_saml_provider_names_saml_in_message(self, monkeypatch):
@@ -827,7 +827,7 @@ class TestWaitForProductRedirectTimeout:
         type(page).url = PropertyMock(side_effect=RuntimeError("page closed"))
         page.title.side_effect = RuntimeError("page closed")
         times = iter([0.0, 1000.0])
-        monkeypatch.setattr(auth_mod.sso.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(auth_mod.workbench.time, "monotonic", lambda: next(times))
 
         with pytest.raises(auth_mod.AuthTimeoutError, match="did not complete"):
             auth_mod._wait_for_product_redirect(page, "https://wb.example.com", provider="oidc")
