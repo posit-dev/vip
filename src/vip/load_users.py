@@ -50,6 +50,8 @@ class ConnectUser(HttpUser):
                 if items:
                     self._content_guid = items[0].get("guid")
         except Exception:  # noqa: BLE001
+            # Best-effort priming — a failed pre-fetch just leaves
+            # ``_content_guid`` unset; it must not abort the simulated user.
             pass
 
     @task(10)
@@ -143,6 +145,8 @@ class PackageManagerUser(HttpUser):
 
                 self._cran_repos, self._pypi_repos = classify_repos(resp.json())
         except Exception:  # noqa: BLE001
+            # Best-effort priming — a failed pre-fetch just leaves the repo
+            # lists empty; it must not abort the simulated user.
             pass
 
     @task(3)
