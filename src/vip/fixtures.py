@@ -49,7 +49,7 @@ reasons that have nothing to do with VIP's product tests) would have every one
 of its tests fail in setup, because ``_connect_content_cleanup`` requests
 ``connect_client``, which calls ``require_connect_api_key`` and fails loudly
 when Connect is configured but unauthenticated. This was caught empirically:
-``selftests/test_plugin.py::TestPluginIntegration::
+``selftests/plugin/test_marker_deselection.py::TestPluginIntegration::
 test_bdd_given_configured_product_not_deselected`` configures Connect with no
 API key to exercise deselection logic, and broke exactly this way when the
 cleanup fixtures were briefly moved here during development. Extension
@@ -432,7 +432,7 @@ def browser_type_launch_args(browser_type_launch_args, vip_config: VIPConfig):
     Registering ``vip-fixtures`` in ``pytest_configure`` (after pytest-playwright
     has already registered via its own entry point) is what makes this
     override win; ``selftests/test_extension_fixtures.py`` and
-    ``selftests/test_plugin.py`` assert VIP's version is the one in effect,
+    ``selftests/plugin/test_json_report.py`` assert VIP's version is the one in effect,
     not just that the fixture resolves.
     """
     extra = _ui_browser_launch_args(vip_config)
