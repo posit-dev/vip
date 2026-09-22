@@ -33,23 +33,22 @@ import pytest
 
 from vip.attest import UNPROVEN_SENTINEL
 from vip.config import VIPConfig, load_config
+from vip.stash import (
+    _auth_mode_key,
+    _auth_session_key,
+    _ext_dirs_key,
+    _results_key,
+    _scenario_stash_key,
+    _session_start_key,
+    _version_na_key,
+    _vip_config_key,
+)
 from vip.version import ProductVersion
 
-# ---------------------------------------------------------------------------
-# Stash keys
-# ---------------------------------------------------------------------------
-
-_vip_config_key = pytest.StashKey[VIPConfig]()
-_ext_dirs_key = pytest.StashKey[list[str]]()
-_results_key = pytest.StashKey[list[dict[str, Any]]]()
-_auth_session_key = pytest.StashKey[Any]()
-_auth_mode_key = pytest.StashKey[str]()
-_version_na_key = pytest.StashKey[bool]()
-# Wall-clock start of the session, for the "run_duration_seconds" provenance
-# field. Recorded in every process (worker or controller) but only read back
-# on the controller in pytest_sessionfinish, which is the process that
-# ultimately writes results.json.
-_session_start_key = pytest.StashKey[float]()
+# The import above also re-exports the eight stash keys, so
+# `from vip.plugin import _auth_mode_key` etc. keeps working for the
+# pytester conftests in selftests/test_plugin.py; the keys themselves live
+# in vip.stash (see that module's docstring for why).
 
 # Module-level reference to the active pytest.Config, set in pytest_configure.
 # Safe because pytester runs in a subprocess (fresh import each time).
@@ -170,11 +169,11 @@ def pytest_configure(config: pytest.Config) -> None:
     # Register VIP's core fixtures and shared BDD steps as their own pytest
     # plugin (see vip.fixtures' module docstring for why: directory-scoped
     # conftest.py fixtures are invisible to extension directories loaded via
-    # --vip-extensions, issue #609). Deferred import: vip.fixtures imports
-    # stash keys and require_connect_api_key from this module, and importing
-    # it here -- after this module has finished its own top-level
-    # definitions -- avoids a circular import at module-load time. Runs once
-    # per pytest process, so xdist workers register it too (each is a fresh
+    # --vip-extensions, issue #609). Deferred import: this is a load-time
+    # cost choice, not a cycle guard -- vip.fixtures no longer imports from
+    # this module -- so importing it here means every pytest process that
+    # never runs a VIP-collected session doesn't pay for it. Runs once per
+    # pytest process, so xdist workers register it too (each is a fresh
     # process that goes through pytest_configure independently).
     from vip.fixtures import register as _register_fixtures
 
@@ -789,37 +788,6 @@ def _is_api_auth_only(item: pytest.Item) -> bool:
     return item.get_closest_marker("api_auth") is not None
 
 
-def require_connect_api_key(vip_cfg: VIPConfig) -> None:
-    """Fail loudly if Connect is configured but no API key is available.
-
-    Without this guard the ``connect_client`` fixture returns a client with an
-    empty ``Authorization`` header, which silently succeeds for unauthenticated
-    endpoints (``/server_settings``) but produces opaque 401/403 failures deep
-    inside individual scenarios — each one rendered through pytest-bdd's
-    ``call_fixture_func`` frame, hiding the real cause (auth setup failed).
-
-    Calling this from the fixture turns every Connect API test's first error
-    into a single, actionable root-cause message pointing at the missing key
-    and the upstream mint diagnostics.
-
-    Does nothing when Connect is not configured at all (no URL set) — those
-    tests are deselected upstream.
-    """
-    if not vip_cfg.connect.is_configured:
-        return
-    if vip_cfg.connect.api_key:
-        return
-    pytest.fail(
-        "Connect API key is not configured — API-based tests cannot run.\n"
-        "  - Set VIP_CONNECT_API_KEY in the environment, or\n"
-        "  - Set connect.api_key in vip.toml, or\n"
-        "  - Use --headless-auth or --interactive-auth to mint one automatically.\n"
-        "If you already used --headless-auth, scroll up to the 'Mint diagnostic' "
-        "lines for why minting failed.",
-        pytrace=False,
-    )
-
-
 def _maybe_skip_for_version(item: pytest.Item, cfg: VIPConfig) -> None:
     """Skip *item* when its ``min_version`` marker requirement is not met.
 
@@ -890,9 +858,6 @@ def _skip_version_unknown(item: pytest.Item, product: str, version: str, *, reas
 # ---------------------------------------------------------------------------
 # JSON results for Quarto report
 # ---------------------------------------------------------------------------
-
-
-_scenario_stash_key = pytest.StashKey[dict[str, str | None]]()
 
 
 def _stash_scenario_metadata(item: pytest.Item) -> None:
