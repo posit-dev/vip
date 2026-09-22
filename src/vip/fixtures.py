@@ -74,6 +74,7 @@ from vip.clients.kubernetes import KubernetesClient
 from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
 from vip.config import PerformanceConfig, VIPConfig
+from vip.errors import ConfigError
 
 # ---------------------------------------------------------------------------
 # Configuration fixture
@@ -222,14 +223,33 @@ def workbench_url(vip_config: VIPConfig) -> str:
 
 @pytest.fixture(scope="session")
 def kubernetes_client(vip_config: VIPConfig) -> KubernetesClient | None:
-    """Kubernetes client for capacity tests; ``None`` when K8s is not configured."""
+    """Kubernetes client for capacity tests; ``None`` when K8s is not configured.
+
+    ``is_configured`` above already covers "K8s isn't set up", so everything
+    ``KubernetesClient.__init__`` can raise past that point -- the ``kubernetes``
+    SDK not installed (``RuntimeError``, from ``_require_sdk``), a missing or
+    invalid kubeconfig (``kubernetes.config.ConfigException``), or a kubeconfig
+    file that exists but can't be read or parsed (``OSError``, ``yaml.YAMLError``)
+    -- is a real construction failure, not "not configured". Each is raised as
+    a :class:`ConfigError` instead of being swallowed into the same ``None`` a
+    genuinely unconfigured deployment returns -- that swallowing is exactly
+    what let a broken K8s setup masquerade as "not configured" and skip every
+    capacity test instead of failing loudly. ``RuntimeError`` gets its own
+    branch because ``_require_sdk``'s message is already a complete,
+    user-facing explanation; every other failure is wrapped with the
+    namespace for context.
+    """
     k8s_cfg = vip_config.workbench.kubernetes
     if not k8s_cfg.is_configured:
         return None
     try:
         return KubernetesClient(namespace=k8s_cfg.namespace)
-    except Exception:  # noqa: BLE001
-        return None
+    except RuntimeError as exc:
+        raise ConfigError(str(exc)) from exc
+    except Exception as exc:
+        raise ConfigError(
+            f"Kubernetes configuration is invalid for namespace {k8s_cfg.namespace!r}: {exc}"
+        ) from exc
 
 
 @pytest.fixture(scope="session")
