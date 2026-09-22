@@ -92,16 +92,17 @@ class TestConnectWorkbenchRouting:
     which URLs resolve — and error when neither does.
     """
 
-    def test_neither_url_exits_with_error(self, tmp_path, monkeypatch, capsys):
+    def test_neither_url_exits_with_error(self, tmp_path, monkeypatch):
+        from vip.errors import ConfigError
+
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             vip.cli.run_cleanup(_make_args())
 
-        assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "Connect or Workbench" in err
+        assert exc_info.value.exit_code == 1
+        assert "Connect or Workbench" in str(exc_info.value)
 
     def test_connect_only_does_not_touch_workbench(self, tmp_path, monkeypatch, capsys):
         monkeypatch.chdir(tmp_path)
@@ -309,9 +310,10 @@ class TestWorkbenchAuthModeSelection:
 
         assert calls["interactive"]["workbench_url"] == "https://wb.example.com"
 
-    def test_auth_config_error_exits_with_clear_message(self, tmp_path, monkeypatch, capsys):
+    def test_auth_config_error_exits_with_clear_message(self, tmp_path, monkeypatch):
         from vip.auth import AuthConfigError
         from vip.config import VIPConfig
+        from vip.errors import AuthError
 
         def _boom(**kwargs):
             raise AuthConfigError("no credentials")
@@ -322,16 +324,15 @@ class TestWorkbenchAuthModeSelection:
         config.auth.username = ""
         config.auth.password = ""
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(AuthError) as exc_info:
             vip.cli._cleanup_workbench_sessions("https://wb.example.com", _make_args(), config)
 
-        assert exc_info.value.code == 1
-        assert "could not authenticate" in capsys.readouterr().err
+        assert exc_info.value.exit_code == 1
+        assert "could not authenticate" in str(exc_info.value)
 
-    def test_unexpected_auth_exception_does_not_crash_with_traceback(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_unexpected_auth_exception_does_not_crash_with_traceback(self, tmp_path, monkeypatch):
         from vip.config import VIPConfig
+        from vip.errors import AuthError
 
         def _boom(**kwargs):
             raise RuntimeError("browser crashed")
@@ -342,13 +343,13 @@ class TestWorkbenchAuthModeSelection:
         config.auth.username = ""
         config.auth.password = ""
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(AuthError) as exc_info:
             vip.cli._cleanup_workbench_sessions("https://wb.example.com", _make_args(), config)
 
-        assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "could not authenticate to Workbench" in err
-        assert "VIP_TEST_USERNAME" in err
+        assert exc_info.value.exit_code == 1
+        message = str(exc_info.value)
+        assert "could not authenticate to Workbench" in message
+        assert "VIP_TEST_USERNAME" in message
 
 
 class TestWorkbenchUiEscalation:

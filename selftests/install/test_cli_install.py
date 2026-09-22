@@ -27,11 +27,12 @@ def test_vip_install_dry_run_on_macos_or_unsupported(tmp_path: Path, monkeypatch
     assert "vip install" in cp.stdout
 
 
-def test_run_install_handles_playwright_install_error(tmp_path, monkeypatch, capsys):
-    """A PlaywrightInstallError surfaces as a clean stderr + exit 1."""
+def test_run_install_handles_playwright_install_error(tmp_path, monkeypatch):
+    """A PlaywrightInstallError surfaces as an InstallError for cli.main's exit handler."""
     import argparse
 
     from vip import cli
+    from vip.errors import InstallError
     from vip.install import runner as rn
     from vip.install.playwright import PlaywrightInstallError
 
@@ -45,9 +46,7 @@ def test_run_install_handles_playwright_install_error(tmp_path, monkeypatch, cap
     monkeypatch.setattr(pw, "chromium_installed", lambda d: False)
 
     args = argparse.Namespace(skip_system=True, dry_run=False)
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(InstallError) as exc_info:
         cli.run_install(args)
-    assert exc_info.value.code == 1
-    captured = capsys.readouterr()
-    assert "boom" in captured.err
-    assert "Error" in captured.err
+    assert exc_info.value.exit_code == 1
+    assert "boom" in str(exc_info.value)

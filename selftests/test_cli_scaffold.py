@@ -82,20 +82,21 @@ class TestScaffoldTemplateSelection:
         assert (dest / "test_gxp_validation.feature").is_file()
         assert (dest / "AGENTS.md").is_file()
 
-    def test_unknown_template_exits_nonzero_and_lists_valid_names(self, tmp_path, capsys):
+    def test_unknown_template_exits_nonzero_and_lists_valid_names(self, tmp_path):
         import pytest
 
         from vip.cli import run_scaffold
+        from vip.errors import ConfigError
 
         dest = tmp_path / "bad_tests"
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             run_scaffold(_make_args(output=str(dest), template="bogus"))
 
-        assert exc_info.value.code != 0
-        err = capsys.readouterr().err
-        assert "bogus" in err
-        assert "minimal" in err
-        assert "cross-product" in err
+        assert exc_info.value.exit_code != 0
+        message = str(exc_info.value)
+        assert "bogus" in message
+        assert "minimal" in message
+        assert "cross-product" in message
         assert not dest.exists()
 
 
@@ -223,6 +224,7 @@ class TestScaffoldOverwriteBehavior:
 
     def test_scaffold_fails_if_dest_exists_without_force(self, tmp_path):
         from vip.cli import run_scaffold
+        from vip.errors import ConfigError
 
         dest = tmp_path / "my_tests"
         dest.mkdir()
@@ -230,7 +232,7 @@ class TestScaffoldOverwriteBehavior:
 
         import pytest
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError):
             run_scaffold(_make_args(output=str(dest), force=False))
 
         # Original file should still be present (not clobbered)

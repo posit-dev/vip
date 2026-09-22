@@ -277,8 +277,9 @@ class TestRunReportFromArbitraryDir:
         assert captured["env"] is not None, "env must be passed to quarto render"
         assert captured["env"]["QUARTO_PYTHON"] == sys.executable
 
-    def test_errors_when_render_produces_no_output(self, tmp_path, monkeypatch, capsys):
+    def test_errors_when_render_produces_no_output(self, tmp_path, monkeypatch):
         from vip import cli
+        from vip.errors import ReportError
 
         monkeypatch.chdir(tmp_path)
         report_dir = tmp_path / "report"
@@ -287,26 +288,28 @@ class TestRunReportFromArbitraryDir:
         # quarto "succeeds" but writes nothing — the old bug rendered silently.
         monkeypatch.setattr(cli.subprocess, "run", _fake_quarto(create_output=False))
 
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(ReportError) as exc:
             cli.run_report(_make_args())
 
-        assert exc.value.code == 1
-        assert "no report was produced" in capsys.readouterr().err
+        assert exc.value.exit_code == 1
+        assert "no report was produced" in str(exc.value)
 
-    def test_errors_when_results_missing(self, tmp_path, monkeypatch, capsys):
+    def test_errors_when_results_missing(self, tmp_path, monkeypatch):
         from vip import cli
+        from vip.errors import ReportError
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(cli.subprocess, "run", _fake_quarto(create_output=True))
 
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(ReportError) as exc:
             cli.run_report(_make_args(results=str(tmp_path / "nope.json")))
 
-        assert exc.value.code == 1
-        assert "results file not found" in capsys.readouterr().err
+        assert exc.value.exit_code == 1
+        assert "results file not found" in str(exc.value)
 
-    def test_errors_when_quarto_not_installed(self, tmp_path, monkeypatch, capsys):
+    def test_errors_when_quarto_not_installed(self, tmp_path, monkeypatch):
         from vip import cli
+        from vip.errors import ReportError
 
         monkeypatch.chdir(tmp_path)
         report_dir = tmp_path / "report"
@@ -318,11 +321,11 @@ class TestRunReportFromArbitraryDir:
 
         monkeypatch.setattr(cli.subprocess, "run", _missing_quarto)
 
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(ReportError) as exc:
             cli.run_report(_make_args())
 
-        assert exc.value.code == 1
-        assert "quarto was not found" in capsys.readouterr().err
+        assert exc.value.exit_code == 1
+        assert "quarto was not found" in str(exc.value)
 
     def test_pdf_failure_degrades_to_warning(self, tmp_path, monkeypatch, capsys):
         """A Typst-less Quarto must not cost the user the HTML report.
