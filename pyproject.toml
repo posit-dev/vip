@@ -160,7 +160,7 @@ packages = ["src/vip", "src/vip_tests"]
 "examples/custom_tests" = "vip/_scaffold/custom_tests"
 # AGENTS.md source shared by every scaffold template; copied into the output
 # dir by run_scaffold() after copytree(). Keep this path in sync with
-# _resolve_scaffold_source("_shared") in src/vip/cli.py.
+# _resolve_scaffold_source("_shared") in src/vip/cli/scaffold.py.
 "examples/_shared" = "vip/_scaffold/_shared"
 # Quarto report templates so `vip report` works when installed as a wheel,
 # not only from a source checkout. Copied into the working ./report dir by

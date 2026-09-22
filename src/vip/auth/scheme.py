@@ -28,8 +28,9 @@ def _httpx_verify(insecure: bool, ca_bundle: Path | None) -> bool | str:
     - ``ca_bundle`` set → ``str`` path to the bundle file
     - default → ``True`` (system trust store)
 
-    Mirrors ``cli.py:391`` and ``VIPConfig.verify`` so TLS behaviour is
-    consistent across every httpx call site in the auth package.
+    Mirrors ``vip.cli._common._resolve_effective_ca_bundle`` and
+    ``VIPConfig.verify`` so TLS behaviour is consistent across every httpx
+    call site in the auth package.
     """
     if insecure:
         return False

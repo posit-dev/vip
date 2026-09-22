@@ -54,7 +54,7 @@ jobs:
               - 'src/vip/idp.py'
               - 'src/vip/config.py'
               - 'src/vip/plugin.py'
-              - 'src/vip/cli.py'
+              - 'src/vip/cli/**'
               - 'src/vip_tests/conftest.py'
               - 'pyproject.toml'
               - 'uv.lock'

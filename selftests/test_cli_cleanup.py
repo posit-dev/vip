@@ -20,6 +20,7 @@ import pytest
 
 import vip.auth
 import vip.cli
+import vip.cli.cleanup
 import vip.workbench_ui
 from vip.auth import InteractiveAuthSession
 from vip.clients.workbench import is_vip_session
@@ -126,7 +127,7 @@ class TestConnectWorkbenchRouting:
         def _fail(*a, **k):
             pytest.fail("workbench cleanup should not run without a workbench URL")
 
-        monkeypatch.setattr(vip.cli, "_cleanup_workbench_sessions", _fail)
+        monkeypatch.setattr(vip.cli.cleanup, "_cleanup_workbench_sessions", _fail)
 
         vip.cli.run_cleanup(_make_args(connect_url="https://c.example.com"))
 
@@ -147,7 +148,7 @@ class TestConnectWorkbenchRouting:
 
         called = {}
         monkeypatch.setattr(
-            vip.cli,
+            vip.cli.cleanup,
             "_cleanup_workbench_sessions",
             lambda url, args, config: called.setdefault("url", url),
         )
@@ -177,7 +178,7 @@ class TestConnectWorkbenchRouting:
 
         called = {}
         monkeypatch.setattr(
-            vip.cli,
+            vip.cli.cleanup,
             "_cleanup_workbench_sessions",
             lambda url, args, config: called.setdefault("url", url),
         )
@@ -226,7 +227,7 @@ class TestConnectWorkbenchRouting:
 
         called = {}
         monkeypatch.setattr(
-            vip.cli,
+            vip.cli.cleanup,
             "_cleanup_workbench_sessions",
             lambda url, args, config: called.setdefault("url", url),
         )
@@ -459,7 +460,7 @@ class TestCleanupTLSFlags:
         """
         seen: list[argparse.Namespace] = []
         with (
-            patch("vip.cli.run_cleanup", side_effect=seen.append),
+            patch("vip.cli.app.run_cleanup", side_effect=seen.append),
             patch.object(sys, "argv", ["vip", "cleanup", *argv]),
         ):
             from vip.cli import main

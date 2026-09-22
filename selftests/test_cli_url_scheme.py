@@ -8,7 +8,7 @@ genuinely doesn't answer (``vip.auth.resolve_url_scheme``), never for a URL
 the caller gave an explicit scheme for.
 
 ``resolve_url_scheme`` itself (the shared function all three call directly --
-cli.py has no wrapper of its own, see #562) is tested exhaustively in
+vip.cli has no wrapper of its own, see #562) is tested exhaustively in
 ``TestResolveUrlScheme`` in ``test_auth_scheme.py``; the tests below exercise the
 real ``_collect_status``/``run_cleanup``/``run_uninstall`` entry points end to
 end, mocking only ``httpx.get`` (the network boundary) and the product

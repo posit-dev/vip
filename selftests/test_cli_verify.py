@@ -60,8 +60,8 @@ def _capture_call(args: argparse.Namespace) -> tuple[list[str], dict]:
         return result
 
     with (
-        patch("vip.cli.subprocess.run", side_effect=fake_run),
-        patch("vip.cli.sys.exit"),
+        patch("vip.cli.verify.subprocess.run", side_effect=fake_run),
+        patch("vip.cli.verify.sys.exit"),
     ):
         from vip.cli import run_verify
 
@@ -719,7 +719,7 @@ class TestVerifyLocalTestTimeout:
             captured["test_timeout"] = args.test_timeout
             raise SystemExit(0)
 
-        monkeypatch.setattr("vip.cli.run_verify", fake_run_verify)
+        monkeypatch.setattr("vip.cli.app.run_verify", fake_run_verify)
         monkeypatch.setattr(sys, "argv", ["vip", "verify", "--config", str(cfg)])
 
         from vip.cli import main
@@ -758,7 +758,7 @@ class TestVerifyLocalTestTimeout:
         from vip.errors import VipError
 
         with (
-            patch("vip.cli.subprocess.run", side_effect=fake_run),
+            patch("vip.cli.verify.subprocess.run", side_effect=fake_run),
             pytest.raises(VipError) as exc_info,
         ):
             run_verify(_make_args(config=str(cfg)))
@@ -1434,7 +1434,7 @@ class TestFormatFlag:
 
     def test_unknown_format_rejected(self, tmp_path, monkeypatch):
         """Must call run_verify directly (a real raise): _capture_cmd/_capture_call
-        patch ``vip.cli.sys.exit`` to a no-op so run_verify falls through to
+        patch ``vip.cli.verify.sys.exit`` to a no-op so run_verify falls through to
         subprocess.run for the "happy path" tests above, but that trick only
         ever suppressed the bare ``sys.exit`` calls that remain (e.g. the
         subprocess-return-code passthrough) — a ``raise ConfigError`` cannot be
@@ -1603,7 +1603,7 @@ class TestAllowUnprovenFlag:
         """
         seen: list[argparse.Namespace] = []
         with (
-            patch("vip.cli.run_verify", side_effect=seen.append),
+            patch("vip.cli.app.run_verify", side_effect=seen.append),
             patch.object(sys, "argv", ["vip", "verify", *argv]),
         ):
             from vip.cli import main
