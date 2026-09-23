@@ -10,8 +10,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from _helpers import _client_with_handler
 from vip.clients.workbench import (
-    WorkbenchClient,
     jupyterlab_app_base,
     jupyterlab_contents_delete_url,
     jupyterlab_xsrf_headers,
@@ -78,16 +78,6 @@ def test_xsrf_headers_absent():
 
 
 # -- delete_jupyter_notebook (MockTransport) ---------------------------------
-
-
-def _client_with_handler(handler) -> WorkbenchClient:
-    wc = WorkbenchClient("https://wb.example.com")
-    wc._client.close()
-    wc._client = httpx.Client(
-        base_url="https://wb.example.com",
-        transport=httpx.MockTransport(handler),
-    )
-    return wc
 
 
 def test_delete_notebook_success_sends_xsrf_and_targets_contents_api():
