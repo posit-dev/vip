@@ -4,7 +4,7 @@ This module lives under ``src/vip/`` (rather than ``src/vip_tests/``,
 where most Playwright-driving code for Workbench lives) because
 :func:`quit_vip_sessions_via_ui` backs two callers:
 
-* ``vip_tests.workbench.conftest._cleanup_sessions`` -- the per-test/
+* ``vip_tests.workbench.cleanup._cleanup_sessions`` -- the per-test/
   end-of-run safety net that escalates to the UI when the session API
   sweep is unreachable or leaves VIP sessions behind (issue #467).
 * ``vip cleanup --workbench-url`` (see :mod:`vip.cli`) -- a standalone CLI
@@ -31,6 +31,7 @@ import re
 
 from playwright.sync_api import Page
 
+from vip.auth.workbench import _on_login_page
 from vip.clients.workbench import is_vip_session_for_owner
 from vip.timeouts import timeout_scale
 from vip_tests.workbench.pages import Homepage, LoginPage
@@ -38,11 +39,11 @@ from vip_tests.workbench.pages import Homepage, LoginPage
 logger = logging.getLogger(__name__)
 
 # Substrings that mark a Workbench login / IdP URL (mirrors the private
-# _LOGIN_KEYWORDS in vip_tests.workbench.conftest).
+# _LOGIN_KEYWORDS in vip_tests.workbench.login).
 _LOGIN_URL_KEYWORDS = ("sign-in", "login", "auth")
 
 # Mirrors the scaled timeout constants defined in
-# vip_tests/workbench/conftest.py.  Duplicated (not imported) so this module
+# vip_tests/workbench/timeouts.py.  Duplicated (not imported) so this module
 # has no import-time dependency on the test-fixture module; both are computed
 # from the same scaled(...) formula so the values stay numerically identical.
 TIMEOUT_QUICK = int(5_000 * timeout_scale())
@@ -80,7 +81,7 @@ def _complete_sso_if_needed(page: Page) -> bool:
     with OpenID" button.  Clicking it completes a silent SSO round-trip using
     the IdP cookies already in the browser context, landing on the
     authenticated homepage with no credentials required.  This is the same
-    mechanism ``vip_tests.workbench.conftest.workbench_login`` uses under
+    mechanism ``vip_tests.workbench.login.workbench_login`` uses under
     ``--interactive-auth``; reusing it lets ``vip cleanup --workbench-url``
     authenticate the same way the session-launching tests did (issue #467).
 
@@ -95,7 +96,7 @@ def _complete_sso_if_needed(page: Page) -> bool:
     # logo wait below -- otherwise every expired-auth cleanup attempt would burn
     # TIMEOUT_QUICK waiting for a logo that will never show (PR #492 review).
     try:
-        on_login_page = any(kw in page.url.lower() for kw in _LOGIN_URL_KEYWORDS)
+        on_login_page = _on_login_page(page.url, _LOGIN_URL_KEYWORDS)
     except Exception:  # noqa: BLE001
         return False
     if not on_login_page:

@@ -53,12 +53,18 @@ class TestScaled:
 
 
 class TestWorkbenchConftestConstants:
-    """Verify that workbench conftest constants reflect VIP_TIMEOUT_SCALE."""
+    """Verify that workbench conftest constants reflect VIP_TIMEOUT_SCALE.
+
+    The constants are defined in ``timeouts.py`` and re-exported by ``conftest``,
+    so both are reloaded, in that order: reloading ``conftest`` alone would
+    re-import the stale values.
+    """
 
     def test_constants_scale_on_reload(self, monkeypatch):
-        from vip_tests.workbench import conftest
+        from vip_tests.workbench import conftest, timeouts
 
         monkeypatch.setenv("VIP_TIMEOUT_SCALE", "2")
+        importlib.reload(timeouts)
         importlib.reload(conftest)
         try:
             assert conftest.TIMEOUT_SESSION_START == 180_000
@@ -68,18 +74,21 @@ class TestWorkbenchConftestConstants:
             assert conftest.TIMEOUT_SSO_ROUNDTRIP == 120_000
         finally:
             monkeypatch.delenv("VIP_TIMEOUT_SCALE", raising=False)
+            importlib.reload(timeouts)
             importlib.reload(conftest)
 
     def test_constants_default_at_scale_one(self, monkeypatch):
-        from vip_tests.workbench import conftest
+        from vip_tests.workbench import conftest, timeouts
 
         monkeypatch.delenv("VIP_TIMEOUT_SCALE", raising=False)
+        importlib.reload(timeouts)
         importlib.reload(conftest)
         try:
             assert conftest.TIMEOUT_SESSION_START == 90_000
             assert conftest.TIMEOUT_IDE_LOAD == 60_000
             assert conftest.TIMEOUT_SSO_ROUNDTRIP == 60_000
         finally:
+            importlib.reload(timeouts)
             importlib.reload(conftest)
 
 
