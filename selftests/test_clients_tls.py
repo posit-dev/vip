@@ -18,51 +18,12 @@ the project's base requirements are needed.
 
 from __future__ import annotations
 
-import ssl
-import subprocess
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from http.server import BaseHTTPRequestHandler
 
 import httpx
 import pytest
 
-# ---------------------------------------------------------------------------
-# Cert generation (openssl subprocess, no extra deps)
-# ---------------------------------------------------------------------------
-
-
-def _make_self_signed(certdir: Path) -> tuple[Path, Path]:
-    """Generate a self-signed RSA cert/key pair in *certdir* and return paths.
-
-    Uses ``openssl req`` so the ``cryptography`` package is not required.
-    """
-    cert_path = certdir / "cert.pem"
-    key_path = certdir / "key.pem"
-    subprocess.run(
-        [
-            "openssl",
-            "req",
-            "-x509",
-            "-newkey",
-            "rsa:2048",
-            "-keyout",
-            str(key_path),
-            "-out",
-            str(cert_path),
-            "-days",
-            "1",
-            "-nodes",
-            "-subj",
-            "/CN=localhost",
-            "-addext",
-            "subjectAltName=DNS:localhost,IP:127.0.0.1",
-        ],
-        check=True,
-        capture_output=True,
-    )
-    return cert_path, key_path
-
+from _helpers import _make_self_signed, _start_tls_server
 
 # ---------------------------------------------------------------------------
 # Minimal HTTPS server
@@ -84,26 +45,6 @@ class _OkHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def _start_tls_server(cert_path: Path, key_path: Path) -> tuple[ThreadingHTTPServer, str]:
-    """Start a self-signed HTTPS server on an ephemeral port.
-
-    Returns ``(server, url)`` where *url* is ``https://127.0.0.1:<port>``.
-    The caller is responsible for calling ``server.shutdown()`` when done.
-    """
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _OkHandler)
-    # ThreadingHTTPServer defaults to non-daemon handler threads, which can
-    # keep the test process alive past `serve_forever()` if a connection is
-    # left open.  Match the pattern in selftests/test_load_engine.py.
-    httpd.daemon_threads = True
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ctx.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
-    httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
-    port = httpd.server_address[1]
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-    thread.start()
-    return httpd, f"https://127.0.0.1:{port}"
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -114,7 +55,7 @@ def tls_server(tmp_path_factory):
     """Shared self-signed HTTPS server for the module."""
     certdir = tmp_path_factory.mktemp("certs")
     cert, key = _make_self_signed(certdir)
-    server, url = _start_tls_server(cert, key)
+    server, url = _start_tls_server(cert, key, _OkHandler)
     yield url
     server.shutdown()
     server.server_close()

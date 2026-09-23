@@ -11,7 +11,8 @@ import logging
 import httpx
 import pytest
 
-from vip.clients.workbench import WorkbenchClient, is_vip_session
+from _helpers import _client_with_handler
+from vip.clients.workbench import is_vip_session
 from vip.errors import ProductUnreachableError
 
 
@@ -28,17 +29,6 @@ from vip.errors import ProductUnreachableError
 )
 def test_is_vip_session(label, expected):
     assert is_vip_session(label) is expected
-
-
-def _client_with_handler(handler) -> WorkbenchClient:
-    """Build a WorkbenchClient whose httpx client uses a MockTransport."""
-    wc = WorkbenchClient("https://wb.example.com")
-    wc._client.close()
-    wc._client = httpx.Client(
-        base_url="https://wb.example.com",
-        transport=httpx.MockTransport(handler),
-    )
-    return wc
 
 
 def test_quit_vip_sessions_targets_only_vip_and_skips_others():
