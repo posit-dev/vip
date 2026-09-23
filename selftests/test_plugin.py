@@ -1194,7 +1194,7 @@ class TestRequireConnectApiKey:
 
 
 def test_markers_in_sync():
-    """Markers in pyproject.toml match those registered in plugin.py."""
+    """Markers in pyproject.toml match those registered in plugin/configure.py."""
     repo_root = Path(__file__).parent.parent
 
     # Parse marker names from pyproject.toml [tool.pytest.ini_options] markers list.
@@ -1212,11 +1212,11 @@ def test_markers_in_sync():
         if re.match(r"\s*['\"](\w+)", line)
     }
 
-    # Parse marker names registered via config.addinivalue_line in plugin.py.
+    # Parse marker names registered via config.addinivalue_line in plugin/configure.py.
     # Each call looks like:
     #   config.addinivalue_line("markers", "name...")          (single-line)
     #   config.addinivalue_line(\n    "markers",\n    "name..."\n)  (multi-line)
-    plugin_text = (repo_root / "src" / "vip" / "plugin.py").read_text()
+    plugin_text = (repo_root / "src" / "vip" / "plugin" / "configure.py").read_text()
     plugin_markers = {
         re.match(r"(\w+)", m).group(1)
         for m in re.findall(
@@ -1227,9 +1227,9 @@ def test_markers_in_sync():
     }
 
     assert pyproject_markers == plugin_markers, (
-        f"Marker mismatch between pyproject.toml and plugin.py.\n"
-        f"  Only in pyproject.toml: {pyproject_markers - plugin_markers}\n"
-        f"  Only in plugin.py:      {plugin_markers - pyproject_markers}"
+        f"Marker mismatch between pyproject.toml and plugin/configure.py.\n"
+        f"  Only in pyproject.toml:      {pyproject_markers - plugin_markers}\n"
+        f"  Only in plugin/configure.py: {plugin_markers - pyproject_markers}"
     )
 
 

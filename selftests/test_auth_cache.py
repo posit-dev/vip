@@ -569,9 +569,9 @@ class TestAuthCachePath:
 
         import vip.auth.cache
         import vip.cli.cleanup
-        import vip.plugin
+        import vip.plugin.auth
 
-        for module in (vip.cli.cleanup, vip.plugin):
+        for module in (vip.cli.cleanup, vip.plugin.auth):
             source = _Path(module.__file__).read_text()
             assert ".vip-auth-cache.json" not in source, (
                 f"{module.__name__} builds the auth cache path inline; "

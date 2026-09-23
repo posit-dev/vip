@@ -47,7 +47,7 @@ the full guide):
 Every scenario must carry a product marker: `@pytest.mark.connect`,
 `@pytest.mark.workbench`, or `@pytest.mark.package_manager`, applied
 **directly on the `@scenario` function** in the `.py` file. VIP's plugin
-(`src/vip/plugin.py`) reads these pytest markers during collection and
+(`src/vip/plugin/selection.py`) reads these pytest markers during collection and
 deselects (not skips -- removes from the run entirely) any test whose
 product is not configured in `vip.toml`.
 
@@ -134,7 +134,7 @@ Every other step in your `.feature` files is yours to define.
 
 ## Registered markers
 
-Registered in `src/vip/plugin.py` (`pytest_configure`):
+Registered in `src/vip/plugin/configure.py` (`pytest_configure`):
 
 | Marker | Meaning |
 |---|---|

@@ -16,7 +16,7 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _AGENTS_MD = _REPO_ROOT / "examples" / "_shared" / "AGENTS.md"
 _FIXTURES = _REPO_ROOT / "src" / "vip" / "fixtures.py"
-_PLUGIN = _REPO_ROOT / "src" / "vip" / "plugin.py"
+_PLUGIN = _REPO_ROOT / "src" / "vip" / "plugin" / "configure.py"
 
 # Matches a markdown table row's first cell when it's inline code, e.g.
 # "| `connect_client` | ..." or "| `min_version(product, version)` | ...".
@@ -97,5 +97,5 @@ def test_agents_md_markers_all_resolve_in_plugin():
     real = _real_marker_names()
     missing = claimed - real
     assert not missing, (
-        f"AGENTS.md documents markers that don't exist in src/vip/plugin.py: {sorted(missing)}"
+        f"AGENTS.md documents markers that don't exist in plugin/configure.py: {sorted(missing)}"
     )
