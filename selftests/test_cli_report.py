@@ -212,7 +212,7 @@ class TestRunReportFromArbitraryDir:
         report_dir = tmp_path / "report"
         report_dir.mkdir()
         (report_dir / "results.json").write_text('{"results": []}')
-        monkeypatch.setattr(cli.subprocess, "run", _fake_quarto(create_output=True))
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
 
         cli.run_report(_make_args())
 
@@ -237,7 +237,7 @@ class TestRunReportFromArbitraryDir:
         report_dir.mkdir()
         (report_dir / "results.json").write_text('{"results": []}')
         monkeypatch.chdir(report_dir)
-        monkeypatch.setattr(cli.subprocess, "run", _fake_quarto(create_output=True))
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
 
         cli.run_report(_make_args(results="results.json"))
 
@@ -270,7 +270,7 @@ class TestRunReportFromArbitraryDir:
 
         # A hostile VIRTUAL_ENV must not win over the explicit pin.
         monkeypatch.setenv("VIRTUAL_ENV", "/some/other/venv")
-        monkeypatch.setattr(cli.subprocess, "run", _capture)
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _capture)
 
         cli.run_report(_make_args())
 
@@ -286,7 +286,7 @@ class TestRunReportFromArbitraryDir:
         report_dir.mkdir()
         (report_dir / "results.json").write_text('{"results": []}')
         # quarto "succeeds" but writes nothing — the old bug rendered silently.
-        monkeypatch.setattr(cli.subprocess, "run", _fake_quarto(create_output=False))
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=False))
 
         with pytest.raises(ReportError) as exc:
             cli.run_report(_make_args())
@@ -299,7 +299,7 @@ class TestRunReportFromArbitraryDir:
         from vip.errors import ReportError
 
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(cli.subprocess, "run", _fake_quarto(create_output=True))
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
 
         with pytest.raises(ReportError) as exc:
             cli.run_report(_make_args(results=str(tmp_path / "nope.json")))
@@ -319,7 +319,7 @@ class TestRunReportFromArbitraryDir:
         def _missing_quarto(cmd, cwd=None, **kwargs):
             raise FileNotFoundError(2, "No such file or directory", cmd[0])
 
-        monkeypatch.setattr(cli.subprocess, "run", _missing_quarto)
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _missing_quarto)
 
         with pytest.raises(ReportError) as exc:
             cli.run_report(_make_args())
@@ -342,7 +342,7 @@ class TestRunReportFromArbitraryDir:
         report_dir.mkdir()
         (report_dir / "results.json").write_text('{"results": []}')
         monkeypatch.setattr(
-            cli.subprocess, "run", _fake_quarto(create_output=True, pdf_returncode=1)
+            "vip.cli.report.subprocess.run", _fake_quarto(create_output=True, pdf_returncode=1)
         )
 
         cli.run_report(_make_args())
@@ -367,7 +367,7 @@ class TestRunReportFromArbitraryDir:
             rendered.append(cmd[-1])
             return types.SimpleNamespace(returncode=3)
 
-        monkeypatch.setattr(cli.subprocess, "run", _failing_html)
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _failing_html)
 
         with pytest.raises(SystemExit) as exc:
             cli.run_report(_make_args())

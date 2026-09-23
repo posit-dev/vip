@@ -125,7 +125,7 @@ class TestHttpxVerify:
 
     def test_insecure_wins_over_ca_bundle(self, tmp_path):
         """When both insecure=True and a ca_bundle path are provided,
-        insecure wins — mirrors cli.py:391 logic.
+        insecure wins — mirrors vip.cli._common._resolve_effective_ca_bundle.
         """
         from vip.auth import _httpx_verify
 

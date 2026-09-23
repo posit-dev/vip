@@ -327,7 +327,7 @@ def _parse_uninstall(monkeypatch, *argv: str):
     from vip import cli
 
     seen: list[argparse.Namespace] = []
-    monkeypatch.setattr(cli, "run_uninstall", seen.append)
+    monkeypatch.setattr("vip.cli.app.run_uninstall", seen.append)
     monkeypatch.setattr(sys, "argv", ["vip", "uninstall", *argv])
     cli.main()
     assert seen, "run_uninstall was never reached"

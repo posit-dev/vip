@@ -32,7 +32,7 @@ def auth_cache_path() -> Path:
     """Path to the auth-session cache for the current invocation directory.
 
     Single source of truth for both call sites: ``plugin.py`` (``vip verify``)
-    and ``cli.py`` (``vip cleanup --workbench-url``).  They must agree, or
+    and ``cli/cleanup.py`` (``vip cleanup --workbench-url``).  They must agree, or
     ``cleanup`` cannot find the session ``verify`` just cached.
 
     Keyed on the *invocation* directory rather than pytest's ``config.rootpath``.

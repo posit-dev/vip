@@ -8,6 +8,7 @@ import pytest
 
 import vip.auth
 import vip.cli
+import vip.cli.app
 from vip.errors import (
     AuthConfigError,
     AuthError,
@@ -68,7 +69,7 @@ class TestCliSingleExitHandler:
         def _boom(_args):
             raise ConfigError("bad config", exit_code=3)
 
-        monkeypatch.setattr(vip.cli, "run_version", _boom)
+        monkeypatch.setattr(vip.cli.app, "run_version", _boom)
         monkeypatch.setattr(sys, "argv", ["vip", "version"])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -81,7 +82,7 @@ class TestCliSingleExitHandler:
         def _boom(_args):
             raise ReportError("quarto not found")
 
-        monkeypatch.setattr(vip.cli, "run_version", _boom)
+        monkeypatch.setattr(vip.cli.app, "run_version", _boom)
         monkeypatch.setattr(sys, "argv", ["vip", "version"])
 
         with pytest.raises(SystemExit) as exc_info:
@@ -94,7 +95,7 @@ class TestCliSingleExitHandler:
         def _boom(_args):
             raise RuntimeError("unexpected")
 
-        monkeypatch.setattr(vip.cli, "run_version", _boom)
+        monkeypatch.setattr(vip.cli.app, "run_version", _boom)
         monkeypatch.setattr(sys, "argv", ["vip", "version"])
 
         with pytest.raises(RuntimeError, match="unexpected"):

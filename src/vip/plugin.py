@@ -1425,7 +1425,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     session_start = session.config.stash.get(_session_start_key, None)
     run_duration_seconds = time.monotonic() - session_start if session_start is not None else None
     # There is no dedicated "--basic" flag on the plugin side — `vip verify
-    # --basic` (cli.py) maps to the generic pytest `-m` marker expression,
+    # --basic` (vip/cli/verify.py) maps to the generic pytest `-m` marker expression,
     # appending "not slow" to whatever categories/markers were already
     # selected. Detecting that from here means reading the resolved
     # expression back rather than a purpose-built flag, but it is also the
