@@ -53,7 +53,7 @@ jobs:
               - 'src/vip/auth/**'
               - 'src/vip/idp.py'
               - 'src/vip/config.py'
-              - 'src/vip/plugin.py'
+              - 'src/vip/plugin/**'
               - 'src/vip/cli/**'
               - 'src/vip_tests/conftest.py'
               - 'pyproject.toml'

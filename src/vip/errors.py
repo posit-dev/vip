@@ -49,7 +49,7 @@ class AuthConfigError(AuthError):
 class AuthTimeoutError(AuthConfigError):
     """Raised when a login round-trip does not complete before its deadline.
 
-    A subclass of :class:`AuthConfigError` so ``plugin.py``'s existing
+    A subclass of :class:`AuthConfigError` so ``plugin/auth.py``'s existing
     ``except AuthConfigError`` handler (which converts it to a clean
     ``pytest.UsageError`` rather than an ``INTERNALERROR`` traceback) picks
     this up too, with no change to that handler required. See #263.

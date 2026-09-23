@@ -485,7 +485,7 @@ def wait_for_deploy(connect_client, deploy_state, vip_config, record_property):
     A retry that fixes the deploy leaves the test PASSING, so a plain
     ``print`` alone is not enough evidence for anyone auditing a green run --
     pytest's plugin only surfaces captured stdout for failed/errored tests
-    (see ``src/vip/plugin.py``), and CI's ``--junitxml`` output has no stdout
+    (see ``src/vip/plugin/results.py``), and CI's ``--junitxml`` output has no stdout
     field for a pass either. ``record_property`` writes a ``<property>`` onto
     the JUnit XML testcase itself, which survives regardless of outcome (and
     survives under this suite's ``-n auto --dist loadgroup`` xdist config --

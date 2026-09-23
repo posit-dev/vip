@@ -180,9 +180,9 @@ def _stop_plugin_heartbeat_before_gevent() -> None:
     or misbehave when non-gevent ``threading.Thread`` instances are alive.
     Every code path that imports locust/gevent must call this first.
     """
-    import vip.plugin as _plugin
+    from vip.plugin import state as _plugin_state
 
-    heartbeat = getattr(_plugin, "_current_heartbeat", None)
+    heartbeat = _plugin_state._current_heartbeat
     if heartbeat is not None:
         heartbeat.stop()
 

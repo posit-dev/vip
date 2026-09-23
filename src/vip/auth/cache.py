@@ -31,7 +31,7 @@ AUTH_CACHE_FILENAME = ".vip-auth-cache.json"
 def auth_cache_path() -> Path:
     """Path to the auth-session cache for the current invocation directory.
 
-    Single source of truth for both call sites: ``plugin.py`` (``vip verify``)
+    Single source of truth for both call sites: ``plugin/auth.py`` (``vip verify``)
     and ``cli/cleanup.py`` (``vip cleanup --workbench-url``).  They must agree, or
     ``cleanup`` cannot find the session ``verify`` just cached.
 

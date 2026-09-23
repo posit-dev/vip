@@ -54,7 +54,7 @@ def _cleanup_workbench_sessions(
     insecure = config.insecure
     ca_bundle = config.ca_bundle
     proxy = config.proxy
-    # Same helper plugin.py uses, so this finds the session a prior `vip verify`
+    # Same helper plugin/auth.py uses, so this finds the session a prior `vip verify`
     # from this directory cached.
     cache_path = auth_cache_path()
 

@@ -280,7 +280,7 @@ class TestStartInteractiveAuthPollLoop:
     def test_timeout_raises_auth_timeout_error(self, monkeypatch):
         """If the URL never satisfies the completion condition before the
         deadline, the loop must raise AuthTimeoutError (a clean pytest
-        exit via plugin.py's AuthConfigError handler, not INTERNALERROR --
+        exit via plugin/auth.py's AuthConfigError handler, not INTERNALERROR --
         see #263) rather than continue or return silently.
         """
         from vip import auth as auth_mod
@@ -835,7 +835,7 @@ class TestWaitForProductRedirectTimeout:
 
 class TestAuthTimeoutErrorHierarchy:
     """AuthTimeoutError must subclass AuthConfigError -- that relationship
-    is what lets plugin.py's existing ``except AuthConfigError`` handler
+    is what lets plugin/auth.py's existing ``except AuthConfigError`` handler
     convert a timeout into a clean ``pytest.UsageError`` instead of an
     INTERNALERROR traceback, with no change to that handler (see #263).
     """
