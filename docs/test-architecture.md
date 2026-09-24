@@ -218,6 +218,7 @@ Straightforward HTTP calls that map requests and responses.
 def navigate_to_login(page, connect_url):
     page.goto(f"{connect_url}/__login__")
 
+
 @when("enters valid credentials")
 def enter_credentials(page, test_username, test_password):
     page.fill("[name='username']", test_username)

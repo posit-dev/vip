@@ -36,7 +36,7 @@ Or with just:
 just check
 ```
 
-Ruff's rule set is the `select` list in `pyproject.toml` under `[tool.ruff.lint]`; do not restate it here. Line length is 100. The whole repository must pass, not just `src/`, `selftests/`, `examples/` and `docker/` -- CI's ruff action already covers `scripts/` too, since it appends the repo root to its arguments, so run these commands from the repo root to match. The ruff version is pinned in three places that must move together: `.github/workflows/ci.yml`, `.pre-commit-config.yaml`, and the `dev` extra in `pyproject.toml`. Bump all three in the same commit -- do not change one without the others.
+Ruff's rule set is the `select` list in `pyproject.toml` under `[tool.ruff.lint]`; do not restate it here. Line length is 100. The whole repository must pass, not just `src/`, `selftests/`, `examples/` and `docker/` -- CI's ruff action already covers `scripts/` too, since it appends the repo root to its arguments, so run these commands from the repo root to match. The ruff version is pinned exactly once, as `ruff==<version>` in the `dev` extra in `pyproject.toml` (and `uv.lock`); CI's `astral-sh/ruff-action` steps and the local pre-commit hook both read that pin instead of carrying their own copy. Bump it there (Dependabot normally does) and everything else follows -- do not add a version elsewhere.
 
 Auto-fix before committing:
 
@@ -145,9 +145,11 @@ Example step file (`src/vip_tests/connect/test_auth.py`):
 ``` python
 from pytest_bdd import scenario, given, when, then
 
+
 @scenario("test_auth.feature", "Admin can log in via the web UI")
 def test_login():
     pass
+
 
 @given("Connect is accessible at the configured URL")
 def connect_accessible(connect_client):
@@ -348,7 +350,7 @@ Every render also produces `_output/vip-report.pdf` from `report/vip-report.qmd`
 
 ## CI workflows
 
--   **`ci.yml`** -- on every PR/push: ruff lint/format (pinned to 0.15.0), mypy type-check, zizmor actions-lint, a runtime dependency audit, and selftests (Ubuntu + macOS, Python 3.10 and 3.12). A `changes` path-filter gates the expensive jobs, while `Lint & Format`, `Selftests Status` and `CI Status` always run as required checks. Uses uv cache. `CI Status` is the scope-aware aggregator for the four path-gated jobs (`Type Check`, `Actions Lint (zizmor)`, `Dependency Audit`, `Lockfile Guard`): none of them can be a required check directly, because each is conditional on `changes` and a failed change-detection job would skip them all and report a green gate. A legitimately skipped job counts as passing; only failure or cancellation is fatal.
+-   **`ci.yml`** -- on every PR/push: ruff lint/format (version resolved from `pyproject.toml`'s `dev` extra by `astral-sh/ruff-action`), mypy type-check, zizmor actions-lint, a runtime dependency audit, and selftests (Ubuntu + macOS, Python 3.10 and 3.12). A `changes` path-filter gates the expensive jobs, while `Lint & Format`, `Selftests Status` and `CI Status` always run as required checks. Uses uv cache. `CI Status` is the scope-aware aggregator for the four path-gated jobs (`Type Check`, `Actions Lint (zizmor)`, `Dependency Audit`, `Lockfile Guard`): none of them can be a required check directly, because each is conditional on `changes` and a failed change-detection job would skip them all and report a green gate. A legitimately skipped job counts as passing; only failure or cancellation is fatal.
 -   **`copilot-setup-steps.yml`** -- on `workflow_dispatch` and pushes that touch the workflow file itself, checks out the repo and installs uv so GitHub Copilot's coding agent has a working environment. The job must be named exactly `copilot-setup-steps` for Copilot to recognize it, and runs with `contents: read` only since Copilot supplies its own scoped token.
 -   **`security-audit.yml`** -- `schedule` (daily) plus `workflow_dispatch`; audits the full dependency tree (`uv sync --all-extras`, `pip-audit`), unlike `ci.yml`'s PR-time audit which is scoped to shipped runtime deps. A vulnerability here never blocks a PR -- it opens or refreshes a single tracking issue instead, so a newly disclosed CVE in the wild doesn't turn unrelated PRs red.
 -   **`preview.yml`** -- runs selftests, renders Quarto report, publishes PR preview to gh-pages via `rossjrw/pr-preview-action@v1`. Uses uv and Quarto caches.
@@ -434,7 +436,7 @@ Register warning filters in `src/vip/plugin/configure.py::pytest_configure` (via
 
 -   Forgetting to include `examples/` in ruff check paths.
 -   Using `Markdown()` without `display()` in Quarto `.qmd` files.
--   Changing the ruff version in only one of `ci.yml`, `.pre-commit-config.yaml`, or the `dev` extra in `pyproject.toml` -- all three must move together.
+-   Adding a ruff version anywhere other than the `dev` extra in `pyproject.toml` -- `ci.yml` and `.pre-commit-config.yaml` must keep reading the pin, not carrying their own copy.
 -   Adding product SDK imports (use httpx directly).
 -   Writing tests that modify or delete existing customer content.
 -   Adding a Workbench scenario that ends the shared auth session (sign-out, session revocation, password change) without ordering it last *and* restoring the session afterwards. Under `--interactive-auth` / `--headless-auth` every Workbench scenario shares one account, so ending that session breaks every scenario still running on other xdist workers, plus the cached auth session on disk. `test_workbench_signout` is the worked example.

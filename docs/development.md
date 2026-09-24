@@ -52,10 +52,11 @@ and CI enforces both regardless of whether the hook is installed.
 uvx pre-commit install
 ```
 
-The hook's `rev: v0.15.0` pin must move together with the ruff version pinned
-in `ci.yml` and the `dev` extra's `ruff` range in `pyproject.toml` -- see
-AGENTS.md's "Common mistakes to avoid" for why letting them drift apart makes
-a PR pass locally and fail in CI, or the reverse.
+The ruff version is pinned exactly once, as `ruff==<version>` in the `dev`
+extra in `pyproject.toml` (and `uv.lock`). Dependabot bumps that one pin; CI's
+`astral-sh/ruff-action` steps and the local pre-commit hook both read it
+instead of carrying their own copy, so they can't drift out of sync -- see
+AGENTS.md's "Common mistakes to avoid" for the history of why that mattered.
 
 ## Type checking
 
@@ -120,7 +121,7 @@ predictable (see [#399](https://github.com/posit-dev/vip/issues/399)):
 - **Next-major caps** (e.g. `requests>=2.33.0,<3`) on every other runtime
   dependency, so a breaking major release cannot land on install. The `report`
   and `load` optional groups are capped the same way; the `dev` group is left
-  uncapped by this policy (aside from `ruff`'s pre-existing narrow range).
+  uncapped by this policy (aside from `ruff`'s pre-existing exact pin).
 
 Bumps flow through Dependabot's `uv` job (weekly, 7-day cooldown): it raises the
 pin or cap in `pyproject.toml` and updates `uv.lock` in one PR, which CI gates
