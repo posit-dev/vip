@@ -68,6 +68,7 @@ from collections.abc import Generator
 import pytest
 from pytest_bdd import given
 
+import vip.fixtures
 from vip.auth import resolve_url_scheme
 from vip.client_auth import build_client_auth
 from vip.clients.connect import ConnectClient
@@ -76,6 +77,7 @@ from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
 from vip.config import PerformanceConfig, VIPConfig
 from vip.errors import ConfigError
+from vip.proxy import build_proxy_map, chromium_launch_args, playwright_proxy
 from vip.stash import (
     _auth_mode_key,
     _auth_session_key,
@@ -385,8 +387,6 @@ def _ui_browser_proxy(vip_config: VIPConfig) -> dict[str, str] | None:
     ``None`` (no proxy applies) leaves the browser args untouched, so the default
     stays exactly as pytest-playwright had it.
     """
-    from vip.proxy import build_proxy_map, playwright_proxy
-
     for pc in (vip_config.workbench, vip_config.connect, vip_config.package_manager):
         if not pc.url:
             continue
@@ -408,8 +408,6 @@ def _ui_browser_launch_args(vip_config: VIPConfig) -> list[str]:
     environment or system settings, which would proxy the browser while every
     httpx call goes direct. See :func:`vip.proxy.chromium_launch_args`.
     """
-    from vip.proxy import chromium_launch_args
-
     return chromium_launch_args(vip_config.proxy)
 
 
@@ -591,6 +589,4 @@ def register(config: pytest.Config) -> None:
     name = "vip-fixtures"
     if config.pluginmanager.has_plugin(name):
         return
-    import vip.fixtures as _fixtures_module
-
-    config.pluginmanager.register(_fixtures_module, name=name)
+    config.pluginmanager.register(vip.fixtures, name=name)

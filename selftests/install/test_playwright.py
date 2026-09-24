@@ -78,24 +78,19 @@ def test_expected_chromium_revision_reads_browsers_json():
     assert rev.isdigit()
 
 
-def test_expected_chromium_revision_returns_none_on_broken_import(monkeypatch):
-    """A corrupted Playwright install can fail at import time with errors
-    other than ImportError (e.g. SyntaxError, RuntimeError raised by code at
-    module load). The function must still return None so `vip install` can
+def test_expected_chromium_revision_returns_none_when_module_path_unresolvable(monkeypatch):
+    """Playwright is a hard dependency, hoisted to module scope (see #737), so a
+    corrupted install now fails at process startup rather than here. The
+    remaining defensive path is a Playwright module object whose ``__file__``
+    can't be resolved into a path (e.g. a namespace package with no file
+    attribute) -- the function must still return None so `vip install` can
     fall back to the loose chromium-* check instead of crashing.
     """
-    import builtins
-    import sys
 
-    real_import = builtins.__import__
+    class _FakePlaywrightModule:
+        pass
 
-    def fake_import(name, *args, **kwargs):
-        if name == "playwright":
-            raise RuntimeError("playwright package is corrupted")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.delitem(sys.modules, "playwright", raising=False)
-    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr(pw, "playwright", _FakePlaywrightModule())
     assert pw.expected_chromium_revision() is None
 
 

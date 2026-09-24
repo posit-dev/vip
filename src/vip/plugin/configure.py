@@ -11,9 +11,11 @@ from pathlib import Path
 import pytest
 
 from vip.config import load_config
+from vip.fixtures import register as _register_fixtures
 from vip.plugin import state
 from vip.plugin.auth import _configure_auth
 from vip.plugin.terminal import _install_location_shortener, _install_progress_recolor
+from vip.proxy import build_proxy_map
 from vip.stash import (
     _auth_mode_key,
     _auth_session_key,
@@ -37,14 +39,9 @@ def pytest_configure(config: pytest.Config) -> None:
     # Register VIP's core fixtures and shared BDD steps as their own pytest
     # plugin (see vip.fixtures' module docstring for why: directory-scoped
     # conftest.py fixtures are invisible to extension directories loaded via
-    # --vip-extensions, issue #609). Deferred import: this is a load-time
-    # cost choice, not a cycle guard -- vip.fixtures no longer imports from
-    # this module -- so importing it here means every pytest process that
-    # never runs a VIP-collected session doesn't pay for it. Runs once per
-    # pytest process, so xdist workers register it too (each is a fresh
-    # process that goes through pytest_configure independently).
-    from vip.fixtures import register as _register_fixtures
-
+    # --vip-extensions, issue #609). Runs once per pytest process, so xdist
+    # workers register it too (each is a fresh process that goes through
+    # pytest_configure independently).
     _register_fixtures(config)
 
     # Register the canonical warning filters in the plugin so they apply
@@ -163,8 +160,6 @@ def pytest_configure(config: pytest.Config) -> None:
         # bailing when there is no vip.toml -- so without the gate, a lone
         # http_proxy would make an unrelated project's pytest run announce
         # egress behavior for a run that makes no egress at all.
-        from vip.proxy import build_proxy_map
-
         build_proxy_map(vip_cfg.proxy)
 
     _configure_auth(config, vip_cfg)

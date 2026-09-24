@@ -18,10 +18,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import vip.auth
 import vip.cli
 import vip.cli.cleanup
-import vip.workbench_ui
 from vip.auth import InteractiveAuthSession
 from vip.clients.workbench import is_vip_session
 
@@ -122,7 +120,7 @@ class TestConnectWorkbenchRouting:
             def cleanup_vip_content(self):
                 return 3
 
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         def _fail(*a, **k):
             pytest.fail("workbench cleanup should not run without a workbench URL")
@@ -144,7 +142,7 @@ class TestConnectWorkbenchRouting:
         def _fail(*a, **k):
             pytest.fail("Connect client should not be constructed without a Connect URL")
 
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _fail)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _fail)
 
         called = {}
         monkeypatch.setattr(
@@ -174,7 +172,7 @@ class TestConnectWorkbenchRouting:
             def cleanup_vip_content(self):
                 return 1
 
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         called = {}
         monkeypatch.setattr(
@@ -211,7 +209,7 @@ class TestConnectWorkbenchRouting:
             def cleanup_vip_content(self):
                 return 0
 
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         vip.cli.run_cleanup(_make_args(connect_url="https://c.example.com"))
 
@@ -249,14 +247,14 @@ class TestWorkbenchAuthModeSelection:
             client._remaining_sessions = remaining or []
             return client
 
-        monkeypatch.setattr("vip.clients.workbench.WorkbenchClient", _fake_client_ctor)
-        monkeypatch.setattr(vip.workbench_ui, "quit_vip_sessions_via_ui", lambda page, url, **k: 0)
+        monkeypatch.setattr("vip.cli.cleanup.WorkbenchClient", _fake_client_ctor)
+        monkeypatch.setattr(vip.cli.cleanup, "quit_vip_sessions_via_ui", lambda page, url, **k: 0)
 
         @contextmanager
         def _fake_authenticated_page(session, **kwargs):
             yield MagicMock()
 
-        monkeypatch.setattr(vip.auth, "authenticated_page", _fake_authenticated_page)
+        monkeypatch.setattr(vip.cli.cleanup, "authenticated_page", _fake_authenticated_page)
 
     def test_uses_headless_auth_when_test_credentials_configured(self, tmp_path, monkeypatch):
         from vip.config import VIPConfig
@@ -269,12 +267,12 @@ class TestWorkbenchAuthModeSelection:
             calls["headless"] = kwargs
             return _fake_session(tmp_path)
 
-        monkeypatch.setattr(vip.auth, "start_headless_auth", _fake_headless)
+        monkeypatch.setattr(vip.cli.cleanup, "start_headless_auth", _fake_headless)
 
         def _fail_interactive(**kwargs):
             pytest.fail("start_interactive_auth should not be called when creds are configured")
 
-        monkeypatch.setattr(vip.auth, "start_interactive_auth", _fail_interactive)
+        monkeypatch.setattr(vip.cli.cleanup, "start_interactive_auth", _fail_interactive)
 
         config = VIPConfig()
         config.auth.username = "admin"
@@ -293,7 +291,7 @@ class TestWorkbenchAuthModeSelection:
         def _fail_headless(**kwargs):
             pytest.fail("start_headless_auth should not be called without credentials")
 
-        monkeypatch.setattr(vip.auth, "start_headless_auth", _fail_headless)
+        monkeypatch.setattr(vip.cli.cleanup, "start_headless_auth", _fail_headless)
 
         calls = {}
 
@@ -301,7 +299,7 @@ class TestWorkbenchAuthModeSelection:
             calls["interactive"] = kwargs
             return _fake_session(tmp_path)
 
-        monkeypatch.setattr(vip.auth, "start_interactive_auth", _fake_interactive)
+        monkeypatch.setattr(vip.cli.cleanup, "start_interactive_auth", _fake_interactive)
 
         config = VIPConfig()
         config.auth.username = ""
@@ -319,7 +317,7 @@ class TestWorkbenchAuthModeSelection:
         def _boom(**kwargs):
             raise AuthConfigError("no credentials")
 
-        monkeypatch.setattr(vip.auth, "start_interactive_auth", _boom)
+        monkeypatch.setattr(vip.cli.cleanup, "start_interactive_auth", _boom)
 
         config = VIPConfig()
         config.auth.username = ""
@@ -338,7 +336,7 @@ class TestWorkbenchAuthModeSelection:
         def _boom(**kwargs):
             raise RuntimeError("browser crashed")
 
-        monkeypatch.setattr(vip.auth, "start_interactive_auth", _boom)
+        monkeypatch.setattr(vip.cli.cleanup, "start_interactive_auth", _boom)
 
         config = VIPConfig()
         config.auth.username = ""
@@ -361,7 +359,9 @@ class TestWorkbenchUiEscalation:
     def _run(self, tmp_path, monkeypatch, *, api_reachable, remaining, count=None):
         from vip.config import VIPConfig
 
-        monkeypatch.setattr(vip.auth, "start_interactive_auth", lambda **k: _fake_session(tmp_path))
+        monkeypatch.setattr(
+            vip.cli.cleanup, "start_interactive_auth", lambda **k: _fake_session(tmp_path)
+        )
 
         def _fake_client_ctor(*args, **kwargs):
             client = _FakeWorkbenchClient(*args, **kwargs)
@@ -370,11 +370,11 @@ class TestWorkbenchUiEscalation:
             client._vip_count = count
             return client
 
-        monkeypatch.setattr("vip.clients.workbench.WorkbenchClient", _fake_client_ctor)
+        monkeypatch.setattr("vip.cli.cleanup.WorkbenchClient", _fake_client_ctor)
 
         ui_calls: list[str] = []
         monkeypatch.setattr(
-            vip.workbench_ui,
+            vip.cli.cleanup,
             "quit_vip_sessions_via_ui",
             lambda page, url, **k: ui_calls.append(url) or 0,
         )
@@ -383,7 +383,7 @@ class TestWorkbenchUiEscalation:
         def _fake_authenticated_page(session, **kwargs):
             yield MagicMock()
 
-        monkeypatch.setattr(vip.auth, "authenticated_page", _fake_authenticated_page)
+        monkeypatch.setattr(vip.cli.cleanup, "authenticated_page", _fake_authenticated_page)
 
         config = VIPConfig()
         config.auth.username = ""
@@ -489,7 +489,7 @@ class TestCleanupTLSFlags:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         assert not (tmp_path / "vip.toml").exists()
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         vip.cli.run_cleanup(_make_args(connect_url="https://c.example.com", insecure=True))
 
@@ -500,7 +500,7 @@ class TestCleanupTLSFlags:
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         bundle = tmp_path / "ca.pem"
         bundle.write_text("fake-pem")
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         vip.cli.run_cleanup(_make_args(connect_url="https://c.example.com", ca_bundle=bundle))
 
@@ -512,7 +512,7 @@ class TestCleanupTLSFlags:
         (tmp_path / "vip.toml").write_text(
             '[connect]\nurl = "https://c.example.com"\n\n[tls]\ninsecure = true\n'
         )
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         vip.cli.run_cleanup(_make_args())
 
@@ -526,7 +526,7 @@ class TestCleanupTLSFlags:
         (tmp_path / "vip.toml").write_text(
             f'[connect]\nurl = "https://c.example.com"\n\n[tls]\nca_bundle = "{bundle}"\n'
         )
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         vip.cli.run_cleanup(_make_args())
 
@@ -539,7 +539,7 @@ class TestCleanupTLSFlags:
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         bundle = tmp_path / "ca.pem"
         bundle.write_text("fake-pem")
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         vip.cli.run_cleanup(
             _make_args(connect_url="https://c.example.com", insecure=True, ca_bundle=bundle)
@@ -568,7 +568,7 @@ class TestCleanupTLSFlags:
             f'[connect]\nurl = "https://c.example.com"\n\n'
             f'[tls]\ninsecure = true\nca_bundle = "{bundle}"\n'
         )
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         vip.cli.run_cleanup(_make_args())
 

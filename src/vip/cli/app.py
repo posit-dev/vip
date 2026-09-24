@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from vip import __version__
 from vip.cli.auth import mint_connect_key
 from vip.cli.cleanup import run_cleanup
 from vip.cli.install import run_install, run_uninstall
@@ -45,8 +46,6 @@ def _reorder_help_args(argv: list[str], commands: set[str]) -> list[str]:
 
 def main() -> None:
     """Main entry point for the VIP CLI."""
-    from vip import __version__
-
     parser = argparse.ArgumentParser(
         prog="vip", description="VIP verification and credential tools"
     )
