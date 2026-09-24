@@ -62,6 +62,7 @@ directly.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Generator
 
 import pytest
@@ -465,8 +466,6 @@ def browser_context_args(
         browser_context_args["ignore_https_errors"] = True
     # The proxy is applied at launch (see browser_type_launch_args), not here.
     if vip_config.ca_bundle is not None:
-        import os
-
         _prev = os.environ.get("NODE_EXTRA_CA_CERTS")
         os.environ["NODE_EXTRA_CA_CERTS"] = str(vip_config.ca_bundle)
 

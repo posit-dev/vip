@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib.resources
 import os
+import shutil
 import subprocess
 import sys
+import webbrowser
 from pathlib import Path
 
 from vip.errors import ReportError
@@ -44,8 +47,6 @@ def _copy_report_templates(src: Path, report_dir: Path) -> list[str]:
     pre-existing files that were overwritten with different content are
     reported (fresh copies into an empty directory are not).
     """
-    import shutil
-
     replaced = []
     for name in _REPORT_TEMPLATE_FILES:
         candidate = src / name
@@ -76,8 +77,6 @@ def _ensure_report_templates(report_dir: Path) -> bool:
     that the refresh did overwrite, so local template customizations never
     disappear silently.
     """
-    import importlib.resources
-
     replaced: list[str] = []
 
     # Bundled wheel copy: refresh templates into the working directory. Only
@@ -132,9 +131,6 @@ def _resolve_report_dir() -> Path:
 
 def run_report(args: argparse.Namespace) -> None:
     """Render the Quarto report from a results.json file."""
-    import shutil
-    import webbrowser
-
     report_dir = _resolve_report_dir()
     report_dir.mkdir(parents=True, exist_ok=True)
 

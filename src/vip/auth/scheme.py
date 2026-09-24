@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import socket
 import ssl
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 import httpx
 
@@ -90,9 +92,6 @@ def _tls_listener_present(url: str, *, timeout: float) -> bool:
     the property wanted here, since every reason it can fail means the same
     thing -- there is a TLS listener, not an empty port.
     """
-    import socket
-    from urllib.parse import urlparse
-
     parsed = urlparse(url)
     host = parsed.hostname
     if not host:

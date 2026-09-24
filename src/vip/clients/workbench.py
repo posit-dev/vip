@@ -11,6 +11,7 @@ import re
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -111,8 +112,6 @@ def jupyterlab_contents_delete_url(page_url: str, notebook_name: str) -> str:
     in a renamed notebook do not break the path.  Any leading slashes on the
     name are stripped so the result is always ``<app_base>/api/contents/<name>``.
     """
-    from urllib.parse import quote
-
     base = jupyterlab_app_base(page_url)
     clean = notebook_name.strip().lstrip("/")
     return f"{base}/api/contents/{quote(clean)}"

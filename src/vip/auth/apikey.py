@@ -6,6 +6,7 @@ import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 from playwright.sync_api import (
@@ -314,8 +315,6 @@ def _resolve_connect_api_base(
     with ``trust_env=False`` so the resolved per-URL proxy (which honours
     NO_PROXY) is authoritative rather than httpx re-reading the environment.
     """
-    from urllib.parse import urlparse, urlunparse
-
     if not connect_url:
         return connect_url
 

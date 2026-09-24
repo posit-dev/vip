@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 
@@ -27,8 +28,6 @@ def _resolve_effective_ca_bundle(insecure: bool, ca_bundle: Path | None) -> Path
     in ``selftests/test_cli_cleanup.py`` and its uninstall counterpart.
     """
     if insecure and ca_bundle:
-        import warnings
-
         # stacklevel=2 attributes the warning to this helper's direct caller
         # (_generate_temp_config / _load_cleanup_config / run_uninstall).
         # Before this logic was extracted, the inline warnings.warn() in

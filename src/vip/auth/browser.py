@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from collections.abc import Iterator
@@ -145,11 +146,9 @@ class InteractiveAuthSession:
         missing, unreadable, or unparseable (graceful degradation for the
         config-API-key path where no interactive auth ran).
         """
-        import json as _json
-
         cookies = httpx.Cookies()
         try:
-            raw = _json.loads(self.storage_state_path.read_text())
+            raw = json.loads(self.storage_state_path.read_text())
             if not isinstance(raw, dict):
                 return cookies
             for c in raw.get("cookies", []):
@@ -188,8 +187,6 @@ class InteractiveAuthSession:
         if not meta_path.exists():
             return False
         try:
-            import json
-
             # Validate the cache state file is parseable JSON.  A corrupt
             # state file would make Playwright's ``storage_state=`` load
             # fail on the next run; treating it as a live reference would

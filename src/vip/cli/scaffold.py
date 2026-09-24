@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib.resources
+import shutil
 import sys
 from pathlib import Path
 
@@ -45,8 +47,6 @@ def _resolve_scaffold_source(dirname: str, stack: contextlib.ExitStack) -> Path 
     holds open across the copy -- the same pattern _ensure_report_templates
     uses for the bundled Quarto templates.
     """
-    import importlib.resources
-
     try:
         scaffold_pkg = importlib.resources.files("vip") / "_scaffold" / dirname
         # files() returns a Traversable; we need a real Path for shutil.copytree.
@@ -90,8 +90,6 @@ def _scaffold_next_steps(template: str, dest: Path) -> str:
 
 def run_scaffold(args: argparse.Namespace) -> None:
     """Copy a scaffold template to a user-specified directory, or list templates."""
-    import shutil
-
     if getattr(args, "list", False):
         print("Available templates:\n")
         for name, (_dirname, description) in _SCAFFOLD_TEMPLATES.items():

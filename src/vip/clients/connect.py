@@ -6,8 +6,10 @@ avoid tight coupling to a particular release of the Connect client library.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -156,8 +158,6 @@ class ConnectClient(BaseClient):
         total while it is still present (at least one attempt is always made,
         even if *retries* is 0).  Returns True once it is confirmed gone.
         """
-        import time
-
         for attempt in range(max(1, retries)):
             try:
                 resp = self._client.delete(f"/v1/content/{guid}")
@@ -229,8 +229,6 @@ class ConnectClient(BaseClient):
         task finishing, returns the most recent (unfinished) task dict so that
         callers can inspect the output and report an appropriate failure.
         """
-        import time
-
         effective_timeout = scaled(60.0) if timeout is None else timeout
         deadline = time.time() + effective_timeout
         task: dict[str, Any] = {}
@@ -377,8 +375,6 @@ class ConnectClient(BaseClient):
         when ALL of scheme, hostname, and effective port match the client's
         base URL, and the target scheme is http or https.
         """
-        from urllib.parse import urljoin, urlparse
-
         from vip.proxy import proxy_for_url, verify_with_env_ca
 
         origin = urlparse(self.base_url)
@@ -470,8 +466,6 @@ class ConnectClient(BaseClient):
         self, check_id: str | int, timeout: float | None = None
     ) -> dict[str, Any]:
         """Poll a system check run until it completes or timeout is reached."""
-        import time
-
         transient_status_codes = {404, 502, 503, 504}
         effective_timeout = scaled(300.0) if timeout is None else timeout
         deadline = time.time() + effective_timeout
