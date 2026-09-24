@@ -23,28 +23,15 @@ Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `py
 
 ## Code quality
 
-Ruff is the linter and formatter; CI enforces both. Always run checks before committing. See
-[docs/development.md](docs/development.md#linting-and-formatting) for the commands (`just
-check`/`just fix`, or the no-`just` ruff invocations), why they must run from the repo root, and
-the single-pin rule for the ruff version -- this file does not duplicate that.
+Ruff is the linter and formatter; CI enforces both. Always run checks before committing. See [docs/development.md](docs/development.md#linting-and-formatting) for the commands (`just check`/`just fix`, or the no-`just` ruff invocations), why they must run from the repo root, and the single-pin rule for the ruff version -- this file does not duplicate that.
 
 ## Comments
 
-A comment says what the code does and why, in one or two sentences. Change history belongs in
-git and PR descriptions, not in the source -- don't leave a comment narrating what a line used
-to do or which PR changed it; the blame log already has that.
+A comment says what the code does and why, in one or two sentences. Change history belongs in git and PR descriptions, not in the source -- don't leave a comment narrating what a line used to do or which PR changed it; the blame log already has that.
 
 ## Error handling
 
-Framework code raises a `VipError` subclass (`src/vip/errors.py`) instead of calling `sys.exit`.
-`src/vip/cli/app.py`'s `except VipError` handler is the *only* place that catches it -- it is the
-single top-level dispatch that maps an error to a process exit code, and it is the only
-`except VipError` in the repository. Test code under `src/vip_tests/` never catches `VipError`;
-if a client call raises one, let it propagate so the test fails with the real cause instead of a
-laundered message (see docs/test-architecture.md's "Fail, warn, or skip" section). A broad
-`except Exception` is allowed only where an exception is genuinely tolerated (not translated into
-a more specific error and re-raised) -- mark it `# noqa: BLE001` and add a comment naming what is
-being tolerated and why, the way `src/vip/workbench_ui.py` does at each of its blind excepts.
+Framework code raises a `VipError` subclass (`src/vip/errors.py`) instead of calling `sys.exit`. `src/vip/cli/app.py`'s `except VipError` handler is the single top-level place that maps an error to a process exit code. Test steps and assertions under `src/vip_tests/` don't catch `VipError`; if a client call raises one, let it propagate so the test fails with the real cause instead of a laundered message (see docs/test-architecture.md's "Fail, warn, or skip" section). The exception is best-effort teardown: the end-of-run Connect sweep in `src/vip_tests/conftest.py` catches `ProductUnreachableError` and logs it, so a failed cleanup can't turn a green run red. A broad `except Exception` is allowed only where an exception is genuinely tolerated (not translated into a more specific error and re-raised) -- mark it `# noqa: BLE001` and add a comment naming what is being tolerated and why, the way `src/vip/workbench_ui.py` does at each of its blind excepts.
 
 ## Testing
 
@@ -297,11 +284,7 @@ The plugin loads config via `--vip-config` or defaults to `./vip.toml`. If no co
 
 ## Outbound proxy support
 
-`src/vip/proxy.py` is the single source of truth that makes VIP's three HTTP egress paths
-(product API clients, bare httpx calls, and Playwright's Chromium) agree on which proxy to use,
-including a deliberate divergence from httpx for a lone `HTTP_PROXY` and the Chromium-specific
-bypass-list translation `NO_PROXY` needs. See [docs/proxy.md](docs/proxy.md) for the full design
-and the sharp edges to know before touching it.
+`src/vip/proxy.py` is the single source of truth that makes VIP's three HTTP egress paths (product API clients, bare httpx calls, and Playwright's Chromium) agree on which proxy to use, including a deliberate divergence from httpx for a lone `HTTP_PROXY` and the Chromium-specific bypass-list translation `NO_PROXY` needs. See [docs/proxy.md](docs/proxy.md) for the full design and the sharp edges to know before touching it.
 
 ## Workbench session ownership (parallel safety)
 
