@@ -9,6 +9,13 @@ on:
 
 jobs:
   weekly-summary:
+    # Skip PRs from forks: this job assumes an AWS role and runs Claude over
+    # contributor-authored PR titles. Scheduled and manual runs always pass.
+    # Also skip dependabot PRs: their secrets store lacks the AWS/Slack secrets.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
