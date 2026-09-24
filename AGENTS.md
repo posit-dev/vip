@@ -23,26 +23,28 @@ Use `uv run` to execute all commands (pytest, ruff, quarto). Do not use bare `py
 
 ## Code quality
 
-Ruff is the linter and formatter. CI enforces both. Always run checks before committing:
+Ruff is the linter and formatter; CI enforces both. Always run checks before committing. See
+[docs/development.md](docs/development.md#linting-and-formatting) for the commands (`just
+check`/`just fix`, or the no-`just` ruff invocations), why they must run from the repo root, and
+the single-pin rule for the ruff version -- this file does not duplicate that.
 
-``` bash
-uv run --extra dev ruff check .
-uv run --extra dev ruff format --check .
-```
+## Comments
 
-Or with just:
+A comment says what the code does and why, in one or two sentences. Change history belongs in
+git and PR descriptions, not in the source -- don't leave a comment narrating what a line used
+to do or which PR changed it; the blame log already has that.
 
-``` bash
-just check
-```
+## Error handling
 
-Ruff's rule set is the `select` list in `pyproject.toml` under `[tool.ruff.lint]`; do not restate it here. Line length is 100. The whole repository must pass, not just `src/`, `selftests/`, `examples/` and `docker/` -- CI's ruff action already covers `scripts/` too, since it appends the repo root to its arguments, so run these commands from the repo root to match. The ruff version is pinned exactly once, as `ruff==<version>` in the `dev` extra in `pyproject.toml` (and `uv.lock`); CI's `astral-sh/ruff-action` steps and the local pre-commit hook both read that pin instead of carrying their own copy. Bump it there (Dependabot normally does) and everything else follows -- do not add a version elsewhere.
-
-Auto-fix before committing:
-
-``` bash
-just fix
-```
+Framework code raises a `VipError` subclass (`src/vip/errors.py`) instead of calling `sys.exit`.
+`src/vip/cli/app.py`'s `except VipError` handler is the *only* place that catches it -- it is the
+single top-level dispatch that maps an error to a process exit code, and it is the only
+`except VipError` in the repository. Test code under `src/vip_tests/` never catches `VipError`;
+if a client call raises one, let it propagate so the test fails with the real cause instead of a
+laundered message (see docs/test-architecture.md's "Fail, warn, or skip" section). A broad
+`except Exception` is allowed only where an exception is genuinely tolerated (not translated into
+a more specific error and re-raised) -- mark it `# noqa: BLE001` and add a comment naming what is
+being tolerated and why, the way `src/vip/workbench_ui.py` does at each of its blind excepts.
 
 ## Testing
 
@@ -194,6 +196,7 @@ Key principles:
 | `src/vip/auth/` | Interactive and headless browser authentication for OIDC providers, split into `browser.py` (Chromium launch, `InteractiveAuthSession`), `cache.py`, `flows.py` (`start_interactive_auth`, `start_headless_auth`), `sso.py`, `workbench.py`, `scheme.py` (`resolve_url_scheme`) and `apikey.py` (Connect API-key minting); `__init__.py` re-exports the names callers import from `vip.auth`, but a selftest must patch a helper on the submodule that calls it; `authenticated_page` opens a headless page from a cached auth session for `vip cleanup --workbench-url`; `auth_cache_path()` is the single source of truth for the `.vip-auth-cache.json` location (both `plugin/auth.py` and `cli/cleanup.py` must use it), and `_load_cached_auth` probes Workbench before trusting a cached session; `refresh_auth_cache_from_storage_state` writes a live context's cookies back over a cache whose session has been invalidated (atomic, 0600, existing caches only) |
 | `src/vip/idp.py` | IdP login form strategies for headless auth (Keycloak, Okta) |
 | `src/vip/attest.py` | The two skip helpers (`not_applicable`, `unproven`) that record whether a skipped check was out of scope or simply never verified |
+| `src/vip/errors.py` | The `VipError` exception hierarchy for user-facing CLI failures (`ConfigError`, `AuthError`, `ProductUnreachableError`, `InstallError`, `ReportError`, `AuthConfigError`, `AuthTimeoutError`), each carrying an `exit_code`; raise one instead of calling `sys.exit` from command code — see "Error handling" below |
 | `src/vip/plugin/` | pytest plugin, split into `options.py` (`pytest_addoption`), `configure.py` (`pytest_configure`: markers, including `slow` used by `verify --basic`, and warning filters), `auth.py` (the `--interactive-auth`/`--headless-auth` login), `selection.py` (deselection and version auto-skip), `results.py` (JSON report output), `terminal.py` (concise display, heartbeat) and `state.py` (module-level mutable state; read and write it as `state.<name>`); `__init__.py` re-exports every hook, since pytest registers only the package module, plus the names callers import from `vip.plugin`, but a selftest must patch a helper on the submodule that calls it; `pytest_configure` also registers `vip.fixtures` as its own named plugin (`"vip-fixtures"`) so core fixtures resolve regardless of directory ancestry — see that module's docstring |
 | `src/vip/fixtures.py` | VIP's core pytest fixtures and shared BDD "Given" steps (`vip_config`, `connect_client`, `browser_context_args`, etc.), registered by `vip.plugin.pytest_configure` rather than defined in a `conftest.py` — pytest scopes `conftest.py` fixtures by directory ancestry, which made them invisible to extension directories (issue #609) |
 | `src/vip/version.py` | `ProductVersion` parsing/comparison for `min_version` gating; `MINIMUM_SUPPORTED_POSIT_TEAM` support floor (powers `vip version`) |
@@ -212,6 +215,14 @@ Key principles:
 | `src/vip/install/plan.py` | Pure `build_install_plan` / `build_uninstall_plan` builders |
 | `src/vip/install/runner.py` | Plan executor: dry-run formatting + execute (system packages, Playwright, manifest writes) |
 | `src/vip_tests/conftest.py` | Directory-scoped warning filter (kept out of the global plugin deliberately) plus the three autouse Connect content-cleanup fixtures — see that file's docstring for why those stay directory-scoped instead of moving to `src/vip/fixtures.py` |
+| `src/vip_tests/workbench/naming.py` | Worker-scoped Workbench session names: `current_worker_id`, `vip_session_prefix`, `capacity_session_prefix`, `k8s_session_prefix`, `unique_session_name` — see "Workbench session ownership" below |
+| `src/vip_tests/workbench/capacity.py` | Resource-profile detection and capping shared by `test_session_capacity.py` and `test_session_capacity_k8s.py` (`ResourceProfileDisabledError`) |
+| `src/vip_tests/workbench/cleanup.py` | Cookie-based Workbench session cleanup and the autouse cleanup fixtures |
+| `src/vip_tests/workbench/sessions.py` | Session-state waits, failure/timeout messages, and the unproven-skip helpers for Workbench scenarios |
+| `src/vip_tests/workbench/login.py` | Workbench login: the cross-worker OIDC login lock, silent SSO, and `workbench_login` |
+| `src/vip_tests/workbench/exec.py` | In-session execution primitives for Workbench IDE tests, using marker-bracketed capture to extract console output |
+| `src/vip_tests/workbench/chronicle_probe.py` | Builds the in-session Chronicle raw-chunk probe expression from `chronicle_probe.R`, kept separate so it's unit-testable without a browser |
+| `src/vip_tests/workbench/timeouts.py` | Scaled Playwright timeout constants and session-poll settings; imports nothing from the other Workbench modules, so all of them can depend on it |
 | `report/index.qmd` | Quarto summary page |
 | `report/details.qmd` | Quarto detailed results page |
 | `report/vip-report.qmd` | Quarto/Typst PDF edition (summary + full listing in one archivable file) |
@@ -286,41 +297,11 @@ The plugin loads config via `--vip-config` or defaults to `./vip.toml`. If no co
 
 ## Outbound proxy support
 
-VIP talks to deployments over three different HTTP mechanisms, and left alone they disagree about proxies: a custom-transport `httpx.Client` (the product API clients) silently ignores `HTTP_PROXY`/`HTTPS_PROXY` — httpx computes `allow_env_proxies = trust_env and transport is None`, so a supplied transport turns env-proxy resolution off — while bare `httpx.get` honors it, and Playwright's Chromium does its own platform-dependent env detection. That split is what makes the Connect API-key flow fail behind a proxy: mint/probe succeed through the proxy, then the ConnectClient calls go direct (or vice-versa).
-
-`src/vip/proxy.py` is the single source of truth that makes every path agree. The invariant: **all outbound HTTP egress resolves its proxy through `vip.proxy`, and no code relies on httpx's ambient env pickup.** Concretely:
-
-- **Product clients** (`BaseClient`): resolve `build_proxy_map` at construction, pass per-scheme `mounts=` (each an `HTTPTransport` carrying `verify`) alongside the base transport. `self._proxy_map` is exposed for ad-hoc calls.
-- **Bare httpx call sites** (auth mint/probe/delete, cache-liveness probe, `fetch_content`, scheme resolution): pass an explicit `proxy=proxy_for_url(url, build_proxy_map(proxy))` **and** `trust_env=False`, so the resolved per-URL proxy (which honors NO_PROXY) is authoritative rather than httpx re-reading the env.
-- **Playwright** (`_launch_chromium`, and the in-suite `browser_context_args`): pass `proxy=playwright_proxy(build_proxy_map(proxy), target_url)` so the browser shares the same proxy. Always pass the URL that browser is about to navigate. Playwright takes one `server` per browser and rewrites it to a single `scheme://host:port` (its `normalizeProxySettings`), so Chromium's per-scheme `--proxy-server=http=a;https=b` form is unavailable — `target_url`'s scheme is what keeps the browser on the same gateway as httpx when `HTTP_PROXY` and `HTTPS_PROXY` differ and the product is served over plain http. `target_url` chooses *which* proxy, never *whether*: a bypassed target still returns a dict, because the login browser also navigates the IdP, which usually is not bypassed.
-
-`ProxyConfig` (from `[proxy]` in `vip.toml`, or `--proxy`/`--no-proxy`) threads from `VIPConfig.proxy` through the conftest client fixtures, the plugin auth entrypoints, and every `vip.cli` command. Default (`trust_env=True`, no `url`) reads the ambient environment exactly as httpx would — so the no-config case is unchanged.
-
-**One deliberate divergence from httpx** (`_promote_http_proxy_to_https`): httpx keys its env map by *target* scheme, so a lone `HTTP_PROXY` (no `HTTPS_PROXY`/`ALL_PROXY`) yields `{'http://': …}` and httpx sends **https direct**. Many orgs run a single forward proxy as their *only* outbound tunnel and set just `http_proxy`, expecting https to tunnel through it via `CONNECT`; on a proxy-only network httpx's default means VIP's https traffic can never leave the host. So when the env gives an `http://` proxy with no explicit https/all coverage, `build_proxy_map` promotes it to cover `https://` too — applied to the whole map, so `proxy_for_url`, `build_mounts`, and `playwright_proxy` all agree (browser and API take the same route by construction). An explicit `HTTPS_PROXY`/`ALL_PROXY` is never overridden, and `NO_PROXY` still bypasses. This is why `build_proxy_map` is *not* byte-for-byte identical to `get_environment_proxies` in the http-only case.
-
-Because the promotion fires with no flag set, it announces itself on stderr once per process (`_promotion_notice_emitted` guards the repeat — `build_proxy_map` runs once per client construction and once per `proxy_for_url` caller). The notice names the gateway (userinfo redacted) and both escape hatches. Don't drop it: the user this hits hardest never asked for proxy support at all — they have a stray `http_proxy` exported for `dnf`/`apt`, their products were reachable directly, and without the notice the only symptom is "curl works, VIP doesn't" with nothing pointing at the promotion. Covered by `test_http_proxy_promotion_announces_itself_once` and friends in `selftests/test_proxy.py`.
-
-The promotion has two knock-on effects, both ratified rather than special-cased — don't "fix" either without reading this:
-
-- It engages the scheme-downgrade guard for an operator who never named an https proxy. `applicable_proxy` becomes non-`None` for every inferred-https URL, so `resolve_url_scheme` stops downgrading (see the bullet below). Concretely: `vip verify --connect-url connect.example.com` against an http-only product downgraded and worked before proxy support, and now keeps `https://` and fails loudly on any host with `http_proxy` exported. That is the safe direction, and both mitigations are one step — pass an explicit scheme, or list the host in `NO_PROXY`. Locked in by `test_lone_http_proxy_env_guards_downgrade_through_promotion` and `test_lone_http_proxy_with_no_proxy_host_downgrades_again` in `selftests/test_scheme_resolution_proxy.py`; the pre-existing `test_env_proxy_also_guards_downgrade` sets `https_proxy` and does *not* cover this path.
-- It splits VIP from the env-only paths listed under "Deliberately scoped out" below. Those use bare `httpx.get` with `trust_env=True`, which does not promote, so with a lone `http_proxy` the API clients tunnel https through the gateway while `prerequisites/test_components.py` and friends send the same https URL direct. The reachability probes can therefore fail while the client tests pass, on exactly the proxy-only network promotion exists to serve. Wiring those paths to `vip.proxy` is the real fix; until then this is a known asymmetry, not a mystery.
-
-Four Chromium-specific edges to keep in mind when touching `playwright_proxy`:
-- **A bare `NO_PROXY` host needs two Chromium bypass entries.** httpx renders `NO_PROXY=example.com` as `all://*example.com` → `^(.+\.)?example\.com$`: the apex and dot-separated subdomains, but *not* `badexample.com`. Chromium has no single pattern with that match set — bare `example.com` is exact-host only (too narrow: the browser proxies subdomains httpx reaches directly), and `*example.com` is a plain glob that also swallows `badexample.com` (too wide: the browser goes direct where httpx proxies). `_pattern_to_bypass_hosts` therefore emits `example.com,*.example.com`. Leading-dot (`all://*.foo`) and literal-host patterns stay one entry. If you touch this, re-check both directions — the negative half is what the parametrized parity test in `selftests/test_proxy.py` exists for.
-- A scheme-qualified pattern keeps its scheme, and an unmatchable host emits nothing. httpx uses a `NO_PROXY` host containing `://` verbatim, so `https://example.com` bypasses https and still proxies http to the same host; Chromium's grammar is `[SCHEME://]HOSTNAME_PATTERN[:PORT]`, so a scheme-less entry bypasses both. `_pattern_to_bypass_hosts` partitions the scheme off and re-attaches it to every entry — the same reason `_bypass_host_for_url` qualifies its fallback entry. It also emits nothing when a `*` or a leading `.` survives into the literal domain, because httpx's `URLPattern` only special-cases a host starting with `*`: `*.foo.com` and `https://.foo.com` both compile to regexes no real hostname matches, while Chromium would happily glob them and send the browser direct where every httpx call is proxied. A whole-scheme wildcard *does* render — `https://*` means "bypass all https" to both httpx and Chromium — but only once something narrows it. A bare `all://*` ties with the catch-all `all://` on `URLPattern.priority` and loses under stable sorting, so httpx proxies it and a bare Chromium `*` would bypass everything in the browser alone; a scheme or a port breaks the tie (`all://*:8443` sorts first and does bypass).
-- Ports come from `URLPattern`, never from the pattern text. httpx resolves a port against the pattern's own scheme and normalises a default one away, so `https://foo:443` matches https to `foo` on *any* port and has to render port-less — forwarding the literal `:443` restricts Chromium to that one port. The two models genuinely disagree in one place: httpx compares against a URL's *normalised* port (a default port is `None`) while Chromium compares against the *effective* port, so an `all://` pattern carrying 80 or 443 keeps it (that scheme has no default) and then matches only the scheme for which the port is *not* default — `all://*host:443` matches `http://host:443` and never `https://host`. A scheme-less Chromium `host:443` matches implicit-port https too, so `_OTHER_SCHEME_FOR_PORT` qualifies those entries with the opposite scheme. This is why the function derives scheme/host/port from `URLPattern` rather than slicing the string: hand-parsing produced three separate divergences here, each found a review round apart.
-- **`--proxy`/`--no-proxy` only reach the generated temp config.** Any run that loads a config file — `--config` *or* the default `./vip.toml` — has no consumer for them, so `run_verify` warns. Key that warning on "no temp config was generated", not on `config_path`, which is still `None` on the default-resolution path.
-
-Three sharp edges the fix also closes:
-- **A proxy scheme httpx cannot use** (`_proxy_transport` → `ProxyConfigError`): httpx rejects such a URL in two ways at two depths — `httpx.Proxy` raises `ValueError` for anything outside http/https/socks5, and `HTTPTransport` raises `ImportError` for `socks5://` when the optional `socksio` package is absent (VIP does not depend on `httpx[socks]`). `ALL_PROXY` is conventionally where a SOCKS proxy goes, and since `BaseClient` resolves its mounts in `__init__`, the bare httpx raise lands at *fixture setup* and errors every product test with a message naming neither the value nor the variable it came from. Before the clients honored the environment at all, such a variable was inert for them, so this is a regression the proxy work introduces. `build_mounts` re-raises with the redacted URL, where VIP read it, and the ways out — including that Chromium accepts `socks5://` and would proxy happily while httpx cannot, so an unresolved one is a browser/API split too.
-- **Scheme downgrade** (`resolve_url_scheme`): a `ProxyError` must never trigger the `https://`→`http://` fallback (it says nothing about the origin's TLS), and when a proxy applies the raw-socket TLS-listener tiebreak is skipped entirely (it bypasses the proxy, so its "nothing is listening" verdict is about a path VIP will never take). Downgrading there would send credentials in cleartext on a proxy-only host. Note that "a proxy applies" includes a promoted lone `HTTP_PROXY`, which is what makes this guard fire far more often than the explicit-`[proxy]` case it was written for — see the promotion knock-on effects above.
-- **retries**: httpx's `HTTPProxy` pool drops the `retries` value (only the direct `ConnectionPool` keeps it). Proxied requests therefore get no connection-retries; this matches httpx and is documented in `proxy.py`, not worked around.
-
-If you add a new HTTP egress path, route it through `vip.proxy` — do not reintroduce a raw `httpx.get`/socket that bypasses the proxy.
-
-**Deliberately scoped out (env-proxy only, not the explicit `[proxy]` config).** A few opt-in/diagnostic paths still use bare `httpx.get` with httpx's default `trust_env=True`, so they honor the ambient `HTTP(S)_PROXY`/`NO_PROXY` env but not an explicit `[proxy]` TOML/`--proxy` config: the test-layer probes in `src/vip_tests/**` (e.g. `prerequisites/test_components.py`, `performance/*`, `security/*`, `package_manager/*`, `cross_product/test_resources.py`, `helpers.py`) and the load/perf engine (`src/vip/load_engine.py`, gated behind the `performance` category). Separately, the raw-socket TLS probes — `cross_product/test_ssl.py`, `security/test_https.py`, and `_tls_listener_present` in `auth/scheme.py` — honor **neither** the env vars nor `[proxy]`: they are `socket.create_connection` calls testing the *plaintext/handshake* boundary, so there is no proxy for them to speak through and they will fail outright on a host with no direct route out. Don't describe the env vars as covering "every request"; they cover every *HTTP* request. The Kubernetes client (`clients/kubernetes.py`) uses the `kubernetes` SDK (urllib3), not httpx, and is out of scope. Two more commands are env-only for a structural reason rather than a scoping one: `vip install` never loads a config file at all, so the `playwright install chromium` download honors only the environment (a `[proxy]`-only user fails at setup, before ever reaching `vip verify` — say so in any proxy docs you touch), and `mint_connect_key` (`vip auth`) takes a bare `--url` with no config, so it passes `proxy=None` and reads the environment.
-
-Wiring the scoped-out paths to the explicit `[proxy]` config would mean threading `ProxyConfig` into `PerformanceConfig` and every test helper — worth doing only if a deployment needs an explicit proxy that differs from the environment. They agree with the client paths whenever the env names an https or catch-all proxy, which is the common case. They do not agree under a lone `HTTP_PROXY`: `build_proxy_map` promotes it to cover https and these paths don't, so the clients tunnel https while these send it direct. Don't describe them as merely "consistent for the env-var case" — that holds for `HTTPS_PROXY`, not for the http-only env the promotion exists to serve.
+`src/vip/proxy.py` is the single source of truth that makes VIP's three HTTP egress paths
+(product API clients, bare httpx calls, and Playwright's Chromium) agree on which proxy to use,
+including a deliberate divergence from httpx for a lone `HTTP_PROXY` and the Chromium-specific
+bypass-list translation `NO_PROXY` needs. See [docs/proxy.md](docs/proxy.md) for the full design
+and the sharp edges to know before touching it.
 
 ## Workbench session ownership (parallel safety)
 
@@ -333,7 +314,7 @@ The naming contract:
 | `unique_session_name(filename)` | `VIP <file> - <worker>-<ns>` | `VIP test_git_ops.py - gw1-1785380284140718000` |
 | `vip_session_prefix(kind)` | `_vip_<kind>_<worker>_<ts>_` | `_vip_cap_gw1_1785380282_Small_0` |
 
-All of them live in `src/vip_tests/workbench/conftest.py` next to `current_worker_id()`, and `vip.clients.workbench.session_owner` parses the worker back out.
+All of them live in `src/vip_tests/workbench/naming.py` next to `current_worker_id()`, and `vip.clients.workbench.session_owner` parses the worker back out.
 
 **Name every session through one of those two helpers.** Scenarios that don't fit `unique_session_name` (capacity, k8s capacity) take a thin wrapper over `vip_session_prefix` — `capacity_session_prefix()`, `k8s_session_prefix()` — rather than formatting a prefix by hand. `_VIP_OWNER_PATTERNS` is generic over `<kind>`, so a new scheme routed through the helper is attributable for free; a hand-rolled one that omits the worker segment is treated as unowned, and unowned means **no in-run sweep will ever clean it up**. That is exactly how `_vip_k8s_` sessions started leaking when worker scoping first landed. If you change either format, update `_VIP_OWNER_PATTERNS` in `src/vip/clients/workbench.py` in the same commit.
 
@@ -434,7 +415,6 @@ Register warning filters in `src/vip/plugin/configure.py::pytest_configure` (via
 
 ## Common mistakes to avoid
 
--   Forgetting to include `examples/` in ruff check paths.
 -   Using `Markdown()` without `display()` in Quarto `.qmd` files.
 -   Adding a ruff version anywhere other than the `dev` extra in `pyproject.toml` -- `ci.yml` and `.pre-commit-config.yaml` must keep reading the pin, not carrying their own copy.
 -   Adding product SDK imports (use httpx directly).

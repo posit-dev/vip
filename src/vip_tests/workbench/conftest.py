@@ -190,7 +190,7 @@ def pytest_collection_modifyitems(
     lock in :func:`workbench_login` (see :func:`oidc_login_lock`), not by serialization.
 
     Password / no-auth runs are left untouched: they hit the early return below, so their
-    Workbench items keep the default ``workbench`` group that ``plugin.py``'s
+    Workbench items keep the default ``workbench`` group that ``plugin/selection.py``'s
     :func:`_assign_xdist_group` directory fallback assigns (the module-level ``pytestmark``
     at the top of this file does not propagate to sibling test modules, so it assigns
     nothing here).
@@ -210,7 +210,7 @@ def pytest_collection_modifyitems(
         # per-test xdist_group marker exists today, so this is a defensive guard: xdist
         # concatenates *all* xdist_group marks on an item (via iter_markers), it does not
         # take the closest, so a leftover mark would corrupt the group name rather than be
-        # shadowed. plugin.py's _assign_xdist_group then respects the group we add here.
+        # shadowed. plugin/selection.py's _assign_xdist_group then respects the group we add here.
         item.own_markers = [m for m in item.own_markers if m.name != "xdist_group"]
         item.add_marker(pytest.mark.xdist_group(group))
 

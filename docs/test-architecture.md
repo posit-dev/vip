@@ -152,6 +152,10 @@ An unproven result carries through the whole pipeline -- its own `UNPROVEN` badg
 
 Skips carry the same burden of accuracy as failures. A skip reason states *why* there was nothing to verify, so it must be true: `test_repos.py` used to report "package not available — repo may not be synced yet" after probing only the first repo whose name matched, when a synced mirror sitting beside it served the package fine. Probe every candidate before concluding anything, and name all of them in the reason.
 
+None of the four outcomes above is "an unhandled framework error". If a client call raises a
+`VipError`, let it propagate out of the step rather than catching it -- the report should show
+the real cause, not a laundered skip or warning.
+
 ### Fixtures as glue
 
 Pytest fixtures are the glue between layers. They provide:
