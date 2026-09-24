@@ -29,14 +29,21 @@ just lint-fix       # ruff check --fix
 just format         # ruff format
 ```
 
-Without just, run ruff directly:
+Without just, run ruff directly from the repo root. CI's `astral-sh/ruff-action`
+appends the repo root to whatever paths you pass it, so `src/ selftests/
+examples/ docker/` alone under-scopes relative to CI (it misses `scripts/`,
+for example) -- run these from the repo root with no path arguments to match
+what CI actually checks:
 
 ```bash
-uv run --extra dev ruff check src/ selftests/ examples/ docker/        # lint
-uv run --extra dev ruff format --check src/ selftests/ examples/ docker/  # format check
-uv run --extra dev ruff check --fix src/ selftests/ examples/ docker/  # auto-fix lint
-uv run --extra dev ruff format src/ selftests/ examples/ docker/       # reformat
+uv run --extra dev ruff check .          # lint
+uv run --extra dev ruff format --check . # format check
+uv run --extra dev ruff check --fix .    # auto-fix lint
+uv run --extra dev ruff format .         # reformat
 ```
+
+Ruff's rule set is the `select` list in `pyproject.toml` under
+`[tool.ruff.lint]`; line length is 100.
 
 ### Pre-commit hooks (optional)
 
