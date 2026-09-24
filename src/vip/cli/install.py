@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -14,11 +15,14 @@ from vip.errors import InstallError
 if TYPE_CHECKING:
     from vip.config import ProductConfig
 
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+
 
 def run_install(args: argparse.Namespace) -> None:
     """Provision system packages and Playwright Chromium for VIP local mode."""
-    from datetime import datetime, timezone
-
     from vip.install import platform as plat
     from vip.install.manifest import (
         SCHEMA_VERSION,
@@ -128,16 +132,11 @@ def run_uninstall(args: argparse.Namespace) -> None:
     env = os.environ.get("VIP_CONFIG")
     config_path = Path(env) if env else Path("vip.toml")
     if config_path.exists():
-        if sys.version_info >= (3, 11):
-            import tomllib as _tomllib
-        else:
-            import tomli as _tomllib
-
         try:
             from vip.config import load_config
 
             cfg = load_config()
-        except (_tomllib.TOMLDecodeError, ValueError) as exc:
+        except (tomllib.TOMLDecodeError, ValueError) as exc:
             print(
                 f"warning: failed to load vip.toml for chained cleanup: {exc}; "
                 "continuing without vip.toml-derived settings",

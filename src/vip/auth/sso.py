@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit, urlunsplit
+
 from playwright.sync_api import (
     Error as PlaywrightError,
 )
@@ -95,8 +97,6 @@ def _strip_url_query(url: str) -> str:
     if not url:
         return url
     try:
-        from urllib.parse import urlsplit, urlunsplit
-
         parts = urlsplit(url)
         return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
     except ValueError:

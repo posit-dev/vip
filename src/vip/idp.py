@@ -7,7 +7,9 @@ via the terminal when the IdP presents a second-factor challenge.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
+from urllib.parse import urlparse
 
 from playwright.sync_api import Error, Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
@@ -69,8 +71,6 @@ def _log_verbose(msg: str) -> None:
 
 def _sanitize_url(url: str) -> str:
     """Return origin + path, stripping query params that may contain secrets."""
-    from urllib.parse import urlparse
-
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
 
@@ -197,10 +197,8 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     # between steps.  The TOTP MFA step reuses the same
     # input[name='credentials.passcode'] field.  We poll for state
     # changes by comparing against the pre-submit snapshot.
-    import time as _time
-
     pre_submit_url = page.url
-    deadline = _time.monotonic() + 30
+    deadline = time.monotonic() + 30
 
     error_selectors = (
         "[data-se='o-form-error-container'],.okta-form-infobox-error,[class*='error-message']"
@@ -213,7 +211,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         "[data-se='phone_number']"
     )
 
-    while _time.monotonic() < deadline:
+    while time.monotonic() < deadline:
         try:
             # Check: URL changed (redirect to product).
             if page.url != pre_submit_url:
@@ -303,8 +301,8 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         "input[data-se='credentials.passcode']",
     )
     totp_field = None
-    deadline_totp = _time.monotonic() + _MFA_DETECT_TIMEOUT / 1000
-    while _time.monotonic() < deadline_totp:
+    deadline_totp = time.monotonic() + _MFA_DETECT_TIMEOUT / 1000
+    while time.monotonic() < deadline_totp:
         for sel in totp_selectors:
             loc = page.locator(sel)
             if loc.count() > 0 and loc.first.is_visible():

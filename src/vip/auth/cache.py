@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
+import shutil
 import tempfile
 import time
 from pathlib import Path
 from typing import NamedTuple
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -66,8 +69,6 @@ def _cookies_from_storage_state(storage_state_path: Path) -> httpx.Cookies:
     probe then reads as inconclusive and the cache is reused, which is exactly
     the pre-probe behaviour.
     """
-    import json
-
     cookies = httpx.Cookies()
     try:
         state = json.loads(Path(storage_state_path).read_text())
@@ -183,8 +184,6 @@ def _load_cached_auth(
     if not cache_path.exists():
         return None
 
-    import json
-
     # Check if the cache is less than 4 hours old.
     age = time.time() - cache_path.stat().st_mtime
     if age > 4 * 3600:
@@ -280,8 +279,6 @@ def _normalize_url(url: str | None) -> str:
     if not url:
         return ""
 
-    from urllib.parse import urlsplit, urlunsplit
-
     parts = urlsplit(url.strip())
     scheme = parts.scheme.lower()
     netloc = parts.netloc.lower()
@@ -337,8 +334,6 @@ def refresh_auth_cache_from_storage_state(
     Returns True when the cache was refreshed.  Never raises: this runs on a
     cleanup path, where failing loudly would mask the test's own result.
     """
-    import json
-
     path = cache_path if cache_path is not None else auth_cache_path()
     if not path.exists():
         return False
@@ -373,9 +368,6 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
     poison the cache for four hours and hide the specific warning that
     explains *why* minting failed.
     """
-    import json
-    import shutil as _shutil
-
     if session._connect_url and not session.api_key:
         print(
             ">>> Skipping auth cache: API key minting failed; next run will retry authentication."
@@ -383,7 +375,7 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         return
 
     # Copy storage state to the cache location.
-    _shutil.copy2(session.storage_state_path, cache_path)
+    shutil.copy2(session.storage_state_path, cache_path)
     cache_path.chmod(0o600)
 
     # Write companion metadata.  ``connect_url`` keeps the resolved

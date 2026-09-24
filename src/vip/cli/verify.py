@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from importlib.util import find_spec
 from pathlib import Path
 
 from vip.cli._common import _resolve_effective_ca_bundle
@@ -484,8 +485,6 @@ def run_verify(args: argparse.Namespace) -> None:
     # when running outside the source tree (e.g. ``pip install posit-vip``).
     # Skip when the user already passed explicit test targets after ``--``.
     if not _has_explicit_test_targets(args.pytest_args):
-        from importlib.util import find_spec
-
         _spec = find_spec("vip_tests")
         if _spec and _spec.submodule_search_locations:
             cmd.append(_spec.submodule_search_locations[0])

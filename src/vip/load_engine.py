@@ -22,6 +22,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -202,8 +203,6 @@ def _run_locust(
     _stop_plugin_heartbeat_before_gevent()
 
     # Parse base URL and path from the full URL.
-    from urllib.parse import urlparse
-
     import gevent  # available when locust is installed
     from locust import HttpUser, constant, task
     from locust.env import Environment
