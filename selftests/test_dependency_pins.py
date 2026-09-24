@@ -22,6 +22,15 @@ A fourth invariant guards CI/local parity rather than the published wheel: the
 Dockerfile's ``mcr.microsoft.com/playwright/python`` base image tag must track
 the exact-pinned ``playwright`` version, so a ``docker run`` of the image
 exercises the same Playwright build as a local ``uv run vip``.
+
+A fifth invariant guards a different pin that drifted the same way (issue
+#731): ``ruff`` is pinned exactly once, as ``ruff==<version>`` in the ``dev``
+extra (and ``uv.lock``). Neither CI's ``astral-sh/ruff-action`` steps nor
+``.pre-commit-config.yaml`` may carry their own copy of that version --
+``ci.yml`` must leave the action's ``version`` input unset so it resolves
+the pin from ``pyproject.toml``, and pre-commit must run ``uv run --extra
+dev ruff`` (a local hook) instead of the separately-versioned
+``ruff-pre-commit`` mirror.
 """
 
 from __future__ import annotations
@@ -34,12 +43,15 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
+import yaml
 from packaging.requirements import Requirement
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 LOCKFILE = REPO_ROOT / "uv.lock"
 DOCKERFILE = REPO_ROOT / "Dockerfile"
+WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
+PRE_COMMIT_CONFIG = REPO_ROOT / ".pre-commit-config.yaml"
 
 # Dependencies whose exact version determines a `vip` run's behaviour/output.
 EXACT_PINS = {
@@ -201,4 +213,52 @@ def test_dockerfile_playwright_base_image_matches_pinned_version():
         f"Dockerfile FROM tag pins Playwright v{tag_version}, but pyproject.toml "
         f"pins playwright=={pinned}; bump the Dockerfile's "
         "mcr.microsoft.com/playwright/python tag to match"
+    )
+
+
+def test_ci_ruff_action_has_no_version_override():
+    """Guards issue #731: an explicit ``version:`` input on an
+    ``astral-sh/ruff-action`` step overrides the version the action would
+    otherwise resolve from ``pyproject.toml``'s ``dev`` extra, letting CI's
+    ruff drift from the one Dependabot bumps.
+    """
+    offenders = []
+    for workflow_path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        workflow = yaml.safe_load(workflow_path.read_text()) or {}
+        for job_name, job in (workflow.get("jobs") or {}).items():
+            for step in job.get("steps") or []:
+                uses = step.get("uses", "")
+                if uses.startswith("astral-sh/ruff-action@") and "version" in (
+                    step.get("with") or {}
+                ):
+                    offenders.append(f"{workflow_path.name}:{job_name}:{step.get('name', uses)}")
+    assert not offenders, (
+        f"astral-sh/ruff-action step(s) pin an explicit version: {offenders}; "
+        "remove the 'version' input so the action resolves it from "
+        "pyproject.toml's dev extra instead"
+    )
+
+
+def test_pre_commit_ruff_hook_is_local_not_pinned_mirror():
+    """Guards issue #731: pre-commit must run the locked ``uv run --extra
+    dev ruff`` rather than the separately-versioned ``ruff-pre-commit``
+    mirror, so pre-commit and CI/``just lint`` always agree on which ruff
+    they run.
+    """
+    config = yaml.safe_load(PRE_COMMIT_CONFIG.read_text()) or {}
+    repos = config.get("repos") or []
+    repo_urls = [repo.get("repo", "") for repo in repos]
+    assert not any("ruff-pre-commit" in url for url in repo_urls), (
+        f"pre-commit config still references astral-sh/ruff-pre-commit ({repo_urls}); "
+        "replace it with a `repo: local` hook running `uv run --extra dev ruff`"
+    )
+    local_hook_ids = {
+        hook.get("id")
+        for repo in repos
+        if repo.get("repo") == "local"
+        for hook in (repo.get("hooks") or [])
+    }
+    assert {"ruff", "ruff-format"} <= local_hook_ids, (
+        "expected local pre-commit hooks named 'ruff' and 'ruff-format'; "
+        f"found local hook ids {sorted(local_hook_ids)}"
     )
