@@ -6,20 +6,9 @@ on:
   schedule:
     - cron: '0 16 * * 1'  # Monday 16:00 UTC (11am ET / 8am PT)
   workflow_dispatch:       # Manual trigger (posts to Slack, like a scheduled run)
-  pull_request:            # Dry run: builds and logs the payload but does NOT post
-    paths:
-      - '.github/workflows/weekly-summary.yml'
-      - '.claude/agents/weekly-summary.md'
 
 jobs:
   weekly-summary:
-    # Skip PRs from forks: this job assumes an AWS role and runs Claude over
-    # contributor-authored PR titles. Scheduled and manual runs always pass.
-    # Also skip dependabot PRs: their secrets store lacks the AWS/Slack secrets.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.pull_request.head.repo.full_name == github.repository &&
-       github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
@@ -181,14 +170,13 @@ jobs:
               + (if $fixes == "" then [] else [{type: "section", text: {type: "mrkdwn", text: ("*🔧 Fixes &amp; chores*\n" + $fixes)}}] end)
               )
             }' > /tmp/slack-payload.json
-          echo "Slack payload (posted only on schedule/workflow_dispatch):"
+          echo "Slack payload:"
           cat /tmp/slack-payload.json
 
       - name: Post summary to Slack
         if: >
           steps.gather.outputs.has_prs == 'true' &&
-          steps.payload.outputs.has_highlights == 'true' &&
-          (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+          steps.payload.outputs.has_highlights == 'true'
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_VIP_WEEKLY_SUMMARY }}
