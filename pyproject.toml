@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "2026.9.2"
+version = "2026.9.3"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -160,7 +160,7 @@ packages = ["src/vip", "src/vip_tests"]
 "examples/custom_tests" = "vip/_scaffold/custom_tests"
 # AGENTS.md source shared by every scaffold template; copied into the output
 # dir by run_scaffold() after copytree(). Keep this path in sync with
-# _resolve_scaffold_source("_shared") in src/vip/cli.py.
+# _resolve_scaffold_source("_shared") in src/vip/cli/scaffold.py.
 "examples/_shared" = "vip/_scaffold/_shared"
 # Quarto report templates so `vip report` works when installed as a wheel,
 # not only from a source checkout. Copied into the working ./report dir by
@@ -184,7 +184,7 @@ packages = ["src/vip", "src/vip_tests"]
 [tool.pytest.ini_options]
 testpaths = ["src/vip_tests"]
 addopts = "-n auto --dist loadgroup"
-# Warning filters live in src/vip/plugin.py::pytest_configure so they apply
+# Warning filters live in src/vip/plugin/configure.py::pytest_configure so they apply
 # anywhere vip is installed, not just runs from this repo.
 markers = [
     "connect: tests for Posit Connect",
@@ -209,6 +209,31 @@ markers = [
 python_version = "3.10"
 warn_unused_configs = true
 ignore_missing_imports = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = true
+explicit_package_bases = true
+namespace_packages = true
+mypy_path = "src"
+
+# vip_tests/selftests widen mypy's scope but never opted into wave 1's
+# check_untyped_defs; scoping it off keeps the widening cheap (real bugs
+# only) instead of surfacing untyped test-double/fixture noise. (Wave 1's
+# other new flag, no_implicit_optional, is left enabled here -- it matches
+# zero sites today, so scoping it off would carve out a blind spot for no
+# present benefit.)
+[[tool.mypy.overrides]]
+module = ["vip_tests.*", "selftests.*"]
+check_untyped_defs = false
+
+# The load-test engine is the one place VIP builds and executes dynamic,
+# heavily-generic locust/gevent plumbing; strict flags scoped here catch what
+# --strict finds cheaply, without taking on --strict's cost across all of src/vip.
+[[tool.mypy.overrides]]
+module = ["vip.load_engine", "vip.load_users"]
+disallow_untyped_defs = true
+disallow_any_generics = true
+warn_return_any = true
 
 [tool.ruff]
 line-length = 100

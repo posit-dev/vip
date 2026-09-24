@@ -205,7 +205,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         if not quarto_versions:
             attest.not_applicable("No Quarto installations available on Connect")
         r_versions = connect_client.r_versions()
-        manifest: dict = {
+        manifest = {
             "version": 1,
             "metadata": {
                 "appmode": "quarto-static",
@@ -485,7 +485,7 @@ def wait_for_deploy(connect_client, deploy_state, vip_config, record_property):
     A retry that fixes the deploy leaves the test PASSING, so a plain
     ``print`` alone is not enough evidence for anyone auditing a green run --
     pytest's plugin only surfaces captured stdout for failed/errored tests
-    (see ``src/vip/plugin.py``), and CI's ``--junitxml`` output has no stdout
+    (see ``src/vip/plugin/results.py``), and CI's ``--junitxml`` output has no stdout
     field for a pass either. ``record_property`` writes a ``<property>`` onto
     the JUnit XML testcase itself, which survives regardless of outcome (and
     survives under this suite's ``-n auto --dist loadgroup`` xdist config --
@@ -637,7 +637,7 @@ def content_renders_expected_output(connect_client, deploy_state):
         assert resp.status_code < 400, f"Plumber API returned HTTP {resp.status_code}"
         try:
             body = resp.json()
-        except Exception as exc:  # noqa: BLE001
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             pytest.fail(f"Plumber response is not valid JSON: {exc}\nBody: {resp.text[:500]}")
         # Connect wraps scalar values in lists; accept both "VIP test OK" and ["VIP test OK"].
         raw = body.get(expected["key"])

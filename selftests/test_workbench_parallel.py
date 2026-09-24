@@ -10,6 +10,7 @@ from filelock import FileLock
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from vip_tests.workbench import conftest as wb
+from vip_tests.workbench import login
 
 
 class TestOidcLoginLock:
@@ -90,7 +91,7 @@ class TestSilentSsoSignin:
             used["url"] = url
             yield
 
-        monkeypatch.setattr(wb, "oidc_login_lock", _spy_lock)
+        monkeypatch.setattr(login, "oidc_login_lock", _spy_lock)
         button = _FakeButton()
         ok = wb._silent_sso_signin(button, _FakeLogo(appears=True), "https://wb.example.com")
         assert ok is True
@@ -101,7 +102,7 @@ class TestSilentSsoSignin:
     def test_returns_false_when_homepage_never_appears(self, monkeypatch):
         import contextlib
 
-        monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
+        monkeypatch.setattr(login, "oidc_login_lock", lambda url: contextlib.nullcontext())
         ok = wb._silent_sso_signin(_FakeButton(), _FakeLogo(appears=False), "https://wb.x")
         assert ok is False
 
@@ -114,7 +115,7 @@ class TestSilentSsoSignin:
             def wait_for(self, *, state, timeout):
                 raise RuntimeError("page crashed mid-login")
 
-        monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
+        monkeypatch.setattr(login, "oidc_login_lock", lambda url: contextlib.nullcontext())
         with pytest.raises(RuntimeError, match="page crashed"):
             wb._silent_sso_signin(_FakeButton(), _BrokenLogo(), "https://wb.x")
 
@@ -131,7 +132,7 @@ class TestSilentSsoSignin:
             def wait_for(self, *, state, timeout):
                 captured["timeout"] = timeout
 
-        monkeypatch.setattr(wb, "oidc_login_lock", lambda url: contextlib.nullcontext())
+        monkeypatch.setattr(login, "oidc_login_lock", lambda url: contextlib.nullcontext())
         wb._silent_sso_signin(_FakeButton(), _TimeoutCapturingLogo(), "https://wb.x")
         assert captured["timeout"] == wb.TIMEOUT_SSO_ROUNDTRIP
         assert wb.TIMEOUT_SSO_ROUNDTRIP > wb.TIMEOUT_PAGE_LOAD
@@ -167,7 +168,7 @@ class _FakeItem:
         self.path = path
         self.own_markers = [_FakeMarker("xdist_group"), _FakeMarker("workbench")]
         self._markers = [_FakeMarker(n) for n in marker_names]
-        self.added = []
+        self.added: list[tuple[str, tuple]] = []
 
     def iter_markers(self):
         return list(self._markers)

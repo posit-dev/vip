@@ -73,7 +73,7 @@ def page(
 
     All other context args (TLS, CA bundle, etc.) are preserved so this page
     behaves consistently with the rest of the suite. The autouse
-    _cleanup_sessions fixture in workbench/conftest.py uses this same page,
+    _cleanup_sessions fixture in workbench/cleanup.py uses this same page,
     keeping cleanup and execution in the same context.
     """
     strip_storage_state = (

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import pytest
 
+from _helpers import _repo
 from vip_tests.package_manager.test_repos import (
     query_bioconductor,
     query_cran,
@@ -55,10 +56,6 @@ class FakePMClient:
     pypi_package_available = _available
     bioconductor_package_available = _available
     openvsx_extension_available = _available
-
-
-def _repo(name, type_=""):
-    return {"name": name, "type": type_}
 
 
 def _run_expecting_no_skip(step, client):

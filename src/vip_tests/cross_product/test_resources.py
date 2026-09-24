@@ -68,7 +68,7 @@ def check_product_health(vip_config):
             resp = httpx.get(url, follow_redirects=True, timeout=15, verify=vip_config.verify)
             entry["status"] = resp.status_code
             entry["ok"] = resp.status_code == 200
-        except Exception as exc:  # noqa: BLE001
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             entry["error"] = str(exc)
         results.append(entry)
 

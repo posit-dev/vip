@@ -287,7 +287,7 @@ def _resolve_by_version(
     (``get_new_session_dialog_close_strategy``): both are UI-resolution
     concerns rather than test-gating, so an unparseable or missing version
     falls back to *oldest* instead of raising (unlike the pytest marker path
-    in ``plugin.py``, there is no "skip" concept here).
+    in ``plugin/selection.py``, there is no "skip" concept here).
     """
     if version is None:
         return oldest

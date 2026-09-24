@@ -21,7 +21,8 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -37,7 +38,7 @@ class LoadTestResult:
     successes: int
     failure_rate: float
     p95_response_time: float
-    results: list[dict] = field(repr=False)
+    results: list[dict[str, Any]] = field(repr=False)
 
 
 # ---------------------------------------------------------------------------
@@ -81,14 +82,16 @@ def run_load_test(
 # ---------------------------------------------------------------------------
 
 
-def _run_threadpool(url: str, headers: dict[str, str], n: int, timeout: float = 30.0) -> list[dict]:
+def _run_threadpool(
+    url: str, headers: dict[str, str], n: int, timeout: float = 30.0
+) -> list[dict[str, Any]]:
     """Fire *n* synchronous GET requests via a thread pool.
 
     Each thread creates its own request via ``httpx.get()`` (which uses a
     fresh transport per call) because ``httpx.Client`` is not thread-safe.
     """
 
-    def _fetch():
+    def _fetch() -> dict[str, Any]:
         start = time.monotonic()
         try:
             resp = httpx.get(url, headers=headers, timeout=timeout)
@@ -97,7 +100,7 @@ def _run_threadpool(url: str, headers: dict[str, str], n: int, timeout: float = 
                 "status": resp.status_code,
                 "error": None,
             }
-        except Exception as exc:  # noqa: BLE001
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
             return {
                 "elapsed": time.monotonic() - start,
                 "status": None,
@@ -120,7 +123,7 @@ def _run_async(
     n: int,
     max_connections: int = 200,
     timeout: float = 30.0,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Fire *n* async GET requests with bounded concurrency."""
     return asyncio.run(_async_load_test(url, headers, n, max_connections, timeout))
 
@@ -131,7 +134,7 @@ async def _async_load_test(
     n: int,
     max_connections: int,
     timeout: float,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     semaphore = asyncio.Semaphore(max_connections)
     limits = httpx.Limits(
         max_connections=max_connections,
@@ -140,7 +143,7 @@ async def _async_load_test(
 
     async with httpx.AsyncClient(headers=headers, limits=limits, timeout=timeout) as client:
 
-        async def _fetch():
+        async def _fetch() -> dict[str, Any]:
             async with semaphore:
                 start = time.monotonic()
                 try:
@@ -150,7 +153,7 @@ async def _async_load_test(
                         "status": resp.status_code,
                         "error": None,
                     }
-                except Exception as exc:  # noqa: BLE001
+                except (httpx.HTTPError, httpx.InvalidURL) as exc:
                     return {
                         "elapsed": time.monotonic() - start,
                         "status": None,
@@ -178,14 +181,16 @@ def _stop_plugin_heartbeat_before_gevent() -> None:
     or misbehave when non-gevent ``threading.Thread`` instances are alive.
     Every code path that imports locust/gevent must call this first.
     """
-    import vip.plugin as _plugin
+    from vip.plugin import state as _plugin_state
 
-    heartbeat = getattr(_plugin, "_current_heartbeat", None)
+    heartbeat = _plugin_state._current_heartbeat
     if heartbeat is not None:
         heartbeat.stop()
 
 
-def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestResult:
+def _run_locust(
+    url: str, headers: dict[str, str], n: int, config: PerformanceConfig
+) -> LoadTestResult:
     """Run a headless Locust load test and return aggregated results."""
     if not _locust_available():
         msg = (
@@ -198,8 +203,6 @@ def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestRe
     _stop_plugin_heartbeat_before_gevent()
 
     # Parse base URL and path from the full URL.
-    from urllib.parse import urlparse
-
     import gevent  # available when locust is installed
     from locust import HttpUser, constant, task
     from locust.env import Environment
@@ -216,7 +219,7 @@ def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestRe
         wait_time = constant(0)
 
         @task
-        def check(self):
+        def check(self) -> None:
             self.client.get(path, headers=request_headers)
 
     env = Environment(user_classes=[_VIPUser])
@@ -254,7 +257,7 @@ def _run_locust(url: str, headers: dict[str, str], n: int, config) -> LoadTestRe
 # ---------------------------------------------------------------------------
 
 
-def classify_repos(repos: list[dict]) -> tuple[list[str], list[str]]:
+def classify_repos(repos: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
     """Classify repos into ``(cran_repos, pypi_repos)`` by their type field.
 
     Accepts canonical API values (``"R"``, ``"Python"``) and common aliases
@@ -300,7 +303,7 @@ def _log_request(
     response_time: float,
     response_length: int,  # noqa: ARG001 -- locust event kwarg
     exception: Exception | None = None,
-    **_kwargs,
+    **_kwargs: Any,
 ) -> None:
     """Print a single Locust request to stderr for ``--verbose`` diagnostics."""
     elapsed_s = (response_time or 0) / 1000.0
@@ -314,7 +317,7 @@ def run_user_simulation(
     host: str,
     user_class_name: str,
     users: int,
-    config,
+    config: PerformanceConfig,
     *,
     credentials: dict[str, str] | None = None,
     verbose: bool = False,
@@ -415,7 +418,7 @@ def run_user_simulation(
 # ---------------------------------------------------------------------------
 
 
-def _build_result(raw: list[dict]) -> LoadTestResult:
+def _build_result(raw: list[dict[str, Any]]) -> LoadTestResult:
     """Construct a :class:`LoadTestResult` from raw per-request dicts."""
     total = len(raw)
     successes = sum(

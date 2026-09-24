@@ -29,14 +29,21 @@ just lint-fix       # ruff check --fix
 just format         # ruff format
 ```
 
-Without just, run ruff directly:
+Without just, run ruff directly from the repo root. CI's `astral-sh/ruff-action`
+appends the repo root to whatever paths you pass it, so `src/ selftests/
+examples/ docker/` alone under-scopes relative to CI (it misses `scripts/`,
+for example) -- run these from the repo root with no path arguments to match
+what CI actually checks:
 
 ```bash
-uv run --extra dev ruff check src/ selftests/ examples/ docker/        # lint
-uv run --extra dev ruff format --check src/ selftests/ examples/ docker/  # format check
-uv run --extra dev ruff check --fix src/ selftests/ examples/ docker/  # auto-fix lint
-uv run --extra dev ruff format src/ selftests/ examples/ docker/       # reformat
+uv run --extra dev ruff check .          # lint
+uv run --extra dev ruff format --check . # format check
+uv run --extra dev ruff check --fix .    # auto-fix lint
+uv run --extra dev ruff format .         # reformat
 ```
+
+Ruff's rule set is the `select` list in `pyproject.toml` under
+`[tool.ruff.lint]`; line length is 100.
 
 ### Pre-commit hooks (optional)
 
@@ -52,20 +59,22 @@ and CI enforces both regardless of whether the hook is installed.
 uvx pre-commit install
 ```
 
-The hook's `rev: v0.15.0` pin must move together with the ruff version pinned
-in `ci.yml` and the `dev` extra's `ruff` range in `pyproject.toml` -- see
-AGENTS.md's "Common mistakes to avoid" for why letting them drift apart makes
-a PR pass locally and fail in CI, or the reverse.
+The ruff version is pinned exactly once, as `ruff==<version>` in the `dev`
+extra in `pyproject.toml` (and `uv.lock`). Dependabot bumps that one pin; CI's
+`astral-sh/ruff-action` steps and the local pre-commit hook both read it
+instead of carrying their own copy, so they can't drift out of sync -- see
+AGENTS.md's "Common mistakes to avoid" for the history of why that mattered.
 
 ## Type checking
 
 ```bash
 just typecheck
 
-# Without just. `--extra dev` matters: mypy lives in the dev extra, which a bare
-# `uv sync` does not install. The path is `src/vip/`, not `src/` -- CI does not
-# type-check `src/vip_tests/`.
-uv run --extra dev mypy src/vip/
+# Without just. `--all-extras`, not `--extra dev`: src/vip/load_engine.py imports
+# locust, which lives in the `load` extra, and ignore_missing_imports silently
+# drops that import's real errors when it isn't installed. CI also type-checks
+# src/vip_tests/ and selftests/, not just src/vip/.
+uv run --all-extras mypy src/vip src/vip_tests selftests
 ```
 
 ## The lockfile
@@ -119,7 +128,7 @@ predictable (see [#399](https://github.com/posit-dev/vip/issues/399)):
 - **Next-major caps** (e.g. `requests>=2.33.0,<3`) on every other runtime
   dependency, so a breaking major release cannot land on install. The `report`
   and `load` optional groups are capped the same way; the `dev` group is left
-  uncapped by this policy (aside from `ruff`'s pre-existing narrow range).
+  uncapped by this policy (aside from `ruff`'s pre-existing exact pin).
 
 Bumps flow through Dependabot's `uv` job (weekly, 7-day cooldown): it raises the
 pin or cap in `pyproject.toml` and updates `uv.lock` in one PR, which CI gates

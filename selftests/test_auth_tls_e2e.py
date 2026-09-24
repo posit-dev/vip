@@ -17,47 +17,17 @@ to the ``httpx.HTTPError`` catch added during code review.
 from __future__ import annotations
 
 import json
-import ssl
-import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+from _helpers import _make_self_signed, _start_tls_server
+
 # ---------------------------------------------------------------------------
 # Self-signed cert + mock Connect server
 # ---------------------------------------------------------------------------
-
-
-def _make_self_signed(certdir: Path) -> tuple[Path, Path]:
-    cert_path = certdir / "cert.pem"
-    key_path = certdir / "key.pem"
-    subprocess.run(
-        [
-            "openssl",
-            "req",
-            "-x509",
-            "-newkey",
-            "rsa:2048",
-            "-keyout",
-            str(key_path),
-            "-out",
-            str(cert_path),
-            "-days",
-            "1",
-            "-nodes",
-            "-subj",
-            "/CN=localhost",
-            "-addext",
-            "subjectAltName=DNS:localhost,IP:127.0.0.1",
-        ],
-        check=True,
-        capture_output=True,
-    )
-    return cert_path, key_path
-
 
 _GUID = "user-guid-abc123"
 _API_KEY = "vip-test-key-" + ("X" * 24)
@@ -90,23 +60,11 @@ class _ConnectMockHandler(BaseHTTPRequestHandler):
         return self._send_json({"error": f"unhandled POST {self.path}"}, status=404)
 
 
-def _start_tls_server(cert: Path, key: Path) -> tuple[ThreadingHTTPServer, str]:
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _ConnectMockHandler)
-    # Avoid the test process hanging if a connection is still open at teardown.
-    httpd.daemon_threads = True
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
-    httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
-    port = httpd.server_address[1]
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, f"https://127.0.0.1:{port}"
-
-
 @pytest.fixture(scope="module")
 def connect_tls_server(tmp_path_factory):
     certdir = tmp_path_factory.mktemp("connect-tls")
     cert, key = _make_self_signed(certdir)
-    server, url = _start_tls_server(cert, key)
+    server, url = _start_tls_server(cert, key, _ConnectMockHandler)
     yield url
     server.shutdown()
     server.server_close()
@@ -245,7 +203,7 @@ def test_mint_follows_http_to_https_redirect(connect_http_redirect_server: str):
 # listening" (safe to downgrade to http://) or "a real TLS listener is here
 # but this client doesn't trust its certificate" (must NOT downgrade -- that
 # would send the caller's credentials to a real server in the clear). The
-# unit tests in test_auth.py mock that decision directly; these two prove it
+# unit tests in test_auth_scheme.py mock that decision directly; these two prove it
 # against a real socket in each state, since the whole point of deciding via
 # a raw TCP connect (rather than exception introspection) is that it must
 # work regardless of what real, uncontrived cause makes the TLS handshake

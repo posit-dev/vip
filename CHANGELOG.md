@@ -3,6 +3,87 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.9.3 (2026-09-24)
+
+### Bug Fixes
+
+- **auth**: Narrow broad excepts to concrete exception types ([`223cd4c`](https://github.com/posit-dev/vip/commit/223cd4ca35aeccc2481b6d0d9b2ac7ad32c68fd9))
+
+- **clients**: Raise instead of returning silent sentinels ([`001d02b`](https://github.com/posit-dev/vip/commit/001d02bfe13cfc1f19bf3d99ebdcec1feaccd34d))
+
+- **fixtures**: Raise on Kubernetes client construction failure ([`401a587`](https://github.com/posit-dev/vip/commit/401a587f09c636d368abaccfa715b51afc76a463))
+
+- **install**: Detect t64-renamed debian packages via Provides ([#659](https://github.com/posit-dev/vip/pull/659), [`7204bac`](https://github.com/posit-dev/vip/commit/7204bacb70a99cc78c7bcfcac36d366775998297))
+
+- **lint**: Repair the D209/D413 violations #681 landed on main ([#704](https://github.com/posit-dev/vip/pull/704), [`75878c5`](https://github.com/posit-dev/vip/commit/75878c505871a286d61f0fd85399d1dd7b35fd07))
+
+- **proxy**: Narrow httpx.URL parse sites to the concrete exception ([`e34448e`](https://github.com/posit-dev/vip/commit/e34448e6b0542abb9cc95068c223993df9d21f1d))
+
+- **security**: Report TLS verify failure as attest.unproven ([`087f368`](https://github.com/posit-dev/vip/commit/087f368db839d7c1026e8a06e30cc1f48c5d9899))
+
+- **vip_tests**: Narrow remaining broad excepts outside Workbench ([`454ebcd`](https://github.com/posit-dev/vip/commit/454ebcd7000b8864ceeed5c4d3268eef13b69c95))
+
+- **workbench**: Deliver RStudio console commands atomically ([#681](https://github.com/posit-dev/vip/pull/681), [`a2957a8`](https://github.com/posit-dev/vip/commit/a2957a8eb1a200496fb2a8a3cda5ecea8a10ab46))
+
+- **workbench**: Stop masking VS Code load failures as a skip ([`d475d90`](https://github.com/posit-dev/vip/commit/d475d90426762963ba410e15e23f5d23170c857b))
+
+### Chores
+
+- **deps**: Bump ruff from 0.16.6 to 0.16.7 in the python-dependencies group ([#699](https://github.com/posit-dev/vip/pull/699), [`96ee05a`](https://github.com/posit-dev/vip/commit/96ee05a716bba365fa76a6255704143d7f8206dd))
+
+- **deps**: Bump the actions-dependencies group with 2 updates ([#700](https://github.com/posit-dev/vip/pull/700), [`a449a98`](https://github.com/posit-dev/vip/commit/a449a98bb0651f5eb4971caf10092d3ec3ed1e13))
+
+- **deps**: Make pyproject.toml the only ruff version pin ([#739](https://github.com/posit-dev/vip/pull/739), [`694cc2e`](https://github.com/posit-dev/vip/commit/694cc2e60bd0e62b4990d128b70d6fd0d3267e0e))
+
+- **typing**: Add two zero-cost mypy flags ([`158163e`](https://github.com/posit-dev/vip/commit/158163ef97e210532423095a97b283777d652dde))
+
+- **typing**: Apply strict mypy flags to the load module ([`d42c3a9`](https://github.com/posit-dev/vip/commit/d42c3a938405f3219db5c831ea7981491a469964))
+
+- **typing**: Enable warn_unused_ignores, delete stale ignores ([`7a1b048`](https://github.com/posit-dev/vip/commit/7a1b04811af9a62598e2a9866d91495641e1e4e3))
+
+- **typing**: Widen mypy to src/vip_tests and selftests ([`458ca3d`](https://github.com/posit-dev/vip/commit/458ca3d571e1ad0b9d8f22173420c472a476f68b))
+
+### Continuous Integration
+
+- Stop auto-assigning dependabot PRs ([#698](https://github.com/posit-dev/vip/pull/698), [`b1edff3`](https://github.com/posit-dev/vip/commit/b1edff374dc2c2ca1cbd641f3fda3211c4e32315))
+
+### Documentation
+
+- Rewrite AGENTS.md and development docs for newcomers ([#740](https://github.com/posit-dev/vip/pull/740), [`a071baa`](https://github.com/posit-dev/vip/commit/a071baa10c56a57e170d3af0e742067542dda105))
+
+- **install**: Confirm and document remaining broad excepts ([`aeb778c`](https://github.com/posit-dev/vip/commit/aeb778cb31c3342ac8caa9bc736bb29ae07c8ff7))
+
+- **workbench-ui**: Comment the remaining broad except sites ([`93fc524`](https://github.com/posit-dev/vip/commit/93fc5245288e3d299901276547d9a6999be832e8))
+
+### Features
+
+- **errors**: Introduce the VipError hierarchy ([`45746f7`](https://github.com/posit-dev/vip/commit/45746f7e5b14c1245faff9b751260eb1ccb41ac1))
+
+### Refactoring
+
+- Hoist function-local stdlib imports in src/vip ([#741](https://github.com/posit-dev/vip/pull/741), [`e328f9d`](https://github.com/posit-dev/vip/commit/e328f9d2e7b9d4ab58fc607c1817478d4a914d4f))
+
+- **auth**: Split auth.py into a package ([#724](https://github.com/posit-dev/vip/pull/724), [`bde1a9d`](https://github.com/posit-dev/vip/commit/bde1a9d18b24192c58e0b595d4d2ce523d58f99c))
+
+- **cli**: Route sys.exit calls through one handler ([`d7c65c9`](https://github.com/posit-dev/vip/commit/d7c65c91d7724c09ba6bdb62112c5ee08cdd8a16))
+
+- **cli**: Split cli.py into one module per command ([#725](https://github.com/posit-dev/vip/pull/725), [`4b63529`](https://github.com/posit-dev/vip/commit/4b63529e53597cf0320ced1055e6462a0ca10224))
+
+- **plugin**: Move stash keys out of plugin.py ([#722](https://github.com/posit-dev/vip/pull/722), [`bdad7e0`](https://github.com/posit-dev/vip/commit/bdad7e078c55ee48bb0c6e43557aaec33d564002))
+
+- **plugin**: Split plugin.py into a package ([#726](https://github.com/posit-dev/vip/pull/726), [`a55f159`](https://github.com/posit-dev/vip/commit/a55f159b04f8ca2ecb114ef897a02a454ce538f7))
+
+- **workbench**: Split the Workbench conftest into modules ([#727](https://github.com/posit-dev/vip/pull/727), [`eb5c69a`](https://github.com/posit-dev/vip/commit/eb5c69a653cff72b18db96044d852b2168a55b4a))
+
+### Testing
+
+- Share duplicated TLS, Workbench and repo test helpers ([#728](https://github.com/posit-dev/vip/pull/728), [`addaf67`](https://github.com/posit-dev/vip/commit/addaf676566c5788301adf8d0753aea07d1b4356))
+
+- **auth**: Split test_auth.py by the code each class covers ([#721](https://github.com/posit-dev/vip/pull/721), [`c808f62`](https://github.com/posit-dev/vip/commit/c808f62d783b866ba92c56ef3194af51938a1e01))
+
+- **plugin**: Split TestPluginIntegration into subject files ([#723](https://github.com/posit-dev/vip/pull/723), [`f68245c`](https://github.com/posit-dev/vip/commit/f68245ce67688a690ccb761bf5e06051dcd33715))
+
+
 ## v2026.9.2 (2026-09-17)
 
 ### Bug Fixes

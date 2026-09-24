@@ -20,8 +20,9 @@ from typing import ClassVar
 # ``pytest_bdd.utils.CONFIG_STACK[-1]``. pytest-bdd pushes the session config in
 # a ``trylast`` ``pytest_configure`` but pops it unconditionally in
 # ``pytest_unconfigure``, so an in-process ``pytester`` run (see
-# ``selftests/test_plugin.py``) can pop the outer session's entry and leave the
-# stack empty. Importing this module from inside a test body then raises
+# ``selftests/test_plugin.py`` and ``selftests/plugin/``) can pop the outer
+# session's entry and leave the stack empty. Importing this module from inside
+# a test body then raises
 # ``IndexError: list index out of range`` whenever a pytester test happens to
 # run earlier on the same xdist worker. Collection runs before any of that.
 from vip_tests.connect import bundles, test_content_deploy

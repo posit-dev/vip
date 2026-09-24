@@ -49,7 +49,7 @@ reasons that have nothing to do with VIP's product tests) would have every one
 of its tests fail in setup, because ``_connect_content_cleanup`` requests
 ``connect_client``, which calls ``require_connect_api_key`` and fails loudly
 when Connect is configured but unauthenticated. This was caught empirically:
-``selftests/test_plugin.py::TestPluginIntegration::
+``selftests/plugin/test_marker_deselection.py::TestPluginIntegration::
 test_bdd_given_configured_product_not_deselected`` configures Connect with no
 API key to exercise deselection logic, and broke exactly this way when the
 cleanup fixtures were briefly moved here during development. Extension
@@ -62,6 +62,7 @@ directly.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Generator
 
 import pytest
@@ -74,6 +75,12 @@ from vip.clients.kubernetes import KubernetesClient
 from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
 from vip.config import PerformanceConfig, VIPConfig
+from vip.errors import ConfigError
+from vip.stash import (
+    _auth_mode_key,
+    _auth_session_key,
+    _vip_config_key,
+)
 
 # ---------------------------------------------------------------------------
 # Configuration fixture
@@ -83,8 +90,6 @@ from vip.config import PerformanceConfig, VIPConfig
 @pytest.fixture(scope="session")
 def vip_config(request: pytest.FixtureRequest) -> VIPConfig:
     """The loaded VIP configuration for this test run."""
-    from vip.plugin import _vip_config_key
-
     return request.config.stash[_vip_config_key]
 
 
@@ -99,6 +104,37 @@ def vip_verbose(request: pytest.FixtureRequest) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def require_connect_api_key(vip_cfg: VIPConfig) -> None:
+    """Fail loudly if Connect is configured but no API key is available.
+
+    Without this guard the ``connect_client`` fixture returns a client with an
+    empty ``Authorization`` header, which silently succeeds for unauthenticated
+    endpoints (``/server_settings``) but produces opaque 401/403 failures deep
+    inside individual scenarios — each one rendered through pytest-bdd's
+    ``call_fixture_func`` frame, hiding the real cause (auth setup failed).
+
+    Calling this from the fixture turns every Connect API test's first error
+    into a single, actionable root-cause message pointing at the missing key
+    and the upstream mint diagnostics.
+
+    Does nothing when Connect is not configured at all (no URL set) — those
+    tests are deselected upstream.
+    """
+    if not vip_cfg.connect.is_configured:
+        return
+    if vip_cfg.connect.api_key:
+        return
+    pytest.fail(
+        "Connect API key is not configured — API-based tests cannot run.\n"
+        "  - Set VIP_CONNECT_API_KEY in the environment, or\n"
+        "  - Set connect.api_key in vip.toml, or\n"
+        "  - Use --headless-auth or --interactive-auth to mint one automatically.\n"
+        "If you already used --headless-auth, scroll up to the 'Mint diagnostic' "
+        "lines for why minting failed.",
+        pytrace=False,
+    )
+
+
 @pytest.fixture(scope="session")
 def connect_client(
     request: pytest.FixtureRequest, vip_config: VIPConfig
@@ -108,8 +144,6 @@ def connect_client(
     When an interactive or headless auth session is active, injects that session's cookies
     so an OIDC forward-auth proxy fronting Connect accepts the request.
     """
-    from vip.plugin import _auth_session_key, require_connect_api_key
-
     if not vip_config.connect.is_configured:
         # Yield (not return) None: this is a generator fixture, and the root
         # autouse Connect-cleanup fixtures request it on every test — including
@@ -177,8 +211,6 @@ def workbench_client(
     When an interactive or headless auth session is active, injects that session's cookies
     so the same forward-auth proxy that fronts Connect accepts the request.
     """
-    from vip.plugin import _auth_session_key
-
     if not vip_config.workbench.is_configured:
         # Yield (not return) None so this generator fixture always yields a value —
         # autouse cleanup fixtures that request workbench_client would get
@@ -222,14 +254,33 @@ def workbench_url(vip_config: VIPConfig) -> str:
 
 @pytest.fixture(scope="session")
 def kubernetes_client(vip_config: VIPConfig) -> KubernetesClient | None:
-    """Kubernetes client for capacity tests; ``None`` when K8s is not configured."""
+    """Kubernetes client for capacity tests; ``None`` when K8s is not configured.
+
+    ``is_configured`` above already covers "K8s isn't set up", so everything
+    ``KubernetesClient.__init__`` can raise past that point -- the ``kubernetes``
+    SDK not installed (``RuntimeError``, from ``_require_sdk``), a missing or
+    invalid kubeconfig (``kubernetes.config.ConfigException``), or a kubeconfig
+    file that exists but can't be read or parsed (``OSError``, ``yaml.YAMLError``)
+    -- is a real construction failure, not "not configured". Each is raised as
+    a :class:`ConfigError` instead of being swallowed into the same ``None`` a
+    genuinely unconfigured deployment returns -- that swallowing is exactly
+    what let a broken K8s setup masquerade as "not configured" and skip every
+    capacity test instead of failing loudly. ``RuntimeError`` gets its own
+    branch because ``_require_sdk``'s message is already a complete,
+    user-facing explanation; every other failure is wrapped with the
+    namespace for context.
+    """
     k8s_cfg = vip_config.workbench.kubernetes
     if not k8s_cfg.is_configured:
         return None
     try:
         return KubernetesClient(namespace=k8s_cfg.namespace)
-    except Exception:  # noqa: BLE001
-        return None
+    except RuntimeError as exc:
+        raise ConfigError(str(exc)) from exc
+    except Exception as exc:
+        raise ConfigError(
+            f"Kubernetes configuration is invalid for namespace {k8s_cfg.namespace!r}: {exc}"
+        ) from exc
 
 
 @pytest.fixture(scope="session")
@@ -283,8 +334,6 @@ def interactive_auth(request: pytest.FixtureRequest) -> bool:
     Returns True for both ``--interactive-auth`` and ``--headless-auth``; use
     the ``auth_mode`` fixture to distinguish which mode is active.
     """
-    from vip.plugin import _auth_session_key
-
     session = request.config.stash.get(_auth_session_key, None)
     return session is not None
 
@@ -292,8 +341,6 @@ def interactive_auth(request: pytest.FixtureRequest) -> bool:
 @pytest.fixture(scope="session")
 def auth_mode(request: pytest.FixtureRequest) -> str:
     """The active auth mode: ``"interactive"``, ``"headless"``, or ``"none"``."""
-    from vip.plugin import _auth_mode_key
-
     return request.config.stash.get(_auth_mode_key, "none")
 
 
@@ -306,8 +353,6 @@ def workbench_auth_error(request: pytest.FixtureRequest) -> str | None:
     state can read this to produce an informative skip message instead
     of a generic "session not shared" guess.
     """
-    from vip.plugin import _auth_session_key
-
     session = request.config.stash.get(_auth_session_key, None)
     if session is None:
         return None
@@ -388,7 +433,7 @@ def browser_type_launch_args(browser_type_launch_args, vip_config: VIPConfig):
     Registering ``vip-fixtures`` in ``pytest_configure`` (after pytest-playwright
     has already registered via its own entry point) is what makes this
     override win; ``selftests/test_extension_fixtures.py`` and
-    ``selftests/test_plugin.py`` assert VIP's version is the one in effect,
+    ``selftests/plugin/test_json_report.py`` assert VIP's version is the one in effect,
     not just that the fixture resolves.
     """
     extra = _ui_browser_launch_args(vip_config)
@@ -414,8 +459,6 @@ def browser_context_args(
     ``browser_type_launch_args`` above for why this override still applies
     after moving out of ``conftest.py``.
     """
-    from vip.plugin import _auth_session_key
-
     session = request.config.stash.get(_auth_session_key, None)
     if session is not None:
         browser_context_args["storage_state"] = str(session.storage_state_path)
@@ -423,8 +466,6 @@ def browser_context_args(
         browser_context_args["ignore_https_errors"] = True
     # The proxy is applied at launch (see browser_type_launch_args), not here.
     if vip_config.ca_bundle is not None:
-        import os
-
         _prev = os.environ.get("NODE_EXTRA_CA_CERTS")
         os.environ["NODE_EXTRA_CA_CERTS"] = str(vip_config.ca_bundle)
 

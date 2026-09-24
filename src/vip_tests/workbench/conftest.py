@@ -1,95 +1,134 @@
 """Workbench-specific fixtures and helpers.
 
 Page selectors are in the pages/ subpackage
+
+The helpers live in the sibling ``login``, ``sessions``, ``naming``,
+``cleanup``, ``capacity`` and ``timeouts`` modules. This file keeps the
+IDE-launch skip-cascade hooks, ``wb_login``, the shared Given step and
+``shiny_bundle_spec``, and imports every fixture those modules define so
+pytest discovers them (a non-root ``conftest.py`` cannot use
+``pytest_plugins``). It also re-exports the names step files and selftests
+import from here. Patch a helper on the module that calls it, not here: a
+re-export does not change the global the module looks up.
 """
 
 from __future__ import annotations
 
-import contextlib
-import hashlib
-import logging
-import os
 import re
-import tempfile
-import time
-import warnings
 from pathlib import Path
-from typing import NoReturn
-from urllib.parse import urlparse
 
 import pytest
-from filelock import FileLock, Timeout
-from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import Locator, Page, expect
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Page
 from pytest_bdd import given
 
-from vip import attest
-from vip.auth import refresh_auth_cache_from_storage_state
-from vip.clients.workbench import WorkbenchClient
 from vip.plugin import _auth_session_key
-from vip.timeouts import timeout_scale
-from vip.workbench_ui import (
-    quit_vip_sessions_via_ui as _quit_vip_sessions_via_ui,
-)
 
 # Re-exported for selftests/test_workbench_cleanup.py, which imports it from
 # here (not from vip.workbench_ui directly) to match the pre-move layout.
 from vip.workbench_ui import (
-    vip_names_from_select_labels as _vip_names_from_select_labels,  # noqa: F401
+    vip_names_from_select_labels as _vip_names_from_select_labels,
 )
 from vip_tests.connect.bundles import _SHINY_APP_R, _latest_version, manifest_raw_url
-from vip_tests.workbench.pages import Homepage, LoginPage
+from vip_tests.workbench.capacity import (
+    MAX_AUTO_DETECTED_PROFILES,
+    ResourceProfileDisabledError,
+    _option_is_disabled,
+    cap_auto_detected_profiles,
+    profile_size_key,
+)
+from vip_tests.workbench.cleanup import (
+    _cleanup_sessions,
+    _quit_vip_sessions_via_ui,
+    _run_session_cleanup,
+    _session_api_reachable_via_cookies,
+    _wb_cleanup_state,
+    quit_owned_sessions_via_page,
+)
+from vip_tests.workbench.login import (
+    _external_idp_host,
+    _login_lock_path,
+    _navigated_into_session,
+    _silent_sso_signin,
+    oidc_login_lock,
+    restore_shared_session,
+    workbench_login,
+)
+from vip_tests.workbench.naming import (
+    capacity_session_prefix,
+    current_worker_id,
+    k8s_session_prefix,
+    unique_session_name,
+    vip_session_prefix,
+)
+from vip_tests.workbench.sessions import (
+    _session_failure_message,
+    _session_timeout_message,
+    _skip_workbench_session_unproven,
+    _workbench_session_skip_message,
+    assert_homepage_loaded,
+    format_capacity_failure,
+    raise_if_session_failed,
+    wait_for_session_active,
+    wait_for_session_suspended,
+)
+from vip_tests.workbench.timeouts import (
+    TERMINAL_SESSION_FAILURE_STATES,
+    TIMEOUT_CLEANUP,
+    TIMEOUT_CODE_EXEC,
+    TIMEOUT_DIALOG,
+    TIMEOUT_DIALOG_PROBE,
+    TIMEOUT_IDE_LOAD,
+    TIMEOUT_PAGE_LOAD,
+    TIMEOUT_QUICK,
+    TIMEOUT_SESSION_START,
+    TIMEOUT_SSO_ROUNDTRIP,
+)
 
-logger = logging.getLogger(__name__)
-
-# Cross-worker OIDC login lock (#484). Under --interactive-auth / --headless-auth every
-# xdist worker shares one IdP session; letting many workers do the silent SSO round-trip
-# simultaneously storms the IdP (the ?error=2 bounce from #467). Serializing just the
-# round-trip removes the concurrency without re-serializing the whole suite.
-_LOGIN_LOCK_TIMEOUT = float(os.environ.get("VIP_LOGIN_LOCK_TIMEOUT", "60"))
-
-
-def _login_lock_path(workbench_url: str) -> Path:
-    """Path to the cross-worker OIDC login lock for *workbench_url*.
-
-    Keyed by a hash of the URL so distinct deployments don't share a lock, and placed in
-    the system temp dir so all xdist workers on the host share the same file.
-    """
-    digest = hashlib.sha256(workbench_url.encode()).hexdigest()[:16]
-    return Path(tempfile.gettempdir()) / f"vip-wb-login-{digest}.lock"
-
-
-@contextlib.contextmanager
-def oidc_login_lock(workbench_url: str, *, timeout: float = _LOGIN_LOCK_TIMEOUT):
-    """Serialize the OIDC SSO round-trip across xdist workers.
-
-    Only one worker performs the silent SSO round-trip against the shared IdP session at a
-    time. The lock is a best-effort optimization: falling back to unlocked proceeds
-    correctly, though it can reintroduce the very login storm this lock exists to avoid. If
-    it can't be acquired within *timeout*, surface a warning and proceed unlocked rather
-    than hang the run.
-    """
-    lock = FileLock(str(_login_lock_path(workbench_url)))
-    try:
-        lock.acquire(timeout=timeout)
-    except Timeout:
-        # Emit via both channels: warnings.warn surfaces in pytest's warnings summary
-        # regardless of pass/fail (no logging handler is attached for test runs), so the
-        # one run where storm-prevention disengaged leaves a forensic trail for later.
-        message = (
-            f"OIDC login lock not acquired within {timeout:.0f}s for {workbench_url}; "
-            "proceeding without it. Concurrent logins may briefly storm the IdP."
-        )
-        warnings.warn(message, stacklevel=2)
-        logger.warning(message)
-        yield
-        return
-    try:
-        yield
-    finally:
-        lock.release()
-
+__all__ = [
+    "MAX_AUTO_DETECTED_PROFILES",
+    "ResourceProfileDisabledError",
+    "TERMINAL_SESSION_FAILURE_STATES",
+    "TIMEOUT_CLEANUP",
+    "TIMEOUT_CODE_EXEC",
+    "TIMEOUT_DIALOG",
+    "TIMEOUT_DIALOG_PROBE",
+    "TIMEOUT_IDE_LOAD",
+    "TIMEOUT_PAGE_LOAD",
+    "TIMEOUT_QUICK",
+    "TIMEOUT_SESSION_START",
+    "TIMEOUT_SSO_ROUNDTRIP",
+    "_cleanup_sessions",
+    "_external_idp_host",
+    "_login_lock_path",
+    "_navigated_into_session",
+    "_option_is_disabled",
+    "_quit_vip_sessions_via_ui",
+    "_run_session_cleanup",
+    "_session_api_reachable_via_cookies",
+    "_session_failure_message",
+    "_session_timeout_message",
+    "_silent_sso_signin",
+    "_skip_workbench_session_unproven",
+    "_vip_names_from_select_labels",
+    "_wb_cleanup_state",
+    "_workbench_session_skip_message",
+    "assert_homepage_loaded",
+    "cap_auto_detected_profiles",
+    "capacity_session_prefix",
+    "current_worker_id",
+    "format_capacity_failure",
+    "k8s_session_prefix",
+    "oidc_login_lock",
+    "profile_size_key",
+    "quit_owned_sessions_via_page",
+    "raise_if_session_failed",
+    "restore_shared_session",
+    "unique_session_name",
+    "vip_session_prefix",
+    "wait_for_session_active",
+    "wait_for_session_suspended",
+    "workbench_login",
+]
 
 pytestmark = [pytest.mark.workbench, pytest.mark.xdist_group("workbench")]
 
@@ -151,7 +190,7 @@ def pytest_collection_modifyitems(
     lock in :func:`workbench_login` (see :func:`oidc_login_lock`), not by serialization.
 
     Password / no-auth runs are left untouched: they hit the early return below, so their
-    Workbench items keep the default ``workbench`` group that ``plugin.py``'s
+    Workbench items keep the default ``workbench`` group that ``plugin/selection.py``'s
     :func:`_assign_xdist_group` directory fallback assigns (the module-level ``pytestmark``
     at the top of this file does not propagate to sibling test modules, so it assigns
     nothing here).
@@ -171,7 +210,7 @@ def pytest_collection_modifyitems(
         # per-test xdist_group marker exists today, so this is a defensive guard: xdist
         # concatenates *all* xdist_group marks on an item (via iter_markers), it does not
         # take the closest, so a leftover mark would corrupt the group name rather than be
-        # shadowed. plugin.py's _assign_xdist_group then respects the group we add here.
+        # shadowed. plugin/selection.py's _assign_xdist_group then respects the group we add here.
         item.own_markers = [m for m in item.own_markers if m.name != "xdist_group"]
         item.add_marker(pytest.mark.xdist_group(group))
 
@@ -235,211 +274,6 @@ def pytest_runtest_makereport(item: pytest.Item, call):
         _record_ide_launch_outcome(outcomes, ide, report.outcome)
 
 
-# ---------------------------------------------------------------------------
-# Playwright timeout constants (milliseconds)
-# Scaled at definition time so all 9 importing step files pick up the scale
-# without any call-site changes.  Set VIP_TIMEOUT_SCALE=N before running.
-# ---------------------------------------------------------------------------
-
-TIMEOUT_QUICK = int(5_000 * timeout_scale())
-TIMEOUT_DIALOG = int(10_000 * timeout_scale())
-TIMEOUT_PAGE_LOAD = int(15_000 * timeout_scale())
-TIMEOUT_CLEANUP = int(30_000 * timeout_scale())
-TIMEOUT_CODE_EXEC = int(30_000 * timeout_scale())
-TIMEOUT_IDE_LOAD = int(60_000 * timeout_scale())
-TIMEOUT_SESSION_START = int(90_000 * timeout_scale())
-# The silent-SSO click-through in _silent_sso_signin used TIMEOUT_PAGE_LOAD
-# (15s) until issue #263's diagnostic showed a SAML round-trip (IdP redirect,
-# assertion POST, Workbench's own validation) taking longer than that under
-# real IdP latency, which read as "no usable IdP session" and skipped a
-# login that was actually still completing.
-TIMEOUT_SSO_ROUNDTRIP = int(60_000 * timeout_scale())
-# Short window to detect whether an optional confirm/force-quit dialog appeared
-# in the UI session sweep. Used to gate (not to click) so an absent dialog does
-# not cost TIMEOUT_QUICK each iteration; a dialog that does appear is then
-# clicked with the normal TIMEOUT_QUICK.
-TIMEOUT_DIALOG_PROBE = int(1_000 * timeout_scale())
-
-# Poll interval (ms) used while waiting for a session to reach Active.
-_SESSION_POLL_INTERVAL = 500
-
-# Session statuses that are terminal failures: the session has stopped and
-# will never reach Active, so continuing to wait is pointless.  Detecting one
-# of these lets the session-start wait fail fast with an actionable message
-# instead of timing out on an opaque "Locator expected to be visible" error.
-TERMINAL_SESSION_FAILURE_STATES = ("Failed",)
-
-# ---------------------------------------------------------------------------
-# Resource profile helpers
-# Shared between test_session_capacity.py and test_session_capacity_k8s.py,
-# both of which need to detect and skip resource profiles that Workbench
-# renders as visible-but-disabled for the authenticated user.
-# ---------------------------------------------------------------------------
-
-
-class ResourceProfileDisabledError(Exception):
-    """Raised when the target resource profile is present but disabled for the user.
-
-    Workbench renders resource profiles the authenticated user is not entitled
-    to (e.g. a group-restricted profile) as visible options with
-    ``aria-disabled='true'`` / ``data-disabled``.  Clicking one just blocks
-    until Playwright's timeout, so ``_launch_session`` raises this instead and
-    lets the caller record the profile as unavailable and move on.
-    """
-
-    def __init__(self, profile: str) -> None:
-        super().__init__(profile)
-        self.profile = profile
-
-
-def _option_is_disabled(option: Locator) -> bool:
-    """Return True if a ``[role='option']`` is disabled for the current user.
-
-    Radix-based selects mark unavailable options with ``aria-disabled='true'``
-    and an (empty-valued) ``data-disabled`` attribute; ``get_attribute``
-    returns ``""`` for the latter, so test for presence rather than truthiness.
-    """
-    return (
-        option.get_attribute("aria-disabled") == "true"
-        or option.get_attribute("data-disabled") is not None
-    )
-
-
-# Cap on how many auto-detected resource profiles the capacity scenarios launch
-# at once (#631).  A deployment that *advertises* N profiles cannot necessarily
-# run all N concurrently: the CI Workbench container offers Default, Small,
-# Medium and Large, which together request 8 CPUs and 30 GB from a 4-vCPU
-# runner, so launching every one measured the runner's limits rather than the
-# deployment's.  An explicit ``workbench.session_profiles`` list is never
-# capped -- that list is a deliberate statement about the deployment.
-MAX_AUTO_DETECTED_PROFILES = 2
-
-_PROFILE_CPU_RE = re.compile(r"(\d+(?:\.\d+)?)\s*v?CPUs?\b", re.IGNORECASE)
-_PROFILE_MEM_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(G|M)i?B\b", re.IGNORECASE)
-
-
-def profile_size_key(name: str) -> tuple[float, float]:
-    """Sort key approximating a resource profile's size from its dropdown label.
-
-    Workbench renders each profile's allocation inline, e.g. ``Medium (2 CPUs,
-    8GB RAM)``, so the label alone orders them smallest-first without asking
-    the launcher.  A label carrying no parseable allocation sorts last: an
-    unknown size is the one we least want to launch when capping.
-    """
-    cpu = _PROFILE_CPU_RE.search(name)
-    mem = _PROFILE_MEM_RE.search(name)
-    cpus = float(cpu.group(1)) if cpu else float("inf")
-    if mem is None:
-        return (cpus, float("inf"))
-    # 1024, so these are mebibytes. The exact unit does not matter -- this is only
-    # ever a sort key -- but the name should not claim otherwise.
-    mebibytes = float(mem.group(1)) * (1024 if mem.group(2).upper() == "G" else 1)
-    return (cpus, mebibytes)
-
-
-def _quoted(names: list[str]) -> str:
-    """Render *names* as a quoted, comma-separated list.
-
-    Resource-profile labels embed their own commas, so an unquoted join produces
-    an unparseable run-on list in the warning.
-    """
-    return ", ".join(repr(n) for n in names)
-
-
-def cap_auto_detected_profiles(
-    names: list[str], *, limit: int = MAX_AUTO_DETECTED_PROFILES
-) -> list[str]:
-    """Return at most *limit* of the auto-detected *names*, smallest first.
-
-    Only for profiles discovered from the dropdown.  Launching every advertised
-    profile at once exhausts a modest host, and a session that loses that
-    contention fails the scenario for a reason that is not the deployment's
-    capacity -- which is how the CI nightly came to fail on a different profile
-    each run (#631).
-
-    Capping is reported through both ``warnings.warn`` and the logger, matching
-    :func:`oidc_login_lock`: VIP is a verification tool, so a run that
-    exercised fewer profiles than the deployment offers must say so rather than
-    report a narrower check as a full one.  ``limit`` of 0 or less disables the
-    cap.
-    """
-    if limit <= 0 or len(names) <= limit:
-        return list(names)
-    ordered = sorted(names, key=profile_size_key)
-    chosen, dropped = ordered[:limit], ordered[limit:]
-    # Labels contain commas of their own ("Medium (2 CPUs, 8GB RAM)"), so a bare
-    # ", " join reads as one run-on list. Quote each label to keep the boundaries
-    # visible.
-    message = (
-        f"Auto-detected {len(names)} enabled resource profiles; launching only the "
-        f"{limit} smallest ({_quoted(chosen)}) and skipping {_quoted(dropped)}. "
-        "Launching every advertised profile at once exhausts a modest host and fails "
-        "the scenario for a reason that is not the deployment's capacity. Set "
-        "workbench.session_profiles in vip.toml to choose the profiles explicitly; "
-        "an explicit list is never capped."
-    )
-    warnings.warn(message, stacklevel=2)
-    logger.warning(message)
-    return chosen
-
-
-# ---------------------------------------------------------------------------
-
-
-def current_worker_id() -> str:
-    """Return this process's xdist worker id (``"main"`` when running serially).
-
-    Session names embed this so cleanup can tell a worker's own sessions from a
-    sibling worker's (see :func:`~vip.clients.workbench.session_owner`).
-    """
-    return os.environ.get("PYTEST_XDIST_WORKER", "main")
-
-
-def vip_session_prefix(kind: str) -> str:
-    """Build a ``_vip_<kind>_<worker>_<ts>_`` session-name prefix.
-
-    Some scenarios name sessions outside :func:`unique_session_name` (they carry
-    a profile or an index rather than a source file), but the contract is the
-    same: the worker id must be in the name so cleanup can attribute the session
-    back to the worker that made it (see
-    :func:`~vip.clients.workbench.session_owner`) and not quit a sibling
-    worker's live sessions.  The timestamp keeps names clear of leftovers from
-    previous runs.
-
-    Route every such scheme through this one helper.  A prefix built by hand
-    that omits the worker segment is unowned, and unowned means no in-run sweep
-    will clean it up -- the session leaks for the rest of the run.  Computed per
-    call, not at import time, so the worker id is read after xdist has set it.
-    """
-    return f"_vip_{kind}_{current_worker_id()}_{int(time.time())}_"
-
-
-def capacity_session_prefix() -> str:
-    """Prefix for this worker's resource-profile capacity session names."""
-    return vip_session_prefix("cap")
-
-
-def k8s_session_prefix() -> str:
-    """Prefix for this worker's Kubernetes capacity session names."""
-    return vip_session_prefix("k8s")
-
-
-def unique_session_name(filename: str) -> str:
-    """Generate a Workbench session name unique across xdist workers.
-
-    Session tests look up rows via aria-label locators. Using only
-    ``int(time.time())`` collided across workers that entered the same
-    second, producing strict-mode failures once locators were tightened
-    to ends-with matches. Worker id + nanosecond timestamp guarantees
-    uniqueness for any practical parallelism.
-
-    The worker id is not just for uniqueness: cleanup parses it back out to
-    scope its sweeps, so the format must stay parseable by
-    :func:`~vip.clients.workbench.session_owner`.
-    """
-    return f"VIP {filename} - {current_worker_id()}-{time.time_ns()}"
-
-
 def extract_repo_urls(output: str) -> list[str]:
     """Extract URLs from R's ``getOption('repos')`` console output.
 
@@ -450,871 +284,6 @@ def extract_repo_urls(output: str) -> list[str]:
     that comparison unreachable for exactly the input it exists to handle.
     """
     return re.findall(r"https?://[^\s<>\"']+", output, re.IGNORECASE)
-
-
-# Keywords indicating the URL is a login/auth page (used for OIDC detection)
-_LOGIN_KEYWORDS = ("sign-in", "login", "auth")
-
-
-def _on_login_page(url: str) -> bool:
-    """Return True if *url* looks like a login or IdP page."""
-    lower = url.lower()
-    return any(kw in lower for kw in _LOGIN_KEYWORDS)
-
-
-def _navigated_into_session(url: str) -> bool:
-    """Return True if *url* is inside a session, not the homepage.
-
-    Workbench's homepage is itself served under a "/s/<id>/" URL (its
-    "workspaces" view), so a bare "/s/" check can't tell the two apart. A
-    real session URL has no "workspaces" segment after the id.
-    """
-    segments = [s for s in urlparse(url).path.split("/") if s]
-    if len(segments) < 2 or segments[0] != "s":
-        return False
-    return "workspaces" not in segments
-
-
-def _external_idp_host(page_url: str, workbench_url: str) -> str | None:
-    """Return the IdP host if sign-in has left the Workbench origin.
-
-    Some deployments do not render a Workbench sign-in page at all: an
-    unauthenticated request redirects straight out to the identity provider
-    (e.g. ``https://posit.okta.com/oauth2/v1/authorize?...``).  That page has
-    neither Workbench's ``#username`` field nor a "Sign in with ..." button --
-    Okta's identifier-first submit is named "Next" -- so button/field probing
-    alone reads it as a password deployment and grinds the retry loop into
-    "Login failed after 3 attempts".  Comparing the landed host against the
-    configured Workbench host settles it without depending on any one IdP's
-    markup.  Returns ``None`` when still on the Workbench origin (or when
-    either URL cannot be parsed).
-    """
-    try:
-        landed = urlparse(page_url)
-        configured = urlparse(workbench_url)
-    except ValueError:
-        return None
-    current = _normalised_netloc(landed)
-    expected = _normalised_netloc(configured)
-    if current and expected and current != expected:
-        return landed.netloc
-    return None
-
-
-# Ports that carry no information because they are implied by the scheme.
-_DEFAULT_PORTS = {"http": 80, "https": 443}
-
-
-def _normalised_netloc(parsed) -> str:
-    """Return *parsed*'s host:port with a scheme-default port dropped, lowercased.
-
-    ``https://wb.example.com`` and ``https://wb.example.com:443`` are the same
-    origin, but their raw ``netloc`` strings differ.  Comparing raw values makes
-    a Workbench URL configured with an explicit default port look like a
-    redirect away from itself, which would skip every password-login scenario on
-    a deployment that is not federated at all.
-    """
-    host = (parsed.hostname or "").lower()
-    if not host:
-        return ""
-    try:
-        port = parsed.port
-    except ValueError:
-        # A malformed port ("https://host:notaport") -- keep the raw form rather
-        # than silently treating it as the default.
-        return parsed.netloc.lower()
-    if port is None or port == _DEFAULT_PORTS.get(parsed.scheme.lower()):
-        return host
-    return f"{host}:{port}"
-
-
-def _skip_workbench_session_unproven(
-    *,
-    auth_mode: str,
-    workbench_auth_error: str | None,
-    landed_url: str,
-    idp_host: str | None = None,
-) -> NoReturn:
-    """Skip because a configured Workbench session could never be established.
-
-    This is #596's case: the operator asked for Workbench explicitly, auth did
-    not complete, and every browser test fell away. Reporting that as an
-    ordinary skip is what let a fully unverified product exit 0, so it is
-    raised as *unproven* -- the run stays green only under --allow-unproven.
-
-    Contrast the ``sso_only`` skip further down ``_workbench_login``, which
-    stays an ordinary skip on purpose: an SSO deployment genuinely has no
-    password form to exercise, so that check is not applicable rather than
-    unverified, and flagging it would fail every SSO deployment's own run.
-    """
-    attest.unproven(
-        _workbench_session_skip_message(
-            auth_mode=auth_mode,
-            workbench_auth_error=workbench_auth_error,
-            landed_url=landed_url,
-            idp_host=idp_host,
-        )
-    )
-
-
-def _workbench_session_skip_message(
-    *,
-    auth_mode: str,
-    workbench_auth_error: str | None,
-    landed_url: str,
-    idp_host: str | None = None,
-) -> str:
-    """Build the skip text shown when storage state did not log Workbench in.
-
-    Names the active auth mode's CLI flag, quotes any error captured by
-    ``_authenticate_workbench`` during pre-test sign-in, and lists the
-    next steps a user can take.  Prior versions said "Interactive auth
-    storage state did not authenticate Workbench" regardless of which
-    mode was active and without surfacing the underlying cause.
-
-    When *auth_mode* is unknown (a caller forgot to thread the fixture
-    through), the message names both ``--interactive-auth`` and
-    ``--headless-auth`` so the reader isn't pointed at the wrong flag.
-
-    *idp_host* names the identity provider when the deployment redirected
-    sign-in off the Workbench origin entirely, so the reader knows the session
-    expired at the IdP rather than looking for a Workbench sign-in page that
-    was never rendered.
-    """
-    if auth_mode == "headless":
-        flag = "--headless-auth"
-    elif auth_mode == "interactive":
-        flag = "--interactive-auth"
-    else:
-        flag = "--interactive-auth / --headless-auth"
-    where = f"redirected to the {idp_host} sign-in page" if idp_host else "landed on login page"
-    lines = [f"Workbench session not established by {flag} ({where}: {landed_url})."]
-    if workbench_auth_error:
-        lines.append(f"Pre-test auth reported: {workbench_auth_error}")
-    lines.append(
-        "Next steps: rerun with --vip-verbose to see the auth flow, "
-        "confirm the OIDC provider issues a session valid for Workbench's domain, "
-        "and check that the Workbench auth-sign-in page does not require interaction."
-    )
-    return " ".join(lines)
-
-
-def assert_homepage_loaded(page: Page) -> None:
-    """Assert that the Workbench homepage has fully loaded.
-
-    Verifies the Posit logo and new-session button are both visible.
-    Use .first for NEW_SESSION_BUTTON as there can be two instances.
-    """
-    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-    expect(page.locator(Homepage.NEW_SESSION_BUTTON).first).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-
-
-def _session_failure_message(name: str, state: str, *, expected: str = "Active") -> str:
-    """Build the error shown when a session reaches a terminal failure state.
-
-    Replaces the opaque "Locator expected to be visible" timeout with a
-    message that names the session, the terminal state observed, the state
-    that was *expected*, and the likely cause — so the reader knows the
-    deployment (not the test) could not reach the expected state.
-
-    ``expected`` defaults to ``"Active"`` (the launch path).  For other
-    targets (e.g. ``"Suspended"``) the cause is phrased as an abnormal exit
-    rather than a failed launch, since the session did start before exiting.
-    """
-    if expected == "Active":
-        cause = (
-            "Workbench could not launch the session (abnormal exit). Verify the "
-            "deployment can launch sessions: check the launcher, the session image, "
-            "and available CPU/memory/quota."
-        )
-    else:
-        cause = (
-            "the session abnormally exited before reaching that state. Verify the "
-            "deployment can suspend and resume sessions, and has available "
-            "CPU/memory/quota."
-        )
-    return f"Session {name!r} reached terminal state {state!r} instead of {expected} — {cause}"
-
-
-def _session_timeout_message(
-    session_name: str, target_state: str, timeout_s: int, worker_count: int
-) -> str:
-    """Build the message shown when a session never reaches *target_state* before timeout.
-
-    When running across multiple xdist workers (*worker_count* > 1), several sessions
-    launch at once; a capacity-limited deployment can leave some stuck in a non-terminal
-    "Starting" state. In that case, append a hint pointing at concurrent-session capacity
-    so the failure is actionable rather than opaque.
-    """
-    base = (
-        f"Session {session_name!r} did not reach {target_state} within {timeout_s}s "
-        f"(no {target_state} or terminal status detected)."
-    )
-    if worker_count > 1:
-        base += (
-            f" This run used {worker_count} parallel workers, so multiple sessions were "
-            "launching at once; if the deployment has limited concurrent-session capacity, "
-            "sessions can stay in 'Starting' until they time out. Try reducing parallelism "
-            "(e.g. a lower pytest -n) or verify the deployment/launcher can start that many "
-            "sessions concurrently."
-        )
-    return base
-
-
-def format_capacity_failure(total: int, failures: list[str], reasons: list[str]) -> str:
-    """Build the aggregated failure for the session-capacity scenario.
-
-    Reports how many sessions reached Active and which profiles failed, then
-    appends each per-session diagnostic captured from
-    :func:`wait_for_session_active`.  Keeping the reasons means an aggregated
-    capacity failure still names the terminal state (e.g. ``Failed``) and its
-    likely cause, instead of collapsing to a bare profile list.
-    """
-    passed = total - len(failures)
-    lines = [f"{passed}/{total} sessions reached Active. Failed profiles: {', '.join(failures)}"]
-    lines.extend(reasons)
-    return "\n".join(lines)
-
-
-def _visible_terminal_state(page: Page, session_name: str, *, target_state: str) -> str | None:
-    """Return the terminal failure state currently shown for *session_name*, or None.
-
-    Checks each state in :data:`TERMINAL_SESSION_FAILURE_STATES` (skipping
-    *target_state*, the state we are waiting to reach) and returns the first
-    whose status badge is visible.
-    """
-    for state in TERMINAL_SESSION_FAILURE_STATES:
-        if state == target_state:
-            continue
-        loc = page.locator(Homepage.session_row_status(session_name, state))
-        if loc.count() > 0 and loc.first.is_visible():
-            return state
-    return None
-
-
-def raise_if_session_failed(page: Page, session_name: str, *, expected: str) -> None:
-    """Fail fast if *session_name* is currently in a terminal failure state.
-
-    Raises ``AssertionError`` with an actionable message (naming the terminal
-    state observed and the *expected* state) when a session has abnormally
-    exited, so waiters and reload loops surface a clear cause instead of
-    waiting out their budget and emitting an opaque
-    "Locator expected to be visible" error.  No-op otherwise.
-    """
-    failed_state = _visible_terminal_state(page, session_name, target_state=expected)
-    if failed_state is not None:
-        raise AssertionError(
-            _session_failure_message(session_name, failed_state, expected=expected)
-        )
-
-
-def _wait_for_session_state(
-    page: Page, session_name: str, target_state: str, *, timeout: int
-) -> Locator:
-    """Wait until *session_name* reaches *target_state*, failing fast on terminal states.
-
-    Polls the session row for ``target_state``.  If the session instead
-    reaches a terminal failure state (see :data:`TERMINAL_SESSION_FAILURE_STATES`),
-    raises ``AssertionError`` immediately with an actionable message rather
-    than waiting out the full ``timeout`` and emitting an opaque
-    "Locator expected to be visible" error.
-
-    Returns the session row locator so callers can chain further actions.
-    """
-    row = page.locator(Homepage.session_row(session_name))
-    expect(row).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-
-    target = page.locator(Homepage.session_row_status(session_name, target_state))
-
-    def _target_now() -> bool:
-        return target.count() > 0 and target.first.is_visible()
-
-    deadline = time.monotonic() + timeout / 1000
-    while time.monotonic() < deadline:
-        if _target_now():
-            return row
-        raise_if_session_failed(page, session_name, expected=target_state)
-        page.wait_for_timeout(_SESSION_POLL_INTERVAL)
-
-    # Final check — the status may have flipped in the last poll interval.
-    if _target_now():
-        return row
-    raise_if_session_failed(page, session_name, expected=target_state)
-    worker_count = int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1") or "1")
-    raise AssertionError(
-        _session_timeout_message(session_name, target_state, timeout // 1000, worker_count)
-    )
-
-
-def wait_for_session_active(
-    page: Page, session_name: str, *, timeout: int = TIMEOUT_SESSION_START
-) -> Locator:
-    """Wait until *session_name* reaches Active, failing fast on terminal states.
-
-    Returns the session row locator so callers can chain further actions
-    (e.g. clicking the session's join link).
-    """
-    return _wait_for_session_state(page, session_name, "Active", timeout=timeout)
-
-
-def wait_for_session_suspended(
-    page: Page, session_name: str, *, timeout: int = TIMEOUT_CLEANUP
-) -> Locator:
-    """Wait until *session_name* reaches Suspended, failing fast on terminal states.
-
-    The suspend counterpart to :func:`wait_for_session_active`.  If the session
-    abnormally exits (terminal "Failed") instead of suspending, raises
-    ``AssertionError`` immediately with an actionable message naming the
-    abnormal exit, rather than waiting out ``timeout`` and emitting an opaque
-    "Locator expected to be visible" error.
-    """
-    return _wait_for_session_state(page, session_name, "Suspended", timeout=timeout)
-
-
-# ---------------------------------------------------------------------------
-# Login Helper
-# ---------------------------------------------------------------------------
-
-
-def _silent_sso_signin(sso_button, homepage_logo, workbench_url: str) -> bool:
-    """Click the OIDC sign-in button and wait for the homepage, serialized across workers.
-
-    Wrapped in :func:`oidc_login_lock` so concurrent xdist workers don't storm the shared
-    IdP session. Returns ``True`` when the authenticated homepage appears, ``False``
-    otherwise (the caller then skips with the standard message).
-    """
-    with oidc_login_lock(workbench_url):
-        sso_button.click()
-        try:
-            homepage_logo.wait_for(state="visible", timeout=TIMEOUT_SSO_ROUNDTRIP)
-            return True
-        except (PlaywrightTimeoutError, PlaywrightError):
-            # Homepage never appeared: no usable IdP session (expired, or storage state
-            # stripped for the password-login test). Anything else (crashed page/context,
-            # a bug in this helper) is a real failure and must propagate, not masquerade
-            # as a graceful skip — matches the typed-catch convention used across this package.
-            return False
-
-
-def _refresh_cached_session(page: Page) -> bool:
-    """Write this context's storage state back to the auth cache. Always True.
-
-    The caller has already established that the session is live, so the return
-    value reports *the restore*, not the cache write: a cache that could not be
-    refreshed (absent, read-only) is a slower next run, not a failed restore,
-    and must not be reported as one.
-    """
-    try:
-        refresh_auth_cache_from_storage_state(page.context.storage_state())
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("Could not read storage state to refresh the auth cache: %s", exc)
-    return True
-
-
-def restore_shared_session(page: Page, workbench_url: str) -> bool:
-    """Sign back in after the sign-out scenario, returning whether it worked.
-
-    The scenario deliberately ends the session every other scenario shares, so
-    it has to hand one back. Navigating to Workbench and completing the silent
-    SSO round-trip mints a fresh session in this browser context.
-
-    A successful restore also writes the fresh session back to the auth cache on
-    disk. Without that the in-run damage is repaired but the cache still holds
-    the cookies the sign-out killed, so the *next* ``vip verify`` rejects it and
-    drops into an interactive re-auth -- a browser popup on every run.
-
-    Returns False -- and warns -- when the round-trip cannot complete, e.g. the
-    IdP applied single-logout and cleared its own cookies too. That is not
-    something this fixture can repair, but it must be visible: silently leaving
-    the suite signed out is how a sign-out turns into a cascade of unrelated
-    auth failures in later scenarios.
-    """
-    logo = page.locator(Homepage.POSIT_LOGO)
-    try:
-        page.goto(workbench_url)
-        page.wait_for_load_state("load")
-        if logo.is_visible():
-            return _refresh_cached_session(page)
-        sso_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE)).first
-        if sso_button.is_visible() and _silent_sso_signin(sso_button, logo, workbench_url):
-            return _refresh_cached_session(page)
-    except (PlaywrightTimeoutError, PlaywrightError) as exc:
-        logger.warning("Could not sign back in after the sign-out scenario: %s", exc)
-        return False
-    logger.warning(
-        "Could not sign back in after the sign-out scenario at %s: the silent SSO round-trip "
-        "did not reach an authenticated homepage (the identity provider may have applied "
-        "single-logout). Later scenarios and the cached auth session are now signed out; "
-        "rerun with --interactive-auth to re-establish one.",
-        workbench_url,
-    )
-    return False
-
-
-def workbench_login(
-    page: Page,
-    workbench_url: str,
-    username: str,
-    password: str,
-    auth_provider: str = "password",
-    interactive_auth: bool = False,
-    *,
-    auth_mode: str = "none",
-    workbench_auth_error: str | None = None,
-    max_retries: int = 3,
-    retry_delay: float = 2.0,
-) -> None:
-    """Navigate to Workbench homepage, logging in only if required.
-
-    This function:
-    - Navigates directly to Workbench's URL
-    - Handles OIDC/SSO via pre-loaded storage state (--interactive-auth / --headless-auth)
-    - Only fills login form for password auth
-    - Retries on transient server errors (e.g., too many logins)
-
-    Args:
-        page: Playwright page object
-        workbench_url: Base URL for Workbench (e.g., http://localhost:8787)
-        username: Login username
-        password: Login password
-        auth_provider: Auth type (e.g., "password", "oidc", "saml")
-        interactive_auth: True when an auth session is pre-loaded (either
-            --interactive-auth or --headless-auth)
-        auth_mode: Active auth mode ("interactive", "headless", or "none"),
-            used to name the responsible CLI flag in skip messages
-        workbench_auth_error: Reason the pre-test auth flow could not
-            establish a Workbench session, if known.  Quoted in the skip
-            message so users see the real cause instead of a guess.
-        max_retries: Max login attempts on transient errors (default 3)
-        retry_delay: Seconds to wait between retries (default 2.0)
-
-    Raises:
-        pytest.skip: For non-password auth without a pre-loaded auth session,
-            or when the session's storage state doesn't cover Workbench
-        AssertionError: When password login fails after retries
-
-    """
-    homepage_logo = page.locator(Homepage.POSIT_LOGO)
-
-    # For non-password auth without a pre-loaded auth session, skip immediately
-    if auth_provider != "password" and not interactive_auth:
-        pytest.skip(
-            f"Login form not available for auth provider {auth_provider!r}. "
-            "Pass --interactive-auth or --headless-auth to pre-load browser storage state."
-        )
-
-    page.goto(workbench_url)
-    page.wait_for_load_state("load")
-
-    # Fast path: already logged in (common with interactive_auth)?
-    if homepage_logo.is_visible():
-        return
-
-    # A valid session cookie can redirect straight into a running session's IDE
-    # view instead of the homepage -- that view has none of Homepage's chrome, so
-    # the check above misses it and the login-page probe below also misses it
-    # (it's neither a login page nor the homepage). Same case test_sessions.py
-    # handles when navigating back from a session: go to /home explicitly.
-    if "/s/" in page.url:
-        page.goto(f"{workbench_url}/home")
-        page.wait_for_load_state("load")
-        if homepage_logo.is_visible():
-            return
-
-    # Check if we landed on a login/IdP page
-    if _on_login_page(page.url):
-        # The sign-in page renders client-side after ``load``; wait once for
-        # either the password form's username field or an OIDC "Sign in with ..."
-        # button to appear before deciding which flow applies. A short fixed wait
-        # on only the SSO button races the render and can misread a slow OIDC
-        # sign-in page (e.g. an ``?error=2`` bounce) as a password deployment --
-        # which then fails the retry loop with "Login failed after 3 attempts"
-        # instead of skipping. Waiting for either control settles that race
-        # without penalising real password deployments (the username field
-        # appears promptly there).
-        try:
-            page.locator(f"{LoginPage.USERNAME}, button:has-text('Sign in')").first.wait_for(
-                state="visible", timeout=TIMEOUT_PAGE_LOAD
-            )
-        except Exception:  # noqa: BLE001
-            pass
-
-        # An OIDC sign-in page shows a "Sign in with ..." button and no username
-        # field. The "sign in" role-name also matches a password form's submit
-        # button, so the *absence* of the username field is what distinguishes a
-        # true SSO-only page from a password form.
-        sso_button = page.get_by_role("button", name=re.compile(r"sign in", re.IGNORECASE)).first
-        sso_button_present = sso_button.is_visible()
-        # A deployment can also skip its own sign-in page entirely and redirect
-        # straight to the IdP, whose markup matches neither probe above (see
-        # _external_idp_host). Landing off the Workbench origin is conclusive on
-        # its own: no Workbench password form is reachable from there.
-        idp_host = _external_idp_host(page.url, workbench_url)
-        sso_only = idp_host is not None or (
-            sso_button_present and not page.locator(LoginPage.USERNAME).is_visible()
-        )
-
-        if interactive_auth and sso_only:
-            # Storage state was pre-loaded by --interactive-auth / --headless-auth.
-            # Workbench's SSO sign-in page does not auto-redirect to the IdP; it renders a
-            # "Sign in with OpenID" button. Clicking it triggers a silent SSO round-trip
-            # using the saved IdP cookies. The round-trip is serialized across xdist
-            # workers (see _silent_sso_signin / oidc_login_lock) to avoid storming the
-            # shared IdP session (#484/#467).  When the deployment redirected us
-            # off-origin instead there is no such button to click, so go straight
-            # to the skip -- clicking a locator that resolves to nothing would
-            # raise a Playwright error in place of an actionable skip.
-            if sso_button_present and _silent_sso_signin(sso_button, homepage_logo, workbench_url):
-                return  # Silent SSO succeeded
-            # No usable IdP session (expired, or storage state was stripped for the
-            # password-login test) — skip gracefully.  Recompute the IdP host: the
-            # click above can navigate off-origin before timing out, so where we
-            # ended up is only knowable now, not before the attempt.
-            _skip_workbench_session_unproven(
-                auth_mode=auth_mode,
-                workbench_auth_error=workbench_auth_error,
-                landed_url=page.url,
-                idp_host=_external_idp_host(page.url, workbench_url),
-            )
-
-        if auth_provider != "password":
-            _skip_workbench_session_unproven(
-                auth_mode=auth_mode,
-                workbench_auth_error=workbench_auth_error,
-                landed_url=page.url,
-                idp_host=_external_idp_host(page.url, workbench_url),
-            )
-        # Even when auth_provider is reported as "password", the deployment may
-        # actually present an SSO/OIDC sign-in page (a "Sign in with ..." button
-        # and no username field) — e.g. auth_provider defaulted to "password" on
-        # a config-less run against an OIDC deployment.  The password login form
-        # is unavailable there, so skip rather than fail the retry loop.
-        if sso_only:
-            where = (
-                f"redirects sign-in to the identity provider at {idp_host}"
-                if idp_host
-                else "presents an SSO/OIDC sign-in page instead (no username/password fields)"
-            )
-            pytest.skip(
-                "This scenario requires a Workbench password-login form, but the "
-                f"deployment {where}. Password login cannot be exercised on an SSO "
-                "deployment, so this scenario is skipped."
-            )
-        # Password auth - proceed with form login below
-    else:
-        # Not on homepage, not on login page - unexpected state
-        # Give it one more check in case page is still loading
-        try:
-            homepage_logo.wait_for(state="visible", timeout=TIMEOUT_QUICK)
-            return
-        except Exception:  # noqa: BLE001
-            pass
-
-    # Password authentication with retry logic
-    login_form = page.locator(LoginPage.USERNAME)
-    error_panel = page.locator(LoginPage.ERROR_PANEL)
-
-    for attempt in range(max_retries):
-        if attempt > 0:
-            time.sleep(retry_delay)
-            page.goto(workbench_url)
-
-        # Fast path check on retry
-        if homepage_logo.is_visible():
-            return
-
-        # Wait for login form to be ready
-        try:
-            login_form.wait_for(state="visible", timeout=TIMEOUT_QUICK)
-        except Exception:  # noqa: BLE001
-            continue
-
-        # Fill and submit
-        page.fill(LoginPage.USERNAME, username)
-        page.fill(LoginPage.PASSWORD, password)
-
-        stay_signed_in = page.locator(LoginPage.STAY_SIGNED_IN)
-        if stay_signed_in.is_visible() and not stay_signed_in.is_checked():
-            stay_signed_in.click()
-
-        page.click(LoginPage.BUTTON)
-
-        # Wait for either homepage (success) or error panel (failure)
-        homepage_or_error = homepage_logo.or_(error_panel)
-        try:
-            homepage_or_error.wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
-        except Exception as exc:
-            if attempt == max_retries - 1:
-                raise AssertionError(
-                    f"Login failed after {max_retries} attempts: no response"
-                ) from exc
-            continue
-
-        # Check which one appeared
-        if homepage_logo.is_visible():
-            return  # Success!
-
-        # Error appeared - extract message and maybe retry
-        if attempt == max_retries - 1:
-            error_text = page.locator(LoginPage.ERROR_TEXT).text_content()
-            raise AssertionError(f"Login failed: {error_text or 'Unknown error'}")
-        # Transient error (e.g., rate limit) - retry
-
-    raise AssertionError(f"Login failed after {max_retries} attempts")
-
-
-# ---------------------------------------------------------------------------
-# Shared Fixtures
-# ---------------------------------------------------------------------------
-
-
-def _quit_vip_sessions_via_cookies(
-    base_url: str,
-    cookies: dict[str, str],
-    *,
-    insecure: bool,
-    ca_bundle,
-    proxy=None,
-    owner: str | None = None,
-) -> int:
-    """Quit VIP-named sessions using a scratch cookie-authenticated client.
-
-    A scratch ``WorkbenchClient`` is used so the session-scoped
-    ``workbench_client`` fixture's cookie jar is never mutated.  TLS config
-    (``--insecure`` / ``--ca-bundle``) is honoured via *insecure*/*ca_bundle*.
-    *owner* scopes the sweep to one xdist worker's own sessions.
-    """
-    try:
-        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
-        try:
-            scratch.set_cookies(cookies)
-            return scratch.quit_vip_sessions(owner=owner)
-        finally:
-            scratch.close()
-    except Exception:  # noqa: BLE001
-        return 0
-
-
-def _session_api_reachable_via_cookies(
-    base_url: str,
-    cookies: dict[str, str],
-    *,
-    insecure: bool,
-    ca_bundle,
-    proxy=None,
-) -> bool:
-    """Whether the session API is reachable for a cookie-authenticated client.
-
-    Mirrors :func:`_quit_vip_sessions_via_cookies`: uses a scratch
-    ``WorkbenchClient`` so the session-scoped client's cookie jar is untouched.
-    Returns ``False`` on any error.
-    """
-    try:
-        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
-        try:
-            scratch.set_cookies(cookies)
-            return scratch.sessions_api_reachable()
-        finally:
-            scratch.close()
-    except Exception:  # noqa: BLE001
-        return False
-
-
-def _vip_session_count_via_cookies(
-    base_url: str,
-    cookies: dict[str, str],
-    *,
-    insecure: bool,
-    ca_bundle,
-    proxy=None,
-    owner: str | None = None,
-) -> int:
-    """Count VIP-named sessions still listed for a cookie-authenticated client.
-
-    Mirrors :func:`_quit_vip_sessions_via_cookies` / :func:`_session_api_reachable_via_cookies`:
-    uses a scratch ``WorkbenchClient`` so the session-scoped client's cookie
-    jar is untouched.  Convention: returns ``0`` only when the list call
-    genuinely succeeded and no VIP sessions were found; returns ``-1`` when
-    the count could not be determined at all (transport error, non-200,
-    unparseable body) so callers can tell "confirmed clean" apart from
-    "unknown" and escalate defensively in the latter case.  Never raises.
-    """
-    try:
-        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
-        try:
-            scratch.set_cookies(cookies)
-            return scratch.count_vip_sessions(owner=owner)
-        finally:
-            scratch.close()
-    except Exception:  # noqa: BLE001
-        return -1
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _wb_cleanup_state(vip_config, workbench_client):
-    """End-of-run safety net: sweep any VIP sessions left behind.
-
-    Holds the most recent authenticated cookies captured by the per-test
-    ``_cleanup_sessions`` fixture.  On teardown (after the whole Workbench
-    run) it does one final ``quit_vip_sessions`` sweep, catching sessions
-    orphaned when a per-test cleanup failed outright (e.g. the page crashed).
-    """
-    state: dict[str, object] = {"cookies": None, "base_url": None, "api_reachable": None}
-    yield state
-    if workbench_client is None:
-        return
-    # Still worker-scoped: under xdist each worker tears down at the end of its
-    # *own* session, which can be while a sibling worker is mid-test.  A truly
-    # global sweep belongs to `vip cleanup --workbench-url`, which runs when no
-    # worker is left to disturb.
-    owner = current_worker_id()
-    cookies = state["cookies"]
-    if cookies:
-        _quit_vip_sessions_via_cookies(
-            str(state["base_url"]),
-            cookies,  # type: ignore[arg-type]
-            insecure=vip_config.insecure,
-            ca_bundle=vip_config.ca_bundle,
-            proxy=vip_config.proxy,
-            owner=owner,
-        )
-    # Belt-and-suspenders: when an API key is configured, also sweep with it.
-    # Run this even if cookies were captured, because cookies may have expired
-    # during a long run (a cookie sweep would then quietly clean up nothing).
-    # quit_vip_sessions is idempotent, so this is a no-op when nothing remains.
-    if vip_config.workbench.api_key:
-        try:
-            workbench_client.quit_vip_sessions(owner=owner)
-        except Exception:  # noqa: BLE001
-            pass
-
-
-def _run_session_cleanup(page, workbench_client, vip_config, state: dict[str, object]) -> None:
-    """Quit any VIP-named Workbench sessions created during the test.
-
-    Factored out of the ``_cleanup_sessions`` fixture body so it can be unit
-    tested directly (the fixture depends on ``page``/``workbench_client``/
-    ``vip_config``/``_wb_cleanup_state``, which are awkward to construct in a
-    selftest). Runs the cookie/API sweep first, then escalates to a
-    browser-driven UI sweep (:func:`_quit_vip_sessions_via_ui`) whenever the
-    session API is unreachable *or* VIP sessions remain after the API sweep --
-    not only when the API is unreachable, since a deployment can accept the
-    DELETE/suspend call without the session actually terminating (issue #467).
-    Defensive throughout: every network/Playwright call is wrapped so cleanup
-    never raises out of the fixture; failures are logged as warnings (cleanup
-    is a safety net, not an assertion) rather than failing the test.
-    """
-    if workbench_client is None:
-        return
-    try:
-        cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-    except Exception:  # noqa: BLE001
-        cookies = {}
-    if not cookies:
-        if not vip_config.workbench.api_key:
-            logger.warning(
-                "could not authenticate to clean up Workbench sessions at %s "
-                "(no browser cookies captured and no [workbench] api_key configured); "
-                "orphaned VIP sessions may remain.",
-                workbench_client.base_url,
-            )
-        return
-    # Remember the latest good cookies for the end-of-run sweep.
-    state["cookies"] = cookies
-    state["base_url"] = workbench_client.base_url
-    # Scope every sweep to this worker's own sessions.  A bare VIP-prefix match
-    # here quits sessions a sibling xdist worker is still driving mid-test,
-    # which shows up as a vanished session row, an "Abnormal exits" toast, or a
-    # "Session status: Quit" banner inside a live IDE.
-    owner = current_worker_id()
-    _quit_vip_sessions_via_cookies(
-        workbench_client.base_url,
-        cookies,
-        insecure=vip_config.insecure,
-        ca_bundle=vip_config.ca_bundle,
-        proxy=vip_config.proxy,
-        owner=owner,
-    )
-    # Detect API reachability once per session (cached on state).
-    if state["api_reachable"] is None:
-        state["api_reachable"] = _session_api_reachable_via_cookies(
-            workbench_client.base_url,
-            cookies,
-            insecure=vip_config.insecure,
-            ca_bundle=vip_config.ca_bundle,
-            proxy=vip_config.proxy,
-        )
-    api_reachable = bool(state["api_reachable"])
-    # Escalate to the UI sweep both when the API is unreachable (the cookie/API
-    # sweep above was necessarily a no-op) AND when the API is reachable but
-    # left VIP sessions behind (a no-op DELETE/suspend -- the actual #467 bug).
-    # -1 ("could not determine") is treated the same as "sessions remain":
-    # when in doubt, escalate rather than silently trust an unconfirmed sweep.
-    remaining = _vip_session_count_via_cookies(
-        workbench_client.base_url,
-        cookies,
-        insecure=vip_config.insecure,
-        ca_bundle=vip_config.ca_bundle,
-        proxy=vip_config.proxy,
-        owner=owner,
-    )
-    if not api_reachable or remaining != 0:
-        _quit_vip_sessions_via_ui(page, workbench_client.base_url, owner=owner)
-        # Best-effort post-escalation check, for logging only -- never blocks
-        # or fails the test.
-        still_remaining = _vip_session_count_via_cookies(
-            workbench_client.base_url,
-            cookies,
-            insecure=vip_config.insecure,
-            ca_bundle=vip_config.ca_bundle,
-            proxy=vip_config.proxy,
-            owner=owner,
-        )
-        if still_remaining > 0:
-            logger.warning(
-                "%d VIP-named Workbench session(s) may still be running at %s "
-                "after the UI cleanup escalation; manual cleanup may be required.",
-                still_remaining,
-                workbench_client.base_url,
-            )
-
-
-def quit_owned_sessions_via_page(
-    page, workbench_base_url: str, *, insecure: bool, ca_bundle
-) -> None:
-    """Quit this worker's VIP sessions using the browser page's own cookies.
-
-    Shared by the capacity scenarios, which name sessions outside
-    :func:`unique_session_name` and so clean up outside the autouse
-    ``_cleanup_sessions`` fixture.  Always worker-scoped (see
-    :func:`~vip.clients.workbench.is_vip_session_for_owner`) so a sibling xdist
-    worker's live capacity sessions are left alone.  TLS config is threaded
-    through so cleanup works against self-signed / custom-CA deployments.
-
-    Lives here rather than in a step module so it stays importable from
-    selftests: importing a pytest-bdd module inside a test trips ``@scenario``'s
-    frame inspection and fails under pytest-randomly.  Best-effort, never raises.
-    """
-    try:
-        cookies = {c["name"]: c["value"] for c in page.context.cookies()}
-    except Exception:  # noqa: BLE001
-        return
-    if not cookies:
-        return
-    _quit_vip_sessions_via_cookies(
-        workbench_base_url,
-        cookies,
-        insecure=insecure,
-        ca_bundle=ca_bundle,
-        owner=current_worker_id(),
-    )
-
-
-@pytest.fixture(autouse=True)
-def _cleanup_sessions(page, workbench_client, vip_config, _wb_cleanup_state):
-    """Quit any VIP-named Workbench sessions created during the test."""
-    yield
-    _run_session_cleanup(page, workbench_client, vip_config, _wb_cleanup_state)
 
 
 @pytest.fixture

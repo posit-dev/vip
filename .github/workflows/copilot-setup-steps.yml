@@ -39,7 +39,7 @@ jobs:
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
 
       # AGENTS.md documents `vip report`, which shells out to a separate
-      # `quarto` executable (src/vip/cli.py) -- pyproject.toml only installs
+      # `quarto` executable (src/vip/cli/report.py) -- pyproject.toml only installs
       # the Python/Jupyter side. Same action, same pin, same version as
       # example-report.yml's Quarto install.
       - uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2

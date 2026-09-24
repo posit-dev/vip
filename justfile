@@ -50,9 +50,10 @@ check: lint format-check
 fix: lint-fix format
 
 # Run mypy type checker
-# --extra dev: mypy is in the dev extra, which a bare `uv sync` does not install.
+# --all-extras, not --extra dev: load_engine.py imports locust (the `load` extra), and
+# ignore_missing_imports silently drops that import's real errors when it isn't installed.
 typecheck:
-    uv run --extra dev mypy src/vip/
+    uv run --all-extras mypy src/vip src/vip_tests selftests
 
 # Run selftests with coverage
 # --extra dev: pytest-cov is in the dev extra, which a bare `uv sync` does not install.

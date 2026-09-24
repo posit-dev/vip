@@ -57,6 +57,7 @@ Edit `conftest.py` and override the `r_package_name` and `python_package_name` f
 def r_package_name() -> str:
     return "ggplot2"
 
+
 @pytest.fixture(scope="session")
 def python_package_name() -> str:
     return "pandas"

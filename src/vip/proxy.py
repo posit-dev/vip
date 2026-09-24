@@ -185,7 +185,7 @@ def redact_proxy_url(url: str | None) -> str | None:
         return url
     try:
         parsed = httpx.URL(url)
-    except Exception:  # noqa: BLE001
+    except httpx.InvalidURL:
         # httpx.URL rejected the value (most often an invalid port). We still
         # must not surface an embedded password -- this return flows straight
         # into a ProxyConfigError message. Strip any ``user:pass@`` textually.
@@ -629,7 +629,7 @@ def _matches_a_bypass_pattern(url: str, proxy_map: ProxyMap) -> bool:
     """
     try:
         target = httpx.URL(url)
-    except Exception:  # noqa: BLE001
+    except httpx.InvalidURL:
         return False
     for pattern in sorted(URLPattern(k) for k in proxy_map):
         if pattern.matches(target):
@@ -654,7 +654,7 @@ def _bypass_host_for_url(url: str) -> str | None:
     """
     try:
         parsed = httpx.URL(url)
-    except Exception:  # noqa: BLE001
+    except httpx.InvalidURL:
         return None
     host, scheme = parsed.host, parsed.scheme
     if not host or not scheme:
@@ -713,7 +713,7 @@ def _split_proxy_userinfo(url: str) -> tuple[str | None, str | None]:
     """
     try:
         parsed = httpx.URL(url)
-    except Exception:  # noqa: BLE001
+    except httpx.InvalidURL:
         return None, None
     if not (parsed.username or parsed.password):
         return None, None
@@ -753,7 +753,7 @@ def _primary_proxy_server(proxy_map: ProxyMap, target_url: str | None = None) ->
     if target_url:
         try:
             scheme = httpx.URL(target_url).scheme
-        except Exception:  # noqa: BLE001
+        except httpx.InvalidURL:
             scheme = ""
         if scheme == "http":
             keys = ("http://", "all://", "https://")

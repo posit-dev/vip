@@ -42,7 +42,13 @@ What *does* stay here:
 
 from __future__ import annotations
 
+import logging
+
 import pytest
+
+from vip.errors import ProductUnreachableError
+
+logger = logging.getLogger(__name__)
 
 # pytest-bdd step definitions with target_fixture return values intentionally;
 # pytest 9.x warns about non-None returns from test functions. Scoped to
@@ -84,10 +90,23 @@ def _connect_content_cleanup(connect_client, _connect_created_guids):
 
 @pytest.fixture(scope="session", autouse=True)
 def _connect_end_of_run_sweep(connect_client, _connect_created_guids):
-    """End-of-run safety net: delete tracked GUIDs, then tag-based cross-run sweep."""
+    """End-of-run safety net: delete tracked GUIDs, then tag-based cross-run sweep.
+
+    The tag-based sweep now raises :class:`ProductUnreachableError` on a failed
+    tag lookup instead of silently reporting "nothing to clean up" (see
+    ``ConnectClient.cleanup_vip_content``). This is a best-effort safety net
+    running at teardown, not an assertion under test, so a transient API
+    failure here is logged and swallowed rather than turning an otherwise
+    green run into a teardown error.
+    """
     yield
     if connect_client is None:
         return
     if _connect_created_guids:
         connect_client.cleanup_content(_connect_created_guids)
-    connect_client.cleanup_vip_content()
+    try:
+        connect_client.cleanup_vip_content()
+    except ProductUnreachableError:
+        logger.warning(
+            "end-of-run Connect content sweep could not reach the tag API", exc_info=True
+        )

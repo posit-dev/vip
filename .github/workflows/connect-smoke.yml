@@ -51,11 +51,11 @@ jobs:
               # connect-only shared tests:
               - 'src/vip_tests/security/**'
               # shared core — affects all products:
-              - 'src/vip/auth.py'
+              - 'src/vip/auth/**'
               - 'src/vip/idp.py'
               - 'src/vip/config.py'
-              - 'src/vip/plugin.py'
-              - 'src/vip/cli.py'
+              - 'src/vip/plugin/**'
+              - 'src/vip/cli/**'
               - 'src/vip_tests/conftest.py'
               - 'pyproject.toml'
               - 'uv.lock'
