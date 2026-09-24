@@ -5,9 +5,9 @@ repos:
         name: ruff
         entry: uv run --extra dev ruff check --fix
         language: system
-        types_or: [python, pyi]
+        types_or: [python, pyi, jupyter]
       - id: ruff-format
         name: ruff-format
         entry: uv run --extra dev ruff format
         language: system
-        types_or: [python, pyi, markdown]
+        types_or: [python, pyi, jupyter, markdown]

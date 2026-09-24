@@ -223,7 +223,7 @@ def test_ci_ruff_action_has_no_version_override():
     ruff drift from the one Dependabot bumps.
     """
     offenders = []
-    for workflow_path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+    for workflow_path in sorted([*WORKFLOWS_DIR.glob("*.yml"), *WORKFLOWS_DIR.glob("*.yaml")]):
         workflow = yaml.safe_load(workflow_path.read_text()) or {}
         for job_name, job in (workflow.get("jobs") or {}).items():
             for step in job.get("steps") or []:
