@@ -6,11 +6,11 @@ import argparse
 import json
 import sys
 
+from vip.auth import start_interactive_auth
+
 
 def mint_connect_key(args: argparse.Namespace) -> None:
     """Launch interactive browser auth and mint a Connect API key."""
-    from vip.auth import start_interactive_auth
-
     session = start_interactive_auth(args.url)
 
     if not session.api_key:

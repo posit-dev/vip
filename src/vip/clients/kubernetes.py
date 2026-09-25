@@ -17,7 +17,7 @@ from typing import Any
 def _require_sdk() -> Any:
     """Return the ``kubernetes`` module or raise with an install hint."""
     try:
-        import kubernetes
+        import kubernetes  # noqa: PLC0415 -- optional dependency, not declared in pyproject.toml
 
         return kubernetes
     except ImportError as exc:

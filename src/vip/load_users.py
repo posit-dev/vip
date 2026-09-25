@@ -20,6 +20,8 @@ except ImportError as _err:
     )
     raise ImportError(msg) from _err
 
+from vip.load_engine import classify_repos
+
 
 class ConnectUser(HttpUser):
     """Simulates a Connect user browsing content and checking server info.
@@ -141,8 +143,6 @@ class PackageManagerUser(HttpUser):
         try:
             resp = self.client.get("/__api__/repos", headers=self._headers)
             if resp.status_code == 200:
-                from vip.load_engine import classify_repos
-
                 self._cran_repos, self._pypi_repos = classify_repos(resp.json())
         except Exception:  # noqa: BLE001
             # Best-effort priming — a failed pre-fetch just leaves the repo

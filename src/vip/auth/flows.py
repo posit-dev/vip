@@ -18,6 +18,8 @@ from playwright.sync_api import (
     sync_playwright,
 )
 
+import vip.idp
+from vip import totp
 from vip.auth.apikey import _KEY_NAME_PREFIX, _create_api_key_via_session, _resolve_connect_api_base
 from vip.auth.browser import InteractiveAuthSession, _launch_chromium
 from vip.auth.cache import _load_cached_auth, _save_auth_cache
@@ -30,7 +32,9 @@ from vip.auth.sso import (
     _timeout_label,
 )
 from vip.auth.workbench import _authenticate_workbench, _wait_for_product_redirect
+from vip.config import ProductConfig
 from vip.errors import AuthConfigError, AuthTimeoutError
+from vip.idp import SUPPORTED_IDPS, _log_verbose, _sanitize_url, get_idp_strategy
 from vip.proxy import (
     ProxyConfig,
     build_proxy_map,
@@ -60,7 +64,6 @@ def _resolve_str_if_inferred(
     """
     if not url:
         return url
-    from vip.config import ProductConfig
 
     # ProductConfig.__post_init__ runs _normalize_url on construction, but
     # *url* here has already been normalized upstream (it always has an
@@ -327,9 +330,7 @@ def start_headless_auth(
     *connect_url_scheme_inferred* / *workbench_url_scheme_inferred*: see
     ``start_interactive_auth``.
     """
-    import vip.idp as _idp_mod
-
-    _idp_mod._verbose = verbose
+    vip.idp._verbose = verbose
 
     if not connect_url and not workbench_url:
         raise AuthConfigError(
@@ -358,8 +359,6 @@ def start_headless_auth(
 
     # Validate VIP_TEST_TOTP_SECRET (if set) before launching Playwright
     # so a bad seed fails fast with a clear error.
-    from vip import totp
-
     totp_secret = os.environ.get(totp.ENV_VAR, "").strip()
     if totp_secret:
         totp.validate_secret(totp_secret)
@@ -369,8 +368,6 @@ def start_headless_auth(
     uses_idp = provider.strip().lower() in _IDP_PROVIDERS
     fill_login = None
     if uses_idp:
-        from vip.idp import SUPPORTED_IDPS, get_idp_strategy
-
         if not idp:
             supported = ", ".join(f'"{name}"' for name in sorted(SUPPORTED_IDPS))
             raise AuthConfigError(
@@ -426,8 +423,6 @@ def start_headless_auth(
         browser = _launch_chromium(pw, headless=True, proxy=pw_proxy, args=pw_args)
         context = browser.new_context(ignore_https_errors=insecure)
         page = context.new_page()
-
-        from vip.idp import _log_verbose, _sanitize_url
 
         target = f"{primary_url}{login_path}"
         print(f"\n>>> Headless auth: authenticating to {primary_url} ...", flush=True)

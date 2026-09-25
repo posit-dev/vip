@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import argparse
 
+from vip import __version__
+from vip.version import MINIMUM_SUPPORTED_POSIT_TEAM
+
 
 def _format_version_details() -> str:
     """Render the vip version and the minimum supported Posit Team release.
@@ -12,9 +15,6 @@ def _format_version_details() -> str:
     (e.g. ``2026.7.0``) but are unrelated numbers, so each line is labeled
     explicitly to avoid a reader mistaking one for the other.
     """
-    from vip import __version__
-    from vip.version import MINIMUM_SUPPORTED_POSIT_TEAM
-
     return (
         f"VIP version: {__version__}\n"
         f"Supported Posit Team versions: {MINIMUM_SUPPORTED_POSIT_TEAM} and newer"
