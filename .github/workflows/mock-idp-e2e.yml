@@ -29,6 +29,7 @@ on:
       - 'compose.mock-idp.yml'
       - 'Dockerfile'
       - '.github/workflows/mock-idp-e2e.yml'
+      - '.github/workflows/recent-production-versions.yml'
   pull_request:
   schedule:
     - cron: "30 5 * * *" # daily at 5:30am UTC
@@ -75,38 +76,37 @@ jobs:
               - 'compose.mock-idp.yml'
               - 'Dockerfile'
               - '.github/workflows/mock-idp-e2e.yml'
+              - '.github/workflows/recent-production-versions.yml'
 
-  # Emit the Workbench version list for the E2E job. PR/push runs test only the
-  # latest release (single required check, unchanged). Scheduled/manual runs fan
-  # out across the Workbench support window (current + 2 back) — same list as
-  # workbench-smoke.yml. Connect stays pinned to its stack default here; the
-  # Connect version matrix lives in connect-smoke.yml (#441). Bump the pinned
-  # tags when a new Workbench release ships; `release` always tracks newest.
+  # Emit the Workbench version list for the E2E job. PR/push runs the current
+  # release only; scheduled/manual runs fan out across the Workbench support
+  # window (current + 2 back) — the same list as workbench-smoke.yml. Connect
+  # gets no matrix here; its version matrix lives in connect-smoke.yml. Nothing
+  # to bump by hand any more — the versions are resolved from
+  # ghcr.io/posit-dev/workbench's own tag list at run time.
   set-matrix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions: {}
-    outputs:
-      versions: ${{ steps.pick.outputs.versions }}
-    steps:
-      - id: pick
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo 'versions=["release", "2026.07.1", "2026.06.0"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'versions=["release"]' >> "$GITHUB_OUTPUT"
-          fi
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: workbench
+      count: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 3 || 1 }}
+
+  # Connect has no matrix in this workflow, but it still needs a pinned tag:
+  # compose.mock-idp.yml defaults PCT_VERSION to `latest`, so leaving it unset
+  # would run every Workbench leg against a mutable Connect and reintroduce
+  # exactly the drift this PR removes elsewhere. One resolved production tag.
+  connect-version:
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: connect
+      count: 1
 
   mock-idp-e2e:
-    needs: [set-matrix, changes]
+    needs: [set-matrix, connect-version, changes]
     if: >-
       needs.changes.outputs.relevant == 'true'
       || github.event_name == 'schedule'
       || github.event_name == 'workflow_dispatch'
-    # Keep the original job name on the release (PR/push) leg so the PR-time
-    # check name is unchanged; suffix only the pinned scheduled/manual legs.
-    # `!=` first so the release leg yields '' rather than tripping the falsy-`||` trap.
-    name: Mock-IdP E2E (headless-auth)${{ matrix.workbench-version != 'release' && format(' — Workbench {0}', matrix.workbench-version) || '' }}
+    name: Mock-IdP E2E (headless-auth) — Workbench ${{ matrix.workbench-version }}
     runs-on: ubuntu-latest
     # Measured ~5.3 min median, up to 6.8 max (Keycloak + Connect + Workbench
     # compose stack plus a real OIDC round-trip).
@@ -120,6 +120,9 @@ jobs:
         with:
           persist-credentials: false
 
+      # The ghcr.io/posit-dev images the Compose stack builds from are public,
+      # so those pulls are anonymous -- no `docker login` and no
+      # `packages: read` permission.
       # All three services share one throwaway CA and terminate TLS under
       # *.vip.test -- both Connect's OpenIDConnectIssuer and Workbench's
       # auth-openid-issuer reject self-signed / bare-HTTP issuers. The runner
@@ -129,17 +132,14 @@ jobs:
         run: |
           echo "127.0.0.1 keycloak.vip.test connect.vip.test workbench.vip.test" | sudo tee -a /etc/hosts
 
-      # RSW_VERSION is the Workbench image tag baked into the compose build
-      # (FROM rstudio/rstudio-workbench:${RSW_VERSION}). `release` maps to the
-      # bare `jammy` tag, which Docker Hub rolls forward with every release, so
-      # the PR/newest leg always tracks current without a manual bump; `latest`
-      # is stale (last updated 2022-08-19, years behind `jammy`) and must not be
-      # used. Pinned versions map to the `jammy-<version>` tags.
+      # PWB_VERSION is the short release-version tag baked into the Compose
+      # build from ghcr.io/posit-dev/workbench.
       - name: Start mock-IdP stack (Keycloak + Connect + Workbench)
         env:
-          RSC_LICENSE: ${{ secrets.CONNECT_LICENSE }}
-          RSW_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
-          RSW_VERSION: ${{ matrix.workbench-version == 'release' && 'jammy' || format('jammy-{0}', matrix.workbench-version) }}
+          PCT_LICENSE: ${{ secrets.CONNECT_LICENSE }}
+          PWB_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
+          PWB_VERSION: ${{ matrix.workbench-version }}
+          PCT_VERSION: ${{ needs.connect-version.outputs.latest }}
         run: docker compose -f compose.mock-idp.yml up -d --build --wait
 
       # The default `docker` driver can't export to the GHA cache backend
@@ -267,6 +267,7 @@ jobs:
   # `mock-idp-e2e` above, and add it to `status`'s `needs:`.
   mock-idp-e2e-saml-diagnostic:
     if: github.event_name == 'workflow_dispatch'
+    needs: [set-matrix, connect-version]
     name: Mock-IdP E2E SAML diagnostic (issue #263, expected red)
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -286,18 +287,16 @@ jobs:
       # (see compose.mock-idp.yml); the OIDC `workbench` service and
       # everything else in the stack come up exactly as they do in the
       # headless-auth job above.
-      # RSW_VERSION defaults to the bare `jammy` tag here for the same reason
-      # the headless-auth job above pins it explicitly: `latest` is stale
-      # (last updated 2022-08-19) and served a Workbench whose homepage
-      # predates VIP's current selectors entirely, which is what made this
-      # diagnostic's login test fail with an unrelated "Locator expected to
-      # be visible" against `#posit-logo` instead of actually exercising the
-      # #263 hypothesis. `jammy` rolls forward with every release.
+      # The license variables must match
+      # compose.mock-idp.yml's names -- under the old RSC_/RSW_ names both
+      # services start unlicensed and `--wait` fails here for a reason that
+      # has nothing to do with SAML.
       - name: Start mock-IdP stack with SAML lane (Keycloak + Connect + Workbench + Workbench-SAML)
         env:
-          RSC_LICENSE: ${{ secrets.CONNECT_LICENSE }}
-          RSW_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
-          RSW_VERSION: jammy
+          PCT_LICENSE: ${{ secrets.CONNECT_LICENSE }}
+          PWB_LICENSE: ${{ secrets.WORKBENCH_LICENSE }}
+          PWB_VERSION: ${{ needs.set-matrix.outputs.latest }}
+          PCT_VERSION: ${{ needs.connect-version.outputs.latest }}
         run: docker compose -f compose.mock-idp.yml --profile saml up -d --build --wait
 
       - name: Set up Docker Buildx
@@ -496,7 +495,7 @@ jobs:
   status:
     name: Mock-IdP E2E Status
     if: always()
-    needs: [changes, set-matrix, mock-idp-e2e]
+    needs: [changes, set-matrix, connect-version, mock-idp-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -512,10 +511,16 @@ jobs:
             echo "Change-detection job failed; cannot confirm E2E scope"
             exit 1
           fi
-          # A failed set-matrix skips (not fails) mock-idp-e2e, which the
-          # check below would otherwise read as a clean skip.
+          # A failed version resolver skips (not fails) mock-idp-e2e, which the
+          # check below would otherwise read as a clean skip. Both resolvers
+          # count: the E2E job needs the Workbench matrix and the pinned
+          # Connect tag.
           if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
             echo "Version-matrix job failed; cannot confirm E2E scope"
+            exit 1
+          fi
+          if [ "${{ needs.connect-version.result }}" = "failure" ] || [ "${{ needs.connect-version.result }}" = "cancelled" ]; then
+            echo "Connect version resolver failed; cannot confirm E2E scope"
             exit 1
           fi
           # If auth paths changed, the E2E suite was in scope and MUST have

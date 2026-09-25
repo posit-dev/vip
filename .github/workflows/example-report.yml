@@ -3,9 +3,31 @@ name: Example Validation Report
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
+  connect-version:
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: connect
+      count: 1
+
+  workbench-version:
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: workbench
+      count: 1
+
+  package-manager-version:
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: package-manager
+      count: 1
+
   build:
     name: Build example report
+    needs: [connect-version, workbench-version, package-manager-version]
     runs-on: ubuntu-latest
     # Measured ~8 min: stands up Connect and Workbench containers, runs the
     # cross-product example suite, then renders the Quarto report.
@@ -76,7 +98,7 @@ jobs:
         id: connect
         uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
-          version: release
+          image: ghcr.io/posit-dev/connect:${{ needs.connect-version.outputs.latest }}
           license: ${{ secrets.CONNECT_LICENSE }}
 
       # Start Workbench in Docker
@@ -86,13 +108,15 @@ jobs:
         uses: posit-dev/with-workbench@da367f7337b28c6748f7dd43d08706788353be8d # main
         with:
           license-key: ${{ secrets.WORKBENCH_LICENSE }}
-          version: release
+          image: ghcr.io/posit-dev/workbench:${{ needs.workbench-version.outputs.latest }}
 
       # Surface Workbench license errors
       - name: Check for Workbench license errors
         if: failure() && steps.wb-license.outputs.available == 'true' && steps.workbench.outcome == 'failure'
         run: |
-          CID=$(docker ps -aq --filter "ancestor=rstudio/rstudio-workbench" | head -1)
+          # `ancestor` needs the tag: a tagless value normalizes to `:latest`
+          # and never matches a container started from a pinned version.
+          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/workbench:${{ needs.workbench-version.outputs.latest }}" | head -1)
           if [ -z "${CID}" ]; then
             echo "::error title=Workbench Startup Failed::Workbench container not found."
             exit 1
@@ -223,8 +247,8 @@ jobs:
           docker run -d \
             --name packagemanager \
             -p 4242:4242 \
-            -e RSPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
-            rstudio/rstudio-package-manager:ubuntu2204
+            -e PPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
+            ghcr.io/posit-dev/package-manager:${{ needs.package-manager-version.outputs.latest }}
           echo "PM_URL=http://localhost:4242" >> "$GITHUB_OUTPUT"
 
       # Wait for Package Manager health check
@@ -286,8 +310,7 @@ jobs:
       # Workbench resolve-version steps above: a silent fallback here would
       # have masked the stale-PM-version bug this step is fixing, and a
       # placeholder is no more meaningful than an explicit failure once the
-      # bare `ubuntu2204` tag (which always resolves to the latest build,
-      # per packagemanager-smoke.yml) is what was actually requested.
+      # pinned Package Manager release tag is what was actually requested.
       - name: Resolve Package Manager version
         if: steps.pm-license.outputs.available == 'true'
         id: pm-version

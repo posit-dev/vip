@@ -8,6 +8,7 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/packagemanager-smoke.yml'
+      - '.github/workflows/recent-production-versions.yml'
   pull_request:
   # Scheduled/manual runs fan the suite out across the Package Manager support
   # window (see the set-matrix job). PR/push runs stay single-version.
@@ -53,31 +54,22 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/workflows/packagemanager-smoke.yml'
+              - '.github/workflows/recent-production-versions.yml'
 
-  # Emit the Package Manager tag list for the product job. PR/push runs test
-  # only the latest release (single required check, unchanged). Scheduled/manual
-  # runs fan out across the support window (current + 2 back). Bump the pinned
-  # tags here when a new PM release ships; `ubuntu2204` (no version suffix)
-  # always resolves to the latest PM build. Pinned tags are pulled directly as
-  # rstudio/rstudio-package-manager:<tag>. No pinned tag may be a *suffix* of
-  # another — the resolved-version job-rename step below matches the running
-  # check by name ending in the tag, and `ubuntu2204` is deliberately a
-  # *prefix* of the versioned tags (e.g. `ubuntu2204-2026.08.0`), which an
-  # ``includes()`` match would have confused for a suffix collision too.
+  # Emit the Package Manager tag list for the product job. PR/push runs the
+  # current release only (single required check, unchanged); scheduled/manual
+  # runs fan out across the support window (current + 2 back). Nothing to bump
+  # by hand any more -- the tags are resolved from
+  # ghcr.io/posit-dev/package-manager's own tag list at run time, so a run is
+  # reproducible only in the sense that the resolved version is recorded in the
+  # job name and summary, not that it is fixed. PM skips some months (there is
+  # no 2026.07 release), so "current + 2 back" means the last three months that
+  # shipped, which is what the resolver returns.
   set-matrix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions: {}
-    outputs:
-      versions: ${{ steps.pick.outputs.versions }}
-    steps:
-      - id: pick
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo 'versions=["ubuntu2204", "ubuntu2204-2026.08.0", "ubuntu2204-2026.06.0"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'versions=["ubuntu2204"]' >> "$GITHUB_OUTPUT"
-          fi
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: package-manager
+      count: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 3 || 1 }}
 
   packagemanager-smoke:
     needs: [changes, set-matrix]
@@ -114,6 +106,8 @@ jobs:
           fi
           echo "available=true" >> "$GITHUB_OUTPUT"
 
+      # ghcr.io/posit-dev/package-manager is public, so the pull below is
+      # anonymous -- no `docker login` step and no `packages: read` permission.
       # Start Package Manager in Docker
       - name: Start Package Manager
         if: steps.license.outputs.available == 'true'
@@ -122,8 +116,8 @@ jobs:
           docker run -d \
             --name packagemanager \
             -p 4242:4242 \
-            -e RSPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
-            rstudio/rstudio-package-manager:${{ matrix.pm-version }}
+            -e PPM_LICENSE="${{ secrets.RSPM_LICENSE }}" \
+            ghcr.io/posit-dev/package-manager:${{ matrix.pm-version }}
           echo "PM_URL=http://localhost:4242" >> "$GITHUB_OUTPUT"
 
       # Wait for health check
