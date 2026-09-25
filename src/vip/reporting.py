@@ -414,7 +414,7 @@ def write_sarif(data: ReportData, path: str | Path) -> None:
 
 
 def _installed_vip_tests_dir() -> Path | None:
-    """Return the directory of the installed ``vip_tests`` package, if any."""
+    """Return the directory of the installed ``vip_tests`` package, or ``None`` if its location can't be resolved."""
     location = getattr(vip_tests, "__file__", None)
     return Path(location).resolve().parent if location else None
 
