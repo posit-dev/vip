@@ -7,13 +7,26 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+from vip import __version__ as vip_version
+from vip.auth import resolve_url_scheme
 from vip.cli._common import _resolve_effective_ca_bundle
+from vip.clients.connect import ConnectClient
+from vip.config import ProductConfig, load_config
 from vip.errors import InstallError
-
-if TYPE_CHECKING:
-    from vip.config import ProductConfig
+from vip.install import platform as plat
+from vip.install.manifest import (
+    SCHEMA_VERSION,
+    Manifest,
+    ManifestError,
+    current_host,
+    default_path,
+    load,
+)
+from vip.install.packages import PackageQueryError, installed_dpkg, installed_rpm
+from vip.install.plan import build_install_plan, build_uninstall_plan
+from vip.install.playwright import PlaywrightInstallError, chromium_installed, default_cache_dir
+from vip.install.runner import execute_install_plan, execute_uninstall_plan, format_install_plan
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -23,19 +36,6 @@ else:
 
 def run_install(args: argparse.Namespace) -> None:
     """Provision system packages and Playwright Chromium for VIP local mode."""
-    from vip.install import platform as plat
-    from vip.install.manifest import (
-        SCHEMA_VERSION,
-        Manifest,
-        current_host,
-        default_path,
-        load,
-    )
-    from vip.install.packages import PackageQueryError, installed_dpkg, installed_rpm
-    from vip.install.plan import build_install_plan
-    from vip.install.playwright import PlaywrightInstallError, chromium_installed, default_cache_dir
-    from vip.install.runner import execute_install_plan, format_install_plan
-
     info = plat.detect()
     manifest_path = default_path()
     manifest = load(manifest_path)
@@ -59,8 +59,6 @@ def run_install(args: argparse.Namespace) -> None:
 
         if manifest is None:
             now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            from vip import __version__ as vip_version
-
             manifest = Manifest(
                 version=SCHEMA_VERSION,
                 vip_version=vip_version,
@@ -86,15 +84,6 @@ def run_install(args: argparse.Namespace) -> None:
 
 def run_uninstall(args: argparse.Namespace) -> None:
     """Reverse `vip install` using the manifest."""
-    from vip.install.manifest import (
-        ManifestError,
-        current_host,
-        default_path,
-        load,
-    )
-    from vip.install.plan import build_uninstall_plan
-    from vip.install.runner import execute_uninstall_plan
-
     manifest_path = default_path()
     try:
         manifest = load(manifest_path)
@@ -124,8 +113,6 @@ def run_uninstall(args: argparse.Namespace) -> None:
     # probe-and-fallback below whether the Connect URL came from vip.toml or
     # the CLI; with neither vip.toml present nor --insecure/--ca-bundle
     # passed, it probes with defaults (verify=True).
-    from vip.config import ProductConfig
-
     connect_arg = getattr(args, "connect_url", None)
 
     cfg = None
@@ -133,8 +120,6 @@ def run_uninstall(args: argparse.Namespace) -> None:
     config_path = Path(env) if env else Path("vip.toml")
     if config_path.exists():
         try:
-            from vip.config import load_config
-
             cfg = load_config()
         except (tomllib.TOMLDecodeError, ValueError) as exc:
             print(
@@ -173,8 +158,6 @@ def run_uninstall(args: argparse.Namespace) -> None:
     # Gating on --yes preserves the dry-run guarantee: a plan preview must
     # never probe the network.
     if yes and connect_pc is not None:
-        from vip.auth import resolve_url_scheme
-
         resolve_url_scheme(connect_pc, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
 
     plan = build_uninstall_plan(
@@ -187,9 +170,6 @@ def run_uninstall(args: argparse.Namespace) -> None:
         api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
 
         def cleanup_callable(_url: str) -> None:
-            from vip.auth import resolve_url_scheme
-            from vip.clients.connect import ConnectClient
-
             # connect_pc.url was already resolved above -- this callable only
             # ever runs when execute_uninstall_plan actually executes
             # (--yes was passed), which is the same condition that already

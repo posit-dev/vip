@@ -7,6 +7,13 @@ from pathlib import Path
 
 import pytest
 
+from vip.auth import (
+    AuthConfigError,
+    InteractiveAuthSession,
+    auth_cache_path,
+    start_headless_auth,
+    start_interactive_auth,
+)
 from vip.config import VIPConfig
 from vip.stash import _auth_mode_key, _auth_session_key
 
@@ -45,8 +52,6 @@ def _configure_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
                 stacklevel=1,
             )
         else:
-            from vip.auth import AuthConfigError, auth_cache_path, start_interactive_auth
-
             cache_path = auth_cache_path()
             try:
                 session = start_interactive_auth(
@@ -98,8 +103,6 @@ def _configure_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
                 stacklevel=1,
             )
         else:
-            from vip.auth import AuthConfigError, auth_cache_path, start_headless_auth
-
             cache_path = auth_cache_path()
             try:
                 session = start_headless_auth(
@@ -142,8 +145,6 @@ def _configure_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
 
 def _restore_worker_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
     """Reconstruct an auth session in an xdist worker from controller data."""
-    from vip.auth import InteractiveAuthSession
-
     wi = config.workerinput  # type: ignore[attr-defined]  # xdist injects this
     api_key = wi.get("vip_api_key") or None
     storage_state = wi.get("vip_storage_state", "")

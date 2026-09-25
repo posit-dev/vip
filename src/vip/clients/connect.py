@@ -15,7 +15,7 @@ import httpx
 
 from vip.clients.base import BaseClient
 from vip.errors import ProductUnreachableError
-from vip.proxy import ProxyConfig
+from vip.proxy import ProxyConfig, proxy_for_url, verify_with_env_ca
 from vip.timeouts import scaled
 
 _VIP_CONTENT_TAG = "_vip_test"
@@ -375,8 +375,6 @@ class ConnectClient(BaseClient):
         when ALL of scheme, hostname, and effective port match the client's
         base URL, and the target scheme is http or https.
         """
-        from vip.proxy import proxy_for_url, verify_with_env_ca
-
         origin = urlparse(self.base_url)
         origin_key = (origin.scheme, origin.hostname, _normalized_port(origin.scheme, origin.port))
         max_redirects = 10

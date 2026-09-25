@@ -11,6 +11,7 @@ from playwright.sync_api import (
     Page,
 )
 
+from vip.idp import _log_verbose
 from vip.timeouts import scaled
 
 # Single timeout for an IdP login round-trip (browser leaves the product,
@@ -65,8 +66,6 @@ def _fill_product_login(page: Page, username: str, password: str) -> None:
     Works for Connect and Workbench login forms that present username
     and password fields directly (not OIDC/SAML redirect flows).
     """
-    from vip.idp import _log_verbose
-
     # Common selectors for Connect and Workbench login forms.
     username_selectors = "#username, input[name='username'], input[type='text']"
     password_selectors = "#password, input[name='password'], input[type='password']"
