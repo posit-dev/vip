@@ -26,6 +26,10 @@ _SCAFFOLD_TEMPLATES: dict[str, tuple[str, str]] = {
         "cross_product_validation",
         "R/Python runtime versions and package installability across Connect and Workbench",
     ),
+    "21cfr-part11-validation": (
+        "21CFR_part11_validation",
+        "Compliance control tagging plus a controls.toml for `vip trace`",
+    ),
 }
 _DEFAULT_SCAFFOLD_TEMPLATE = "cross-product"
 
@@ -78,6 +82,14 @@ def _scaffold_next_steps(template: str, dest: Path) -> str:
             f"       vip verify --config vip.toml --extensions {dest}\n"
             f"\nSee {dest / 'README.md'} for full customization instructions."
         )
+    if template == "21cfr-part11-validation":
+        return (
+            f"\nNext steps:\n"
+            f"  1. Replace {dest / 'controls.toml'} with your own control list.\n"
+            f"  2. Tag your scenarios with @control-<slug> matching those ids.\n"
+            f"  3. Run: vip verify --extensions {dest}\n"
+            f"  4. Run: vip trace --controls {dest / 'controls.toml'}\n"
+        )
     return (
         f"\nNext steps:\n"
         f"  1. Edit {dest / 'test_custom_check.feature'} and"
@@ -123,7 +135,16 @@ def run_scaffold(args: argparse.Namespace) -> None:
             else:
                 dest.unlink()
 
-        shutil.copytree(src, dest)
+        # Skip build/test detritus. A source checkout that has run the example
+        # accumulates __pycache__ and .pytest_cache beside it, and without this
+        # they land in the customer's brand-new extension directory. Harmless
+        # but scruffy, and it makes the scaffold output differ depending on
+        # whether the VIP checkout happened to have run its own tests.
+        shutil.copytree(
+            src,
+            dest,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", ".pytest_cache"),
+        )
 
         # AGENTS.md is shared across every template (single source of truth), so
         # it's copied in separately rather than living inside each template dir.

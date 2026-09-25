@@ -14,10 +14,12 @@ from vip.cli.report import (
     _REPORT_TEMPLATE_FILES,
     _ensure_report_templates,
     _has_all_report_templates,
+    _rehome_sidecar,
     run_report,
 )
 from vip.cli.scaffold import run_scaffold
 from vip.cli.status import _collect_status, run_status
+from vip.cli.trace import _resolve_trace_format, run_trace
 from vip.cli.verify import (
     _OPT_IN_CATEGORIES,
     DEFAULT_TEST_TIMEOUT_SECONDS,
@@ -41,7 +43,9 @@ __all__ = [
     "_generate_temp_config",
     "_has_all_report_templates",
     "_normalize_categories",
+    "_rehome_sidecar",
     "_reorder_help_args",
+    "_resolve_trace_format",
     "main",
     "mint_connect_key",
     "run_cleanup",
@@ -49,6 +53,7 @@ __all__ = [
     "run_report",
     "run_scaffold",
     "run_status",
+    "run_trace",
     "run_uninstall",
     "run_verify",
     "run_version",

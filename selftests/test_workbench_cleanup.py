@@ -11,9 +11,20 @@ import logging
 import httpx
 import pytest
 
+import vip.clients.workbench as workbench_module
 from _helpers import _client_with_handler
 from vip.clients.workbench import is_vip_session
 from vip.errors import ProductUnreachableError
+
+
+def _warnings_from(caplog, logger_name):
+    """WARNING+ records emitted by one logger.
+
+    Scoped by name on purpose: caplog's handler sits on the root logger, so an
+    unrelated test leaking a Playwright connection makes asyncio's garbage-collection
+    handler log ERRORs into whichever test happens to be running.
+    """
+    return [r for r in caplog.records if r.levelno >= logging.WARNING and r.name == logger_name]
 
 
 @pytest.mark.parametrize(
@@ -185,7 +196,7 @@ def test_quit_vip_sessions_warns_when_stuck_session_persists(caplog):
         quit_count = wc.quit_vip_sessions(retries=2, settle_seconds=0)
 
     assert quit_count == 1  # the quit call "succeeded" once, distinct session
-    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    warnings = _warnings_from(caplog, workbench_module.logger.name)
     assert warnings, "expected a WARNING when a VIP session persists after cleanup"
     assert any("VIP stuck" in r.message for r in warnings)
     assert any("id=a" in r.message for r in warnings)
@@ -208,7 +219,7 @@ def test_quit_vip_sessions_no_warning_when_fully_cleaned(caplog):
         quit_count = wc.quit_vip_sessions(retries=3, settle_seconds=0)
 
     assert quit_count == 1
-    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert not _warnings_from(caplog, workbench_module.logger.name)
 
 
 def test_quit_vip_sessions_does_not_raise_when_final_warning_check_fails():
@@ -852,7 +863,7 @@ def test_run_session_cleanup_warns_when_no_cookies_and_no_api_key(monkeypatch, c
     with caplog.at_level(logging.WARNING):
         wb._run_session_cleanup(page, workbench_client, _fake_vip_config(api_key=""), state)
 
-    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    warnings = _warnings_from(caplog, cleanup.logger.name)
     assert warnings, "expected a warning when cleanup cannot authenticate"
     assert any("authenticate" in r.message for r in warnings)
 
@@ -882,7 +893,7 @@ def test_run_session_cleanup_no_warning_when_no_cookies_but_api_key_present(monk
     with caplog.at_level(logging.WARNING):
         wb._run_session_cleanup(page, workbench_client, _fake_vip_config(api_key="k"), state)
 
-    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert not _warnings_from(caplog, cleanup.logger.name)
 
 
 def test_run_session_cleanup_returns_early_when_workbench_client_is_none(monkeypatch):

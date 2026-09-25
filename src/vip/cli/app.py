@@ -12,6 +12,7 @@ from vip.cli.install import run_install, run_uninstall
 from vip.cli.report import run_report
 from vip.cli.scaffold import _DEFAULT_SCAFFOLD_TEMPLATE, run_scaffold
 from vip.cli.status import run_status
+from vip.cli.trace import run_trace
 from vip.cli.verify import _IDP_PROVIDERS, DEFAULT_TEST_TIMEOUT_SECONDS, run_verify
 from vip.cli.version import run_version
 from vip.errors import VipError
@@ -272,7 +273,9 @@ def main() -> None:
     verify_parser.add_argument(
         "--report",
         default="report/results.json",
-        help="Write JSON results to this path for Quarto report generation"
+        help="Write JSON results to this path for Quarto report generation."
+        " Pass an empty string to write no results file, which also rules out"
+        " the junit/sarif siblings built from it."
         " (default: report/results.json)",
     )
     verify_parser.add_argument(
@@ -484,6 +487,14 @@ def main() -> None:
         help="Path to results.json (default: report/results.json)",
     )
     report_parser.add_argument(
+        "--controls",
+        default=None,
+        help=(
+            "Path to a controls.toml control list. Adds a compliance traceability "
+            "section to the HTML report and the PDF. Applies to this render only."
+        ),
+    )
+    report_parser.add_argument(
         "--open",
         action="store_true",
         default=False,
@@ -554,6 +565,37 @@ def main() -> None:
     )
     scaffold_parser.set_defaults(func=run_scaffold)
 
+    # vip trace
+    trace_parser = subparsers.add_parser(
+        "trace",
+        help="Generate a compliance traceability matrix from test results",
+        description=(
+            "Join a results.json against a control list (controls.toml) and emit a "
+            "control-to-scenario traceability matrix as CSV or JSON.\n\n"
+            "Scenarios declare the control they satisfy with an @control-<slug> "
+            "Gherkin tag. Controls with no matching scenario are reported as coverage "
+            'gaps, except those marked verification = "manual" or "procedural", '
+            "which are reported as not verifiable by automated test."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    trace_parser.add_argument(
+        "--results",
+        default="report/results.json",
+        help="Path to results.json (default: report/results.json)",
+    )
+    trace_parser.add_argument(
+        "--controls", required=True, help="Path to the controls.toml control list"
+    )
+    trace_parser.add_argument(
+        "--format",
+        choices=("csv", "json"),
+        default=None,
+        help="Output format (default: inferred from --output's extension, else csv)",
+    )
+    trace_parser.add_argument("--output", default=None, help="Write to this path instead of stdout")
+    trace_parser.set_defaults(func=run_trace)
+
     # Map command names to their parsers for context-appropriate help
     subcommand_parsers = {
         "version": version_parser,
@@ -565,6 +607,7 @@ def main() -> None:
         "report": report_parser,
         "status": status_parser,
         "scaffold": scaffold_parser,
+        "trace": trace_parser,
     }
 
     argv = _reorder_help_args(sys.argv[1:], set(subcommand_parsers))

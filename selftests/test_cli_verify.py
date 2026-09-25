@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from vip.cli import DEFAULT_TEST_TIMEOUT_SECONDS
+from vip.errors import ConfigError
 
 
 def _make_args(**overrides) -> argparse.Namespace:
@@ -1576,6 +1577,70 @@ class TestVerifyProxyFlagWithConfig:
         )
         err = capsys.readouterr().err
         assert "ignored when a config file is used" not in err
+
+
+class TestDisablingTheResultsFile:
+    """`--report ''` is the documented way to write no results file.
+
+    Skipping `--vip-report` for an empty value would leave the plugin on its
+    own default, so it would write report/results.json anyway -- the one
+    thing the invocation asked it not to do.
+    """
+
+    @staticmethod
+    def _config(tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        return str(cfg)
+
+    def test_an_empty_report_path_is_forwarded_to_the_plugin(self, tmp_path):
+        cmd = _capture_cmd(_make_args(config=self._config(tmp_path), report=""))
+        assert "--vip-report=" in cmd
+
+    def test_a_normal_report_path_is_unchanged(self, tmp_path):
+        cmd = _capture_cmd(_make_args(config=self._config(tmp_path), report="out/results.json"))
+        assert "--vip-report=out/results.json" in cmd
+
+    def test_the_default_path_is_still_forwarded(self, tmp_path):
+        cmd = _capture_cmd(_make_args(config=self._config(tmp_path)))
+        assert "--vip-report=report/results.json" in cmd
+
+    @staticmethod
+    def _run_refused(args):
+        """Call run_verify with a subprocess.run that fails the test if reached.
+
+        The check runs before subprocess.run, so the suite never starts.
+        """
+        with patch(
+            "vip.cli.verify.subprocess.run", side_effect=AssertionError("suite was started")
+        ):
+            from vip.cli import run_verify
+
+            run_verify(args)
+
+    @pytest.mark.parametrize("fmt", ["junit", "sarif", "json,junit"])
+    def test_asking_for_a_sibling_format_while_disabling_the_source_is_refused(self, tmp_path, fmt):
+        """junit.xml and results.sarif are built by reloading results.json, so
+        the combination would run the whole suite and produce nothing.
+        """
+        with pytest.raises(ConfigError) as exc:
+            self._run_refused(_make_args(config=self._config(tmp_path), report="", format=fmt))
+        assert exc.value.exit_code == 2
+
+    def test_the_refusal_names_the_flag_the_formats_came_from(self, tmp_path):
+        with pytest.raises(ConfigError) as exc:
+            self._run_refused(_make_args(config=self._config(tmp_path), report="", ci=True))
+        assert "--ci" in str(exc.value)
+
+    def test_the_refusal_happens_before_the_suite_runs(self, tmp_path):
+        """A message after a full product run would be worse than no message."""
+        with pytest.raises(ConfigError):
+            self._run_refused(_make_args(config=self._config(tmp_path), report="", format="junit"))
+
+    def test_disabling_the_report_with_json_alone_is_allowed(self, tmp_path):
+        """Json *is* results.json, so there is no sibling left to strand."""
+        cmd = _capture_cmd(_make_args(config=self._config(tmp_path), report="", format="json"))
+        assert "--vip-report=" in cmd
 
 
 class TestAllowUnprovenFlag:

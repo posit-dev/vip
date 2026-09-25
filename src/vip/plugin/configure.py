@@ -106,6 +106,10 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "vscode: Workbench VS Code IDE scenario")
     config.addinivalue_line("markers", "jupyter: Workbench JupyterLab IDE scenario")
     config.addinivalue_line("markers", "positron: Workbench Positron IDE scenario")
+    # One marker for every compliance control. `selection.pytest_bdd_apply_tag`
+    # converts each @control-<slug> Gherkin tag into control(<slug>), so the
+    # customer's own slugs never need registering by name.
+    config.addinivalue_line("markers", "control(id): compliance control tag")
 
     # In concise mode, suppress the "short test summary info" section — the
     # inline concise error messages make it redundant.

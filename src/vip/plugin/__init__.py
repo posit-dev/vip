@@ -30,6 +30,7 @@ from vip.plugin.options import pytest_addoption
 from vip.plugin.results import (
     EXIT_UNPROVEN,
     _classify_skip_reason,
+    _control_marker_names,
     _emit_extra_formats,
     _extract_exception_info,
     _extract_skip_reason,
@@ -38,7 +39,7 @@ from vip.plugin.results import (
     pytest_runtest_makereport,
     pytest_sessionfinish,
 )
-from vip.plugin.selection import pytest_collection_modifyitems
+from vip.plugin.selection import pytest_bdd_apply_tag, pytest_collection_modifyitems
 from vip.plugin.terminal import (
     _Heartbeat,
     _outcome_color,
@@ -54,6 +55,7 @@ __all__ = [
     "_auth_mode_key",
     "_auth_session_key",
     "_classify_skip_reason",
+    "_control_marker_names",
     "_emit_extra_formats",
     "_extract_exception_info",
     "_extract_skip_reason",
@@ -63,6 +65,7 @@ __all__ = [
     "_shorten_location_line",
     "_vip_config_key",
     "pytest_addoption",
+    "pytest_bdd_apply_tag",
     "pytest_collection_modifyitems",
     "pytest_configure",
     "pytest_configure_node",

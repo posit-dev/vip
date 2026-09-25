@@ -491,8 +491,10 @@ def run_verify(args: argparse.Namespace) -> None:
 
     if config_path:
         cmd.append(f"--vip-config={config_path}")
-    if args.report:
-        cmd.append(f"--vip-report={args.report}")
+    # Forward even an empty value. `--vip-report=` is how the plugin is told to
+    # write no report at all, and skipping the flag would leave the plugin on
+    # its own default report path.
+    cmd.append(f"--vip-report={args.report}")
 
     fmt = "json,junit,sarif" if getattr(args, "ci", False) else getattr(args, "format", "json")
     requested = [f.strip().lower() for f in fmt.split(",") if f.strip()]
@@ -501,6 +503,18 @@ def run_verify(args: argparse.Namespace) -> None:
         raise ConfigError(
             f"unknown --format value(s): {', '.join(unknown)}. "
             f"Valid: {', '.join(sorted(VALID_FORMATS))}.",
+            exit_code=2,
+        )
+    # junit.xml and results.sarif are written as siblings of results.json and
+    # are built by reloading it, so they cannot exist without it. Combined
+    # with --report '' the run would produce nothing, so refuse it up front.
+    siblings = [f for f in requested if f != "json"]
+    if not args.report and siblings:
+        source = "--ci" if getattr(args, "ci", False) else "--format"
+        raise ConfigError(
+            f"--report '' disables the results file, but {source} asks for "
+            f"{', '.join(siblings)}, which {'are' if len(siblings) > 1 else 'is'} "
+            "written from it. Drop one of the two.",
             exit_code=2,
         )
     cmd.append(f"--vip-format={','.join(requested)}")

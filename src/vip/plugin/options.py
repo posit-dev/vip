@@ -71,3 +71,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Show full pytest tracebacks instead of concise error messages.",
     )
+    group.addoption(
+        "--vip-no-attribution",
+        action="store_true",
+        default=False,
+        help="Omit host/git/CI attribution from results.json.",
+    )

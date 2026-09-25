@@ -13,9 +13,13 @@ from pathlib import Path
 from IPython.display import HTML, Markdown, display
 
 from vip import report_html
-from vip.reporting import load_results, load_troubleshooting, troubleshooting_path
+from vip.reporting import load_troubleshooting, troubleshooting_path
+from vip.traceability import report_inputs
 
-data = load_results(Path("results.json"))
+# One read for the whole page: the summary, the cards and the traceability
+# section below all describe the same results.json. See report_inputs.
+_inputs = report_inputs(Path("results.json"))
+data = _inputs.data
 _troubleshooting_path = troubleshooting_path()
 hints = load_troubleshooting(_troubleshooting_path) if _troubleshooting_path else {}
 
@@ -57,4 +61,24 @@ if data.results:
         "above — see [Detailed Results](details.qmd) for the complete listing."
     ))
 display(HTML(report_html.render_actionable_cards(data, hints)))
+```
+
+```{python}
+#| echo: false
+# Rendered only when VIP_CONTROLS names a control list. report_inputs, called
+# in the first cell, holds the reasons for that and for never raising -- see
+# its docstring. The heading is emitted on both branches, because a compliance
+# section that vanishes without saying so is the one outcome a regulated
+# reader cannot detect.
+_matrix, _trace_error = _inputs.matrix, _inputs.trace_error
+if _matrix is not None:
+    display(Markdown("## Compliance Traceability"))
+    display(HTML(report_html.render_traceability(_matrix)))
+elif _trace_error is not None:
+    display(Markdown("## Compliance Traceability"))
+    # HTML, not Markdown: IPython.display.Markdown passes raw HTML through in
+    # Quarto, and this message carries the VIP_CONTROLS path and control ids
+    # out of a customer-authored controls.toml. render_traceability_error
+    # escapes it the way every other value report_html emits is escaped.
+    display(HTML(report_html.render_traceability_error(_trace_error)))
 ```

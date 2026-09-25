@@ -13,6 +13,13 @@ import webbrowser
 from pathlib import Path
 
 from vip.errors import ReportError
+from vip.traceability import (
+    ControlListError,
+    ResultsIntegrityError,
+    load_controls,
+    validate_results_file,
+    verify_results_checksum,
+)
 
 # Quarto report template files copied into the working report/ directory.
 # Keep in sync with the force-include block in pyproject.toml. The fonts are
@@ -129,6 +136,45 @@ def _resolve_report_dir() -> Path:
     return Path("report")
 
 
+def _rehome_sidecar(results_src: Path, results_dest: Path) -> str | None:
+    """Move a checksum sidecar alongside a copied results file.
+
+    Returns ``None`` when the destination ends up with the attestation the
+    source had, or the reason there was none to carry, which the caller
+    reports. A stale destination sidecar is always removed either way: no
+    sidecar is a documented benign state, a wrong one is a false tamper alarm.
+
+    A sidecar that verifies its source is rewritten as the one line VIP
+    writes, under the destination name, so a source called run-42.json still
+    verifies once copied to results.json. Writing the verified digest is not
+    the same as recomputing one from the copy: the digest went through
+    ``verify_results_checksum`` against the source bytes first, so a tampered
+    file never reaches this branch to be laundered into a verified one.
+
+    A sidecar that does *not* verify its source attested to nothing, so
+    nothing is carried across. Copying it through was the obvious alternative
+    and is wrong, because the rename can repair it: a sidecar recording the
+    source's correct digest under the name ``results.json`` fails at a source
+    called ``run-42.json`` and then *verifies* once sat beside the copy, which
+    is exactly the false attestation the single-entry grammar exists to
+    prevent. Reporting the reason to the caller keeps the failure visible
+    where an operator reads it, at copy time, rather than deferring it to
+    whatever runs `vip trace` next.
+    """
+    src = results_src.with_name(f"{results_src.name}.sha256")
+    dest = results_dest.with_name(f"{results_dest.name}.sha256")
+    if not src.is_file():
+        dest.unlink(missing_ok=True)
+        return None
+    try:
+        digest, _ = verify_results_checksum(results_src)
+    except ResultsIntegrityError as exc:
+        dest.unlink(missing_ok=True)
+        return str(exc)
+    dest.write_text(f"{digest}  {results_dest.name}\n", encoding="utf-8")
+    return None
+
+
 def run_report(args: argparse.Namespace) -> None:
     """Render the Quarto report from a results.json file."""
     report_dir = _resolve_report_dir()
@@ -140,7 +186,47 @@ def run_report(args: argparse.Namespace) -> None:
     if results_src.resolve() != results_dest.resolve():
         if not results_src.exists():
             raise ReportError(f"results file not found: {results_src}")
+        if getattr(args, "controls", None):
+            # Verify the SOURCE before the copy, not only the destination
+            # after it. _rehome_sidecar is right to discard an empty or
+            # unreadable source sidecar rather than manufacture one at the
+            # destination -- but a missing destination sidecar is legal and
+            # benign, so the gate below would then wave through the very
+            # input `vip trace` refuses as a truncated attestation. The
+            # compliance render must never be more permissive than
+            # `vip trace` on identical bytes. A source with genuinely no
+            # sidecar stays benign here, exactly as it is for `vip trace`.
+            try:
+                verify_results_checksum(results_src)
+            except ResultsIntegrityError as exc:
+                raise ReportError(str(exc)) from exc
+            except (OSError, UnicodeDecodeError) as exc:
+                raise ReportError(f"could not read results file {results_src}: {exc}") from exc
         shutil.copy2(results_src, results_dest)
+        # Keep the checksum sidecar with the results it describes. Copying a
+        # results.json from a CI artifact over the local one leaves the
+        # previous run's sidecar in place, and the next `vip trace` then
+        # reports a checksum mismatch on a file nobody tampered with. Carry
+        # the source's sidecar across when it has one; otherwise remove the
+        # stale local one, because no sidecar is a documented benign state
+        # and a wrong one is a false tamper alarm.
+        dest_sidecar = results_dest.with_name(f"{results_dest.name}.sha256")
+        try:
+            unattested = _rehome_sidecar(results_src, results_dest)
+        except OSError as exc:
+            print(f"Warning: could not update {dest_sidecar}: {exc}", file=sys.stderr)
+        else:
+            if unattested:
+                # Not an error: a plain `vip report` renders whatever it is
+                # given, and `--controls` already exited above on this input.
+                # But the operator asked to copy a file whose sidecar does not
+                # describe it, so say so here rather than let it surface later
+                # as a tamper alarm from `vip trace` on the copy.
+                print(
+                    f"Warning: the checksum sidecar beside {results_src} does not "
+                    f"verify it ({unattested}) Copied {results_dest.name} without one.",
+                    file=sys.stderr,
+                )
     elif not results_dest.exists():
         raise ReportError(
             f"no results found at {results_dest}. Run 'vip verify' first, or pass --results PATH."
@@ -159,6 +245,39 @@ def run_report(args: argparse.Namespace) -> None:
     # import vip.gherkin / vip.reporting) or the Jupyter stack. sys.executable
     # is the vip install itself, which always has both. See issue #554.
     env = {**os.environ, "QUARTO_PYTHON": sys.executable}
+
+    # Scope the control list to this render via the environment. Copying
+    # controls.toml into the report directory was the obvious alternative and
+    # is wrong: that directory survives between runs, so one
+    # `vip report --controls ...` would leave a file behind that every later
+    # plain `vip report` silently picks up, growing a compliance section
+    # nobody asked for out of a stale list. Validate it here so a malformed
+    # file fails before Quarto starts, rather than inside a notebook cell
+    # where the .qmd can only degrade to a warning.
+    if getattr(args, "controls", None):
+        controls_path = Path(args.controls).resolve()
+        try:
+            # --controls turns the report into a compliance artifact, so it
+            # inherits `vip trace`'s strictness about its evidence, through the
+            # same entry point. Plain `vip report` stays lenient on purpose:
+            # `load_results` normalizes a malformed `markers` to an empty list
+            # and only warns on an unknown schema major, because a report must
+            # render regardless. That leniency is wrong here for one specific
+            # reason -- a row whose markers cannot be read looks untagged, so
+            # the control it was tagged for is printed as a GAP that does not
+            # exist, and the matrix claims the suite is missing a check it
+            # actually has. Validating the control list here too means a
+            # malformed one fails before Quarto starts, rather than inside a
+            # notebook cell that can only degrade to a visible marker.
+            validate_results_file(results_dest)
+            load_controls(controls_path)
+        except (ResultsIntegrityError, ControlListError) as exc:
+            raise ReportError(str(exc)) from exc
+        except (OSError, UnicodeDecodeError) as exc:
+            # A results file that cannot even be read must not reach the user
+            # as a traceback.
+            raise ReportError(f"could not read results file {results_dest}: {exc}") from exc
+        env["VIP_CONTROLS"] = str(controls_path)
 
     # The HTML pages and the PDF render as separate quarto invocations on
     # purpose. One combined `quarto render` ties their fates together: on a

@@ -10,9 +10,31 @@ from pathlib import Path
 import pytest
 
 from vip.config import VIPConfig
+from vip.gherkin import CONTROL_TAG_PREFIX
 from vip.plugin.results import _PRODUCT_MARKERS, _stash_scenario_metadata
 from vip.stash import _version_na_key, _vip_config_key
 from vip.version import ProductVersion
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_bdd_apply_tag(tag: str, function: object) -> object:
+    """Turn an ``@control-<slug>`` Gherkin tag into one ``control(<slug>)`` mark.
+
+    Every other tag returns None so pytest-bdd's own implementation runs
+    instead -- ``@slow``, ``@connect`` and friends keep becoming marks named
+    after themselves, which is what auto-skip and ``-m`` filtering rely on.
+
+    Control slugs are chosen by the customer, so they cannot be registered by
+    name ahead of time, and an unregistered mark warns by default and aborts
+    collection outright under ``--strict-markers``, which regulated CI is
+    likely to enable. Carrying the slug as an argument to one registered
+    marker settles that without VIP having to predict the names: there is
+    exactly one marker to register, and the slug is no longer a Python
+    identifier, so ``@control-11.10(a)`` is as legal as ``@control-11-10-a``.
+    """
+    if not tag.startswith(CONTROL_TAG_PREFIX):
+        return None
+    return pytest.mark.control(tag[len(CONTROL_TAG_PREFIX) :])(function)
 
 
 def pytest_collection_modifyitems(
