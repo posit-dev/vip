@@ -8,6 +8,7 @@ import sys
 import warnings
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 if sys.version_info >= (3, 11):
@@ -214,8 +215,6 @@ class ReportData:
         if not self.generated_at:
             return "N/A"
         try:
-            from datetime import datetime, timezone
-
             dt = datetime.fromisoformat(self.generated_at)
             return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         except Exception:  # noqa: BLE001

@@ -10,6 +10,8 @@ import httpx
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
 
+from vip import attest
+
 # ---------------------------------------------------------------------------
 # Scenarios
 # ---------------------------------------------------------------------------
@@ -21,7 +23,7 @@ scenarios("test_https.feature")
 # Shared diagnostic text
 # ---------------------------------------------------------------------------
 
-# CA-bundle guidance reused in the cert-verification skip below.
+# CA-bundle guidance reused in the cert-verification branch below.
 # src/vip_tests/cross_product/test_ssl.py has a similar message in the
 # ``modern_tls_succeeds`` step — keep the two in sync when updating guidance.
 _CERT_TRUST_HINT = (
@@ -121,12 +123,12 @@ def inspect_headers(product, vip_config):
         # httpx wraps ssl.SSLCertVerificationError in httpx.ConnectError.
         # A cert-verification failure is a trust-bundle issue on the test
         # runner (e.g. missing public roots when fronted by an ALB with an
-        # ACM cert), not a server security finding — skip with clear
-        # guidance rather than failing as "connection refused".
+        # ACM cert), not a server security finding — report unproven with
+        # clear guidance rather than failing as "connection refused".
         # src/vip_tests/cross_product/test_ssl.py applies the same cert-trust
         # classification; it raises there because that test is specifically
-        # about TLS enforcement, whereas here we skip because the test is
-        # about response headers, not certificate validity.
+        # about TLS enforcement, whereas here we report unproven because the
+        # test is about response headers, not certificate validity.
         # Primary check: httpx sets __cause__ to ssl.SSLCertVerificationError when
         # the TLS handshake fails due to certificate verification.  String fallback
         # covers transports where httpx does not populate __cause__ but still
@@ -135,7 +137,7 @@ def inspect_headers(product, vip_config):
         if isinstance(cause, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(
             exc
         ):
-            pytest.skip(
+            attest.unproven(
                 f"Could not verify TLS certificate for {product} at {pc.url}: {exc}. "
                 + _CERT_TRUST_HINT
             )

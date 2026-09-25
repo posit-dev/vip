@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from vip.errors import ReportError
+
 
 def _make_args(**overrides) -> argparse.Namespace:
     defaults = {"results": "report/results.json", "open": False}
@@ -212,7 +214,7 @@ class TestRunReportFromArbitraryDir:
         report_dir = tmp_path / "report"
         report_dir.mkdir()
         (report_dir / "results.json").write_text('{"results": []}')
-        monkeypatch.setattr(cli.subprocess, "run", _fake_quarto(create_output=True))
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
 
         cli.run_report(_make_args())
 
@@ -237,7 +239,7 @@ class TestRunReportFromArbitraryDir:
         report_dir.mkdir()
         (report_dir / "results.json").write_text('{"results": []}')
         monkeypatch.chdir(report_dir)
-        monkeypatch.setattr(cli.subprocess, "run", _fake_quarto(create_output=True))
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
 
         cli.run_report(_make_args(results="results.json"))
 
@@ -270,43 +272,46 @@ class TestRunReportFromArbitraryDir:
 
         # A hostile VIRTUAL_ENV must not win over the explicit pin.
         monkeypatch.setenv("VIRTUAL_ENV", "/some/other/venv")
-        monkeypatch.setattr(cli.subprocess, "run", _capture)
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _capture)
 
         cli.run_report(_make_args())
 
         assert captured["env"] is not None, "env must be passed to quarto render"
         assert captured["env"]["QUARTO_PYTHON"] == sys.executable
 
-    def test_errors_when_render_produces_no_output(self, tmp_path, monkeypatch, capsys):
+    def test_errors_when_render_produces_no_output(self, tmp_path, monkeypatch):
         from vip import cli
+        from vip.errors import ReportError
 
         monkeypatch.chdir(tmp_path)
         report_dir = tmp_path / "report"
         report_dir.mkdir()
         (report_dir / "results.json").write_text('{"results": []}')
         # quarto "succeeds" but writes nothing — the old bug rendered silently.
-        monkeypatch.setattr(cli.subprocess, "run", _fake_quarto(create_output=False))
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=False))
 
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(ReportError) as exc:
             cli.run_report(_make_args())
 
-        assert exc.value.code == 1
-        assert "no report was produced" in capsys.readouterr().err
+        assert exc.value.exit_code == 1
+        assert "no report was produced" in str(exc.value)
 
-    def test_errors_when_results_missing(self, tmp_path, monkeypatch, capsys):
+    def test_errors_when_results_missing(self, tmp_path, monkeypatch):
         from vip import cli
+        from vip.errors import ReportError
 
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(cli.subprocess, "run", _fake_quarto(create_output=True))
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
 
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(ReportError) as exc:
             cli.run_report(_make_args(results=str(tmp_path / "nope.json")))
 
-        assert exc.value.code == 1
-        assert "results file not found" in capsys.readouterr().err
+        assert exc.value.exit_code == 1
+        assert "results file not found" in str(exc.value)
 
-    def test_errors_when_quarto_not_installed(self, tmp_path, monkeypatch, capsys):
+    def test_errors_when_quarto_not_installed(self, tmp_path, monkeypatch):
         from vip import cli
+        from vip.errors import ReportError
 
         monkeypatch.chdir(tmp_path)
         report_dir = tmp_path / "report"
@@ -316,13 +321,13 @@ class TestRunReportFromArbitraryDir:
         def _missing_quarto(cmd, cwd=None, **kwargs):
             raise FileNotFoundError(2, "No such file or directory", cmd[0])
 
-        monkeypatch.setattr(cli.subprocess, "run", _missing_quarto)
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _missing_quarto)
 
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(ReportError) as exc:
             cli.run_report(_make_args())
 
-        assert exc.value.code == 1
-        assert "quarto was not found" in capsys.readouterr().err
+        assert exc.value.exit_code == 1
+        assert "quarto was not found" in str(exc.value)
 
     def test_pdf_failure_degrades_to_warning(self, tmp_path, monkeypatch, capsys):
         """A Typst-less Quarto must not cost the user the HTML report.
@@ -339,7 +344,7 @@ class TestRunReportFromArbitraryDir:
         report_dir.mkdir()
         (report_dir / "results.json").write_text('{"results": []}')
         monkeypatch.setattr(
-            cli.subprocess, "run", _fake_quarto(create_output=True, pdf_returncode=1)
+            "vip.cli.report.subprocess.run", _fake_quarto(create_output=True, pdf_returncode=1)
         )
 
         cli.run_report(_make_args())
@@ -364,7 +369,7 @@ class TestRunReportFromArbitraryDir:
             rendered.append(cmd[-1])
             return types.SimpleNamespace(returncode=3)
 
-        monkeypatch.setattr(cli.subprocess, "run", _failing_html)
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _failing_html)
 
         with pytest.raises(SystemExit) as exc:
             cli.run_report(_make_args())
@@ -434,9 +439,9 @@ class TestReportControls:
 
     @pytest.fixture
     def cli(self):
-        from vip import cli
+        from vip.cli import report
 
-        return cli
+        return report
 
     def _args(self, tmp_path, controls=None):
         results = tmp_path / "results.json"
@@ -451,16 +456,16 @@ class TestReportControls:
 
         called = []
         monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(ReportError) as exc:
             cli.run_report(self._args(tmp_path, str(bad)))
-        assert exc.value.code == 1
+        assert exc.value.exit_code == 1
         assert called == []
 
     def test_missing_control_list_fails_before_quarto_starts(self, cli, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         called = []
         monkeypatch.setattr(cli, "_quarto_render", lambda *a, **k: called.append(a) or 0)
-        with pytest.raises(SystemExit):
+        with pytest.raises(ReportError):
             cli.run_report(self._args(tmp_path, str(tmp_path / "absent.toml")))
         assert called == []
 
@@ -529,9 +534,9 @@ class TestReportControls:
         args = argparse.Namespace(
             results=str(results), controls=str(controls), open=False, output=None
         )
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(ReportError) as exc:
             cli.run_report(args)
-        assert exc.value.code == 1
+        assert exc.value.exit_code == 1
         assert called == []
 
     def test_unknown_schema_major_is_refused_on_a_compliance_render(
@@ -547,9 +552,9 @@ class TestReportControls:
         args = argparse.Namespace(
             results=str(results), controls=str(controls), open=False, output=None
         )
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(ReportError) as exc:
             cli.run_report(args)
-        assert exc.value.code == 1
+        assert exc.value.exit_code == 1
         assert called == []
 
     def test_the_same_file_still_renders_without_controls(self, cli, tmp_path, monkeypatch):
@@ -611,12 +616,12 @@ class TestReportControls:
         args = argparse.Namespace(
             results=str(results), controls=str(controls), open=False, output=None
         )
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(ReportError) as exc:
             cli.run_report(args)
 
-        assert exc.value.code == 1
+        assert exc.value.exit_code == 1
         assert called == []
-        assert "checksum mismatch" in capsys.readouterr().err
+        assert "checksum mismatch" in str(exc.value)
 
     def test_report_with_controls_refuses_an_empty_source_sidecar(
         self, cli, tmp_path, monkeypatch, capsys
@@ -646,12 +651,12 @@ class TestReportControls:
         args = argparse.Namespace(
             results=str(results), controls=str(controls), open=False, output=None
         )
-        with pytest.raises(SystemExit) as exc:
+        with pytest.raises(ReportError) as exc:
             cli.run_report(args)
 
-        assert exc.value.code == 1
+        assert exc.value.exit_code == 1
         assert called == []
-        assert "is empty" in capsys.readouterr().err
+        assert "is empty" in str(exc.value)
 
     def test_the_same_empty_sidecar_still_renders_without_controls(
         self, cli, tmp_path, monkeypatch

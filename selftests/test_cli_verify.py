@@ -5,17 +5,18 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from vip.cli import DEFAULT_TEST_TIMEOUT_SECONDS
+from vip.errors import ConfigError
 
 
 def _make_args(**overrides) -> argparse.Namespace:
     """Build a minimal args namespace for run_verify."""
-    defaults = {
+    defaults: dict[str, Any] = {
         "config": None,
         "connect_url": None,
         "connect_version": None,
@@ -60,8 +61,8 @@ def _capture_call(args: argparse.Namespace) -> tuple[list[str], dict]:
         return result
 
     with (
-        patch("vip.cli.subprocess.run", side_effect=fake_run),
-        patch("vip.cli.sys.exit"),
+        patch("vip.cli.verify.subprocess.run", side_effect=fake_run),
+        patch("vip.cli.verify.sys.exit"),
     ):
         from vip.cli import run_verify
 
@@ -178,7 +179,9 @@ class TestVerifyLocalSkipNotes:
         assert "Workbench no URL given" in out
         assert "Package Manager no URL given" in out
 
-    def test_no_notes_when_all_products_configured(self, tmp_path, capsys):
+    def test_no_notes_when_all_products_configured(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
         cfg = tmp_path / "vip.toml"
         cfg.write_text(
             "[general]\n"
@@ -207,45 +210,45 @@ class TestVerifyLocalCredentialCheck:
 
     def _run_and_expect_exit(self, args):
         from vip.cli import run_verify
+        from vip.errors import ConfigError
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             run_verify(args)
-        assert exc_info.value.code == 1
+        assert exc_info.value.exit_code == 1
+        return exc_info
 
-    def test_workbench_url_without_creds_exits(self, tmp_path, monkeypatch, capsys):
+    def test_workbench_url_without_creds_exits(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
-        self._run_and_expect_exit(_make_args(workbench_url="https://wb.example.com"))
-        err = capsys.readouterr().err
-        assert "Workbench" in err
-        assert "VIP_TEST_USERNAME" in err
+        exc_info = self._run_and_expect_exit(_make_args(workbench_url="https://wb.example.com"))
+        message = str(exc_info.value)
+        assert "Workbench" in message
+        assert "VIP_TEST_USERNAME" in message
 
-    def test_connect_url_without_creds_exits(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("VIP_CONFIG", raising=False)
-        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
-        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
-        monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
-        self._run_and_expect_exit(_make_args(connect_url="https://c.example.com"))
-        err = capsys.readouterr().err
-        assert "Connect" in err
-
-    def test_both_urls_without_creds_exits(self, tmp_path, monkeypatch, capsys):
+    def test_connect_url_without_creds_exits(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
         monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
-        self._run_and_expect_exit(
+        exc_info = self._run_and_expect_exit(_make_args(connect_url="https://c.example.com"))
+        assert "Connect" in str(exc_info.value)
+
+    def test_both_urls_without_creds_exits(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
+        monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
+        monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
+        exc_info = self._run_and_expect_exit(
             _make_args(
                 connect_url="https://c.example.com",
                 workbench_url="https://wb.example.com",
             )
         )
-        err = capsys.readouterr().err
-        assert "Connect and Workbench" in err
+        assert "Connect and Workbench" in str(exc_info.value)
 
     def test_username_only_still_exits(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -341,14 +344,13 @@ class TestVerifyLocalCredentialCheck:
         cmd = _capture_cmd(_make_args(workbench_url="https://wb.example.com", no_auth=True))
         assert "--no-auth" in cmd
 
-    def test_error_message_mentions_no_auth(self, tmp_path, monkeypatch, capsys):
+    def test_error_message_mentions_no_auth(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
-        self._run_and_expect_exit(_make_args(workbench_url="https://wb.example.com"))
-        err = capsys.readouterr().err
-        assert "--no-auth" in err
+        exc_info = self._run_and_expect_exit(_make_args(workbench_url="https://wb.example.com"))
+        assert "--no-auth" in str(exc_info.value)
 
 
 class TestVerifyLocalVerbose:
@@ -374,25 +376,29 @@ class TestVerifyLocalMissingConfig:
 
     def test_explicit_config_missing_exits(self, tmp_path):
         from vip.cli import run_verify
+        from vip.errors import ConfigError
 
         missing = str(tmp_path / "does_not_exist.toml")
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             run_verify(_make_args(config=missing))
-        assert exc_info.value.code == 1
+        assert exc_info.value.exit_code == 1
 
     def test_no_config_no_urls_missing_default_exits(self, tmp_path, monkeypatch):
         from vip.cli import run_verify
+        from vip.errors import ConfigError
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             run_verify(_make_args())
-        assert exc_info.value.code == 1
+        assert exc_info.value.exit_code == 1
 
     def test_url_args_bypass_missing_default(self, tmp_path, monkeypatch):
         """When URL args are provided, a temp config is generated — no default needed."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
         cmd = _capture_cmd(_make_args(connect_url="https://connect.example.com"))
         assert any("--vip-config" in arg for arg in cmd)
 
@@ -406,6 +412,8 @@ class TestVerifyLocalConfigPath:
     def test_default_vip_toml_passed_as_absolute_path(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
         cfg = tmp_path / "vip.toml"
         cfg.write_text(
             '[general]\ndeployment_name = "x"\n'
@@ -478,17 +486,19 @@ class TestNormalizeCategories:
 
     def test_invalid_category_exits(self):
         from vip.cli import _normalize_categories
+        from vip.errors import ConfigError
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             _normalize_categories("bogus")
-        assert exc_info.value.code == 1
+        assert exc_info.value.exit_code == 1
 
     def test_invalid_category_in_expression_exits(self):
         from vip.cli import _normalize_categories
+        from vip.errors import ConfigError
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             _normalize_categories("connect and bogus")
-        assert exc_info.value.code == 1
+        assert exc_info.value.exit_code == 1
 
     def test_not_expression_accepted(self):
         from vip.cli import _normalize_categories
@@ -526,17 +536,19 @@ class TestNormalizeCategories:
 
     def test_leading_underscore_rejected(self):
         from vip.cli import _normalize_categories
+        from vip.errors import ConfigError
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             _normalize_categories("_connect")
-        assert exc_info.value.code == 1
+        assert exc_info.value.exit_code == 1
 
     def test_leading_digit_rejected(self):
         from vip.cli import _normalize_categories
+        from vip.errors import ConfigError
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             _normalize_categories("1connect")
-        assert exc_info.value.code == 1
+        assert exc_info.value.exit_code == 1
 
     def test_config_hygiene_category_accepted(self):
         from vip.cli import _normalize_categories
@@ -708,7 +720,7 @@ class TestVerifyLocalTestTimeout:
             captured["test_timeout"] = args.test_timeout
             raise SystemExit(0)
 
-        monkeypatch.setattr("vip.cli.run_verify", fake_run_verify)
+        monkeypatch.setattr("vip.cli.app.run_verify", fake_run_verify)
         monkeypatch.setattr(sys, "argv", ["vip", "verify", "--config", str(cfg)])
 
         from vip.cli import main
@@ -732,7 +744,7 @@ class TestVerifyLocalTestTimeout:
         _cmd, kwargs = _capture_call(_make_args(config=str(cfg), test_timeout=600))
         assert kwargs["timeout"] == 600
 
-    def test_timeout_expired_exits_with_error(self, tmp_path, capsys):
+    def test_timeout_expired_exits_with_error(self, tmp_path):
         import subprocess as real_subprocess
 
         cfg = tmp_path / "vip.toml"
@@ -744,16 +756,16 @@ class TestVerifyLocalTestTimeout:
             )
 
         from vip.cli import run_verify
+        from vip.errors import VipError
 
         with (
-            patch("vip.cli.subprocess.run", side_effect=fake_run),
-            pytest.raises(SystemExit) as exc_info,
+            patch("vip.cli.verify.subprocess.run", side_effect=fake_run),
+            pytest.raises(VipError) as exc_info,
         ):
             run_verify(_make_args(config=str(cfg)))
 
-        assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "timed out" in err.lower()
+        assert exc_info.value.exit_code == 1
+        assert "timed out" in str(exc_info.value).lower()
 
 
 class TestHeadlessAuth:
@@ -763,21 +775,22 @@ class TestHeadlessAuth:
         cmd = _capture_cmd(_make_args(config=str(cfg), headless_auth=True))
         assert "--headless-auth" in cmd
 
-    def test_headless_auth_skips_credential_check(self, tmp_path, capsys, monkeypatch):
+    def test_headless_auth_skips_credential_check(self, tmp_path, monkeypatch):
         """--headless-auth should skip the credential check like --interactive-auth."""
+        from vip.cli import run_verify
+        from vip.errors import ConfigError
+
         monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
         monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
         cfg = tmp_path / "vip.toml"
         cfg.write_text('[general]\n[connect]\nurl = "https://c.example.com"\n')
-        # Without headless_auth, missing credentials produce an error message.
-        _capture_cmd(_make_args(config=str(cfg)))
-        err = capsys.readouterr().err
-        assert "no credentials provided" in err
+        # Without headless_auth, missing credentials raise ConfigError.
+        with pytest.raises(ConfigError) as exc_info:
+            run_verify(_make_args(config=str(cfg)))
+        assert "no credentials provided" in str(exc_info.value)
         # With headless_auth, credential check is bypassed — no error.
         _capture_cmd(_make_args(config=str(cfg), headless_auth=True))
-        err = capsys.readouterr().err
-        assert "no credentials provided" not in err
 
 
 class TestAuthCliFlags:
@@ -989,18 +1002,19 @@ class TestProviderCliFlag:
             Path(path).unlink(missing_ok=True)
 
     def test_invalid_provider_rejected(self, tmp_path, monkeypatch):
-        """An unknown --provider value must exit rather than reach pytest.
+        """An unknown --provider value must raise rather than reach pytest.
 
-        Uses run_verify directly (real sys.exit), like
+        Uses run_verify directly (real raise), like
         TestFormatFlag.test_unknown_format_rejected.
         """
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         from vip.cli import run_verify
+        from vip.errors import ConfigError
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             run_verify(_make_args(workbench_url="https://wb.example.com", provider="bogus"))
-        assert exc_info.value.code == 2
+        assert exc_info.value.exit_code == 2
 
 
 class TestVerifyLocalTLSFlags:
@@ -1207,24 +1221,25 @@ class TestVerifyLocalVersionFlags:
 class TestVerifyLocalSnowflakeApiAuthGuard:
     """--api-auth is rejected with a friendly error when the IdP is Snowflake."""
 
-    def test_api_auth_with_snowflake_idp_flag_exits(self, tmp_path, monkeypatch, capsys):
+    def test_api_auth_with_snowflake_idp_flag_exits(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         from vip.cli import run_verify
+        from vip.errors import ConfigError
 
         args = _make_args(
             package_manager_url="https://pm.example.com",
             api_auth=True,
             idp="snowflake",
         )
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             run_verify(args)
-        assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "--api-auth is not supported with the Snowflake" in err
-        assert "--headless-auth" in err
+        assert exc_info.value.exit_code == 1
+        message = str(exc_info.value)
+        assert "--api-auth is not supported with the Snowflake" in message
+        assert "--headless-auth" in message
 
-    def test_api_auth_with_snowflake_idp_from_config_exits(self, tmp_path, monkeypatch, capsys):
+    def test_api_auth_with_snowflake_idp_from_config_exits(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         cfg = tmp_path / "vip.toml"
@@ -1233,12 +1248,13 @@ class TestVerifyLocalSnowflakeApiAuthGuard:
             '[auth]\nprovider = "oauth2"\nidp = "snowflake"\n'
         )
         from vip.cli import run_verify
+        from vip.errors import ConfigError
 
         args = _make_args(config=str(cfg), api_auth=True)
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             run_verify(args)
-        assert exc_info.value.code == 1
-        assert "--api-auth is not supported with the Snowflake" in capsys.readouterr().err
+        assert exc_info.value.exit_code == 1
+        assert "--api-auth is not supported with the Snowflake" in str(exc_info.value)
 
     def test_api_auth_without_snowflake_idp_no_exit(self, tmp_path, monkeypatch):
         """--api-auth is fine for non-Snowflake deployments."""
@@ -1398,51 +1414,64 @@ class TestVerifyDefaultXdist:
 class TestFormatFlag:
     """--format / --ci control the --vip-format value forwarded to pytest."""
 
-    def test_format_forwarded(self):
-        cmd = _capture_cmd(_make_args(format="json,junit,sarif"))
+    def test_format_forwarded(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), format="json,junit,sarif"))
         assert "--vip-format=json,junit,sarif" in cmd
 
-    def test_default_format_is_json(self):
-        cmd = _capture_cmd(_make_args())
+    def test_default_format_is_json(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg)))
         assert "--vip-format=json" in cmd
 
-    def test_ci_flag_bundles_formats_and_tb_short(self):
-        cmd = _capture_cmd(_make_args(ci=True))
+    def test_ci_flag_bundles_formats_and_tb_short(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), ci=True))
         assert "--vip-format=json,junit,sarif" in cmd
         assert "--tb=short" in cmd
 
     def test_unknown_format_rejected(self, tmp_path, monkeypatch):
-        """Must use a real (unmocked) sys.exit check: _capture_cmd/_capture_call
-        patch ``vip.cli.sys.exit`` to a no-op so run_verify falls through to
-        subprocess.run for the "happy path" tests above. An exit-path test has
-        to call run_verify directly, like every other SystemExit assertion in
-        this file (see TestVerifyLocalCredentialCheck._run_and_expect_exit).
+        """Must call run_verify directly (a real raise): _capture_cmd/_capture_call
+        patch ``vip.cli.verify.sys.exit`` to a no-op so run_verify falls through to
+        subprocess.run for the "happy path" tests above, but that trick only
+        ever suppressed the bare ``sys.exit`` calls that remain (e.g. the
+        subprocess-return-code passthrough) — a ``raise ConfigError`` cannot be
+        silenced that way, so an exit-path test has to call run_verify directly,
+        like every other VipError assertion in this file (see
+        TestVerifyLocalCredentialCheck._run_and_expect_exit).
         """
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         from vip.cli import run_verify
+        from vip.errors import ConfigError
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             run_verify(
                 _make_args(package_manager_url="https://pm.example.com", format="json,bogus")
             )
-        assert exc_info.value.code == 2
+        assert exc_info.value.exit_code == 2
 
-    def test_ci_overrides_explicit_format(self):
-        cmd = _capture_cmd(_make_args(ci=True, format="json"))
+    def test_ci_overrides_explicit_format(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), ci=True, format="json"))
         assert "--vip-format=json,junit,sarif" in cmd
 
     def test_ci_rejects_interactive_auth(self, tmp_path, monkeypatch):
         """--ci is a non-interactive preset; combining with --interactive-auth
-        must exit rather than silently ignoring one of the two. Calls
-        run_verify directly (real sys.exit) per the note on
+        must raise rather than silently ignoring one of the two. Calls
+        run_verify directly (real raise) per the note on
         test_unknown_format_rejected above.
         """
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         from vip.cli import run_verify
+        from vip.errors import ConfigError
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             run_verify(
                 _make_args(
                     package_manager_url="https://pm.example.com",
@@ -1450,14 +1479,15 @@ class TestFormatFlag:
                     interactive_auth=True,
                 )
             )
-        assert exc_info.value.code == 1
+        assert exc_info.value.exit_code == 1
 
     def test_ci_rejects_headless_auth(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         from vip.cli import run_verify
+        from vip.errors import ConfigError
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             run_verify(
                 _make_args(
                     package_manager_url="https://pm.example.com",
@@ -1465,7 +1495,7 @@ class TestFormatFlag:
                     headless_auth=True,
                 )
             )
-        assert exc_info.value.code == 1
+        assert exc_info.value.exit_code == 1
 
 
 class TestVerifyProxyFlagWithConfig:
@@ -1478,19 +1508,25 @@ class TestVerifyProxyFlagWithConfig:
         cfg.write_text('[connect]\nurl = "https://connect.example.com"\n')
         return str(cfg)
 
-    def test_proxy_flag_with_config_warns(self, tmp_path, capsys):
+    def test_proxy_flag_with_config_warns(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
         cfg = self._write_config(tmp_path)
         _capture_call(_make_args(config=cfg, proxy="http://corp:8080"))
         err = capsys.readouterr().err
         assert "--proxy/--no-proxy are ignored when a config file is used" in err
 
-    def test_no_proxy_flag_with_config_warns(self, tmp_path, capsys):
+    def test_no_proxy_flag_with_config_warns(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
         cfg = self._write_config(tmp_path)
         _capture_call(_make_args(config=cfg, no_proxy="localhost"))
         err = capsys.readouterr().err
         assert "ignored when a config file is used" in err
 
-    def test_no_warning_without_proxy_flags(self, tmp_path, capsys):
+    def test_no_warning_without_proxy_flags(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
         cfg = self._write_config(tmp_path)
         _capture_call(_make_args(config=cfg))
         err = capsys.readouterr().err
@@ -1504,6 +1540,8 @@ class TestVerifyProxyFlagWithConfig:
         condition keyed on ``config_path`` never fires here -- the flag has to be
         detected by "no temp config was generated" instead.
         """
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
         self._write_config(tmp_path)
         monkeypatch.chdir(tmp_path)
         _capture_call(_make_args(proxy="http://corp:8080"))
@@ -1511,6 +1549,8 @@ class TestVerifyProxyFlagWithConfig:
         assert "ignored when a config file is used" in err
 
     def test_no_proxy_flag_with_implicit_vip_toml_warns(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
         self._write_config(tmp_path)
         monkeypatch.chdir(tmp_path)
         _capture_call(_make_args(no_proxy="localhost"))
@@ -1518,16 +1558,20 @@ class TestVerifyProxyFlagWithConfig:
         assert "ignored when a config file is used" in err
 
     def test_no_warning_with_implicit_vip_toml_and_no_flags(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
         self._write_config(tmp_path)
         monkeypatch.chdir(tmp_path)
         _capture_call(_make_args())
         err = capsys.readouterr().err
         assert "ignored when a config file is used" not in err
 
-    def test_no_warning_when_flags_reach_the_generated_config(self, capsys):
+    def test_no_warning_when_flags_reach_the_generated_config(self, monkeypatch, capsys):
         """--proxy with a URL flag DOES take effect (it feeds _generate_temp_config),
         so warning there would be wrong.
         """
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
         _capture_call(
             _make_args(connect_url="https://connect.example.com", proxy="http://corp:8080")
         )
@@ -1538,30 +1582,38 @@ class TestVerifyProxyFlagWithConfig:
 class TestDisablingTheResultsFile:
     """`--report ''` is the documented way to write no results file.
 
-    The CLI forwarded `--vip-report` only when the value was non-empty, so the
-    plugin fell back to its own default and wrote report/results.json anyway --
-    the one thing the invocation asked it not to do.
+    Skipping `--vip-report` for an empty value would leave the plugin on its
+    own default, so it would write report/results.json anyway -- the one
+    thing the invocation asked it not to do.
     """
 
-    def test_an_empty_report_path_is_forwarded_to_the_plugin(self):
-        assert "--vip-report=" in _capture_cmd(_make_args(report=""))
+    @staticmethod
+    def _config(tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        return str(cfg)
 
-    def test_a_normal_report_path_is_unchanged(self):
-        cmd = _capture_cmd(_make_args(report="out/results.json"))
+    def test_an_empty_report_path_is_forwarded_to_the_plugin(self, tmp_path):
+        cmd = _capture_cmd(_make_args(config=self._config(tmp_path), report=""))
+        assert "--vip-report=" in cmd
+
+    def test_a_normal_report_path_is_unchanged(self, tmp_path):
+        cmd = _capture_cmd(_make_args(config=self._config(tmp_path), report="out/results.json"))
         assert "--vip-report=out/results.json" in cmd
 
-    def test_the_default_path_is_still_forwarded(self):
-        assert "--vip-report=report/results.json" in _capture_cmd(_make_args())
+    def test_the_default_path_is_still_forwarded(self, tmp_path):
+        cmd = _capture_cmd(_make_args(config=self._config(tmp_path)))
+        assert "--vip-report=report/results.json" in cmd
 
     @staticmethod
-    def _run_for_real_exit(args):
-        """Call run_verify without mocking sys.exit, so the refusal propagates.
+    def _run_refused(args):
+        """Call run_verify with a subprocess.run that fails the test if reached.
 
-        The check runs before subprocess.run, so the suite never starts. The
-        shared _capture_call helper patches sys.exit into a no-op, which would
-        let execution fall through past the refusal.
+        The check runs before subprocess.run, so the suite never starts.
         """
-        with patch("vip.cli.subprocess.run", side_effect=AssertionError("suite was started")):
+        with patch(
+            "vip.cli.verify.subprocess.run", side_effect=AssertionError("suite was started")
+        ):
             from vip.cli import run_verify
 
             run_verify(args)
@@ -1571,41 +1623,40 @@ class TestDisablingTheResultsFile:
         """junit.xml and results.sarif are built by reloading results.json, so
         the combination would run the whole suite and produce nothing.
         """
-        cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
-        with pytest.raises(SystemExit) as exc:
-            self._run_for_real_exit(_make_args(config=str(cfg), report="", format=fmt))
-        assert exc.value.code == 2
+        with pytest.raises(ConfigError) as exc:
+            self._run_refused(_make_args(config=self._config(tmp_path), report="", format=fmt))
+        assert exc.value.exit_code == 2
 
-    def test_the_refusal_names_the_flag_the_formats_came_from(self, tmp_path, capsys):
-        cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
-        with pytest.raises(SystemExit):
-            self._run_for_real_exit(_make_args(config=str(cfg), report="", ci=True))
-        assert "--ci" in capsys.readouterr().err
+    def test_the_refusal_names_the_flag_the_formats_came_from(self, tmp_path):
+        with pytest.raises(ConfigError) as exc:
+            self._run_refused(_make_args(config=self._config(tmp_path), report="", ci=True))
+        assert "--ci" in str(exc.value)
 
     def test_the_refusal_happens_before_the_suite_runs(self, tmp_path):
         """A message after a full product run would be worse than no message."""
-        cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
-        with pytest.raises(SystemExit):
-            self._run_for_real_exit(_make_args(config=str(cfg), report="", format="junit"))
+        with pytest.raises(ConfigError):
+            self._run_refused(_make_args(config=self._config(tmp_path), report="", format="junit"))
 
-    def test_disabling_the_report_with_json_alone_is_allowed(self):
+    def test_disabling_the_report_with_json_alone_is_allowed(self, tmp_path):
         """Json *is* results.json, so there is no sibling left to strand."""
-        assert "--vip-report=" in _capture_cmd(_make_args(report="", format="json"))
+        cmd = _capture_cmd(_make_args(config=self._config(tmp_path), report="", format="json"))
+        assert "--vip-report=" in cmd
 
 
 class TestAllowUnprovenFlag:
     """`vip verify --allow-unproven` opts out of the unproven exit code."""
 
-    def test_flag_forwarded_to_pytest_when_set(self):
-        cmd = _capture_cmd(_make_args(allow_unproven=True))
+    def test_flag_forwarded_to_pytest_when_set(self, tmp_path):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), allow_unproven=True))
         assert "--vip-allow-unproven" in cmd
 
-    def test_flag_absent_by_default(self):
+    def test_flag_absent_by_default(self, tmp_path):
         # Default is strict: an unverified check fails the run.
-        cmd = _capture_cmd(_make_args(allow_unproven=False))
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n")
+        cmd = _capture_cmd(_make_args(config=str(cfg), allow_unproven=False))
         assert "--vip-allow-unproven" not in cmd
 
     def _parse_verify(self, *argv: str) -> argparse.Namespace:
@@ -1617,7 +1668,7 @@ class TestAllowUnprovenFlag:
         """
         seen: list[argparse.Namespace] = []
         with (
-            patch("vip.cli.run_verify", side_effect=seen.append),
+            patch("vip.cli.app.run_verify", side_effect=seen.append),
             patch.object(sys, "argv", ["vip", "verify", *argv]),
         ):
             from vip.cli import main

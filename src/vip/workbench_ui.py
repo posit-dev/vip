@@ -4,7 +4,7 @@ This module lives under ``src/vip/`` (rather than ``src/vip_tests/``,
 where most Playwright-driving code for Workbench lives) because
 :func:`quit_vip_sessions_via_ui` backs two callers:
 
-* ``vip_tests.workbench.conftest._cleanup_sessions`` -- the per-test/
+* ``vip_tests.workbench.cleanup._cleanup_sessions`` -- the per-test/
   end-of-run safety net that escalates to the UI when the session API
   sweep is unreachable or leaves VIP sessions behind (issue #467).
 * ``vip cleanup --workbench-url`` (see :mod:`vip.cli`) -- a standalone CLI
@@ -31,6 +31,7 @@ import re
 
 from playwright.sync_api import Page
 
+from vip.auth.workbench import _on_login_page
 from vip.clients.workbench import is_vip_session_for_owner
 from vip.timeouts import timeout_scale
 from vip_tests.workbench.pages import Homepage, LoginPage
@@ -38,11 +39,11 @@ from vip_tests.workbench.pages import Homepage, LoginPage
 logger = logging.getLogger(__name__)
 
 # Substrings that mark a Workbench login / IdP URL (mirrors the private
-# _LOGIN_KEYWORDS in vip_tests.workbench.conftest).
+# _LOGIN_KEYWORDS in vip_tests.workbench.login).
 _LOGIN_URL_KEYWORDS = ("sign-in", "login", "auth")
 
 # Mirrors the scaled timeout constants defined in
-# vip_tests/workbench/conftest.py.  Duplicated (not imported) so this module
+# vip_tests/workbench/timeouts.py.  Duplicated (not imported) so this module
 # has no import-time dependency on the test-fixture module; both are computed
 # from the same scaled(...) formula so the values stay numerically identical.
 TIMEOUT_QUICK = int(5_000 * timeout_scale())
@@ -80,7 +81,7 @@ def _complete_sso_if_needed(page: Page) -> bool:
     with OpenID" button.  Clicking it completes a silent SSO round-trip using
     the IdP cookies already in the browser context, landing on the
     authenticated homepage with no credentials required.  This is the same
-    mechanism ``vip_tests.workbench.conftest.workbench_login`` uses under
+    mechanism ``vip_tests.workbench.login.workbench_login`` uses under
     ``--interactive-auth``; reusing it lets ``vip cleanup --workbench-url``
     authenticate the same way the session-launching tests did (issue #467).
 
@@ -95,7 +96,7 @@ def _complete_sso_if_needed(page: Page) -> bool:
     # logo wait below -- otherwise every expired-auth cleanup attempt would burn
     # TIMEOUT_QUICK waiting for a logo that will never show (PR #492 review).
     try:
-        on_login_page = any(kw in page.url.lower() for kw in _LOGIN_URL_KEYWORDS)
+        on_login_page = _on_login_page(page.url, _LOGIN_URL_KEYWORDS)
     except Exception:  # noqa: BLE001
         return False
     if not on_login_page:
@@ -212,6 +213,8 @@ def quit_vip_sessions_via_ui(
                     page.locator(Homepage.session_checkbox(name)).first.click(timeout=TIMEOUT_QUICK)
                     selected.append(name)
                 except Exception as exc:  # noqa: BLE001
+                    # A row can detach or a click can time out for any Playwright reason
+                    # between listing and clicking; skip this session, not the whole sweep.
                     logger.warning(
                         "UI cleanup: could not select session %r at %s: %s", name, base_url, exc
                     )
@@ -221,6 +224,8 @@ def quit_vip_sessions_via_ui(
             try:
                 page.locator(Homepage.QUIT_BUTTON).first.click(timeout=TIMEOUT_QUICK)
             except Exception as exc:  # noqa: BLE001
+                # Same rationale as the row-click above, but with no Quit click there is
+                # nothing left to do this iteration, so stop instead of continuing on.
                 logger.warning(
                     "UI cleanup: could not click the Quit button at %s: %s", base_url, exc
                 )
@@ -244,11 +249,16 @@ def quit_vip_sessions_via_ui(
             try:
                 page.reload(wait_until="load", timeout=TIMEOUT_PAGE_LOAD)
             except Exception as exc:  # noqa: BLE001
+                # A reload can fail for any navigation reason; without it the session list
+                # can't be re-checked, so stop the sweep instead of looping on stale state.
                 logger.warning("UI cleanup: could not reload %s after quitting: %s", base_url, exc)
                 break
             _complete_sso_if_needed(page)  # a reload can bounce back to sign-in
             _wait_for_session_list(page)
     except Exception as exc:  # noqa: BLE001
+        # This sweep is a best-effort fallback (see docstring); any unexpected failure in
+        # the navigate/select/quit/reload sequence is caught here so a broken deployment
+        # never fails the test run itself.
         logger.warning("UI cleanup at %s failed before completing: %s", base_url, exc)
     # One always-visible summary so the sweep is never a silent black box.
     if first_rows == 0:

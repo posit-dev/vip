@@ -1399,7 +1399,8 @@ def _launched_proxy(monkeypatch) -> dict:
         seen["args"] = args
         raise RuntimeError("stop after launch")
 
-    monkeypatch.setattr(auth_mod, "_launch_chromium", fake_launch)
+    monkeypatch.setattr(auth_mod.flows, "_launch_chromium", fake_launch)
+    monkeypatch.setattr(auth_mod.browser, "_launch_chromium", fake_launch)
     return seen
 
 

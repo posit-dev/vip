@@ -29,7 +29,7 @@ def test_example_directory_exists():
 
 
 def test_template_is_registered():
-    from vip.cli import _SCAFFOLD_TEMPLATES
+    from vip.cli.scaffold import _SCAFFOLD_TEMPLATES
 
     assert "21cfr-part11-validation" in _SCAFFOLD_TEMPLATES
     assert _SCAFFOLD_TEMPLATES["21cfr-part11-validation"][0] == "21CFR_part11_validation"

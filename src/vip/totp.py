@@ -12,6 +12,8 @@ import os
 
 import pyotp
 
+from vip.errors import AuthConfigError
+
 ENV_VAR = "VIP_TEST_TOTP_SECRET"
 
 
@@ -21,11 +23,6 @@ def validate_secret(secret: str) -> None:
     Called from start_headless_auth before Playwright launches so a bad
     seed fails fast with a clear error instead of mid-login.
     """
-    # Lazy import: auth.py imports this module, so a top-level import of
-    # AuthConfigError would create a circular import. idp.py uses the
-    # same pattern.
-    from vip.auth import AuthConfigError
-
     if not secret:
         raise AuthConfigError(f"{ENV_VAR} is set but empty")
     try:

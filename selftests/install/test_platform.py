@@ -19,7 +19,7 @@ def _pinned_playwright_version() -> str:
     try:
         import tomllib
     except ModuleNotFoundError:  # Python 3.10
-        import tomli as tomllib  # type: ignore[no-redef]
+        import tomli as tomllib
 
     from packaging.requirements import Requirement
 

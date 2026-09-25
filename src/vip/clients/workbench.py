@@ -11,10 +11,12 @@ import re
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 from vip.clients.base import BaseClient
+from vip.errors import ProductUnreachableError
 from vip.proxy import ProxyConfig
 
 logger = logging.getLogger(__name__)
@@ -110,8 +112,6 @@ def jupyterlab_contents_delete_url(page_url: str, notebook_name: str) -> str:
     in a renamed notebook do not break the path.  Any leading slashes on the
     name are stripped so the result is always ``<app_base>/api/contents/<name>``.
     """
-    from urllib.parse import quote
-
     base = jupyterlab_app_base(page_url)
     clean = notebook_name.strip().lstrip("/")
     return f"{base}/api/contents/{quote(clean)}"
@@ -231,30 +231,31 @@ class WorkbenchClient(BaseClient):
         return is_vip_session_for_owner(str(session.get("label") or ""), owner)
 
     def count_vip_sessions(self, *, owner: str | None = None) -> int:
-        """Count VIP-named sessions currently listed, or ``-1`` if undeterminable.
+        """Count VIP-named sessions currently listed.
 
         With *owner* set, counts only that xdist worker's own sessions, so a
         per-test cleanup does not read a sibling worker's live session as
         "leftovers" and escalate to a sweep that would quit it.
 
         Returns the number of sessions matching :func:`is_vip_session_for_owner`
-        (``0`` when the list genuinely holds none), or ``-1`` when the count
-        cannot be determined — a transport error, a non-200, or a body that is
-        not a JSON ``list`` (e.g. a ``200`` HTML/SPA fallback or an error
-        object).  Callers use the ``-1`` "unknown" signal to escalate cleanup
-        defensively rather than mistake an unparseable response for "clean"
-        (which would suppress the UI sweep and re-orphan sessions — issue #467).
-        Never raises.
+        (``0`` when the list genuinely holds none).  Raises
+        :class:`ProductUnreachableError` when the count cannot be determined —
+        a transport error, a non-200, or a body that is not a JSON ``list``
+        (e.g. a ``200`` HTML/SPA fallback or an error object) — so callers
+        cannot mistake an unparseable response for "clean" (which would
+        suppress the UI sweep and re-orphan sessions — issue #467).
         """
         try:
             resp = self._client.get("/api/sessions")
             if resp.status_code != 200:
-                return -1
+                raise ProductUnreachableError(f"GET /api/sessions returned {resp.status_code}")
             sessions = resp.json()
-        except Exception:  # noqa: BLE001
-            return -1
+        except ProductUnreachableError:
+            raise
+        except Exception as exc:
+            raise ProductUnreachableError(f"could not list Workbench sessions: {exc}") from exc
         if not isinstance(sessions, list):
-            return -1
+            raise ProductUnreachableError("GET /api/sessions did not return a JSON list")
         return sum(1 for s in sessions if self._is_target(s, owner))
 
     def sessions_api_reachable(self) -> bool:
@@ -266,16 +267,17 @@ class WorkbenchClient(BaseClient):
         redirect to login (``302``) — all status codes that are not a usable
         list.  Returning True for those would wrongly suppress the UI-driven
         cleanup fallback and orphan VIP sessions, so we require a ``200`` whose
-        body parses as a ``list``.  Returns False otherwise or on any transport
-        exception; never raises.
+        body parses as a ``list``.  Raises :class:`ProductUnreachableError` on
+        any transport exception, so callers cannot mistake "the request itself
+        failed" for a well-formed "not a list" response.
         """
         try:
             resp = self._client.get("/api/sessions")
             if resp.status_code != 200:
                 return False
             return isinstance(resp.json(), list)
-        except Exception:  # noqa: BLE001
-            return False
+        except Exception as exc:
+            raise ProductUnreachableError(f"could not reach the sessions API: {exc}") from exc
 
     def quit_session(self, session_id: str) -> bool:
         """Attempt to quit/suspend a session.  Returns True on success."""
@@ -345,7 +347,13 @@ class WorkbenchClient(BaseClient):
                 time.sleep(settle_seconds)
             exhausted_with_targets = attempt == retries - 1
         if exhausted_with_targets:
-            self._warn_if_vip_sessions_remain(owner)
+            try:
+                self._warn_if_vip_sessions_remain(owner)
+            except ProductUnreachableError:
+                # Best-effort warning only — the sweep above already gave up
+                # on this listing being reachable; don't fail the sweep over
+                # a diagnostic log message it couldn't produce.
+                pass
         return len(quit_ids)
 
     def _warn_if_vip_sessions_remain(self, owner: str | None = None) -> None:
@@ -354,16 +362,21 @@ class WorkbenchClient(BaseClient):
         Called after :meth:`quit_vip_sessions` exhausts its retries with VIP
         sessions still present on the last listing, so a session that quietly
         survived every quit attempt is surfaced loudly instead of the caller
-        just getting back a count.  Best-effort: swallows all exceptions and
-        never raises.
+        just getting back a count.  Raises :class:`ProductUnreachableError` if
+        the listing call itself fails; :meth:`quit_vip_sessions` treats that as
+        best-effort and swallows it rather than failing the sweep.
         """
         try:
             resp = self._client.get("/api/sessions")
-            sessions = resp.json() if resp.status_code == 200 else []
-        except Exception:  # noqa: BLE001
-            return
+            if resp.status_code != 200:
+                raise ProductUnreachableError(f"GET /api/sessions returned {resp.status_code}")
+            sessions = resp.json()
+        except ProductUnreachableError:
+            raise
+        except Exception as exc:
+            raise ProductUnreachableError(f"could not list Workbench sessions: {exc}") from exc
         if not isinstance(sessions, list):
-            return
+            raise ProductUnreachableError("GET /api/sessions did not return a JSON list")
         remaining = [s for s in sessions if self._is_target(s, owner)]
         if not remaining:
             return

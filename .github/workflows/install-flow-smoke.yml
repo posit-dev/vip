@@ -18,14 +18,14 @@ on:
     branches: [main]
     paths:
       - 'src/vip/install/**'
-      - 'src/vip/cli.py'
+      - 'src/vip/cli/**'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/install-flow-smoke.yml'
   pull_request:
     paths:
       - 'src/vip/install/**'
-      - 'src/vip/cli.py'
+      - 'src/vip/cli/**'
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/install-flow-smoke.yml'

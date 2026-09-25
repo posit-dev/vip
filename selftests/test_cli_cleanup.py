@@ -20,6 +20,7 @@ import pytest
 
 import vip.auth
 import vip.cli
+import vip.cli.cleanup
 import vip.workbench_ui
 from vip.auth import InteractiveAuthSession
 from vip.clients.workbench import is_vip_session
@@ -92,16 +93,17 @@ class TestConnectWorkbenchRouting:
     which URLs resolve — and error when neither does.
     """
 
-    def test_neither_url_exits_with_error(self, tmp_path, monkeypatch, capsys):
+    def test_neither_url_exits_with_error(self, tmp_path, monkeypatch):
+        from vip.errors import ConfigError
+
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             vip.cli.run_cleanup(_make_args())
 
-        assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "Connect or Workbench" in err
+        assert exc_info.value.exit_code == 1
+        assert "Connect or Workbench" in str(exc_info.value)
 
     def test_connect_only_does_not_touch_workbench(self, tmp_path, monkeypatch, capsys):
         monkeypatch.chdir(tmp_path)
@@ -125,7 +127,7 @@ class TestConnectWorkbenchRouting:
         def _fail(*a, **k):
             pytest.fail("workbench cleanup should not run without a workbench URL")
 
-        monkeypatch.setattr(vip.cli, "_cleanup_workbench_sessions", _fail)
+        monkeypatch.setattr(vip.cli.cleanup, "_cleanup_workbench_sessions", _fail)
 
         vip.cli.run_cleanup(_make_args(connect_url="https://c.example.com"))
 
@@ -146,7 +148,7 @@ class TestConnectWorkbenchRouting:
 
         called = {}
         monkeypatch.setattr(
-            vip.cli,
+            vip.cli.cleanup,
             "_cleanup_workbench_sessions",
             lambda url, args, config: called.setdefault("url", url),
         )
@@ -176,7 +178,7 @@ class TestConnectWorkbenchRouting:
 
         called = {}
         monkeypatch.setattr(
-            vip.cli,
+            vip.cli.cleanup,
             "_cleanup_workbench_sessions",
             lambda url, args, config: called.setdefault("url", url),
         )
@@ -225,7 +227,7 @@ class TestConnectWorkbenchRouting:
 
         called = {}
         monkeypatch.setattr(
-            vip.cli,
+            vip.cli.cleanup,
             "_cleanup_workbench_sessions",
             lambda url, args, config: called.setdefault("url", url),
         )
@@ -309,9 +311,10 @@ class TestWorkbenchAuthModeSelection:
 
         assert calls["interactive"]["workbench_url"] == "https://wb.example.com"
 
-    def test_auth_config_error_exits_with_clear_message(self, tmp_path, monkeypatch, capsys):
+    def test_auth_config_error_exits_with_clear_message(self, tmp_path, monkeypatch):
         from vip.auth import AuthConfigError
         from vip.config import VIPConfig
+        from vip.errors import AuthError
 
         def _boom(**kwargs):
             raise AuthConfigError("no credentials")
@@ -322,16 +325,15 @@ class TestWorkbenchAuthModeSelection:
         config.auth.username = ""
         config.auth.password = ""
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(AuthError) as exc_info:
             vip.cli._cleanup_workbench_sessions("https://wb.example.com", _make_args(), config)
 
-        assert exc_info.value.code == 1
-        assert "could not authenticate" in capsys.readouterr().err
+        assert exc_info.value.exit_code == 1
+        assert "could not authenticate" in str(exc_info.value)
 
-    def test_unexpected_auth_exception_does_not_crash_with_traceback(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_unexpected_auth_exception_does_not_crash_with_traceback(self, tmp_path, monkeypatch):
         from vip.config import VIPConfig
+        from vip.errors import AuthError
 
         def _boom(**kwargs):
             raise RuntimeError("browser crashed")
@@ -342,13 +344,13 @@ class TestWorkbenchAuthModeSelection:
         config.auth.username = ""
         config.auth.password = ""
 
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(AuthError) as exc_info:
             vip.cli._cleanup_workbench_sessions("https://wb.example.com", _make_args(), config)
 
-        assert exc_info.value.code == 1
-        err = capsys.readouterr().err
-        assert "could not authenticate to Workbench" in err
-        assert "VIP_TEST_USERNAME" in err
+        assert exc_info.value.exit_code == 1
+        message = str(exc_info.value)
+        assert "could not authenticate to Workbench" in message
+        assert "VIP_TEST_USERNAME" in message
 
 
 class TestWorkbenchUiEscalation:
@@ -458,7 +460,7 @@ class TestCleanupTLSFlags:
         """
         seen: list[argparse.Namespace] = []
         with (
-            patch("vip.cli.run_cleanup", side_effect=seen.append),
+            patch("vip.cli.app.run_cleanup", side_effect=seen.append),
             patch.object(sys, "argv", ["vip", "cleanup", *argv]),
         ):
             from vip.cli import main

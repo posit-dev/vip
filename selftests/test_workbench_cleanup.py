@@ -12,7 +12,9 @@ import httpx
 import pytest
 
 import vip.clients.workbench as workbench_module
-from vip.clients.workbench import WorkbenchClient, is_vip_session
+from _helpers import _client_with_handler
+from vip.clients.workbench import is_vip_session
+from vip.errors import ProductUnreachableError
 
 
 def _warnings_from(caplog, logger_name):
@@ -38,17 +40,6 @@ def _warnings_from(caplog, logger_name):
 )
 def test_is_vip_session(label, expected):
     assert is_vip_session(label) is expected
-
-
-def _client_with_handler(handler) -> WorkbenchClient:
-    """Build a WorkbenchClient whose httpx client uses a MockTransport."""
-    wc = WorkbenchClient("https://wb.example.com")
-    wc._client.close()
-    wc._client = httpx.Client(
-        base_url="https://wb.example.com",
-        transport=httpx.MockTransport(handler),
-    )
-    return wc
 
 
 def test_quit_vip_sessions_targets_only_vip_and_skips_others():
@@ -231,6 +222,34 @@ def test_quit_vip_sessions_no_warning_when_fully_cleaned(caplog):
     assert not _warnings_from(caplog, workbench_module.logger.name)
 
 
+def test_quit_vip_sessions_does_not_raise_when_final_warning_check_fails():
+    """A failed final re-check must not surface as an unhandled raise.
+
+    ``_warn_if_vip_sessions_remain`` now raises ``ProductUnreachableError`` on
+    a failed listing (rather than silently returning). It is a best-effort
+    diagnostic, so ``quit_vip_sessions`` must swallow that and still return
+    its count instead of failing the whole sweep over a warning it could not
+    log.
+    """
+    list_calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/sessions":
+            list_calls["n"] += 1
+            # Always still listed for the retry loop itself, so it exhausts
+            # its budget with a target remaining; the final warning re-check
+            # (one call past the retry loop) then fails outright.
+            if list_calls["n"] <= 2:
+                return httpx.Response(200, json=[{"id": "a", "label": "VIP stuck"}])
+            return httpx.Response(503)
+        return httpx.Response(200)
+
+    wc = _client_with_handler(handler)
+    quit_count = wc.quit_vip_sessions(retries=2, settle_seconds=0)
+
+    assert quit_count == 1
+
+
 def test_count_vip_sessions_counts_only_vip():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -251,30 +270,34 @@ def test_count_vip_sessions_zero_when_no_vip_sessions():
     assert wc.count_vip_sessions() == 0
 
 
-def test_count_vip_sessions_minus_one_on_non_200():
+def test_count_vip_sessions_raises_on_non_200():
     wc = _client_with_handler(lambda r: httpx.Response(503))
-    assert wc.count_vip_sessions() == -1
+    with pytest.raises(ProductUnreachableError):
+        wc.count_vip_sessions()
 
 
-def test_count_vip_sessions_minus_one_on_transport_error():
+def test_count_vip_sessions_raises_on_transport_error():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("boom")
 
     wc = _client_with_handler(handler)
-    assert wc.count_vip_sessions() == -1
+    with pytest.raises(ProductUnreachableError):
+        wc.count_vip_sessions()
 
 
-def test_count_vip_sessions_minus_one_on_non_list_json():
+def test_count_vip_sessions_raises_on_non_list_json():
     # A 200 whose body is a JSON object (not the expected array) must read as
-    # "unknown" (-1), never as "confirmed clean" (0) — else the caller would
-    # suppress the UI escalation and re-orphan sessions (issue #467).
+    # "unknown" (raise), never as "confirmed clean" (0) — else the caller
+    # would suppress the UI escalation and re-orphan sessions (issue #467).
     wc = _client_with_handler(lambda r: httpx.Response(200, json={"error": "nope"}))
-    assert wc.count_vip_sessions() == -1
+    with pytest.raises(ProductUnreachableError):
+        wc.count_vip_sessions()
 
 
-def test_count_vip_sessions_minus_one_on_non_json_body():
+def test_count_vip_sessions_raises_on_non_json_body():
     wc = _client_with_handler(lambda r: httpx.Response(200, text="<html>app</html>"))
-    assert wc.count_vip_sessions() == -1
+    with pytest.raises(ProductUnreachableError):
+        wc.count_vip_sessions()
 
 
 def test_sessions_api_reachable_true_on_200():
@@ -287,24 +310,30 @@ def test_sessions_api_reachable_false_on_404():
     assert wc.sessions_api_reachable() is False
 
 
-def test_sessions_api_reachable_false_on_transport_error():
+def test_sessions_api_reachable_raises_on_transport_error():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("boom")
 
     wc = _client_with_handler(handler)
-    assert wc.sessions_api_reachable() is False
+    with pytest.raises(ProductUnreachableError):
+        wc.sessions_api_reachable()
 
 
 def test_sessions_api_reachable_false_on_redirect_to_login():
-    # 302 is < 400 but is not a usable session list (e.g. auth bounce).
+    # 302 is < 400 but is not a usable session list (e.g. auth bounce). This is
+    # a well-formed "not reachable" answer, not a failed API call, so it stays
+    # a plain False rather than raising.
     wc = _client_with_handler(lambda r: httpx.Response(302, headers={"location": "/auth-sign-in"}))
     assert wc.sessions_api_reachable() is False
 
 
-def test_sessions_api_reachable_false_on_200_html():
-    # Some deployments serve the SPA (200 HTML) for unknown API paths.
+def test_sessions_api_reachable_raises_on_200_html():
+    # Some deployments serve the SPA (200 HTML) for unknown API paths -- the
+    # body fails to parse as JSON, which is the same undetermined-failure case
+    # as a transport error, so it raises rather than returning False.
     wc = _client_with_handler(lambda r: httpx.Response(200, text="<html>app</html>"))
-    assert wc.sessions_api_reachable() is False
+    with pytest.raises(ProductUnreachableError):
+        wc.sessions_api_reachable()
 
 
 def test_sessions_api_reachable_false_on_200_non_list_json():
@@ -341,9 +370,10 @@ def test_quit_vip_sessions_via_ui_never_raises_on_failure():
 
 
 def test_session_api_reachable_via_cookies_delegates_and_never_raises(monkeypatch):
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
-    monkeypatch.setattr(wb.WorkbenchClient, "sessions_api_reachable", lambda self: True)
+    monkeypatch.setattr(cleanup.WorkbenchClient, "sessions_api_reachable", lambda self: True)
     assert (
         wb._session_api_reachable_via_cookies(
             "https://wb.example.com", {"c": "v"}, insecure=False, ca_bundle=None
@@ -354,7 +384,7 @@ def test_session_api_reachable_via_cookies_delegates_and_never_raises(monkeypatc
     def boom(self):
         raise RuntimeError("nope")
 
-    monkeypatch.setattr(wb.WorkbenchClient, "sessions_api_reachable", boom)
+    monkeypatch.setattr(cleanup.WorkbenchClient, "sessions_api_reachable", boom)
     assert (
         wb._session_api_reachable_via_cookies(
             "https://wb.example.com", {}, insecure=False, ca_bundle=None
@@ -745,14 +775,15 @@ def test_run_session_cleanup_escalates_to_ui_when_api_leaves_leftovers(monkeypat
     """
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     ui_calls: list[tuple] = []
 
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: True)
-    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: 1)
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 1))
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", lambda *a, **k: True)
+    monkeypatch.setattr(cleanup, "_vip_session_count_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 1))
 
     page = _fake_page([{"name": "a", "value": "b"}])
     workbench_client = SimpleNamespace(base_url="https://wb.example.com")
@@ -768,14 +799,15 @@ def test_run_session_cleanup_skips_ui_when_api_sweep_fully_cleans(monkeypatch):
     """API reachable and confirmed zero VIP sessions remaining -> no UI escalation."""
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     ui_calls: list[tuple] = []
 
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: True)
-    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: 0)
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_cookies", lambda *a, **k: 1)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", lambda *a, **k: True)
+    monkeypatch.setattr(cleanup, "_vip_session_count_via_cookies", lambda *a, **k: 0)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
 
     page = _fake_page([{"name": "a", "value": "b"}])
     workbench_client = SimpleNamespace(base_url="https://wb.example.com")
@@ -790,14 +822,15 @@ def test_run_session_cleanup_escalates_when_api_unreachable(monkeypatch):
     """Existing behavior preserved: an unreachable API still escalates to the UI."""
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     ui_calls: list[tuple] = []
 
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", lambda *a, **k: 0)
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: False)
-    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", lambda *a, **k: -1)
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_cookies", lambda *a, **k: 0)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", lambda *a, **k: False)
+    monkeypatch.setattr(cleanup, "_vip_session_count_via_cookies", lambda *a, **k: -1)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_ui", _recording_ui_sweep(ui_calls, 0))
 
     page = _fake_page([{"name": "a", "value": "b"}])
     workbench_client = SimpleNamespace(base_url="https://wb.example.com")
@@ -812,15 +845,16 @@ def test_run_session_cleanup_warns_when_no_cookies_and_no_api_key(monkeypatch, c
     """No browser cookies and no [workbench] api_key -> warn, do not attempt any sweep."""
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     def _fail(*a, **k):
         pytest.fail("no sweep should be attempted without cookies or an api_key")
 
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _fail)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_vip_session_count_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_ui", _fail)
 
     page = _fake_page([])
     workbench_client = SimpleNamespace(base_url="https://wb.example.com")
@@ -829,7 +863,7 @@ def test_run_session_cleanup_warns_when_no_cookies_and_no_api_key(monkeypatch, c
     with caplog.at_level(logging.WARNING):
         wb._run_session_cleanup(page, workbench_client, _fake_vip_config(api_key=""), state)
 
-    warnings = _warnings_from(caplog, wb.logger.name)
+    warnings = _warnings_from(caplog, cleanup.logger.name)
     assert warnings, "expected a warning when cleanup cannot authenticate"
     assert any("authenticate" in r.message for r in warnings)
 
@@ -841,15 +875,16 @@ def test_run_session_cleanup_no_warning_when_no_cookies_but_api_key_present(monk
     """
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     def _fail(*a, **k):
         pytest.fail("no cookie-based sweep should run without cookies")
 
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_vip_session_count_via_cookies", _fail)
-    monkeypatch.setattr(wb, "_quit_vip_sessions_via_ui", _fail)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_vip_session_count_via_cookies", _fail)
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_ui", _fail)
 
     page = _fake_page([])
     workbench_client = SimpleNamespace(base_url="https://wb.example.com")
@@ -858,7 +893,7 @@ def test_run_session_cleanup_no_warning_when_no_cookies_but_api_key_present(monk
     with caplog.at_level(logging.WARNING):
         wb._run_session_cleanup(page, workbench_client, _fake_vip_config(api_key="k"), state)
 
-    assert not _warnings_from(caplog, wb.logger.name)
+    assert not _warnings_from(caplog, cleanup.logger.name)
 
 
 def test_run_session_cleanup_returns_early_when_workbench_client_is_none(monkeypatch):
@@ -985,24 +1020,25 @@ def test_run_session_cleanup_scopes_every_sweep_to_this_worker(monkeypatch):
     """The per-test cleanup must pass its own worker id to all three sweeps."""
     from types import SimpleNamespace
 
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
-        wb,
+        cleanup,
         "_quit_vip_sessions_via_cookies",
         lambda *a, **k: seen.setdefault("quit", k.get("owner")),
     )
-    monkeypatch.setattr(wb, "_session_api_reachable_via_cookies", lambda *a, **k: True)
+    monkeypatch.setattr(cleanup, "_session_api_reachable_via_cookies", lambda *a, **k: True)
     monkeypatch.setattr(
-        wb,
+        cleanup,
         "_vip_session_count_via_cookies",
         lambda *a, **k: (seen.setdefault("count", k.get("owner")), 1)[1],
     )
     monkeypatch.setattr(
-        wb,
+        cleanup,
         "_quit_vip_sessions_via_ui",
         lambda *a, **k: (seen.setdefault("ui", k.get("owner")), 0)[1],
     )
@@ -1060,12 +1096,13 @@ def test_capacity_page_cleanup_is_worker_scoped(monkeypatch):
     module inside a test trips ``@scenario``'s frame inspection and fails under
     pytest-randomly.
     """
+    from vip_tests.workbench import cleanup
     from vip_tests.workbench import conftest as wb
 
     monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw1")
     seen: dict[str, object] = {}
     monkeypatch.setattr(
-        wb,
+        cleanup,
         "_quit_vip_sessions_via_cookies",
         lambda *a, **k: seen.setdefault("owner", k.get("owner")),
     )

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import pytest
 
+from _helpers import _repo
 from vip_tests.package_manager.test_repos import (
     query_bioconductor,
     query_cran,
@@ -74,10 +75,6 @@ REPOS_STEP = {
     "Bioconductor": query_bioconductor,
     "OpenVSX": query_openvsx,
 }
-
-
-def _repo(name, type_=""):
-    return {"name": name, "type": type_}
 
 
 def _skip_reason(fn, *args):

@@ -5,7 +5,7 @@ VIP's core fixtures (``vip_config``, ``connect_client``, etc.) and BDD step
 definitions lived only in ``src/vip_tests/conftest.py``, so a test collected
 from a directory outside ``src/vip_tests`` -- exactly what ``--vip-extensions``
 (or ``extension_dirs`` in vip.toml) adds to the collection -- could never see
-them, even though ``pytest_sessionstart`` (``src/vip/plugin.py``) makes such a
+them, even though ``pytest_sessionstart`` (``src/vip/plugin/configure.py``) makes such a
 directory *collectible*.  Requesting ``vip_config`` from an extension test
 failed with ``fixture 'vip_config' not found``.
 

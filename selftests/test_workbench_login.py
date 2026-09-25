@@ -12,6 +12,7 @@ No real browser is used: a tiny Page double models the sign-in page.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar
 
 import pytest
@@ -22,7 +23,7 @@ from vip_tests.workbench.conftest import workbench_login
 
 
 class _AuthFakeLocator:
-    def __init__(self, *, visible: bool = False, on_click=None):
+    def __init__(self, *, visible: Callable[[], bool] = lambda: False, on_click=None):
         self._visible = visible
         self._on_click = on_click
 
@@ -383,10 +384,11 @@ class _RestorablePage:
 def test_successful_restore_refreshes_the_cached_auth_session(monkeypatch):
     """Otherwise the next run finds a signed-out cache and re-auths interactively."""
     from vip_tests.workbench import conftest as wb
+    from vip_tests.workbench import login
 
     saved: list[dict] = []
     monkeypatch.setattr(
-        wb, "refresh_auth_cache_from_storage_state", lambda state: saved.append(state) or True
+        login, "refresh_auth_cache_from_storage_state", lambda state: saved.append(state) or True
     )
 
     assert wb.restore_shared_session(_RestorablePage(), "https://wb.example.com") is True
@@ -396,10 +398,11 @@ def test_successful_restore_refreshes_the_cached_auth_session(monkeypatch):
 def test_failed_restore_does_not_touch_the_cache(monkeypatch):
     """A dead session must not overwrite whatever the cache still holds."""
     from vip_tests.workbench import conftest as wb
+    from vip_tests.workbench import login
 
     saved: list[dict] = []
     monkeypatch.setattr(
-        wb, "refresh_auth_cache_from_storage_state", lambda state: saved.append(state) or True
+        login, "refresh_auth_cache_from_storage_state", lambda state: saved.append(state) or True
     )
 
     assert (

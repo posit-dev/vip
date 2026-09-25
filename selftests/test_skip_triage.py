@@ -27,6 +27,7 @@ TRIAGED_FILES = [
     "prerequisites/test_versions.py",
     "workbench/test_ide_launch.py",
     "workbench/test_jobs.py",
+    "workbench/test_publish_to_connect.py",
     "workbench/test_session_capacity.py",
     "workbench/test_session_capacity_k8s.py",
     "workbench/test_sessions.py",

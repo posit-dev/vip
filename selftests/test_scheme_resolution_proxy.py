@@ -63,11 +63,11 @@ def test_proxy_error_does_not_downgrade(monkeypatch):
     def boom(*a, **kw):
         raise httpx.ProxyError("proxy refused CONNECT")
 
-    monkeypatch.setattr(auth_mod.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", boom)
     # If the tiebreak were consulted it would (wrongly) drive a downgrade; make
     # it loud if it is ever called on this path.
     monkeypatch.setattr(
-        auth_mod,
+        auth_mod.scheme,
         "_tls_listener_present",
         lambda *a, **kw: pytest.fail("tiebreak must not run on a ProxyError"),
     )
@@ -90,8 +90,8 @@ def test_proxy_error_warning_redacts_credentials(monkeypatch, capsys):
     def boom(*a, **kw):
         raise httpx.ProxyError("proxy refused CONNECT")
 
-    monkeypatch.setattr(auth_mod.httpx, "get", boom)
-    monkeypatch.setattr(auth_mod, "_tls_listener_present", lambda *a, **kw: False)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod.scheme, "_tls_listener_present", lambda *a, **kw: False)
 
     pc = _inferred_pc()
     resolve_url_scheme(pc, proxy=ProxyConfig(url="http://alice:s3cret@proxy.corp:8080"))
@@ -109,7 +109,7 @@ def test_transport_error_warning_redacts_credentials(monkeypatch, capsys):
     def boom(*a, **kw):
         raise httpx.ConnectTimeout("timed out mid-tunnel")
 
-    monkeypatch.setattr(auth_mod.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", boom)
 
     pc = _inferred_pc()
     resolve_url_scheme(pc, proxy=ProxyConfig(url="http://alice:s3cret@proxy.corp:8080"))
@@ -127,12 +127,12 @@ def test_proxy_routed_transport_error_does_not_downgrade(monkeypatch):
     def boom(*a, **kw):
         raise httpx.ConnectTimeout("read timed out mid-tunnel")
 
-    monkeypatch.setattr(auth_mod.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", boom)
     # The direct socket "succeeds" (host reachable directly) — under the old
     # logic that would still not downgrade, but the important guarantee is the
     # proxy branch does not even consult it. Make it fail the test if called.
     monkeypatch.setattr(
-        auth_mod,
+        auth_mod.scheme,
         "_tls_listener_present",
         lambda *a, **kw: pytest.fail("tiebreak must not run while a proxy applies"),
     )
@@ -150,9 +150,9 @@ def test_env_proxy_also_guards_downgrade(monkeypatch):
     def boom(*a, **kw):
         raise httpx.ProxyError("bad gateway from proxy")
 
-    monkeypatch.setattr(auth_mod.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", boom)
     monkeypatch.setattr(
-        auth_mod,
+        auth_mod.scheme,
         "_tls_listener_present",
         lambda *a, **kw: pytest.fail("must not run"),
     )
@@ -192,9 +192,9 @@ def test_lone_http_proxy_env_guards_downgrade_through_promotion(monkeypatch):
     def boom(*a, **kw):
         raise httpx.ConnectError("connection refused")
 
-    monkeypatch.setattr(auth_mod.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", boom)
     monkeypatch.setattr(
-        auth_mod,
+        auth_mod.scheme,
         "_tls_listener_present",
         lambda *a, **kw: pytest.fail("the direct tiebreak must not run while a proxy applies"),
     )
@@ -220,8 +220,8 @@ def test_lone_http_proxy_with_no_proxy_host_downgrades_again(monkeypatch):
         calls["tiebreak"] += 1
         return False
 
-    monkeypatch.setattr(auth_mod.httpx, "get", boom)
-    monkeypatch.setattr(auth_mod, "_tls_listener_present", no_listener)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod.scheme, "_tls_listener_present", no_listener)
 
     assert resolve_url_scheme(_inferred_pc(), proxy=None) == "http://connect.example.com"
     assert calls["tiebreak"] == 1
@@ -241,8 +241,8 @@ def test_no_proxy_host_still_uses_direct_tiebreak(monkeypatch):
         calls["tiebreak"] += 1
         return False
 
-    monkeypatch.setattr(auth_mod.httpx, "get", boom)
-    monkeypatch.setattr(auth_mod, "_tls_listener_present", no_listener)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod.scheme, "_tls_listener_present", no_listener)
 
     pc = _inferred_pc()
     cfg = ProxyConfig(url="http://proxy:8080", no_proxy=["connect.example.com"])
@@ -263,8 +263,8 @@ def test_no_proxy_no_listener_downgrades(monkeypatch):
     def boom(*a, **kw):
         raise httpx.ConnectError("refused")
 
-    monkeypatch.setattr(auth_mod.httpx, "get", boom)
-    monkeypatch.setattr(auth_mod, "_tls_listener_present", lambda *a, **kw: False)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod.scheme, "_tls_listener_present", lambda *a, **kw: False)
 
     pc = _inferred_pc()
     assert resolve_url_scheme(pc) == "http://connect.example.com"
@@ -274,15 +274,15 @@ def test_no_proxy_tls_listener_keeps_https(monkeypatch):
     def boom(*a, **kw):
         raise httpx.ConnectError("cert verify failed")
 
-    monkeypatch.setattr(auth_mod.httpx, "get", boom)
-    monkeypatch.setattr(auth_mod, "_tls_listener_present", lambda *a, **kw: True)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", boom)
+    monkeypatch.setattr(auth_mod.scheme, "_tls_listener_present", lambda *a, **kw: True)
 
     pc = _inferred_pc()
     assert resolve_url_scheme(pc) == "https://connect.example.com"
 
 
 def test_successful_probe_keeps_https(monkeypatch):
-    monkeypatch.setattr(auth_mod.httpx, "get", lambda *a, **kw: httpx.Response(200))
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", lambda *a, **kw: httpx.Response(200))
     pc = _inferred_pc()
     assert resolve_url_scheme(pc) == "https://connect.example.com"
 
@@ -293,7 +293,7 @@ def test_explicit_scheme_never_probes(monkeypatch):
     def fail(*a, **kw):
         raise AssertionError("must not probe when the scheme was explicit")
 
-    monkeypatch.setattr(auth_mod.httpx, "get", fail)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", fail)
     pc = ProductConfig(url="https://connect.example.com")  # inferred=False
     assert resolve_url_scheme(pc, proxy=ProxyConfig(url="http://p:8080")) == (
         "https://connect.example.com"
@@ -314,7 +314,7 @@ def test_probe_is_sent_through_the_configured_proxy(monkeypatch):
         seen["trust_env"] = kwargs.get("trust_env")
         return httpx.Response(200)
 
-    monkeypatch.setattr(auth_mod.httpx, "get", record)
+    monkeypatch.setattr(auth_mod.scheme.httpx, "get", record)
 
     pc = _inferred_pc()
     resolve_url_scheme(pc, proxy=ProxyConfig(url="http://proxy:8080"))

@@ -6,12 +6,15 @@ avoid tight coupling to a particular release of the Connect client library.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
 from vip.clients.base import BaseClient
+from vip.errors import ProductUnreachableError
 from vip.proxy import ProxyConfig
 from vip.timeouts import scaled
 
@@ -155,8 +158,6 @@ class ConnectClient(BaseClient):
         total while it is still present (at least one attempt is always made,
         even if *retries* is 0).  Returns True once it is confirmed gone.
         """
-        import time
-
         for attempt in range(max(1, retries)):
             try:
                 resp = self._client.delete(f"/v1/content/{guid}")
@@ -228,8 +229,6 @@ class ConnectClient(BaseClient):
         task finishing, returns the most recent (unfinished) task dict so that
         callers can inspect the output and report an appropriate failure.
         """
-        import time
-
         effective_timeout = scaled(60.0) if timeout is None else timeout
         deadline = time.time() + effective_timeout
         task: dict[str, Any] = {}
@@ -264,7 +263,12 @@ class ConnectClient(BaseClient):
         return task
 
     def list_vip_content(self) -> list[dict[str, Any]]:
-        """Return all content items tagged with the VIP test tag."""
+        """Return all content items tagged with the VIP test tag.
+
+        Raises :class:`ProductUnreachableError` if the tag lookup or content
+        fetch fails -- an empty result must mean "no tagged content exists",
+        never "we couldn't tell".
+        """
         try:
             resp = self._client.get("/v1/tags", params={"name": _VIP_CONTENT_TAG})
             resp.raise_for_status()
@@ -275,13 +279,15 @@ class ConnectClient(BaseClient):
             resp = self._client.get(f"/v1/tags/{tag_id}/content")
             resp.raise_for_status()
             return resp.json().get("results", [])
-        except Exception:  # noqa: BLE001
-            return []
+        except Exception as exc:
+            raise ProductUnreachableError(f"could not list VIP-tagged content: {exc}") from exc
 
     def cleanup_vip_content(self) -> int:
         """Delete all content tagged with the VIP test tag.
 
-        Returns the number of items deleted.  Never raises.
+        Returns the number of items deleted.  Raises :class:`ProductUnreachableError`
+        if the tag lookup fails -- callers must not treat that the same as
+        "nothing was tagged".
         """
         guids = [item.get("guid") for item in self.list_vip_content()]
         return self.cleanup_content(guids)
@@ -369,8 +375,6 @@ class ConnectClient(BaseClient):
         when ALL of scheme, hostname, and effective port match the client's
         base URL, and the target scheme is http or https.
         """
-        from urllib.parse import urljoin, urlparse
-
         from vip.proxy import proxy_for_url, verify_with_env_ca
 
         origin = urlparse(self.base_url)
@@ -462,8 +466,6 @@ class ConnectClient(BaseClient):
         self, check_id: str | int, timeout: float | None = None
     ) -> dict[str, Any]:
         """Poll a system check run until it completes or timeout is reached."""
-        import time
-
         transient_status_codes = {404, 502, 503, 504}
         effective_timeout = scaled(300.0) if timeout is None else timeout
         deadline = time.time() + effective_timeout
