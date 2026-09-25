@@ -63,12 +63,12 @@ directly.
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Generator
 
 import pytest
 from pytest_bdd import given
 
-import vip.fixtures
 from vip.auth import resolve_url_scheme
 from vip.client_auth import build_client_auth
 from vip.clients.connect import ConnectClient
@@ -589,4 +589,4 @@ def register(config: pytest.Config) -> None:
     name = "vip-fixtures"
     if config.pluginmanager.has_plugin(name):
         return
-    config.pluginmanager.register(vip.fixtures, name=name)
+    config.pluginmanager.register(sys.modules[__name__], name=name)
