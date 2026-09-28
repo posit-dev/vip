@@ -19,6 +19,7 @@ from vip.auth.sso import (
     _timeout_label,
 )
 from vip.errors import AuthTimeoutError
+from vip.idp import _log_verbose
 from vip.timeouts import scaled
 
 
@@ -78,8 +79,6 @@ def _click_workbench_oidc_confirm(page: Page) -> bool:
     Returns ``True`` when a click was issued, ``False`` otherwise (no
     such page, button not visible, or Playwright error).
     """
-    from vip.idp import _log_verbose
-
     selector = "form[action='auth-openid-sign-in'] #signinbutton"
     try:
         btn = page.locator(selector)

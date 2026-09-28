@@ -41,9 +41,9 @@ def test_run_install_handles_playwright_install_error(tmp_path, monkeypatch):
         rn, "install_chromium", lambda: (_ for _ in ()).throw(PlaywrightInstallError("boom"))
     )
     # Force the plan to require chromium install: pretend cache is empty.
-    from vip.install import playwright as pw
+    from vip.cli import install as cli_install
 
-    monkeypatch.setattr(pw, "chromium_installed", lambda d: False)
+    monkeypatch.setattr(cli_install, "chromium_installed", lambda d: False)
 
     args = argparse.Namespace(skip_system=True, dry_run=False)
     with pytest.raises(InstallError) as exc_info:

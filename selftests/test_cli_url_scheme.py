@@ -54,7 +54,7 @@ class TestCollectStatusSchemeResolution:
 
         with (
             patch("httpx.get") as mock_get,
-            patch("vip.clients.connect.ConnectClient", return_value=mock_client) as ctor,
+            patch("vip.cli.status.ConnectClient", return_value=mock_client) as ctor,
         ):
             result = _collect_status(config)
 
@@ -75,7 +75,7 @@ class TestCollectStatusSchemeResolution:
 
         with (
             patch("httpx.get", side_effect=httpx.ConnectError("nope")),
-            patch("vip.clients.connect.ConnectClient", return_value=mock_client) as ctor,
+            patch("vip.cli.status.ConnectClient", return_value=mock_client) as ctor,
         ):
             result = _collect_status(config)
 
@@ -129,7 +129,7 @@ class TestRunCleanupSchemeResolution:
             orig_init(self, *a, **k)
 
         _FakeConnectClient.__init__ = _record_init
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         import vip.cli
 
@@ -156,7 +156,7 @@ class TestRunCleanupSchemeResolution:
             def cleanup_vip_content(self):
                 return 0
 
-        monkeypatch.setattr("vip.clients.connect.ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         import vip.cli
 
@@ -219,8 +219,8 @@ class TestRunUninstallSchemeResolution:
         mock_get.assert_not_called()
 
     def test_yes_resolves_inferred_scheme_before_client_construction(self, tmp_path, monkeypatch):
-        import vip.clients.connect as connect_mod
         from vip import cli
+        from vip.cli import install as cli_install
 
         _write_manifest(tmp_path)
         monkeypatch.chdir(tmp_path)
@@ -241,7 +241,7 @@ class TestRunUninstallSchemeResolution:
             def cleanup_vip_content(self):
                 return 0
 
-        monkeypatch.setattr(connect_mod, "ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr(cli_install, "ConnectClient", _FakeConnectClient)
 
         args = argparse.Namespace(
             connect_url="connect.example.com", api_key=None, force_host=False, yes=True
@@ -263,8 +263,8 @@ class TestRunUninstallSchemeResolution:
         mismatch this feature exists to prevent. The printed URL must match
         what ConnectClient actually receives.
         """
-        import vip.clients.connect as connect_mod
         from vip import cli
+        from vip.cli import install as cli_install
 
         _write_manifest(tmp_path)
         monkeypatch.chdir(tmp_path)
@@ -285,7 +285,7 @@ class TestRunUninstallSchemeResolution:
             def cleanup_vip_content(self):
                 return 0
 
-        monkeypatch.setattr(connect_mod, "ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr(cli_install, "ConnectClient", _FakeConnectClient)
 
         args = argparse.Namespace(
             connect_url="connect.example.com", api_key=None, force_host=False, yes=True
@@ -329,8 +329,8 @@ class TestRunUninstallSchemeResolution:
         assert "run vip cleanup against https://connect.example.com" in printed
 
     def test_explicit_scheme_never_probes(self, tmp_path, monkeypatch):
-        import vip.clients.connect as connect_mod
         from vip import cli
+        from vip.cli import install as cli_install
 
         _write_manifest(tmp_path)
         monkeypatch.chdir(tmp_path)
@@ -349,7 +349,7 @@ class TestRunUninstallSchemeResolution:
             def cleanup_vip_content(self):
                 return 0
 
-        monkeypatch.setattr(connect_mod, "ConnectClient", _FakeConnectClient)
+        monkeypatch.setattr(cli_install, "ConnectClient", _FakeConnectClient)
 
         args = argparse.Namespace(
             connect_url="https://connect.example.com", api_key=None, force_host=False, yes=True

@@ -26,6 +26,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from vip.plugin import state
+
 if TYPE_CHECKING:
     from vip.config import PerformanceConfig
 
@@ -181,9 +183,7 @@ def _stop_plugin_heartbeat_before_gevent() -> None:
     or misbehave when non-gevent ``threading.Thread`` instances are alive.
     Every code path that imports locust/gevent must call this first.
     """
-    from vip.plugin import state as _plugin_state
-
-    heartbeat = _plugin_state._current_heartbeat
+    heartbeat = state._current_heartbeat
     if heartbeat is not None:
         heartbeat.stop()
 
@@ -203,9 +203,9 @@ def _run_locust(
     _stop_plugin_heartbeat_before_gevent()
 
     # Parse base URL and path from the full URL.
-    import gevent  # available when locust is installed
-    from locust import HttpUser, constant, task
-    from locust.env import Environment
+    import gevent  # noqa: PLC0415 -- optional load extra, available when locust is installed
+    from locust import HttpUser, constant, task  # noqa: PLC0415 -- optional load extra
+    from locust.env import Environment  # noqa: PLC0415 -- optional load extra
 
     parsed = urlparse(url)
     base_url = f"{parsed.scheme}://{parsed.netloc}"
@@ -351,10 +351,17 @@ def run_user_simulation(
 
     _stop_plugin_heartbeat_before_gevent()
 
-    import gevent
-    from locust.env import Environment
+    import gevent  # noqa: PLC0415 -- optional load extra
+    from locust.env import Environment  # noqa: PLC0415 -- optional load extra
 
-    from vip.load_users import ConnectUser, PackageManagerUser, WorkbenchUser
+    # vip.load_users itself requires locust at module scope (see its ImportError
+    # guard); a module-level import here would make importing vip.load_engine
+    # require the load extra too.
+    from vip.load_users import (  # noqa: PLC0415 -- optional load extra
+        ConnectUser,
+        PackageManagerUser,
+        WorkbenchUser,
+    )
 
     user_classes = {
         "connect": ConnectUser,

@@ -88,7 +88,7 @@ class TestCollectStatus:
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             result = _collect_status(config)
 
         product = result["products"]["connect"]
@@ -105,7 +105,7 @@ class TestCollectStatus:
         mock_client = MagicMock()
         mock_client.health.return_value = 503
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             result = _collect_status(config)
 
         product = result["products"]["connect"]
@@ -120,7 +120,7 @@ class TestCollectStatus:
         mock_client = MagicMock()
         mock_client.health.side_effect = ConnectionError("refused")
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             result = _collect_status(config)
 
         product = result["products"]["connect"]
@@ -138,7 +138,7 @@ class TestCollectStatus:
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
-        with patch("vip.clients.workbench.WorkbenchClient", return_value=mock_client):
+        with patch("vip.cli.status.WorkbenchClient", return_value=mock_client):
             result = _collect_status(config)
 
         assert result["products"]["workbench"]["state"] == "ok"
@@ -152,7 +152,7 @@ class TestCollectStatus:
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
-        with patch("vip.clients.packagemanager.PackageManagerClient", return_value=mock_client):
+        with patch("vip.cli.status.PackageManagerClient", return_value=mock_client):
             result = _collect_status(config)
 
         assert result["products"]["package_manager"]["state"] == "ok"
@@ -166,7 +166,7 @@ class TestCollectStatus:
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             result = _collect_status(config)
 
         assert result["outcome"] == "ok"
@@ -180,7 +180,7 @@ class TestCollectStatus:
         mock_client = MagicMock()
         mock_client.health.return_value = 503
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             result = _collect_status(config)
 
         assert result["outcome"] == "fail"
@@ -206,7 +206,7 @@ class TestRunStatusTextMode:
         from vip.cli import run_status
 
         with (
-            patch("vip.config.load_config", return_value=config),
+            patch("vip.cli.status.load_config", return_value=config),
             pytest.raises(SystemExit) as excinfo,
         ):
             run_status(args)
@@ -227,7 +227,7 @@ class TestRunStatusTextMode:
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             out, _ = self._run(config, capsys=capsys)
 
         assert "OK  " in out
@@ -244,7 +244,7 @@ class TestRunStatusTextMode:
         mock_client = MagicMock()
         mock_client.health.return_value = 503
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             _, code = self._run(config, capsys=capsys)
 
         assert code == 1
@@ -270,7 +270,7 @@ class TestRunStatusJsonMode:
         from vip.cli import run_status
 
         with (
-            patch("vip.config.load_config", return_value=config),
+            patch("vip.cli.status.load_config", return_value=config),
             pytest.raises(SystemExit) as excinfo,
         ):
             run_status(args)
@@ -308,7 +308,7 @@ class TestRunStatusJsonMode:
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             parsed, _ = self._run_json(config, capsys)
 
         product = parsed["products"]["connect"]
@@ -323,7 +323,7 @@ class TestRunStatusJsonMode:
         mock_client = MagicMock()
         mock_client.health.return_value = 503
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             parsed, _ = self._run_json(config, capsys)
 
         product = parsed["products"]["connect"]
@@ -336,7 +336,7 @@ class TestRunStatusJsonMode:
         mock_client = MagicMock()
         mock_client.health.side_effect = ConnectionError("connection refused")
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             parsed, _ = self._run_json(config, capsys)
 
         product = parsed["products"]["connect"]
@@ -357,7 +357,7 @@ class TestRunStatusJsonMode:
         mock_client = MagicMock()
         mock_client.health.return_value = 200
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             parsed, code = self._run_json(config, capsys)
 
         assert parsed["outcome"] == "ok"
@@ -370,7 +370,7 @@ class TestRunStatusJsonMode:
         mock_client = MagicMock()
         mock_client.health.return_value = 503
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             parsed, code = self._run_json(config, capsys)
 
         assert parsed["outcome"] == "fail"
@@ -383,7 +383,7 @@ class TestRunStatusJsonMode:
         mock_client = MagicMock()
         mock_client.health.side_effect = OSError("timeout")
 
-        with patch("vip.clients.connect.ConnectClient", return_value=mock_client):
+        with patch("vip.cli.status.ConnectClient", return_value=mock_client):
             parsed, code = self._run_json(config, capsys)
 
         assert parsed["exit_status"] == 1
@@ -396,7 +396,7 @@ class TestRunStatusJsonMode:
 
         from vip.cli import run_status
 
-        with patch("vip.config.load_config", return_value=config), pytest.raises(SystemExit):
+        with patch("vip.cli.status.load_config", return_value=config), pytest.raises(SystemExit):
             run_status(args)
 
         output = capsys.readouterr().out
@@ -410,7 +410,7 @@ class TestRunStatusJsonMode:
 
         from vip.cli import run_status
 
-        with patch("vip.config.load_config", return_value=config), pytest.raises(SystemExit):
+        with patch("vip.cli.status.load_config", return_value=config), pytest.raises(SystemExit):
             run_status(args)
 
         output = capsys.readouterr().out.strip()

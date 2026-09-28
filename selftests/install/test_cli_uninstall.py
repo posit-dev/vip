@@ -214,13 +214,13 @@ def test_install_then_uninstall_round_trip(tmp_path, monkeypatch):
     import argparse
 
     from vip import cli
+    from vip.cli import install as cli_install
     from vip.install import platform as plat
-    from vip.install import playwright as pw
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(plat, "detect", lambda: plat.PlatformInfo(family="macos"))
     # Pretend chromium is already cached so playwright step is a no-op.
-    monkeypatch.setattr(pw, "chromium_installed", lambda d: True)
+    monkeypatch.setattr(cli_install, "chromium_installed", lambda d: True)
 
     # Install
     install_args = argparse.Namespace(skip_system=True, dry_run=False)
@@ -295,9 +295,9 @@ def test_run_uninstall_chained_cleanup_invokes_connect_client(tmp_path, monkeypa
             return 0
 
     # Patch the import inside the cleanup callable.
-    import vip.clients.connect as connect_mod
+    from vip.cli import install as cli_install
 
-    monkeypatch.setattr(connect_mod, "ConnectClient", FakeConnectClient)
+    monkeypatch.setattr(cli_install, "ConnectClient", FakeConnectClient)
 
     args = argparse.Namespace(
         yes=True,
@@ -390,9 +390,9 @@ def _uninstall_with_manifest(tmp_path, monkeypatch, **arg_overrides):
         def cleanup_vip_content(self):
             return 0
 
-    import vip.clients.connect as connect_mod
+    from vip.cli import install as cli_install
 
-    monkeypatch.setattr(connect_mod, "ConnectClient", FakeConnectClient)
+    monkeypatch.setattr(cli_install, "ConnectClient", FakeConnectClient)
 
     defaults = {
         "yes": True,

@@ -11,6 +11,8 @@ import threading
 from pathlib import Path
 from typing import IO
 
+import playwright
+
 
 class PlaywrightInstallError(Exception):
     """Raised when `playwright install chromium` exits nonzero."""
@@ -44,13 +46,11 @@ def expected_chromium_revision() -> str | None:
     """Return the Chromium build revision the current Playwright pin expects.
 
     Reads ``playwright/driver/package/browsers.json`` shipped inside the
-    installed playwright package. Returns ``None`` if playwright cannot be
-    imported, the file is missing, or no chromium entry is found — callers
+    installed playwright package. Returns ``None`` if the path can't be
+    resolved, the file is missing, or no chromium entry is found — callers
     should treat that as "revision unknown" and fall back gracefully.
     """
     try:
-        import playwright
-
         browsers_json = Path(playwright.__file__).parent / "driver" / "package" / "browsers.json"
     except Exception:  # noqa: BLE001
         # Broad on purpose: whatever fails, callers already treat None as "revision unknown".

@@ -639,14 +639,14 @@ class TestHeadlessAuthFixture:
         # AuthConfigError propagates).
         from pathlib import Path
 
-        import vip.auth
+        import vip.plugin.auth
         from vip.auth import InteractiveAuthSession
 
         def fake_start_auth(*args, **kwargs):
             return InteractiveAuthSession(storage_state_path=Path("/dev/null"))
 
-        monkeypatch.setattr(vip.auth, "start_headless_auth", fake_start_auth)
-        monkeypatch.setattr(vip.auth, "start_interactive_auth", fake_start_auth)
+        monkeypatch.setattr(vip.plugin.auth, "start_headless_auth", fake_start_auth)
+        monkeypatch.setattr(vip.plugin.auth, "start_interactive_auth", fake_start_auth)
 
         # Mirror the real headless_auth fixture — pytester's tmp dir doesn't
         # auto-load src/vip_tests/conftest.py.
@@ -723,6 +723,7 @@ class TestAuthTimeoutBecomesCleanUsageError:
 
     _RAISE_TIMEOUT_CONFTEST = """
         import vip.auth
+        import vip.plugin.auth
 
         def _raise_timeout(*args, **kwargs):
             raise vip.auth.AuthTimeoutError(
@@ -731,8 +732,8 @@ class TestAuthTimeoutBecomesCleanUsageError:
                 "expected to land on 'https://c.example.com'."
             )
 
-        vip.auth.start_interactive_auth = _raise_timeout
-        vip.auth.start_headless_auth = _raise_timeout
+        vip.plugin.auth.start_interactive_auth = _raise_timeout
+        vip.plugin.auth.start_headless_auth = _raise_timeout
         """
 
     def _pytester_with_timeout_conftest(self, pytester, *, provider: str = "") -> None:
@@ -775,7 +776,7 @@ class TestAuthModeStash:
     """The plugin stashes the active auth mode so tests can distinguish modes."""
 
     _FAKE_AUTH_CONFTEST = """
-        import vip.auth
+        import vip.plugin.auth
         from pathlib import Path
         from vip.auth import InteractiveAuthSession
 
@@ -785,8 +786,8 @@ class TestAuthModeStash:
                 api_key="fake-key",
             )
 
-        vip.auth.start_interactive_auth = _fake_session
-        vip.auth.start_headless_auth = _fake_session
+        vip.plugin.auth.start_interactive_auth = _fake_session
+        vip.plugin.auth.start_headless_auth = _fake_session
         """
 
     def test_no_auth_option_leaves_mode_none(self, pytester):
@@ -961,7 +962,7 @@ class TestWorkbenchUrlSyncAfterAuth:
     """
 
     _FAKE_AUTH_CONFTEST_DOWNGRADED_WORKBENCH = """
-        import vip.auth
+        import vip.plugin.auth
         from pathlib import Path
         from vip.auth import InteractiveAuthSession
 
@@ -976,8 +977,8 @@ class TestWorkbenchUrlSyncAfterAuth:
                 _workbench_url="http://wb.example.com",
             )
 
-        vip.auth.start_interactive_auth = _fake_session
-        vip.auth.start_headless_auth = _fake_session
+        vip.plugin.auth.start_interactive_auth = _fake_session
+        vip.plugin.auth.start_headless_auth = _fake_session
         """
 
     def test_interactive_auth_syncs_resolved_workbench_url(self, pytester):

@@ -13,10 +13,12 @@ from importlib.util import find_spec
 from pathlib import Path
 
 from vip.cli._common import _resolve_effective_ca_bundle
+from vip.config import load_config
 from vip.errors import (
     ConfigError,
     VipError,
 )
+from vip.proxy import proxy_env_for_subprocess
 from vip.reporting import VALID_FORMATS
 from vip.timeouts import scaled
 
@@ -134,8 +136,6 @@ def _normalize_categories(expr: str) -> str:
 
 def _print_skip_notes(config_path: str | None) -> None:
     """Print a note for each product that is not configured."""
-    from vip.config import load_config
-
     try:
         cfg = load_config(config_path)
     except ValueError as exc:
@@ -162,8 +162,6 @@ def _check_credentials(
     When *categories* is provided, only check products whose marker appears
     in the expression.  Without categories all configured products are checked.
     """
-    from vip.config import load_config
-
     try:
         cfg = load_config(config_path)
     except ValueError as exc:
@@ -216,8 +214,6 @@ def _config_idp(config_path: str | None) -> str:
     """
     if not config_path:
         return ""
-    from vip.config import load_config
-
     try:
         return (load_config(config_path).auth.idp or "").strip().lower()
     except ValueError:
@@ -312,8 +308,6 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
     env = os.environ.get("VIP_CONFIG")
     default_path = Path(env) if env else Path("vip.toml")
     if default_path.is_file():
-        from vip.config import load_config
-
         try:
             existing = load_config(default_path)
         except Exception:  # noqa: BLE001
@@ -564,9 +558,6 @@ def run_verify(args: argparse.Namespace) -> None:
     subprocess_env: dict[str, str] | None = None
     if config_path:
         try:
-            from vip.config import load_config
-            from vip.proxy import proxy_env_for_subprocess
-
             subprocess_env = proxy_env_for_subprocess(load_config(config_path).proxy, os.environ)
         except Exception:  # noqa: BLE001
             subprocess_env = None

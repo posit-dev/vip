@@ -16,10 +16,12 @@ from typing import Any
 
 import pytest
 
+from vip import __version__ as vip_version
 from vip.attest import UNPROVEN_SENTINEL
 from vip.config import VIPConfig
 from vip.plugin import state
 from vip.plugin.terminal import _outcome_color
+from vip.reporting import VALID_FORMATS, load_results, write_junit_xml, write_sarif
 from vip.stash import (
     _auth_session_key,
     _results_key,
@@ -403,8 +405,6 @@ def _emit_extra_formats(fmt: str, results_path: Path) -> None:
     machine-readable formats. Unknown format tokens are non-fatal: known formats
     are still emitted, and a warning is raised for each unrecognized token.
     """
-    from vip.reporting import VALID_FORMATS, load_results, write_junit_xml, write_sarif
-
     formats = {f.strip().lower() for f in fmt.split(",") if f.strip()}
     unknown = formats - VALID_FORMATS
     if unknown:
@@ -492,8 +492,6 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             "version": pc.version,
             "configured": pc.is_configured,
         }
-
-    from vip import __version__ as vip_version
 
     session_start = session.config.stash.get(_session_start_key, None)
     run_duration_seconds = time.monotonic() - session_start if session_start is not None else None

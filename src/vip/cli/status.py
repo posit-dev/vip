@@ -5,10 +5,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from vip.config import VIPConfig
+from vip.auth import resolve_url_scheme
+from vip.clients.connect import ConnectClient
+from vip.clients.packagemanager import PackageManagerClient
+from vip.clients.workbench import WorkbenchClient
+from vip.config import VIPConfig, load_config
 
 
 def _collect_status(config: VIPConfig) -> dict:
@@ -28,10 +30,6 @@ def _collect_status(config: VIPConfig) -> dict:
 
     No printing or sys.exit side effects; callers handle rendering.
     """
-    from vip.clients.connect import ConnectClient
-    from vip.clients.packagemanager import PackageManagerClient
-    from vip.clients.workbench import WorkbenchClient
-
     checks = [
         ("connect", config.connect),
         ("workbench", config.workbench),
@@ -44,8 +42,6 @@ def _collect_status(config: VIPConfig) -> dict:
             products[name] = {"configured": False, "state": "skip", "detail": "not configured"}
             continue
         try:
-            from vip.auth import resolve_url_scheme
-
             resolve_url_scheme(
                 pc, insecure=config.insecure, ca_bundle=config.ca_bundle, proxy=config.proxy
             )
@@ -91,8 +87,6 @@ def _collect_status(config: VIPConfig) -> dict:
 
 def run_status(args: argparse.Namespace) -> None:
     """Run preflight health checks against each configured product."""
-    from vip.config import load_config
-
     config = load_config(args.config)
     data = _collect_status(config)
 

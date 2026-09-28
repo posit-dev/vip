@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+import vip_tests
+from vip import __version__
+
 if sys.version_info >= (3, 11):
     import tomllib
 else:
@@ -364,8 +367,6 @@ def write_sarif(data: ReportData, path: str | Path) -> None:
     skip=note) to give a full audit trail of what was validated, not only
     failures -- including the checks that never got to run.
     """
-    from vip import __version__
-
     rules: dict[str, dict] = {}
     results: list[dict] = []
     for r in data.results:
@@ -413,11 +414,10 @@ def write_sarif(data: ReportData, path: str | Path) -> None:
 
 
 def _installed_vip_tests_dir() -> Path | None:
-    """Return the directory of the installed ``vip_tests`` package, if any."""
-    try:
-        import vip_tests
-    except Exception:  # noqa: BLE001
-        return None
+    """Return the directory of the installed ``vip_tests`` package.
+
+    ``None`` if its location can't be resolved.
+    """
     location = getattr(vip_tests, "__file__", None)
     return Path(location).resolve().parent if location else None
 

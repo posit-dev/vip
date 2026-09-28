@@ -7,17 +7,25 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+from vip.auth import (
+    AuthConfigError,
+    auth_cache_path,
+    authenticated_page,
+    resolve_url_scheme,
+    start_headless_auth,
+    start_interactive_auth,
+)
 from vip.cli._common import _resolve_effective_ca_bundle
+from vip.clients.connect import ConnectClient
+from vip.clients.workbench import WorkbenchClient
+from vip.config import ProductConfig, VIPConfig, load_config
 from vip.errors import (
     AuthError,
     ConfigError,
     ProductUnreachableError,
 )
-
-if TYPE_CHECKING:
-    from vip.config import ProductConfig, VIPConfig
+from vip.workbench_ui import quit_vip_sessions_via_ui
 
 
 def _cleanup_workbench_sessions(
@@ -41,16 +49,6 @@ def _cleanup_workbench_sessions(
     authentication failure crash with a bare traceback — prints an actionable
     error and exits 1.
     """
-    from vip.auth import (
-        AuthConfigError,
-        auth_cache_path,
-        authenticated_page,
-        start_headless_auth,
-        start_interactive_auth,
-    )
-    from vip.clients.workbench import WorkbenchClient
-    from vip.workbench_ui import quit_vip_sessions_via_ui
-
     insecure = config.insecure
     ca_bundle = config.ca_bundle
     proxy = config.proxy
@@ -170,8 +168,6 @@ def _load_cleanup_config(args: argparse.Namespace) -> VIPConfig:
     still goes through ``_resolve_effective_ca_bundle`` so ``--insecure`` and
     ``[tls] insecure`` both take the same precedence over a bundle as ``verify``.
     """
-    from vip.config import VIPConfig, load_config
-
     env = os.environ.get("VIP_CONFIG")
     path = Path(env) if env else Path("vip.toml")
     config = load_config() if path.exists() else VIPConfig()
@@ -197,8 +193,6 @@ def run_cleanup(args: argparse.Namespace) -> None:
     ``vip.config._normalize_url`` / ``vip.auth.resolve_url_scheme``).
     """
     _ensure_cli_logging()
-
-    from vip.config import ProductConfig
 
     connect_arg = getattr(args, "connect_url", None)
     api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
@@ -232,9 +226,6 @@ def run_cleanup(args: argparse.Namespace) -> None:
         )
 
     if connect_pc.url:
-        from vip.auth import resolve_url_scheme
-        from vip.clients.connect import ConnectClient
-
         connect_url = resolve_url_scheme(
             connect_pc, insecure=config.insecure, ca_bundle=config.ca_bundle, proxy=config.proxy
         )
@@ -250,8 +241,6 @@ def run_cleanup(args: argparse.Namespace) -> None:
         print(f"Deleted {deleted} VIP test content item(s)")
 
     if workbench_pc.url:
-        from vip.auth import resolve_url_scheme
-
         workbench_url = resolve_url_scheme(
             workbench_pc, insecure=config.insecure, ca_bundle=config.ca_bundle, proxy=config.proxy
         )
