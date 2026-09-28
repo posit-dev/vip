@@ -1,16 +1,23 @@
 # Thin wrapper around the official Workbench image for the mock-IdP E2E stack.
 #
-# The stock image has no cont-init.d/s6-overlay pre-start hook -- ENTRYPOINT
-# is unset and CMD runs supervisord directly (confirmed via `docker inspect`)
-# -- so trusting the stack's shared CA and writing the OIDC rserver.conf
-# lines before rserver starts requires overriding the entrypoint, the same
+# The stock image has no cont-init.d/s6-overlay pre-start hook, so trusting
+# the stack's shared CA and writing the OIDC rserver.conf lines before rserver
+# starts requires overriding the entrypoint, the same
 # pattern used for Connect (see docker/connect/Dockerfile.oidc).
-ARG RSW_VERSION=latest
-FROM rstudio/rstudio-workbench:${RSW_VERSION}
+ARG PWB_VERSION=latest
+FROM ghcr.io/posit-dev/workbench:${PWB_VERSION}
 
 COPY entrypoint-oidc.sh /usr/local/bin/entrypoint-oidc.sh
 COPY startup.sh /usr/local/bin/vip-create-test-user.sh
 RUN chmod +x /usr/local/bin/entrypoint-oidc.sh /usr/local/bin/vip-create-test-user.sh
 
+# entrypoint-oidc.sh ends in `exec "$@"`, so CMD names the stock entrypoint
+# ahead of supervisord rather than supervisord alone. The image's own
+# ENTRYPOINT is /usr/local/bin/entrypoint.sh -- it installs the sssd
+# supervisord program and then execs its argument -- and dropping it would
+# silently skip whatever base-image setup it grows next. Only these two
+# wrapper images chain the stock entrypoint; compose.yml's password-auth
+# stack runs the image unmodified and provisions its test account through
+# the base image's own PWB_TESTUSER/PWB_TESTUSER_PASSWD variables.
 ENTRYPOINT ["/usr/local/bin/entrypoint-oidc.sh"]
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
+CMD ["/usr/local/bin/entrypoint.sh", "/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
