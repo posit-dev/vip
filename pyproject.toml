@@ -19,9 +19,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "filelock>=3.12,<4",
+    "filelock>=3.12,<5",
     "httpx>=0.27,<1",
-    "playwright==1.62.0",  # exact-pinned: shapes vip run output; see docs/development.md
+    "playwright==1.63.0",  # exact-pinned: shapes vip run output; see docs/development.md
     "pyotp~=2.9",
     "pytest==9.1.1",  # exact-pinned; at/above CVE-2025-71176 floor (9.0.3)
     "pytest-bdd==8.1.0",  # exact-pinned
@@ -63,7 +63,7 @@ load = [
     "python-socketio>=5.16.2,<6",  # CVE-2026-48804 fix; transitive via locust
 ]
 dev = [
-    "ruff==0.16.7",
+    "ruff==0.16.8",
     "mypy>=1.10",
     "pytest-cov>=6.0",
     "pip-audit>=2.7",
