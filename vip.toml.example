@@ -134,11 +134,13 @@ url = "https://packagemanager.example.com"
 # Authentication provider in use: "password", "ldap", "saml", "oidc", "oauth2"
 provider = "password"
 
-# Identity provider for --headless-auth: "keycloak", "okta", "snowflake"
+# Identity provider for --headless-auth: "keycloak", "okta", "snowflake", "entra"
 # Only required when provider is "oidc", "saml", or "oauth2".
 # For Snowflake Native App deployments, use provider = "oauth2" and
 # idp = "snowflake"
+# Azure AD tenants use idp = "entra".
 # idp = "keycloak"
+# idp = "entra"
 
 # Test user credentials.
 # Prefer setting VIP_TEST_USERNAME and VIP_TEST_PASSWORD environment variables.

@@ -7,6 +7,7 @@ via the terminal when the IdP presents a second-factor challenge.
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Callable
 from urllib.parse import urlparse
@@ -392,10 +393,349 @@ def _fill_snowflake_login(page: Page, username: str, password: str) -> None:
             pass
 
 
+# Entra ID (Azure AD) selectors -- not yet validated against a live tenant.
+# Microsoft has been rolling out a refreshed sign-in UI, so treat these as a
+# starting point to confirm/adjust from the first real run.
+_ENTRA_USERNAME = "input[name='loginfmt']"
+_ENTRA_PASSWORD = "input[name='passwd']"
+# #idSIButton9 is Entra's single primary button, reused on every step
+# (Next / Sign in / Yes) -- safe to click to submit, but never usable to
+# detect which step is currently showing.
+_ENTRA_SUBMIT = "#idSIButton9"
+_ENTRA_USERNAME_ERROR = "#usernameError"
+_ENTRA_PASSWORD_ERROR = "#passwordError"
+_ENTRA_SERVICE_ERROR = "#service_exception_message, #serviceExceptionMessage"
+# Conditional Access block page ("You can't get there from here"): a
+# full-page error rather than a field-level one, so it's detected by text
+# instead of an inline-error selector. Can appear right after the email
+# step or after MFA, so it's checked wherever _raise_if_entra_error is.
+_ENTRA_CONDITIONAL_ACCESS_HEADING = "You can't get there from here"
+_ENTRA_CONDITIONAL_ACCESS_CODES = ("AADSTS53000", "AADSTS53003")
+_ENTRA_OTC_INPUT = "input[name='otc'], #idTxtBx_SAOTCC_OTC"
+_ENTRA_OTC_SUBMIT = "#idSubmit_SAOTCC_Continue"
+# "Use a verification code" option on Entra's "Verify your identity" method list.
+_ENTRA_VERIFY_CODE_OPTION = "[data-value='PhoneAppOTP']"
+# Number shown during an Authenticator push with number matching enabled.
+_ENTRA_DISPLAY_SIGN = "#idRichContext_DisplaySign"
+# Fallback text for a plain push (no number matching) when the above is absent.
+_ENTRA_PUSH_TEXT = "notification"
+# Link Entra shows on an auto-sent push screen to reach the method list instead.
+_ENTRA_SIGN_IN_ANOTHER_WAY = "#signInAnotherWay"
+# "More information required" proof-up / MFA-registration interrupt heading.
+_ENTRA_PROOF_UP_TEXT = "More information required"
+# KMSI ("Stay signed in?") markers and its "No" button.
+_ENTRA_KMSI_MARKER = "input[name='DontShowAgain'], #KmsiCheckboxField"
+_ENTRA_KMSI_NO = "#idBtn_Back"
+# Entra login hosts across the public cloud and sovereign/alt clouds (US
+# Government, China). A host outside this set means the tenant redirected to
+# a federated IdP, not just a different Microsoft cloud.
+_ENTRA_LOGIN_HOSTS = frozenset(
+    {
+        "login.microsoftonline.com",
+        "login.microsoftonline.us",
+        "login.partner.microsoftonline.cn",
+        "login.chinacloudapi.cn",
+        "login.microsoft.com",
+    }
+)
+
+
+def _entra_login_host(page: Page) -> str:
+    """Return the lowercased hostname of the current page URL."""
+    return (urlparse(page.url).hostname or "").lower()
+
+
+def _entra_left_login_host(page: Page) -> bool:
+    """True once the browser has navigated away from a known Entra login host.
+
+    Matches on the parsed hostname, not a substring of the whole URL, so a
+    query parameter that happens to contain a login host's name can't cause
+    a false negative.
+    """
+    return _entra_login_host(page) not in _ENTRA_LOGIN_HOSTS
+
+
+def _entra_conditional_access_code(page: Page) -> str:
+    """Return the visible Conditional Access error code (e.g. "AADSTS53000"),
+    or "" if neither known code is shown on the page.
+    """
+    for code in _ENTRA_CONDITIONAL_ACCESS_CODES:
+        loc = page.get_by_text(code, exact=False)
+        if loc.count() > 0 and loc.first.is_visible():
+            return code
+    return ""
+
+
+def _raise_if_entra_error(page: Page) -> None:
+    """Raise AuthConfigError if Entra is showing an inline error message or
+    a Conditional Access block page.
+    """
+    # Check Conditional Access first: its block page can also carry a generic
+    # service-exception message, which would hide the actionable cause.
+    code = _entra_conditional_access_code(page)
+    heading = page.get_by_text(_ENTRA_CONDITIONAL_ACCESS_HEADING, exact=False)
+    if code or (heading.count() > 0 and heading.first.is_visible()):
+        detail = f" ({code})" if code else ""
+        raise AuthConfigError(
+            f"Entra Conditional Access blocked this sign-in{detail}. Headless "
+            "auth runs in an unmanaged browser, so use a test service account "
+            "excluded from device-compliance / Conditional Access policies."
+        )
+
+    for sel in (_ENTRA_USERNAME_ERROR, _ENTRA_PASSWORD_ERROR, _ENTRA_SERVICE_ERROR):
+        loc = page.locator(sel)
+        if loc.count() > 0 and loc.first.is_visible():
+            msg = (loc.first.text_content() or "").strip()
+            if msg:
+                raise AuthConfigError(f"Entra login failed: {msg}")
+
+
+def _entra_is_proof_up(page: Page) -> bool:
+    """True if Entra is showing a "More information required" proof-up /
+    MFA-registration interrupt -- this can't be automated; the test
+    account must already have MFA registered.
+    """
+    heading = page.get_by_text(_ENTRA_PROOF_UP_TEXT, exact=False)
+    return heading.count() > 0 and heading.first.is_visible()
+
+
+def _select_entra_totp_method(page: Page) -> bool:
+    """If Entra shows a "Verify your identity" authenticator list, select
+    "Use a verification code" and return True. Returns False when no such
+    list is showing (already on an input, or a different challenge).
+
+    Mirrors ``_select_totp_authenticator``'s caution for Okta: only clicks
+    when the option can be confirmed as the code-based one, not push or a
+    phone call.
+    """
+    option = page.locator(_ENTRA_VERIFY_CODE_OPTION)
+    if option.count() > 0 and option.first.is_visible():
+        _log_verbose(">>> Entra: selecting 'Use a verification code' option ...")
+        option.first.click()
+        return True
+
+    text_option = page.get_by_text("Use a verification code", exact=False)
+    for i in range(text_option.count()):
+        candidate = text_option.nth(i)
+        if candidate.is_visible():
+            _log_verbose(">>> Entra: selecting 'Use a verification code' option (text) ...")
+            candidate.click()
+            return True
+    return False
+
+
+def _entra_handle_otc(page: Page) -> None:
+    """Fill and submit a verification-code (TOTP) prompt."""
+    _log_verbose(">>> Entra: verification-code prompt detected.")
+    code = totp.get_code(">>> Enter your verification code: ")
+    page.locator(_ENTRA_OTC_INPUT).first.fill(code)
+    submit = page.locator(_ENTRA_OTC_SUBMIT)
+    if submit.count() > 0 and submit.first.is_visible():
+        submit.first.click()
+    else:
+        page.locator(_ENTRA_SUBMIT).click()
+    _log_verbose(">>> Entra: verification code submitted.")
+
+
+def _entra_is_push(page: Page) -> bool:
+    """True if Entra is showing an Authenticator push-approval screen,
+    with or without number matching.
+    """
+    display = page.locator(_ENTRA_DISPLAY_SIGN)
+    if display.count() > 0 and display.first.is_visible():
+        return True
+    text = page.get_by_text(_ENTRA_PUSH_TEXT, exact=False)
+    return text.count() > 0 and text.first.is_visible()
+
+
+def _entra_try_switch_from_push(page: Page) -> bool:
+    """Try to leave an auto-sent push prompt for the method list instead.
+
+    Entra can send a push automatically when it's the account's default
+    method, which would otherwise block an unattended run for up to
+    ``_MFA_TIMEOUT`` waiting for approval nobody will give. Only relevant
+    when VIP_TEST_TOTP_SECRET is set (a code can be generated unattended);
+    without it, the existing push wait is the only option. Returns True if
+    the "sign in another way" link was clicked, False if Entra didn't offer
+    one -- callers should fall back to waiting on the push as before.
+    """
+    if not os.environ.get(totp.ENV_VAR, "").strip():
+        return False
+
+    link = page.locator(_ENTRA_SIGN_IN_ANOTHER_WAY)
+    if link.count() > 0 and link.first.is_visible():
+        _log_verbose(">>> Entra: switching away from auto-sent push to pick a code ...")
+        link.first.click()
+        return True
+
+    text_link = page.get_by_text("Sign in another way", exact=False)
+    for i in range(text_link.count()):
+        candidate = text_link.nth(i)
+        if candidate.is_visible():
+            _log_verbose(">>> Entra: switching away from auto-sent push (text) ...")
+            candidate.click()
+            return True
+    return False
+
+
+def _entra_handle_push(page: Page) -> None:
+    """Print the approval prompt (with the displayed number, if number
+    matching is enabled) and wait for the push to be approved on-device.
+    """
+    display = page.locator(_ENTRA_DISPLAY_SIGN)
+    if display.count() > 0 and display.first.is_visible():
+        number = (display.first.text_content() or "").strip()
+        print(
+            f">>> Enter {number} in Microsoft Authenticator to approve sign-in.",
+            flush=True,
+        )
+    else:
+        print(
+            ">>> Approve the sign-in request in Microsoft Authenticator, then wait.",
+            flush=True,
+        )
+    _log_verbose(">>> Entra: waiting for push approval ...")
+    before = page.url
+
+    def _advanced(url: str, _before: str = before) -> bool:
+        return url != _before
+
+    page.wait_for_url(_advanced, timeout=_MFA_TIMEOUT)
+
+
+def _entra_is_kmsi(page: Page) -> bool:
+    """True if Entra is showing the "Stay signed in?" (KMSI) prompt."""
+    marker = page.locator(_ENTRA_KMSI_MARKER)
+    if marker.count() > 0 and marker.first.is_visible():
+        return True
+    return "/kmsi" in page.url.lower()
+
+
+def _entra_dismiss_kmsi(page: Page) -> None:
+    """Click "No" on the "Stay signed in?" (KMSI) prompt, if shown.
+
+    Clicking "Yes" plants a persistent ESTS refresh cookie into the storage
+    state VIP writes to the auth cache on disk; "No" keeps the cached
+    session to what Playwright's storage_state already captures. KMSI is
+    optional (some tenants disable it), so its absence is not an error.
+    """
+    no_button = page.locator(_ENTRA_KMSI_NO)
+    if no_button.count() > 0 and no_button.first.is_visible():
+        _log_verbose(">>> Entra: dismissing 'Stay signed in?' with No ...")
+        no_button.first.click()
+
+
+def _entra_resolve_post_password(page: Page) -> None:
+    """After password submit, resolve whatever Entra shows next.
+
+    Polls (bounded by ``_MFA_DETECT_TIMEOUT``) for one of: an inline
+    error, a proof-up registration interrupt, MFA (verification code,
+    method selection, or Authenticator push), the KMSI prompt, or simply
+    leaving Entra's login host because no further challenge applies.
+    """
+    deadline = time.monotonic() + _MFA_DETECT_TIMEOUT / 1000
+    mfa_handled = False
+    while time.monotonic() < deadline:
+        if _entra_left_login_host(page):
+            _log_verbose(f">>> Entra: left login host: {_sanitize_url(page.url)}")
+            return
+
+        _raise_if_entra_error(page)
+
+        if _entra_is_proof_up(page):
+            raise AuthConfigError(
+                "Entra requires additional security-info registration "
+                "('More information required') for this account before "
+                "signing in. Register MFA on the test service account "
+                "ahead of time -- this interrupt cannot be automated."
+            )
+
+        if not mfa_handled:
+            otc_field = page.locator(_ENTRA_OTC_INPUT)
+            if otc_field.count() > 0 and otc_field.first.is_visible():
+                _entra_handle_otc(page)
+                mfa_handled = True
+                # totp.get_code can block on a human prompt, so the original
+                # deadline may already be gone -- recompute it from now or
+                # KMSI below would never get a chance to run.
+                deadline = time.monotonic() + _MFA_DETECT_TIMEOUT / 1000
+                continue
+
+            if _select_entra_totp_method(page):
+                page.wait_for_timeout(500)
+                continue
+
+            if _entra_is_push(page):
+                if _entra_try_switch_from_push(page):
+                    page.wait_for_timeout(500)
+                    continue
+                _entra_handle_push(page)
+                mfa_handled = True
+                # Push approval is a human wait (up to _MFA_TIMEOUT) -- same
+                # deadline-reset reasoning as the TOTP branch above.
+                deadline = time.monotonic() + _MFA_DETECT_TIMEOUT / 1000
+                continue
+
+        if _entra_is_kmsi(page):
+            _entra_dismiss_kmsi(page)
+            page.wait_for_timeout(300)
+            continue
+
+        page.wait_for_timeout(300)
+
+    _log_verbose(">>> Entra: no further challenge detected within timeout; proceeding.")
+
+
+def _fill_entra_login(page: Page, username: str, password: str) -> None:
+    """Fill Microsoft Entra ID's multi-step login form and handle MFA/KMSI.
+
+    Entra serves each step as a full page from login.microsoftonline.com:
+    email, password, then an optional MFA challenge and/or "Stay signed
+    in?" (KMSI) prompt. A federated tenant instead redirects away from
+    login.microsoftonline.com right after the email step -- that case
+    raises ``AuthConfigError`` pointing at configuring the federated IdP
+    directly, rather than hanging until timeout.
+    """
+    _log_verbose(">>> Entra: waiting for email field ...")
+    page.locator(_ENTRA_USERNAME).wait_for(timeout=_FORM_TIMEOUT)
+    page.locator(_ENTRA_USERNAME).fill(username)
+    page.locator(_ENTRA_SUBMIT).click()
+    _log_verbose(">>> Entra: email submitted.")
+
+    _log_verbose(">>> Entra: waiting for password field ...")
+    password_field = page.locator(_ENTRA_PASSWORD)
+    deadline = time.monotonic() + _FORM_TIMEOUT / 1000
+    while time.monotonic() < deadline:
+        if password_field.count() > 0 and password_field.first.is_visible():
+            break
+        _raise_if_entra_error(page)
+        if _entra_left_login_host(page):
+            raise AuthConfigError(
+                "Entra sign-in redirected to "
+                f"{_sanitize_url(page.url)} -- this tenant is federated to "
+                "another identity provider. Configure that IdP directly "
+                '(e.g. idp = "okta") instead of idp = "entra".'
+            )
+        page.wait_for_timeout(300)
+    else:
+        raise AuthConfigError(
+            "Entra login did not show a password field after the email "
+            "step. Check credentials and IdP configuration, or rerun "
+            "with --verbose."
+        )
+
+    password_field.first.fill(password)
+    page.locator(_ENTRA_SUBMIT).click()
+    _log_verbose(">>> Entra: password submitted.")
+
+    _entra_resolve_post_password(page)
+
+
 _IDP_STRATEGIES: dict[str, Callable[[Page, str, str], None]] = {
     "keycloak": _fill_keycloak_login,
     "okta": _fill_okta_login,
     "snowflake": _fill_snowflake_login,
+    "entra": _fill_entra_login,
 }
 
 SUPPORTED_IDPS = frozenset(_IDP_STRATEGIES.keys())
