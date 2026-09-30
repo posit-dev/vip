@@ -278,7 +278,8 @@ class ConnectClient(BaseClient):
             tag_id = tags[0]["id"]
             resp = self._client.get(f"/v1/tags/{tag_id}/content")
             resp.raise_for_status()
-            return resp.json().get("results", [])
+            # Unlike the paginated list endpoints, this returns a bare array.
+            return resp.json()
         except Exception as exc:
             raise ProductUnreachableError(f"could not list VIP-tagged content: {exc}") from exc
 

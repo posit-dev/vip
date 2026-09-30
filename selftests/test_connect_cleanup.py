@@ -112,7 +112,7 @@ def test_cleanup_vip_content_lists_by_tag_then_deletes():
         if request.method == "GET" and path.endswith("/v1/tags"):
             return httpx.Response(200, json=[{"id": "t1", "name": "_vip_test"}])
         if request.method == "GET" and path.endswith("/v1/tags/t1/content"):
-            return httpx.Response(200, json={"results": [{"guid": "a"}, {"guid": "b"}]})
+            return httpx.Response(200, json=[{"guid": "a"}, {"guid": "b"}])
         if request.method == "DELETE":
             return httpx.Response(200)
         if request.method == "GET":
@@ -125,6 +125,21 @@ def test_cleanup_vip_content_lists_by_tag_then_deletes():
     # single-shot delete_content loop never did, so this drives the change.
     assert ("GET", "/__api__/v1/content/a") in calls
     assert ("GET", "/__api__/v1/content/b") in calls
+
+
+def test_list_vip_content_returns_bare_array_from_tag_content_endpoint():
+    """GET /v1/tags/{id}/content returns a bare JSON array, not {"results": [...]}."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/v1/tags"):
+            return httpx.Response(200, json=[{"id": "t1", "name": "_vip_test"}])
+        if path.endswith("/v1/tags/t1/content"):
+            return httpx.Response(200, json=[{"guid": "a"}, {"guid": "b"}])
+        return httpx.Response(404)
+
+    cc = _client_with_handler(handler)
+    assert cc.list_vip_content() == [{"guid": "a"}, {"guid": "b"}]
 
 
 def test_cleanup_vip_content_raises_when_tag_lookup_fails():
