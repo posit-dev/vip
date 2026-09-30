@@ -20,9 +20,9 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_PAGE_LOAD,
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
-    _navigated_into_session,
     assert_homepage_loaded,
     unique_session_name,
+    wait_for_resume_navigation,
     wait_for_session_active,
     wait_for_session_suspended,
     workbench_login,
@@ -177,20 +177,16 @@ def user_resumes_session(page: Page, session_context: dict):
     expect(launch_btn).to_be_visible(timeout=TIMEOUT_DIALOG)
     launch_btn.click()
 
-    # Wait for actual RStudio content, not just the page's "load" event —
-    # that fires once the session shell is served, well before the backend
-    # finishes reattaching rsession (same readiness gate the fresh-launch
-    # path trusts; see ``rstudio_functional`` in test_ide_launch.py).
-    #
-    # The navigation check uses ``_navigated_into_session`` rather than a
-    # bare ``"**/s/**"`` glob, because Workbench's own homepage is also
-    # served under a "/s/<id>/" URL, so that glob can pass without the
-    # browser ever leaving the homepage. A timeout here means resume did
-    # not demonstrably complete; report that as unproven rather than
-    # letting the bare Playwright assertion surface as an opaque hard
-    # failure (this file's established pattern — see
-    # session_becomes_active_again below).
-    page.wait_for_url(_navigated_into_session, timeout=TIMEOUT_PAGE_LOAD)
+    # Workbench may resume in place: the homepage is itself served under
+    # "/s/<id>/workspaces/" and the nightly runs show the URL never leaves it
+    # after Launch. So landing in a session is optional here; the next step,
+    # which reloads the homepage until the Active badge appears, is the real
+    # proof of resume. Only when the browser does land in a session do we
+    # wait for RStudio content (not just "load", which fires before rsession
+    # is reattached -- see ``rstudio_functional`` in test_ide_launch.py) and
+    # bounce back to the homepage.
+    if not wait_for_resume_navigation(page, TIMEOUT_PAGE_LOAD):
+        return
     try:
         expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_SESSION_START)
     except AssertionError as exc:
