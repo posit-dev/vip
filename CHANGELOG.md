@@ -3,6 +3,25 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.10.0 (2026-10-01)
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 4 updates ([#730](https://github.com/posit-dev/vip/pull/730), [`4849f3e`](https://github.com/posit-dev/vip/commit/4849f3e8ea8844a02d6502283e94f58876d0a4ed))
+
+- **deps**: Bump the python-dependencies group across 1 directory with 6 updates ([#744](https://github.com/posit-dev/vip/pull/744), [`624ec99`](https://github.com/posit-dev/vip/commit/624ec99f46a703eb0858222c18ee5058941d7452))
+
+### Continuous Integration
+
+- Migrate VIP from RStudio images ([#695](https://github.com/posit-dev/vip/pull/695), [`b63e7e1`](https://github.com/posit-dev/vip/commit/b63e7e1722270cbc4184739db1246687d3ba8876))
+
+- Remove dated prompt patterns from agent instructions ([#742](https://github.com/posit-dev/vip/pull/742), [`3ea8500`](https://github.com/posit-dev/vip/commit/3ea850009b9329c399b7d79f95676ef3a38a6b69))
+
+### Refactoring
+
+- Hoist internal imports and enable PLC0415 in src/vip ([#743](https://github.com/posit-dev/vip/pull/743), [`f001a0c`](https://github.com/posit-dev/vip/commit/f001a0cab55de9468716551e2ec63fce089e38ef))
+
+
 ## v2026.9.3 (2026-09-24)
 
 ### Bug Fixes
