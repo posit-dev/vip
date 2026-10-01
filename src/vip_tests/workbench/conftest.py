@@ -51,6 +51,7 @@ from vip_tests.workbench.login import (
     _silent_sso_signin,
     oidc_login_lock,
     restore_shared_session,
+    wait_for_resume_navigation,
     workbench_login,
 )
 from vip_tests.workbench.naming import (
@@ -125,6 +126,7 @@ __all__ = [
     "restore_shared_session",
     "unique_session_name",
     "vip_session_prefix",
+    "wait_for_resume_navigation",
     "wait_for_session_active",
     "wait_for_session_suspended",
     "workbench_login",
