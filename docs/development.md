@@ -100,6 +100,15 @@ version is pinned so relocking always produces the same output:
   When bumping the pin, change both `UV_VERSION` in the `justfile` and the
   `required-version` floor in `pyproject.toml` together.
 
+### Fixing a CVE in a transitive dependency
+
+When the `Dependency Audit` job flags a package VIP does not declare directly,
+raise a floor in `[tool.uv] constraint-dependencies` (for example
+`"urllib3>=2.8.0"`) and run `just relock`. The `Lockfile Guard` job rejects a
+`uv.lock` change that is not paired with a `pyproject.toml` change, and the
+constraint is that paired change. It also stops a later relock from resolving
+back to a vulnerable version.
+
 ### Resolving a uv.lock merge conflict
 
 Never hand-edit conflict markers in `uv.lock`. Take either side wholesale, then
