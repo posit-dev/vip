@@ -106,8 +106,8 @@ def wait_for_resume_navigation(page: Page, timeout: int) -> bool:
         page.wait_for_url(_navigated_into_session, timeout=timeout)
     except PlaywrightTimeoutError:
         message = (
-            "No navigation into a session within %dms of Launch; page url=%s, open tabs=%s"
-            % (timeout, page.url, [p.url for p in page.context.pages])
+            f"No navigation into a session within {timeout}ms of Launch; "
+            f"page url={page.url}, open tabs={[p.url for p in page.context.pages]}"
         )
         warnings.warn(message, stacklevel=2)
         logger.warning(message)
