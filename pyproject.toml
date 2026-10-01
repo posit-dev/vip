@@ -151,6 +151,9 @@ build-backend = "hatchling.build"
 # floor rejects those versions for every uv command; `just relock` pins an exact
 # version on top of it. See docs/development.md ("The lockfile").
 required-version = ">=0.11"
+# urllib3 is transitive. Floor it at the first release that fixes
+# CVE-2026-97687/97688/97689 so a relock cannot resolve back to a vulnerable 2.7.x.
+constraint-dependencies = ["urllib3>=2.8.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vip", "src/vip_tests"]
