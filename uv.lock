@@ -9,6 +9,9 @@ resolution-markers = [
     "python_full_version < '3.11'",
 ]
 
+[manifest]
+constraints = [{ name = "urllib3", specifier = ">=2.8.0" }]
+
 [[package]]
 name = "anyio"
 version = "4.15.1"
