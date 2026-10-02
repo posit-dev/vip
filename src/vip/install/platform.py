@@ -54,7 +54,7 @@ def _read_os_release() -> dict[str, str]:
     if not _OS_RELEASE_PATH.exists():
         return {}
     out: dict[str, str] = {}
-    for line in _OS_RELEASE_PATH.read_text().splitlines():
+    for line in _OS_RELEASE_PATH.read_text(encoding="utf-8").splitlines():
         if "=" not in line or line.startswith("#"):
             continue
         k, _, v = line.partition("=")

@@ -38,7 +38,9 @@ def _slow_workbench_stems() -> set[str]:
     test below self-maintains as the ``@slow`` set changes. The intended
     membership is locked separately in ``test_gherkin.py``.
     """
-    stems = {f.stem for f in _WORKBENCH_DIR.glob("*.feature") if "@slow" in f.read_text()}
+    stems = {
+        f.stem for f in _WORKBENCH_DIR.glob("*.feature") if "@slow" in f.read_text(encoding="utf-8")
+    }
     assert stems, "expected at least one @slow-tagged Workbench feature file"
     return stems
 
@@ -58,7 +60,8 @@ def _collect_workbench_nodeids(tmp_path: Path, marker_expr: str | None = None) -
     config_path = tmp_path / "vip.toml"
     config_path.write_text(
         '[workbench]\nurl = "https://workbench.example.com"\n\n'
-        '[connect]\nurl = "https://connect.example.com"\n'
+        '[connect]\nurl = "https://connect.example.com"\n',
+        encoding="utf-8",
     )
 
     cmd = [

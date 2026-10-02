@@ -42,7 +42,8 @@ class TestExtensionFixtureVisibility:
         ext_dir = ext_pytester.mkdir("my_extension")
         (ext_dir / "test_probe.py").write_text(
             "def test_needs_vip_config(vip_config):\n"
-            "    assert vip_config.deployment_name == 'Selftest'\n"
+            "    assert vip_config.deployment_name == 'Selftest'\n",
+            encoding="utf-8",
         )
         result = ext_pytester.runpytest_subprocess(
             "--vip-config=vip.toml", f"--vip-extensions={ext_dir}", "-p", "no:randomly", "-v"
@@ -72,13 +73,15 @@ class TestExtensionFixtureVisibility:
         (ext_dir / "test_probe.feature").write_text(
             "Feature: probe\n"
             "  Scenario: package manager guard resolves\n"
-            "    Given Package Manager is configured in vip.toml\n"
+            "    Given Package Manager is configured in vip.toml\n",
+            encoding="utf-8",
         )
         (ext_dir / "test_probe.py").write_text(
             "from pytest_bdd import scenario\n\n"
             '@scenario("test_probe.feature", "package manager guard resolves")\n'
             "def test_probe():\n"
-            "    pass\n"
+            "    pass\n",
+            encoding="utf-8",
         )
         result = ext_pytester.runpytest_subprocess(
             "--vip-config=vip.toml", f"--vip-extensions={ext_dir}", "-p", "no:randomly", "-v"
@@ -97,7 +100,8 @@ class TestExtensionFixtureVisibility:
         ext_dir = ext_pytester.mkdir("my_xdist_extension")
         (ext_dir / "test_probe.py").write_text(
             "def test_needs_vip_config(vip_config):\n"
-            "    assert vip_config.deployment_name == 'Selftest'\n"
+            "    assert vip_config.deployment_name == 'Selftest'\n",
+            encoding="utf-8",
         )
         result = ext_pytester.runpytest_subprocess(
             "--vip-config=vip.toml",
@@ -143,7 +147,8 @@ class TestExtensionFixtureVisibility:
             "        'pytest-playwright fixture won -- VIP override did not apply: '\n"
             "        + repr(browser_type_launch_args)\n"
             "    )\n"
-            "    assert proxy['server'] == 'http://gw.example:3128'\n"
+            "    assert proxy['server'] == 'http://gw.example:3128'\n",
+            encoding="utf-8",
         )
         result = ext_pytester.runpytest_subprocess(
             "--vip-config=vip.toml",
@@ -169,7 +174,8 @@ class TestExtensionFixtureVisibility:
             "    assert browser_context_args.get('ignore_https_errors') is True, (\n"
             "        'pytest-playwright fixture won -- VIP override did not apply: '\n"
             "        + repr(browser_context_args)\n"
-            "    )\n"
+            "    )\n",
+            encoding="utf-8",
         )
         result = ext_pytester.runpytest_subprocess(
             "--vip-config=vip.toml", f"--vip-extensions={ext_dir}", "-p", "no:randomly", "-v"

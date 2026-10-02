@@ -56,7 +56,7 @@ def expected_chromium_revision() -> str | None:
         # Broad on purpose: whatever fails, callers already treat None as "revision unknown".
         return None
     try:
-        data = json.loads(browsers_json.read_text())
+        data = json.loads(browsers_json.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     for entry in data.get("browsers", []):

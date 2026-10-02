@@ -73,7 +73,9 @@ def r_repo_present(server_settings):
 # ---------------------------------------------------------------------------
 
 _PLUMBER_R = '#* @get /\nfunction() {\n  list(message = "VIP PM test")\n}\n'
-_PLUMBER_MANIFEST = (pathlib.Path(__file__).parent / "plumber_manifest.json").read_text()
+_PLUMBER_MANIFEST = (pathlib.Path(__file__).parent / "plumber_manifest.json").read_text(
+    encoding="utf-8"
+)
 
 
 @when(

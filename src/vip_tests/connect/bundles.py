@@ -75,6 +75,8 @@ def build_shiny_bundle_files(r_versions: list[str]) -> dict[str, str]:
     Returns ``{"app.R": ..., "manifest.json": ...}`` -- suitable both for an
     API bundle upload and for ``rsconnect deploy manifest``.
     """
-    manifest = json.loads((pathlib.Path(__file__).parent / "shiny_manifest.json").read_text())
+    manifest = json.loads(
+        (pathlib.Path(__file__).parent / "shiny_manifest.json").read_text(encoding="utf-8")
+    )
     manifest["platform"] = _latest_version(r_versions)
     return {"app.R": _SHINY_APP_R, "manifest.json": json.dumps(manifest)}

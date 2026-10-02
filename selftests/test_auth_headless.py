@@ -17,7 +17,7 @@ class TestStartHeadlessAuthValidation:
         """URL validation must run before cache lookup."""
         # Create a fake cache file that would be valid.
         cache = tmp_path / ".vip-auth-cache.json"
-        cache.write_text("{}")
+        cache.write_text("{}", encoding="utf-8")
         cache.touch()
 
         with pytest.raises(AuthConfigError, match="at least one product URL"):
@@ -313,7 +313,7 @@ class TestHeadlessAuthTLSFlags:
         from pathlib import Path
 
         ca_file = tmp_path / "ca.pem"
-        ca_file.write_text("# fake CA")
+        ca_file.write_text("# fake CA", encoding="utf-8")
 
         stub = self._make_playwright_stub()
         captured: list[str | None] = []
@@ -350,7 +350,7 @@ class TestHeadlessAuthTLSFlags:
         from pathlib import Path
 
         ca_file = tmp_path / "ca.pem"
-        ca_file.write_text("# fake CA")
+        ca_file.write_text("# fake CA", encoding="utf-8")
         prev_value = "/prior/ca.pem"
         monkeypatch.setenv("NODE_EXTRA_CA_CERTS", prev_value)
 

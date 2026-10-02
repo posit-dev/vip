@@ -374,7 +374,7 @@ def _generate_temp_config(args: argparse.Namespace) -> str:
             lines.append(f"no_proxy = {json.dumps(hosts)}")
         lines.append("")
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False, encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
         return f.name
 

@@ -80,7 +80,7 @@ def _fixture_names_in(source: str) -> set[str]:
 class TestCleanupFixturesPromotedToRoot:
     def test_root_conftest_defines_all_cleanup_fixtures(self):
         """All three cleanup fixtures must be in the root conftest."""
-        source = _ROOT_CONFTEST.read_text()
+        source = _ROOT_CONFTEST.read_text(encoding="utf-8")
         names = _fixture_names_in(source)
         for name in _CLEANUP_FIXTURES:
             assert name in names, (
@@ -90,7 +90,7 @@ class TestCleanupFixturesPromotedToRoot:
 
     def test_connect_conftest_does_not_duplicate_cleanup_fixtures(self):
         """The connect conftest must NOT re-define the promoted fixtures."""
-        source = _CONNECT_CONFTEST.read_text()
+        source = _CONNECT_CONFTEST.read_text(encoding="utf-8")
         names = _fixture_names_in(source)
         for name in _CLEANUP_FIXTURES:
             assert name not in names, (
@@ -100,7 +100,7 @@ class TestCleanupFixturesPromotedToRoot:
 
     def test_connect_conftest_retains_make_tar_gz(self):
         """_make_tar_gz must stay in connect conftest (other tests import it directly)."""
-        source = _CONNECT_CONFTEST.read_text()
+        source = _CONNECT_CONFTEST.read_text(encoding="utf-8")
         assert "_make_tar_gz" in source, (
             f"_make_tar_gz helper disappeared from {_CONNECT_CONFTEST}. "
             "test_content_deploy.py and test_packages.py import it directly."
@@ -119,7 +119,7 @@ class TestSharedShinyBundle:
 
     def test_workbench_fixture_defined_in_conftest(self):
         """The Workbench shiny_bundle_spec fixture must exist in conftest."""
-        source = _WORKBENCH_CONFTEST.read_text()
+        source = _WORKBENCH_CONFTEST.read_text(encoding="utf-8")
         names = _fixture_names_in(source)
         assert "shiny_bundle_spec" in names, (
             f"Expected fixture 'shiny_bundle_spec' in {_WORKBENCH_CONFTEST}"
@@ -199,7 +199,7 @@ class TestSharedShinyBundle:
 
 def test_cleanup_fixtures_are_autouse():
     """_connect_content_cleanup and _connect_end_of_run_sweep must be autouse."""
-    source = _ROOT_CONFTEST.read_text()
+    source = _ROOT_CONFTEST.read_text(encoding="utf-8")
     # Check for autouse=True in the fixture decorators
     tree = ast.parse(source)
     autouse_fixtures: set[str] = set()
@@ -233,7 +233,7 @@ def test_cleanup_fixtures_are_autouse():
 
 def test_end_of_run_sweep_is_session_scoped():
     """_connect_end_of_run_sweep must be scope='session'."""
-    source = _ROOT_CONFTEST.read_text()
+    source = _ROOT_CONFTEST.read_text(encoding="utf-8")
     tree = ast.parse(source)
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef) or node.name != "_connect_end_of_run_sweep":

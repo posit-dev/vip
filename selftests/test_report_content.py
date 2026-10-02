@@ -115,7 +115,7 @@ class TestBadgeColors:
 
     @pytest.fixture(scope="class")
     def css(self) -> str:
-        return _STYLESHEET.read_text()
+        return _STYLESHEET.read_text(encoding="utf-8")
 
     @pytest.mark.parametrize("marker", sorted(report_content.PRIMARY_BADGES))
     def test_primary_badge_color_matches_stylesheet(self, css, marker):

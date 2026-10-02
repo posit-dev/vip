@@ -63,23 +63,23 @@ def test_load_missing_file_returns_none(tmp_path: Path):
 def test_load_empty_file_returns_none(tmp_path: Path):
     """Empty or whitespace-only manifest files should be treated as missing."""
     path = tmp_path / ".vip-install.json"
-    path.write_text("")
+    path.write_text("", encoding="utf-8")
     assert load(path) is None
 
-    path.write_text("   \n  \t  ")
+    path.write_text("   \n  \t  ", encoding="utf-8")
     assert load(path) is None
 
 
 def test_load_corrupt_json_raises(tmp_path: Path):
     path = tmp_path / ".vip-install.json"
-    path.write_text("{not json")
+    path.write_text("{not json", encoding="utf-8")
     with pytest.raises(ManifestError, match="corrupt"):
         load(path)
 
 
 def test_load_unknown_schema_version_raises(tmp_path: Path):
     path = tmp_path / ".vip-install.json"
-    path.write_text(json.dumps({"version": SCHEMA_VERSION + 1, "items": []}))
+    path.write_text(json.dumps({"version": SCHEMA_VERSION + 1, "items": []}), encoding="utf-8")
     with pytest.raises(ManifestError, match="newer"):
         load(path)
 
@@ -87,7 +87,7 @@ def test_load_unknown_schema_version_raises(tmp_path: Path):
 def test_save_writes_well_formed_json(tmp_path: Path):
     path = tmp_path / ".vip-install.json"
     save(_sample_manifest(), path)
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     assert data["version"] == SCHEMA_VERSION
     assert data["host"] == "rhel10-dev.example.com"
     assert data["pending_system_packages"] == ["libdrm"]
@@ -115,7 +115,7 @@ def test_load_malformed_items_entry_missing_field_raises(tmp_path: Path):
     path = tmp_path / ".vip-install.json"
     item = {"kind": "system_package", "manager": "dnf", "installed_at": "2026-01-01T00:00:00Z"}
     data = {"version": SCHEMA_VERSION, "items": [item]}
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ManifestError, match="missing required field"):
         load(path)
 
@@ -124,7 +124,7 @@ def test_load_malformed_items_non_dict_entry_raises(tmp_path: Path):
     """A non-dict entry in 'items' should raise ManifestError, not AttributeError."""
     path = tmp_path / ".vip-install.json"
     data = {"version": SCHEMA_VERSION, "items": ["not-a-dict"]}
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ManifestError, match="is not an object"):
         load(path)
 
@@ -133,7 +133,7 @@ def test_load_items_not_a_list_raises(tmp_path: Path):
     """'items' field that is not an array should raise ManifestError."""
     path = tmp_path / ".vip-install.json"
     data = {"version": SCHEMA_VERSION, "items": 42}
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(ManifestError, match="must be an array"):
         load(path)
 
@@ -164,7 +164,8 @@ def test_save_preserves_original_error_when_cleanup_fails(tmp_path: Path, monkey
 def test_load_pending_system_packages_not_a_list_raises(tmp_path):
     path = tmp_path / ".vip-install.json"
     path.write_text(
-        json.dumps({"version": SCHEMA_VERSION, "items": [], "pending_system_packages": "abc"})
+        json.dumps({"version": SCHEMA_VERSION, "items": [], "pending_system_packages": "abc"}),
+        encoding="utf-8",
     )
     with pytest.raises(ManifestError, match="must be an array"):
         load(path)
@@ -173,7 +174,14 @@ def test_load_pending_system_packages_not_a_list_raises(tmp_path):
 def test_load_pending_system_packages_non_string_element_raises(tmp_path):
     path = tmp_path / ".vip-install.json"
     path.write_text(
-        json.dumps({"version": SCHEMA_VERSION, "items": [], "pending_system_packages": ["nss", 42]})
+        json.dumps(
+            {
+                "version": SCHEMA_VERSION,
+                "items": [],
+                "pending_system_packages": ["nss", 42],
+            }
+        ),
+        encoding="utf-8",
     )
     with pytest.raises(ManifestError, match="must contain only strings"):
         load(path)
