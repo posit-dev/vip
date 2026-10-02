@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # Substrings that mark a Workbench login / IdP URL (mirrors the private
 # _LOGIN_KEYWORDS in vip_tests.workbench.login).
-_LOGIN_URL_KEYWORDS = ("sign-in", "login", "auth")
+_LOGIN_URL_KEYWORDS = ("sign-in", "login", "auth", "/saml/acs")
 
 # Mirrors the scaled timeout constants defined in
 # vip_tests/workbench/timeouts.py.  Duplicated (not imported) so this module
