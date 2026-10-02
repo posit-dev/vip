@@ -76,8 +76,9 @@ def oidc_login_lock(workbench_url: str, *, timeout: float = _LOGIN_LOCK_TIMEOUT)
 
 
 # Keywords indicating the URL is a login/auth page (used for OIDC detection)
-# Passed to vip.auth.workbench._on_login_page in place of its SAML-aware default.
-_LOGIN_KEYWORDS = ("sign-in", "login", "auth")
+# Passed to vip.auth.workbench._on_login_page in place of its default: the broad
+# "auth" matches external IdP URLs, and "/saml/acs" is the in-flight SAML callback.
+_LOGIN_KEYWORDS = ("sign-in", "login", "auth", "/saml/acs")
 
 
 def _navigated_into_session(url: str) -> bool:

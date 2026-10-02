@@ -410,3 +410,20 @@ def test_failed_restore_does_not_touch_the_cache(monkeypatch):
         is False
     )
     assert saved == []
+
+
+_SAML_ACS_URL = "https://wb.example.com/saml/acs"
+
+
+@pytest.mark.parametrize("module", ["vip_tests.workbench.login", "vip.workbench_ui"])
+def test_saml_acs_is_a_login_page_for_the_test_side_keywords(module):
+    """A page sitting on the SAML ACS URL has not finished logging in."""
+    import importlib
+
+    from vip.auth.workbench import _on_login_page
+
+    mod = importlib.import_module(module)
+    keywords = getattr(mod, "_LOGIN_KEYWORDS", None) or mod._LOGIN_URL_KEYWORDS
+
+    assert _on_login_page(_SAML_ACS_URL, keywords)
+    assert not _on_login_page("https://wb.example.com/home", keywords)
