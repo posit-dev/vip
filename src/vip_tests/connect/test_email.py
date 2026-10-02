@@ -17,16 +17,21 @@ def email_is_enabled(email_enabled):
         pytest.skip("Email is not enabled in vip.toml")
 
 
-@when("I send a test email via the Connect API", target_fixture="email_result")
+@when("I send a test email via the Connect API", target_fixture="email_sent")
 def send_test_email(connect_client):
+    # The endpoint is admin-only and Connect sends the test message to the API
+    # key owner's address, so the user needs to be an administrator with one.
     user = connect_client.current_user()
-    email = user.get("email")
-    if not email:
+    if user.get("user_role") != "administrator":
+        pytest.skip("Sending a test email requires an administrator API key")
+    if not user.get("email"):
         pytest.skip("Current API user has no email address configured")
-    return connect_client.send_test_email(email)
+    # Raises on any non-2xx (e.g. 4xx for a mailer Connect cannot use), which
+    # fails the scenario.
+    connect_client.send_test_email()
+    return True
 
 
-@then("the email task completes without error")
-def email_task_ok(email_result):
-    # The send-test-email endpoint returns a task; verify it was accepted.
-    assert email_result is not None, "Email API returned no result"
+@then("the test email is accepted by Connect")
+def email_accepted(email_sent):
+    assert email_sent, "Connect did not accept the test email request"
