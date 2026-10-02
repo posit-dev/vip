@@ -19,7 +19,7 @@ class TestSaveAuthCache:
         from vip.auth import InteractiveAuthSession
 
         state = tmp_path / "state.json"
-        state.write_text('{"cookies": []}')
+        state.write_text('{"cookies": []}', encoding="utf-8")
         return InteractiveAuthSession(
             storage_state_path=state,
             api_key=api_key,
@@ -52,7 +52,7 @@ class TestSaveAuthCache:
         meta = cache.with_suffix(".meta.json")
         import json
 
-        assert json.loads(meta.read_text())["api_key"] == "REAL_KEY"
+        assert json.loads(meta.read_text(encoding="utf-8"))["api_key"] == "REAL_KEY"
 
     def test_writes_cache_when_connect_not_configured(self, tmp_path):
         """Workbench-only flows: api_key=None is legitimate, cache storage state."""
@@ -76,7 +76,7 @@ class TestSaveAuthCache:
         from vip.auth import InteractiveAuthSession, _save_auth_cache
 
         state = tmp_path / "state.json"
-        state.write_text('{"cookies": []}')
+        state.write_text('{"cookies": []}', encoding="utf-8")
         session = InteractiveAuthSession(
             storage_state_path=state,
             api_key="REAL",
@@ -88,7 +88,7 @@ class TestSaveAuthCache:
 
         _save_auth_cache(session, cache)
 
-        meta = json.loads(cache.with_suffix(".meta.json").read_text())
+        meta = json.loads(cache.with_suffix(".meta.json").read_text(encoding="utf-8"))
         assert meta["connect_url"] == "https://c.example.com"
         assert meta["requested_connect_url"] == "https://c.example.com/dashboard"
 
@@ -106,7 +106,7 @@ class TestLoadCachedAuth:
         from pathlib import Path as _Path
 
         cache = _Path(tmp_path) / ".vip-auth-cache.json"
-        cache.write_text('{"cookies": []}')
+        cache.write_text('{"cookies": []}', encoding="utf-8")
         cache.with_suffix(".meta.json").write_text(
             json.dumps(
                 {
@@ -115,7 +115,8 @@ class TestLoadCachedAuth:
                     "connect_url": connect_url,
                     "workbench_url": workbench_url,
                 }
-            )
+            ),
+            encoding="utf-8",
         )
         return cache
 
@@ -242,7 +243,7 @@ class TestLoadCachedAuth:
         from vip.auth import _load_cached_auth
 
         cache = _Path(tmp_path) / ".vip-auth-cache.json"
-        cache.write_text('{"cookies": []}')
+        cache.write_text('{"cookies": []}', encoding="utf-8")
         cache.with_suffix(".meta.json").write_text(
             json.dumps(
                 {
@@ -252,7 +253,8 @@ class TestLoadCachedAuth:
                     "requested_connect_url": "https://connect.example.com/dashboard",
                     "workbench_url": "",
                 }
-            )
+            ),
+            encoding="utf-8",
         )
 
         session = _load_cached_auth(
@@ -294,7 +296,7 @@ class TestCookiesFromStorageState:
         from pathlib import Path as _Path
 
         state = _Path(tmp_path) / ".vip-auth-cache.json"
-        state.write_text(json.dumps(payload))
+        state.write_text(json.dumps(payload), encoding="utf-8")
         return state
 
     def test_extracts_name_value_pairs(self, tmp_path):
@@ -328,7 +330,7 @@ class TestCookiesFromStorageState:
         from vip.auth import _cookies_from_storage_state
 
         state = _Path(tmp_path) / ".vip-auth-cache.json"
-        state.write_text("{not json")
+        state.write_text("{not json", encoding="utf-8")
 
         assert len(_cookies_from_storage_state(state).jar) == 0
 
@@ -429,7 +431,7 @@ class TestLoadCachedAuthProbesWorkbench:
         from pathlib import Path as _Path
 
         cache = _Path(tmp_path) / ".vip-auth-cache.json"
-        cache.write_text('{"cookies": [{"name": "user-id", "value": "sam"}]}')
+        cache.write_text('{"cookies": [{"name": "user-id", "value": "sam"}]}', encoding="utf-8")
         cache.with_suffix(".meta.json").write_text(
             json.dumps(
                 {
@@ -439,7 +441,8 @@ class TestLoadCachedAuthProbesWorkbench:
                     "requested_connect_url": connect_url,
                     "workbench_url": workbench_url,
                 }
-            )
+            ),
+            encoding="utf-8",
         )
         return cache
 
@@ -572,13 +575,13 @@ class TestAuthCachePath:
         import vip.plugin.auth
 
         for module in (vip.cli.cleanup, vip.plugin.auth):
-            source = _Path(module.__file__).read_text()
+            source = _Path(module.__file__).read_text(encoding="utf-8")
             assert ".vip-auth-cache.json" not in source, (
                 f"{module.__name__} builds the auth cache path inline; "
                 "call vip.auth.auth_cache_path() instead"
             )
 
-        assert ".vip-auth-cache.json" in _Path(vip.auth.cache.__file__).read_text()
+        assert ".vip-auth-cache.json" in _Path(vip.auth.cache.__file__).read_text(encoding="utf-8")
 
 
 class TestStaleCacheTriggersReauth:
@@ -593,7 +596,7 @@ class TestStaleCacheTriggersReauth:
         from pathlib import Path as _Path
 
         cache = _Path(tmp_path) / ".vip-auth-cache.json"
-        cache.write_text('{"cookies": [{"name": "user-id", "value": "sam"}]}')
+        cache.write_text('{"cookies": [{"name": "user-id", "value": "sam"}]}', encoding="utf-8")
         cache.with_suffix(".meta.json").write_text(
             json.dumps(
                 {
@@ -603,7 +606,8 @@ class TestStaleCacheTriggersReauth:
                     "requested_connect_url": "",
                     "workbench_url": "https://w.example.com",
                 }
-            )
+            ),
+            encoding="utf-8",
         )
         return cache
 
@@ -665,7 +669,7 @@ class TestProbeCookieScoping:
         from pathlib import Path as _Path
 
         state = _Path(tmp_path) / ".vip-auth-cache.json"
-        state.write_text(json.dumps({"cookies": cookies}))
+        state.write_text(json.dumps({"cookies": cookies}), encoding="utf-8")
         return state
 
     def _probe_and_capture(self, state, url):
@@ -798,9 +802,10 @@ class TestProbeDetailNamesTheEvidence:
         from vip import auth as auth_mod
 
         cache = tmp_path / ".vip-auth-cache.json"
-        cache.write_text('{"cookies": []}')
+        cache.write_text('{"cookies": []}', encoding="utf-8")
         cache.with_suffix(".meta.json").write_text(
-            json.dumps({"api_key": None, "workbench_url": "https://w.example.com"})
+            json.dumps({"api_key": None, "workbench_url": "https://w.example.com"}),
+            encoding="utf-8",
         )
         monkeypatch.setattr(
             auth_mod.cache,
@@ -830,10 +835,14 @@ class TestRefreshAuthCacheFromStorageState:
 
     def _existing_cache(self, tmp_path):
         cache = tmp_path / ".vip-auth-cache.json"
-        cache.write_text('{"cookies": [{"name": "dead", "value": "old"}], "origins": []}')
+        cache.write_text(
+            '{"cookies": [{"name": "dead", "value": "old"}], "origins": []}', encoding="utf-8"
+        )
         cache.chmod(0o600)
         meta = cache.with_suffix(".meta.json")
-        meta.write_text('{"api_key": null, "workbench_url": "https://wb.example.com"}')
+        meta.write_text(
+            '{"api_key": null, "workbench_url": "https://wb.example.com"}', encoding="utf-8"
+        )
         meta.chmod(0o600)
         return cache, meta
 
@@ -843,14 +852,14 @@ class TestRefreshAuthCacheFromStorageState:
         from vip.auth import refresh_auth_cache_from_storage_state
 
         cache, meta = self._existing_cache(tmp_path)
-        meta_before = meta.read_text()
+        meta_before = meta.read_text(encoding="utf-8")
         live = {"cookies": [{"name": "fresh", "value": "new"}], "origins": []}
 
         assert refresh_auth_cache_from_storage_state(live, cache) is True
-        assert json.loads(cache.read_text()) == live
+        assert json.loads(cache.read_text(encoding="utf-8")) == live
         # The companion metadata (api key, URLs) is unrelated to session
         # liveness and must survive untouched.
-        assert meta.read_text() == meta_before
+        assert meta.read_text(encoding="utf-8") == meta_before
 
     def test_keeps_owner_only_permissions(self, tmp_path):
         import stat
@@ -890,7 +899,9 @@ class TestRefreshAuthCacheFromStorageState:
         from vip.auth import refresh_auth_cache_from_storage_state
 
         cache, _ = self._existing_cache(tmp_path)
-        before = cache.read_text()
+        before = cache.read_text(encoding="utf-8")
 
         assert refresh_auth_cache_from_storage_state({"cookies": object()}, cache) is False
-        assert cache.read_text() == before, "a failed refresh must leave the cache intact"
+        assert cache.read_text(encoding="utf-8") == before, (
+            "a failed refresh must leave the cache intact"
+        )

@@ -34,7 +34,8 @@ class TestRuntimesConfigExcluded:
                 python_versions = ["3.11.0"]
                 r_excluded_versions = ["3.6.3", "3.5.0"]
                 python_excluded_versions = ["2.7.18"]
-            """)
+            """),
+            encoding="utf-8",
         )
         config = load_config(cfg_file)
         assert config.runtimes.r_versions == ["4.3.1", "4.4.0"]
@@ -48,7 +49,8 @@ class TestRuntimesConfigExcluded:
             textwrap.dedent("""\
                 [runtimes]
                 r_versions = ["4.3.1"]
-            """)
+            """),
+            encoding="utf-8",
         )
         config = load_config(cfg_file)
         assert config.runtimes.r_excluded_versions == []
@@ -77,7 +79,7 @@ class TestRuntimeVersionsFeatureFile:
         assert feature_path.exists(), f"Feature file not found: {feature_path}"
 
     def test_feature_has_workbench_tag(self, feature_path):
-        content = feature_path.read_text()
+        content = feature_path.read_text(encoding="utf-8")
         assert "@workbench" in content
 
     def test_feature_has_one_scenario(self, feature_path):

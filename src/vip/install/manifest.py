@@ -129,7 +129,7 @@ def load(path: Path) -> Manifest | None:
     """
     if not path.exists():
         return None
-    content = path.read_text().strip()
+    content = path.read_text(encoding="utf-8").strip()
     if not content:
         return None
     try:
@@ -223,7 +223,7 @@ def save(manifest: Manifest, path: Path) -> None:
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:
-        tmp.write_text(json.dumps(serialized, indent=2, sort_keys=False) + "\n")
+        tmp.write_text(json.dumps(serialized, indent=2, sort_keys=False) + "\n", encoding="utf-8")
         tmp.replace(path)
     except Exception:
         with contextlib.suppress(OSError):

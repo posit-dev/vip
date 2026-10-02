@@ -32,8 +32,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_cliff_header_is_exact_prefix_of_changelog():
-    header = tomllib.loads((REPO_ROOT / "cliff.toml").read_text())["changelog"]["header"]
-    changelog = (REPO_ROOT / "CHANGELOG.md").read_text()
+    header = tomllib.loads((REPO_ROOT / "cliff.toml").read_text(encoding="utf-8"))["changelog"][
+        "header"
+    ]
+    changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
     assert changelog.startswith(header), (
         "cliff.toml's [changelog] header must byte-match the start of CHANGELOG.md, "

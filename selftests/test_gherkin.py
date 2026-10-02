@@ -17,7 +17,8 @@ class TestParseFeatureFile:
             "  Scenario: User can log in\n"
             "    Given Connect is accessible\n"
             "    When a user enters credentials\n"
-            "    Then the user is authenticated\n"
+            "    Then the user is authenticated\n",
+            encoding="utf-8",
         )
         result = parse_feature_file(f)
         assert result["title"] == "Connect authentication"
@@ -41,7 +42,8 @@ class TestParseFeatureFile:
             "  Scenario: Workbench is reachable\n"
             "    Given Workbench is configured\n"
             "    When I request the health endpoint\n"
-            "    Then the server responds OK\n"
+            "    Then the server responds OK\n",
+            encoding="utf-8",
         )
         result = parse_feature_file(f)
         assert len(result["scenarios"]) == 2
@@ -59,7 +61,8 @@ class TestParseFeatureFile:
             "    And another precondition\n"
             "    When something happens\n"
             "    Then result is expected\n"
-            "    But not this other thing\n"
+            "    But not this other thing\n",
+            encoding="utf-8",
         )
         result = parse_feature_file(f)
         steps = result["scenarios"][0]["steps"]
@@ -71,7 +74,9 @@ class TestParseFeatureFile:
         subdir = tmp_path / "tests" / "connect"
         subdir.mkdir(parents=True)
         f = subdir / "test_auth.feature"
-        f.write_text("@connect\nFeature: Auth\n\n  Scenario: Login\n    Given ready\n")
+        f.write_text(
+            "@connect\nFeature: Auth\n\n  Scenario: Login\n    Given ready\n", encoding="utf-8"
+        )
         result = parse_feature_file(f, relative_to=tmp_path)
         assert result["file"] == "tests/connect/test_auth.feature"
 
@@ -83,7 +88,8 @@ class TestParseFeatureFile:
             "\n"
             "  Scenario: All endpoints use HTTPS\n"
             "    Given the server URL\n"
-            "    Then the scheme is HTTPS\n"
+            "    Then the scheme is HTTPS\n",
+            encoding="utf-8",
         )
         result = parse_feature_file(f)
         assert result["title"] == "HTTPS enforcement"
@@ -103,7 +109,8 @@ class TestParseFeatureFile:
             "    Examples:\n"
             "      | type   |\n"
             "      | shiny  |\n"
-            "      | rmd    |\n"
+            "      | rmd    |\n",
+            encoding="utf-8",
         )
         result = parse_feature_file(f)
         assert len(result["scenarios"]) == 1
@@ -117,7 +124,7 @@ def test_slow_membership_matches_decision():
     wb = Path(__file__).parent.parent / "src" / "vip_tests" / "workbench"
     slow = ["test_ide_extensions", "test_jobs", "test_git_ops", "test_publish_to_connect"]
     for name in slow:
-        text = (wb / f"{name}.feature").read_text()
+        text = (wb / f"{name}.feature").read_text(encoding="utf-8")
         assert "@slow" in text, f"{name}.feature should be tagged @slow"
     # Chronicle is deliberately kept in the basic run.
-    assert "@slow" not in (wb / "test_chronicle.feature").read_text()
+    assert "@slow" not in (wb / "test_chronicle.feature").read_text(encoding="utf-8")

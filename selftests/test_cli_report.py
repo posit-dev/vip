@@ -45,7 +45,9 @@ def _fake_quarto(create_output: bool, pdf_returncode: int = 0):
             if document == "vip-report.qmd":
                 (out / "vip-report.pdf").write_bytes(b"%PDF-fake")
             else:
-                (out / (Path(document).stem + ".html")).write_text("<html>report</html>")
+                (out / (Path(document).stem + ".html")).write_text(
+                    "<html>report</html>", encoding="utf-8"
+                )
         return types.SimpleNamespace(returncode=0)
 
     return _run
@@ -66,7 +68,7 @@ def _fake_bundled_templates(monkeypatch, tmp_path) -> Path:
     bundled.mkdir(parents=True)
     for name in _REPORT_TEMPLATE_FILES:
         (bundled / name).parent.mkdir(parents=True, exist_ok=True)
-        (bundled / name).write_text(f"packaged {name}\n")
+        (bundled / name).write_text(f"packaged {name}\n", encoding="utf-8")
     monkeypatch.setattr(importlib.resources, "files", lambda pkg: pkg_root)
     return bundled
 
@@ -93,7 +95,7 @@ class TestEnsureReportTemplates:
         report_dir.mkdir()
         _ensure_report_templates(report_dir)
 
-        assert ".badge-connect" in (report_dir / "styles.css").read_text()
+        assert ".badge-connect" in (report_dir / "styles.css").read_text(encoding="utf-8")
 
     def test_partial_template_set_is_not_complete(self, tmp_path):
         from vip.cli import _REPORT_TEMPLATE_FILES, _has_all_report_templates
@@ -101,14 +103,14 @@ class TestEnsureReportTemplates:
         report_dir = tmp_path / "report"
         report_dir.mkdir()
         # Only one of the required files present — must not count as complete.
-        (report_dir / "index.qmd").write_text("x")
+        (report_dir / "index.qmd").write_text("x", encoding="utf-8")
         assert _has_all_report_templates(report_dir) is False
 
         # Not the drift guard (see test_pyproject_force_include_matches_template_list);
         # this only verifies completeness detection once every file is present.
         for name in _REPORT_TEMPLATE_FILES:
             (report_dir / name).parent.mkdir(parents=True, exist_ok=True)
-            (report_dir / name).write_text("x")
+            (report_dir / name).write_text("x", encoding="utf-8")
         assert _has_all_report_templates(report_dir) is True
 
     def test_pyproject_force_include_matches_template_list(self):
@@ -140,11 +142,11 @@ class TestTemplateRefresh:
         report_dir.mkdir()
         _ensure_report_templates(report_dir)
         capsys.readouterr()
-        (report_dir / "styles.css").write_text("custom user styles\n")
+        (report_dir / "styles.css").write_text("custom user styles\n", encoding="utf-8")
 
         assert _ensure_report_templates(report_dir) is True
 
-        assert (report_dir / "styles.css").read_text() == "packaged styles.css\n"
+        assert (report_dir / "styles.css").read_text(encoding="utf-8") == "packaged styles.css\n"
         assert "styles.css" in capsys.readouterr().err
 
     def test_unchanged_templates_are_not_rewritten(self, tmp_path, monkeypatch, capsys):
@@ -174,7 +176,7 @@ class TestTemplateRefresh:
         report_dir.mkdir()
         _ensure_report_templates(report_dir)
         stale = report_dir / "index.qmd"
-        stale.write_text("stale local copy\n")
+        stale.write_text("stale local copy\n", encoding="utf-8")
         stale.chmod(0o444)
 
         # A failed refresh must surface rather than silently rendering the
@@ -211,7 +213,7 @@ class TestRunReportFromArbitraryDir:
         monkeypatch.chdir(tmp_path)
         report_dir = tmp_path / "report"
         report_dir.mkdir()
-        (report_dir / "results.json").write_text('{"results": []}')
+        (report_dir / "results.json").write_text('{"results": []}', encoding="utf-8")
         monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
 
         cli.run_report(_make_args())
@@ -235,7 +237,7 @@ class TestRunReportFromArbitraryDir:
 
         report_dir = tmp_path / "report"
         report_dir.mkdir()
-        (report_dir / "results.json").write_text('{"results": []}')
+        (report_dir / "results.json").write_text('{"results": []}', encoding="utf-8")
         monkeypatch.chdir(report_dir)
         monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
 
@@ -257,7 +259,7 @@ class TestRunReportFromArbitraryDir:
         monkeypatch.chdir(tmp_path)
         report_dir = tmp_path / "report"
         report_dir.mkdir()
-        (report_dir / "results.json").write_text('{"results": []}')
+        (report_dir / "results.json").write_text('{"results": []}', encoding="utf-8")
 
         captured: dict = {}
 
@@ -265,7 +267,7 @@ class TestRunReportFromArbitraryDir:
             captured["env"] = env
             out = Path(cwd) / "_output"
             out.mkdir(parents=True, exist_ok=True)
-            (out / "index.html").write_text("<html>report</html>")
+            (out / "index.html").write_text("<html>report</html>", encoding="utf-8")
             return types.SimpleNamespace(returncode=0)
 
         # A hostile VIRTUAL_ENV must not win over the explicit pin.
@@ -284,7 +286,7 @@ class TestRunReportFromArbitraryDir:
         monkeypatch.chdir(tmp_path)
         report_dir = tmp_path / "report"
         report_dir.mkdir()
-        (report_dir / "results.json").write_text('{"results": []}')
+        (report_dir / "results.json").write_text('{"results": []}', encoding="utf-8")
         # quarto "succeeds" but writes nothing — the old bug rendered silently.
         monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=False))
 
@@ -314,7 +316,7 @@ class TestRunReportFromArbitraryDir:
         monkeypatch.chdir(tmp_path)
         report_dir = tmp_path / "report"
         report_dir.mkdir()
-        (report_dir / "results.json").write_text('{"results": []}')
+        (report_dir / "results.json").write_text('{"results": []}', encoding="utf-8")
 
         def _missing_quarto(cmd, cwd=None, **kwargs):
             raise FileNotFoundError(2, "No such file or directory", cmd[0])
@@ -340,7 +342,7 @@ class TestRunReportFromArbitraryDir:
         monkeypatch.chdir(tmp_path)
         report_dir = tmp_path / "report"
         report_dir.mkdir()
-        (report_dir / "results.json").write_text('{"results": []}')
+        (report_dir / "results.json").write_text('{"results": []}', encoding="utf-8")
         monkeypatch.setattr(
             "vip.cli.report.subprocess.run", _fake_quarto(create_output=True, pdf_returncode=1)
         )
@@ -359,7 +361,7 @@ class TestRunReportFromArbitraryDir:
         monkeypatch.chdir(tmp_path)
         report_dir = tmp_path / "report"
         report_dir.mkdir()
-        (report_dir / "results.json").write_text('{"results": []}')
+        (report_dir / "results.json").write_text('{"results": []}', encoding="utf-8")
 
         rendered = []
 

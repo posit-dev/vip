@@ -521,7 +521,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     try:
         p = Path(report_path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(payload, indent=2))
+        p.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     except OSError as exc:
         warnings.warn(f"VIP: could not write report to {report_path}: {exc}", stacklevel=1)
         return
@@ -550,7 +550,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         }
         failures_path = p.parent / "failures.json"
         try:
-            failures_path.write_text(json.dumps(failures_payload, indent=2) + "\n")
+            failures_path.write_text(
+                json.dumps(failures_payload, indent=2) + "\n", encoding="utf-8"
+            )
         except OSError as exc:
             warnings.warn(
                 f"VIP: could not write failures report to {failures_path}: {exc}", stacklevel=1

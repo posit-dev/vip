@@ -122,7 +122,10 @@ class TestWorkbenchConfig:
 
     def test_test_packages_from_dict(self):
         wc = WorkbenchConfig.from_dict(
-            {"url": "https://workbench.example.com", "test_packages": ["sf", "DBI", "Matrix"]}
+            {
+                "url": "https://workbench.example.com",
+                "test_packages": ["sf", "DBI", "Matrix"],
+            }
         )
         assert wc.test_packages == ["sf", "DBI", "Matrix"]
 
@@ -132,7 +135,10 @@ class TestWorkbenchConfig:
 
     def test_test_packages_string_normalized_to_list(self):
         wc = WorkbenchConfig.from_dict(
-            {"url": "https://workbench.example.com", "test_packages": "sf"}
+            {
+                "url": "https://workbench.example.com",
+                "test_packages": "sf",
+            }
         )
         assert wc.test_packages == ["sf"]
 
@@ -146,7 +152,10 @@ class TestWorkbenchConfig:
 
     def test_idle_timeout_from_dict(self):
         wc = WorkbenchConfig.from_dict(
-            {"url": "https://workbench.example.com", "idle_timeout_minutes": 5}
+            {
+                "url": "https://workbench.example.com",
+                "idle_timeout_minutes": 5,
+            }
         )
         assert wc.idle_timeout_minutes == 5
 
@@ -160,19 +169,28 @@ class TestWorkbenchConfig:
 
     def test_idle_grace_seconds_from_dict(self):
         wc = WorkbenchConfig.from_dict(
-            {"url": "https://workbench.example.com", "idle_grace_seconds": 120}
+            {
+                "url": "https://workbench.example.com",
+                "idle_grace_seconds": 120,
+            }
         )
         assert wc.idle_grace_seconds == 120
 
     def test_repr_includes_idle_timeout(self):
         wc = WorkbenchConfig.from_dict(
-            {"url": "https://workbench.example.com", "idle_timeout_minutes": 5}
+            {
+                "url": "https://workbench.example.com",
+                "idle_timeout_minutes": 5,
+            }
         )
         assert "idle_timeout_minutes=5" in repr(wc)
 
     def test_repr_includes_idle_grace_seconds(self):
         wc = WorkbenchConfig.from_dict(
-            {"url": "https://workbench.example.com", "idle_grace_seconds": 90}
+            {
+                "url": "https://workbench.example.com",
+                "idle_grace_seconds": 90,
+            }
         )
         assert "idle_grace_seconds=90" in repr(wc)
 
@@ -186,7 +204,10 @@ class TestWorkbenchConfig:
 
     def test_chronicle_data_path_from_dict(self):
         wc = WorkbenchConfig.from_dict(
-            {"url": "https://workbench.example.com", "chronicle_data_path": "/mnt/chronicle"}
+            {
+                "url": "https://workbench.example.com",
+                "chronicle_data_path": "/mnt/chronicle",
+            }
         )
         assert wc.chronicle_data_path == "/mnt/chronicle"
 
@@ -296,7 +317,7 @@ class TestVIPConfigTLS:
 
     def test_ca_bundle_explicit(self, tmp_path):
         bundle = tmp_path / "ca.pem"
-        bundle.write_text("fake-pem")
+        bundle.write_text("fake-pem", encoding="utf-8")
         cfg = VIPConfig(ca_bundle=bundle)
         assert cfg.ca_bundle == bundle
 
@@ -587,7 +608,7 @@ class TestLoadConfigTLS:
 
     def test_ca_bundle_from_toml(self, tmp_toml, tmp_path):
         bundle = tmp_path / "corp-ca.pem"
-        bundle.write_text("fake-pem")
+        bundle.write_text("fake-pem", encoding="utf-8")
         path = tmp_toml(f'[tls]\nca_bundle = "{bundle}"\n')
         cfg = load_config(path)
         from pathlib import Path
@@ -689,7 +710,10 @@ class TestGitTestConfig:
 
     def test_none_auth_method_from_dict(self):
         cfg = GitTestConfig.from_dict(
-            {"clone_url": "https://github.com/org/repo.git", "auth_method": "none"}
+            {
+                "clone_url": "https://github.com/org/repo.git",
+                "auth_method": "none",
+            }
         )
         assert cfg.auth_method == "none"
         assert cfg.clone_url == "https://github.com/org/repo.git"
@@ -807,14 +831,14 @@ class TestVIPConfigVerify:
 
     def test_ca_bundle_returns_str_path(self, tmp_path):
         bundle = tmp_path / "ca.pem"
-        bundle.write_text("fake-pem")
+        bundle.write_text("fake-pem", encoding="utf-8")
         cfg = VIPConfig(ca_bundle=bundle)
         assert cfg.verify == str(bundle)
 
     def test_insecure_wins_over_ca_bundle(self, tmp_path):
         """insecure=True takes precedence even when ca_bundle is set."""
         bundle = tmp_path / "ca.pem"
-        bundle.write_text("fake-pem")
+        bundle.write_text("fake-pem", encoding="utf-8")
         cfg = VIPConfig(insecure=True, ca_bundle=bundle)
         assert cfg.verify is False
 
