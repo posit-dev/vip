@@ -212,10 +212,14 @@ def _parse_done_marker(content: str, done_marker: str) -> tuple[str, int] | None
 # atomic insert; the rest alternate keystroke typing and inserting, so a build
 # that ignores either mechanism still gets two tries at the other.
 _CONSOLE_DELIVERY_ORDER = ("insert", "type", "insert", "type")
-# Enter presses allowed per submit. A completion popup consumes the first Enter
-# for itself; extra Enters on an already-submitted (empty) line are harmless --
-# they just draw a fresh prompt -- so retrying costs nothing.
-_CONSOLE_SUBMIT_ATTEMPTS = 3
+# Enter presses allowed per submit, each with the time (ms) the line gets to leave
+# the input before the press is judged lost. A completion popup consumes the first
+# Enter for itself; extra Enters on an already-submitted (empty) line are harmless --
+# they just draw a fresh prompt -- so retrying costs nothing. The growing windows
+# cover a console whose GWT/Ace render lags a loaded runner, where a back-to-back
+# readback sees the stale line.
+_CONSOLE_SUBMIT_SETTLE_MS = (1_000, 2_000, 4_000)
+_CONSOLE_SUBMIT_POLL_MS = 100
 # Zero-width characters Ace can splice into its rendered text layer.
 _ZERO_WIDTH_CHARS = "\u200b\u200c\u200d\ufeff"
 
@@ -366,24 +370,36 @@ _SUBMIT_DIAGNOSTIC_JS = """() => {
 }"""
 
 
-def _console_submit_diagnostics(page: Page) -> str:
+def _console_submit_diagnostics(page: Page, line: str = "") -> str:
     """Describe the page state that explains a console line refusing to submit.
 
-    Answers the two questions the failure log cannot: does keyboard focus
-    actually sit on Ace's hidden textarea (if not, Enter never reaches the
-    editor), and is a floating overlay visible that could be consuming Enter for
-    itself. Never raises -- diagnostics must not be able to fail a test.
+    Answers the questions the failure log cannot: does keyboard focus actually
+    sit on Ace's hidden textarea (if not, Enter never reaches the editor), is a
+    floating overlay visible that could be consuming Enter for itself, is R busy
+    (the Interrupt button is showing), and how often does the console output pane
+    already contain *line* (a submitted command is echoed there; the pending
+    input line may count as one). Never raises -- diagnostics must not be able
+    to fail a test.
     """
     try:
         state = page.evaluate(_SUBMIT_DIAGNOSTIC_JS)
     except Exception as exc:  # noqa: BLE001  # pragma: no cover - defensive
         return f"submit diagnostics unavailable ({type(exc).__name__})"
     overlays = state.get("overlays") or []
-    return (
+    note = (
         f"focus={state.get('active')!r} "
         f"focusIsTextarea={state.get('activeIsTextarea')} "
         f"visibleOverlays={overlays!r}"
     )
+    try:
+        busy = page.locator(ConsolePaneSelectors.INTERRUPT_R_BTN).first.is_visible()
+        output = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT).text_content()
+        if line and isinstance(output, str):
+            echoes = _normalize_console_text(output).count(_normalize_console_text(line))
+            note += f" rBusy={busy} outputMentionsCommand={echoes}"
+    except Exception:  # noqa: BLE001
+        pass
+    return note
 
 
 def _submit_console_line(page: Page, console_input, line: str) -> str:
@@ -400,20 +416,32 @@ def _submit_console_line(page: Page, console_input, line: str) -> str:
     Enter presses are safe -- once the line is submitted the input holds no
     command, so they only draw a fresh prompt.
 
+    After each press the input is polled for a bounded window rather than read
+    once: the line leaves the input on a GWT/Ace render that can lag a loaded
+    runner, and three instant presses plus readbacks would all land inside one
+    slow frame and report a submitted line as stuck.
+
     Returns:
         "" once the line is gone, otherwise a note for the caller's failure
         message.
 
     """
     want = _normalize_console_text(line)
-    for _ in range(_CONSOLE_SUBMIT_ATTEMPTS):
+    for settle_ms in _CONSOLE_SUBMIT_SETTLE_MS:
         console_input.press("Enter")
-        if want not in _normalize_console_text(_console_input_text(console_input)):
-            return ""
+        waited = 0
+        while True:
+            if want not in _normalize_console_text(_console_input_text(console_input)):
+                return ""
+            if waited >= settle_ms:
+                break
+            page.wait_for_timeout(_CONSOLE_SUBMIT_POLL_MS)
+            waited += _CONSOLE_SUBMIT_POLL_MS
     return (
         f"the command was not submitted: it was still in the console input after "
-        f"{_CONSOLE_SUBMIT_ATTEMPTS} Enter presses. "
-        f"{_console_submit_diagnostics(page)}"
+        f"{len(_CONSOLE_SUBMIT_SETTLE_MS)} Enter presses over "
+        f"{sum(_CONSOLE_SUBMIT_SETTLE_MS)} ms. "
+        f"{_console_submit_diagnostics(page, line)}"
     )
 
 

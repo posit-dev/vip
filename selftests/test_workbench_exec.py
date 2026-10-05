@@ -1419,6 +1419,7 @@ class _AceFakeInput:
         return 1
 
     def text_content(self, timeout=None):
+        self._page.settle()
         return self._page.line + self._page.helper_node_text
 
     def inner_text(self, timeout=None):
@@ -1455,6 +1456,11 @@ class _AceFakeKeyboard:
             if self._page.swallow_enters > 0:
                 self._page.swallow_enters -= 1
                 return
+            if self._page.enter_lag_ms > 0:
+                # Slow render: the line only leaves the input once enough
+                # (virtual) time has passed for the editor to repaint.
+                self._page.pending_submit_at = self._page.clock_ms + self._page.enter_lag_ms
+                return
             self._page.submitted.append(self._page.line)
             self._page.line = ""
         elif key == "Backspace":
@@ -1470,6 +1476,9 @@ class _AceFakePage:
     - ``swallow_enters``: how many Enter presses the completion popup eats.
     - ``helper_node_text``: text from Ace's hidden helper nodes, always present
       in the input's DOM text and never part of the command.
+    - ``enter_lag_ms``: virtual milliseconds an accepted Enter takes to clear the
+      input. Time only advances through ``wait_for_timeout``, so a reader that
+      never waits never sees the line leave.
     """
 
     def __init__(
@@ -1479,7 +1488,11 @@ class _AceFakePage:
         drop_tail_on_type=None,
         swallow_enters=0,
         helper_node_text="",
+        enter_lag_ms=0,
     ):
+        self.enter_lag_ms = enter_lag_ms
+        self.clock_ms = 0
+        self.pending_submit_at: int | None = None
         self.insert_text_noop = insert_text_noop
         self.helper_node_text = helper_node_text
         self.drop_tail_on_type = list(drop_tail_on_type or [])
@@ -1493,6 +1506,15 @@ class _AceFakePage:
 
     def locator(self, selector):
         return self.input
+
+    def wait_for_timeout(self, ms):
+        self.clock_ms += ms
+
+    def settle(self):
+        if self.pending_submit_at is not None and self.clock_ms >= self.pending_submit_at:
+            self.pending_submit_at = None
+            self.submitted.append(self.line)
+            self.line = ""
 
 
 class TestNormalizeConsoleText:
@@ -1599,6 +1621,45 @@ class TestSubmitConsoleLine:
         page.line = "1 + 1"
         note = _submit_console_line(page, page.input, "1 + 1")
         assert "not submitted" in note
+
+
+class TestSubmitConsoleLineSlowRender:
+    """Live, a command landed intact, focus was on Ace's textarea, no popup was
+    open, and three Enters with instant readbacks still reported it unsubmitted:
+    the line leaves the input on a render that can lag a loaded runner.
+    """
+
+    def test_waits_for_a_lagging_render_instead_of_repressing(self):
+        page = _AceFakePage(enter_lag_ms=500)
+        page.line = "1 + 1"
+        note = _submit_console_line(page, page.input, "1 + 1")
+        assert note == ""
+        assert page.submitted == ["1 + 1"]
+        assert page.pressed == ["Enter"]
+
+    def test_a_lost_first_enter_is_still_retried_after_waiting(self):
+        page = _AceFakePage(swallow_enters=1, enter_lag_ms=500)
+        page.line = "1 + 1"
+        note = _submit_console_line(page, page.input, "1 + 1")
+        assert note == ""
+        assert page.submitted == ["1 + 1"]
+        assert page.pressed == ["Enter", "Enter"]
+
+    def test_lag_longer_than_the_first_window_is_covered_by_later_presses(self):
+        page = _AceFakePage(enter_lag_ms=2_500)
+        page.line = "1 + 1"
+        note = _submit_console_line(page, page.input, "1 + 1")
+        assert note == ""
+        assert page.submitted == ["1 + 1"]
+
+    def test_gives_up_after_a_bounded_wait(self):
+        page = _AceFakePage(enter_lag_ms=10_000_000)
+        page.line = "1 + 1"
+        note = _submit_console_line(page, page.input, "1 + 1")
+        assert "not submitted" in note
+        assert "3 Enter presses over 7000 ms" in note
+        assert page.pressed == ["Enter", "Enter", "Enter"]
+        assert page.clock_ms <= 7_000
 
 
 class TestConsoleVerificationToleratesAceHelperNodes:
@@ -1738,6 +1799,24 @@ class TestConsoleSubmitDiagnostics:
         note = _console_submit_diagnostics(page)
         assert "unavailable" in note
         assert "RuntimeError" in note
+
+    def test_reports_busy_state_and_whether_output_echoes_the_command(self):
+        """Tells "never submitted" apart from "submitted but R is busy/silent"."""
+        page = MagicMock()
+        page.evaluate.return_value = {"active": "body", "activeIsTextarea": True, "overlays": []}
+        page.locator.return_value.first.is_visible.return_value = True
+        page.locator.return_value.text_content.return_value = "> 1 + 1\n> 1  +  1"
+        note = _console_submit_diagnostics(page, "1 + 1")
+        assert "rBusy=True" in note
+        assert "outputMentionsCommand=2" in note
+
+    def test_probe_failures_do_not_raise_or_drop_the_base_note(self):
+        page = MagicMock()
+        page.evaluate.return_value = {"active": "body", "activeIsTextarea": True, "overlays": []}
+        page.locator.side_effect = RuntimeError("page closed")
+        note = _console_submit_diagnostics(page, "1 + 1")
+        assert "focusIsTextarea=True" in note
+        assert "rBusy" not in note
 
     def test_submit_note_carries_the_diagnostics(self):
         page = _AceFakePage(swallow_enters=99)
