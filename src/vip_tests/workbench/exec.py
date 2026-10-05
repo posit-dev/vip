@@ -233,6 +233,9 @@ _CONSOLE_RELOADED_ATTR = "_vip_console_reloaded"
 _CONSOLE_RELOAD_LOAD_MS = 120_000
 # Characters of console output tail quoted in the not-submitted note.
 _CONSOLE_OUTPUT_TAIL_CHARS = 300
+# Budget (ms) for each best-effort read of the console output pane. Playwright's
+# default would wait 30s on a missing element and delay the original failure.
+_CONSOLE_PROBE_TIMEOUT_MS = 2_000
 # Zero-width characters Ace can splice into its rendered text layer.
 _ZERO_WIDTH_CHARS = "\u200b\u200c\u200d\ufeff"
 
@@ -323,7 +326,9 @@ def _wait_for_console_ready(page: Page) -> bool:
 def _console_output_mentions(page: Page, line: str) -> int | None:
     """How often the console output pane contains *line*, or None if unreadable."""
     try:
-        output = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT).text_content()
+        output = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT).text_content(
+            timeout=_CONSOLE_PROBE_TIMEOUT_MS
+        )
         if isinstance(output, str):
             return _normalize_console_text(output).count(_normalize_console_text(line))
     except Exception:  # noqa: BLE001
@@ -513,7 +518,9 @@ def _console_submit_diagnostics(page: Page, line: str = "") -> str:
     except Exception:  # noqa: BLE001
         pass
     try:
-        output = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT).text_content()
+        output = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT).text_content(
+            timeout=_CONSOLE_PROBE_TIMEOUT_MS
+        )
         if isinstance(output, str):
             normalized = _normalize_console_text(output)
             note += (

@@ -1969,3 +1969,30 @@ class TestConsoleSubmitEvidence:
         assert "outputLen=400" in note
         assert "outputTail='" + "a" * 295 + "ZZZZZ'" in note
         assert "\n" not in note
+
+
+class TestConsoleProbeTimeouts:
+    """A missing output pane must not stall the failure path for Playwright's 30s default."""
+
+    def test_diagnostics_read_the_output_pane_with_a_short_timeout(self):
+        page = MagicMock()
+        page.evaluate.return_value = {"active": "body", "activeIsTextarea": True, "overlays": []}
+        page.locator.return_value.first.is_visible.return_value = False
+        page.locator.return_value.text_content.return_value = "> 1 + 1"
+        exec_mod._console_submit_diagnostics(page, "1 + 1")
+        page.locator.return_value.text_content.assert_called_once_with(timeout=2000)
+
+    def test_mentions_probe_reads_the_output_pane_with_a_short_timeout(self):
+        page = MagicMock()
+        page.locator.return_value.text_content.return_value = "> 1 + 1"
+        assert exec_mod._console_output_mentions(page, "1 + 1") == 1
+        page.locator.return_value.text_content.assert_called_once_with(timeout=2000)
+
+    def test_busy_state_survives_an_unreadable_output_pane(self):
+        page = MagicMock()
+        page.evaluate.return_value = {"active": "body", "activeIsTextarea": True, "overlays": []}
+        page.locator.return_value.first.is_visible.return_value = True
+        page.locator.return_value.text_content.side_effect = TimeoutError("no output element")
+        note = exec_mod._console_submit_diagnostics(page, "1 + 1")
+        assert "rBusy=True" in note
+        assert "outputLen" not in note
