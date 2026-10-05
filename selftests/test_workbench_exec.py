@@ -1413,13 +1413,15 @@ class _AceFakeInput:
     def focus(self, timeout=None):
         pass
 
+    def is_visible(self, timeout=None):
+        return True
+
     def count(self):
         # Stands in for both the Console tab and the console input; rstudio_eval
         # only asks whether the tab exists before clicking it.
         return 1
 
     def text_content(self, timeout=None):
-        self._page.settle()
         return self._page.line + self._page.helper_node_text
 
     def inner_text(self, timeout=None):
@@ -1453,13 +1455,10 @@ class _AceFakeKeyboard:
     def press(self, key):
         self._page.pressed.append(key)
         if key == "Enter":
+            if self._page.first_enter_ms is None:
+                self._page.first_enter_ms = self._page.clock_ms
             if self._page.swallow_enters > 0:
                 self._page.swallow_enters -= 1
-                return
-            if self._page.enter_lag_ms > 0:
-                # Slow render: the line only leaves the input once enough
-                # (virtual) time has passed for the editor to repaint.
-                self._page.pending_submit_at = self._page.clock_ms + self._page.enter_lag_ms
                 return
             self._page.submitted.append(self._page.line)
             self._page.line = ""
@@ -1476,9 +1475,6 @@ class _AceFakePage:
     - ``swallow_enters``: how many Enter presses the completion popup eats.
     - ``helper_node_text``: text from Ace's hidden helper nodes, always present
       in the input's DOM text and never part of the command.
-    - ``enter_lag_ms``: virtual milliseconds an accepted Enter takes to clear the
-      input. Time only advances through ``wait_for_timeout``, so a reader that
-      never waits never sees the line leave.
     """
 
     def __init__(
@@ -1488,11 +1484,9 @@ class _AceFakePage:
         drop_tail_on_type=None,
         swallow_enters=0,
         helper_node_text="",
-        enter_lag_ms=0,
     ):
-        self.enter_lag_ms = enter_lag_ms
         self.clock_ms = 0
-        self.pending_submit_at: int | None = None
+        self.first_enter_ms: int | None = None
         self.insert_text_noop = insert_text_noop
         self.helper_node_text = helper_node_text
         self.drop_tail_on_type = list(drop_tail_on_type or [])
@@ -1509,12 +1503,6 @@ class _AceFakePage:
 
     def wait_for_timeout(self, ms):
         self.clock_ms += ms
-
-    def settle(self):
-        if self.pending_submit_at is not None and self.clock_ms >= self.pending_submit_at:
-            self.pending_submit_at = None
-            self.submitted.append(self.line)
-            self.line = ""
 
 
 class TestNormalizeConsoleText:
@@ -1621,45 +1609,6 @@ class TestSubmitConsoleLine:
         page.line = "1 + 1"
         note = _submit_console_line(page, page.input, "1 + 1")
         assert "not submitted" in note
-
-
-class TestSubmitConsoleLineSlowRender:
-    """Live, a command landed intact, focus was on Ace's textarea, no popup was
-    open, and three Enters with instant readbacks still reported it unsubmitted:
-    the line leaves the input on a render that can lag a loaded runner.
-    """
-
-    def test_waits_for_a_lagging_render_instead_of_repressing(self):
-        page = _AceFakePage(enter_lag_ms=500)
-        page.line = "1 + 1"
-        note = _submit_console_line(page, page.input, "1 + 1")
-        assert note == ""
-        assert page.submitted == ["1 + 1"]
-        assert page.pressed == ["Enter"]
-
-    def test_a_lost_first_enter_is_still_retried_after_waiting(self):
-        page = _AceFakePage(swallow_enters=1, enter_lag_ms=500)
-        page.line = "1 + 1"
-        note = _submit_console_line(page, page.input, "1 + 1")
-        assert note == ""
-        assert page.submitted == ["1 + 1"]
-        assert page.pressed == ["Enter", "Enter"]
-
-    def test_lag_longer_than_the_first_window_is_covered_by_later_presses(self):
-        page = _AceFakePage(enter_lag_ms=2_500)
-        page.line = "1 + 1"
-        note = _submit_console_line(page, page.input, "1 + 1")
-        assert note == ""
-        assert page.submitted == ["1 + 1"]
-
-    def test_gives_up_after_a_bounded_wait(self):
-        page = _AceFakePage(enter_lag_ms=10_000_000)
-        page.line = "1 + 1"
-        note = _submit_console_line(page, page.input, "1 + 1")
-        assert "not submitted" in note
-        assert "3 Enter presses over 7000 ms" in note
-        assert page.pressed == ["Enter", "Enter", "Enter"]
-        assert page.clock_ms <= 7_000
 
 
 class TestConsoleVerificationToleratesAceHelperNodes:
@@ -1827,3 +1776,196 @@ class TestConsoleSubmitDiagnostics:
         note = _submit_console_line(page, page.input, "1 + 1")
         assert "not submitted" in note
         assert "focusIsTextarea=False" in note
+
+
+class _ConsoleLoc:
+    """Locator stand-in for the console pane elements other than the input."""
+
+    def __init__(self, page, selector):
+        self._page = page
+        self._selector = selector
+
+    @property
+    def first(self):
+        return self
+
+    def count(self):
+        return 0
+
+    def is_visible(self, timeout=None):
+        if self._selector == "[id^='rstudio_tb_interruptr']":
+            return self._page.clock_ms < self._page.busy_until_ms
+        if self._selector == "#rstudio_console_output":
+            return self._page.output_shown
+        return True
+
+    def text_content(self, timeout=None):
+        if self._selector == "#rstudio_console_output" and self._page.output_echoes_line:
+            return self._page.line
+        return ""
+
+
+class _ConsolePage(_AceFakePage):
+    """Fake RStudio page with a busy Interrupt button and a reload that can unstick Enter.
+
+    - ``busy_until_ms``: virtual time until which the Interrupt button shows.
+    - ``stuck_until_reload``: Enter is ignored until ``reload()``;
+      ``still_stuck_after_reload`` keeps it ignored afterwards too.
+    - ``output_echoes_line``: the console output pane already contains the command.
+    """
+
+    def __init__(
+        self,
+        *,
+        busy_until_ms=0,
+        stuck_until_reload=False,
+        still_stuck_after_reload=False,
+        output_echoes_line=False,
+    ):
+        super().__init__(swallow_enters=10**6 if stuck_until_reload else 0)
+        self.busy_until_ms = busy_until_ms
+        self.still_stuck_after_reload = still_stuck_after_reload
+        self.output_echoes_line = output_echoes_line
+        self.output_shown = True
+        self.reloads = 0
+
+    def locator(self, selector):
+        if selector == "#rstudio_console_input":
+            return self.input
+        return _ConsoleLoc(self, selector)
+
+    def reload(self):
+        self.reloads += 1
+        self.line = ""
+        self.swallow_enters = 10**6 if self.still_stuck_after_reload else 0
+
+
+class TestConsoleReadiness:
+    def test_ready_immediately_costs_one_poll_and_is_cached(self):
+        page = _ConsolePage()
+        assert exec_mod._wait_for_console_ready(page) is True
+        assert page.clock_ms == 250
+        assert exec_mod._wait_for_console_ready(page) is True
+        assert page.clock_ms == 250
+
+    def test_output_pane_not_shown_is_not_ready(self):
+        page = _ConsolePage()
+        page.output_shown = False
+        assert exec_mod._wait_for_console_ready(page) is False
+
+    def test_timeout_returns_false_after_the_cap_and_is_cached(self):
+        page = _ConsolePage(busy_until_ms=10**9)
+        assert exec_mod._wait_for_console_ready(page) is False
+        assert 20_000 <= page.clock_ms <= 20_250
+        spent = page.clock_ms
+        assert exec_mod._wait_for_console_ready(page) is False
+        assert page.clock_ms == spent
+
+    def test_never_raises(self):
+        page = MagicMock()
+        page.locator.side_effect = RuntimeError("page closed")
+        assert exec_mod._wait_for_console_ready(page) is False
+
+
+def _patch_eval(monkeypatch, page):
+    """Stub expect() so the end marker is "seen" only once a command was submitted."""
+
+    def to_contain_text(*args, **kwargs):
+        if not page.submitted:
+            raise AssertionError("Locator expected to contain text ...")
+
+    monkeypatch.setattr(
+        exec_mod,
+        "expect",
+        lambda *a, **k: MagicMock(to_be_visible=lambda **kw: None, to_contain_text=to_contain_text),
+    )
+    monkeypatch.setattr(exec_mod, "_extract_between_markers", lambda *a, **k: "ok")
+
+
+class TestRstudioEvalReadinessAndRecovery:
+    def test_first_enter_waits_for_the_console_to_stop_being_busy(self, monkeypatch):
+        page = _ConsolePage(busy_until_ms=3_000)
+        _patch_eval(monkeypatch, page)
+        assert exec_mod.rstudio_eval(page, "1 + 1") == "ok"
+        assert page.first_enter_ms is not None
+        assert page.first_enter_ms >= 3_000
+        assert page.reloads == 0
+
+    def test_readiness_timeout_still_proceeds(self, monkeypatch):
+        page = _ConsolePage(busy_until_ms=10**9)
+        _patch_eval(monkeypatch, page)
+        assert exec_mod.rstudio_eval(page, "1 + 1") == "ok"
+        assert page.first_enter_ms >= 20_000
+        assert len(page.submitted) == 1
+
+    def test_not_submitted_reloads_once_and_resends(self, monkeypatch):
+        page = _ConsolePage(stuck_until_reload=True)
+        _patch_eval(monkeypatch, page)
+        assert exec_mod.rstudio_eval(page, "1 + 1") == "ok"
+        assert page.reloads == 1
+        assert len(page.submitted) == 1
+
+    def test_still_stuck_after_reload_raises_with_diagnostics_after_one_reload(self, monkeypatch):
+        page = _ConsolePage(stuck_until_reload=True, still_stuck_after_reload=True)
+        page.evaluate = MagicMock(
+            return_value={"active": "body", "activeIsTextarea": False, "overlays": []}
+        )
+        _patch_eval(monkeypatch, page)
+        with pytest.raises(ExecError) as excinfo:
+            exec_mod.rstudio_eval(page, "1 + 1")
+        assert page.reloads == 1
+        assert page.submitted == []
+        assert "not submitted" in str(excinfo.value)
+        assert "reloaded=True" in str(excinfo.value)
+
+    def test_command_already_echoed_is_never_reloaded_or_resent(self, monkeypatch):
+        page = _ConsolePage(stuck_until_reload=True, output_echoes_line=True)
+        _patch_eval(monkeypatch, page)
+        with pytest.raises(ExecError) as excinfo:
+            exec_mod.rstudio_eval(page, "1 + 1")
+        assert page.reloads == 0
+        assert page.pressed.count("Enter") == 3
+        assert "reloaded=False" in str(excinfo.value)
+
+    def test_console_tab_is_clicked_only_when_the_input_is_hidden(self, monkeypatch):
+        page = _ConsolePage()
+        _patch_eval(monkeypatch, page)
+        tab = MagicMock()
+        tab.count.return_value = 1
+        original = page.locator
+        monkeypatch.setattr(
+            page,
+            "locator",
+            lambda sel: tab if sel == "#rstudio_workbench_tab_console" else original(sel),
+        )
+        exec_mod.rstudio_eval(page, "1 + 1")
+        tab.click.assert_not_called()
+
+
+class TestConsoleSubmitEvidence:
+    def test_reports_output_tail_input_state_dialogs_and_readiness(self):
+        page = MagicMock()
+        page.evaluate.return_value = {
+            "active": "textarea.ace_text-input",
+            "activeIsTextarea": True,
+            "overlays": [],
+            "dialogs": ["div.gwt-DialogBox"],
+            "input": {
+                "textarea": True,
+                "disabled": False,
+                "readOnly": True,
+                "contenteditable": None,
+            },
+        }
+        page.locator.return_value.first.is_visible.return_value = False
+        page.locator.return_value.text_content.return_value = "a" * 395 + "ZZZZZ"
+        page._vip_console_ready = False
+        note = exec_mod._console_submit_diagnostics(page, "1 + 1")
+        assert page.evaluate.call_args.args[1] == "#rstudio_console_input"
+        assert "visibleDialogs=['div.gwt-DialogBox']" in note
+        assert "'readOnly': True" in note
+        assert "readyBeforeFirstEnter=False" in note
+        assert "reloaded=False" in note
+        assert "outputLen=400" in note
+        assert "outputTail='" + "a" * 295 + "ZZZZZ'" in note
+        assert "\n" not in note
