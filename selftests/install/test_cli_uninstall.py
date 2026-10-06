@@ -472,7 +472,7 @@ def test_toml_only_conflict_warns_and_insecure_wins(tmp_path, monkeypatch, recwa
     bundle.write_text("fake-pem", encoding="utf-8")
     (tmp_path / "vip.toml").write_text(
         f'[connect]\nurl = "https://connect.example.com"\n\n'
-        f'[tls]\ninsecure = true\nca_bundle = "{bundle}"\n',
+        f"[tls]\ninsecure = true\nca_bundle = {json.dumps(str(bundle))}\n",
         encoding="utf-8",
     )
     calls = _uninstall_with_manifest(tmp_path, monkeypatch, connect_url=None)

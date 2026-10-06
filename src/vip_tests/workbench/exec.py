@@ -216,6 +216,26 @@ _CONSOLE_DELIVERY_ORDER = ("insert", "type", "insert", "type")
 # for itself; extra Enters on an already-submitted (empty) line are harmless --
 # they just draw a fresh prompt -- so retrying costs nothing.
 _CONSOLE_SUBMIT_ATTEMPTS = 3
+# Bounded wait for a freshly loaded console to finish starting R (output pane shown,
+# Interrupt button gone -- the signal rstudio-pro's own e2e waits on) before the first
+# command is delivered. A fresh session can miss its "busy -> 0" client event
+# (rstudio-pro#6598), leaving the console unresponsive; the happy path meets the
+# signal on the first polls, so the cap only bites on a stuck console.
+_CONSOLE_READY_CAP_MS = 20_000
+_CONSOLE_READY_POLL_MS = 250
+_CONSOLE_READY_STABLE_POLLS = 2
+# Page attribute caching the outcome, so the wait runs once per page, not per call.
+_CONSOLE_READY_ATTR = "_vip_console_ready"
+# Page attribute recording that the page was reloaded to recover a stuck console.
+_CONSOLE_RELOADED_ATTR = "_vip_console_reloaded"
+# Budget (ms) for the recovery reload to bring the IDE container back, matching
+# rstudio-pro's e2e page-load wait.
+_CONSOLE_RELOAD_LOAD_MS = 120_000
+# Characters of console output tail quoted in the not-submitted note.
+_CONSOLE_OUTPUT_TAIL_CHARS = 300
+# Budget (ms) for each best-effort read of the console output pane. Playwright's
+# default would wait 30s on a missing element and delay the original failure.
+_CONSOLE_PROBE_TIMEOUT_MS = 2_000
 # Zero-width characters Ace can splice into its rendered text layer.
 _ZERO_WIDTH_CHARS = "\u200b\u200c\u200d\ufeff"
 
@@ -254,6 +274,88 @@ def _normalize_console_text(text: str) -> str:
     for ch in _ZERO_WIDTH_CHARS:
         stripped = stripped.replace(ch, "")
     return re.sub(r"\s+", " ", stripped).strip()
+
+
+def _console_looks_ready(page: Page) -> bool:
+    """True when the console output pane is shown and R is not busy.
+
+    The console input is visible and typable before R finishes starting, while
+    the Interrupt button is still showing. Never raises.
+    """
+    try:
+        shown = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT).is_visible()
+        busy = page.locator(ConsolePaneSelectors.INTERRUPT_R_BTN).first.is_visible()
+    except Exception:  # noqa: BLE001
+        return False
+    return bool(shown) and not busy
+
+
+def _wait_for_console_ready(page: Page) -> bool:
+    """Wait, bounded, for the R console to look ready for a command.
+
+    Condition-based (the same state on consecutive polls), capped at
+    ``_CONSOLE_READY_CAP_MS``, and never raises: callers proceed either way and the
+    outcome is only recorded for diagnostics. The outcome is cached on *page* so
+    the wait costs at most one cap per page, and returns immediately thereafter.
+    """
+    cached = getattr(page, _CONSOLE_READY_ATTR, None)
+    if isinstance(cached, bool):
+        return cached
+    ready = False
+    try:
+        stable = 0
+        waited = 0
+        while True:
+            stable = stable + 1 if _console_looks_ready(page) else 0
+            if stable >= _CONSOLE_READY_STABLE_POLLS:
+                ready = True
+                break
+            if waited >= _CONSOLE_READY_CAP_MS:
+                break
+            page.wait_for_timeout(_CONSOLE_READY_POLL_MS)
+            waited += _CONSOLE_READY_POLL_MS
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        setattr(page, _CONSOLE_READY_ATTR, ready)
+    except Exception:  # noqa: BLE001
+        pass
+    return ready
+
+
+def _console_output_mentions(page: Page, line: str) -> int | None:
+    """How often the console output pane contains *line*, or None if unreadable."""
+    try:
+        output = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT).text_content(
+            timeout=_CONSOLE_PROBE_TIMEOUT_MS
+        )
+        if isinstance(output, str):
+            return _normalize_console_text(output).count(_normalize_console_text(line))
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _reload_console(page: Page) -> bool:
+    """Reload the IDE and wait for a ready console; True if it came back.
+
+    Recovery for a console that missed its startup client events
+    (rstudio-pro#6598): reload, wait for the IDE container and console input, then
+    for the console to look ready again. Bounded and never raises.
+    """
+    try:
+        setattr(page, _CONSOLE_RELOADED_ATTR, True)
+        setattr(page, _CONSOLE_READY_ATTR, None)
+        page.reload()
+        expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(
+            timeout=_CONSOLE_RELOAD_LOAD_MS
+        )
+        expect(page.locator(ConsolePaneSelectors.INPUT)).to_be_visible(
+            timeout=_CONSOLE_RELOAD_LOAD_MS
+        )
+    except Exception:  # noqa: BLE001
+        return False
+    return _wait_for_console_ready(page)
 
 
 def _console_input_text(console_input) -> str:
@@ -339,11 +441,12 @@ def _deliver_console_line(page: Page, console_input, line: str) -> str:
 
 
 # Probe run when a console line refuses to submit. Reports where keyboard focus
-# actually sits and whether any floating overlay (a completion popup is the
-# leading suspect for consuming Enter) is visible at that moment. Class-name
+# actually sits, whether any floating overlay (a completion popup is the leading
+# suspect for consuming Enter), dialog or Find bar is visible at that moment, and
+# the console input's enabled/editable attributes. Class-name
 # matching is deliberately loose because RStudio's popup markup is GWT-generated
 # and its exact class is not documented anywhere we can rely on.
-_SUBMIT_DIAGNOSTIC_JS = """() => {
+_SUBMIT_DIAGNOSTIC_JS = """(inputSelector) => {
   const describe = (el) => {
     if (!el) return 'none';
     const cls = (typeof el.className === 'string' ? el.className : '').trim();
@@ -358,32 +461,77 @@ _SUBMIT_DIAGNOSTIC_JS = """() => {
     .filter((el) => el.offsetParent !== null && el.getClientRects().length > 0)
     .slice(0, 6)
     .map(describe);
+  const visible = (el) => el.offsetParent !== null && el.getClientRects().length > 0;
+  const dialogs = Array.from(document.querySelectorAll(
+    '[role="dialog"],[class*="modal"],[class*="Modal"],[class*="dialog"],'
+    + '[class*="Dialog"],[class*="find"],[class*="Find"],.ace_search'))
+    .filter(visible).slice(0, 4).map(describe);
+  const input = document.querySelector(inputSelector);
+  const area = input ? input.querySelector('textarea') : null;
+  const attr = (el, name) => (el ? el.getAttribute(name) : null);
   return {
     active: describe(active),
     activeIsTextarea: !!active && active.tagName === 'TEXTAREA',
     overlays: overlays,
+    dialogs: dialogs,
+    input: input ? {
+      textarea: !!area,
+      disabled: area ? area.disabled : null,
+      readOnly: area ? area.readOnly : null,
+      contenteditable: attr(area, 'contenteditable') || attr(input, 'contenteditable'),
+    } : null,
   };
 }"""
 
 
-def _console_submit_diagnostics(page: Page) -> str:
+def _console_submit_diagnostics(page: Page, line: str = "") -> str:
     """Describe the page state that explains a console line refusing to submit.
 
-    Answers the two questions the failure log cannot: does keyboard focus
-    actually sit on Ace's hidden textarea (if not, Enter never reaches the
-    editor), and is a floating overlay visible that could be consuming Enter for
-    itself. Never raises -- diagnostics must not be able to fail a test.
+    Answers the questions the failure log cannot: does keyboard focus actually
+    sit on Ace's hidden textarea (if not, Enter never reaches the editor), is a
+    floating overlay, dialog or Find bar visible that could be consuming Enter,
+    is the input enabled and editable, was the console seen ready before the first
+    Enter (a command sent while R was still starting is ignored), is R busy (the
+    Interrupt button is showing), what the console output ends with, and how often
+    it already contains *line* (a submitted command is echoed there; the pending
+    input line may count as one). Never raises -- diagnostics must not be able
+    to fail a test.
     """
     try:
-        state = page.evaluate(_SUBMIT_DIAGNOSTIC_JS)
+        state = page.evaluate(_SUBMIT_DIAGNOSTIC_JS, ConsolePaneSelectors.INPUT)
     except Exception as exc:  # noqa: BLE001  # pragma: no cover - defensive
         return f"submit diagnostics unavailable ({type(exc).__name__})"
     overlays = state.get("overlays") or []
-    return (
+    ready = getattr(page, _CONSOLE_READY_ATTR, None)
+    note = (
         f"focus={state.get('active')!r} "
         f"focusIsTextarea={state.get('activeIsTextarea')} "
-        f"visibleOverlays={overlays!r}"
+        f"visibleOverlays={overlays!r} "
+        f"visibleDialogs={(state.get('dialogs') or [])!r} "
+        f"input={state.get('input')!r} "
+        f"readyBeforeFirstEnter={ready if isinstance(ready, bool) else 'unknown'} "
+        f"reloaded={getattr(page, _CONSOLE_RELOADED_ATTR, None) is True}"
     )
+    try:
+        busy = page.locator(ConsolePaneSelectors.INTERRUPT_R_BTN).first.is_visible()
+        note += f" rBusy={busy}"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        output = page.locator(ConsolePaneSelectors.OUTPUT_ELEMENT).text_content(
+            timeout=_CONSOLE_PROBE_TIMEOUT_MS
+        )
+        if isinstance(output, str):
+            normalized = _normalize_console_text(output)
+            note += (
+                f" outputLen={len(normalized)} "
+                f"outputTail={normalized[-_CONSOLE_OUTPUT_TAIL_CHARS:]!r}"
+            )
+            if line:
+                note += f" outputMentionsCommand={normalized.count(_normalize_console_text(line))}"
+    except Exception:  # noqa: BLE001
+        pass
+    return note
 
 
 def _submit_console_line(page: Page, console_input, line: str) -> str:
@@ -413,7 +561,7 @@ def _submit_console_line(page: Page, console_input, line: str) -> str:
     return (
         f"the command was not submitted: it was still in the console input after "
         f"{_CONSOLE_SUBMIT_ATTEMPTS} Enter presses. "
-        f"{_console_submit_diagnostics(page)}"
+        f"{_console_submit_diagnostics(page, line)}"
     )
 
 
@@ -445,6 +593,13 @@ def _deliver_terminal_line(page: Page, terminal_input, line: str) -> None:
 # ---------------------------------------------------------------------------
 # Console / cell eval primitives
 # ---------------------------------------------------------------------------
+
+
+def _deliver_and_submit(page: Page, console_input, line: str) -> tuple[list[str], bool]:
+    """Deliver and submit *line*; return the failure notes and whether submit failed."""
+    deliver_note = _deliver_console_line(page, console_input, line)
+    submit_note = _submit_console_line(page, console_input, line)
+    return [n for n in (deliver_note, submit_note) if n], bool(submit_note)
 
 
 def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
@@ -484,20 +639,21 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
     # Ensure the Console tab is active. Console and Terminal are tabs in the
     # same RStudio pane, so a prior terminal_run may have left the Terminal tab
     # selected, which hides the console input and would stall this readback.
+    # Only click it when the input is hidden: under load an occluded tab click can
+    # open a stray source document (rstudio-pro e2e build #32/#33).
+    console_input = page.locator(ConsolePaneSelectors.INPUT)
     console_tab = page.locator(ConsolePaneSelectors.TAB)
-    if console_tab.count() > 0:
+    if not console_input.is_visible() and console_tab.count() > 0:
         console_tab.click()
 
-    console_input = page.locator(ConsolePaneSelectors.INPUT)
     expect(console_input).to_be_visible(timeout=timeout)
-    notes = [
-        note
-        for note in (
-            _deliver_console_line(page, console_input, wrapped),
-            _submit_console_line(page, console_input, wrapped),
-        )
-        if note
-    ]
+    # The input is visible before R has finished starting; Enter pressed then is ignored.
+    _wait_for_console_ready(page)
+    notes, not_submitted = _deliver_and_submit(page, console_input, wrapped)
+    # A command that provably never reached the console output never ran, so
+    # reloading and sending it once more cannot double-run it (cf. issue #438).
+    if not_submitted and _console_output_mentions(page, wrapped) == 0 and _reload_console(page):
+        notes, _ = _deliver_and_submit(page, page.locator(ConsolePaneSelectors.INPUT), wrapped)
 
     console_output = page.locator(ConsolePaneSelectors.OUTPUT)
     try:
@@ -508,7 +664,9 @@ def rstudio_eval(page: Page, expr: str, timeout: int = 30_000) -> str:
         # report and the failure surfaces as a multi-kilobyte console dump
         # (including Ace's hidden font-measurement node) instead.
         detail = (
-            " Delivery diagnostics: " + "; ".join(notes) + "."
+            " Delivery diagnostics: "
+            + "; ".join(notes)
+            + f". reloaded={getattr(page, _CONSOLE_RELOADED_ATTR, None) is True}."
             if notes
             else " The command was verified to have landed in the console input "
             "and been submitted, so the console accepted it but produced no "

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 
@@ -861,6 +863,9 @@ class TestRefreshAuthCacheFromStorageState:
         # liveness and must survive untouched.
         assert meta.read_text(encoding="utf-8") == meta_before
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Windows has no POSIX owner-only (0600) mode bits"
+    )
     def test_keeps_owner_only_permissions(self, tmp_path):
         import stat
 

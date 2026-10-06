@@ -10,6 +10,7 @@ auth/UI-sweep functions are monkeypatched.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -524,7 +525,8 @@ class TestCleanupTLSFlags:
         bundle = tmp_path / "ca.pem"
         bundle.write_text("fake-pem", encoding="utf-8")
         (tmp_path / "vip.toml").write_text(
-            f'[connect]\nurl = "https://c.example.com"\n\n[tls]\nca_bundle = "{bundle}"\n',
+            f'[connect]\nurl = "https://c.example.com"\n\n'
+            f"[tls]\nca_bundle = {json.dumps(str(bundle))}\n",
             encoding="utf-8",
         )
         monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
@@ -567,7 +569,7 @@ class TestCleanupTLSFlags:
         bundle.write_text("fake-pem", encoding="utf-8")
         (tmp_path / "vip.toml").write_text(
             f'[connect]\nurl = "https://c.example.com"\n\n'
-            f'[tls]\ninsecure = true\nca_bundle = "{bundle}"\n',
+            f"[tls]\ninsecure = true\nca_bundle = {json.dumps(str(bundle))}\n",
             encoding="utf-8",
         )
         monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)

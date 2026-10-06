@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from vip.config import (
@@ -609,7 +611,7 @@ class TestLoadConfigTLS:
     def test_ca_bundle_from_toml(self, tmp_toml, tmp_path):
         bundle = tmp_path / "corp-ca.pem"
         bundle.write_text("fake-pem", encoding="utf-8")
-        path = tmp_toml(f'[tls]\nca_bundle = "{bundle}"\n')
+        path = tmp_toml(f"[tls]\nca_bundle = {json.dumps(str(bundle))}\n")
         cfg = load_config(path)
         from pathlib import Path
 
