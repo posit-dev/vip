@@ -80,7 +80,8 @@ def _collect_workbench_nodeids(tmp_path: Path, marker_expr: str | None = None) -
         cmd,
         cwd=_REPO_ROOT,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert result.returncode == 0, (

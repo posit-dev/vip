@@ -41,7 +41,8 @@ class TestScaffoldList:
         result = subprocess.run(
             [sys.executable, "-m", "vip.cli", "scaffold", "--list"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         assert result.returncode == 0
@@ -259,7 +260,8 @@ class TestScaffoldCLI:
         result = subprocess.run(
             [sys.executable, "-m", "vip.cli", "--help"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         assert "scaffold" in result.stdout
@@ -268,7 +270,8 @@ class TestScaffoldCLI:
         result = subprocess.run(
             [sys.executable, "-m", "vip.cli", "scaffold", "--help"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         assert result.returncode == 0

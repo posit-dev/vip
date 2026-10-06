@@ -411,7 +411,8 @@ class TestReportCLI:
         result = subprocess.run(
             [sys.executable, "-m", "vip.cli", "--help"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         assert result.returncode == 0
@@ -421,7 +422,8 @@ class TestReportCLI:
         result = subprocess.run(
             [sys.executable, "-m", "vip.cli", "report", "--help"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         assert result.returncode == 0

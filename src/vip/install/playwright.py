@@ -124,7 +124,8 @@ def install_chromium() -> None:
             [sys.executable, "-m", "playwright", "install", "chromium"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
         )
     except OSError as exc:

@@ -10,7 +10,13 @@ import pytest
 
 
 def test_vip_uninstall_help_lists_command():
-    cp = subprocess.run(["uv", "run", "vip", "--help"], capture_output=True, text=True, check=True)
+    cp = subprocess.run(
+        ["uv", "run", "vip", "--help"],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
     assert "uninstall" in cp.stdout
 
 
@@ -19,7 +25,8 @@ def test_vip_uninstall_no_manifest(tmp_path: Path):
         ["uv", "run", "vip", "uninstall"],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert cp.returncode != 0
@@ -54,7 +61,8 @@ def test_vip_uninstall_dry_run_prints_plan(tmp_path: Path):
         ["uv", "run", "vip", "uninstall"],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert cp.returncode == 0
@@ -94,7 +102,8 @@ def test_vip_uninstall_yes_removes_manifest(tmp_path: Path):
         ["uv", "run", "vip", "uninstall", "--yes"],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert cp.returncode == 0, cp.stdout + cp.stderr
@@ -121,7 +130,8 @@ def test_vip_uninstall_host_mismatch_refuses(tmp_path: Path):
         ["uv", "run", "vip", "uninstall"],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert cp.returncode != 0
