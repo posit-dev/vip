@@ -41,6 +41,10 @@ def _missing_encoding(path: Path) -> list[str]:
     return offenders
 
 
+def _is_true(node: ast.expr | None) -> bool:
+    return isinstance(node, ast.Constant) and node.value is True
+
+
 def _missing_subprocess_encoding(path: Path) -> list[str]:
     """Return ``file:line`` for calls in *path* that enable text mode without an encoding."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -49,10 +53,7 @@ def _missing_subprocess_encoding(path: Path) -> list[str]:
         if not isinstance(node, ast.Call):
             continue
         keywords = {k.arg: k.value for k in node.keywords}
-        text_mode = any(
-            isinstance(keywords.get(name), ast.Constant) and keywords[name].value is True
-            for name in ("text", "universal_newlines")
-        )
+        text_mode = any(_is_true(keywords.get(name)) for name in ("text", "universal_newlines"))
         if text_mode and "encoding" not in keywords:
             offenders.append(f"{path.relative_to(_REPO_ROOT)}:{node.lineno}")
     return offenders
