@@ -37,7 +37,7 @@ def _make_real_cert(path) -> None:
             "-newkey",
             "rsa:2048",
             "-keyout",
-            "/dev/null",
+            str(path.with_suffix(".key")),
             "-out",
             str(path),
             "-days",
