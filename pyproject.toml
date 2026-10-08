@@ -24,7 +24,7 @@ dependencies = [
     "playwright==1.63.0",  # exact-pinned: shapes vip run output; see docs/development.md
     "pyotp~=2.9",
     "pytest==9.1.1",  # exact-pinned; at/above CVE-2025-71176 floor (9.0.3)
-    "pytest-bdd==8.1.0",  # exact-pinned
+    "pytest-bdd==9.0.0",  # exact-pinned
     "pytest-order==1.5.0",  # exact-pinned
     "pytest-playwright==0.9.0",  # exact-pinned
     "pytest-xdist==3.8.0",  # exact-pinned
@@ -58,7 +58,7 @@ report = []
 load = [
     "locust>=2.20,<3",
     "click>=8.3.3,<9",  # PYSEC-2026-2132 fix; transitive via flask/locust
-    "msgpack>=1.2.1,<2",  # GHSA-6v7p-g79w-8964 fix; transitive via locust
+    "msgpack>=1.2.1",  # GHSA-6v7p-g79w-8964 fix; transitive via locust
     "python-engineio>=4.13.2,<5",  # CVE-2026-48802, CVE-2026-48809 fix; transitive via locust
     "python-socketio>=5.16.2,<6",  # CVE-2026-48804 fix; transitive via locust
 ]
