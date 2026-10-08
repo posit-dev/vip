@@ -148,7 +148,7 @@ class InteractiveAuthSession:
         """
         cookies = httpx.Cookies()
         try:
-            raw = json.loads(self.storage_state_path.read_text())
+            raw = json.loads(self.storage_state_path.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
                 return cookies
             for c in raw.get("cookies", []):
@@ -191,8 +191,8 @@ class InteractiveAuthSession:
             # state file would make Playwright's ``storage_state=`` load
             # fail on the next run; treating it as a live reference would
             # leak the API key until the next mint-time sweep.
-            json.loads(self._cache_path.read_text())
-            meta = json.loads(meta_path.read_text())
+            json.loads(self._cache_path.read_text(encoding="utf-8"))
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return False
         return meta.get("api_key") == self.api_key

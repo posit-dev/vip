@@ -89,7 +89,7 @@ class TestWorkbenchConfigWithKubernetes:
 class TestLoadConfigWithKubernetes:
     def test_load_config_without_k8s_section(self, tmp_path):
         toml = tmp_path / "vip.toml"
-        toml.write_text('[workbench]\nurl = "https://wb.example.com"\n')
+        toml.write_text('[workbench]\nurl = "https://wb.example.com"\n', encoding="utf-8")
         cfg = load_config(toml)
         assert cfg.workbench.kubernetes.enabled is False
         assert cfg.workbench.kubernetes.is_configured is False
@@ -101,7 +101,8 @@ class TestLoadConfigWithKubernetes:
             "[workbench.kubernetes]\n"
             "enabled = true\n"
             'namespace = "posit-team"\n'
-            "max_sessions = 5\n"
+            "max_sessions = 5\n",
+            encoding="utf-8",
         )
         cfg = load_config(toml)
         assert cfg.workbench.kubernetes.enabled is True
@@ -117,7 +118,8 @@ class TestLoadConfigWithKubernetes:
             "[workbench.kubernetes.node_pool_profiles]\n"
             '"cpu-pool" = "Small"\n'
             "[workbench.kubernetes.profile_cpu_limit]\n"
-            '"Small" = 1.0\n'
+            '"Small" = 1.0\n',
+            encoding="utf-8",
         )
         cfg = load_config(toml)
         assert cfg.workbench.kubernetes.node_pool_profiles == {"cpu-pool": "Small"}

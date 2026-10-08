@@ -15,7 +15,13 @@ def installed_rpm(names: Iterable[str]) -> set[str]:
     present: set[str] = set()
     for name in names:
         try:
-            cp = subprocess.run(["rpm", "-q", name], capture_output=True, text=True, check=False)
+            cp = subprocess.run(
+                ["rpm", "-q", name],
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
         except FileNotFoundError as exc:
             raise PackageQueryError(
                 "rpm not found on PATH; can't query RHEL-family package state"
@@ -27,7 +33,9 @@ def installed_rpm(names: Iterable[str]) -> set[str]:
 
 def _run_dpkg_query(args: list[str]) -> subprocess.CompletedProcess[str]:
     try:
-        return subprocess.run(args, capture_output=True, text=True, check=False)
+        return subprocess.run(
+            args, capture_output=True, encoding="utf-8", errors="replace", check=False
+        )
     except FileNotFoundError as exc:
         raise PackageQueryError(
             "dpkg-query not found on PATH; can't query Debian-family package state"

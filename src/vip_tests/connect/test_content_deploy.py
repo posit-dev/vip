@@ -193,7 +193,9 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         r_versions = connect_client.r_versions()
         if not r_versions:
             attest.not_applicable("No R versions available on Connect — cannot deploy Plumber")
-        manifest = json.loads((pathlib.Path(__file__).parent / "plumber_manifest.json").read_text())
+        manifest = json.loads(
+            (pathlib.Path(__file__).parent / "plumber_manifest.json").read_text(encoding="utf-8")
+        )
         manifest["platform"] = _latest_version(r_versions)
         return {
             "plumber.R": '#* @get /\nfunction() {\n  list(message = "VIP test OK")\n}\n',
@@ -266,7 +268,7 @@ def _get_bundle(name: str, connect_client) -> dict[str, str]:
         # ``r-cannot-access-repo`` when PPM does not serve transitive deps
         # anonymously.  See rmarkdown_manifest.json for the reference schema.
         manifest = json.loads(
-            (pathlib.Path(__file__).parent / "rmarkdown_manifest.json").read_text()
+            (pathlib.Path(__file__).parent / "rmarkdown_manifest.json").read_text(encoding="utf-8")
         )
         manifest["platform"] = _latest_version(r_versions)
         return {

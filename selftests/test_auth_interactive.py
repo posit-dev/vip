@@ -29,12 +29,13 @@ class TestInteractiveAuthSessionCleanup:
         from vip.auth import InteractiveAuthSession
 
         state = tmp_path / "state.json"
-        state.write_text('{"cookies": []}')
+        state.write_text('{"cookies": []}', encoding="utf-8")
         cache = tmp_path / ".vip-auth-cache.json"
         if cache_key is not None:
-            cache.write_text('{"cookies": []}')
+            cache.write_text('{"cookies": []}', encoding="utf-8")
             cache.with_suffix(".meta.json").write_text(
-                json.dumps({"api_key": cache_key, "key_name": "_vip_interactive_1"})
+                json.dumps({"api_key": cache_key, "key_name": "_vip_interactive_1"}),
+                encoding="utf-8",
             )
         return (
             InteractiveAuthSession(
@@ -87,12 +88,12 @@ class TestInteractiveAuthSessionCleanup:
         from vip.auth import InteractiveAuthSession
 
         state = tmp_path / "state.json"
-        state.write_text('{"cookies": []}')
+        state.write_text('{"cookies": []}', encoding="utf-8")
         cache = tmp_path / ".vip-auth-cache.json"
         # Meta exists and references our key, but the cache state file was
         # removed (disk pressure, manual cleanup, etc.).
         cache.with_suffix(".meta.json").write_text(
-            json.dumps({"api_key": "LIVE", "key_name": "_vip_interactive_1"})
+            json.dumps({"api_key": "LIVE", "key_name": "_vip_interactive_1"}), encoding="utf-8"
         )
         assert not cache.exists()
 
@@ -127,9 +128,9 @@ class TestInteractiveAuthSessionCleanup:
         from vip.auth import InteractiveAuthSession
 
         cache = tmp_path / ".vip-auth-cache.json"
-        cache.write_text("{not valid json")
+        cache.write_text("{not valid json", encoding="utf-8")
         cache.with_suffix(".meta.json").write_text(
-            json.dumps({"api_key": "LIVE", "key_name": "_vip_interactive_1"})
+            json.dumps({"api_key": "LIVE", "key_name": "_vip_interactive_1"}), encoding="utf-8"
         )
 
         session = InteractiveAuthSession(
@@ -177,7 +178,7 @@ class TestInteractiveAuthSessionCleanup:
         from vip.auth import InteractiveAuthSession
 
         state = tmp_path / "state.json"
-        state.write_text('{"cookies": []}')
+        state.write_text('{"cookies": []}', encoding="utf-8")
         session = InteractiveAuthSession(
             storage_state_path=state,
             api_key="LIVE",
@@ -911,7 +912,7 @@ class TestAuthenticatedPage:
 
     def _make_session(self, tmp_path) -> InteractiveAuthSession:
         state_path = tmp_path / "vip-auth-state.json"
-        state_path.write_text('{"cookies": []}')
+        state_path.write_text('{"cookies": []}', encoding="utf-8")
         return InteractiveAuthSession(storage_state_path=state_path, _tmpdir="")
 
     def test_loads_storage_state_and_yields_page(self, tmp_path):
@@ -977,7 +978,7 @@ class TestAuthenticatedPage:
         monkeypatch.delenv("NODE_EXTRA_CA_CERTS", raising=False)
         session = self._make_session(tmp_path)
         ca_file = tmp_path / "ca.pem"
-        ca_file.write_text("# fake CA")
+        ca_file.write_text("# fake CA", encoding="utf-8")
 
         captured: list[str | None] = []
 

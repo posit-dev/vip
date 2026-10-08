@@ -27,7 +27,7 @@ class TestPluginIntegration:
         result.assert_outcomes(passed=1)
         assert report_path.exists()
 
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         assert data["deployment_name"] == "Selftest"
         assert data["exit_status"] == 0
         # The subprocess should only see the single test it ran.
@@ -48,7 +48,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         result = data["results"][0]
         # Non-BDD tests should have the keys present but set to None.
         assert "scenario_title" in result
@@ -78,7 +78,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         result = data["results"][0]
         assert result["outcome"] == "skipped"
         assert result["na_version"] is True
@@ -96,7 +96,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         result = data["results"][0]
         assert result["na_version"] is False
 
@@ -118,7 +118,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         result = data["results"][0]
         assert result["outcome"] == "skipped"
         assert result["skip_reason"] == "high-concurrency localhost loads are flaky"
@@ -148,7 +148,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         result = data["results"][0]
         assert result["na_version"] is True
         assert result["skip_reason"] is not None
@@ -166,7 +166,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         assert data["results"][0]["skip_reason"] is None
 
     def test_json_report_failure_longrepr_unaffected_by_skip_change(self, selftest_pytester):
@@ -182,7 +182,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         result = data["results"][0]
         assert result["outcome"] == "failed"
         assert result["longrepr"] is not None
@@ -205,7 +205,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         from vip import __version__ as vip_version
 
         assert data["vip_version"] == vip_version
@@ -236,7 +236,7 @@ class TestPluginIntegration:
             "-m",
             "not slow",
         )
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         assert data["basic_mode"] is True
 
     def test_json_report_includes_concise_error(self, selftest_pytester):
@@ -256,7 +256,7 @@ class TestPluginIntegration:
         )
         result.assert_outcomes(failed=2)
 
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         failed = [r for r in data["results"] if r["outcome"] == "failed"]
         assert len(failed) == 2
 
@@ -284,7 +284,7 @@ class TestPluginIntegration:
         failures_path = selftest_pytester.path / "failures.json"
         assert failures_path.exists()
 
-        data = json.loads(failures_path.read_text())
+        data = json.loads(failures_path.read_text(encoding="utf-8"))
         assert len(data["failures"]) == 1
         error_summary = data["failures"][0]["error_summary"]
         assert "Config is missing" in error_summary

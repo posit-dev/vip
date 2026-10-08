@@ -34,12 +34,12 @@ def _section(markdown: str, heading: str) -> str:
 
 
 def _agents_md_fixture_names() -> set[str]:
-    section = _section(_AGENTS_MD.read_text(), "Public fixtures")
+    section = _section(_AGENTS_MD.read_text(encoding="utf-8"), "Public fixtures")
     return set(_TABLE_FIRST_CELL_CODE.findall(section))
 
 
 def _agents_md_marker_names() -> set[str]:
-    section = _section(_AGENTS_MD.read_text(), "Registered markers")
+    section = _section(_AGENTS_MD.read_text(encoding="utf-8"), "Registered markers")
     return set(_TABLE_FIRST_CELL_CODE.findall(section))
 
 
@@ -50,7 +50,7 @@ def _real_fixture_names() -> set[str]:
     ``@pytest.fixture(...)``) decorator. Parsed via AST rather than a regex so
     decorator arguments (``scope="session"``, etc.) don't need to be modeled.
     """
-    tree = ast.parse(_FIXTURES.read_text())
+    tree = ast.parse(_FIXTURES.read_text(encoding="utf-8"))
     names: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
@@ -67,7 +67,7 @@ def _real_fixture_names() -> set[str]:
 
 def _real_marker_names() -> set[str]:
     """Marker names registered via ``config.addinivalue_line("markers", ...)``."""
-    text = _PLUGIN.read_text()
+    text = _PLUGIN.read_text(encoding="utf-8")
     names: set[str] = set()
     for declaration in re.findall(r'addinivalue_line\(\s*"markers",\s*"([^"]+)"', text):
         name = re.split(r"[:(]", declaration, maxsplit=1)[0].strip()

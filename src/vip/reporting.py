@@ -223,7 +223,7 @@ def load_results(path: str | Path) -> ReportData:
     if not p.exists():
         return ReportData()
 
-    raw = json.loads(p.read_text())
+    raw = json.loads(p.read_text(encoding="utf-8"))
     results = [
         TestResult(
             nodeid=r["nodeid"],
@@ -410,7 +410,7 @@ def write_sarif(data: ReportData, path: str | Path) -> None:
 
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(doc, indent=2) + "\n")
+    p.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
 
 def _installed_vip_tests_dir() -> Path | None:

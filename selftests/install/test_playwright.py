@@ -159,7 +159,7 @@ def test_install_chromium_raises_on_failure(monkeypatch):
 
 def test_chromium_installed_false_when_cache_dir_is_a_file(tmp_path: Path):
     file_path = tmp_path / "ms-playwright"
-    file_path.write_text("not a directory")
+    file_path.write_text("not a directory", encoding="utf-8")
     assert pw.chromium_installed(file_path) is False
 
 

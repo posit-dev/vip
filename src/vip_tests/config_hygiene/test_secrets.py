@@ -31,7 +31,7 @@ def config_file_exists(request):
 
 @when("I inspect the configuration file contents", target_fixture="config_text")
 def read_config(config_path):
-    return config_path.read_text()
+    return config_path.read_text(encoding="utf-8")
 
 
 @then("no plaintext API keys or passwords are present in the file")

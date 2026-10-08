@@ -106,32 +106,32 @@ class TestVerifyLocalTestPath:
 
     def test_vip_tests_path_included_by_default(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg)))
         assert _vip_tests_path() in cmd
 
     def test_vip_tests_path_skipped_when_user_passes_test_file(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["tests/foo.py"]))
         assert _vip_tests_path() not in cmd
 
     def test_vip_tests_path_skipped_when_user_passes_nodeid(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["tests/foo.py::test_bar"]))
         assert _vip_tests_path() not in cmd
 
     def test_vip_tests_path_kept_with_flag_only_pytest_args(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["-x", "--tb=short"]))
         assert _vip_tests_path() in cmd
 
     def test_vip_tests_path_skipped_when_user_passes_directory_target(self, tmp_path):
         """A positional directory argument is a test target."""
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         target_dir = tmp_path / "my_tests"
         target_dir.mkdir()
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=[str(target_dir)]))
@@ -140,14 +140,14 @@ class TestVerifyLocalTestPath:
     def test_vip_tests_path_kept_when_dir_is_rootdir_value(self, tmp_path):
         """--rootdir value must not trigger false-positive target detection."""
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--rootdir", str(tmp_path)]))
         assert _vip_tests_path() in cmd
 
     def test_vip_tests_path_kept_when_dir_is_confcutdir_value(self, tmp_path):
         """--confcutdir value must not trigger false-positive target detection."""
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--confcutdir", str(tmp_path)]))
         assert _vip_tests_path() in cmd
 
@@ -161,7 +161,8 @@ class TestVerifyLocalSkipNotes:
             "[general]\n"
             "[connect]\nenabled = false\n"
             "[workbench]\nenabled = false\n"
-            '[package_manager]\nurl = "http://localhost:4242/"\n'
+            '[package_manager]\nurl = "http://localhost:4242/"\n',
+            encoding="utf-8",
         )
         _capture_cmd(_make_args(config=str(cfg)))
         out = capsys.readouterr().out
@@ -171,7 +172,7 @@ class TestVerifyLocalSkipNotes:
 
     def test_missing_url_says_no_url(self, tmp_path, capsys):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         _capture_cmd(_make_args(config=str(cfg)))
         out = capsys.readouterr().out
         assert "Connect no URL given" in out
@@ -186,7 +187,8 @@ class TestVerifyLocalSkipNotes:
             "[general]\n"
             '[connect]\nurl = "https://c.example.com"\n'
             '[workbench]\nurl = "https://w.example.com"\n'
-            '[package_manager]\nurl = "https://pm.example.com"\n'
+            '[package_manager]\nurl = "https://pm.example.com"\n',
+            encoding="utf-8",
         )
         _capture_cmd(_make_args(config=str(cfg)))
         out = capsys.readouterr().out
@@ -299,7 +301,8 @@ class TestVerifyLocalCredentialCheck:
         cfg.write_text(
             "[general]\n"
             '[workbench]\nurl = "https://wb.example.com"\n'
-            '[package_manager]\nurl = "https://pm.example.com"\n'
+            '[package_manager]\nurl = "https://pm.example.com"\n',
+            encoding="utf-8",
         )
         monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
@@ -311,7 +314,8 @@ class TestVerifyLocalCredentialCheck:
         cfg.write_text(
             "[general]\n"
             '[workbench]\nurl = "https://wb.example.com"\n'
-            '[package_manager]\nurl = "https://pm.example.com"\n'
+            '[package_manager]\nurl = "https://pm.example.com"\n',
+            encoding="utf-8",
         )
         monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
@@ -323,7 +327,8 @@ class TestVerifyLocalCredentialCheck:
         cfg.write_text(
             "[general]\n"
             '[workbench]\nurl = "https://wb.example.com"\n'
-            '[package_manager]\nurl = "https://pm.example.com"\n'
+            '[package_manager]\nurl = "https://pm.example.com"\n',
+            encoding="utf-8",
         )
         monkeypatch.delenv("VIP_TEST_USERNAME", raising=False)
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
@@ -357,13 +362,13 @@ class TestVerifyLocalVerbose:
 
     def test_verbose_flag_present_by_default(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg)))
         assert "-v" in cmd
 
     def test_user_pytest_args_appended_after_verbose(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["-x", "--tb=short"]))
         assert "-v" in cmd
         assert "-x" in cmd
@@ -416,7 +421,8 @@ class TestVerifyLocalConfigPath:
         cfg = tmp_path / "vip.toml"
         cfg.write_text(
             '[general]\ndeployment_name = "x"\n'
-            '[connect]\nurl = "https://myserver.example.com/pct"\n'
+            '[connect]\nurl = "https://myserver.example.com/pct"\n',
+            encoding="utf-8",
         )
         cmd = _capture_cmd(_make_args())
         cfg_args = [c for c in cmd if c.startswith("--vip-config=")]
@@ -428,7 +434,7 @@ class TestVerifyLocalConfigPath:
     def test_explicit_config_passed_as_absolute_path(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         cfg = tmp_path / "custom.toml"
-        cfg.write_text('[general]\ndeployment_name = "x"\n')
+        cfg.write_text('[general]\ndeployment_name = "x"\n', encoding="utf-8")
         cmd = _capture_cmd(_make_args(config="custom.toml"))
         cfg_args = [c for c in cmd if c.startswith("--vip-config=")]
         assert cfg_args
@@ -440,25 +446,25 @@ class TestVerifyLocalVerboseFlag:
 
     def test_verbose_flag_passes_vip_verbose(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), verbose=True))
         assert "--vip-verbose" in cmd
 
     def test_verbose_flag_disables_capture(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), verbose=True))
         assert "-s" in cmd
 
     def test_no_verbose_does_not_disable_capture(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), verbose=False))
         assert "-s" not in cmd
 
     def test_no_verbose_flag_omits_vip_verbose(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), verbose=False))
         assert "--vip-verbose" not in cmd
 
@@ -571,14 +577,14 @@ class TestConfigHygieneOptIn:
 
     def test_default_filter_excludes_config_hygiene(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg)))
         assert "not config_hygiene" in self._marker_expr(cmd)
 
     def test_explicit_category_overrides_default_filter(self, tmp_path):
         """When the user passes --categories, the default exclusion is replaced."""
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), categories="package-manager"))
         # Exactly two "-m" tokens: ``python -m pytest`` and ``-m <expr>``.
         assert cmd.count("-m") == 2
@@ -587,7 +593,7 @@ class TestConfigHygieneOptIn:
     def test_opt_in_runs_config_hygiene_tests(self, tmp_path):
         """Passing --categories config-hygiene runs exactly that category."""
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), categories="config-hygiene"))
         assert self._marker_expr(cmd) == "config_hygiene"
 
@@ -613,21 +619,21 @@ class TestPerformanceOptIn:
     def test_default_filter_excludes_performance(self, tmp_path):
         """Without --performance-tests, the marker expression excludes performance."""
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg)))
         assert "not performance" in self._marker_expr(cmd)
 
     def test_performance_tests_flag_removes_exclusion(self, tmp_path):
         """With --performance-tests, performance is no longer excluded from the expr."""
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), performance_tests=True))
         assert "not performance" not in self._marker_expr(cmd)
 
     def test_explicit_category_overrides_performance_flag(self, tmp_path):
         """When --categories is set, --performance-tests has no effect on the expr."""
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(
             _make_args(config=str(cfg), categories="connect", performance_tests=True)
         )
@@ -711,7 +717,7 @@ class TestVerifyLocalTestTimeout:
         import sys
 
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
 
         captured: dict[str, int] = {}
 
@@ -733,13 +739,13 @@ class TestVerifyLocalTestTimeout:
 
     def test_default_timeout_passed_to_subprocess(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         _cmd, kwargs = _capture_call(_make_args(config=str(cfg)))
         assert kwargs["timeout"] == DEFAULT_TEST_TIMEOUT_SECONDS
 
     def test_custom_timeout_passed_through(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         _cmd, kwargs = _capture_call(_make_args(config=str(cfg), test_timeout=600))
         assert kwargs["timeout"] == 600
 
@@ -747,7 +753,7 @@ class TestVerifyLocalTestTimeout:
         import subprocess as real_subprocess
 
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
 
         def fake_run(cmd, **kwargs):
             raise real_subprocess.TimeoutExpired(
@@ -770,7 +776,7 @@ class TestVerifyLocalTestTimeout:
 class TestHeadlessAuth:
     def test_headless_auth_flag_passed_to_pytest(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), headless_auth=True))
         assert "--headless-auth" in cmd
 
@@ -783,7 +789,7 @@ class TestHeadlessAuth:
         monkeypatch.delenv("VIP_TEST_PASSWORD", raising=False)
         monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
         cfg = tmp_path / "vip.toml"
-        cfg.write_text('[general]\n[connect]\nurl = "https://c.example.com"\n')
+        cfg.write_text('[general]\n[connect]\nurl = "https://c.example.com"\n', encoding="utf-8")
         # Without headless_auth, missing credentials raise ConfigError.
         with pytest.raises(ConfigError) as exc_info:
             run_verify(_make_args(config=str(cfg)))
@@ -829,7 +835,9 @@ class TestAuthCliFlags:
         """With no --idp flag, inherit provider and idp from existing vip.toml."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "saml"\nidp = "okta"\n')
+        (tmp_path / "vip.toml").write_text(
+            '[general]\n[auth]\nprovider = "saml"\nidp = "okta"\n', encoding="utf-8"
+        )
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
@@ -845,7 +853,9 @@ class TestAuthCliFlags:
         """Explicit --idp takes precedence over vip.toml's idp."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "saml"\nidp = "okta"\n')
+        (tmp_path / "vip.toml").write_text(
+            '[general]\n[auth]\nprovider = "saml"\nidp = "okta"\n', encoding="utf-8"
+        )
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
@@ -863,7 +873,9 @@ class TestAuthCliFlags:
         """A non-default provider (ldap) in vip.toml is inherited even without idp."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "ldap"\n')
+        (tmp_path / "vip.toml").write_text(
+            '[general]\n[auth]\nprovider = "ldap"\n', encoding="utf-8"
+        )
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
@@ -883,7 +895,9 @@ class TestAuthCliFlags:
         """
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "ldap"\n')
+        (tmp_path / "vip.toml").write_text(
+            '[general]\n[auth]\nprovider = "ldap"\n', encoding="utf-8"
+        )
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
@@ -901,7 +915,9 @@ class TestAuthCliFlags:
         """--idp should keep an inherited IdP-class provider (saml/oauth2)."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "oauth2"\n')
+        (tmp_path / "vip.toml").write_text(
+            '[general]\n[auth]\nprovider = "oauth2"\n', encoding="utf-8"
+        )
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
@@ -919,7 +935,7 @@ class TestAuthCliFlags:
         """A malformed local vip.toml should not crash a URL-driven CLI invocation."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        (tmp_path / "vip.toml").write_text("this is = not valid toml [[[")
+        (tmp_path / "vip.toml").write_text("this is = not valid toml [[[", encoding="utf-8")
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
@@ -957,7 +973,9 @@ class TestProviderCliFlag:
         """--provider wins over a provider already declared in vip.toml."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "oauth2"\nidp = "okta"\n')
+        (tmp_path / "vip.toml").write_text(
+            '[general]\n[auth]\nprovider = "oauth2"\nidp = "okta"\n', encoding="utf-8"
+        )
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
@@ -975,7 +993,9 @@ class TestProviderCliFlag:
         """Without --provider, vip.toml's declared provider is unchanged."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
-        (tmp_path / "vip.toml").write_text('[general]\n[auth]\nprovider = "oauth2"\n')
+        (tmp_path / "vip.toml").write_text(
+            '[general]\n[auth]\nprovider = "oauth2"\n', encoding="utf-8"
+        )
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
@@ -1038,7 +1058,7 @@ class TestVerifyLocalTLSFlags:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         bundle = tmp_path / "ca.pem"
-        bundle.write_text("fake-pem")
+        bundle.write_text("fake-pem", encoding="utf-8")
         from vip.cli import _generate_temp_config
         from vip.config import load_config
 
@@ -1059,7 +1079,7 @@ class TestVerifyLocalTLSFlags:
 
         path = _generate_temp_config(_make_args(connect_url="https://c.example.com"))
         try:
-            content = Path(path).read_text()
+            content = Path(path).read_text(encoding="utf-8")
             assert "[tls]" not in content
         finally:
             Path(path).unlink(missing_ok=True)
@@ -1071,7 +1091,7 @@ class TestVerifyLocalTLSFlags:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         bundle = tmp_path / "ca.pem"
-        bundle.write_text("fake-pem")
+        bundle.write_text("fake-pem", encoding="utf-8")
         from vip.cli import _generate_temp_config
 
         path = None
@@ -1114,7 +1134,7 @@ class TestVerifyLocalTLSFlags:
                         ca_bundle=missing_bundle,
                     )
                 )
-            content = Path(path).read_text()
+            content = Path(path).read_text(encoding="utf-8")
             assert "ca_bundle" not in content, (
                 "ca_bundle must not appear in the temp config when --insecure is set"
             )
@@ -1244,7 +1264,8 @@ class TestVerifyLocalSnowflakeApiAuthGuard:
         cfg = tmp_path / "vip.toml"
         cfg.write_text(
             '[package_manager]\nurl = "https://pm.example.com"\n'
-            '[auth]\nprovider = "oauth2"\nidp = "snowflake"\n'
+            '[auth]\nprovider = "oauth2"\nidp = "snowflake"\n',
+            encoding="utf-8",
         )
         from vip.cli import run_verify
         from vip.errors import ConfigError
@@ -1353,7 +1374,7 @@ class TestVerifyDefaultXdist:
 
     def test_default_run_injects_n_2_and_dist_loadgroup(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg)))
         assert "-n" in cmd
         assert cmd[cmd.index("-n") + 1] == "2"
@@ -1362,7 +1383,7 @@ class TestVerifyDefaultXdist:
 
     def test_user_numprocesses_split_form_not_overridden(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["-n", "4"]))
         # The vip-supplied default pair must not appear...
         assert not any(cmd[i] == "-n" and cmd[i + 1] == "2" for i in range(len(cmd) - 1))
@@ -1371,28 +1392,28 @@ class TestVerifyDefaultXdist:
 
     def test_user_numprocesses_glued_form_not_overridden(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["-n4"]))
         assert "-n4" in cmd
         assert not any(cmd[i] == "-n" and cmd[i + 1] == "2" for i in range(len(cmd) - 1))
 
     def test_user_numprocesses_long_glued_form_not_overridden(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--numprocesses=8"]))
         assert "--numprocesses=8" in cmd
         assert not any(cmd[i] == "-n" and cmd[i + 1] == "2" for i in range(len(cmd) - 1))
 
     def test_p_no_xdist_disables_both_defaults(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["-p", "no:xdist"]))
         assert not any(cmd[i] == "-n" and cmd[i + 1] == "2" for i in range(len(cmd) - 1))
         assert "--dist" not in cmd
 
     def test_user_dist_load_not_overridden(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--dist", "load"]))
         assert not any(
             cmd[i] == "--dist" and cmd[i + 1] == "loadgroup" for i in range(len(cmd) - 1)
@@ -1404,7 +1425,7 @@ class TestVerifyDefaultXdist:
         later -n/--dist in pytest_args still wins in edge cases.
         """
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), pytest_args=["--tb=short"]))
         assert cmd.index("-n") < cmd.index("--tb=short")
         assert cmd.index("--dist") < cmd.index("--tb=short")
@@ -1415,19 +1436,19 @@ class TestFormatFlag:
 
     def test_format_forwarded(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), format="json,junit,sarif"))
         assert "--vip-format=json,junit,sarif" in cmd
 
     def test_default_format_is_json(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg)))
         assert "--vip-format=json" in cmd
 
     def test_ci_flag_bundles_formats_and_tb_short(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), ci=True))
         assert "--vip-format=json,junit,sarif" in cmd
         assert "--tb=short" in cmd
@@ -1455,7 +1476,7 @@ class TestFormatFlag:
 
     def test_ci_overrides_explicit_format(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), ci=True, format="json"))
         assert "--vip-format=json,junit,sarif" in cmd
 
@@ -1504,7 +1525,7 @@ class TestVerifyProxyFlagWithConfig:
 
     def _write_config(self, tmp_path) -> str:
         cfg = tmp_path / "vip.toml"
-        cfg.write_text('[connect]\nurl = "https://connect.example.com"\n')
+        cfg.write_text('[connect]\nurl = "https://connect.example.com"\n', encoding="utf-8")
         return str(cfg)
 
     def test_proxy_flag_with_config_warns(self, tmp_path, monkeypatch, capsys):
@@ -1583,14 +1604,14 @@ class TestAllowUnprovenFlag:
 
     def test_flag_forwarded_to_pytest_when_set(self, tmp_path):
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), allow_unproven=True))
         assert "--vip-allow-unproven" in cmd
 
     def test_flag_absent_by_default(self, tmp_path):
         # Default is strict: an unverified check fails the run.
         cfg = tmp_path / "vip.toml"
-        cfg.write_text("[general]\n")
+        cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), allow_unproven=False))
         assert "--vip-allow-unproven" not in cmd
 

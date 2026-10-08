@@ -115,7 +115,7 @@ def tmp_toml(tmp_path: Path):
 
     def _write(content: str) -> Path:
         p = tmp_path / "vip.toml"
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
         return p
 
     return _write
@@ -190,5 +190,5 @@ def sample_results_json(tmp_path: Path) -> Path:
         ],
     }
     p = tmp_path / "results.json"
-    p.write_text(json.dumps(data))
+    p.write_text(json.dumps(data), encoding="utf-8")
     return p
