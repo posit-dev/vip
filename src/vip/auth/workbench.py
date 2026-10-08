@@ -98,7 +98,7 @@ def _on_login_page(url: str, keywords: tuple[str, ...] = _LOGIN_KEYWORDS) -> boo
     """Return True if *url* looks like a login page or an in-flight auth callback.
 
     *keywords* defaults to this module's tuple. The Workbench test helpers pass
-    their own tuple, which matches any ``auth`` URL but not ``/saml/acs``.
+    their own tuple, which matches any ``auth`` URL as well as ``/saml/acs``.
 
     ``/saml/acs`` is Workbench's SAML Assertion Consumer Service endpoint --
     the raw POST target the IdP redirects to before Workbench validates the
