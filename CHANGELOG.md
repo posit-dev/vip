@@ -3,6 +3,33 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.10.1 (2026-10-08)
+
+### Bug Fixes
+
+- **ci**: Point declared Package Manager URL at p3m.dev ([#747](https://github.com/posit-dev/vip/pull/747), [`3cfcb2a`](https://github.com/posit-dev/vip/commit/3cfcb2abce6cae09b3180ea241542a3c600bdf16))
+
+- **connect**: Parse bare array from tag content endpoint in VIP sweep ([#748](https://github.com/posit-dev/vip/pull/748), [`21de7be`](https://github.com/posit-dev/vip/commit/21de7be2bd812cbd3ac076c509f3f36457120abe))
+
+- **deps**: Bump urllib3 to 2.8.0 for three new advisories ([#749](https://github.com/posit-dev/vip/pull/749), [`c4629ed`](https://github.com/posit-dev/vip/commit/c4629ed467675f74c911414b9476050e837df448))
+
+- **workbench**: Wait for RStudio console ready and reload when a line is not submitted ([#763](https://github.com/posit-dev/vip/pull/763), [`e64ac63`](https://github.com/posit-dev/vip/commit/e64ac63e62c2c43a5fadd062286eba2c633d70e8))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group across 1 directory with 3 updates ([#755](https://github.com/posit-dev/vip/pull/755), [`a65e432`](https://github.com/posit-dev/vip/commit/a65e43213006120b1852f3035297c4f599247c2d))
+
+- **deps**: Bump the python-dependencies group across 1 directory with 3 updates ([#758](https://github.com/posit-dev/vip/pull/758), [`5ddcad8`](https://github.com/posit-dev/vip/commit/5ddcad8bbac6703e32acff488a2bfff7e1f99687))
+
+### Continuous Integration
+
+- Add informational Windows selftest job and fix its failures ([#765](https://github.com/posit-dev/vip/pull/765), [`a09ac66`](https://github.com/posit-dev/vip/commit/a09ac665c93593da8a1f012fa8a7985d0895aa15))
+
+### Testing
+
+- **workbench**: Log where the page lands after suspend/resume Launch ([#750](https://github.com/posit-dev/vip/pull/750), [`1d4a692`](https://github.com/posit-dev/vip/commit/1d4a6925235a14033a6c47491de67dc1f67b2bb7))
+
+
 ## v2026.10.0 (2026-10-01)
 
 ### Chores
