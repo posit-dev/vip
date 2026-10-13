@@ -35,7 +35,7 @@ def _decorator_name(node: ast.expr) -> str | None:
 
 def _mis_named_steps(path: Path) -> list[str]:
     """Return names of step-decorated functions in *path* that start with ``test_``."""
-    tree = ast.parse(path.read_text(), filename=str(path))
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     offenders: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef):

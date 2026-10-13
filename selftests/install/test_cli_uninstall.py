@@ -10,7 +10,13 @@ import pytest
 
 
 def test_vip_uninstall_help_lists_command():
-    cp = subprocess.run(["uv", "run", "vip", "--help"], capture_output=True, text=True, check=True)
+    cp = subprocess.run(
+        ["uv", "run", "vip", "--help"],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
     assert "uninstall" in cp.stdout
 
 
@@ -19,7 +25,8 @@ def test_vip_uninstall_no_manifest(tmp_path: Path):
         ["uv", "run", "vip", "uninstall"],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert cp.returncode != 0
@@ -48,13 +55,14 @@ def test_vip_uninstall_dry_run_prints_plan(tmp_path: Path):
         ],
         "pending_system_packages": [],
     }
-    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     cp = subprocess.run(
         ["uv", "run", "vip", "uninstall"],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert cp.returncode == 0
@@ -88,13 +96,14 @@ def test_vip_uninstall_yes_removes_manifest(tmp_path: Path):
         ],
         "pending_system_packages": [],
     }
-    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     cp = subprocess.run(
         ["uv", "run", "vip", "uninstall", "--yes"],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert cp.returncode == 0, cp.stdout + cp.stderr
@@ -115,13 +124,14 @@ def test_vip_uninstall_host_mismatch_refuses(tmp_path: Path):
         "items": [],
         "pending_system_packages": [],
     }
-    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     cp = subprocess.run(
         ["uv", "run", "vip", "uninstall"],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert cp.returncode != 0
@@ -147,7 +157,7 @@ def test_run_uninstall_silent_when_vip_toml_missing(tmp_path, monkeypatch, capsy
         "items": [],
         "pending_system_packages": [],
     }
-    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest), encoding="utf-8")
     # Note: NO vip.toml in tmp_path.
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("VIP_CONFIG", raising=False)
@@ -186,9 +196,9 @@ def test_run_uninstall_warns_on_malformed_vip_toml(tmp_path, monkeypatch, capsys
         "items": [],
         "pending_system_packages": [],
     }
-    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest), encoding="utf-8")
     # Malformed TOML.
-    (tmp_path / "vip.toml").write_text("[connect\nurl = bogus")
+    (tmp_path / "vip.toml").write_text("[connect\nurl = bogus", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("VIP_CONFIG", raising=False)
 
@@ -274,7 +284,7 @@ def test_run_uninstall_chained_cleanup_invokes_connect_client(tmp_path, monkeypa
         ],
         "pending_system_packages": [],
     }
-    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)
 
@@ -341,7 +351,7 @@ def test_insecure_flag_parses(monkeypatch):
 
 def test_ca_bundle_flag_parses_as_path(monkeypatch, tmp_path):
     bundle = tmp_path / "ca.pem"
-    bundle.write_text("fake-pem")
+    bundle.write_text("fake-pem", encoding="utf-8")
     args = _parse_uninstall(monkeypatch, "--ca-bundle", str(bundle))
     assert args.ca_bundle == bundle
     assert isinstance(args.ca_bundle, Path)
@@ -370,7 +380,7 @@ def _uninstall_with_manifest(tmp_path, monkeypatch, **arg_overrides):
         "items": [],
         "pending_system_packages": [],
     }
-    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest), encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("VIP_CONFIG", raising=False)
 
@@ -421,7 +431,7 @@ def test_insecure_flag_reaches_connect_client_with_no_vip_toml(tmp_path, monkeyp
 
 def test_ca_bundle_flag_reaches_connect_client(tmp_path, monkeypatch):
     bundle = tmp_path / "ca.pem"
-    bundle.write_text("fake-pem")
+    bundle.write_text("fake-pem", encoding="utf-8")
     calls = _uninstall_with_manifest(tmp_path, monkeypatch, ca_bundle=bundle)
     assert calls["ca_bundle"] == bundle
 
@@ -434,14 +444,14 @@ def test_toml_insecure_reaches_connect_client_with_connect_url_flag(tmp_path, mo
     vip.toml's [tls] settings at all -- this is the combination that was
     actually broken.
     """
-    (tmp_path / "vip.toml").write_text("[tls]\ninsecure = true\n")
+    (tmp_path / "vip.toml").write_text("[tls]\ninsecure = true\n", encoding="utf-8")
     calls = _uninstall_with_manifest(tmp_path, monkeypatch)
     assert calls["insecure"] is True
 
 
 def test_insecure_and_ca_bundle_together_warns_and_insecure_wins(tmp_path, monkeypatch, recwarn):
     bundle = tmp_path / "ca.pem"
-    bundle.write_text("fake-pem")
+    bundle.write_text("fake-pem", encoding="utf-8")
     calls = _uninstall_with_manifest(tmp_path, monkeypatch, insecure=True, ca_bundle=bundle)
     assert calls["insecure"] is True
     assert calls["ca_bundle"] is None
@@ -459,10 +469,11 @@ def test_toml_only_conflict_warns_and_insecure_wins(tmp_path, monkeypatch, recwa
     vip.toml warns here but would not warn for `vip verify --config vip.toml`.
     """
     bundle = tmp_path / "ca.pem"
-    bundle.write_text("fake-pem")
+    bundle.write_text("fake-pem", encoding="utf-8")
     (tmp_path / "vip.toml").write_text(
         f'[connect]\nurl = "https://connect.example.com"\n\n'
-        f"[tls]\ninsecure = true\nca_bundle = {json.dumps(str(bundle))}\n"
+        f"[tls]\ninsecure = true\nca_bundle = {json.dumps(str(bundle))}\n",
+        encoding="utf-8",
     )
     calls = _uninstall_with_manifest(tmp_path, monkeypatch, connect_url=None)
     assert calls["insecure"] is True

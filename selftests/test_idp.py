@@ -148,7 +148,7 @@ class TestOktaUsesTotpGetCode:
 
         import vip.idp as _idp_mod
 
-        src = Path(_idp_mod.__file__).read_text()
+        src = Path(_idp_mod.__file__).read_text(encoding="utf-8")
         assert "totp.get_code" in src, "Okta strategy must use totp.get_code"
         # The bare interactive prompt must no longer appear next to "Okta"
         # comments / Okta TOTP fill site.

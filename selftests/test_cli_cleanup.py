@@ -39,7 +39,7 @@ def _make_args(**overrides) -> argparse.Namespace:
 
 def _fake_session(tmp_path: Path) -> InteractiveAuthSession:
     state_path = tmp_path / "vip-auth-state.json"
-    state_path.write_text('{"cookies": []}')
+    state_path.write_text('{"cookies": []}', encoding="utf-8")
     return InteractiveAuthSession(storage_state_path=state_path, _tmpdir="")
 
 
@@ -221,7 +221,7 @@ class TestConnectWorkbenchRouting:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         (tmp_path / "vip.toml").write_text(
-            '[workbench]\nurl = "https://wb-from-config.example.com"\n'
+            '[workbench]\nurl = "https://wb-from-config.example.com"\n', encoding="utf-8"
         )
 
         called = {}
@@ -476,7 +476,7 @@ class TestCleanupTLSFlags:
 
     def test_ca_bundle_flag_parses_as_path(self, tmp_path):
         bundle = tmp_path / "ca.pem"
-        bundle.write_text("fake-pem")
+        bundle.write_text("fake-pem", encoding="utf-8")
         args = self._parse_cleanup(
             "--connect-url", "https://c.example.com", "--ca-bundle", str(bundle)
         )
@@ -500,7 +500,7 @@ class TestCleanupTLSFlags:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         bundle = tmp_path / "ca.pem"
-        bundle.write_text("fake-pem")
+        bundle.write_text("fake-pem", encoding="utf-8")
         monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         vip.cli.run_cleanup(_make_args(connect_url="https://c.example.com", ca_bundle=bundle))
@@ -511,7 +511,7 @@ class TestCleanupTLSFlags:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         (tmp_path / "vip.toml").write_text(
-            '[connect]\nurl = "https://c.example.com"\n\n[tls]\ninsecure = true\n'
+            '[connect]\nurl = "https://c.example.com"\n\n[tls]\ninsecure = true\n', encoding="utf-8"
         )
         monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
@@ -523,10 +523,11 @@ class TestCleanupTLSFlags:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         bundle = tmp_path / "ca.pem"
-        bundle.write_text("fake-pem")
+        bundle.write_text("fake-pem", encoding="utf-8")
         (tmp_path / "vip.toml").write_text(
             f'[connect]\nurl = "https://c.example.com"\n\n'
-            f"[tls]\nca_bundle = {json.dumps(str(bundle))}\n"
+            f"[tls]\nca_bundle = {json.dumps(str(bundle))}\n",
+            encoding="utf-8",
         )
         monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
@@ -540,7 +541,7 @@ class TestCleanupTLSFlags:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         bundle = tmp_path / "ca.pem"
-        bundle.write_text("fake-pem")
+        bundle.write_text("fake-pem", encoding="utf-8")
         monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 
         vip.cli.run_cleanup(
@@ -565,10 +566,11 @@ class TestCleanupTLSFlags:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         bundle = tmp_path / "ca.pem"
-        bundle.write_text("fake-pem")
+        bundle.write_text("fake-pem", encoding="utf-8")
         (tmp_path / "vip.toml").write_text(
             f'[connect]\nurl = "https://c.example.com"\n\n'
-            f"[tls]\ninsecure = true\nca_bundle = {json.dumps(str(bundle))}\n"
+            f"[tls]\ninsecure = true\nca_bundle = {json.dumps(str(bundle))}\n",
+            encoding="utf-8",
         )
         monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
 

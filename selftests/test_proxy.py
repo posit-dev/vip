@@ -1447,7 +1447,7 @@ def test_authenticated_page_uses_the_proxy_for_the_workbench_url(monkeypatch, tm
     from vip.auth import InteractiveAuthSession, authenticated_page
 
     state = tmp_path / "state.json"
-    state.write_text('{"cookies": [], "origins": []}')
+    state.write_text('{"cookies": [], "origins": []}', encoding="utf-8")
     session = InteractiveAuthSession(storage_state_path=state, _workbench_url="http://wb.internal")
 
     seen = _launched_proxy(monkeypatch)

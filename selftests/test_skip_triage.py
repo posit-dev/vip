@@ -63,7 +63,7 @@ def imports_attest(text: str) -> bool:
 def test_triaged_file_has_no_unclassified_skip(relpath: str):
     path = _SRC / relpath
     assert path.exists(), f"{relpath} moved or was deleted; update TRIAGED_FILES"
-    offenders = [f"{relpath}:{n}" for n in find_bare_skips(path.read_text())]
+    offenders = [f"{relpath}:{n}" for n in find_bare_skips(path.read_text(encoding="utf-8"))]
     assert not offenders, (
         "bare pytest.skip() in a triaged file -- say which kind of skip this is "
         "with attest.unproven() or attest.not_applicable():\n  " + "\n  ".join(offenders)
@@ -73,7 +73,7 @@ def test_triaged_file_has_no_unclassified_skip(relpath: str):
 @pytest.mark.parametrize("relpath", TRIAGED_FILES)
 def test_triaged_file_actually_uses_the_helpers(relpath: str):
     """Guards against 'triaging' a file by deleting its skips."""
-    text = (_SRC / relpath).read_text()
+    text = (_SRC / relpath).read_text(encoding="utf-8")
     assert imports_attest(text), f"{relpath} is listed as triaged but never imports attest"
 
 

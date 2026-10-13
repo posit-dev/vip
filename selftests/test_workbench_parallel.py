@@ -356,7 +356,7 @@ class TestIdeLaunchOutcomeHookIntegration:
             return {}
         import json
 
-        return json.loads(outcomes_path.read_text())
+        return json.loads(outcomes_path.read_text(encoding="utf-8"))
 
     def test_setup_skip_is_recorded_even_though_call_never_runs(self, pytester):
         pytester.makepyfile(
