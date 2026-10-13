@@ -205,7 +205,7 @@ Key principles:
 | `src/vip_tests/workbench/naming.py` | Worker-scoped Workbench session names: `current_worker_id`, `vip_session_prefix`, `capacity_session_prefix`, `k8s_session_prefix`, `unique_session_name` — see "Workbench session ownership" below |
 | `src/vip_tests/workbench/capacity.py` | Resource-profile detection and capping shared by `test_session_capacity.py` and `test_session_capacity_k8s.py` (`ResourceProfileDisabledError`) |
 | `src/vip_tests/workbench/cleanup.py` | Cookie-based Workbench session cleanup and the autouse cleanup fixtures |
-| `src/vip_tests/workbench/sessions.py` | Session-state waits, failure/timeout messages, and the unproven-skip helpers for Workbench scenarios |
+| `src/vip_tests/workbench/sessions.py` | Session-state waits, failure/timeout messages, and the unproven-skip helpers for Workbench scenarios, plus `join_session` — the one way to click a session's join link (waits for Active, retries the click once with a warning, fails if the browser never enters the session). Don't hand-roll `a[title='join ...']` clicks in step files |
 | `src/vip_tests/workbench/login.py` | Workbench login: the cross-worker OIDC login lock, silent SSO, and `workbench_login` |
 | `src/vip_tests/workbench/exec.py` | In-session execution primitives for Workbench IDE tests, using marker-bracketed capture to extract console output |
 | `src/vip_tests/workbench/chronicle_probe.py` | Builds the in-session Chronicle raw-chunk probe expression from `chronicle_probe.R`, kept separate so it's unit-testable without a browser |

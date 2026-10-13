@@ -80,41 +80,6 @@ def oidc_login_lock(workbench_url: str, *, timeout: float = _LOGIN_LOCK_TIMEOUT)
 _LOGIN_KEYWORDS = ("sign-in", "login", "auth")
 
 
-def _navigated_into_session(url: str) -> bool:
-    """Return True if *url* is inside a session, not the homepage.
-
-    Workbench's homepage is itself served under a "/s/<id>/" URL (its
-    "workspaces" view), so a bare "/s/" check can't tell the two apart. A
-    real session URL has no "workspaces" segment after the id.
-    """
-    segments = [s for s in urlparse(url).path.split("/") if s]
-    if len(segments) < 2 or segments[0] != "s":
-        return False
-    return "workspaces" not in segments
-
-
-def wait_for_resume_navigation(page: Page, timeout: int) -> bool:
-    """Wait for the browser to land inside a session after the resume Launch click.
-
-    Returns True once the URL is a real session URL. Returns False, after
-    logging the page URL and every open tab's URL, if it never gets there:
-    Workbench may resume in place (the page stays on the homepage) or open
-    the session in another tab, so a timeout here is not itself proof the
-    resume failed. The caller decides what that means.
-    """
-    try:
-        page.wait_for_url(_navigated_into_session, timeout=timeout)
-    except PlaywrightTimeoutError:
-        message = (
-            f"No navigation into a session within {timeout}ms of Launch; "
-            f"page url={page.url}, open tabs={[p.url for p in page.context.pages]}"
-        )
-        warnings.warn(message, stacklevel=2)
-        logger.warning(message)
-        return False
-    return True
-
-
 def _external_idp_host(page_url: str, workbench_url: str) -> str | None:
     """Return the IdP host if sign-in has left the Workbench origin.
 
