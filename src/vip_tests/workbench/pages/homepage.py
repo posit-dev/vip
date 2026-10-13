@@ -184,6 +184,11 @@ class Homepage:
         return f"a[title='{name}'], a:text-is('{name}')"
 
     @staticmethod
+    def join_link(name: str) -> str:
+        """Selector for an Active session's join link (scope it to the session row)."""
+        return f"a[title='join {name}']"
+
+    @staticmethod
     def session_checkbox(name: str) -> str:
         """Selector for session selection checkbox."""
         return f"[aria-label='select {name}']"
