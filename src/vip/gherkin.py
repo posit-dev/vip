@@ -93,7 +93,7 @@ def parse_feature_file(path: Path, *, relative_to: Path | None = None) -> dict:
     if current_scenario is not None:
         scenarios.append(current_scenario)
 
-    file_str = str(path.relative_to(relative_to)) if relative_to else str(path)
+    file_str = path.relative_to(relative_to).as_posix() if relative_to else str(path)
 
     return {
         "title": title,

@@ -191,6 +191,48 @@ jobs:
           name: selftest-results-${{ matrix.os }}-py${{ matrix.python-version }}
           path: selftest-results.xml
 
+  # Windows selftests, informational for now: this job is deliberately NOT in
+  # `selftests-status`'s `needs`, and `continue-on-error` keeps a red run from
+  # failing the workflow. It stays that way until the first triage pass is done;
+  # then it moves into the `selftest` matrix above. Do not set PYTHONUTF8 here --
+  # the point is to run with Windows' default cp1252 locale encoding (issue #752).
+  selftest-windows:
+    name: Selftests (windows-latest / 3.12, informational)
+    needs: [changes]
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --python 3.12 --all-extras
+
+      - name: Verify import
+        run: uv run python -c "import vip; print(vip.__version__)"
+
+      - name: Run selftests
+        run: uv run pytest selftests/ -v --junitxml=selftest-results.xml
+
+      - name: Collect VIP tests (dry run)
+        run: uv run pytest src/vip_tests/ --collect-only --quiet
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selftest-results-windows-latest-py3.12
+          path: selftest-results.xml
+
   # Always-run required check. Reports success when selftests pass OR when they
   # were skipped (docs/website-only PR), so the required "Selftests Status" check
   # always reports and never leaves the PR stuck waiting.

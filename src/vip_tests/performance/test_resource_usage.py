@@ -142,7 +142,11 @@ def check_prometheus_endpoints(vip_config):
         products_to_check.append(("Workbench", "workbench", vip_config.workbench.url))
     if vip_config.package_manager.is_configured:
         products_to_check.append(
-            ("Package Manager", "package_manager", vip_config.package_manager.url)
+            (
+                "Package Manager",
+                "package_manager",
+                vip_config.package_manager.url,
+            )
         )
 
     if not products_to_check:

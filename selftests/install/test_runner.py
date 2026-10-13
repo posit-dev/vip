@@ -233,7 +233,7 @@ def test_execute_uninstall_plan_dry_run(monkeypatch, tmp_path: Path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     manifest_path = tmp_path / ".vip-install.json"
-    manifest_path.write_text("{}")
+    manifest_path.write_text("{}", encoding="utf-8")
 
     plan = UninstallPlan(
         delete_manifest=True,
@@ -256,7 +256,7 @@ def test_execute_uninstall_plan_with_yes_removes_things(tmp_path: Path):
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
     manifest_path = tmp_path / ".vip-install.json"
-    manifest_path.write_text("{}")
+    manifest_path.write_text("{}", encoding="utf-8")
 
     plan = UninstallPlan(
         delete_manifest=True,
@@ -277,7 +277,7 @@ def test_execute_uninstall_plan_with_yes_removes_things(tmp_path: Path):
 
 def test_execute_uninstall_plan_chained_cleanup_failure_warns(tmp_path: Path, capsys):
     manifest_path = tmp_path / ".vip-install.json"
-    manifest_path.write_text("{}")
+    manifest_path.write_text("{}", encoding="utf-8")
 
     def boom(connect_url: str) -> None:
         raise RuntimeError("connect down")
@@ -305,7 +305,7 @@ def test_execute_uninstall_plan_chained_cleanup_failure_warns(tmp_path: Path, ca
 def test_execute_uninstall_plan_skipped_status_omits_content_cleanup_note(tmp_path, capsys):
     """No chained cleanup configured: don't tack on a confusing '(content cleanup: skipped)'."""
     manifest_path = tmp_path / ".vip-install.json"
-    manifest_path.write_text("{}")
+    manifest_path.write_text("{}", encoding="utf-8")
 
     plan = UninstallPlan(
         delete_manifest=True,
@@ -322,7 +322,7 @@ def test_execute_uninstall_plan_skipped_status_omits_content_cleanup_note(tmp_pa
 def test_execute_uninstall_plan_yes_prints_uv_uninstall_hint(tmp_path, capsys):
     """After --yes, remind the user how to remove vip itself."""
     manifest_path = tmp_path / ".vip-install.json"
-    manifest_path.write_text("{}")
+    manifest_path.write_text("{}", encoding="utf-8")
 
     plan = UninstallPlan(
         delete_manifest=True,
@@ -482,7 +482,7 @@ def test_manager_for_suse_family():
 def test_execute_uninstall_plan_dry_run_does_not_print_uv_uninstall_hint(tmp_path, capsys):
     """The reminder should only appear after actual --yes execution."""
     manifest_path = tmp_path / ".vip-install.json"
-    manifest_path.write_text("{}")
+    manifest_path.write_text("{}", encoding="utf-8")
 
     plan = UninstallPlan(
         delete_manifest=True,

@@ -41,7 +41,8 @@ class TestScaffoldList:
         result = subprocess.run(
             [sys.executable, "-m", "vip.cli", "scaffold", "--list"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         assert result.returncode == 0
@@ -109,7 +110,7 @@ class TestMinimalTemplateContract:
         dest = tmp_path / "minimal_marker_tests"
         run_scaffold(_make_args(output=str(dest), template="minimal"))
 
-        step_text = (dest / "test_custom_check.py").read_text()
+        step_text = (dest / "test_custom_check.py").read_text(encoding="utf-8")
         assert "pytest.mark.connect" in step_text
 
     def test_minimal_template_does_not_hardcode_example_dot_com(self, tmp_path):
@@ -118,7 +119,7 @@ class TestMinimalTemplateContract:
         dest = tmp_path / "minimal_no_internet_tests"
         run_scaffold(_make_args(output=str(dest), template="minimal"))
 
-        step_text = (dest / "test_custom_check.py").read_text()
+        step_text = (dest / "test_custom_check.py").read_text(encoding="utf-8")
         assert "example.com" not in step_text
 
 
@@ -167,7 +168,7 @@ class TestScaffoldFileContent:
         dest = tmp_path / "my_tests"
         run_scaffold(_make_args(output=str(dest)))
 
-        feature_text = (dest / "test_gxp_validation.feature").read_text()
+        feature_text = (dest / "test_gxp_validation.feature").read_text(encoding="utf-8")
         assert "@connect" in feature_text
         assert "@workbench" in feature_text
 
@@ -177,7 +178,7 @@ class TestScaffoldFileContent:
         dest = tmp_path / "my_tests"
         run_scaffold(_make_args(output=str(dest)))
 
-        step_text = (dest / "test_gxp_validation.py").read_text()
+        step_text = (dest / "test_gxp_validation.py").read_text(encoding="utf-8")
         assert "from pytest_bdd import" in step_text
 
     def test_step_file_has_pytest_mark_connect(self, tmp_path):
@@ -186,7 +187,7 @@ class TestScaffoldFileContent:
         dest = tmp_path / "my_tests"
         run_scaffold(_make_args(output=str(dest)))
 
-        step_text = (dest / "test_gxp_validation.py").read_text()
+        step_text = (dest / "test_gxp_validation.py").read_text(encoding="utf-8")
         assert "pytest.mark.connect" in step_text
 
     def test_step_file_has_pytest_mark_workbench(self, tmp_path):
@@ -195,7 +196,7 @@ class TestScaffoldFileContent:
         dest = tmp_path / "my_tests"
         run_scaffold(_make_args(output=str(dest)))
 
-        step_text = (dest / "test_gxp_validation.py").read_text()
+        step_text = (dest / "test_gxp_validation.py").read_text(encoding="utf-8")
         assert "pytest.mark.workbench" in step_text
 
     def test_conftest_defines_check_packages(self, tmp_path):
@@ -204,7 +205,7 @@ class TestScaffoldFileContent:
         dest = tmp_path / "my_tests"
         run_scaffold(_make_args(output=str(dest)))
 
-        conftest_text = (dest / "conftest.py").read_text()
+        conftest_text = (dest / "conftest.py").read_text(encoding="utf-8")
         assert "check_packages" in conftest_text
 
     def test_conftest_does_not_shadow_expected_r_versions(self, tmp_path):
@@ -213,7 +214,7 @@ class TestScaffoldFileContent:
         dest = tmp_path / "my_tests"
         run_scaffold(_make_args(output=str(dest)))
 
-        conftest_text = (dest / "conftest.py").read_text()
+        conftest_text = (dest / "conftest.py").read_text(encoding="utf-8")
         # Must NOT redefine these — they are provided by VIP core conftest
         assert "def expected_r_versions" not in conftest_text
         assert "def expected_python_versions" not in conftest_text
@@ -228,7 +229,7 @@ class TestScaffoldOverwriteBehavior:
 
         dest = tmp_path / "my_tests"
         dest.mkdir()
-        (dest / "existing.txt").write_text("keep me")
+        (dest / "existing.txt").write_text("keep me", encoding="utf-8")
 
         import pytest
 
@@ -243,7 +244,7 @@ class TestScaffoldOverwriteBehavior:
 
         dest = tmp_path / "my_tests"
         dest.mkdir()
-        (dest / "stale.txt").write_text("old content")
+        (dest / "stale.txt").write_text("old content", encoding="utf-8")
 
         run_scaffold(_make_args(output=str(dest), force=True))
 
@@ -259,7 +260,8 @@ class TestScaffoldCLI:
         result = subprocess.run(
             [sys.executable, "-m", "vip.cli", "--help"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         assert "scaffold" in result.stdout
@@ -268,7 +270,8 @@ class TestScaffoldCLI:
         result = subprocess.run(
             [sys.executable, "-m", "vip.cli", "scaffold", "--help"],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         assert result.returncode == 0

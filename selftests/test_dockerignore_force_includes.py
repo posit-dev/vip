@@ -32,7 +32,7 @@ _DOCKERIGNORE = _REPO_ROOT / ".dockerignore"
 
 def _force_included_example_paths() -> set[str]:
     """examples/ paths that pyproject force-includes into the wheel."""
-    data = tomllib.loads(_PYPROJECT.read_text())
+    data = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
     force_include = data["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
     return {src for src in force_include if src.startswith("examples/")}
 
@@ -41,7 +41,7 @@ def _dockerignore_negations() -> set[str]:
     """Paths re-included via a leading ``!`` in .dockerignore."""
     return {
         line.strip().lstrip("!")
-        for line in _DOCKERIGNORE.read_text().splitlines()
+        for line in _DOCKERIGNORE.read_text(encoding="utf-8").splitlines()
         if line.strip().startswith("!")
     }
 

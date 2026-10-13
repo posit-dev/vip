@@ -312,7 +312,9 @@ class TestPluginIntegration:
     def test_extension_dirs_collected(self, selftest_pytester, tmp_path):
         ext_dir = tmp_path / "ext_tests"
         ext_dir.mkdir()
-        (ext_dir / "test_extra.py").write_text("def test_from_extension():\n    assert True\n")
+        (ext_dir / "test_extra.py").write_text(
+            "def test_from_extension():\n    assert True\n", encoding="utf-8"
+        )
 
         selftest_pytester.makepyfile(
             """

@@ -72,7 +72,8 @@ def _highest_tag() -> str | None:
     result = subprocess.run(
         ["git", "tag", "--list", "v*"],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=True,
     )
     parsed = []
