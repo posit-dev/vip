@@ -25,6 +25,7 @@ from playwright.sync_api import Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given, scenario, then, when
 
+from vip import attest
 from vip.timeouts import timeout_scale
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
@@ -35,11 +36,10 @@ from vip_tests.workbench.conftest import (
     wait_for_session_active,
     workbench_login,
 )
-from vip_tests.workbench.exec import ExecError, file_exists, terminal_run
+from vip_tests.workbench.exec import ExecError, ensure_positron_console, file_exists, terminal_run
 from vip_tests.workbench.pages import (
     Homepage,
     NewSessionDialog,
-    PositronSession,
     RStudioSession,
     VSCodeSession,
 )
@@ -366,14 +366,12 @@ def launch_vscode(page: Page, git_session_ctx: dict):
 @when("I launch a Positron session")
 def launch_positron(page: Page, git_session_ctx: dict):
     _launch_and_join(page, "Positron", git_session_ctx)
-    try:
-        page.locator(PositronSession.CONSOLE_PANEL).wait_for(
-            state="visible", timeout=_TIMEOUT_IDE_READY
-        )
-    except PlaywrightTimeoutError:
-        pytest.skip(
-            "Positron did not load within timeout — "
-            "the IDE may not be installed on this Workbench instance"
+    # Positron opens to a Welcome page with no console; start one explicitly.
+    if not ensure_positron_console(page, timeout=_TIMEOUT_IDE_READY):
+        attest.unproven(
+            "Positron loaded but no console session could be started — the "
+            '"Start New Console Session" control was unavailable, no R/Python '
+            "interpreter resolved, or the console did not render."
         )
 
 
