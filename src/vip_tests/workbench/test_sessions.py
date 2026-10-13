@@ -6,7 +6,6 @@ Patterns adapted from test_ide_launch.py.
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 import pytest
@@ -21,8 +20,8 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
     assert_homepage_loaded,
+    join_session,
     unique_session_name,
-    wait_for_resume_navigation,
     wait_for_session_active,
     wait_for_session_suspended,
     workbench_login,
@@ -177,16 +176,14 @@ def user_resumes_session(page: Page, session_context: dict):
     expect(launch_btn).to_be_visible(timeout=TIMEOUT_DIALOG)
     launch_btn.click()
 
-    # Workbench may resume in place: the homepage is itself served under
-    # "/s/<id>/workspaces/" and the nightly runs show the URL never leaves it
-    # after Launch. So landing in a session is optional here; the next step,
-    # which reloads the homepage until the Active badge appears, is the real
-    # proof of resume. Only when the browser does land in a session do we
-    # wait for RStudio content (not just "load", which fires before rsession
-    # is reattached -- see ``rstudio_functional`` in test_ide_launch.py) and
-    # bounce back to the homepage.
-    if not wait_for_resume_navigation(page, TIMEOUT_PAGE_LOAD):
-        return
+    # The post-Launch navigation depends on the session's auto-join setting
+    # and the Workbench version, so join explicitly rather than waiting for it.
+    # join_session reloads until the session is Active again, and
+    # returns early if Launch already took the browser into the session.
+    join_session(page, session_name, reload=True)
+
+    # Wait for RStudio content (not just "load", which fires before rsession is
+    # reattached -- see ``rstudio_functional`` in test_ide_launch.py).
     try:
         expect(page.locator(RStudioSession.CONTAINER)).to_be_visible(timeout=TIMEOUT_SESSION_START)
     except AssertionError as exc:
@@ -196,49 +193,21 @@ def user_resumes_session(page: Page, session_context: dict):
             f"configuration ({exc})"
         )
 
-    # Navigate back to homepage to observe the Active state. NB: Workbench's
-    # /home may auto-redirect back to the recently-used session — that is OK
-    # for the next step, which observes the session badge in the sidebar.
-    page.goto(page.url.split("/s/")[0] + "/home") if "/s/" in page.url else page.go_back()
-    expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-
 
 @then("the session reaches Active state again")
 def session_becomes_active_again(page: Page, workbench_url: str, session_context: dict):
-    """Verify the session transitions back to Active state."""
+    """Verify the resumed session shows Active on the homepage.
+
+    ``join_session`` already waited for Active before joining; this is the
+    cheap confirmation from the homepage's point of view. Navigating to /home
+    explicitly avoids the IDE iframe on /s/<id> showing a stale Suspended badge.
+    """
     session_name = session_context["name"]
 
-    # Explicitly navigate back to /home. user_resumes_session attempts the
-    # same bounce, but Playwright's goto() races with the IDE iframe loading
-    # on /s/<id> and sometimes leaves the page on the session URL — where the
-    # sidebar shows a stale Suspended badge regardless of the actual server
-    # state. Doing the navigation here, in the observation step, guarantees
-    # we are looking at the real homepage.
-    home_url = workbench_url.rstrip("/") + "/home"
-    page.goto(home_url, timeout=TIMEOUT_PAGE_LOAD)
+    page.goto(workbench_url.rstrip("/") + "/home", timeout=TIMEOUT_PAGE_LOAD)
     expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-
-    # The Workbench homepage does not auto-poll session state, so a single
-    # locator wait cannot observe the Suspended → Active transition. Reload
-    # periodically inside the overall budget until the Active badge appears.
-    session_active = page.locator(Homepage.session_row_status(session_name, "Active"))
-    inner_timeout_ms = 5000
-    deadline = time.time() + (TIMEOUT_SESSION_START / 1000)
-    exc: AssertionError | None = None
-    while True:
-        try:
-            expect(session_active).to_be_visible(timeout=inner_timeout_ms)
-            return  # Active observed
-        except AssertionError as e:
-            exc = e
-            if time.time() >= deadline:
-                break
-            page.reload(timeout=TIMEOUT_PAGE_LOAD)
-            expect(page.locator(Homepage.POSIT_LOGO)).to_be_visible(timeout=TIMEOUT_PAGE_LOAD)
-
-    attest.unproven(
-        f"Session did not return to Active state after resume — "
-        f"suspend/resume may not be supported in this Workbench configuration ({exc})"
+    expect(page.locator(Homepage.session_row_status(session_name, "Active"))).to_be_visible(
+        timeout=TIMEOUT_DIALOG
     )
 
 

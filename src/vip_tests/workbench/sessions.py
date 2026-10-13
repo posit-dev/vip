@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
+import warnings
 from typing import NoReturn
+from urllib.parse import urlparse
 
 from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from vip import attest
 from vip_tests.workbench.pages import Homepage
@@ -14,9 +18,12 @@ from vip_tests.workbench.timeouts import (
     _SESSION_POLL_INTERVAL,
     TERMINAL_SESSION_FAILURE_STATES,
     TIMEOUT_CLEANUP,
+    TIMEOUT_DIALOG,
     TIMEOUT_PAGE_LOAD,
     TIMEOUT_SESSION_START,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _skip_workbench_session_unproven(
@@ -260,3 +267,115 @@ def wait_for_session_suspended(
     "Locator expected to be visible" error.
     """
     return _wait_for_session_state(page, session_name, "Suspended", timeout=timeout)
+
+
+def _navigated_into_session(url: str) -> bool:
+    """Return True if *url* is inside a session, not the homepage.
+
+    Workbench's homepage is itself served under a "/s/<id>/" URL (its
+    "workspaces" view), so a bare "/s/" check can't tell the two apart. A
+    real session URL has no "workspaces" segment after the id.
+    """
+    segments = [s for s in urlparse(url).path.split("/") if s]
+    if len(segments) < 2 or segments[0] != "s":
+        return False
+    return "workspaces" not in segments
+
+
+def _wait_for_session_active_reloading(
+    page: Page, session_name: str, *, timeout: int, reload_interval: int
+) -> None:
+    """Reload the homepage until *session_name* shows Active or the browser enters a session.
+
+    The homepage does not poll after a resume, so a plain locator wait never
+    sees Suspended -> Active. Returns early when the URL is already inside a
+    session (some Workbench versions navigate on Launch).
+    """
+    active = page.locator(Homepage.session_row_status(session_name, "Active"))
+    deadline = time.monotonic() + timeout / 1000
+    while True:
+        window_end = time.monotonic() + reload_interval / 1000
+        while True:
+            if _navigated_into_session(page.url):
+                return
+            if active.count() > 0 and active.first.is_visible():
+                return
+            raise_if_session_failed(page, session_name, expected="Active")
+            if time.monotonic() >= window_end:
+                break
+            page.wait_for_timeout(_SESSION_POLL_INTERVAL)
+        if time.monotonic() >= deadline:
+            worker_count = int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1") or "1")
+            raise AssertionError(
+                _session_timeout_message(session_name, "Active", timeout // 1000, worker_count)
+            )
+        page.reload(timeout=TIMEOUT_PAGE_LOAD)
+        page.locator(Homepage.POSIT_LOGO).wait_for(state="visible", timeout=TIMEOUT_PAGE_LOAD)
+
+
+def _click_join_and_wait(page: Page, link: Locator, navigation_timeout: int) -> bool:
+    """Click *link* and return True once the URL is inside a session.
+
+    The click does not wait for navigations (that wait is what timed out under
+    CI load); the URL wait is explicit instead.
+    """
+    try:
+        link.click(no_wait_after=True, timeout=TIMEOUT_DIALOG)
+        page.wait_for_url(_navigated_into_session, timeout=navigation_timeout)
+    except PlaywrightTimeoutError:
+        return False
+    return True
+
+
+def join_session(
+    page: Page,
+    session_name: str,
+    *,
+    reload: bool = False,
+    timeout: int = TIMEOUT_SESSION_START,
+    reload_interval: int = 5000,
+    navigation_timeout: int = TIMEOUT_PAGE_LOAD,
+) -> None:
+    """Wait for *session_name* to be Active, join it, and confirm the browser is inside it.
+
+    Retries the click once (with a visible warning) if the browser stays on the
+    homepage, then raises ``AssertionError`` naming the page URL and every open
+    tab. Pass ``reload=True`` after a resume, where the homepage does not
+    refresh itself. Returns immediately if the browser is already inside a
+    session.
+    """
+    if _navigated_into_session(page.url):
+        return
+    if reload:
+        _wait_for_session_active_reloading(
+            page, session_name, timeout=timeout, reload_interval=reload_interval
+        )
+        if _navigated_into_session(page.url):
+            return
+        row = page.locator(Homepage.session_row(session_name))
+    else:
+        row = wait_for_session_active(page, session_name, timeout=timeout)
+    link = row.locator(Homepage.join_link(session_name))
+    try:
+        link.wait_for(state="visible", timeout=TIMEOUT_DIALOG)
+    except PlaywrightTimeoutError as exc:
+        raise AssertionError(
+            f"The join link for {session_name!r} never became visible on the Active "
+            f"session row; page url={page.url}"
+        ) from exc
+
+    if _click_join_and_wait(page, link, navigation_timeout):
+        return
+    message = (
+        f"Join link for {session_name!r} did not navigate into the session within "
+        f"{navigation_timeout}ms; retrying the click once (page url={page.url})"
+    )
+    warnings.warn(message, stacklevel=2)
+    logger.warning(message)
+    if _navigated_into_session(page.url) or _click_join_and_wait(page, link, navigation_timeout):
+        return
+    raise AssertionError(
+        f"Clicked the join link for {session_name!r} twice but the browser never "
+        f"entered the session; page url={page.url}, "
+        f"open tabs={[p.url for p in page.context.pages]}"
+    )

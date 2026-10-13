@@ -32,8 +32,8 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
     assert_homepage_loaded,
+    join_session,
     unique_session_name,
-    wait_for_session_active,
     workbench_login,
 )
 from vip_tests.workbench.exec import ExecError, terminal_run
@@ -310,10 +310,7 @@ def open_vscode_session(page: Page, publish_context: dict):
     launch_btn.click(timeout=TIMEOUT_QUICK)
 
     # Wait for Active, then navigate into the session.
-    session_row = wait_for_session_active(page, session_name)
-    session_link = session_row.locator(f"a[title='join {session_name}']")
-    expect(session_link).to_be_visible(timeout=TIMEOUT_DIALOG)
-    session_link.click()
+    join_session(page, session_name)
 
     # Wait for VS Code to load.
     try:
