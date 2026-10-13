@@ -510,10 +510,12 @@ class ConnectClient(BaseClient):
         """Ask the server to send a test email to the authenticated user.
 
         Uses ``GET /__api__/server_settings/mail/test`` -- the endpoint behind the
-        admin UI's "Send Test Email" button. It takes no parameters: the message goes
-        to the API key owner's address, requires an administrator key, and returns an
-        empty 200 on success. A misconfigured mailer (e.g. no ``Server.SenderEmail``)
-        comes back as a 4xx/5xx and raises ``httpx.HTTPStatusError``.
+        admin UI's "Send Test Email" button. Connect's OpenAPI marks it internal; VIP
+        depends on it deliberately because the admin UI does. It takes no parameters:
+        the message goes to the API key owner's address, requires an administrator
+        key, and returns an empty 200 on success. A misconfigured mailer (e.g. no
+        ``Server.SenderEmail``) comes back as a 4xx/5xx and raises
+        ``httpx.HTTPStatusError``.
         """
         resp = self._client.get("/server_settings/mail/test")
         resp.raise_for_status()
