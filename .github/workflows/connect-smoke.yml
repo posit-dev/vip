@@ -96,12 +96,28 @@ jobs:
         with:
           persist-credentials: false
 
+      # A local SMTP catcher so test_email exercises a real send instead of
+      # skipping. with-connect starts Connect on the default bridge network,
+      # which has no DNS, so Connect reaches Mailpit by its bridge IP.
+      - name: Start Mailpit
+        id: mailpit
+        run: |
+          docker run -d --name mailpit -p 8025:8025 \
+            axllent/mailpit:v1.31.0@sha256:c96991d9bef73594c246d89ca81411d4e916f03e76a7d2d72fa2ab5dd3c9ce24
+          ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mailpit)
+          echo "ip=${ip}" >> "$GITHUB_OUTPUT"
+
       - name: Start Connect
         id: connect
         uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
           image: ghcr.io/posit-dev/connect:${{ matrix.connect-version }}
           license: ${{ secrets.CONNECT_LICENSE }}
+          env: |
+            CONNECT_SERVER_EMAILPROVIDER=SMTP
+            CONNECT_SERVER_SENDEREMAIL=vip-ci@example.com
+            CONNECT_SMTP_HOST=${{ steps.mailpit.outputs.ip }}
+            CONNECT_SMTP_PORT=1025
 
       # Surface license errors as workflow annotations so expired keys
       # are immediately visible on the Actions run page.
@@ -227,6 +243,19 @@ jobs:
       - name: Install Playwright browsers
         run: uv run vip install --skip-system
 
+      # Connect sends the test email to the API key owner's address, and the
+      # bootstrap admin is created without one, so test_email would skip.
+      - name: Give the bootstrap admin an email address
+        run: |
+          guid=$(curl -fsS -H "Authorization: Key ${CONNECT_API_KEY}" \
+            "${CONNECT_SERVER}/__api__/v1/user" | jq -r .guid)
+          curl -fsS -X PUT -H "Authorization: Key ${CONNECT_API_KEY}" \
+            -H "Content-Type: application/json" -d '{"email": "vip-admin@example.com"}' \
+            "${CONNECT_SERVER}/__api__/v1/users/${guid}" > /dev/null
+        env:
+          CONNECT_SERVER: ${{ steps.connect.outputs.CONNECT_SERVER }}
+          CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
+
       # Generate vip.toml from with-connect outputs. The API key is deliberately
       # NOT written here — it is passed to pytest as VIP_CONNECT_API_KEY, which
       # config.py:89 reads as the fallback. Writing it into the file would put a
@@ -245,6 +274,9 @@ jobs:
           [auth]
           provider = "password"
           username = "__bootstrap_admin__"
+
+          [email]
+          enabled = true
           EOF
 
           # cross_product/test_integration asserts that Connect's deploy log names
@@ -305,6 +337,20 @@ jobs:
         env:
           SUITE: ${{ inputs.suite || (github.event_name == 'schedule' && 'full' || 'gate') }}
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
+
+      # A 200 from Connect only means it accepted the request; check the message
+      # actually reached the SMTP server.
+      - name: Check the test email was delivered
+        run: |
+          messages=$(curl -fsS http://localhost:8025/api/v1/messages)
+          echo "${messages}" | jq -r '.messages[] | "\(.To[0].Address): \(.Subject)"'
+          if [ "$(echo "${messages}" | jq '.total')" -lt 1 ]; then
+            echo "::error title=No email delivered::Connect accepted the test email but Mailpit received nothing."
+            docker logs "$(docker ps -q --filter "ancestor=ghcr.io/posit-dev/connect:${CONNECT_VERSION}" | head -1)" 2>&1 | grep -i -E "smtp|mail" | tail -20 || true
+            exit 1
+          fi
+        env:
+          CONNECT_VERSION: ${{ matrix.connect-version }}
 
       # Upload test results for debugging failures. Every observed failure of
       # this step was a transient "Failed to FinalizeArtifact" 403 from the
