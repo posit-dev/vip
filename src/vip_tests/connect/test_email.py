@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import httpx
-import pytest
 from pytest_bdd import given, scenario, then, when
+
+from vip import attest
 
 
 def _error_detail(response: httpx.Response) -> str:
@@ -23,18 +24,19 @@ def test_send_email():
 @given("email delivery is enabled")
 def email_is_enabled(email_enabled):
     if not email_enabled:
-        pytest.skip("Email is not enabled in vip.toml")
+        attest.not_applicable("Email is not enabled in vip.toml")
 
 
 @when("I send a test email via the Connect API", target_fixture="email_sent")
 def send_test_email(connect_client):
     # The endpoint is admin-only and Connect sends the test message to the API
-    # key owner's address, so the user needs to be an administrator with one.
+    # key owner's address. Email is enabled at this point, so a key that can't
+    # send means delivery went unverified, not that it doesn't apply.
     user = connect_client.current_user()
     if user.get("user_role") != "administrator":
-        pytest.skip("Sending a test email requires an administrator API key")
+        attest.unproven("Sending a test email requires an administrator API key")
     if not user.get("email"):
-        pytest.skip("Current API user has no email address configured")
+        attest.unproven("Current API user has no email address configured")
     # A non-2xx (e.g. 400 when Server.SenderEmail is unset) fails the scenario;
     # surface Connect's own error text rather than a bare status line.
     try:
