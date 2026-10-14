@@ -57,8 +57,8 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_PAGE_LOAD,
     TIMEOUT_QUICK,
     assert_homepage_loaded,
+    join_session,
     unique_session_name,
-    wait_for_session_active,
     workbench_login,
 )
 from vip_tests.workbench.exec import rstudio_eval
@@ -243,11 +243,7 @@ def _dismiss_dialog_and_skip(page: Page, reason: str) -> NoReturn:
 def session_becomes_active(page: Page, session_context: dict):
     """Wait for the session to reach Active, then navigate into it."""
     session_name = session_context["name"]
-    session_row = wait_for_session_active(page, session_name)
-
-    session_link = session_row.locator(f"a[title='join {session_name}']")
-    expect(session_link).to_be_visible(timeout=TIMEOUT_DIALOG)
-    session_link.click()
+    join_session(page, session_name)
 
 
 @when("the RStudio IDE is displayed and functional")

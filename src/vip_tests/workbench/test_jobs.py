@@ -26,6 +26,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_PAGE_LOAD,
     TIMEOUT_QUICK,
     assert_homepage_loaded,
+    join_session,
     unique_session_name,
     wait_for_session_active,
     workbench_login,
@@ -186,11 +187,7 @@ def session_becomes_active(page: Page, job_context: dict):
 @when("the user joins the RStudio Pro session")
 def join_rstudio_session(page: Page, job_context: dict):
     """Click the join link to navigate into the RStudio session."""
-    session_name = job_context["name"]
-    session_row = page.locator(Homepage.session_row(session_name))
-    session_link = session_row.locator(f"a[title='join {session_name}']")
-    expect(session_link).to_be_visible(timeout=TIMEOUT_DIALOG)
-    session_link.click()
+    join_session(page, job_context["name"])
 
 
 @when("the RStudio IDE loads successfully")

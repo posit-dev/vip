@@ -25,21 +25,20 @@ from playwright.sync_api import Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from pytest_bdd import given, scenario, then, when
 
+from vip import attest
 from vip.timeouts import timeout_scale
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_QUICK,
-    TIMEOUT_SESSION_START,
     assert_homepage_loaded,
+    join_session,
     unique_session_name,
-    wait_for_session_active,
     workbench_login,
 )
-from vip_tests.workbench.exec import ExecError, file_exists, terminal_run
+from vip_tests.workbench.exec import ExecError, ensure_positron_console, file_exists, terminal_run
 from vip_tests.workbench.pages import (
     Homepage,
     NewSessionDialog,
-    PositronSession,
     RStudioSession,
     VSCodeSession,
 )
@@ -317,21 +316,13 @@ def _cancel_dialog_and_skip(page: Page, reason: str) -> NoReturn:
     pytest.skip(reason)
 
 
-def _join_session(page: Page, session_name: str) -> None:
-    """Wait for session to become Active, then navigate into it."""
-    session_row = wait_for_session_active(page, session_name, timeout=TIMEOUT_SESSION_START)
-    session_link = session_row.locator(f"a[title='join {session_name}']")
-    expect(session_link).to_be_visible(timeout=TIMEOUT_DIALOG)
-    session_link.click()
-
-
 def _launch_and_join(page: Page, ide_name: str, git_session_ctx: dict) -> None:
     """Start an IDE session and navigate into it, populating *git_session_ctx*."""
     session_name = unique_session_name(_FILENAME)
     git_session_ctx["name"] = session_name
     git_session_ctx["ide"] = ide_name
     _start_session(page, ide_name, session_name)
-    _join_session(page, session_name)
+    join_session(page, session_name)
 
 
 # ---------------------------------------------------------------------------
@@ -366,14 +357,12 @@ def launch_vscode(page: Page, git_session_ctx: dict):
 @when("I launch a Positron session")
 def launch_positron(page: Page, git_session_ctx: dict):
     _launch_and_join(page, "Positron", git_session_ctx)
-    try:
-        page.locator(PositronSession.CONSOLE_PANEL).wait_for(
-            state="visible", timeout=_TIMEOUT_IDE_READY
-        )
-    except PlaywrightTimeoutError:
-        pytest.skip(
-            "Positron did not load within timeout — "
-            "the IDE may not be installed on this Workbench instance"
+    # Positron opens to a Welcome page with no console; start one explicitly.
+    if not ensure_positron_console(page, timeout=_TIMEOUT_IDE_READY):
+        attest.unproven(
+            "Positron loaded but no console session could be started — the "
+            '"Start New Console Session" control was unavailable, no R/Python '
+            "interpreter resolved, or the console did not render."
         )
 
 
