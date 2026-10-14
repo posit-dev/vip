@@ -23,6 +23,7 @@ _SRC = Path(__file__).resolve().parent.parent / "src" / "vip_tests"
 # is the point; see #616.
 TRIAGED_FILES = [
     "connect/test_content_deploy.py",
+    "connect/test_email.py",
     "cross_product/test_ssl.py",
     "prerequisites/test_versions.py",
     "workbench/test_ide_launch.py",

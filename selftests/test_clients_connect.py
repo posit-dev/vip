@@ -14,6 +14,7 @@ from __future__ import annotations
 import subprocess
 
 import httpx
+import pytest
 
 from vip.clients.connect import ConnectClient
 
@@ -319,3 +320,42 @@ def test_connect_client_verify_true_by_default(monkeypatch):
     # environment's CA overrides (so trust_env=False does not lose them).
     assert isinstance(captured[0].get("verify"), ssl.SSLContext)
     assert captured[0].get("trust_env") is False
+
+
+# ---------------------------------------------------------------------------
+# send_test_email
+# ---------------------------------------------------------------------------
+
+
+def _client_with_mock_transport(handler) -> ConnectClient:
+    cc = ConnectClient("https://connect.example.com", api_key="k")
+    cc._client.close()
+    cc._client = httpx.Client(
+        base_url="https://connect.example.com/__api__",
+        transport=httpx.MockTransport(handler),
+    )
+    return cc
+
+
+def test_send_test_email_gets_server_settings_mail_test():
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path))
+        # Connect answers an empty 200 (text/plain) on success.
+        return httpx.Response(200, headers={"Content-Type": "text/plain; charset=utf-8"})
+
+    _client_with_mock_transport(handler).send_test_email()
+
+    assert seen == [("GET", "/__api__/server_settings/mail/test")]
+
+
+def test_send_test_email_raises_on_connect_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400, json={"code": 0, "error": "Unable to test send email", "payload": None}
+        )
+
+    with pytest.raises(httpx.HTTPStatusError) as excinfo:
+        _client_with_mock_transport(handler).send_test_email()
+    assert excinfo.value.response.status_code == 400
