@@ -998,3 +998,97 @@ class TestAuthenticatedPage:
 
         assert captured == [str(ca_file)]
         assert os.environ.get("NODE_EXTRA_CA_CERTS") is None
+
+
+class TestWaitForProductRedirectConnectSession:
+    """With ``check_connect_session``, landing back on Connect without a
+    session (``/__api__/me`` 401) fails fast instead of burning the full
+    IdP round-trip timeout, but only after a short grace period.
+    """
+
+    @staticmethod
+    def _connect_page(monkeypatch, auth_mod, *, status: int, url: str):
+        from unittest.mock import PropertyMock
+
+        clock = {"t": 0.0}
+        monkeypatch.setattr(auth_mod.workbench.time, "monotonic", lambda: clock["t"])
+
+        page = MagicMock()
+        type(page).url = PropertyMock(return_value=url)
+        page.title.return_value = "Welcome - Posit Connect"
+        page.request.get.return_value.status = status
+        page.locator.return_value.count.return_value = 0
+
+        def _tick(ms):
+            clock["t"] += ms / 1000
+
+        page.wait_for_timeout.side_effect = _tick
+        return page, clock
+
+    def test_fails_fast_when_connect_has_no_session(self, monkeypatch):
+        from vip import auth as auth_mod
+        from vip.errors import AuthConfigError
+
+        # A fragment containing "login" keeps the URL-keyword check from
+        # ever declaring success, as in the live failure.
+        page, clock = self._connect_page(
+            monkeypatch, auth_mod, status=401, url="https://connect.example.com/connect/#/login"
+        )
+
+        with pytest.raises(AuthConfigError) as excinfo:
+            auth_mod._wait_for_product_redirect(
+                page, "https://connect.example.com", provider="oidc", check_connect_session=True
+            )
+
+        msg = str(excinfo.value)
+        assert "did not create a session" in msg
+        assert "given_name" in msg
+        assert "https://connect.example.com/connect/" in msg
+        # Far short of the 300s round-trip timeout.
+        assert clock["t"] < 60
+        page.request.get.assert_called_with(
+            "https://connect.example.com/__api__/me", timeout=10_000
+        )
+
+    def test_does_not_check_during_grace_period(self, monkeypatch):
+        from vip import auth as auth_mod
+        from vip.errors import AuthConfigError
+
+        page, clock = self._connect_page(
+            monkeypatch, auth_mod, status=401, url="https://connect.example.com/connect/#/login"
+        )
+        calls = []
+        page.request.get.side_effect = lambda *a, **kw: (
+            calls.append(clock["t"]) or MagicMock(status=401)
+        )
+
+        with pytest.raises(AuthConfigError):
+            auth_mod._wait_for_product_redirect(
+                page, "https://connect.example.com", provider="oidc", check_connect_session=True
+            )
+
+        assert calls
+        assert calls[0] >= 5
+
+    def test_successful_connect_login_completes(self, monkeypatch):
+        from vip import auth as auth_mod
+
+        page, _ = self._connect_page(
+            monkeypatch, auth_mod, status=200, url="https://connect.example.com/connect/"
+        )
+
+        auth_mod._wait_for_product_redirect(
+            page, "https://connect.example.com", provider="oidc", check_connect_session=True
+        )
+
+    def test_session_check_off_by_default(self, monkeypatch):
+        """Workbench and other callers never probe ``/__api__/me``."""
+        from vip import auth as auth_mod
+
+        page, _ = self._connect_page(
+            monkeypatch, auth_mod, status=401, url="http://wb.example.com/"
+        )
+
+        auth_mod._wait_for_product_redirect(page, "http://wb.example.com")
+
+        page.request.get.assert_not_called()

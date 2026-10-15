@@ -196,8 +196,9 @@ def main() -> None:
     auth_group.add_argument(
         "--idp",
         default=None,
-        help='Identity provider for --headless-auth: "keycloak", "okta", "snowflake". '
-        'Presence implies provider = "oidc" unless overridden by --provider or vip.toml.',
+        help='Identity provider for --headless-auth: "keycloak", "okta", "snowflake", '
+        '"entra" (Azure AD). Presence implies provider = "oidc" unless overridden by '
+        "--provider or vip.toml.",
     )
     auth_group.add_argument(
         "--provider",

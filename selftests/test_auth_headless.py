@@ -226,6 +226,28 @@ class TestStartHeadlessAuthSchemeResolutionWiring:
         assert session._connect_url == "http://connect.example.com"
         assert mint.call_args.args[1] == "http://connect.example.com"
 
+    @pytest.mark.parametrize(
+        ("kwargs", "expected"),
+        [
+            ({"connect_url": "https://connect.example.com"}, True),
+            ({"workbench_url": "https://wb.example.com"}, False),
+        ],
+    )
+    def test_connect_session_check_only_for_connect(self, monkeypatch, kwargs, expected):
+        from vip.auth import start_headless_auth
+
+        self._stub_headless_playwright(monkeypatch)
+        wait = MagicMock()
+        monkeypatch.setattr("vip.auth.flows._wait_for_product_redirect", wait)
+        monkeypatch.setattr("vip.auth.flows._resolve_connect_api_base", lambda *a, **kw: a[0])
+        monkeypatch.setattr(
+            "vip.auth.flows._create_api_key_via_session", lambda *a, **kw: "FAKE_KEY"
+        )
+
+        start_headless_auth(username="user", password="pass", **kwargs)
+
+        assert wait.call_args.kwargs["check_connect_session"] is expected
+
     def test_explicit_scheme_never_probes(self, monkeypatch):
         """See the interactive-auth counterpart's docstring: resolve_url_scheme
         is always called, but must no-op on its own for an explicit scheme --

@@ -320,7 +320,7 @@ def start_headless_auth(
 
     At least one of *connect_url* or *workbench_url* must be provided.
     The *idp* parameter selects which form automation strategy to use
-    (e.g. ``"keycloak"``, ``"okta"``, ``"snowflake"``).
+    (e.g. ``"keycloak"``, ``"okta"``, ``"snowflake"``, ``"entra"``).
 
     When *insecure* is ``True``, Playwright ignores TLS certificate errors.
     When *ca_bundle* is set, the path is exported as ``NODE_EXTRA_CA_CERTS``
@@ -441,7 +441,9 @@ def start_headless_auth(
                 _fill_product_login(page, username, password)
 
             # Wait for redirect back to the product.
-            _wait_for_product_redirect(page, primary_url, provider=provider)
+            _wait_for_product_redirect(
+                page, primary_url, provider=provider, check_connect_session=bool(connect_url)
+            )
         except PlaywrightTimeoutError as exc:
             raise AuthConfigError(
                 "Headless auth timed out during login. "
