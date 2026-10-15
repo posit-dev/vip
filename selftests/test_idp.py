@@ -200,6 +200,7 @@ class TestEntraLogin:
     def _make_page(self, *, text_locators=None, **overrides):
         from vip.idp import (
             _ENTRA_DISPLAY_SIGN,
+            _ENTRA_HEADING,
             _ENTRA_KMSI_MARKER,
             _ENTRA_KMSI_NO,
             _ENTRA_OTC_INPUT,
@@ -237,6 +238,7 @@ class TestEntraLogin:
             _ENTRA_KMSI_MARKER: overrides.get("kmsi_marker") or self._make_locator(),
             _ENTRA_KMSI_NO: overrides.get("kmsi_no") or self._make_locator(count=1, visible=True),
             _ENTRA_PROOF_UP_MARKER: overrides.get("proof_up_marker") or self._make_locator(),
+            _ENTRA_HEADING: overrides.get("heading") or self._make_locator(),
         }
         page.locator.side_effect = lambda sel: locators[sel]
         by_text = text_locators or {}
@@ -475,6 +477,54 @@ class TestEntraLogin:
             _fill_entra_login(page, "user", "pass")
 
         no_button.first.click.assert_called_once()
+
+    def test_unrecognised_screen_raises_when_still_on_login_host(self, monkeypatch):
+        """If the deadline passes with the browser still on Entra, fail fast
+        naming the screen instead of leaving the caller to wait 5 minutes.
+        """
+        import vip.idp as idp_mod
+        from vip.errors import AuthConfigError
+        from vip.idp import _entra_resolve_post_password
+
+        clock = {"t": 0.0}
+        monkeypatch.setattr(idp_mod.time, "monotonic", lambda: clock["t"])
+
+        page, _ = self._make_page(heading=self._make_locator(count=1, text="Approve sign in"))
+        page.title.return_value = "Sign in to your account"
+
+        def _tick(_ms):
+            clock["t"] += 5.0
+
+        page.wait_for_timeout.side_effect = _tick
+
+        with pytest.raises(AuthConfigError) as excinfo:
+            _entra_resolve_post_password(page)
+
+        msg = str(excinfo.value)
+        assert "Sign in to your account" in msg
+        assert "Approve sign in" in msg
+        assert "https://login.microsoftonline.com/common/oauth2/authorize" in msg
+        assert "--verbose" in msg
+
+    def test_no_raise_when_redirect_lands_at_deadline(self, monkeypatch):
+        """A slow redirect that completes right as the deadline passes is not
+        an unrecognised screen: the final host check must see it.
+        """
+        import vip.idp as idp_mod
+        from vip.idp import _entra_resolve_post_password
+
+        clock = {"t": 0.0}
+        monkeypatch.setattr(idp_mod.time, "monotonic", lambda: clock["t"])
+
+        page, _ = self._make_page()
+
+        def _tick(_ms):
+            clock["t"] += 100.0
+            page.url = self._PRODUCT_URL
+
+        page.wait_for_timeout.side_effect = _tick
+
+        _entra_resolve_post_password(page)
 
     def test_totp_secret_switches_away_from_auto_sent_push(self, monkeypatch):
         """When VIP_TEST_TOTP_SECRET is set and Entra auto-sends a push,

@@ -441,7 +441,9 @@ def start_headless_auth(
                 _fill_product_login(page, username, password)
 
             # Wait for redirect back to the product.
-            _wait_for_product_redirect(page, primary_url, provider=provider)
+            _wait_for_product_redirect(
+                page, primary_url, provider=provider, check_connect_session=bool(connect_url)
+            )
         except PlaywrightTimeoutError as exc:
             raise AuthConfigError(
                 "Headless auth timed out during login. "

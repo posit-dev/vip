@@ -425,6 +425,8 @@ _ENTRA_SIGN_IN_ANOTHER_WAY = "#signInAnotherWay"
 # secure") is matched by element id; the heading text covers the older UI.
 _ENTRA_PROOF_UP_MARKER = "#ProofUpDescription, #idSubmit_ProofUp_Redirect"
 _ENTRA_PROOF_UP_TEXT = "More information required"
+# Visible step heading, used only to name an unrecognised screen in an error.
+_ENTRA_HEADING = "#heading, [role='heading']"
 # KMSI ("Stay signed in?") markers and its "No" button.
 _ENTRA_KMSI_MARKER = "input[name='DontShowAgain'], #KmsiCheckboxField"
 _ENTRA_KMSI_NO = "#idBtn_Back"
@@ -689,7 +691,34 @@ def _entra_resolve_post_password(page: Page) -> None:
 
         page.wait_for_timeout(300)
 
-    _log_verbose(">>> Entra: no further challenge detected within timeout; proceeding.")
+    # Re-check once so a redirect that landed just as the deadline passed isn't
+    # mistaken for a stuck screen.
+    if _entra_left_login_host(page):
+        _log_verbose(">>> Entra: no further challenge detected within timeout; proceeding.")
+        return
+
+    raise AuthConfigError(
+        "Entra showed a screen the entra strategy doesn't recognise "
+        f"({_entra_describe_screen(page)}). Rerun with --verbose or --interactive-auth "
+        "to see it."
+    )
+
+
+def _entra_describe_screen(page: Page) -> str:
+    """Name the current Entra screen (heading, title, sanitized URL) for an error."""
+    try:
+        title = page.title()
+    except Error:
+        title = "<unknown>"
+    heading = ""
+    try:
+        loc = page.locator(_ENTRA_HEADING)
+        if loc.count() > 0:
+            heading = (loc.first.text_content() or "").strip()
+    except Error:
+        pass
+    shown = f"'{title}'" + (f", heading '{heading}'" if heading else "")
+    return f"{shown} at {_sanitize_url(page.url)}"
 
 
 def _fill_entra_login(page: Page, username: str, password: str) -> None:
