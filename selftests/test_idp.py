@@ -206,6 +206,7 @@ class TestEntraLogin:
             _ENTRA_OTC_SUBMIT,
             _ENTRA_PASSWORD,
             _ENTRA_PASSWORD_ERROR,
+            _ENTRA_PROOF_UP_MARKER,
             _ENTRA_SERVICE_ERROR,
             _ENTRA_SIGN_IN_ANOTHER_WAY,
             _ENTRA_SUBMIT,
@@ -235,6 +236,7 @@ class TestEntraLogin:
             or self._make_locator(),
             _ENTRA_KMSI_MARKER: overrides.get("kmsi_marker") or self._make_locator(),
             _ENTRA_KMSI_NO: overrides.get("kmsi_no") or self._make_locator(count=1, visible=True),
+            _ENTRA_PROOF_UP_MARKER: overrides.get("proof_up_marker") or self._make_locator(),
         }
         page.locator.side_effect = lambda sel: locators[sel]
         by_text = text_locators or {}
@@ -351,6 +353,20 @@ class TestEntraLogin:
         )
 
         with pytest.raises(AuthConfigError, match=r"(?i)information required"):
+            _fill_entra_login(page, "user", "pass")
+
+    def test_proof_up_detected_by_element_id(self):
+        """Live-tenant run (2026-10): Entra's current registration interrupt is
+        headed "Let's keep your account secure", not "More information
+        required", and carries #ProofUpDescription / #idSubmit_ProofUp_Redirect.
+        """
+        from vip.idp import _ENTRA_PROOF_UP_MARKER, _fill_entra_login
+
+        assert "#ProofUpDescription" in _ENTRA_PROOF_UP_MARKER
+        assert "#idSubmit_ProofUp_Redirect" in _ENTRA_PROOF_UP_MARKER
+        page, _locators = self._make_page(proof_up_marker=self._make_locator(count=1, visible=True))
+
+        with pytest.raises(AuthConfigError, match=r"(?i)register"):
             _fill_entra_login(page, "user", "pass")
 
     def test_conditional_access_block_after_password_raises_authconfigerror(self):

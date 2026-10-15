@@ -421,7 +421,9 @@ _ENTRA_DISPLAY_SIGN = "#idRichContext_DisplaySign"
 _ENTRA_PUSH_TEXT = "notification"
 # Link Entra shows on an auto-sent push screen to reach the method list instead.
 _ENTRA_SIGN_IN_ANOTHER_WAY = "#signInAnotherWay"
-# "More information required" proof-up / MFA-registration interrupt heading.
+# Proof-up / MFA-registration interrupt. Current UI ("Let's keep your account
+# secure") is matched by element id; the heading text covers the older UI.
+_ENTRA_PROOF_UP_MARKER = "#ProofUpDescription, #idSubmit_ProofUp_Redirect"
 _ENTRA_PROOF_UP_TEXT = "More information required"
 # KMSI ("Stay signed in?") markers and its "No" button.
 _ENTRA_KMSI_MARKER = "input[name='DontShowAgain'], #KmsiCheckboxField"
@@ -491,10 +493,13 @@ def _raise_if_entra_error(page: Page) -> None:
 
 
 def _entra_is_proof_up(page: Page) -> bool:
-    """True if Entra is showing a "More information required" proof-up /
-    MFA-registration interrupt -- this can't be automated; the test
-    account must already have MFA registered.
+    """True if Entra is showing a proof-up / MFA-registration interrupt --
+    this can't be automated; the test account must already have MFA
+    registered.
     """
+    marker = page.locator(_ENTRA_PROOF_UP_MARKER)
+    if marker.count() > 0 and marker.first.is_visible():
+        return True
     heading = page.get_by_text(_ENTRA_PROOF_UP_TEXT, exact=False)
     return heading.count() > 0 and heading.first.is_visible()
 
@@ -645,9 +650,10 @@ def _entra_resolve_post_password(page: Page) -> None:
         if _entra_is_proof_up(page):
             raise AuthConfigError(
                 "Entra requires additional security-info registration "
-                "('More information required') for this account before "
-                "signing in. Register MFA on the test service account "
-                "ahead of time -- this interrupt cannot be automated."
+                "('More information required' / 'Let's keep your account "
+                "secure') for this account before signing in. Register MFA "
+                "on the test service account ahead of time -- this interrupt "
+                "cannot be automated."
             )
 
         if not mfa_handled:
