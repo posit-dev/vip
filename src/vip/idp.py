@@ -393,9 +393,8 @@ def _fill_snowflake_login(page: Page, username: str, password: str) -> None:
             pass
 
 
-# Entra ID (Azure AD) selectors -- not yet validated against a live tenant.
-# Microsoft has been rolling out a refreshed sign-in UI, so treat these as a
-# starting point to confirm/adjust from the first real run.
+# Entra ID (Azure AD) selectors, checked against a live tenant except the push
+# screens (number matching and plain push), which are untested live.
 _ENTRA_USERNAME = "input[name='loginfmt']"
 _ENTRA_PASSWORD = "input[name='passwd']"
 # #idSIButton9 is Entra's single primary button, reused on every step
