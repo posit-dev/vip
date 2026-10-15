@@ -29,7 +29,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        result = json.loads(report_path.read_text())["results"][0]
+        result = json.loads(report_path.read_text(encoding="utf-8"))["results"][0]
         assert result["outcome"] == "skipped"
         assert result["unproven"] is True
         assert result["skip_reason"] == "Workbench authentication did not complete"
@@ -48,7 +48,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        result = json.loads(report_path.read_text())["results"][0]
+        result = json.loads(report_path.read_text(encoding="utf-8"))["results"][0]
         assert result["outcome"] == "skipped"
         assert result["unproven"] is False
         assert result["skip_reason"] == "Connect is not configured"
@@ -69,7 +69,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        result = json.loads(report_path.read_text())["results"][0]
+        result = json.loads(report_path.read_text(encoding="utf-8"))["results"][0]
         assert result["unproven"] is False
 
     def test_unproven_from_a_fixture_is_flagged(self, selftest_pytester):
@@ -94,7 +94,7 @@ class TestPluginIntegration:
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
         )
-        result = json.loads(report_path.read_text())["results"][0]
+        result = json.loads(report_path.read_text(encoding="utf-8"))["results"][0]
         assert result["outcome"] == "skipped"
         assert result["unproven"] is True
         assert result["skip_reason"] == "no usable IdP session"

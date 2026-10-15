@@ -20,7 +20,7 @@ def _platform_label() -> str:
         ver = _stdplatform.mac_ver()[0] or "unknown"
         return f"macos-{ver}"
     try:
-        text = Path("/etc/os-release").read_text()
+        text = Path("/etc/os-release").read_text(encoding="utf-8")
     except OSError:
         return "unknown"
     distro_id = ""

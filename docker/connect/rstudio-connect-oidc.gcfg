@@ -26,6 +26,5 @@ UsePKCE = true
 Enabled = true
 ; Explicit path required: without it Connect's auto-detection fails with
 ; "Could not locate a Python installation" on ghcr.io/posit-dev/connect.
-; Matches the image's own default rstudio-connect.gcfg -- bump this if
-; RSC_VERSION moves to an image with a different bundled Python version.
-Executable = /opt/python/3.14.7/bin/python
+; vip-default is linked to the image's bundled Python by Dockerfile.oidc.
+Executable = /opt/python/vip-default/bin/python

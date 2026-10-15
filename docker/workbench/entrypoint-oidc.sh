@@ -40,8 +40,11 @@ chmod 0600 /etc/rstudio/openid-client-secret
 # -- rserver still has to resolve the returned username to an OS account, and
 # without one it rejects the session ("Error converting userIdentifier to
 # username" / "Failed to get user details."). This image has no
-# cont-init.d/s6-overlay to run docker/workbench/startup.sh for us the way
-# compose.yml's password-auth stack does, so call the same script directly.
+# cont-init.d/s6-overlay to run docker/workbench/startup.sh for us, so call
+# the same script directly rather than through the image's own
+# PWB_TESTUSER/PWB_TESTUSER_PASSWD inputs (which compose.yml uses): those are
+# handled by the image's startup.sh under supervisord, which runs after this
+# entrypoint and after the rserver.conf edits below.
 # It is installed as vip-create-test-user.sh, NOT startup.sh: the stock image
 # already ships its own /usr/local/bin/startup.sh (the supervisord
 # "rstudio-workbench" program runs it to create the rstudio user and exec

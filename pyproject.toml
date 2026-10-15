@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "2026.9.3"
+version = "2026.10.1"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -19,9 +19,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "filelock>=3.12,<4",
+    "filelock>=3.12,<5",
     "httpx>=0.27,<1",
-    "playwright==1.62.0",  # exact-pinned: shapes vip run output; see docs/development.md
+    "playwright==1.63.0",  # exact-pinned: shapes vip run output; see docs/development.md
     "pyotp~=2.9",
     "pytest==9.1.1",  # exact-pinned; at/above CVE-2025-71176 floor (9.0.3)
     "pytest-bdd==8.1.0",  # exact-pinned
@@ -63,7 +63,7 @@ load = [
     "python-socketio>=5.16.2,<6",  # CVE-2026-48804 fix; transitive via locust
 ]
 dev = [
-    "ruff==0.16.7",
+    "ruff==0.16.9",
     "mypy>=1.10",
     "pytest-cov>=6.0",
     "pip-audit>=2.7",
@@ -151,6 +151,9 @@ build-backend = "hatchling.build"
 # floor rejects those versions for every uv command; `just relock` pins an exact
 # version on top of it. See docs/development.md ("The lockfile").
 required-version = ">=0.11"
+# urllib3 is transitive. Floor it at the first release that fixes
+# CVE-2026-97687/97688/97689 so a relock cannot resolve back to a vulnerable 2.7.x.
+constraint-dependencies = ["urllib3>=2.8.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vip", "src/vip_tests"]
@@ -240,7 +243,10 @@ line-length = 100
 src = ["src", "selftests", "examples"]
 
 [tool.ruff.lint]
-select = ["ARG001", "ARG002", "ARG005", "B", "BLE", "C4", "D101", "D102", "D103", "D202", "D209", "D210", "D403", "D413", "E", "F", "I", "ISC", "N", "PERF", "PGH", "PIE", "PLC0207", "PLC0415", "PLR0124", "PLR0402", "PLR1711", "PLR5501", "PLW0108", "PLW1510", "PT", "PTH", "RET", "RUF001", "RUF002", "RUF003", "RUF012", "RUF023", "RUF043", "RUF059", "RUF100", "S101", "SIM", "TID", "UP"]
+# PLW1514 is preview-only; explicit-preview-rules keeps every other preview rule off.
+preview = true
+explicit-preview-rules = true
+select = ["ARG001", "ARG002", "ARG005", "B", "BLE", "C4", "D101", "D102", "D103", "D202", "D209", "D210", "D403", "D413", "E", "F", "I", "ISC", "N", "PERF", "PGH", "PIE", "PLC0207", "PLC0415", "PLR0124", "PLR0402", "PLR1711", "PLR5501", "PLW0108", "PLW1510", "PLW1514", "PT", "PTH", "RET", "RUF001", "RUF002", "RUF003", "RUF012", "RUF023", "RUF043", "RUF059", "RUF100", "S101", "SIM", "TID", "UP"]
 
 # PERF203: per-item try/except in cleanup and probe loops is deliberate (the loop must continue past a failing item), and the per-iteration cost it flags is gone on Python 3.11+.
 ignore = [

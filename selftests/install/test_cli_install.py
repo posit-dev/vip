@@ -9,7 +9,13 @@ import pytest
 
 
 def test_vip_install_help_lists_command():
-    cp = subprocess.run(["uv", "run", "vip", "--help"], capture_output=True, text=True, check=True)
+    cp = subprocess.run(
+        ["uv", "run", "vip", "--help"],
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
     assert "install" in cp.stdout
 
 
@@ -19,7 +25,8 @@ def test_vip_install_dry_run_on_macos_or_unsupported(tmp_path: Path, monkeypatch
     cp = subprocess.run(
         ["uv", "run", "vip", "install", "--dry-run"],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     # Either prints a plan or reports up-to-date; never errors.

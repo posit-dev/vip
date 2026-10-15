@@ -148,7 +148,7 @@ class TestProvenance:
             "results": [],
         }
         p = tmp_path / "results.json"
-        p.write_text(json.dumps(data))
+        p.write_text(json.dumps(data), encoding="utf-8")
         rd = load_results(p)
         assert rd.vip_version == "2026.8.2"
         assert rd.run_duration_seconds == 123.45
@@ -179,7 +179,7 @@ class TestProvenance:
             "results": [],
         }
         p = tmp_path / "results.json"
-        p.write_text(json.dumps(data))
+        p.write_text(json.dumps(data), encoding="utf-8")
         rd = load_results(p)
         assert rd.basic_mode is False
 
@@ -266,7 +266,7 @@ class TestLoadResults:
             ],
         }
         p = tmp_path / "results.json"
-        p.write_text(json.dumps(data))
+        p.write_text(json.dumps(data), encoding="utf-8")
         rd = load_results(p)
         assert rd.results[0].scenario_title == "User can log in via the web UI"
         assert rd.results[0].feature_description == "Connect authentication"
@@ -282,7 +282,8 @@ class TestLoadTroubleshooting:
             'summary = "Verifies HTTP connectivity"\n'
             'likely_causes = ["Connect is not running", "Wrong URL"]\n'
             'suggested_steps = ["Check systemctl status"]\n'
-            'docs_url = "https://docs.example.com"\n'
+            'docs_url = "https://docs.example.com"\n',
+            encoding="utf-8",
         )
         hints = load_troubleshooting(toml_file)
         assert "Connect server is reachable" in hints
@@ -300,7 +301,8 @@ class TestLoadTroubleshooting:
         toml_file = tmp_path / "troubleshooting.toml"
         toml_file.write_text(
             '["Scenario A"]\nsummary = "A"\nlikely_causes = []\nsuggested_steps = []\n\n'
-            '["Scenario B"]\nsummary = "B"\nlikely_causes = []\nsuggested_steps = []\n'
+            '["Scenario B"]\nsummary = "B"\nlikely_causes = []\nsuggested_steps = []\n',
+            encoding="utf-8",
         )
         hints = load_troubleshooting(toml_file)
         assert len(hints) == 2
@@ -309,7 +311,7 @@ class TestLoadTroubleshooting:
 
     def test_malformed_toml_returns_empty(self, tmp_path):
         toml_file = tmp_path / "bad.toml"
-        toml_file.write_text("this is not valid [[ toml {{")
+        toml_file.write_text("this is not valid [[ toml {{", encoding="utf-8")
         hints = load_troubleshooting(toml_file)
         assert hints == {}
 
@@ -379,7 +381,7 @@ class TestNAVersionStatus:
             ],
         }
         p = tmp_path / "results.json"
-        p.write_text(json.dumps(data))
+        p.write_text(json.dumps(data), encoding="utf-8")
         rd = load_results(p)
         assert rd.results[0].na_version is True
         assert rd.results[0].status == "na_version"
@@ -423,7 +425,7 @@ class TestSkipReason:
             ],
         }
         p = tmp_path / "results.json"
-        p.write_text(json.dumps(data))
+        p.write_text(json.dumps(data), encoding="utf-8")
         rd = load_results(p)
         assert (
             rd.results[0].skip_reason
@@ -470,7 +472,7 @@ class TestConciseError:
             ],
         }
         p = tmp_path / "results.json"
-        p.write_text(json.dumps(data))
+        p.write_text(json.dumps(data), encoding="utf-8")
         rd = load_results(p)
         assert rd.results[0].concise_error == "test_login: Login failed"
         assert rd.results[1].concise_error is None
@@ -593,7 +595,7 @@ class TestWriteJUnitXml:
         assert failure is not None
         assert failure.get("message") == "red"
         assert failure.text == "red"
-        raw_text = out.read_text()
+        raw_text = out.read_text(encoding="utf-8")
         assert "[31m" not in raw_text
         assert "[0m" not in raw_text
 
@@ -727,7 +729,7 @@ class TestWriteSarif:
     def test_valid_sarif_envelope(self, tmp_path):
         out = tmp_path / "results.sarif"
         write_sarif(self._sample(), out)
-        doc = json.loads(out.read_text())
+        doc = json.loads(out.read_text(encoding="utf-8"))
         assert doc["version"] == "2.1.0"
         assert doc["runs"][0]["tool"]["driver"]["name"] == "vip"
         assert len(doc["runs"][0]["results"]) == 3
@@ -735,7 +737,7 @@ class TestWriteSarif:
     def test_level_mapping_per_outcome(self, tmp_path):
         out = tmp_path / "results.sarif"
         write_sarif(self._sample(), out)
-        doc = json.loads(out.read_text())
+        doc = json.loads(out.read_text(encoding="utf-8"))
         levels = {r["ruleId"]: r["level"] for r in doc["runs"][0]["results"]}
         assert levels["tests/connect/test_auth.py::test_login"] == "none"
         assert levels["tests/workbench/test_sessions.py::test_start"] == "error"
@@ -748,7 +750,7 @@ class TestWriteSarif:
             TestResult(nodeid="tests/connect/test_auth.py::test_login", outcome="passed")
         )
         write_sarif(data, out)
-        doc = json.loads(out.read_text())
+        doc = json.loads(out.read_text(encoding="utf-8"))
         rule_ids = [r["id"] for r in doc["runs"][0]["tool"]["driver"]["rules"]]
         assert rule_ids.count("tests/connect/test_auth.py::test_login") == 1
         failed = next(
@@ -775,7 +777,7 @@ class TestWriteSarif:
             ],
         )
         write_sarif(data, out)
-        doc = json.loads(out.read_text())
+        doc = json.loads(out.read_text(encoding="utf-8"))
         result = doc["runs"][0]["results"][0]
         assert result["message"]["text"] == "check skipped"
 
@@ -795,14 +797,14 @@ class TestWriteSarif:
             ],
         )
         write_sarif(data, out)
-        doc = json.loads(out.read_text())
+        doc = json.loads(out.read_text(encoding="utf-8"))
         result = doc["runs"][0]["results"][0]
         assert result["message"]["text"] == "check failed"
 
     def test_empty_report_data_is_well_formed(self, tmp_path):
         out = tmp_path / "results.sarif"
         write_sarif(ReportData(), out)
-        doc = json.loads(out.read_text())
+        doc = json.loads(out.read_text(encoding="utf-8"))
         assert doc["runs"][0]["results"] == []
         assert doc["version"] == "2.1.0"
 
@@ -818,7 +820,7 @@ class TestWriteSarif:
             ],
         )
         write_sarif(data, out)
-        doc = json.loads(out.read_text())
+        doc = json.loads(out.read_text(encoding="utf-8"))
         result = doc["runs"][0]["results"][0]
         assert result["message"]["text"] == "flaky on macOS CI runners"
 
@@ -834,7 +836,7 @@ class TestWriteSarif:
             ],
         )
         write_sarif(data, out)
-        doc = json.loads(out.read_text())
+        doc = json.loads(out.read_text(encoding="utf-8"))
         result = doc["runs"][0]["results"][0]
         assert result["message"]["text"] == "N/A for this product version"
 
@@ -913,7 +915,7 @@ class TestUnprovenStatus:
             ],
         }
         p = tmp_path / "results.json"
-        p.write_text(json.dumps(data))
+        p.write_text(json.dumps(data), encoding="utf-8")
         rd = load_results(p)
         assert rd.results[0].unproven is True
         assert rd.results[0].status == "unproven"
@@ -985,7 +987,7 @@ class TestUnprovenInMachineFormats:
         # between a clean pass (none) and a real failure (error).
         out = tmp_path / "results.sarif"
         write_sarif(self._sample(), out)
-        doc = json.loads(out.read_text())
+        doc = json.loads(out.read_text(encoding="utf-8"))
         levels = {r["ruleId"]: r["level"] for r in doc["runs"][0]["results"]}
         assert levels["tests/workbench/test_auth.py::test_login"] == "warning"
         assert levels["tests/connect/test_email.py::test_smtp"] == "note"
@@ -993,7 +995,7 @@ class TestUnprovenInMachineFormats:
     def test_sarif_message_names_the_classification(self, tmp_path):
         out = tmp_path / "results.sarif"
         write_sarif(self._sample(), out)
-        doc = json.loads(out.read_text())
+        doc = json.loads(out.read_text(encoding="utf-8"))
         texts = {r["ruleId"]: r["message"]["text"] for r in doc["runs"][0]["results"]}
         assert texts["tests/workbench/test_auth.py::test_login"].startswith("UNPROVEN: ")
         assert not texts["tests/connect/test_email.py::test_smtp"].startswith("UNPROVEN: ")
@@ -1002,5 +1004,5 @@ class TestUnprovenInMachineFormats:
         data = ReportData(results=[TestResult(nodeid="a::b", outcome="skipped", na_version=True)])
         out = tmp_path / "results.sarif"
         write_sarif(data, out)
-        doc = json.loads(out.read_text())
+        doc = json.loads(out.read_text(encoding="utf-8"))
         assert doc["runs"][0]["results"][0]["level"] == "note"

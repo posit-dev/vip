@@ -54,7 +54,7 @@ def _read_os_release() -> dict[str, str]:
     if not _OS_RELEASE_PATH.exists():
         return {}
     out: dict[str, str] = {}
-    for line in _OS_RELEASE_PATH.read_text().splitlines():
+    for line in _OS_RELEASE_PATH.read_text(encoding="utf-8").splitlines():
         if "=" not in line or line.startswith("#"):
             continue
         k, _, v = line.partition("=")
@@ -144,7 +144,7 @@ def debian_packages(platform_info: PlatformInfo) -> tuple[str, ...]:
 # When updating the playwright pin in pyproject.toml, review DEBIAN_PACKAGES against
 # https://github.com/microsoft/playwright/blob/main/packages/playwright-core/src/server/registry/nativeDeps.ts
 # and update this value. The selftest enforces that they match.
-LIST_REVIEWED_AGAINST_PLAYWRIGHT = "1.62.0"
+LIST_REVIEWED_AGAINST_PLAYWRIGHT = "1.63.0"
 
 
 # openSUSE/SLES equivalents. Names from `zypper search --provides` against
@@ -177,4 +177,4 @@ SUSE_PACKAGES: tuple[str, ...] = (
 )
 
 # Mirror of LIST_REVIEWED_AGAINST_PLAYWRIGHT for the SUSE list.
-LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE = "1.62.0"
+LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE = "1.63.0"

@@ -278,7 +278,8 @@ class ConnectClient(BaseClient):
             tag_id = tags[0]["id"]
             resp = self._client.get(f"/v1/tags/{tag_id}/content")
             resp.raise_for_status()
-            return resp.json().get("results", [])
+            # Unlike the paginated list endpoints, this returns a bare array.
+            return resp.json()
         except Exception as exc:
             raise ProductUnreachableError(f"could not list VIP-tagged content: {exc}") from exc
 
@@ -505,8 +506,16 @@ class ConnectClient(BaseClient):
 
     # -- Email --------------------------------------------------------------
 
-    def send_test_email(self, to: str) -> dict[str, Any]:
-        """Ask the server to send a test email to the address *to*."""
-        resp = self._client.post("/v1/tasks/send-test-email", json={"to": to})
+    def send_test_email(self) -> None:
+        """Ask the server to send a test email to the authenticated user.
+
+        Uses ``GET /__api__/server_settings/mail/test`` -- the endpoint behind the
+        admin UI's "Send Test Email" button. Connect's OpenAPI marks it internal; VIP
+        depends on it deliberately because the admin UI does. It takes no parameters:
+        the message goes to the API key owner's address, requires an administrator
+        key, and returns an empty 200 on success. A misconfigured mailer (e.g. no
+        ``Server.SenderEmail``) comes back as a 4xx/5xx and raises
+        ``httpx.HTTPStatusError``.
+        """
+        resp = self._client.get("/server_settings/mail/test")
         resp.raise_for_status()
-        return resp.json()

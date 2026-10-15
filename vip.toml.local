@@ -24,7 +24,7 @@ enabled = true
 url = "http://localhost:8787"
 
 [package_manager]
-# Disabled by default — requires RSPM_LICENSE and the packagemanager profile.
+# Disabled by default — requires PPM_LICENSE and the packagemanager profile.
 # To enable: start with `just compose-up --profile packagemanager` and set enabled = true.
 enabled = false
 url = "http://localhost:4242"

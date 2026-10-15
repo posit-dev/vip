@@ -35,7 +35,7 @@ def _flatten_r(source: str) -> str:
 
 
 # Flatten once at import; the R file is static (the call is parameterized below).
-_PROBE_FN = _flatten_r(_PROBE_R_FILE.read_text())
+_PROBE_FN = _flatten_r(_PROBE_R_FILE.read_text(encoding="utf-8"))
 
 
 def raw_chunk_probe_expr(base_path: str, metric: str) -> str:

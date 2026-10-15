@@ -121,6 +121,6 @@ class TestTokensInSyncWithRFile:
     def test_tokens_match_r_source(self):
         # The .R file hard-codes the sentinel strings; the Python constants must
         # match them so test_chronicle can interpret the probe's output.
-        r_source = _R_FILE.read_text()
+        r_source = _R_FILE.read_text(encoding="utf-8")
         assert f'"{TOKEN_OK}"' in r_source
         assert f'"{TOKEN_NO_DATA}"' in r_source

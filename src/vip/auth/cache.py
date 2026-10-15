@@ -71,7 +71,7 @@ def _cookies_from_storage_state(storage_state_path: Path) -> httpx.Cookies:
     """
     cookies = httpx.Cookies()
     try:
-        state = json.loads(Path(storage_state_path).read_text())
+        state = json.loads(Path(storage_state_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return cookies
     if not isinstance(state, dict):
@@ -198,7 +198,7 @@ def _load_cached_auth(
     cached_request_workbench_url = ""
     if meta_path.exists():
         try:
-            meta = json.loads(meta_path.read_text())
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
             api_key = meta.get("api_key")
             key_name = meta.get("key_name", "")
             resolved_connect_url = meta.get("connect_url", "")
@@ -345,7 +345,7 @@ def refresh_auth_cache_from_storage_state(
         # atomic); mkstemp creates it 0600 already.
         fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".vip-auth-cache-")
         tmp = Path(tmp_name)
-        with os.fdopen(fd, "w") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(payload)
         tmp.chmod(0o600)
         tmp.replace(path)
@@ -392,5 +392,5 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         "requested_connect_url": session._requested_connect_url or session._connect_url,
         "workbench_url": session._workbench_url,
     }
-    meta_path.write_text(json.dumps(meta))
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
     meta_path.chmod(0o600)

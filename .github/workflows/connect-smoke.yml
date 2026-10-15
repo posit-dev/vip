@@ -8,6 +8,7 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - '.github/workflows/connect-smoke.yml'
+      - '.github/workflows/recent-production-versions.yml'
   pull_request:
   # Scheduled/manual runs fan the suite out across the Connect support window
   # (see the set-matrix job). PR/push runs stay single-version.
@@ -59,30 +60,20 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/workflows/connect-smoke.yml'
+              - '.github/workflows/recent-production-versions.yml'
 
-  # Emit the Connect version list for the product job. PR/push runs test only
-  # the latest release (single required check, unchanged). Scheduled/manual runs
-  # fan out across the support window (current + 2 back). Bump the pinned tags
-  # here when a new Connect release ships; `release` always tracks the newest
-  # build. Versions >= 2026.04 resolve via with-connect to
-  # ghcr.io/posit-dev/connect:<version> (see posit-dev/with-connect main.py
-  # get_docker_tag(); re-check on any with-connect pin bump). Pinned version
-  # strings must not be substrings of one another — the resolved-version
-  # job-rename step below matches the running check by name substring.
+  # Emit the Connect version list for the product job. PR/push runs the current
+  # release only; scheduled/manual runs fan out across the support window
+  # (current + 2 back). Nothing to bump by hand any more -- the versions are
+  # resolved from ghcr.io/posit-dev/connect's own tag list at run time, so a new
+  # Connect release enters CI the day it ships. See
+  # recent-production-versions.yml for why the resolver emits one tag per month
+  # and what the job-rename step below depends on.
   set-matrix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions: {}
-    outputs:
-      versions: ${{ steps.pick.outputs.versions }}
-    steps:
-      - id: pick
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo 'versions=["release", "2026.08.1", "2026.07.0"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'versions=["release"]' >> "$GITHUB_OUTPUT"
-          fi
+    uses: ./.github/workflows/recent-production-versions.yml
+    with:
+      image: connect
+      count: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 3 || 1 }}
 
   connect-smoke:
     needs: [changes, set-matrix]
@@ -105,21 +96,38 @@ jobs:
         with:
           persist-credentials: false
 
-      # Start Connect in Docker
+      # A local SMTP catcher so test_email exercises a real send instead of
+      # skipping. with-connect starts Connect on the default bridge network,
+      # which has no DNS, so Connect reaches Mailpit by its bridge IP.
+      - name: Start Mailpit
+        id: mailpit
+        run: |
+          docker run -d --name mailpit -p 8025:8025 \
+            axllent/mailpit:v1.31.0@sha256:c96991d9bef73594c246d89ca81411d4e916f03e76a7d2d72fa2ab5dd3c9ce24
+          ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' mailpit)
+          echo "ip=${ip}" >> "$GITHUB_OUTPUT"
+
       - name: Start Connect
         id: connect
         uses: posit-dev/with-connect@4f26a6a301716789d6451cc3afd878afdd52189b # main
         with:
-          version: ${{ matrix.connect-version }}
+          image: ghcr.io/posit-dev/connect:${{ matrix.connect-version }}
           license: ${{ secrets.CONNECT_LICENSE }}
+          env: |
+            CONNECT_SERVER_EMAILPROVIDER=SMTP
+            CONNECT_SERVER_SENDEREMAIL=vip-ci@example.com
+            CONNECT_SMTP_HOST=${{ steps.mailpit.outputs.ip }}
+            CONNECT_SMTP_PORT=1025
 
       # Surface license errors as workflow annotations so expired keys
       # are immediately visible on the Actions run page.
       - name: Check for license errors
         if: failure() && steps.connect.outcome == 'failure'
         run: |
-          # Find the Connect container even if with-connect failed partway
-          CID=$(docker ps -aq --filter "ancestor=rstudio/rstudio-connect" | head -1)
+          # Find the Connect container even if with-connect failed partway.
+          # `ancestor` needs the tag: a tagless value normalizes to `:latest`
+          # and never matches a container started from a pinned version.
+          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/connect:${{ matrix.connect-version }}" | head -1)
           if [ -z "${CID}" ]; then
             echo "::error title=Connect Startup Failed::Connect container not found. The with-connect action failed before creating a container."
             exit 1
@@ -141,6 +149,24 @@ jobs:
             echo "::error title=Connect Startup Failed::Connect failed to start. Check the 'Start Connect' step logs for details."
           fi
           exit 1
+
+      # The posit Connect images ship a deliberately slim system-library set:
+      # 9 apt packages on the 24.04 variant and 15 on 22.04, against 80 in the
+      # retired rstudio/rstudio-connect:jammy -- which carried libsodium-dev.
+      # plumber Imports sodium, so a stock image cannot build *any* Plumber
+      # API: test_deploy_plumber dies with
+      # r-missing-system-library and "libsodium.so.23: cannot open shared
+      # object file". A real Connect deployment installs the system libraries
+      # its content needs, so CI installs the one this suite's content needs
+      # rather than dropping the deploy test. Remove this step if the image
+      # ever ships libsodium; do not extend it into a general package list --
+      # a growing list here means VIP has stopped testing a stock image.
+      - name: Install content system libraries in the Connect container
+        env:
+          CID: ${{ steps.connect.outputs.CONTAINER_ID }}
+        run: |
+          docker exec --user 0 --env DEBIAN_FRONTEND=noninteractive "${CID}" bash -c \
+            'apt-get update -qq && apt-get install -y -qq --no-install-recommends libsodium23'
 
       # Resolve the actual Connect version for unambiguous job records
       - name: Resolve Connect version
@@ -196,8 +222,9 @@ jobs:
             }
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
+          python-version: "3.14"
           enable-cache: true
 
       - name: Install dependencies
@@ -215,6 +242,19 @@ jobs:
 
       - name: Install Playwright browsers
         run: uv run vip install --skip-system
+
+      # Connect sends the test email to the API key owner's address, and the
+      # bootstrap admin is created without one, so test_email would skip.
+      - name: Give the bootstrap admin an email address
+        run: |
+          guid=$(curl -fsS -H "Authorization: Key ${CONNECT_API_KEY}" \
+            "${CONNECT_SERVER}/__api__/v1/user" | jq -r .guid)
+          curl -fsS -X PUT -H "Authorization: Key ${CONNECT_API_KEY}" \
+            -H "Content-Type: application/json" -d '{"email": "vip-admin@example.com"}' \
+            "${CONNECT_SERVER}/__api__/v1/users/${guid}" > /dev/null
+        env:
+          CONNECT_SERVER: ${{ steps.connect.outputs.CONNECT_SERVER }}
+          CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
 
       # Generate vip.toml from with-connect outputs. The API key is deliberately
       # NOT written here — it is passed to pytest as VIP_CONNECT_API_KEY, which
@@ -234,12 +274,15 @@ jobs:
           [auth]
           provider = "password"
           username = "__bootstrap_admin__"
+
+          [email]
+          enabled = true
           EOF
 
           # cross_product/test_integration asserts that Connect's deploy log names
           # the Package Manager URL as its package source. The Connect images
-          # default their R repository at public PPM, so pointing the config there
-          # makes the assertion real with no PM container. It is confined to the
+          # default their R repository at public PPM (https://p3m.dev), so pointing
+          # the config there makes the assertion real with no PM container. It is confined to the
           # full tier on purpose: declaring package_manager also pulls PPM into the
           # prerequisites and cross_product health checks, and the PR gate must not
           # depend on a service outside this repo's control.
@@ -248,7 +291,7 @@ jobs:
 
           [package_manager]
           enabled = true
-          url = "https://packagemanager.posit.co"
+          url = "https://p3m.dev"
           EOF
           fi
         env:
@@ -294,6 +337,20 @@ jobs:
         env:
           SUITE: ${{ inputs.suite || (github.event_name == 'schedule' && 'full' || 'gate') }}
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
+
+      # A 200 from Connect only means it accepted the request; check the message
+      # actually reached the SMTP server.
+      - name: Check the test email was delivered
+        run: |
+          messages=$(curl -fsS http://localhost:8025/api/v1/messages)
+          echo "${messages}" | jq -r '.messages[] | "\(.To[0].Address): \(.Subject)"'
+          if [ "$(echo "${messages}" | jq '.total')" -lt 1 ]; then
+            echo "::error title=No email delivered::Connect accepted the test email but Mailpit received nothing."
+            docker logs "$(docker ps -q --filter "ancestor=ghcr.io/posit-dev/connect:${CONNECT_VERSION}" | head -1)" 2>&1 | grep -i -E "smtp|mail" | tail -20 || true
+            exit 1
+          fi
+        env:
+          CONNECT_VERSION: ${{ matrix.connect-version }}
 
       # Upload test results for debugging failures. Every observed failure of
       # this step was a transient "Failed to FinalizeArtifact" 403 from the

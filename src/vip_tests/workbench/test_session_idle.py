@@ -26,6 +26,7 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_QUICK,
     TIMEOUT_SESSION_START,
     assert_homepage_loaded,
+    join_session,
     raise_if_session_failed,
     unique_session_name,
     wait_for_session_active,
@@ -172,12 +173,7 @@ def leave_session_idle(page: Page):
 def join_session_for_work(page: Page, workbench_url: str, idle_session_context: dict):
     """Join the session so the RStudio console is available for eval."""
     session_name = idle_session_context["name"]
-    session_row = page.locator(Homepage.session_row(session_name))
-    expect(session_row).to_be_visible(timeout=TIMEOUT_DIALOG)
-    join_link = page.locator(f"a[title='join {session_name}']")
-    expect(join_link).to_be_visible(timeout=TIMEOUT_SESSION_START)
-    join_link.click()
-    page.wait_for_url("**/s/**", timeout=TIMEOUT_SESSION_START)
+    join_session(page, session_name)
     page.wait_for_load_state("load", timeout=TIMEOUT_PAGE_LOAD)
 
 
