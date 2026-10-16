@@ -210,7 +210,7 @@ def start_interactive_auth(
                 # For Workbench, login is complete when we're on the
                 # homepage (no login/auth keywords in the URL).
                 lower = url.lower()
-                at_login = any(kw in lower for kw in ("sign-in", "login", "auth"))
+                at_login = any(kw in lower for kw in ("sign-in", "login", "auth", "/saml/acs"))
                 if base.rstrip("/").lower() in lower and not at_login:
                     login_completed = True
                     break
