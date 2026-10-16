@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from typing import ClassVar
 
 import pytest
 
@@ -910,3 +911,106 @@ class TestRefreshAuthCacheFromStorageState:
         assert cache.read_text(encoding="utf-8") == before, (
             "a failed refresh must leave the cache intact"
         )
+
+
+class TestCacheDropsPersistentEntraCookie:
+    """The on-disk cache must not carry Entra's long-lived SSO cookie (#782).
+
+    Entra sets ``ESTSAUTHPERSISTENT`` even when "Stay signed in?" is answered
+    No.  VIP trusts the cache for four hours, and the session ``ESTSAUTH``
+    cookie covers silent SSO for that window, so the persistent cookie only
+    stretches how long a leaked cache file stays usable.
+    """
+
+    _STATE: ClassVar[dict] = {
+        "cookies": [
+            {
+                "name": "ESTSAUTHPERSISTENT",
+                "value": "long-lived",
+                "domain": ".login.microsoftonline.com",
+                "path": "/",
+                "expires": 1900000000,
+            },
+            {
+                "name": "ESTSAUTH",
+                "value": "session",
+                "domain": ".login.microsoftonline.com",
+                "path": "/",
+                "expires": -1,
+            },
+            {
+                "name": "rstudio-csrf-token",
+                "value": "wb",
+                "domain": "wb.example.com",
+                "path": "/",
+                "expires": -1,
+            },
+        ],
+        "origins": [],
+    }
+
+    def _cookie_names(self, cache):
+        import json
+
+        return [c["name"] for c in json.loads(cache.read_text(encoding="utf-8"))["cookies"]]
+
+    def test_save_drops_persistent_entra_cookie(self, tmp_path):
+        import json
+
+        from vip.auth import InteractiveAuthSession, _save_auth_cache
+
+        state = tmp_path / "state.json"
+        state.write_text(json.dumps(self._STATE), encoding="utf-8")
+        session = InteractiveAuthSession(
+            storage_state_path=state,
+            api_key=None,
+            key_name="",
+            _connect_url="",
+        )
+        cache = tmp_path / ".vip-auth-cache.json"
+
+        _save_auth_cache(session, cache)
+
+        assert self._cookie_names(cache) == ["ESTSAUTH", "rstudio-csrf-token"]
+
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Windows has no POSIX owner-only (0600) mode bits"
+    )
+    def test_save_writes_owner_only_cache(self, tmp_path):
+        import json
+        import stat
+
+        from vip.auth import InteractiveAuthSession, _save_auth_cache
+
+        state = tmp_path / "state.json"
+        state.write_text(json.dumps(self._STATE), encoding="utf-8")
+        session = InteractiveAuthSession(
+            storage_state_path=state, api_key=None, key_name="", _connect_url=""
+        )
+        cache = tmp_path / ".vip-auth-cache.json"
+
+        _save_auth_cache(session, cache)
+
+        assert stat.S_IMODE(cache.stat().st_mode) == 0o600
+
+    def test_refresh_drops_persistent_entra_cookie(self, tmp_path):
+        from vip.auth import refresh_auth_cache_from_storage_state
+
+        cache = tmp_path / ".vip-auth-cache.json"
+        cache.write_text('{"cookies": [], "origins": []}', encoding="utf-8")
+
+        assert refresh_auth_cache_from_storage_state(self._STATE, cache) is True
+        assert self._cookie_names(cache) == ["ESTSAUTH", "rstudio-csrf-token"]
+
+    def test_refresh_does_not_mutate_the_callers_state(self, tmp_path):
+        import copy
+
+        from vip.auth import refresh_auth_cache_from_storage_state
+
+        cache = tmp_path / ".vip-auth-cache.json"
+        cache.write_text('{"cookies": [], "origins": []}', encoding="utf-8")
+        live = copy.deepcopy(self._STATE)
+
+        refresh_auth_cache_from_storage_state(live, cache)
+
+        assert live == self._STATE
