@@ -16,10 +16,7 @@ def _pinned_playwright_version() -> str:
     preferring an exact ``==`` pin and otherwise falling back to the floor
     (``>=``/``>``/``~=``) version.
     """
-    try:
-        import tomllib
-    except ModuleNotFoundError:  # Python 3.10
-        import tomli as tomllib
+    import tomllib
 
     from packaging.requirements import Requirement
 
