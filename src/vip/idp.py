@@ -620,10 +620,10 @@ def _entra_is_kmsi(page: Page) -> bool:
 def _entra_dismiss_kmsi(page: Page) -> None:
     """Click "No" on the "Stay signed in?" (KMSI) prompt, if shown.
 
-    Clicking "Yes" plants a persistent ESTS refresh cookie into the storage
-    state VIP writes to the auth cache on disk; "No" keeps the cached
-    session to what Playwright's storage_state already captures. KMSI is
-    optional (some tenants disable it), so its absence is not an error.
+    "No" does not keep ESTSAUTHPERSISTENT out of the storage state (Entra
+    sets it either way); the auth cache drops that cookie when it writes to
+    disk. KMSI is optional (some tenants disable it), so its absence is not
+    an error.
     """
     no_button = page.locator(_ENTRA_KMSI_NO)
     if no_button.count() > 0 and no_button.first.is_visible():
