@@ -18,15 +18,8 @@ If you need to change the wording at the top of CHANGELOG.md, change
 
 from __future__ import annotations
 
-import sys
+import tomllib
 from pathlib import Path
-
-# Matches src/vip/config.py -- tomllib is stdlib only from 3.11, and CI runs
-# selftests on 3.10 as well.
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

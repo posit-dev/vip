@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 
 def parse_tag(tag: str) -> tuple[int, int, int]:
@@ -130,7 +130,7 @@ def main() -> None:
             raise SystemExit(1)
         return
 
-    today = args.today if args.today is not None else datetime.now(timezone.utc).date()
+    today = args.today if args.today is not None else datetime.now(UTC).date()
     print(next_version(last_tag, today))
 
 

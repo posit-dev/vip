@@ -28,18 +28,13 @@ if one was supplied, and raises ``ValueError`` for an unsupported
 from __future__ import annotations
 
 import os
-import sys
+import tomllib
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
 from vip.proxy import ProxyConfig
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 
 def _normalize_url(url: str) -> tuple[str, bool]:

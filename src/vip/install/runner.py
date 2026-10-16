@@ -6,7 +6,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from vip.install.manifest import (
@@ -28,7 +28,7 @@ def is_root() -> bool:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def format_install_plan(plan: InstallPlan) -> str:
