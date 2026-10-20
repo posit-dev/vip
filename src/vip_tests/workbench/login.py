@@ -20,7 +20,7 @@ from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from vip.auth import refresh_auth_cache_from_storage_state
-from vip.auth.workbench import _on_login_page
+from vip.auth.workbench import _on_login_page, wait_for_saml_acs_to_settle
 from vip_tests.workbench.pages import Homepage, LoginPage
 from vip_tests.workbench.sessions import _skip_workbench_session_unproven
 from vip_tests.workbench.timeouts import TIMEOUT_PAGE_LOAD, TIMEOUT_QUICK, TIMEOUT_SSO_ROUNDTRIP
@@ -76,9 +76,8 @@ def oidc_login_lock(workbench_url: str, *, timeout: float = _LOGIN_LOCK_TIMEOUT)
 
 
 # Keywords indicating the URL is a login/auth page (used for OIDC detection)
-# Passed to vip.auth.workbench._on_login_page in place of its default: the broad
-# "auth" matches external IdP URLs, and "/saml/acs" is the in-flight SAML callback.
-_LOGIN_KEYWORDS = ("sign-in", "login", "auth", "/saml/acs")
+# Passed to vip.auth.workbench._on_login_page in place of its SAML-aware default.
+_LOGIN_KEYWORDS = ("sign-in", "login", "auth")
 
 
 def _external_idp_host(page_url: str, workbench_url: str) -> str | None:
@@ -283,6 +282,9 @@ def workbench_login(
         page.wait_for_load_state("load")
         if homepage_logo.is_visible():
             return
+
+    # Let an in-flight SAML callback redirect away before classifying the page.
+    wait_for_saml_acs_to_settle(page, TIMEOUT_PAGE_LOAD)
 
     # Check if we landed on a login/IdP page
     if _on_login_page(page.url, _LOGIN_KEYWORDS):

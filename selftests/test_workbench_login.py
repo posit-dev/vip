@@ -412,18 +412,85 @@ def test_failed_restore_does_not_touch_the_cache(monkeypatch):
     assert saved == []
 
 
-_SAML_ACS_URL = "https://wb.example.com/saml/acs"
+class _SamlAcsFakePage:
+    """Models a page parked on Workbench's SAML ACS callback.
+
+    *redirects* controls whether the callback ever redirects to the homepage,
+    where the logo becomes visible; otherwise ``wait_for_url`` times out.
+    """
+
+    def __init__(self, *, url="https://wb.example.com/saml/acs", redirects=True):
+        self.url = url
+        self._redirects = redirects
+        self.wait_for_url_calls: list[float] = []
+
+    @property
+    def _home(self):
+        return self.url == "https://wb.example.com/home"
+
+    def wait_for_url(self, predicate, *, timeout=None):
+        self.wait_for_url_calls.append(timeout)
+        if not self._redirects:
+            raise PlaywrightTimeoutError("still on /saml/acs")
+        self.url = "https://wb.example.com/home"
+        assert predicate(self.url)
+
+    def goto(self, *args, **kwargs):
+        pass
+
+    def wait_for_load_state(self, *args, **kwargs):
+        pass
+
+    def locator(self, selector):
+        return _AuthFakeLocator(visible=lambda: self._home)
+
+    def get_by_role(self, role, name=None):
+        return _AuthFakeLocator(visible=lambda: False)
 
 
-@pytest.mark.parametrize("module", ["vip_tests.workbench.login", "vip.workbench_ui"])
-def test_saml_acs_is_a_login_page_for_the_test_side_keywords(module):
-    """A page sitting on the SAML ACS URL has not finished logging in."""
-    import importlib
+def test_saml_acs_settle_waits_until_the_url_leaves_the_callback():
+    from vip.auth.workbench import wait_for_saml_acs_to_settle
 
-    from vip.auth.workbench import _on_login_page
+    page = _SamlAcsFakePage()
+    wait_for_saml_acs_to_settle(page, 1234)
+    assert page.wait_for_url_calls == [1234]
+    assert page.url == "https://wb.example.com/home"
 
-    mod = importlib.import_module(module)
-    keywords = getattr(mod, "_LOGIN_KEYWORDS", None) or mod._LOGIN_URL_KEYWORDS
 
-    assert _on_login_page(_SAML_ACS_URL, keywords)
-    assert not _on_login_page("https://wb.example.com/home", keywords)
+def test_saml_acs_settle_does_not_wait_off_the_callback():
+    from vip.auth.workbench import wait_for_saml_acs_to_settle
+
+    page = _SamlAcsFakePage(url="https://wb.example.com/home")
+    wait_for_saml_acs_to_settle(page, 1234)
+    assert page.wait_for_url_calls == []
+
+
+def test_saml_acs_settle_swallows_a_timeout():
+    from vip.auth.workbench import wait_for_saml_acs_to_settle
+
+    page = _SamlAcsFakePage(redirects=False)
+    wait_for_saml_acs_to_settle(page, 1234)  # must not raise
+    assert page.wait_for_url_calls == [1234]
+    assert page.url == "https://wb.example.com/saml/acs"
+
+
+def test_workbench_login_returns_once_the_saml_callback_redirects_home():
+    page = _SamlAcsFakePage()
+    workbench_login(page, "https://wb.example.com", "", "", interactive_auth=True)
+    assert page.wait_for_url_calls != []
+    assert page.url == "https://wb.example.com/home"
+
+
+def test_complete_sso_succeeds_once_the_saml_callback_redirects_home():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    page = _SamlAcsFakePage()
+    assert _complete_sso_if_needed(page) is True
+    assert page.url == "https://wb.example.com/home"
+
+
+def test_complete_sso_does_not_raise_when_the_saml_callback_never_redirects():
+    from vip.workbench_ui import _complete_sso_if_needed
+
+    page = _SamlAcsFakePage(redirects=False)
+    assert _complete_sso_if_needed(page) is False
