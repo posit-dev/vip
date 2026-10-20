@@ -3,6 +3,64 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.10.2 (2026-10-15)
+
+### Bug Fixes
+
+- Read, write and decode text as UTF-8 explicitly ([#759](https://github.com/posit-dev/vip/pull/759), [`2281f17`](https://github.com/posit-dev/vip/commit/2281f172307e78fdf5688e83249d0e6d3b594509))
+
+- **ci**: Pin Connect integration Python to 3.14 ([#770](https://github.com/posit-dev/vip/pull/770), [`6422e7f`](https://github.com/posit-dev/vip/commit/6422e7fb3880e2da66dec8812c34a4684116bfef))
+
+- **ci**: Pin Connect smoke and example-report Python to 3.14 ([#771](https://github.com/posit-dev/vip/pull/771), [`6b8d49e`](https://github.com/posit-dev/vip/commit/6b8d49e8a899800333809ec4b28bbc65e728bcfb))
+
+- **connect**: Use the real server_settings/mail/test endpoint ([#760](https://github.com/posit-dev/vip/pull/760), [`ad5d71b`](https://github.com/posit-dev/vip/commit/ad5d71bd5b762427a122601f3e7e80902338a971))
+
+- **mock-idp**: Link Connect's bundled Python to a version-free path ([#780](https://github.com/posit-dev/vip/pull/780), [`264a6b7`](https://github.com/posit-dev/vip/commit/264a6b7bd52dfc269e91ce9e7e13a73936d11414))
+
+- **workbench**: Join sessions through one navigation-checked helper ([#772](https://github.com/posit-dev/vip/pull/772), [`97fba6f`](https://github.com/posit-dev/vip/commit/97fba6fc33bb237a99ce5036b04c91f737c4ac33))
+
+- **workbench**: Start Positron console in git-ops launch gate ([#774](https://github.com/posit-dev/vip/pull/774), [`8fd2ce5`](https://github.com/posit-dev/vip/commit/8fd2ce597995ebcf5fd53f6f24f907130b2ac9e9))
+
+### Chores
+
+- **deps**: Bump anthropics/claude-code-action from 1.0.234 to 1.0.244 in the actions-dependencies group across 1 directory ([#767](https://github.com/posit-dev/vip/pull/767), [`3fdf2b1`](https://github.com/posit-dev/vip/commit/3fdf2b1e6419270c58b92b668711cc804ca83b97))
+
+### Continuous Integration
+
+- **deps**: Ignore pytest-bdd major updates in Dependabot ([#775](https://github.com/posit-dev/vip/pull/775), [`f71800a`](https://github.com/posit-dev/vip/commit/f71800abcab85616f2244c429cf80ebce1c02fda))
+
+### Features
+
+- **auth**: Add Entra ID headless-auth strategy ([#745](https://github.com/posit-dev/vip/pull/745), [`f9693ec`](https://github.com/posit-dev/vip/commit/f9693ec7a3705746b6dc5b54f970e059bc6645ed))
+
+
+## v2026.10.1 (2026-10-08)
+
+### Bug Fixes
+
+- **ci**: Point declared Package Manager URL at p3m.dev ([#747](https://github.com/posit-dev/vip/pull/747), [`3cfcb2a`](https://github.com/posit-dev/vip/commit/3cfcb2abce6cae09b3180ea241542a3c600bdf16))
+
+- **connect**: Parse bare array from tag content endpoint in VIP sweep ([#748](https://github.com/posit-dev/vip/pull/748), [`21de7be`](https://github.com/posit-dev/vip/commit/21de7be2bd812cbd3ac076c509f3f36457120abe))
+
+- **deps**: Bump urllib3 to 2.8.0 for three new advisories ([#749](https://github.com/posit-dev/vip/pull/749), [`c4629ed`](https://github.com/posit-dev/vip/commit/c4629ed467675f74c911414b9476050e837df448))
+
+- **workbench**: Wait for RStudio console ready and reload when a line is not submitted ([#763](https://github.com/posit-dev/vip/pull/763), [`e64ac63`](https://github.com/posit-dev/vip/commit/e64ac63e62c2c43a5fadd062286eba2c633d70e8))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group across 1 directory with 3 updates ([#755](https://github.com/posit-dev/vip/pull/755), [`a65e432`](https://github.com/posit-dev/vip/commit/a65e43213006120b1852f3035297c4f599247c2d))
+
+- **deps**: Bump the python-dependencies group across 1 directory with 3 updates ([#758](https://github.com/posit-dev/vip/pull/758), [`5ddcad8`](https://github.com/posit-dev/vip/commit/5ddcad8bbac6703e32acff488a2bfff7e1f99687))
+
+### Continuous Integration
+
+- Add informational Windows selftest job and fix its failures ([#765](https://github.com/posit-dev/vip/pull/765), [`a09ac66`](https://github.com/posit-dev/vip/commit/a09ac665c93593da8a1f012fa8a7985d0895aa15))
+
+### Testing
+
+- **workbench**: Log where the page lands after suspend/resume Launch ([#750](https://github.com/posit-dev/vip/pull/750), [`1d4a692`](https://github.com/posit-dev/vip/commit/1d4a6925235a14033a6c47491de67dc1f67b2bb7))
+
+
 ## v2026.10.0 (2026-10-01)
 
 ### Chores

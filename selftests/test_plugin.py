@@ -359,7 +359,7 @@ class TestXdistCompatibility:
         result.assert_outcomes(passed=2, failed=1)
         assert report_path.exists()
 
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         assert len(data["results"]) == 3
         passed = [r for r in data["results"] if r["outcome"] == "passed"]
         failed = [r for r in data["results"] if r["outcome"] == "failed"]
@@ -389,7 +389,7 @@ class TestXdistCompatibility:
         result.assert_outcomes(passed=1, failed=1)
         assert report_path.exists()
 
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         assert len(data["results"]) == 2
 
     def test_gw_worker_prefix_suppressed(self, selftest_pytester):
@@ -465,7 +465,7 @@ class TestXdistCompatibility:
         )
         result.assert_outcomes(passed=1)
 
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         assert len(data["results"]) == 1
         r = data["results"][0]
         assert "markers" in r
@@ -1200,7 +1200,7 @@ def test_markers_in_sync():
 
     # Parse marker names from pyproject.toml [tool.pytest.ini_options] markers list.
     # Each entry looks like: "name: description" or "name(args): description"
-    pyproject_text = (repo_root / "pyproject.toml").read_text()
+    pyproject_text = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
     markers_section = re.search(
         r"\[tool\.pytest\.ini_options\].*?^markers\s*=\s*\[(.*?)\]",
         pyproject_text,
@@ -1217,7 +1217,9 @@ def test_markers_in_sync():
     # Each call looks like:
     #   config.addinivalue_line("markers", "name...")          (single-line)
     #   config.addinivalue_line(\n    "markers",\n    "name..."\n)  (multi-line)
-    plugin_text = (repo_root / "src" / "vip" / "plugin" / "configure.py").read_text()
+    plugin_text = (repo_root / "src" / "vip" / "plugin" / "configure.py").read_text(
+        encoding="utf-8"
+    )
     plugin_markers = {
         re.match(r"(\w+)", m).group(1)
         for m in re.findall(
@@ -1240,7 +1242,8 @@ class TestFormatEmission:
         results.write_text(
             '{"deployment_name": "T", "results": ['
             '{"nodeid": "tests/connect/test_a.py::test_x", "outcome": "failed",'
-            ' "concise_error": "boom", "scenario_title": "X"}]}'
+            ' "concise_error": "boom", "scenario_title": "X"}]}',
+            encoding="utf-8",
         )
         return results
 
@@ -1342,7 +1345,7 @@ class TestUnprovenExitStatus:
         pytester.makepyfile(body)
         report_path = pytester.path / "results.json"
         result = pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}", *extra)
-        return result, json.loads(report_path.read_text())
+        return result, json.loads(report_path.read_text(encoding="utf-8"))
 
     def test_unproven_check_makes_the_run_exit_nonzero(self, selftest_pytester):
         from vip.plugin import EXIT_UNPROVEN

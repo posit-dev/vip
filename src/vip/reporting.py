@@ -4,20 +4,14 @@ from __future__ import annotations
 
 import json
 import re
-import sys
+import tomllib
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import vip_tests
 from vip import __version__
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
-
 
 VALID_FORMATS = frozenset({"json", "junit", "sarif"})
 
@@ -201,7 +195,7 @@ class ReportData:
             return "N/A"
         try:
             dt = datetime.fromisoformat(self.generated_at)
-            return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            return dt.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
         except Exception:  # noqa: BLE001
             return self.generated_at[:19] if self.generated_at else "N/A"
 
@@ -223,7 +217,7 @@ def load_results(path: str | Path) -> ReportData:
     if not p.exists():
         return ReportData()
 
-    raw = json.loads(p.read_text())
+    raw = json.loads(p.read_text(encoding="utf-8"))
     results = [
         TestResult(
             nodeid=r["nodeid"],
@@ -410,7 +404,7 @@ def write_sarif(data: ReportData, path: str | Path) -> None:
 
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(doc, indent=2) + "\n")
+    p.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
 
 def _installed_vip_tests_dir() -> Path | None:

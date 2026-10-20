@@ -135,3 +135,30 @@ class TestCapAutoDetectedProfiles:
         assert cap_auto_detected_profiles(["Default (1 CPU, 4GB RAM)"]) == [
             "Default (1 CPU, 4GB RAM)"
         ]
+
+
+class _FakeRequest:
+    def __init__(self, method: str) -> None:
+        self.method = method
+
+
+class _FakeResponse:
+    def __init__(self, method: str, url: str) -> None:
+        self.request = _FakeRequest(method)
+        self.url = url
+
+
+@pytest.mark.parametrize(
+    ("method", "url", "expected"),
+    [
+        ("POST", "https://wb.example/launcher/launch_session", True),
+        ("POST", "https://wb.example/launcher/launch_session?x=1", True),
+        ("GET", "https://wb.example/launcher/launch_session", False),
+        ("POST", "https://wb.example/launcher/new_session_url", False),
+        ("POST", "https://wb.example/other?next=launch_session", False),
+    ],
+)
+def test_launch_session_response_predicate(method, url, expected):
+    from vip_tests.workbench.capacity import _is_launch_session_response
+
+    assert _is_launch_session_response(_FakeResponse(method, url)) is expected

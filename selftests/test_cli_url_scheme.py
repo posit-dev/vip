@@ -185,7 +185,7 @@ def _write_manifest(tmp_path) -> None:
         "items": [],
         "pending_system_packages": [],
     }
-    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest))
+    (tmp_path / ".vip-install.json").write_text(json.dumps(manifest), encoding="utf-8")
 
 
 class TestRunUninstallSchemeResolution:

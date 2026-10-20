@@ -18,22 +18,51 @@ from vip.auth.sso import (
     _strip_url_query,
     _timeout_label,
 )
-from vip.errors import AuthTimeoutError
+from vip.errors import AuthConfigError, AuthTimeoutError
 from vip.idp import _log_verbose
 from vip.timeouts import scaled
 
+# Connect's SPA can take a moment after the OAuth callback before /__api__/me
+# reports the new session, so don't probe until the browser has been back on
+# the product host this long.
+_CONNECT_SESSION_GRACE_SECONDS = 5
+_CONNECT_SESSION_POLL_SECONDS = 2
 
-def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = "") -> None:
+
+def _connect_has_no_session(page: Page, product_url: str) -> bool:
+    """True when Connect answers 401 to ``/__api__/me`` for the page's session."""
+    try:
+        resp = page.request.get(
+            f"{product_url.rstrip('/')}/__api__/me", timeout=int(scaled(10_000))
+        )
+    except PlaywrightError:
+        return False
+    return resp.status == 401
+
+
+def _wait_for_product_redirect(
+    page: Page,
+    product_url: str,
+    *,
+    provider: str = "",
+    check_connect_session: bool = False,
+) -> None:
     """Wait until the browser has returned to the product after IdP auth.
 
     *provider* names the configured auth provider (``"oidc"``, ``"saml"``,
     ``"oauth2"``) so a timeout error names the protocol that actually ran
     instead of assuming OIDC (see #263). Leave it as "" when unknown here;
     the message falls back to neutral wording.
+
+    With *check_connect_session*, once the browser is back on the Connect host
+    but ``/__api__/me`` still says 401, raise instead of waiting out the
+    timeout: the IdP step worked but Connect did not create a session.
     """
     base = product_url.rstrip("/").lower()
     deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
     clicked_oidc_confirm = False
+    on_host_since: float | None = None
+    last_session_check = 0.0
 
     while time.monotonic() < deadline:
         try:
@@ -42,6 +71,26 @@ def _wait_for_product_redirect(page: Page, product_url: str, *, provider: str = 
             break
         if url.startswith(base) and not _on_login_page(url):
             return
+        if check_connect_session:
+            now = time.monotonic()
+            if not url.startswith(base):
+                on_host_since = None
+            else:
+                if on_host_since is None:
+                    on_host_since = now
+                if (
+                    now - on_host_since >= _CONNECT_SESSION_GRACE_SECONDS
+                    and now - last_session_check >= _CONNECT_SESSION_POLL_SECONDS
+                ):
+                    last_session_check = now
+                    if _connect_has_no_session(page, product_url):
+                        raise AuthConfigError(
+                            "The IdP sign-in succeeded, but Connect did not create a session "
+                            f"(/__api__/me returned 401 at {_strip_url_query(page.url)!r}). "
+                            "Check Connect's server log; a common cause is the IdP not "
+                            "supplying a claim Connect needs for a new user, such as "
+                            "given_name when the account has no first name set."
+                        )
         # Workbench lands on an OIDC confirmation page after the IdP
         # round-trip (form action "auth-openid-sign-in"). A human user
         # would click "Sign in with OpenID"; in headless mode we do it

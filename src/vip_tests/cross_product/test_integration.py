@@ -26,7 +26,7 @@ def test_connect_uses_package_manager():
 _PLUMBER_R = '#* @get /\nfunction() {\n  list(message = "VIP integration test")\n}\n'
 _PLUMBER_MANIFEST = (
     pathlib.Path(__file__).parent.parent / "connect" / "plumber_manifest.json"
-).read_text()
+).read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

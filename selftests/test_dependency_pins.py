@@ -36,12 +36,8 @@ dev ruff`` (a local hook) instead of the separately-versioned
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10
-    import tomli as tomllib
 
 import yaml
 from packaging.requirements import Requirement
@@ -73,7 +69,6 @@ CAPPED = {
     "mako",
     "idna",
     "pip",
-    "tomli",
     "pyotp",
     "anyio",
     # Report/Jupyter stack: moved from the [report] extra into base deps so a
@@ -96,7 +91,7 @@ def canonical(name: str) -> str:
 
 
 def _runtime_requirements() -> dict[str, Requirement]:
-    data = tomllib.loads(PYPROJECT.read_text())
+    data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     return {
         canonical(Requirement(spec).name): Requirement(spec)
         for spec in data["project"]["dependencies"]
@@ -104,7 +99,7 @@ def _runtime_requirements() -> dict[str, Requirement]:
 
 
 def _locked_versions() -> dict[str, str]:
-    data = tomllib.loads(LOCKFILE.read_text())
+    data = tomllib.loads(LOCKFILE.read_text(encoding="utf-8"))
     return {canonical(pkg["name"]): pkg["version"] for pkg in data["package"]}
 
 
@@ -157,7 +152,7 @@ CAPPED_OPTIONAL = {
 
 
 def _optional_requirements(group: str) -> dict[str, Requirement]:
-    data = tomllib.loads(PYPROJECT.read_text())
+    data = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
     return {
         canonical(Requirement(spec).name): Requirement(spec)
         for spec in data["project"]["optional-dependencies"][group]
@@ -192,7 +187,7 @@ def _pinned_playwright_version() -> str:
 
 
 def _dockerfile_playwright_tag() -> str:
-    text = DOCKERFILE.read_text()
+    text = DOCKERFILE.read_text(encoding="utf-8")
     match = re.search(
         r"^FROM mcr\.microsoft\.com/playwright/python:v([0-9.]+)-\S+",
         text,
@@ -224,7 +219,7 @@ def test_ci_ruff_action_has_no_version_override():
     """
     offenders = []
     for workflow_path in sorted([*WORKFLOWS_DIR.glob("*.yml"), *WORKFLOWS_DIR.glob("*.yaml")]):
-        workflow = yaml.safe_load(workflow_path.read_text()) or {}
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8")) or {}
         for job_name, job in (workflow.get("jobs") or {}).items():
             for step in job.get("steps") or []:
                 uses = step.get("uses", "")
@@ -245,7 +240,7 @@ def test_pre_commit_ruff_hook_is_local_not_pinned_mirror():
     mirror, so pre-commit and CI/``just lint`` always agree on which ruff
     they run.
     """
-    config = yaml.safe_load(PRE_COMMIT_CONFIG.read_text()) or {}
+    config = yaml.safe_load(PRE_COMMIT_CONFIG.read_text(encoding="utf-8")) or {}
     repos = config.get("repos") or []
     repo_urls = [repo.get("repo", "") for repo in repos]
     assert not any("ruff-pre-commit" in url for url in repo_urls), (

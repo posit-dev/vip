@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from vip.gherkin import parse_feature_file
@@ -75,7 +75,7 @@ def generate_catalog(tests_dir: Path, output: Path) -> dict:
         )
 
     catalog = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "categories": categories,
     }
 

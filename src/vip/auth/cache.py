@@ -6,7 +6,6 @@ import contextlib
 import json
 import logging
 import os
-import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -29,6 +28,11 @@ logger = logging.getLogger(__name__)
 
 
 AUTH_CACHE_FILENAME = ".vip-auth-cache.json"
+
+# Cookies dropped before a storage state is written to the on-disk cache.
+# Entra sets ESTSAUTHPERSISTENT even when "Stay signed in?" is answered No;
+# the session ESTSAUTH cookie covers silent SSO for the cache's four-hour TTL.
+_CACHE_DROPPED_COOKIES = frozenset({"ESTSAUTHPERSISTENT"})
 
 
 def auth_cache_path() -> Path:
@@ -71,7 +75,7 @@ def _cookies_from_storage_state(storage_state_path: Path) -> httpx.Cookies:
     """
     cookies = httpx.Cookies()
     try:
-        state = json.loads(Path(storage_state_path).read_text())
+        state = json.loads(Path(storage_state_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return cookies
     if not isinstance(state, dict):
@@ -198,7 +202,7 @@ def _load_cached_auth(
     cached_request_workbench_url = ""
     if meta_path.exists():
         try:
-            meta = json.loads(meta_path.read_text())
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
             api_key = meta.get("api_key")
             key_name = meta.get("key_name", "")
             resolved_connect_url = meta.get("connect_url", "")
@@ -309,6 +313,18 @@ def _cached_urls_match(
     )
 
 
+def _cacheable_storage_state(storage_state: dict) -> dict:
+    """Return a copy of *storage_state* without the cookies in ``_CACHE_DROPPED_COOKIES``."""
+    return {
+        **storage_state,
+        "cookies": [
+            c
+            for c in storage_state.get("cookies", [])
+            if c.get("name") not in _CACHE_DROPPED_COOKIES
+        ],
+    }
+
+
 def refresh_auth_cache_from_storage_state(
     storage_state: dict, cache_path: Path | None = None
 ) -> bool:
@@ -340,12 +356,12 @@ def refresh_auth_cache_from_storage_state(
 
     tmp: Path | None = None
     try:
-        payload = json.dumps(storage_state)
+        payload = json.dumps(_cacheable_storage_state(storage_state))
         # Same directory so the rename stays on one filesystem (and therefore
         # atomic); mkstemp creates it 0600 already.
         fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".vip-auth-cache-")
         tmp = Path(tmp_name)
-        with os.fdopen(fd, "w") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(payload)
         tmp.chmod(0o600)
         tmp.replace(path)
@@ -374,8 +390,11 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         )
         return
 
-    # Copy storage state to the cache location.
-    shutil.copy2(session.storage_state_path, cache_path)
+    # Write the storage state to the cache location, minus long-lived IdP cookies.
+    state = json.loads(session.storage_state_path.read_text(encoding="utf-8"))
+    fd = os.open(cache_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(_cacheable_storage_state(state), handle)
     cache_path.chmod(0o600)
 
     # Write companion metadata.  ``connect_url`` keeps the resolved
@@ -392,5 +411,5 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         "requested_connect_url": session._requested_connect_url or session._connect_url,
         "workbench_url": session._workbench_url,
     }
-    meta_path.write_text(json.dumps(meta))
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
     meta_path.chmod(0o600)

@@ -8,6 +8,12 @@ updates:
     python-dependencies:
       patterns:
       - "*"
+  # pytest-bdd 9 removed the __scenario__ attribute VIP's plugin reads; major
+  # bumps need a deliberate migration, not a grouped weekly update.
+  ignore:
+  - dependency-name: pytest-bdd
+    update-types:
+    - version-update:semver-major
   package-ecosystem: uv
   schedule:
     interval: weekly

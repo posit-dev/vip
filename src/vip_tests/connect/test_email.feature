@@ -8,4 +8,4 @@ Feature: Connect email delivery
     Given Connect is accessible at the configured URL
     And email delivery is enabled
     When I send a test email via the Connect API
-    Then the email task completes without error
+    Then the test email is accepted by Connect

@@ -18,22 +18,17 @@ If you need to change the wording at the top of CHANGELOG.md, change
 
 from __future__ import annotations
 
-import sys
+import tomllib
 from pathlib import Path
-
-# Matches src/vip/config.py -- tomllib is stdlib only from 3.11, and CI runs
-# selftests on 3.10 as well.
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_cliff_header_is_exact_prefix_of_changelog():
-    header = tomllib.loads((REPO_ROOT / "cliff.toml").read_text())["changelog"]["header"]
-    changelog = (REPO_ROOT / "CHANGELOG.md").read_text()
+    header = tomllib.loads((REPO_ROOT / "cliff.toml").read_text(encoding="utf-8"))["changelog"][
+        "header"
+    ]
+    changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
     assert changelog.startswith(header), (
         "cliff.toml's [changelog] header must byte-match the start of CHANGELOG.md, "

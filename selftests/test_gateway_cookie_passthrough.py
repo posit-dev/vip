@@ -29,7 +29,7 @@ from vip.clients.workbench import WorkbenchClient
 
 def _write_storage_state(path: Path, cookies: list[dict]) -> None:
     """Write a minimal Playwright storage-state JSON to *path*."""
-    path.write_text(json.dumps({"cookies": cookies, "origins": []}))
+    path.write_text(json.dumps({"cookies": cookies, "origins": []}), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +144,7 @@ class TestLoadCookies:
 
     def test_returns_empty_cookies_when_file_invalid_json(self, tmp_path):
         state = tmp_path / "state.json"
-        state.write_text("{not valid json")
+        state.write_text("{not valid json", encoding="utf-8")
         session = InteractiveAuthSession(storage_state_path=state)
 
         cookies = session.load_cookies()
@@ -154,7 +154,7 @@ class TestLoadCookies:
 
     def test_returns_empty_cookies_when_cookies_key_missing(self, tmp_path):
         state = tmp_path / "state.json"
-        state.write_text('{"origins": []}')  # no "cookies" key
+        state.write_text('{"origins": []}', encoding="utf-8")  # no "cookies" key
         session = InteractiveAuthSession(storage_state_path=state)
 
         cookies = session.load_cookies()
@@ -183,7 +183,9 @@ class TestLoadCookies:
         must not raise AttributeError — return an empty jar.
         """
         state = tmp_path / "state.json"
-        state.write_text('[{"name": "x", "value": "y"}]')  # JSON array, not object
+        state.write_text(
+            '[{"name": "x", "value": "y"}]', encoding="utf-8"
+        )  # JSON array, not object
         session = InteractiveAuthSession(storage_state_path=state)
 
         cookies = session.load_cookies()
@@ -198,7 +200,8 @@ class TestLoadCookies:
         state = tmp_path / "state.json"
         state.write_text(
             '{"cookies": ["not-a-dict", 42, null, {"name": "ok", "value": "val",'
-            ' "domain": ".example.com", "path": "/"}]}'
+            ' "domain": ".example.com", "path": "/"}]}',
+            encoding="utf-8",
         )
         session = InteractiveAuthSession(storage_state_path=state)
 

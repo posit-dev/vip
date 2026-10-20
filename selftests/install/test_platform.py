@@ -16,14 +16,11 @@ def _pinned_playwright_version() -> str:
     preferring an exact ``==`` pin and otherwise falling back to the floor
     (``>=``/``>``/``~=``) version.
     """
-    try:
-        import tomllib
-    except ModuleNotFoundError:  # Python 3.10
-        import tomli as tomllib
+    import tomllib
 
     from packaging.requirements import Requirement
 
-    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     pw_dep = next(d for d in pyproject["project"]["dependencies"] if d.startswith("playwright"))
     specifier = Requirement(pw_dep).specifier
     exact = next((s.version for s in specifier if s.operator == "=="), None)
@@ -38,7 +35,7 @@ def _pinned_playwright_version() -> str:
 def fake_os_release(tmp_path: Path, monkeypatch):
     def _write(content: str) -> Path:
         p = tmp_path / "os-release"
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
         monkeypatch.setattr(plat, "_OS_RELEASE_PATH", p)
         return p
 

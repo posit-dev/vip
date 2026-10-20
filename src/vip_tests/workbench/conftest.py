@@ -35,6 +35,7 @@ from vip_tests.workbench.capacity import (
     _option_is_disabled,
     cap_auto_detected_profiles,
     profile_size_key,
+    submit_new_session_dialog,
 )
 from vip_tests.workbench.cleanup import (
     _cleanup_sessions,
@@ -47,11 +48,9 @@ from vip_tests.workbench.cleanup import (
 from vip_tests.workbench.login import (
     _external_idp_host,
     _login_lock_path,
-    _navigated_into_session,
     _silent_sso_signin,
     oidc_login_lock,
     restore_shared_session,
-    wait_for_resume_navigation,
     workbench_login,
 )
 from vip_tests.workbench.naming import (
@@ -62,12 +61,14 @@ from vip_tests.workbench.naming import (
     vip_session_prefix,
 )
 from vip_tests.workbench.sessions import (
+    _navigated_into_session,
     _session_failure_message,
     _session_timeout_message,
     _skip_workbench_session_unproven,
     _workbench_session_skip_message,
     assert_homepage_loaded,
     format_capacity_failure,
+    join_session,
     raise_if_session_failed,
     wait_for_session_active,
     wait_for_session_suspended,
@@ -118,15 +119,16 @@ __all__ = [
     "capacity_session_prefix",
     "current_worker_id",
     "format_capacity_failure",
+    "join_session",
     "k8s_session_prefix",
     "oidc_login_lock",
     "profile_size_key",
     "quit_owned_sessions_via_page",
+    "submit_new_session_dialog",
     "raise_if_session_failed",
     "restore_shared_session",
     "unique_session_name",
     "vip_session_prefix",
-    "wait_for_resume_navigation",
     "wait_for_session_active",
     "wait_for_session_suspended",
     "workbench_login",

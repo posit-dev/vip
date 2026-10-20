@@ -51,7 +51,7 @@ class TestPluginIntegration:
     def test_location_line_shortened_in_concise_mode(self, selftest_pytester):
         """A test collected under a vip_tests/ package shows a truncated path."""
         pkg = selftest_pytester.mkpydir("vip_tests")
-        (pkg / "test_sample.py").write_text("def test_ok():\n    assert True\n")
+        (pkg / "test_sample.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
         result = selftest_pytester.runpytest_subprocess(
             "--vip-config=vip.toml", "-v", str(pkg / "test_sample.py")
         )
@@ -62,7 +62,7 @@ class TestPluginIntegration:
     def test_location_line_full_path_when_verbose(self, selftest_pytester):
         """--vip-verbose keeps the full node path so debugging is unaffected."""
         pkg = selftest_pytester.mkpydir("vip_tests")
-        (pkg / "test_sample.py").write_text("def test_ok():\n    assert True\n")
+        (pkg / "test_sample.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
         result = selftest_pytester.runpytest_subprocess(
             "--vip-config=vip.toml", "--vip-verbose", "-v", str(pkg / "test_sample.py")
         )
@@ -159,7 +159,7 @@ class TestPluginIntegration:
         failures_path = selftest_pytester.path / "failures.json"
         assert failures_path.exists()
 
-        data = json.loads(failures_path.read_text())
+        data = json.loads(failures_path.read_text(encoding="utf-8"))
         assert len(data["failures"]) == 1
         error_summary = data["failures"][0]["error_summary"]
         assert "line one" in error_summary
@@ -291,7 +291,7 @@ class TestPluginIntegration:
         result.stdout.fnmatch_lines(["*an unexpected error occurred*RuntimeError*connection lost*"])
 
         # JSON: both fields present for failures
-        data = json.loads(report_path.read_text())
+        data = json.loads(report_path.read_text(encoding="utf-8"))
         failed = [r for r in data["results"] if r["outcome"] == "failed"]
         for r in failed:
             assert r["concise_error"] is not None

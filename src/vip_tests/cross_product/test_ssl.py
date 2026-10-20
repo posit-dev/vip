@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import socket
 import ssl
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -108,7 +108,7 @@ def _cert_expires_at(cert: dict) -> datetime:
     month_abbr, day, time_str, year, _tz = not_after.split()
     month = _MONTH_ABBREVIATIONS[month_abbr]
     hour, minute, second = (int(part) for part in time_str.split(":"))
-    return datetime(int(year), month, int(day), hour, minute, second, tzinfo=timezone.utc)
+    return datetime(int(year), month, int(day), hour, minute, second, tzinfo=UTC)
 
 
 @then("the certificate is valid and not expired")
@@ -121,7 +121,7 @@ def cert_valid(cert_info, vip_config):
     # check is the margin: warn early enough to renew before the cert lapses
     # and causes an outage. See #555.
     expires_at = _cert_expires_at(cert_info["cert"])
-    days_remaining = (expires_at - datetime.now(timezone.utc)).total_seconds() / 86400
+    days_remaining = (expires_at - datetime.now(UTC)).total_seconds() / 86400
     threshold = vip_config.cert_expiry_warning_days
     assert days_remaining >= threshold, (
         f"Certificate for {cert_info['hostname']} expires in "

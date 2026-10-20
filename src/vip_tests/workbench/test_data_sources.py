@@ -14,8 +14,8 @@ from vip_tests.workbench.conftest import (
     TIMEOUT_IDE_LOAD,
     TIMEOUT_QUICK,
     assert_homepage_loaded,
+    join_session,
     unique_session_name,
-    wait_for_session_active,
     workbench_login,
 )
 from vip_tests.workbench.pages import (
@@ -74,19 +74,6 @@ def _start_session(page: Page, session_name: str) -> None:
     expect(checkbox).not_to_be_checked(timeout=TIMEOUT_QUICK)
 
     page.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=TIMEOUT_QUICK)
-
-
-def _wait_for_active_and_join(page: Page, session_name: str) -> None:
-    """Wait for the session to reach Active state, then navigate into it.
-
-    Fails fast with an actionable message if the session reaches a terminal
-    state (e.g. Failed) rather than waiting out the full session-start timeout.
-    """
-    session_row = wait_for_session_active(page, session_name)
-
-    session_link = session_row.locator(f"a[title='join {session_name}']")
-    expect(session_link).to_be_visible(timeout=TIMEOUT_DIALOG)
-    session_link.click()
 
 
 def _execute_r_command(page: Page, command: str) -> str:
@@ -165,7 +152,7 @@ def verify_connectivity(
 
     session_name = unique_session_name(_FILENAME)
     _start_session(page, session_name)
-    _wait_for_active_and_join(page, session_name)
+    join_session(page, session_name)
 
     # ``CONTAINER`` is the readiness gate rather than ``LOGO``: when the deployed R
     # is newer than the maximum R version RStudio was tested against, RStudio
