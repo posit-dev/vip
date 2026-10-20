@@ -5,8 +5,13 @@ from __future__ import annotations
 import logging
 import re
 import warnings
+from urllib.parse import urlparse
 
-from playwright.sync_api import Locator
+from playwright.sync_api import Locator, Page, Response, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+from vip_tests.workbench.pages import NewSessionDialog
+from vip_tests.workbench.timeouts import TIMEOUT_DIALOG, TIMEOUT_QUICK, TIMEOUT_SESSION_START
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +49,38 @@ def _option_is_disabled(option: Locator) -> bool:
         option.get_attribute("aria-disabled") == "true"
         or option.get_attribute("data-disabled") is not None
     )
+
+
+def _is_launch_session_response(response: Response) -> bool:
+    """Return True for the response to Workbench's ``launch_session`` POST."""
+    return response.request.method == "POST" and urlparse(response.url).path.endswith(
+        "launch_session"
+    )
+
+
+def submit_new_session_dialog(page: Page, session_name: str) -> None:
+    """Launch from the open New Session dialog and wait for the launch RPC to finish.
+
+    Workbench clears the launcher's typed name only after the ``launch_session``
+    RPC returns, so waiting for it keeps the next dialog's name from being wiped.
+    """
+    name_field = page.locator(NewSessionDialog.SESSION_NAME)
+    expect(name_field).to_have_value(session_name, timeout=TIMEOUT_QUICK)
+
+    clicked = False
+    try:
+        with page.expect_response(_is_launch_session_response, timeout=TIMEOUT_SESSION_START):
+            page.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=TIMEOUT_QUICK)
+            clicked = True
+    except PlaywrightTimeoutError as exc:
+        if not clicked:
+            raise
+        raise AssertionError(
+            f"Workbench never answered the launch_session request for '{session_name}' "
+            f"within {TIMEOUT_SESSION_START} ms; cannot tell whether the session launched."
+        ) from exc
+
+    expect(page.locator(NewSessionDialog.DIALOG)).to_be_hidden(timeout=TIMEOUT_DIALOG)
 
 
 # Cap on how many auto-detected resource profiles the capacity scenarios launch

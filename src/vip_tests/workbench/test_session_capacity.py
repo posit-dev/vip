@@ -33,6 +33,7 @@ from vip_tests.workbench.conftest import (
     capacity_session_prefix,
     format_capacity_failure,
     quit_owned_sessions_via_page,
+    submit_new_session_dialog,
     wait_for_session_active,
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
@@ -165,10 +166,7 @@ def _launch_session(
     if checkbox.is_visible() and checkbox.is_checked():
         checkbox.click()
 
-    page.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=TIMEOUT_QUICK)
-
-    # Wait for the dialog to close before launching the next session.
-    expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
+    submit_new_session_dialog(page, session_name)
 
 
 # ---------------------------------------------------------------------------
