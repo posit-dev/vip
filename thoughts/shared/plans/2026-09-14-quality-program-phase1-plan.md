@@ -14,7 +14,7 @@
 
 - Reviewers are read-only. They create exactly one file each under `thoughts/shared/reviews/` and change nothing else.
 - Every finding has an `Evidence:` line with at least one `path:line` and a quoted source line. Findings without evidence are deleted at merge time.
-- Worktree for all phase 1 and 2 work: `/Users/ianfloressiaca/ptd-workspace/.worktrees/vip-quality-program`, branch `quality-program-design`, based on `origin/main` at `ff81793d`.
+- Worktree for all phase 1 and 2 work: `<worktree>`, branch `quality-program-design`, based on `origin/main` at `ff81793d`.
 - All Python commands go through `uv run`. Mypy needs the dev extra: `uv run --extra dev mypy`.
 - Branch names are kebab-case, contain no `/`, and contain no personal names.
 - Commit messages and PR text require Ian's approval. Phase 1 and 2 produce documents only; the single commit at the end of phase 2 is proposed to Ian, not executed without a yes.
@@ -30,7 +30,7 @@ Every reviewer task in phase 1 dispatches an agent with `subagent_type: "general
 ````
 You are a code reviewer for the VIP repository (posit-dev/vip), a pytest-bdd test suite that validates Posit Team installations. You are one of eight reviewers running in parallel. Your lens is: <LENS>.
 
-Working directory: /Users/ianfloressiaca/ptd-workspace/.worktrees/vip-quality-program
+Working directory: <worktree>
 This is a git worktree at origin/main. Run every command from this directory. Do not cd elsewhere, do not create branches, do not edit or create any file except your output file.
 
 Read first, in this order:
@@ -300,9 +300,9 @@ Run:
 ```bash
 grep -H '^Proposed PR:' thoughts/shared/reviews/2026-09-14-*.md \
   | sed -E 's#thoughts/shared/reviews/2026-09-14-([a-z-]+)\.md:Proposed PR: ([a-z0-9-]+) \(files: (.*)\)#\1|\2|\3#' \
-  | sort -t'|' -k2 > /private/tmp/claude-501/-Users-ianfloressiaca/93ed1824-63c4-4825-b61f-b8c7a7182f6b/scratchpad/prs.psv
-wc -l /private/tmp/claude-501/-Users-ianfloressiaca/93ed1824-63c4-4825-b61f-b8c7a7182f6b/scratchpad/prs.psv
-cut -d'|' -f2 /private/tmp/claude-501/-Users-ianfloressiaca/93ed1824-63c4-4825-b61f-b8c7a7182f6b/scratchpad/prs.psv | sort | uniq -c | sort -rn | head -20
+  | sort -t'|' -k2 > $TMPDIR/prs.psv
+wc -l $TMPDIR/prs.psv
+cut -d'|' -f2 $TMPDIR/prs.psv | sort | uniq -c | sort -rn | head -20
 ```
 Expected: one row per finding; the uniq count shows slugs proposed by more than one lens, which are the merge candidates.
 
@@ -344,10 +344,11 @@ PRs whose file set intersects PR #627: <slugs>. Decision pending from Ian.
 
 - [ ] **Step 4: Verify wave disjointness with a script**
 
-Create `/private/tmp/claude-501/-Users-ianfloressiaca/93ed1824-63c4-4825-b61f-b8c7a7182f6b/scratchpad/check_waves.py`:
+Create `$TMPDIR/check_waves.py`:
 
 ```python
 """Fail if two PRs in the same wave touch the same file."""
+
 import re
 import sys
 from collections import defaultdict
@@ -362,7 +363,12 @@ for line in backlog.splitlines():
     if m:
         wave = m.group(1)
         continue
-    if wave and line.startswith("| ") and not line.startswith("| #") and not line.startswith("|---"):
+    if (
+        wave
+        and line.startswith("| ")
+        and not line.startswith("| #")
+        and not line.startswith("|---")
+    ):
         cells = [c.strip() for c in line.strip("|").split("|")]
         slug, files = cells[1], cells[3]
         for f in [x.strip() for x in files.split(",") if x.strip()]:
@@ -374,17 +380,17 @@ print("OK" if bad == 0 else f"{bad} collisions")
 sys.exit(1 if bad else 0)
 ```
 
-Run: `uv run python /private/tmp/claude-501/-Users-ianfloressiaca/93ed1824-63c4-4825-b61f-b8c7a7182f6b/scratchpad/check_waves.py thoughts/shared/plans/2026-09-14-quality-program-backlog.md`
+Run: `uv run python $TMPDIR/check_waves.py thoughts/shared/plans/2026-09-14-quality-program-backlog.md`
 Expected: `OK`
 
 - [ ] **Step 5: Verify #627 collision list**
 
 Run:
 ```bash
-gh pr view 627 -R posit-dev/vip --json files -q '.files[].path' | sort > /private/tmp/claude-501/-Users-ianfloressiaca/93ed1824-63c4-4825-b61f-b8c7a7182f6b/scratchpad/pr627.txt
+gh pr view 627 -R posit-dev/vip --json files -q '.files[].path' | sort > $TMPDIR/pr627.txt
 grep -oE '\| [0-9]\.[0-9]+ \| [a-z0-9-]+ \| [a-z-]+ \| [^|]+' thoughts/shared/plans/2026-09-14-quality-program-backlog.md \
   | while IFS='|' read -r _ num slug theme files; do
-      for f in $(echo "$files" | tr ',' ' '); do grep -qx "$f" /private/tmp/claude-501/-Users-ianfloressiaca/93ed1824-63c4-4825-b61f-b8c7a7182f6b/scratchpad/pr627.txt && echo "$slug collides on $f"; done
+      for f in $(echo "$files" | tr ',' ' '); do grep -qx "$f" $TMPDIR/pr627.txt && echo "$slug collides on $f"; done
     done | sort -u
 ```
 Expected: the printed slugs equal the backlog's `#627 collision list` section.
