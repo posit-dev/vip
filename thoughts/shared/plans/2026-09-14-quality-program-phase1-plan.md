@@ -348,6 +348,7 @@ Create `/private/tmp/claude-501/-Users-ianfloressiaca/93ed1824-63c4-4825-b61f-b8
 
 ```python
 """Fail if two PRs in the same wave touch the same file."""
+
 import re
 import sys
 from collections import defaultdict
@@ -362,7 +363,12 @@ for line in backlog.splitlines():
     if m:
         wave = m.group(1)
         continue
-    if wave and line.startswith("| ") and not line.startswith("| #") and not line.startswith("|---"):
+    if (
+        wave
+        and line.startswith("| ")
+        and not line.startswith("| #")
+        and not line.startswith("|---")
+    ):
         cells = [c.strip() for c in line.strip("|").split("|")]
         slug, files = cells[1], cells[3]
         for f in [x.strip() for x in files.split(",") if x.strip()]:
