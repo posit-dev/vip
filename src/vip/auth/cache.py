@@ -95,10 +95,10 @@ def _migrate_legacy_auth_cache(legacy_dir: Path, dest: Path) -> None:
                 shutil.move(str(legacy), str(target))
                 target.chmod(0o600)
             else:
-                legacy.unlink()
+                legacy.unlink(missing_ok=True)
         except OSError:
             try:
-                legacy.unlink()
+                legacy.unlink(missing_ok=True)
             except OSError:
                 logger.warning("Could not remove legacy auth cache %s; delete it by hand.", legacy)
 

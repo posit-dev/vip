@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import errno
 import os
+import pathlib
 import sys
 import time
 from typing import ClassVar
@@ -763,8 +764,12 @@ class TestLegacyAuthCacheMigration:
             raise OSError(errno.EXDEV, "x")
 
         monkeypatch.setattr(os, "rename", fail)
+        old = time.time() - 5 * 3600
+        os.utime(work / ".vip-auth-cache.json", (old, old))
 
         _migrate_legacy_auth_cache(work, dest)
+
+        assert abs(dest.stat().st_mtime - old) < 1
 
         assert list(work.glob(".vip-auth-cache*")) == []
         assert dest.read_text(encoding="utf-8") == "STATE"
@@ -784,6 +789,85 @@ class TestLegacyAuthCacheMigration:
         assert dest.read_text(encoding="utf-8") == "NEW"
         assert dest.with_suffix(".meta.json").read_text(encoding="utf-8") == "NEWMETA"
         assert list(work.glob(".vip-auth-cache*")) == []
+
+    def test_failed_move_deletes_the_legacy_file_quietly(self, tmp_path, monkeypatch, caplog):
+        import shutil
+
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+
+        def fail(*args, **kwargs):
+            raise OSError(errno.EACCES, "denied")
+
+        monkeypatch.setattr(shutil, "move", fail)
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert list(work.glob(".vip-auth-cache*")) == []
+        assert caplog.records == []
+
+    def test_failed_move_and_failed_delete_warns_with_the_path(self, tmp_path, monkeypatch, caplog):
+        import shutil
+        from pathlib import Path
+
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+
+        def fail(*args, **kwargs):
+            raise OSError(errno.EACCES, "denied")
+
+        monkeypatch.setattr(shutil, "move", fail)
+        monkeypatch.setattr(Path, "unlink", fail)
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        warned = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert any(str(work / ".vip-auth-cache.json") in m for m in warned)
+        assert any(str(work / ".vip-auth-cache.meta.json") in m for m in warned)
+
+    def test_legacy_file_vanishing_mid_migration_is_not_an_error(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        import shutil
+
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+
+        def lose_race(src, dst):
+            pathlib.Path(src).unlink()
+            raise FileNotFoundError(errno.ENOENT, "gone")
+
+        monkeypatch.setattr(shutil, "move", lose_race)
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert list(work.glob(".vip-auth-cache*")) == []
+        assert caplog.records == []
+
+    def test_legacy_vanishing_before_delete_when_dest_wins_is_not_an_error(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        from pathlib import Path
+
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        work.mkdir()
+        dest.parent.mkdir(parents=True)
+        dest.write_text("NEW", encoding="utf-8")
+        dest.with_suffix(".meta.json").write_text("NEWMETA", encoding="utf-8")
+        monkeypatch.setattr(Path, "is_file", lambda self: True)
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert dest.read_text(encoding="utf-8") == "NEW"
+        assert caplog.records == []
 
     def test_is_a_no_op_when_there_is_nothing_to_move(self, tmp_path):
         from vip.auth.cache import _migrate_legacy_auth_cache
