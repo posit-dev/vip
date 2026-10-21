@@ -31,7 +31,7 @@ import re
 
 from playwright.sync_api import Page
 
-from vip.auth.workbench import _on_login_page
+from vip.auth.workbench import _on_login_page, wait_for_saml_acs_to_settle
 from vip.clients.workbench import is_vip_session_for_owner
 from vip.timeouts import timeout_scale
 from vip_tests.workbench.pages import Homepage, LoginPage
@@ -91,6 +91,8 @@ def _complete_sso_if_needed(page: Page) -> bool:
     session itself has expired).  Best-effort: never raises.
     """
     logo = page.locator(Homepage.POSIT_LOGO)
+    # Let an in-flight SAML callback redirect away before classifying the page.
+    wait_for_saml_acs_to_settle(page, TIMEOUT_PAGE_LOAD)
     # Decide the login state first. The homepage logo can never appear on the
     # OIDC sign-in page, so only pages that are NOT a login page get the bounded
     # logo wait below -- otherwise every expired-auth cleanup attempt would burn

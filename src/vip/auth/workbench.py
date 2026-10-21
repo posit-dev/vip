@@ -147,7 +147,9 @@ def _on_login_page(url: str, keywords: tuple[str, ...] = _LOGIN_KEYWORDS) -> boo
     """Return True if *url* looks like a login page or an in-flight auth callback.
 
     *keywords* defaults to this module's tuple. The Workbench test helpers pass
-    their own tuple, which matches any ``auth`` URL but not ``/saml/acs``.
+    their own tuple, which matches any ``auth`` URL but not ``/saml/acs``; they
+    call :func:`wait_for_saml_acs_to_settle` first so the callback has already
+    redirected by the time they classify the page.
 
     ``/saml/acs`` is Workbench's SAML Assertion Consumer Service endpoint --
     the raw POST target the IdP redirects to before Workbench validates the
@@ -163,6 +165,19 @@ def _on_login_page(url: str, keywords: tuple[str, ...] = _LOGIN_KEYWORDS) -> boo
     """
     lower = url.lower()
     return any(kw in lower for kw in keywords)
+
+
+def wait_for_saml_acs_to_settle(page: Page, timeout: float) -> None:
+    """Wait up to *timeout* ms for *page* to leave the SAML ``/saml/acs`` callback.
+
+    Never raises: on timeout the caller classifies the page as it stands, which
+    keeps best-effort callers such as ``_complete_sso_if_needed`` non-throwing.
+    """
+    try:
+        if "/saml/acs" in page.url.lower():
+            page.wait_for_url(lambda u: "/saml/acs" not in u.lower(), timeout=timeout)
+    except Exception:  # noqa: BLE001 - a stuck callback is classified by the caller
+        pass
 
 
 def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "") -> str | None:
