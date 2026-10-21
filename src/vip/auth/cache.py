@@ -247,22 +247,26 @@ def _load_cached_auth(
     ``None`` and every Workbench test skipped with a message that named no cause.
     So when Workbench is requested we probe it before trusting the cache.
     """
-    if not cache_path.exists():
+    meta_path = cache_path.with_suffix(".meta.json")
+    try:
+        if not cache_path.exists():
+            return None
+        # Check if the cache is less than 4 hours old.
+        age = time.time() - cache_path.stat().st_mtime
+        meta_exists = meta_path.exists()
+    except OSError:
+        # An inaccessible cache directory disables caching rather than aborting auth.
         return None
-
-    # Check if the cache is less than 4 hours old.
-    age = time.time() - cache_path.stat().st_mtime
     if age > 4 * 3600:
         return None
 
     # Read the companion metadata file if it exists.
-    meta_path = cache_path.with_suffix(".meta.json")
     api_key = None
     key_name = ""
     resolved_connect_url = ""
     cached_request_connect_url = ""
     cached_request_workbench_url = ""
-    if meta_path.exists():
+    if meta_exists:
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             api_key = meta.get("api_key")
@@ -413,7 +417,12 @@ def refresh_auth_cache_from_storage_state(
     cleanup path, where failing loudly would mask the test's own result.
     """
     path = cache_path if cache_path is not None else auth_cache_path()
-    if path is None or not path.exists():
+    if path is None:
+        return False
+    try:
+        if not path.exists():
+            return False
+    except OSError:
         return False
 
     tmp: Path | None = None

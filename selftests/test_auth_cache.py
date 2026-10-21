@@ -136,6 +136,54 @@ class TestSaveAuthCache:
         assert meta["requested_connect_url"] == "https://c.example.com/dashboard"
 
 
+_NO_CHMOD = pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="needs POSIX permission bits that root does not honour",
+)
+
+
+@pytest.fixture
+def inaccessible_cache(tmp_path):
+    """A cache path inside a chmod-000 directory, restored on teardown."""
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        yield locked / ".vip-auth-cache.json"
+    finally:
+        locked.chmod(0o700)
+
+
+@_NO_CHMOD
+class TestInaccessibleCacheDir:
+    """An unreadable cache directory disables caching instead of raising."""
+
+    def test_load_returns_none(self, inaccessible_cache):
+        from vip.auth import _load_cached_auth
+
+        assert _load_cached_auth(inaccessible_cache) is None
+
+    def test_refresh_returns_false(self, inaccessible_cache):
+        from vip.auth import refresh_auth_cache_from_storage_state
+
+        assert refresh_auth_cache_from_storage_state({}, inaccessible_cache) is False
+
+    def test_cache_is_not_referenced(self, tmp_path, inaccessible_cache):
+        from vip.auth import InteractiveAuthSession
+
+        state = tmp_path / "state.json"
+        state.write_text('{"cookies": []}', encoding="utf-8")
+        session = InteractiveAuthSession(
+            storage_state_path=state,
+            api_key="K",
+            key_name="_vip_interactive_1",
+            _connect_url="https://c.example.com",
+            _cache_path=inaccessible_cache,
+        )
+
+        assert session._cache_references_this_key() is False
+
+
 class TestLoadCachedAuth:
     """_load_cached_auth must refuse to reuse a cache that was minted
     against different product URLs.  The cache file lives one-per-
