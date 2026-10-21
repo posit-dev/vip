@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -68,10 +69,38 @@ def auth_cache_path() -> Path:
 
     The cache lives under the user cache directory, not in the invocation directory:
     cwd is what users zip and share, and the cache holds a live session and API key
-    (#620).  The directory is not created here; :func:`_save_auth_cache` does that.
+    (#620).  The directory is not created here; :func:`_save_auth_cache` does that, except
+    when :func:`_migrate_legacy_auth_cache` finds an old cache in cwd to move.
     """
     key = hashlib.sha256(str(Path.cwd().resolve()).encode("utf-8")).hexdigest()[:16]
-    return _user_cache_root() / "vip" / "auth" / key / AUTH_CACHE_FILENAME
+    path = _user_cache_root() / "vip" / "auth" / key / AUTH_CACHE_FILENAME
+    _migrate_legacy_auth_cache(Path.cwd(), path)
+    return path
+
+
+def _migrate_legacy_auth_cache(legacy_dir: Path, dest: Path) -> None:
+    """Move caches an older VIP wrote into ``legacy_dir`` to ``dest``, never raising.
+
+    A live session and API key must not stay in a directory users zip and share (#620),
+    so a file that cannot be moved is deleted.  Idempotent: with nothing in ``legacy_dir``
+    it does nothing.
+    """
+    for target in (dest, dest.with_suffix(".meta.json")):
+        legacy = legacy_dir / target.name
+        if legacy == target or not legacy.is_file():
+            continue
+        try:
+            if not target.exists():
+                target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                shutil.move(str(legacy), str(target))
+                target.chmod(0o600)
+            else:
+                legacy.unlink()
+        except OSError:
+            try:
+                legacy.unlink()
+            except OSError:
+                logger.warning("Could not remove legacy auth cache %s; delete it by hand.", legacy)
 
 
 def _cookies_from_storage_state(storage_state_path: Path) -> httpx.Cookies:
