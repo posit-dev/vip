@@ -135,6 +135,48 @@ class TestSaveAuthCache:
         assert meta["connect_url"] == "https://c.example.com"
         assert meta["requested_connect_url"] == "https://c.example.com/dashboard"
 
+    def _seed_old_pair(self, cache):
+        cache.write_text('{"cookies": [{"name": "old"}]}', encoding="utf-8")
+        cache.with_suffix(".meta.json").write_text('{"api_key": "OLD"}', encoding="utf-8")
+
+    def test_failed_meta_write_leaves_no_cache(self, tmp_path, monkeypatch):
+        from vip.auth import _save_auth_cache
+
+        session = self._make_session(tmp_path, connect_url="https://c.example.com", api_key="NEW")
+        cache = tmp_path / ".vip-auth-cache.json"
+        self._seed_old_pair(cache)
+        real_write_text = pathlib.Path.write_text
+
+        def fail_meta(self, *args, **kwargs):
+            if self.name.endswith(".meta.json"):
+                raise OSError(errno.ENOSPC, "No space left on device")
+            return real_write_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(pathlib.Path, "write_text", fail_meta)
+
+        _save_auth_cache(session, cache)
+
+        assert not cache.exists()
+        assert not cache.with_suffix(".meta.json").exists()
+
+    def test_failed_state_write_leaves_no_cache(self, tmp_path, monkeypatch):
+        from vip.auth import _save_auth_cache
+        from vip.auth import cache as cache_module
+
+        session = self._make_session(tmp_path, connect_url="https://c.example.com", api_key="NEW")
+        cache = tmp_path / ".vip-auth-cache.json"
+        self._seed_old_pair(cache)
+
+        def fail(_state):
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        monkeypatch.setattr(cache_module, "_cacheable_storage_state", fail)
+
+        _save_auth_cache(session, cache)
+
+        assert not cache.exists()
+        assert not cache.with_suffix(".meta.json").exists()
+
 
 _NO_CHMOD = pytest.mark.skipif(
     sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),

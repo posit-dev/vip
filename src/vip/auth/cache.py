@@ -479,6 +479,8 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
     }
     try:
         cache_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # Drop any old meta first so it can never pair with a new or half-written state.
+        meta_path.unlink(missing_ok=True)
         fd = os.open(cache_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(_cacheable_storage_state(state), handle)
@@ -486,6 +488,10 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         meta_path.write_text(json.dumps(meta), encoding="utf-8")
         meta_path.chmod(0o600)
     except OSError as exc:
+        # A failed save must leave no cache: a partial pair could be reused.
+        for leftover in (cache_path, meta_path):
+            with contextlib.suppress(OSError):
+                leftover.unlink(missing_ok=True)
         print(
             f">>> Skipping auth cache: cannot write {cache_path.parent} ({exc}); "
             "next run will re-authenticate."
