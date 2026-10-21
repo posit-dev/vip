@@ -10,7 +10,7 @@ import re
 import sys
 import time
 import warnings
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -506,7 +506,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     basic_mode = "not slow" in (session.config.getoption("markexpr", default="") or "")
 
     payload = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "deployment_name": cfg.deployment_name,
         "exit_status": exitstatus,
         "vip_version": vip_version,

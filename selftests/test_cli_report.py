@@ -114,10 +114,7 @@ class TestEnsureReportTemplates:
         assert _has_all_report_templates(report_dir) is True
 
     def test_pyproject_force_include_matches_template_list(self):
-        try:
-            import tomllib
-        except ModuleNotFoundError:
-            import tomli as tomllib
+        import tomllib
 
         from vip.cli import _REPORT_TEMPLATE_FILES
 

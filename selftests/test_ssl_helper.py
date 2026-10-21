@@ -11,7 +11,7 @@ from __future__ import annotations
 import locale
 import socket
 import ssl
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -373,7 +373,7 @@ def test_check_ssl_cert_propagates_non_cert_handshake_errors(monkeypatch):
 
 
 def _cert_with_days_remaining(days: float) -> dict:
-    expires = datetime.now(timezone.utc) + timedelta(days=days)
+    expires = datetime.now(UTC) + timedelta(days=days)
     # OpenSSL's notAfter format, e.g. "Jun 15 12:00:00 2030 GMT". A two-digit
     # day sidesteps the single-digit-day double-space quirk (" 1" vs "01").
     return {"notAfter": expires.strftime("%b %d %H:%M:%S %Y GMT")}
@@ -381,7 +381,7 @@ def _cert_with_days_remaining(days: float) -> dict:
 
 def test_cert_expires_at_parses_notafter():
     expires_at = _cert_expires_at({"notAfter": "Jun 15 12:00:00 2030 GMT"})
-    assert expires_at == datetime(2030, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+    assert expires_at == datetime(2030, 6, 15, 12, 0, 0, tzinfo=UTC)
 
 
 def test_cert_expires_at_handles_single_digit_day_double_space():
@@ -389,7 +389,7 @@ def test_cert_expires_at_handles_single_digit_day_double_space():
     zero-padding it (e.g. "Jun  1 ..."), not "Jun 01 ...". #560.
     """
     expires_at = _cert_expires_at({"notAfter": "Jun  1 12:00:00 2030 GMT"})
-    assert expires_at == datetime(2030, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
+    assert expires_at == datetime(2030, 6, 1, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.mark.parametrize(
@@ -412,7 +412,7 @@ def test_cert_expires_at_handles_single_digit_day_double_space():
 def test_cert_expires_at_all_month_abbreviations(month_abbr, month_num):
     not_after = f"{month_abbr} 15 12:00:00 2030 GMT"
     expires_at = _cert_expires_at({"notAfter": not_after})
-    assert expires_at == datetime(2030, month_num, 15, 12, 0, 0, tzinfo=timezone.utc)
+    assert expires_at == datetime(2030, month_num, 15, 12, 0, 0, tzinfo=UTC)
 
 
 def test_cert_expires_at_locale_independent():
@@ -432,7 +432,7 @@ def test_cert_expires_at_locale_independent():
             pytest.skip("de_DE.UTF-8 locale not available on this runner")
 
         expires_at = _cert_expires_at({"notAfter": "Jun 15 12:00:00 2030 GMT"})
-        assert expires_at == datetime(2030, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        assert expires_at == datetime(2030, 6, 15, 12, 0, 0, tzinfo=UTC)
     finally:
         # Reset unconditionally so a locale change here can't leak into
         # other tests sharing this worker process.

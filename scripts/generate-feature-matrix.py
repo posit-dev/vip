@@ -16,7 +16,7 @@ import argparse
 import json
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from vip.gherkin import parse_feature_file
@@ -248,7 +248,7 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
     ]
 
     matrix = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "products": [{"id": p, "label": PRODUCT_LABELS[p]} for p in PRODUCTS],
         "product_totals": product_totals,
         "product_specific": product_specific_areas,

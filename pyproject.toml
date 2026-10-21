@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "2026.10.1"
+version = "2026.10.2"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -8,15 +8,17 @@ authors = [
     { name = "Elliot Murphy", email = "elliot.murphy@posit.co" },
     { name = "Ian Flores Siaca", email = "iflores.siaca@posit.co" },
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
 ]
 dependencies = [
     "filelock>=3.12,<5",
@@ -28,7 +30,6 @@ dependencies = [
     "pytest-order==1.5.0",  # exact-pinned
     "pytest-playwright==0.9.0",  # exact-pinned
     "pytest-xdist==3.8.0",  # exact-pinned
-    "tomli>=2.0,<3;python_version<'3.11'",
     "requests>=2.33.0,<3",  # transitive via pytest-playwright; capped to track updates
     "pygments>=2.20.0,<3",  # CVE-2026-4539 fix
     "pip>=26.1.2,<27",  # CVE-2026-3219, PYSEC-2026-196 fix; transitive via pip-api
@@ -151,9 +152,10 @@ build-backend = "hatchling.build"
 # floor rejects those versions for every uv command; `just relock` pins an exact
 # version on top of it. See docs/development.md ("The lockfile").
 required-version = ">=0.11"
-# urllib3 is transitive. Floor it at the first release that fixes
-# CVE-2026-97687/97688/97689 so a relock cannot resolve back to a vulnerable 2.7.x.
-constraint-dependencies = ["urllib3>=2.8.0"]
+# urllib3 and certifi are transitive. Floor each at the first release that fixes
+# its advisories (urllib3: CVE-2026-97687/97688/97689; certifi: GHSA-6q48-6c7w-9gw2)
+# so a relock cannot resolve back to a vulnerable version.
+constraint-dependencies = ["urllib3>=2.8.0", "certifi>=2026.10.19"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vip", "src/vip_tests"]
@@ -209,7 +211,7 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_unused_configs = true
 ignore_missing_imports = true
 check_untyped_defs = true

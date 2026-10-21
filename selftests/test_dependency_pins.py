@@ -36,12 +36,8 @@ dev ruff`` (a local hook) instead of the separately-versioned
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # Python 3.10
-    import tomli as tomllib
 
 import yaml
 from packaging.requirements import Requirement
@@ -73,7 +69,6 @@ CAPPED = {
     "mako",
     "idna",
     "pip",
-    "tomli",
     "pyotp",
     "anyio",
     # Report/Jupyter stack: moved from the [report] extra into base deps so a

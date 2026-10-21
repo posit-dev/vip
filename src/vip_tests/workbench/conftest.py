@@ -35,6 +35,7 @@ from vip_tests.workbench.capacity import (
     _option_is_disabled,
     cap_auto_detected_profiles,
     profile_size_key,
+    submit_new_session_dialog,
 )
 from vip_tests.workbench.cleanup import (
     _cleanup_sessions,
@@ -123,6 +124,7 @@ __all__ = [
     "oidc_login_lock",
     "profile_size_key",
     "quit_owned_sessions_via_page",
+    "submit_new_session_dialog",
     "raise_if_session_failed",
     "restore_shared_session",
     "unique_session_name",

@@ -31,6 +31,7 @@ from vip_tests.workbench.conftest import (
     _option_is_disabled,
     k8s_session_prefix,
     quit_owned_sessions_via_page,
+    submit_new_session_dialog,
     wait_for_session_active,
 )
 from vip_tests.workbench.pages import Homepage, NewSessionDialog
@@ -93,8 +94,7 @@ def _launch_session(page: Page, session_name: str, profile: str | None = None) -
     if checkbox.is_visible() and checkbox.is_checked():
         checkbox.click()
 
-    page.locator(NewSessionDialog.LAUNCH_BUTTON).click(timeout=TIMEOUT_QUICK)
-    expect(dialog).to_be_hidden(timeout=TIMEOUT_DIALOG)
+    submit_new_session_dialog(page, session_name)
 
 
 def _find_session_pod(k8s: KubernetesClient, session_name: str) -> dict | None:

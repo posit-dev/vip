@@ -222,10 +222,29 @@ jobs:
                 --ca-bundle /certs/ca.crt \
                 --headless-auth --idp keycloak \
                 --categories "connect or workbench" \
-                --filter "test_connect_login_ui or test_workbench_login" \
+                --filter "test_connect_login_ui or test_workbench_login or test_workbench_signout" \
                 --report out/results.json \
                 -- --junitxml=out/mock-idp-results.xml --vip-verbose
             '
+
+          # TEMPORARY (see the SAML steps below and #596): a Workbench auth
+          # failure surfaces as pytest.skip, so assert the named tests ran.
+          # test_workbench_signout covers the auth-cache refresh write (#782).
+          python3 - mock-idp-out/mock-idp-results.xml test_connect_login_ui test_workbench_login test_workbench_signout <<'PY'
+          import sys, xml.etree.ElementTree as ET
+
+          xml_path, *required = sys.argv[1:]
+          cases = {tc.get("name", ""): tc for tc in ET.parse(xml_path).iter("testcase")}
+          problems = []
+          for want in required:
+              matched = [n for n in cases if want in n]
+              if not matched:
+                  problems.append(f"{want}: never collected")
+              problems += [f"{n}: skipped" for n in matched if cases[n].find("skipped") is not None]
+          if problems:
+              print("::error::The headless-auth run did not execute its test(s) -- " + "; ".join(problems) + " (see #596)")
+              sys.exit(1)
+          PY
 
       # Placed after the E2E step (not just after "Start mock-IdP stack") so
       # a failure during the actual login flow -- not just container

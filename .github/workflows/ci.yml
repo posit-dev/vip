@@ -156,13 +156,13 @@ jobs:
     if: needs.changes.outputs.relevant == 'true'
     runs-on: ${{ matrix.os }}
     # The heaviest job in this workflow: uv sync plus the full selftest suite,
-    # across two OSes and two Python versions.
+    # across two OSes and three Python versions.
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.10", "3.12"]
+        python-version: ["3.11", "3.12", "3.15"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

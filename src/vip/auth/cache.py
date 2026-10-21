@@ -6,7 +6,6 @@ import contextlib
 import json
 import logging
 import os
-import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -29,6 +28,11 @@ logger = logging.getLogger(__name__)
 
 
 AUTH_CACHE_FILENAME = ".vip-auth-cache.json"
+
+# Cookies dropped before a storage state is written to the on-disk cache.
+# Entra sets ESTSAUTHPERSISTENT even when "Stay signed in?" is answered No;
+# the session ESTSAUTH cookie covers silent SSO for the cache's four-hour TTL.
+_CACHE_DROPPED_COOKIES = frozenset({"ESTSAUTHPERSISTENT"})
 
 
 def auth_cache_path() -> Path:
@@ -309,6 +313,18 @@ def _cached_urls_match(
     )
 
 
+def _cacheable_storage_state(storage_state: dict) -> dict:
+    """Return a copy of *storage_state* without the cookies in ``_CACHE_DROPPED_COOKIES``."""
+    return {
+        **storage_state,
+        "cookies": [
+            c
+            for c in storage_state.get("cookies", [])
+            if c.get("name") not in _CACHE_DROPPED_COOKIES
+        ],
+    }
+
+
 def refresh_auth_cache_from_storage_state(
     storage_state: dict, cache_path: Path | None = None
 ) -> bool:
@@ -340,7 +356,7 @@ def refresh_auth_cache_from_storage_state(
 
     tmp: Path | None = None
     try:
-        payload = json.dumps(storage_state)
+        payload = json.dumps(_cacheable_storage_state(storage_state))
         # Same directory so the rename stays on one filesystem (and therefore
         # atomic); mkstemp creates it 0600 already.
         fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".vip-auth-cache-")
@@ -374,8 +390,11 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         )
         return
 
-    # Copy storage state to the cache location.
-    shutil.copy2(session.storage_state_path, cache_path)
+    # Write the storage state to the cache location, minus long-lived IdP cookies.
+    state = json.loads(session.storage_state_path.read_text(encoding="utf-8"))
+    fd = os.open(cache_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(_cacheable_storage_state(state), handle)
     cache_path.chmod(0o600)
 
     # Write companion metadata.  ``connect_url`` keeps the resolved

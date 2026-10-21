@@ -5,7 +5,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import datetime, timezone
+import tomllib
+from datetime import UTC, datetime
 from pathlib import Path
 
 from vip import __version__ as vip_version
@@ -27,11 +28,6 @@ from vip.install.packages import PackageQueryError, installed_dpkg, installed_rp
 from vip.install.plan import build_install_plan, build_uninstall_plan
 from vip.install.playwright import PlaywrightInstallError, chromium_installed, default_cache_dir
 from vip.install.runner import execute_install_plan, execute_uninstall_plan, format_install_plan
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 
 def run_install(args: argparse.Namespace) -> None:
@@ -58,7 +54,7 @@ def run_install(args: argparse.Namespace) -> None:
             return
 
         if manifest is None:
-            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             manifest = Manifest(
                 version=SCHEMA_VERSION,
                 vip_version=vip_version,
