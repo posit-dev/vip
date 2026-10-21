@@ -681,6 +681,38 @@ class TestAuthCachePath:
 
         assert not cache_home.exists()
 
+    def _no_home(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+        monkeypatch.setattr(sys, "platform", "linux")
+
+        def _raise():
+            raise RuntimeError("Could not determine home directory.")
+
+        monkeypatch.setattr(pathlib.Path, "home", _raise)
+
+    def test_no_home_directory_skips_the_cache(self, tmp_path, monkeypatch, capsys):
+        from vip.auth import auth_cache_path
+
+        self._no_home(tmp_path, monkeypatch)
+        before = set(tmp_path.iterdir())
+
+        assert auth_cache_path() is None
+
+        assert "Skipping auth cache" in capsys.readouterr().out
+        assert set(tmp_path.iterdir()) == before
+
+    def test_no_home_directory_leaves_legacy_cache_alone(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        self._no_home(tmp_path, monkeypatch)
+        legacy = tmp_path / ".vip-auth-cache.json"
+        legacy.write_text('{"cookies": []}', encoding="utf-8")
+
+        assert auth_cache_path() is None
+
+        assert legacy.read_text(encoding="utf-8") == '{"cookies": []}'
+
     def test_call_sites_do_not_build_the_path_inline(self):
         """Invariant: the filename literal lives in one place.  A second inline
         copy is how the two call sites drifted apart in the first place.

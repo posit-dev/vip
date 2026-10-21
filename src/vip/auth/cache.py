@@ -53,7 +53,7 @@ def _user_cache_root() -> Path:
     return Path.home() / ".cache"
 
 
-def auth_cache_path() -> Path:
+def auth_cache_path() -> Path | None:
     """Path to the auth-session cache for the current invocation directory.
 
     Single source of truth for both call sites: ``plugin/auth.py`` (``vip verify``)
@@ -71,9 +71,20 @@ def auth_cache_path() -> Path:
     cwd is what users zip and share, and the cache holds a live session and API key
     (#620).  The directory is not created here; :func:`_save_auth_cache` does that, except
     when :func:`_migrate_legacy_auth_cache` finds an old cache in cwd to move.
+
+    Returns ``None`` (caching is skipped, and a legacy cwd cache is left alone) when no
+    home directory can be determined and ``XDG_CACHE_HOME`` is unset.
     """
+    try:
+        cache_root = _user_cache_root()
+    except RuntimeError:
+        print(
+            ">>> Skipping auth cache: cannot determine a home directory; "
+            "set XDG_CACHE_HOME to enable it."
+        )
+        return None
     key = hashlib.sha256(str(Path.cwd().resolve()).encode("utf-8")).hexdigest()[:16]
-    path = _user_cache_root() / "vip" / "auth" / key / AUTH_CACHE_FILENAME
+    path = cache_root / "vip" / "auth" / key / AUTH_CACHE_FILENAME
     _migrate_legacy_auth_cache(Path.cwd(), path)
     return path
 
@@ -402,7 +413,7 @@ def refresh_auth_cache_from_storage_state(
     cleanup path, where failing loudly would mask the test's own result.
     """
     path = cache_path if cache_path is not None else auth_cache_path()
-    if not path.exists():
+    if path is None or not path.exists():
         return False
 
     tmp: Path | None = None
