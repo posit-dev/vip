@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
 import os
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -35,6 +37,21 @@ AUTH_CACHE_FILENAME = ".vip-auth-cache.json"
 _CACHE_DROPPED_COOKIES = frozenset({"ESTSAUTHPERSISTENT"})
 
 
+def _user_cache_root() -> Path:
+    """Per-user cache root: ``$XDG_CACHE_HOME``, ``%LOCALAPPDATA%`` on Windows, else ``~/.cache``.
+
+    A relative ``XDG_CACHE_HOME`` is ignored, as the XDG spec requires.  Creates nothing.
+    """
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    if xdg and Path(xdg).is_absolute():
+        return Path(xdg)
+    if sys.platform == "win32":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            return Path(local_app_data)
+    return Path.home() / ".cache"
+
+
 def auth_cache_path() -> Path:
     """Path to the auth-session cache for the current invocation directory.
 
@@ -48,8 +65,13 @@ def auth_cache_path() -> Path:
     invocation directory and the ``site-packages`` test paths — which lands in
     ``$HOME``.  That put the cache nowhere near the user's ``vip.toml`` and made
     the two call sites read different files.
+
+    The cache lives under the user cache directory, not in the invocation directory:
+    cwd is what users zip and share, and the cache holds a live session and API key
+    (#620).  The directory is not created here; :func:`_save_auth_cache` does that.
     """
-    return Path.cwd() / AUTH_CACHE_FILENAME
+    key = hashlib.sha256(str(Path.cwd().resolve()).encode("utf-8")).hexdigest()[:16]
+    return _user_cache_root() / "vip" / "auth" / key / AUTH_CACHE_FILENAME
 
 
 def _cookies_from_storage_state(storage_state_path: Path) -> httpx.Cookies:
@@ -392,11 +414,6 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
 
     # Write the storage state to the cache location, minus long-lived IdP cookies.
     state = json.loads(session.storage_state_path.read_text(encoding="utf-8"))
-    fd = os.open(cache_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        json.dump(_cacheable_storage_state(state), handle)
-    cache_path.chmod(0o600)
-
     # Write companion metadata.  ``connect_url`` keeps the resolved
     # form (used for API key cleanup); ``requested_connect_url`` keeps
     # the pre-resolve form for cache-key matching.  Older releases only
@@ -411,5 +428,16 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         "requested_connect_url": session._requested_connect_url or session._connect_url,
         "workbench_url": session._workbench_url,
     }
-    meta_path.write_text(json.dumps(meta), encoding="utf-8")
-    meta_path.chmod(0o600)
+    try:
+        cache_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(cache_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(_cacheable_storage_state(state), handle)
+        cache_path.chmod(0o600)
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        meta_path.chmod(0o600)
+    except OSError as exc:
+        print(
+            f">>> Skipping auth cache: cannot write {cache_path.parent} ({exc}); "
+            "next run will re-authenticate."
+        )

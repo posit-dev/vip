@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import ClassVar
 
@@ -29,6 +30,42 @@ class TestSaveAuthCache:
             key_name="_vip_interactive_123",
             _connect_url=connect_url,
         )
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+    def test_creates_the_cache_directory_owner_only(self, tmp_path):
+        from vip.auth import _save_auth_cache
+
+        session = self._make_session(tmp_path, connect_url="", api_key=None)
+        cache = tmp_path / "a" / "b" / ".vip-auth-cache.json"
+
+        _save_auth_cache(session, cache)
+
+        assert cache.exists()
+        assert cache.parent.stat().st_mode & 0o777 == 0o700
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+    @pytest.mark.skipif(
+        hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores directory permissions"
+    )
+    def test_unwritable_cache_root_skips_caching_without_raising(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from vip.auth import _save_auth_cache
+
+        session = self._make_session(tmp_path, connect_url="", api_key=None)
+        locked = tmp_path / "locked"
+        locked.mkdir()
+        locked.chmod(0o500)
+        work = tmp_path / "work"
+        work.mkdir()
+        monkeypatch.chdir(work)
+        try:
+            _save_auth_cache(session, locked / "vip" / ".vip-auth-cache.json")
+        finally:
+            locked.chmod(0o700)
+
+        assert "Skipping auth cache" in capsys.readouterr().out
+        assert not list(work.glob(".vip-auth-cache*"))
 
     def test_skips_cache_when_connect_configured_but_mint_failed(self, tmp_path):
         from vip.auth import _save_auth_cache
@@ -561,11 +598,85 @@ class TestAuthCachePath:
     silently disagreed and ``vip cleanup`` looked in the wrong place.
     """
 
-    def test_resolves_relative_to_the_invocation_directory(self, tmp_path, monkeypatch):
+    def test_lives_under_the_user_cache_root_not_cwd(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        work, cache_home = tmp_path / "work", tmp_path / "xdg"
+        work.mkdir()
+        monkeypatch.chdir(work)
+        monkeypatch.setenv("XDG_CACHE_HOME", str(cache_home))
+
+        p = auth_cache_path()
+
+        assert p.name == ".vip-auth-cache.json"
+        assert p.parent.parent == cache_home / "vip" / "auth"
+        assert len(p.parent.name) == 16
+        assert work.resolve() not in p.parents
+
+    def test_is_keyed_on_the_invocation_directory(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        (tmp_path / "a").mkdir()
+        (tmp_path / "b").mkdir()
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+
+        monkeypatch.chdir(tmp_path / "a")
+        first = auth_cache_path()
+        monkeypatch.chdir(tmp_path / "b")
+        second = auth_cache_path()
+
+        assert first.parent != second.parent
+        assert first.parent.parent == second.parent.parent
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+    def test_symlinked_cwd_resolves_to_the_same_cache(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        real = tmp_path / "real"
+        real.mkdir()
+        link = tmp_path / "link"
+        link.symlink_to(real, target_is_directory=True)
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+
+        monkeypatch.chdir(real)
+        via_real = auth_cache_path()
+        monkeypatch.chdir(link)
+        via_link = auth_cache_path()
+
+        assert via_real == via_link
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows ignores HOME and XDG_CACHE_HOME")
+    def test_relative_xdg_cache_home_is_ignored(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("XDG_CACHE_HOME", "rel")
+        monkeypatch.setenv("HOME", str(home))
+
+        assert auth_cache_path().parent.parent == home / ".cache" / "vip" / "auth"
+
+    def test_windows_uses_localappdata(self, tmp_path, monkeypatch):
         from vip.auth import auth_cache_path
 
         monkeypatch.chdir(tmp_path)
-        assert auth_cache_path() == tmp_path / ".vip-auth-cache.json"
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "lad"))
+
+        assert auth_cache_path().parent.parent == tmp_path / "lad" / "vip" / "auth"
+
+    def test_resolving_the_path_creates_nothing(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        cache_home = tmp_path / "xdg"
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("XDG_CACHE_HOME", str(cache_home))
+
+        auth_cache_path()
+
+        assert not cache_home.exists()
 
     def test_call_sites_do_not_build_the_path_inline(self):
         """Invariant: the filename literal lives in one place.  A second inline
