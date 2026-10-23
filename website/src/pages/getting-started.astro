@@ -136,7 +136,7 @@ vip verify --connect-url https://connect.example.com --api-auth</code></pre>
 
   .toc {
     position: sticky;
-    top: 80px;
+    top: calc(var(--header-height) + 1rem);
     align-self: start;
     order: 1;
   }
@@ -175,6 +175,7 @@ vip verify --connect-url https://connect.example.com --api-auth</code></pre>
   }
 
   .docs section {
+    scroll-margin-top: calc(var(--header-height) + 1rem);
     margin-bottom: 3rem;
   }
 
@@ -188,6 +189,7 @@ vip verify --connect-url https://connect.example.com --api-auth</code></pre>
   }
 
   .docs h3 {
+    scroll-margin-top: calc(var(--header-height) + 1rem);
     font-size: 1.125rem;
     font-weight: 600;
     color: var(--posit-navy);
