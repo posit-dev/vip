@@ -64,7 +64,9 @@ vip verify --connect-url https://connect.example.com --filter test_login
 With a configuration file:
 
 ```bash
-cp vip.toml.example vip.toml     # edit with your deployment details
+# Download the template for your installed version (see `vip --version`),
+# replacing X.Y.Z, then edit it with your deployment details
+curl -fsSL https://raw.githubusercontent.com/posit-dev/vip/vX.Y.Z/vip.toml.example -o vip.toml
 vip verify --config vip.toml
 ```
 

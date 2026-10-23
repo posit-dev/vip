@@ -23,6 +23,7 @@
   /* Layout */
   --max-width: 1280px;
   --radius: 6px;
+  --header-height: 64px;
 }
 
 *,
@@ -31,6 +32,12 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+@media (max-width: 960px) {
+  :root {
+    --header-height: 100px;
+  }
 }
 
 html {
