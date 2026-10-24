@@ -262,6 +262,12 @@ def main() -> None:
         "Composes with --categories.",
     )
     verify_parser.add_argument(
+        "--smoke",
+        action="store_true",
+        default=False,
+        help="Run only tests tagged @smoke. Composes with --categories and --basic.",
+    )
+    verify_parser.add_argument(
         "-f",
         "--filter",
         default=None,
