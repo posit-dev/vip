@@ -7,6 +7,7 @@ Feature: Package Manager web UI
   Background:
     Given the Package Manager web UI is reachable
 
+  @smoke
   Scenario: Homepage renders its core surfaces
     When I open the Package Manager homepage
     Then the homepage hero, repository selector, and package search bar are visible
