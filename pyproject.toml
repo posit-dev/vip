@@ -21,7 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.15",
 ]
 dependencies = [
-    "filelock>=3.12,<5",
+    "filelock>=4.2.1,<5",  # CVE-2026-112906/112907/112913/112914/112937/112940 fix
     "httpx>=0.27,<1",
     "playwright==1.64.0",  # exact-pinned: shapes vip run output; see docs/development.md
     "pyotp~=2.9",
