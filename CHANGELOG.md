@@ -3,6 +3,43 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.10.3 (2026-10-22)
+
+### Bug Fixes
+
+- **auth**: Drop Entra's persistent SSO cookie from the auth cache ([#783](https://github.com/posit-dev/vip/pull/783), [`e95e307`](https://github.com/posit-dev/vip/commit/e95e307f73ad323acd238e3bf82bdcfe7f7b4d96))
+
+- **ci**: Pin Mac Smoke Python to 3.14 ([#785](https://github.com/posit-dev/vip/pull/785), [`5cafa5a`](https://github.com/posit-dev/vip/commit/5cafa5a2aab2c371994a4cbc87e025de85bde8f8))
+
+- **deps**: Bump certifi to 2026.10.19 for GHSA-6q48-6c7w-9gw2 ([#791](https://github.com/posit-dev/vip/pull/791), [`2ee048d`](https://github.com/posit-dev/vip/commit/2ee048d7ff83b1f1378d4f6266bd1bfaaad5f427))
+
+- **workbench**: Wait for launch_session between capacity launches ([#789](https://github.com/posit-dev/vip/pull/789), [`7f7e936`](https://github.com/posit-dev/vip/commit/7f7e9369aef0dd2bd713329da10a21390a67728a))
+
+- **workbench**: Wait out the SAML ACS callback in login helpers ([#761](https://github.com/posit-dev/vip/pull/761), [`aa65246`](https://github.com/posit-dev/vip/commit/aa65246bffce85cd79c76e831022545cc1b14071))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 3 updates ([#796](https://github.com/posit-dev/vip/pull/796), [`6519ed9`](https://github.com/posit-dev/vip/commit/6519ed99d9f34c81493a5e75bc257321bdd41788))
+
+- **deps**: Bump the actions-dependencies group with 4 updates ([#781](https://github.com/posit-dev/vip/pull/781), [`1ede9a8`](https://github.com/posit-dev/vip/commit/1ede9a89e3fcc9186ba98c8e707cc3d6e9717ec7))
+
+- **deps**: Bump the python-dependencies group across 1 directory with 6 updates ([#787](https://github.com/posit-dev/vip/pull/787), [`c24dccf`](https://github.com/posit-dev/vip/commit/c24dccf7e5bdee8350922ddb723dbf95e60222ca))
+
+- **deps**: Bump the python-dependencies group with 3 updates ([#795](https://github.com/posit-dev/vip/pull/795), [`7c4170b`](https://github.com/posit-dev/vip/commit/7c4170b384cade3cb7e6e2448d49dee0ddca4cff))
+
+### Documentation
+
+- **plans**: Add the code quality program design, reviews, and backlog ([#701](https://github.com/posit-dev/vip/pull/701), [`57f6511`](https://github.com/posit-dev/vip/commit/57f65113b66af480ce024d6d48216e69d6bf78a6))
+
+### Features
+
+- Drop Python 3.10 and support Python 3.15 ([#786](https://github.com/posit-dev/vip/pull/786), [`e4a09f7`](https://github.com/posit-dev/vip/commit/e4a09f72defb8b8f7a66d4e40b3feb5afd801006))
+
+### Style
+
+- **plans**: Fix ruff format failure on main from #701 ([#790](https://github.com/posit-dev/vip/pull/790), [`b76318a`](https://github.com/posit-dev/vip/commit/b76318a8758291a41b764e39c46ab62a5556b6a7))
+
+
 ## v2026.10.2 (2026-10-15)
 
 ### Bug Fixes
