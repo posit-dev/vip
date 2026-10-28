@@ -150,7 +150,7 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
   /* TOC sidebar */
   .toc {
     position: sticky;
-    top: 80px;
+    top: calc(var(--header-height) + 1rem);
     align-self: start;
     order: 1;
   }
@@ -202,6 +202,7 @@ const totalScenarios = categories.reduce((sum, c) => sum + c.scenario_count, 0);
   }
 
   .docs section {
+    scroll-margin-top: calc(var(--header-height) + 1rem);
     margin-bottom: 3rem;
   }
 

@@ -98,6 +98,10 @@ Their outputs (`website/src/data/test-catalog.json`, `website/src/data/feature-m
 gitignored (`.gitignore:20-21`), so grepping the repo will not find them -- run `just website-data`
 first if you need the generated catalog rather than reading the raw `.feature` files by hand.
 
+### Website docs
+
+The Getting Started page (`website/src/pages/getting-started.astro`) stays a short first-run path: install, a first test, and links onward. Put feature docs in the matching section of the User Guide (`website/src/pages/guide.astro`), and add a new section there if none fits.
+
 ### Known-flaky selftests
 
 `selftests/test_load_engine.py::TestThreadpool::test_all_succeed` and
