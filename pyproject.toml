@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "2026.10.2"
+version = "2026.10.3"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -21,9 +21,9 @@ classifiers = [
     "Programming Language :: Python :: 3.15",
 ]
 dependencies = [
-    "filelock>=3.12,<5",
+    "filelock>=4.2.1,<5",  # CVE-2026-112906/112907/112913/112914/112937/112940 fix
     "httpx>=0.27,<1",
-    "playwright==1.63.0",  # exact-pinned: shapes vip run output; see docs/development.md
+    "playwright==1.64.0",  # exact-pinned: shapes vip run output; see docs/development.md
     "pyotp~=2.9",
     "pytest==9.1.1",  # exact-pinned; at/above CVE-2025-71176 floor (9.0.3)
     "pytest-bdd==8.1.0",  # exact-pinned
@@ -64,7 +64,7 @@ load = [
     "python-socketio>=5.16.2,<6",  # CVE-2026-48804 fix; transitive via locust
 ]
 dev = [
-    "ruff==0.16.10",
+    "ruff==0.17.0",
     "mypy>=1.10",
     "pytest-cov>=6.0",
     "pip-audit>=2.7",
