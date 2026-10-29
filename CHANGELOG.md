@@ -3,6 +3,25 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.10.4 (2026-10-29)
+
+### Bug Fixes
+
+- **deps**: Bump filelock to 4.2.4 for six new CVEs ([#805](https://github.com/posit-dev/vip/pull/805), [`15efed4`](https://github.com/posit-dev/vip/commit/15efed449e64d002a9ce98e20b13ed275579c38d))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 4 updates ([#807](https://github.com/posit-dev/vip/pull/807), [`26721a1`](https://github.com/posit-dev/vip/commit/26721a13dbb0e9121d3552d83122622a8e525c40))
+
+- **deps**: Bump the python-dependencies group with 3 updates ([#806](https://github.com/posit-dev/vip/pull/806), [`62fbf7a`](https://github.com/posit-dev/vip/commit/62fbf7aee6b2b097c13fa26703a8a8d2885e253e))
+
+### Documentation
+
+- **connect**: Move retry-frequency claim to a tracking issue ([#804](https://github.com/posit-dev/vip/pull/804), [`1e234c5`](https://github.com/posit-dev/vip/commit/1e234c515378b3383669bf547fe9b9fdb68b04da))
+
+- **website**: Split Getting Started into a quick start and a User Guide ([#799](https://github.com/posit-dev/vip/pull/799), [`49f7b2f`](https://github.com/posit-dev/vip/commit/49f7b2f48f1f01e1c401b95edd17c3c1736dc154))
+
+
 ## v2026.10.3 (2026-10-22)
 
 ### Bug Fixes
