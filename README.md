@@ -76,6 +76,23 @@ Fast confidence check — skip the detailed/long-running checks:
 vip verify --config vip.toml --basic
 ```
 
+### Credentials on disk
+
+`--interactive-auth` and `--headless-auth` cache a live session for 4 hours:
+the identity provider (IdP), Connect, and Workbench cookies, plus a Connect
+API key that VIP creates. The cache lives in `~/.cache/vip/auth/` (`$XDG_CACHE_HOME/vip/auth/` if set, or
+`%LOCALAPPDATA%\vip\auth\` on Windows). Delete that directory to drop it. With no home
+directory and no `XDG_CACHE_HOME`, VIP skips the cache.
+
+Earlier releases wrote `.vip-auth-cache.json` and `.vip-auth-cache.meta.json`
+into the working directory. The first run of this release moves them. Never
+share those files.
+
+`vip.toml` can hold `api_key` and `password` values. Remove or redact them
+before you share a VIP directory. Prefer the `VIP_CONNECT_API_KEY`,
+`VIP_WORKBENCH_API_KEY`, and `VIP_TEST_PASSWORD` environment variables over
+inline secrets.
+
 ## Uninstalling
 
 To reverse what `vip install` (or `just setup`) did:
