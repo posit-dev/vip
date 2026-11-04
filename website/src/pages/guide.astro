@@ -246,6 +246,13 @@ vip verify --connect-url https://connect.example.com -- -x --tb=long</code></pre
             especially helpful when diagnosing headless auth or MFA issues.
           </p>
           <pre><code>vip verify --connect-url https://connect.example.com --headless-auth --verbose</code></pre>
+          <p>
+            If tests time out on a slow deployment, for example while waiting
+            for a Workbench session to start, set
+            <code>VIP_TIMEOUT_SCALE</code> to multiply every timeout. A value of
+            <code>3</code> triples them:
+          </p>
+          <pre><code>VIP_TIMEOUT_SCALE=3 vip verify --workbench-url https://workbench.example.com</code></pre>
         </section>
 
         <section id="configuration-file">

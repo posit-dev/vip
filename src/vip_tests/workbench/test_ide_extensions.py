@@ -83,7 +83,7 @@ def _skip_if_ide_launch_did_not_pass(request: pytest.FixtureRequest) -> None:
     ``_ide_extension_skip_reason`` (see its docstring for the "absence means
     run" rule this depends on). Extension scenarios that launch a session
     already rediscover an unavailable IDE the expensive way -- launching and
-    waiting out ``TIMEOUT_SESSION_START`` (~90s) before
+    waiting out ``TIMEOUT_SESSION_START`` (~180s) before
     ``_dismiss_dialog_and_skip`` gives up -- so skipping immediately when the
     launch test already found (and recorded) that outcome avoids paying that
     cost twice.
