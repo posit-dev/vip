@@ -342,6 +342,21 @@ Every render also produces `_output/vip-report.pdf` from `report/vip-report.qmd`
 -   **`add-to-team-project.yml`** -- when a `team: connect`, `team: workbench`, or `team: package manager` label is added to an issue, adds it to that product team's org-level GitHub project board. Ported from rstudio/helm. Requires the cross-org `POSIT_PLATFORM_CLIENT_ID`/`POSIT_PLATFORM_PEM` app secrets.
 -   **`weekly-summary.yml`** -- Mondays (and on demand via `workflow_dispatch`) gathers the week's merged PRs, has Claude pick the highlights via Bedrock, and posts a Slack summary. It has no `pull_request` trigger, so a PR never assumes the AWS role. Requires the `SLACK_WEBHOOK_VIP_WEEKLY_SUMMARY` secret and permission to assume the `gha-claude-code` AWS role (account `935931255537`). That role's OIDC trust is generated entirely from the `repositories` list in `pulumi/aws/account/aws-platform-team/aws_platform_team/iam.py` in `posit-dev/platform-infra`, so `posit-dev/vip` has to be listed there.
 
+## Issue titles
+
+Start every issue title with one of four prefixes and set the matching GitHub issue type:
+
+| Prefix | Issue type | Use for |
+|---|---|---|
+| `[Bug]` | Bug | Something in VIP is broken, or a test gives the wrong answer |
+| `[Feature]` | Enhancement | A new capability, test area, or CLI option |
+| `[Test]` | Test | Adding or hardening tests and CI coverage |
+| `[Task]` | Task | Maintenance: refactors, lint, dependency work |
+
+The issue templates set `[Bug]` and `[Feature]` and their types for you. When filing from the CLI, pass both the prefix and the type (`--title "[Bug] ..." --type Bug`). Conventional-commit prefixes (`feat:`, `fix(workbench):`) and module names (`proxy.py:`) belong in PR titles, not issue titles. Put the product in a `team:` label instead of the title.
+
+Bot-filed issues (the dependency audit and nightly smoke failures) keep their fixed titles, because their workflows find the open issue by its exact title.
+
 ## PR titles
 
 PR titles must use conventional commit format. CI enforces this via `.github/workflows/pr-title.yml`. Squash merges use the PR title as the commit message, so the title directly becomes the git history.
