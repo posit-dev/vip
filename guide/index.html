@@ -77,7 +77,12 @@ vip verify --connect-url https://connect.example.com -- -x --tb=long</code></pre
 Add <code>--verbose</code> for detailed output, including full
             tracebacks, authentication progress, and IdP login steps. This is
             especially helpful when diagnosing headless auth or MFA issues.
-</p> <pre><code>vip verify --connect-url https://connect.example.com --headless-auth --verbose</code></pre> </section> <section id="configuration-file"> <h2>Configuration file</h2> <p>
+</p> <pre><code>vip verify --connect-url https://connect.example.com --headless-auth --verbose</code></pre> <p>
+If tests time out on a slow deployment, for example while waiting
+            for a Workbench session to start, set
+<code>VIP_TIMEOUT_SCALE</code> to multiply every timeout. A value of
+<code>3</code> triples them:
+</p> <pre><code>VIP_TIMEOUT_SCALE=3 vip verify --workbench-url https://workbench.example.com</code></pre> </section> <section id="configuration-file"> <h2>Configuration file</h2> <p>
 For repeated testing or advanced configuration, use a
 <code>vip.toml</code> file instead of URL flags. The template
 <code>vip.toml.example</code> is not part of the installed package.
