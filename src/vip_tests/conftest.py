@@ -20,24 +20,13 @@ What *does* stay here:
 - Warning-filter scoping that must apply only to VIP's own test package, not
   everywhere ``vip`` is installed (unlike the filters in
   ``vip.plugin.pytest_configure``, which are meant to be global).
-- The three Connect content-cleanup fixtures below. Two of them are
-  ``autouse=True``, which -- unlike an ordinary fixture a test has to request
-  -- runs for every test collected in a session, unconditionally. Registering
-  them as part of ``vip.fixtures`` (a global plugin, active in *any* pytest
-  session where ``vip`` is installed) would make every such run pay for
-  Connect-content bookkeeping it never asked for, and worse: a project with
-  its own unrelated ``vip.toml`` that configures ``[connect]`` without an API
-  key (for reasons that have nothing to do with VIP's product tests) would
-  have every one of its tests fail in setup, because
-  ``_connect_content_cleanup`` requests ``connect_client``, which calls
-  ``require_connect_api_key`` and fails loudly whenever Connect is configured
-  but unauthenticated. Keeping these three fixtures directory-scoped here
-  means they still apply throughout ``src/vip_tests``, but leave any run that
-  never touches this package alone. The consequence: extension directories do
-  not get automatic Connect-content cleanup -- a real, known gap, not an
-  oversight. An extension author who creates Connect content today has to
-  clean it up the same way any pytest-bdd test outside VIP would: with its
-  own fixture, or by calling ``connect_client.cleanup_content(...)`` directly.
+- Connect content-cleanup fixtures. Two are ``autouse=True`` and run for
+  every test in this package. They only request an API client when an API
+  key or registered client-auth provider is available, so unauthenticated
+  checks can run without initializing an authenticated client. Keeping them
+  directory-scoped avoids adding product cleanup to unrelated pytest runs.
+  Extension directories do not get automatic cleanup; extension authors
+  must provide their own fixture or call ``connect_client.cleanup_content``.
 """
 
 from __future__ import annotations
@@ -46,6 +35,7 @@ import logging
 
 import pytest
 
+from vip.client_auth import get_client_auth_factory
 from vip.errors import ProductUnreachableError
 
 logger = logging.getLogger(__name__)
@@ -64,8 +54,8 @@ pytestmark = pytest.mark.filterwarnings("ignore::pytest.PytestReturnNotNoneWarni
 # Connect content cleanup — promoted from connect/conftest.py so that any
 # package (workbench, cross_product, …) that creates Connect content can
 # register GUIDs into the shared tracking list.  The fixtures guard against
-# ``connect_client is None`` so they are safe to activate in workbench-only
-# runs where Connect is not configured.  Deliberately NOT part of
+# ``_connect_cleanup_client is None`` so unauthenticated checks and runs
+# without Connect do not initialize an authenticated client.  Deliberately NOT part of
 # vip.fixtures/vip.plugin -- see the module docstring above.
 # ---------------------------------------------------------------------------
 
@@ -76,20 +66,30 @@ def _connect_created_guids():
     return []
 
 
+@pytest.fixture(scope="session")
+def _connect_cleanup_client(request, vip_config):
+    """Only initialize cleanup when Connect authentication is available."""
+    if not vip_config.connect.is_configured:
+        return None
+    if not vip_config.connect.api_key and get_client_auth_factory(vip_config.auth.idp) is None:
+        return None
+    return request.getfixturevalue("connect_client")
+
+
 @pytest.fixture(autouse=True)
-def _connect_content_cleanup(connect_client, _connect_created_guids):
+def _connect_content_cleanup(_connect_cleanup_client, _connect_created_guids):
     """Delete content created during this test, on pass or fail."""
     start = len(_connect_created_guids)
     yield
-    if connect_client is None:
+    if _connect_cleanup_client is None:
         return
     created = _connect_created_guids[start:]
     if created:
-        connect_client.cleanup_content(created)
+        _connect_cleanup_client.cleanup_content(created)
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _connect_end_of_run_sweep(connect_client, _connect_created_guids):
+def _connect_end_of_run_sweep(_connect_cleanup_client, _connect_created_guids):
     """End-of-run safety net: delete tracked GUIDs, then tag-based cross-run sweep.
 
     The tag-based sweep now raises :class:`ProductUnreachableError` on a failed
@@ -100,12 +100,12 @@ def _connect_end_of_run_sweep(connect_client, _connect_created_guids):
     green run into a teardown error.
     """
     yield
-    if connect_client is None:
+    if _connect_cleanup_client is None:
         return
     if _connect_created_guids:
-        connect_client.cleanup_content(_connect_created_guids)
+        _connect_cleanup_client.cleanup_content(_connect_created_guids)
     try:
-        connect_client.cleanup_vip_content()
+        _connect_cleanup_client.cleanup_vip_content()
     except ProductUnreachableError:
         logger.warning(
             "end-of-run Connect content sweep could not reach the tag API", exc_info=True
