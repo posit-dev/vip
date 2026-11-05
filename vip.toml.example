@@ -30,6 +30,7 @@ url = "https://connect.example.com"
 
 # API key for a Connect admin user.
 # Prefer setting the VIP_CONNECT_API_KEY environment variable.
+# Never share this file with a real key in it.
 # api_key = "..."
 
 # Timeout in seconds for content deployments (default: 1200)
