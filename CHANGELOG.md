@@ -3,6 +3,23 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.11.0 (2026-11-05)
+
+### Bug Fixes
+
+- **workbench**: Raise the default session-start timeout to 180s ([#811](https://github.com/posit-dev/vip/pull/811), [`23187a9`](https://github.com/posit-dev/vip/commit/23187a93a443494db171cc34b508bb5e7edddce6))
+
+### Chores
+
+- **deps**: Bump the actions-dependencies group with 4 updates ([#816](https://github.com/posit-dev/vip/pull/816), [`9f6c5c0`](https://github.com/posit-dev/vip/commit/9f6c5c00791fcbed98a560012c7fad90b6ce634e))
+
+### Documentation
+
+- Standardize issue title prefixes and set issue types ([#814](https://github.com/posit-dev/vip/pull/814), [`6c04392`](https://github.com/posit-dev/vip/commit/6c04392d3b54ff48d214570c8b0938abb85df7b3))
+
+- **website**: Drop the Not Yet Covered section from the feature matrix ([#810](https://github.com/posit-dev/vip/pull/810), [`db41cb6`](https://github.com/posit-dev/vip/commit/db41cb6d6db24451b7113d0d0921923c375f166f))
+
+
 ## v2026.10.4 (2026-10-29)
 
 ### Bug Fixes
