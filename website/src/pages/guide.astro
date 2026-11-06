@@ -375,6 +375,10 @@ vip verify --connect-url https://connect.example.com --report report/results.jso
 # Render the report (requires quarto CLI)
 vip report
 
+# Write a zip of the report to send to someone else
+# (this example has no vip.toml, so it passes --no-config)
+vip bundle --no-config
+
 # Publish to Connect (optional)
 cd report &amp;&amp; quarto publish connect --server https://connect.example.com</code></pre>
           <p>
@@ -383,6 +387,37 @@ cd report &amp;&amp; quarto publish connect --server https://connect.example.com
             <code>--results</code>. The
             <a href="https://quarto.org/docs/download/">Quarto CLI</a> must be
             installed.
+          </p>
+          <p>
+            <code>vip bundle</code> writes
+            <code>vip-bundle-&lt;deployment&gt;-&lt;time&gt;.zip</code> next to
+            <code>report/</code>. The zip holds <code>results.json</code>, the
+            failure, JUnit, and SARIF files, the rendered report, a
+            configuration summary with no credentials, and the vip version.
+            It never holds <code>vip.toml</code> or the auth cache. Before it
+            writes the zip, the command looks in each file for each credential
+            from <code>vip.toml</code>, the environment, and the auth cache. If
+            it finds one, it stops and names the file and the credential. If
+            the value is not a real secret, for example a test password that
+            is also a word in the report, pass
+            <code>--allow-match LABEL</code> with the label from the error.
+            The manifest in the zip records it. The scan cannot find a
+            credential that it does not know, for example one that an
+            extension test printed or one that was set only in the shell that
+            ran <code>vip verify</code>. Look at the zip before you send it.
+          </p>
+          <p>
+            The command needs the <code>vip.toml</code> that
+            <code>vip verify</code> used, and stops if it finds none. If you
+            ran <code>vip verify</code> with <code>--connect-url</code> and no
+            <code>vip.toml</code>, pass <code>--no-config</code>. The scan then
+            uses only the environment and the auth cache. A rendered page that
+            <code>vip report</code> did not make from the current
+            <code>results.json</code> is left out. Run <code>vip report</code>
+            again to include it. A failure, JUnit, or SARIF file that is older
+            than <code>results.json</code> is from an earlier run, so it is
+            left out too. The manifest lists each file that is left out, with
+            the reason.
           </p>
         </section>
 

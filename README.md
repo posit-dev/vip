@@ -104,6 +104,7 @@ content from Connect.
 | `vip status` | Quick health check for each configured product |
 | `vip cleanup` | Delete VIP `_vip_test` content from Connect |
 | `vip report` | Render the HTML report from test results (requires [Quarto CLI](https://quarto.org/docs/download/)) |
+| `vip bundle` | Write a zip of the report output to share. It leaves out vip.toml and the auth cache, and checks each file for known credentials. |
 | `vip auth` | Authentication tools (e.g. mint Connect API keys) |
 | `vip version` | Print the vip version and the minimum supported Posit Team version |
 | `vip --version` | Print the installed vip version |
