@@ -153,8 +153,10 @@ def strip_url_userinfo(url: str) -> str:
     return urlunsplit((parts.scheme, host, parts.path, "", ""))
 
 
-def _url_credentials(url: str, *, both_parts: bool = False) -> list[str]:
-    """Return the credential parts of *url*: userinfo and secret query values.
+def _url_credentials(url: str, *, both_parts: bool = False) -> list[tuple[str, str]]:
+    """Return ``(part, value)`` for each credential in *url*.
+
+    The part is ``user``, ``password``, or ``query`` (a secret query value).
 
     With ``user:password``, only the password is a credential, unless
     *both_parts* is set. A Git remote can hold the token in either part, for
@@ -180,9 +182,12 @@ def _url_credentials(url: str, *, both_parts: bool = False) -> list[str]:
             match = _USERINFO_RE.search(url)
             userinfo = match.group(1) if match else ""
     user, _, password = userinfo.partition(":")
-    values = [user, password] if both_parts else [password or user]
-    values += [value for key, value in query if key.lower() in SECRET_QUERY_KEYS]
-    return [v for value in values for v in (value, unquote(value)) if v]
+    if both_parts:
+        values = [("user", user), ("password", password)]
+    else:
+        values = [("password", password) if password else ("user", user)]
+    values += [("query", value) for key, value in query if key.lower() in SECRET_QUERY_KEYS]
+    return [(part, v) for part, value in values for v in (value, unquote(value)) if v]
 
 
 def _connection_string_parts(conn: str) -> list[tuple[str, str]]:
@@ -201,7 +206,7 @@ def _connection_string_parts(conn: str) -> list[tuple[str, str]]:
 def _connection_string_secrets(label: str, conn: str) -> list[tuple[str, str]]:
     """Return the whole connection string and each credential part of it, with labels."""
     pairs = [(label, conn)]
-    pairs += [(f"{label} credentials", v) for v in _url_credentials(conn)]
+    pairs += [(f"{label} credentials", v) for _, v in _url_credentials(conn)]
     pairs += [(f"{label} {key}", value) for key, value in _connection_string_parts(conn)]
     return pairs
 
@@ -253,19 +258,23 @@ def secret_values(
     git = config.workbench.git_test
     if git is not None:
         pairs.append(("workbench.git_test.token", git.token))
-        label = "workbench.git_test.clone_url credentials"
-        pairs += [(label, v) for v in _url_credentials(git.clone_url, both_parts=True)]
+        # Each part has its own label, so that --allow-match for a public user
+        # name does not also let the token through.
+        pairs += [
+            (f"workbench.git_test.clone_url {part}", v)
+            for part, v in _url_credentials(git.clone_url, both_parts=True)
+        ]
     for ds in config.data_sources:
         pairs += _connection_string_secrets(
             f"data_sources.{ds.name}.connection_string", ds.connection_string
         )
     for product in ("connect", "workbench", "package_manager"):
         url = config.product_config(product).url
-        pairs += [(f"{product}.url credentials", v) for v in _url_credentials(url)]
-    pairs += [("proxy.url credentials", v) for v in _url_credentials(config.proxy.url)]
+        pairs += [(f"{product}.url credentials", v) for _, v in _url_credentials(url)]
+    pairs += [("proxy.url credentials", v) for _, v in _url_credentials(config.proxy.url)]
     pairs += [(var, os.environ.get(var, "")) for var in SECRET_ENV_VARS]
     for var in PROXY_ENV_VARS:
-        pairs += [(f"{var} credentials", v) for v in _url_credentials(os.environ.get(var, ""))]
+        pairs += [(f"{var} credentials", v) for _, v in _url_credentials(os.environ.get(var, ""))]
     pairs += list(cache_secrets)
 
     seen: set[str] = set()

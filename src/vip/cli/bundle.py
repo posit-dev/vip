@@ -51,6 +51,17 @@ def _invocation_root(results: str | None) -> Path:
     return cwd.parent if cwd.name == "report" else cwd
 
 
+def _report_dir(results: str | None) -> Path:
+    """Return the report directory, as a path in the form that the user typed.
+
+    With ``--results <dir>/report/results.json``, it is ``<dir>/report``, so
+    that the rendered files of that run are found from any directory.
+    """
+    if results and Path(results).resolve().parent.name == "report":
+        return Path(results).parent
+    return _resolve_report_dir()
+
+
 def _config_path(args: argparse.Namespace, root: Path) -> Path | None:
     """Return the configuration file to read, or None when --no-config is set.
 
@@ -118,11 +129,10 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
 def _cache_secrets(root: Path) -> list[tuple[str, str]]:
     """Return the secrets in the auth cache files that ``vip verify`` run from *root* can write.
 
-    The legacy files in *root* are read first. ``auth_cache_path()`` can move
-    or delete a legacy file when it migrates the cache to the user cache
-    directory, so it is called only after that. It depends on the working
-    directory, so it is called from *root*. It can return None when no cache
-    directory is available.
+    The legacy files in *root* are read before ``auth_cache_path()`` is
+    called, so that a cache location that moves the legacy files cannot hide
+    them. ``auth_cache_path()`` depends on the working directory, so it is
+    called from *root*.
     """
     legacy = root / AUTH_CACHE_FILENAME
     pairs = auth_cache_secrets(legacy) + auth_cache_secrets(legacy.with_suffix(".meta.json"))
@@ -180,7 +190,7 @@ def _hit_error(hits: list[tuple[str, str]], collected: Collected) -> BundleError
 def run_bundle(args: argparse.Namespace) -> None:
     """Write a zip of the report output. Refuse when a member holds a known secret."""
     root = _invocation_root(args.results)
-    report_dir = _resolve_report_dir()
+    report_dir = _report_dir(args.results)
     results_path = Path(args.results) if args.results else report_dir / "results.json"
     config_path = _config_path(args, root)
     # VIPConfig() still reads the VIP_* secret variables in its __post_init__ methods.

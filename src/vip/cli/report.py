@@ -166,7 +166,10 @@ def run_report(args: argparse.Namespace) -> None:
     # render leaves the old pages without a stamp.
     output_dir = report_dir / "_output"
     digest = results_digest(results_dest.read_bytes())
-    clear_render_stamp(output_dir)
+    try:
+        clear_render_stamp(output_dir)
+    except OSError as exc:
+        raise ReportError(f"cannot delete the render stamp in {output_dir}: {exc}") from exc
 
     # The HTML pages and the PDF render as separate quarto invocations on
     # purpose. One combined `quarto render` ties their fates together: on a

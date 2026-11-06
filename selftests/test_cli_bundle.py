@@ -313,6 +313,14 @@ def test_key_in_auth_cache_path_blocks_bundle(root, tmp_path, monkeypatch):
         run_bundle(_args(output="b.zip"))
 
 
+def test_results_path_sets_the_rendered_files_dir(root, tmp_path, monkeypatch):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    run_bundle(_args(output="b.zip", results=str(root / "report" / "results.json")))
+    assert "report/_output/index.html" in _names(elsewhere / "b.zip")
+
+
 def test_runs_from_inside_report_dir(root, monkeypatch):
     monkeypatch.chdir(root / "report")
     run_bundle(_args())

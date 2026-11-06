@@ -177,20 +177,39 @@ def _config_classes(cls: Any, prefix: str = "") -> list[tuple[Any, str]]:
 _REQUIRED_VALUES = {GitTestConfig: {"auth_method": "https-token"}}
 
 
+def _sentinel_values(cls: type, prefix: str) -> dict[str, str]:
+    """Return a distinct sentinel for each init field that can hold a str."""
+    hints = typing.get_type_hints(cls)
+    return {
+        f.name: f"SENTINEL-{prefix}{f.name}"
+        for f in dataclasses.fields(cls)
+        if f.init and hints[f.name] in (str, str | None)
+    }
+
+
+def test_sentinel_values_cover_optional_str_fields():
+    @dataclasses.dataclass
+    class Sample:
+        name: str = ""
+        token: str | None = None
+        count: int = 0
+
+    assert _sentinel_values(Sample, "s.") == {
+        "name": "SENTINEL-s.name",
+        "token": "SENTINEL-s.token",
+    }
+
+
 def test_every_repr_masked_field_is_a_secret():
     # A config class that hides a field in __repr__ treats it as a secret.
-    # Every str field gets a distinct sentinel, so a new hidden field is found.
+    # Every str field, optional or not, gets a distinct sentinel, so a new
+    # hidden field is found.
     classes = _config_classes(VIPConfig)
     known = {ConnectConfig, WorkbenchConfig, GitTestConfig, PackageManagerConfig, AuthConfig}
     assert known | {DataSourceEntry} <= {cls for cls, _ in classes}
     hidden: set[str] = set()
     for cls, prefix in classes:
-        hints = typing.get_type_hints(cls)
-        values = {
-            f.name: f"SENTINEL-{prefix}{f.name}"
-            for f in dataclasses.fields(cls)
-            if f.init and hints[f.name] is str
-        }
+        values = _sentinel_values(cls, prefix)
         values.update(_REQUIRED_VALUES.get(cls, {}))
         text = repr(cls(**values))
         hidden |= {
@@ -327,7 +346,18 @@ def test_secret_values_find_the_clone_url_token_in_each_form(clone_url):
 def test_secret_values_labels_name_the_source(full_config):
     labels = {value: label for label, value in secret_values(full_config)}
     assert labels[SECRETS["auth.password"]] == "auth.password"
-    assert labels[SECRETS["clone_url user"]] == "workbench.git_test.clone_url credentials"
+    assert labels[SECRETS["clone_url user"]] == "workbench.git_test.clone_url user"
+    assert labels[SECRETS["clone_url query"]] == "workbench.git_test.clone_url query"
+
+
+def test_clone_url_user_and_password_have_their_own_labels():
+    # --allow-match for a false match on a public user name must not also
+    # let the token through.
+    url = "https://x-access-token:GIT-TOKEN-0123456789@github.com/org/repo.git"
+    config = VIPConfig(workbench=WorkbenchConfig(git_test=GitTestConfig(clone_url=url)))
+    labels = {value: label for label, value in secret_values(config)}
+    assert labels["x-access-token"] == "workbench.git_test.clone_url user"
+    assert labels["GIT-TOKEN-0123456789"] == "workbench.git_test.clone_url password"
 
 
 def test_secret_values_read_env_only_secrets(monkeypatch):

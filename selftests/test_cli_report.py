@@ -432,6 +432,19 @@ class TestRenderStamp:
             cli.run_report(_make_args())
         assert read_render_stamp(report_dir / "_output") is None
 
+    def test_stamp_that_cannot_be_cleared_is_a_report_error(self, tmp_path, monkeypatch):
+        from vip import cli
+        from vip.errors import ReportError
+
+        self._report_dir(tmp_path, monkeypatch)
+
+        def fail(output_dir):
+            raise PermissionError("read-only file system")
+
+        monkeypatch.setattr("vip.cli.report.clear_render_stamp", fail)
+        with pytest.raises(ReportError, match="render stamp"):
+            cli.run_report(_make_args())
+
 
 class TestSupportFileResolution:
     """troubleshooting.toml and feature files resolve from checkout or install."""
