@@ -143,6 +143,11 @@ class TestWorkbenchGroupName:
         assert wb._workbench_group_name({"rstudio"}, "test_ide_launch") == "workbench_ide_rstudio"
         assert wb._workbench_group_name({"positron"}, "test_ide_launch") == "workbench_ide_positron"
 
+    def test_api_ide_launch_groups_by_ide_like_the_ui_launch(self):
+        assert (
+            wb._workbench_group_name({"rstudio"}, "test_ide_launch_api") == "workbench_ide_rstudio"
+        )
+
     def test_non_ide_groups_by_module_stripping_test_prefix(self):
         assert wb._workbench_group_name(set(), "test_packages") == "workbench_packages"
         assert wb._workbench_group_name(set(), "test_git_ops") == "workbench_git_ops"

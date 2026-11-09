@@ -201,7 +201,8 @@ def test_ide_marker_selects_matching_launch_and_extensions_scenarios(tmp_path: P
     would select the wrong set of files.
 
     RStudio has no extensions scenario today, so its marker selects only the
-    launch file.
+    launch files. Each IDE's ``--api-auth`` launch scenario in
+    ``test_ide_launch_api.py`` carries the same marker, so it joins that group.
 
     Asserting scenario *function names* (not just file stems) matters: a
     marker mix-up between two IDEs on the extensions functions (e.g. jupyter
@@ -211,10 +212,18 @@ def test_ide_marker_selects_matching_launch_and_extensions_scenarios(tmp_path: P
     would not catch it.
     """
     marker_to_expected_functions = {
-        "rstudio": {"test_launch_rstudio"},
-        "vscode": {"test_launch_vscode", "test_vscode_extensions"},
-        "jupyter": {"test_launch_jupyter", "test_jupyterlab_extensions"},
-        "positron": {"test_launch_positron", "test_positron_extensions"},
+        "rstudio": {"test_launch_rstudio", "test_launch_rstudio_api"},
+        "vscode": {"test_launch_vscode", "test_launch_vscode_api", "test_vscode_extensions"},
+        "jupyter": {
+            "test_launch_jupyter",
+            "test_launch_jupyter_api",
+            "test_jupyterlab_extensions",
+        },
+        "positron": {
+            "test_launch_positron",
+            "test_launch_positron_api",
+            "test_positron_extensions",
+        },
     }
     for marker, expected_functions in marker_to_expected_functions.items():
         nodeids = _collect_workbench_nodeids(tmp_path, marker_expr=marker)
