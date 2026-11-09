@@ -30,6 +30,10 @@ COMPUTE_ENVS = {
         {
             "name": "Local",
             "type": "Local",
+            "resourceProfiles": [
+                {"name": "small", "displayName": "Small"},
+                {"name": "default", "displayName": "Default"},
+            ],
             "workbenches": {
                 "RStudio": {"supports_interactive_sessions": True, "supports_adhoc_jobs": True},
                 "VS Code": {"supports_interactive_sessions": True, "supports_adhoc_jobs": True},
@@ -316,6 +320,26 @@ class TestComputeEnvHelpers:
         assert default_launch_parameters(COMPUTE_ENVS, "RStudio", "VIP a") == {
             "name": "VIP a",
             "cluster": "Local",
+            "resource_profile": "default",
+        }
+
+    def test_first_resource_profile_is_used_when_none_is_called_default(self):
+        envs = {
+            "clusters": [
+                {"name": "Local", "resourceProfiles": [{"name": "small"}, {"name": "large"}]}
+            ],
+            "workbenches": {"RStudio": {"default_cluster": "Local"}},
+        }
+        assert default_launch_parameters(envs, "RStudio", "n")["resource_profile"] == "small"
+
+    def test_no_resource_profile_is_sent_when_the_cluster_defines_none(self):
+        envs = {
+            "clusters": [{"name": "Local", "resourceProfiles": []}],
+            "workbenches": {"RStudio": {"default_cluster": "Local"}},
+        }
+        assert default_launch_parameters(envs, "RStudio", "n") == {
+            "name": "n",
+            "cluster": "Local",
         }
 
     def test_unknown_default_cluster_falls_back_to_an_interactive_cluster(self):
@@ -327,6 +351,31 @@ class TestComputeEnvHelpers:
             "name": "VIP a",
             "cluster": "Local",
         }
+
+
+class TestGetLaunchComputeEnvs:
+    def test_asks_for_the_users_environments(self):
+        wc, seen = _client(lambda r: httpx.Response(200, json={"result": COMPUTE_ENVS}))
+        assert wc.get_launch_compute_envs("alice") == COMPUTE_ENVS
+        assert _body(seen[0])["kwparams"] == {"user": "alice"}
+
+    def test_falls_back_to_the_token_owners_environments_on_a_processing_error(self):
+        def handler(request):
+            if "kwparams" in _body(request):
+                return httpx.Response(200, json={"error": {"code": 9, "message": "not allowed"}})
+            return httpx.Response(200, json={"result": COMPUTE_ENVS})
+
+        wc, seen = _client(handler)
+        assert wc.get_launch_compute_envs("alice") == COMPUTE_ENVS
+        assert len(seen) == 2
+
+    @pytest.mark.parametrize("status", [401, 403, 404])
+    def test_a_refused_token_is_not_retried(self, status):
+        wc, seen = _client(lambda r: httpx.Response(status))
+        with pytest.raises(WorkbenchApiError) as exc_info:
+            wc.get_launch_compute_envs("alice")
+        assert exc_info.value.status_code == status
+        assert len(seen) == 1
 
 
 class TestQuitVipSessionsViaApi:

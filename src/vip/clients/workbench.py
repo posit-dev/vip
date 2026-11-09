@@ -140,28 +140,37 @@ def default_launch_parameters(
 
     The cluster is the IDE's ``default_cluster`` when that names a real cluster,
     else the first cluster that supports interactive sessions for the IDE, else
-    ``"Local"``.  Sending ``name`` and ``cluster`` is what the API documents as
-    the minimum; it is harmless on a deployment that does not use the launcher.
+    ``"Local"``.  When that cluster defines resource profiles the launcher rejects
+    a launch that names none, so the profile called ``default`` (else the first)
+    is sent as ``resource_profile``.  ``name`` and ``cluster`` are the documented
+    minimum and are harmless on a deployment that does not use the launcher.
     """
     clusters = [c for c in compute_envs.get("clusters") or [] if isinstance(c, dict)]
     names = [str(c.get("name")) for c in clusters if c.get("name")]
     entry = (compute_envs.get("workbenches") or {}).get(workbench)
     default = entry.get("default_cluster") if isinstance(entry, dict) else None
+    chosen: dict[str, Any] | None = None
     if default and (not names or default in names):
         cluster = str(default)
+        chosen = next((c for c in clusters if c.get("name") == default), None)
     else:
-        cluster = next(
+        chosen = next(
             (
-                str(c["name"])
+                c
                 for c in clusters
                 if c.get("name")
                 and (c.get("workbenches") or {})
                 .get(workbench, {})
                 .get("supports_interactive_sessions")
             ),
-            str(default or _FALLBACK_CLUSTER),
+            None,
         )
-    return {"name": name, "cluster": cluster}
+        cluster = str(chosen["name"]) if chosen else str(default or _FALLBACK_CLUSTER)
+    params: dict[str, Any] = {"name": name, "cluster": cluster}
+    profiles = [p["name"] for p in (chosen or {}).get("resourceProfiles") or [] if p.get("name")]
+    if profiles:
+        params["resource_profile"] = "default" if "default" in profiles else profiles[0]
+    return params
 
 
 def jupyterlab_app_base(page_url: str) -> str:
@@ -320,6 +329,21 @@ class WorkbenchClient(BaseClient):
         *user* (admin or super-admin token) reads the environments that user sees.
         """
         return self._call("get_compute_envs", {"user": user} if user else None)
+
+    def get_launch_compute_envs(self, user: str) -> dict[str, Any]:
+        """Return the compute environments *user* would launch into.
+
+        Asks for *user*'s environments, which a super-admin token may do and
+        which carries that user's resource profiles.  A token that may not (a
+        user token, for one) gets its own environments instead; a refused token
+        (HTTP 401, 403 or 404) is not retried.
+        """
+        try:
+            return self.get_compute_envs(user=user)
+        except WorkbenchApiError as exc:
+            if exc.status_code in (401, 403, 404):
+                raise
+            return self.get_compute_envs()
 
     def launch_session(
         self,

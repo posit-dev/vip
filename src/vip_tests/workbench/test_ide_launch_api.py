@@ -95,7 +95,7 @@ def wb_api_ready(
         )
     try:
         workbench_client.get_version()
-        compute_envs = workbench_client.get_compute_envs()
+        compute_envs = workbench_client.get_launch_compute_envs(test_username)
     except WorkbenchApiError as exc:
         if exc.status_code in _API_REFUSED:
             attest.unproven(_api_refused_message(exc))

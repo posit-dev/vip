@@ -32,6 +32,7 @@ _COMPUTE_ENVS = {
         {
             "name": "Local",
             "type": "Local",
+            "resourceProfiles": [{"name": "default"}],
             "workbenches": {"RStudio": {"supports_interactive_sessions": True}},
         }
     ],
@@ -218,6 +219,7 @@ class TestApiLaunchScenarios:
         assert launch["kwparams"]["username"] == "alice"
         assert re.fullmatch(r"VIP test_ide_launch_api\.py - main-\d+", launch["kwparams"]["name"])
         assert launch["kwparams"]["launch_parameters"]["cluster"] == "Local"
+        assert launch["kwparams"]["launch_parameters"]["resource_profile"] == "default"
         assert fake_workbench.sessions == {}
 
     def test_ide_not_offered_is_a_not_applicable_skip(self, tmp_path, fake_workbench):
