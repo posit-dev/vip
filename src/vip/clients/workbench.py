@@ -45,12 +45,9 @@ _VIP_OWNER_PATTERNS = (
 )
 
 
-# Workbench API ``activity_state`` values. "running" is ready; "failed" and
-# "killed" are exits a just-launched session never recovers from, so a waiter
-# fails fast on them instead of waiting out its whole timeout.
+# Workbench API ``activity_state`` values. "running" is ready. The gone states
+# are exits: a launch waiter fails fast on them, and a stop waiter is done.
 SESSION_RUNNING_STATE = "running"
-SESSION_FAILED_STATES = ("failed", "killed")
-# Exits after which a session no longer needs stopping.
 _SESSION_GONE_STATES = ("finished", "failed", "killed")
 
 # The exact ``workbench`` kwparam values ``launch_session`` accepts. Case and
@@ -299,9 +296,10 @@ class WorkbenchClient(BaseClient):
         except httpx.HTTPError as exc:
             raise WorkbenchApiError(f"Workbench API {method} could not be reached: {exc}") from exc
         if not resp.is_success:
+            reply = f": {resp.text[:200]!r}" if resp.content.strip() else ""
             hint = _TOKEN_REFUSED_HINT if resp.status_code in (401, 403, 404) else ""
             raise WorkbenchApiError(
-                f"Workbench API {method} returned HTTP {resp.status_code}{hint}",
+                f"Workbench API {method} returned HTTP {resp.status_code}{reply}{hint}",
                 status_code=resp.status_code,
             )
         if bare_ok and not resp.content.strip():
@@ -474,7 +472,7 @@ class WorkbenchClient(BaseClient):
                     break
             if last_state == SESSION_RUNNING_STATE:
                 return
-            if last_state in SESSION_FAILED_STATES:
+            if last_state in _SESSION_GONE_STATES:
                 raise WorkbenchSessionError(
                     f"Workbench session {session_id} ended as {last_state!r} instead of "
                     f"{SESSION_RUNNING_STATE!r}; check the launcher, session image and "

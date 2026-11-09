@@ -201,6 +201,12 @@ class TestErrors:
         assert exc_info.value.status_code == 401
         assert "workbench-api-super-admin-enabled=1" in str(exc_info.value)
 
+    def test_non_2xx_error_includes_workbench_reply(self):
+        wc, _ = _client(lambda r: httpx.Response(400, text="invalid resource profile 'huge'"))
+        with pytest.raises(WorkbenchApiError, match="invalid resource profile 'huge'") as exc_info:
+            wc.launch_session("RStudio")
+        assert exc_info.value.status_code == 400
+
     def test_server_error_has_no_token_hint(self):
         wc, _ = _client(lambda r: httpx.Response(503))
         with pytest.raises(WorkbenchApiError) as exc_info:
@@ -335,7 +341,7 @@ class TestWaitForSessionRunning:
         wc.wait_for_session_running("mine2222", timeout=60)
         assert calls["n"] == 2
 
-    @pytest.mark.parametrize("state", ["failed", "killed"])
+    @pytest.mark.parametrize("state", ["failed", "killed", "finished"])
     def test_fails_fast_on_a_terminal_failure_state(self, state):
         wc, seen = _client(
             lambda r: httpx.Response(200, json=_sessions_result(_session("6124d41f", state)))
