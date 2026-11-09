@@ -165,6 +165,11 @@ class TestRequestEnvelopes:
             "kwparams": {"session_ids": "a1,b2", "force_quit": True},
         }
 
+    @pytest.mark.parametrize("body", [{}, {"result": None}, {"result": {}}])
+    def test_stop_session_accepts_every_empty_success_body(self, body):
+        wc, _ = _client(lambda r: httpx.Response(200, json=body))
+        assert wc.stop_session("a1") is True
+
     def test_stop_session_single_id_and_suspend(self):
         wc, seen = _client(lambda r: httpx.Response(200, json={"result": {}}))
         wc.stop_session("93022e28", suspend=True)

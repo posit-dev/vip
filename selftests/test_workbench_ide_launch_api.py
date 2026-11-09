@@ -102,7 +102,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif method == "stop_session":
             for sid in kwparams["session_ids"].split(","):
                 sessions.pop(sid, None)
-            self._reply(200, {"result": {}})
+            self._reply(200, {})
         else:
             self._reply(200, {"error": {"code": 1, "message": f"unknown method {method}"}})
 

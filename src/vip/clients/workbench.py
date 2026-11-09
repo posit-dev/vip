@@ -410,7 +410,8 @@ class WorkbenchClient(BaseClient):
         if suspend:
             kwparams["suspend"] = True
         try:
-            self._call("stop_session", kwparams)
+            # A successful stop answers with an empty result, which may be no body at all.
+            self._call("stop_session", kwparams, bare_ok=True)
         except ProductUnreachableError:
             return False
         return True
