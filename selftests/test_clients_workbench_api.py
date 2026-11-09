@@ -246,6 +246,14 @@ class TestErrors:
         wc, _ = _client(boom)
         assert wc.try_stop_session("a1") is False
 
+    @pytest.mark.parametrize("status", [302, 307])
+    def test_an_empty_redirect_is_not_a_successful_stop(self, status):
+        response = httpx.Response(status, headers={"Location": "https://sso.example.com/"})
+        wc, _ = _client(lambda r: response)
+        with pytest.raises(WorkbenchApiError, match=f"HTTP {status}"):
+            wc.stop_session("a1")
+        assert wc.try_stop_session("a1") is False
+
     def test_stop_session_accepts_an_empty_200_body(self):
         wc, _ = _client(lambda r: httpx.Response(200, content=b""))
         wc.stop_session("a1")
@@ -427,12 +435,34 @@ class TestGetLaunchComputeEnvs:
         assert wc.get_launch_compute_envs("alice") == COMPUTE_ENVS
         assert len(seen) == 2
 
-    @pytest.mark.parametrize("status", [401, 403, 404])
-    def test_a_refused_token_is_not_retried(self, status):
+    @pytest.mark.parametrize("status", [401, 403, 404, 500, 503])
+    def test_an_http_failure_is_not_retried_as_the_token_owner(self, status):
         wc, seen = _client(lambda r: httpx.Response(status))
         with pytest.raises(WorkbenchApiError) as exc_info:
             wc.get_launch_compute_envs("alice")
         assert exc_info.value.status_code == status
+        assert len(seen) == 1
+
+    @pytest.mark.parametrize(
+        "response",
+        [httpx.Response(200, text="<html>gateway</html>"), httpx.Response(200, json={})],
+    )
+    def test_a_malformed_reply_is_not_retried_as_the_token_owner(self, response):
+        wc, seen = _client(lambda r: response)
+        with pytest.raises(WorkbenchApiError):
+            wc.get_launch_compute_envs("alice")
+        assert len(seen) == 1
+
+    def test_a_transport_failure_is_not_retried_as_the_token_owner(self):
+        seen: list[httpx.Request] = []
+
+        def boom(request):
+            seen.append(request)
+            raise httpx.ConnectError("refused")
+
+        wc, _ = _client(boom)
+        with pytest.raises(WorkbenchApiError, match="could not be reached"):
+            wc.get_launch_compute_envs("alice")
         assert len(seen) == 1
 
 

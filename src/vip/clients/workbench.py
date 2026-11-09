@@ -298,7 +298,7 @@ class WorkbenchClient(BaseClient):
                 resp = self._client.post(f"/api/{method}", json=body)
         except httpx.HTTPError as exc:
             raise WorkbenchApiError(f"Workbench API {method} could not be reached: {exc}") from exc
-        if resp.status_code >= 400:
+        if not resp.is_success:
             hint = _TOKEN_REFUSED_HINT if resp.status_code in (401, 403, 404) else ""
             raise WorkbenchApiError(
                 f"Workbench API {method} returned HTTP {resp.status_code}{hint}",
@@ -347,14 +347,15 @@ class WorkbenchClient(BaseClient):
         """Return the compute environments *user* would launch into.
 
         Asks for *user*'s environments, which a super-admin token may do and
-        which carries that user's resource profiles.  A token that may not (a
-        user token, for one) gets its own environments instead; a refused token
-        (HTTP 401, 403 or 404) is not retried.
+        which carries that user's resource profiles.  Only when Workbench answers
+        with a processing error (a user token asking about someone else) does it
+        fall back to the token owner's environments; HTTP, transport and
+        malformed-reply failures propagate.
         """
         try:
             return self.get_compute_envs(user=user)
         except WorkbenchApiError as exc:
-            if exc.status_code in (401, 403, 404):
+            if exc.code is None:
                 raise
             return self.get_compute_envs()
 
