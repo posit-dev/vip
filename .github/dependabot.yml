@@ -8,6 +8,12 @@ updates:
     python-dependencies:
       patterns:
       - "*"
+  # VIP's plugin reads pytest-bdd's private scenario registry (vip.plugin.results._scenario_for);
+  # major bumps need a deliberate migration, not a grouped weekly update.
+  ignore:
+  - dependency-name: pytest-bdd
+    update-types:
+    - version-update:semver-major
   package-ecosystem: uv
   schedule:
     interval: weekly

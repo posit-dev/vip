@@ -153,7 +153,7 @@ PRIMARY_BADGES: dict[str, Badge] = {
 }
 
 # Secondary badges: quiet, informational only, never drive grouping. Chosen
-# judiciously (F8) — not every one of pyproject.toml's 16 registered markers
+# judiciously (F8) — not every one of pyproject.toml's 19 registered markers
 # earns a badge. The IDE markers tell a reader which IDE a Workbench card
 # exercised (previously invisible anywhere in the report). `slow` flags a
 # scenario that `vip verify --basic` skips, worth one small tag rather than

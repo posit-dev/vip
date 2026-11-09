@@ -64,11 +64,17 @@ A scenario that needs a product configured but isn't a test *of* that
 product (a TLS probe, a load test) takes a `@requires_connect`,
 `@requires_workbench`, or `@requires_package_manager` tag instead. These
 deselect the same way, but they don't add the scenario to that product's
-`--categories` selection, and `--no-auth` keeps it because they say nothing
-about credentials. Put the tag on the `Scenario:`, or on an `Examples:` block
-when an outline's rows cover different products. A `Given Connect is
-configured in vip.toml` step without one of these tags or markers does not
-deselect anything: the scenario is collected and then skipped by the step.
+`--categories` selection, and `--no-auth` and `--api-auth` keep it because
+they say nothing about credentials. Put the tag on the `Scenario:`, or on an
+`Examples:` block when an outline's rows cover different products.
+
+A Given step that starts with `Connect is configured`, `Workbench is
+configured`, or `Package Manager is configured` (in the scenario or its
+`Background:`) without one of these tags or markers does not deselect
+anything. The scenario is collected, and VIP prints a warning naming the tag
+it needs. VIP's own `Given Connect is configured in vip.toml` step then skips
+the scenario, but a custom guard step that doesn't call `pytest.skip` lets it
+run against a `None` client and fail. Add the tag.
 
 ## Version gating
 

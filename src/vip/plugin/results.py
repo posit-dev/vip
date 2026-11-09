@@ -15,7 +15,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pytest_bdd.scenario import scenario_wrapper_template_registry
+
+try:
+    from pytest_bdd.scenario import scenario_wrapper_template_registry
+except ImportError:  # private API; see _scenario_for
+    scenario_wrapper_template_registry = None  # type: ignore[assignment]
 
 from vip import __version__ as vip_version
 from vip.attest import UNPROVEN_SENTINEL
@@ -65,11 +69,12 @@ def _scenario_for(item: pytest.Item) -> Any | None:
     """Return the pytest-bdd scenario template behind *item*, or None for a non-BDD test.
 
     pytest-bdd has no public way to reach a scenario at collection time, so this reads its
-    internal ``scenario_wrapper_template_registry``. Keep every such lookup in this one function;
-    ``selftests/plugin/test_json_report.py`` fails if the registry moves.
+    internal ``scenario_wrapper_template_registry``. Keep every such lookup in this one function.
+    If a pytest-bdd release moves the registry, this returns None instead of breaking the
+    plugin, and ``selftests/plugin/test_json_report.py`` fails.
     """
     fn = getattr(item, "obj", None)
-    if fn is None:
+    if fn is None or scenario_wrapper_template_registry is None:
         return None
     try:
         return scenario_wrapper_template_registry.get(fn)

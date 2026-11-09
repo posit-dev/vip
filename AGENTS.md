@@ -152,7 +152,7 @@ def connect_accessible(connect_client):
 Key rules:
 
 -   The `@connect`, `@workbench`, or `@package_manager` tag in the feature file controls auto-skip when the product is not configured.
--   A scenario outside that product's directory that still needs it (a TLS probe, a load test) takes `@requires_connect`, `@requires_workbench`, or `@requires_package_manager`. These deselect the same way but don't join the product's `--categories` selection or imply credentials. A `Given Connect is configured in vip.toml` step does not deselect on its own; `selftests/test_requires_tags.py` enforces the matching tag.
+-   A scenario outside that product's directory that still needs it (a TLS probe, a load test) takes `@requires_connect`, `@requires_workbench`, or `@requires_package_manager`. These deselect the same way but don't join the product's `--categories` selection or imply credentials. A `Given Connect is configured in vip.toml` step does not deselect on its own; `selftests/test_requires_tags.py` enforces the matching tag (Background steps included), and the plugin warns at collection when one is missing. A scenario that also needs credentials (one that deploys content) takes the product marker instead.
 -   Step function names should be descriptive. Use `target_fixture` to pass state between steps.
 -   Tests must be non-destructive. Tag created content with `_vip_test` and clean it up in a final `then` step.
 -   Use version gating for version-specific features: `@pytest.mark.min_version(product="connect", version="2024.09.0")`

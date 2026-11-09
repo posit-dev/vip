@@ -10,7 +10,12 @@ from pathlib import Path
 import pytest
 
 from vip.config import VIPConfig
-from vip.plugin.results import _PRODUCT_MARKERS, _REQUIRES_MARKERS, _stash_scenario_metadata
+from vip.plugin.results import (
+    _PRODUCT_MARKERS,
+    _REQUIRES_MARKERS,
+    _scenario_for,
+    _stash_scenario_metadata,
+)
 from vip.stash import _version_na_key, _vip_config_key
 from vip.version import ProductVersion
 
@@ -34,6 +39,7 @@ def pytest_collection_modifyitems(
     rest: list[pytest.Item] = []
     deselected: list[pytest.Item] = []
     for item in items:
+        _warn_untagged_product_guard(item)
         if _should_deselect_for_product(item, vip_cfg):
             deselected.append(item)
             continue
@@ -76,17 +82,77 @@ def _assign_xdist_group(item: pytest.Item) -> None:
     item.add_marker(pytest.mark.xdist_group(group))
 
 
+# Every marker that names a product *item* needs: ``@connect`` and ``@requires_connect`` alike.
+_ALL_PRODUCT_MARKERS = {**_PRODUCT_MARKERS, **_REQUIRES_MARKERS}
+
+
 def _required_products(item: pytest.Item) -> set[str]:
     """Return the config keys of every product *item* needs, from its product
     markers (``@connect``) and its ``@requires_*`` tags.
     """
-    markers = {**_PRODUCT_MARKERS, **_REQUIRES_MARKERS}
-    return {key for name, key in markers.items() if item.get_closest_marker(name) is not None}
+    return {
+        key
+        for name, key in _ALL_PRODUCT_MARKERS.items()
+        if item.get_closest_marker(name) is not None
+    }
 
 
 def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
     """Return True if *item* should be deselected because its product is not configured."""
-    return any(not cfg.product_config(key).is_configured for key in _required_products(item))
+    return any(
+        item.get_closest_marker(name) is not None and not cfg.product_config(key).is_configured
+        for name, key in _ALL_PRODUCT_MARKERS.items()
+    )
+
+
+# Given-step prefix → product config key, and Examples ``product`` value → config key.
+_GIVEN_PRODUCT_PREFIXES = {
+    "Connect is configured": "connect",
+    "Workbench is configured": "workbench",
+    "Package Manager is configured": "package_manager",
+}
+_PRODUCT_DISPLAY_NAMES = {
+    "Connect": "connect",
+    "Workbench": "workbench",
+    "Package Manager": "package_manager",
+}
+
+
+def _given_products(item: pytest.Item) -> set[str]:
+    """Return the config keys named by *item*'s product Given steps, Background steps included.
+
+    For a Scenario Outline, ``<product> is configured`` resolves through the item's Examples row.
+    """
+    template = _scenario_for(item)
+    if template is None:
+        return set()
+    callspec = getattr(item, "callspec", None)
+    example = callspec.params.get("_pytest_bdd_example") if callspec is not None else None
+    steps = template.render(example).steps if isinstance(example, dict) else template.steps
+    products = set()
+    for step in steps:
+        if step.type != "given":
+            continue
+        for prefix, key in _GIVEN_PRODUCT_PREFIXES.items():
+            if step.name.startswith(prefix):
+                products.add(key)
+    return products
+
+
+def _warn_untagged_product_guard(item: pytest.Item) -> None:
+    """Warn when a product Given step has no matching product marker or ``@requires_*`` tag.
+
+    Only tags deselect, so such a scenario runs even when the product isn't configured, and a
+    custom guard step that doesn't skip then fails against a ``None`` client.
+    """
+    missing = _given_products(item) - _required_products(item)
+    if missing:
+        tags = ", ".join(f"@requires_{key}" for key in sorted(missing))
+        warnings.warn(
+            f"VIP: {item.nodeid} has a product Given step but no {tags} tag, so it is not "
+            "deselected when that product is not configured. Add the tag to the scenario.",
+            stacklevel=1,
+        )
 
 
 # Products that require username/password credentials.

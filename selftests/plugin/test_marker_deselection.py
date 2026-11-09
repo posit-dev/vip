@@ -37,31 +37,6 @@ class TestPluginIntegration:
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-m", "not slow", "-v")
         result.stdout.fnmatch_lines(["*1 deselected*"])
 
-    def test_pytest_bdd_removed_in10_warning_suppressed(self, selftest_pytester):
-        """pytest-bdd's fixture injection emits PytestRemovedIn10Warning on
-        pytest >= 9.1 (``_register_fixture(nodeid=...)``/``FixtureDef(baseid=...)``).
-        The plugin filters that category so it never reaches users who install
-        vip into their own project. We emit the warning directly because the
-        repo-pinned pytest does not warn yet, which keeps the check meaningful
-        regardless of the installed pytest version.
-        """
-        selftest_pytester.makepyfile(
-            """
-            import warnings
-
-            import pytest
-
-            def test_emits_removed_in10():
-                warnings.warn(
-                    "Passing nodeid to _register_fixture is deprecated.",
-                    pytest.PytestRemovedIn10Warning,
-                )
-            """
-        )
-        result = selftest_pytester.runpytest("--vip-config=vip.toml")
-        result.assert_outcomes(passed=1)
-        result.stdout.no_fnmatch_line("*PytestRemovedIn10Warning*")
-
     def test_performance_deselected_by_default(self, selftest_pytester):
         """_default_marker_expr excludes performance when --performance-tests is not set."""
         import argparse
@@ -215,6 +190,117 @@ class TestPluginIntegration:
         )
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
         result.assert_outcomes(skipped=1)
+        result.stdout.fnmatch_lines(
+            ["*VIP: *test_guarded* has a product Given step but no @requires_connect tag*"]
+        )
+
+    def test_bdd_untagged_background_guard_warns(self, selftest_pytester):
+        """A product Given step in a Background counts: pytest-bdd runs it in every scenario."""
+        selftest_pytester.makefile(
+            ".feature",
+            test_bg=(
+                "Feature: Background guard\n"
+                "  Background:\n"
+                "    Given Workbench is configured with a custom image\n"
+                "  Scenario: Uses the image\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_bg="""
+            from pytest_bdd import scenarios, given, then
+
+            scenarios("test_bg.feature")
+
+            @given("Workbench is configured with a custom image")
+            def custom_image():
+                pass
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+        result.stdout.fnmatch_lines(
+            ["*VIP: *test_uses_the_image* has a product Given step but no @requires_workbench*"]
+        )
+
+    def test_bdd_tagged_guard_does_not_warn(self, selftest_pytester):
+        """A product marker satisfies the guard as well as a ``@requires_*`` tag."""
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://example.com"\n'
+            ),
+        )
+        selftest_pytester.makefile(
+            ".feature",
+            test_tagged=(
+                "@connect\n"
+                "Feature: Tagged\n"
+                "  Scenario: Guarded and tagged\n"
+                "    Given Connect is configured in vip.toml\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_tagged="""
+            from pytest_bdd import scenarios, given
+
+            scenarios("test_tagged.feature")
+
+            @given("Connect is configured in vip.toml")
+            def connect_configured():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+        assert "has a product Given step" not in result.stdout.str()
+
+    def test_bdd_outline_row_guard_warns_only_for_untagged_rows(self, selftest_pytester):
+        """``<product> is configured`` resolves per Examples row before checking tags."""
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://example.com"\n'
+                '[workbench]\nurl = "https://example.com"\n'
+            ),
+        )
+        selftest_pytester.makefile(
+            ".feature",
+            test_rows=(
+                "Feature: Rows\n"
+                "  Scenario Outline: <product> check\n"
+                "    Given <product> is configured in vip.toml\n"
+                "\n"
+                "    @requires_connect\n"
+                "    Examples:\n"
+                "      | product |\n"
+                "      | Connect |\n"
+                "\n"
+                "    Examples:\n"
+                "      | product   |\n"
+                "      | Workbench |\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_rows="""
+            from pytest_bdd import scenarios, given, parsers
+
+            scenarios("test_rows.feature")
+
+            @given(parsers.parse("{product} is configured in vip.toml"))
+            def product_configured(product):
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=2)
+        out = result.stdout.str()
+        assert out.count("has a product Given step") == 1
+        assert "no @requires_workbench tag" in out
 
     def test_bdd_tagged_examples_deselected_per_product(self, selftest_pytester):
         """Tags on an ``Examples:`` block deselect only that block's rows."""
@@ -291,6 +377,86 @@ class TestPluginIntegration:
         )
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "--no-auth", "-v")
         result.assert_outcomes(passed=1)
+
+    def test_bdd_multiple_requires_tags_need_every_product(self, selftest_pytester):
+        """With two ``@requires_*`` tags, one unconfigured product is enough to deselect."""
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://example.com"\n'
+            ),
+        )
+        selftest_pytester.makefile(
+            ".feature",
+            test_both=(
+                "Feature: Both\n"
+                "  @requires_connect @requires_package_manager\n"
+                "  Scenario: Needs both\n"
+                "    Then it passes\n"
+                "  @requires_connect\n"
+                "  Scenario: Needs Connect\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_both="""
+            from pytest_bdd import scenarios, then
+
+            scenarios("test_both.feature")
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(passed=1)
+        result.stdout.fnmatch_lines(["*test_needs_connect PASSED*", "*1 deselected*"])
+
+    def test_auth_modes_select_by_marker(self, selftest_pytester):
+        """``--api-auth`` keeps ``@requires_*`` and ``@connect @api_auth`` scenarios and drops plain
+        ``@connect``; ``--no-auth`` keeps only the ``@requires_*`` one.
+        """
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://example.com"\n'
+            ),
+        )
+        selftest_pytester.makefile(
+            ".feature",
+            test_modes=(
+                "Feature: Modes\n"
+                "  @requires_connect\n"
+                "  Scenario: Configured only\n"
+                "    Then it passes\n"
+                "  @connect @api_auth\n"
+                "  Scenario: API key only\n"
+                "    Then it passes\n"
+                "  @connect\n"
+                "  Scenario: Browser login\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_modes="""
+            from pytest_bdd import scenarios, then
+
+            scenarios("test_modes.feature")
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        api = selftest_pytester.runpytest("--vip-config=vip.toml", "--api-auth", "-v")
+        api.assert_outcomes(passed=2)
+        api.stdout.fnmatch_lines(["*1 deselected*"])
+        assert "test_browser_login" not in api.stdout.str()
+
+        no_auth = selftest_pytester.runpytest("--vip-config=vip.toml", "--no-auth", "-v")
+        no_auth.assert_outcomes(passed=1)
+        no_auth.stdout.fnmatch_lines(["*test_configured_only PASSED*", "*2 deselected*"])
 
     def test_version_skip(self, selftest_pytester):
         selftest_pytester.makefile(
