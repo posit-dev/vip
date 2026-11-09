@@ -159,7 +159,7 @@ class TestRequestEnvelopes:
 
     def test_stop_session_uses_plural_session_ids_comma_joined(self):
         wc, seen = _client(lambda r: httpx.Response(200, json={"result": {}}))
-        assert wc.stop_session(["a1", "b2"], force_quit=True) is True
+        wc.stop_session(["a1", "b2"], force_quit=True)
         assert _body(seen[0]) == {
             "method": "stop_session",
             "kwparams": {"session_ids": "a1,b2", "force_quit": True},
@@ -168,7 +168,8 @@ class TestRequestEnvelopes:
     @pytest.mark.parametrize("body", [{}, {"result": None}, {"result": {}}])
     def test_stop_session_accepts_every_empty_success_body(self, body):
         wc, _ = _client(lambda r: httpx.Response(200, json=body))
-        assert wc.stop_session("a1") is True
+        wc.stop_session("a1")
+        assert wc.try_stop_session("a1") is True
 
     def test_stop_session_single_id_and_suspend(self):
         wc, seen = _client(lambda r: httpx.Response(200, json={"result": {}}))
@@ -225,16 +226,24 @@ class TestErrors:
             httpx.Response(200, text="not json"),
         ],
     )
-    def test_stop_session_never_raises(self, response):
+    def test_try_stop_session_never_raises(self, response, caplog):
         wc, _ = _client(lambda r: response)
-        assert wc.stop_session("a1") is False
+        with caplog.at_level(logging.WARNING, logger="vip.clients.workbench"):
+            assert wc.try_stop_session("a1") is False
+        assert "stop_session for a1 failed" in caplog.text
 
-    def test_stop_session_swallows_transport_errors(self):
+    def test_try_stop_session_swallows_transport_errors(self):
         def boom(request):
             raise httpx.ConnectError("refused")
 
         wc, _ = _client(boom)
-        assert wc.stop_session("a1") is False
+        assert wc.try_stop_session("a1") is False
+
+    def test_stop_session_raises_with_workbench_reply(self):
+        envelope = {"error": {"code": 7, "message": "session not found"}}
+        wc, _ = _client(lambda r: httpx.Response(200, json=envelope))
+        with pytest.raises(WorkbenchApiError, match="session not found"):
+            wc.stop_session("a1")
 
 
 class TestWaitForSessionRunning:

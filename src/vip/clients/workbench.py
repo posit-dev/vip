@@ -397,11 +397,11 @@ class WorkbenchClient(BaseClient):
         *,
         force_quit: bool = False,
         suspend: bool = False,
-    ) -> bool:
-        """Stop (or suspend) sessions; best effort, never raises.
+    ) -> None:
+        """Stop (or suspend) sessions.
 
-        Returns True when the API accepted the call.  Teardown must not turn a
-        passing run red, so every failure is reported through the return value.
+        Raises :class:`WorkbenchApiError` carrying Workbench's own reply when the
+        API refuses the call.  Teardown should use :meth:`try_stop_session`.
         """
         ids = session_ids if isinstance(session_ids, str) else ",".join(session_ids)
         kwparams: dict[str, Any] = {"session_ids": ids}
@@ -409,10 +409,25 @@ class WorkbenchClient(BaseClient):
             kwparams["force_quit"] = True
         if suspend:
             kwparams["suspend"] = True
+        # A successful stop answers with an empty result, which may be no body at all.
+        self._call("stop_session", kwparams, bare_ok=True)
+
+    def try_stop_session(
+        self,
+        session_ids: str | Iterable[str],
+        *,
+        force_quit: bool = False,
+        suspend: bool = False,
+    ) -> bool:
+        """Best-effort :meth:`stop_session` for teardown; never raises.
+
+        Returns True when the API accepted the call, and logs the refusal
+        otherwise so a failed cleanup is visible without turning a run red.
+        """
         try:
-            # A successful stop answers with an empty result, which may be no body at all.
-            self._call("stop_session", kwparams, bare_ok=True)
-        except ProductUnreachableError:
+            self.stop_session(session_ids, force_quit=force_quit, suspend=suspend)
+        except ProductUnreachableError as exc:
+            logger.warning("Workbench stop_session for %s failed: %s", session_ids, exc)
             return False
         return True
 
@@ -498,7 +513,7 @@ class WorkbenchClient(BaseClient):
             if not remaining:
                 return len(stopped)
             ids = [str(s["id"]) for s in remaining if s.get("id")]
-            if ids and self.stop_session(ids, force_quit=True):
+            if ids and self.try_stop_session(ids, force_quit=True):
                 stopped.update(ids)
             if attempt < retries - 1:
                 time.sleep(settle_seconds)

@@ -72,7 +72,7 @@ def wb_api_session():
     state: dict[str, Any] = {"client": None, "id": None}
     yield state
     if state["client"] is not None and state["id"]:
-        state["client"].stop_session(state["id"], force_quit=True)
+        state["client"].try_stop_session(state["id"], force_quit=True)
 
 
 @given("a Workbench API token that can launch sessions", target_fixture="wb_api")
@@ -136,6 +136,5 @@ def session_running(wb_api: dict[str, Any]):
 
 @then("the session can be stopped through the API")
 def session_stopped(wb_api: dict[str, Any]):
-    stopped = wb_api["client"].stop_session(wb_api["session_id"], force_quit=True)
-    assert stopped, f"Workbench API did not accept stop_session for {wb_api['session_id']}"
+    wb_api["client"].stop_session(wb_api["session_id"], force_quit=True)
     wb_api["session"]["id"] = None
