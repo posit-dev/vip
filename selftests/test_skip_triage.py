@@ -27,6 +27,7 @@ TRIAGED_FILES = [
     "cross_product/test_ssl.py",
     "prerequisites/test_versions.py",
     "workbench/test_ide_launch.py",
+    "workbench/test_ide_launch_api.py",
     "workbench/test_jobs.py",
     "workbench/test_publish_to_connect.py",
     "workbench/test_session_capacity.py",
