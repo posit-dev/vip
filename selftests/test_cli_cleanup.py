@@ -581,3 +581,121 @@ class TestCleanupTLSFlags:
         assert client.ca_bundle is None
         messages = [str(w.message) for w in recwarn.list]
         assert any("--insecure" in m and "--ca-bundle" in m for m in messages), messages
+
+
+class _FakeTokenWorkbenchClient:
+    """WorkbenchClient stand-in for the API-token sweep."""
+
+    def __init__(self, *, remaining=None, error=None):
+        self.remaining = remaining or []
+        self.error = error
+        self.swept_users: list[str] = []
+        self.closed = False
+        self.init_kwargs: dict = {}
+
+    def __call__(self, url, **kwargs):
+        self.init_kwargs = {"url": url, **kwargs}
+        return self
+
+    def quit_vip_sessions_via_api(self, user, **kwargs):
+        if self.error:
+            raise self.error
+        self.swept_users.append(user)
+        return 2
+
+    def vip_sessions_via_api(self, user, **kwargs):
+        return self.remaining
+
+    def close(self):
+        self.closed = True
+
+
+class TestWorkbenchTokenCleanup:
+    """With an API token and a test username, `vip cleanup` needs no browser sign-in."""
+
+    def _config(self, *, api_key="tok", username="alice"):
+        from vip.config import VIPConfig
+
+        config = VIPConfig()
+        config.workbench.api_key = api_key
+        config.auth.username = username
+        return config
+
+    def _forbid_browser_auth(self, monkeypatch):
+        def _fail(**kwargs):
+            pytest.fail("browser authentication must not run")
+
+        monkeypatch.setattr(vip.cli.cleanup, "start_headless_auth", _fail)
+        monkeypatch.setattr(vip.cli.cleanup, "start_interactive_auth", _fail)
+
+    def test_clean_token_sweep_skips_browser_auth(self, monkeypatch, capsys):
+        fake = _FakeTokenWorkbenchClient()
+        monkeypatch.setattr("vip.cli.cleanup.WorkbenchClient", fake)
+        self._forbid_browser_auth(monkeypatch)
+
+        vip.cli.cleanup._cleanup_workbench_sessions(
+            "https://wb.example.com", _make_args(), self._config()
+        )
+
+        assert fake.swept_users == ["alice"]
+        assert fake.init_kwargs["api_key"] == "tok"
+        assert fake.closed
+        assert "Quit 2 VIP Workbench session(s) via the API token" in capsys.readouterr().out
+
+    def test_token_without_a_username_does_not_use_the_token_path(self, monkeypatch):
+        monkeypatch.setattr(
+            vip.cli.cleanup,
+            "_cleanup_workbench_sessions_via_token",
+            lambda *a, **k: pytest.fail("token sweep needs a username"),
+        )
+
+        def _interactive(**kwargs):
+            raise RuntimeError("stop here")
+
+        monkeypatch.setattr(vip.cli.cleanup, "start_interactive_auth", _interactive)
+
+        with pytest.raises(vip.errors.AuthError):
+            vip.cli.cleanup._cleanup_workbench_sessions(
+                "https://wb.example.com", _make_args(), self._config(username="")
+            )
+
+    def test_refused_token_falls_back_to_browser_auth(self, tmp_path, monkeypatch, capsys):
+        from vip.errors import ProductUnreachableError
+
+        fake = _FakeTokenWorkbenchClient(error=ProductUnreachableError("HTTP 401"))
+        monkeypatch.setattr("vip.cli.cleanup.WorkbenchClient", fake)
+        reached = {}
+
+        def _headless(**kwargs):
+            reached["headless"] = True
+            raise RuntimeError("stop here")
+
+        monkeypatch.setattr(vip.cli.cleanup, "start_headless_auth", _headless)
+        config = self._config()
+        config.auth.password = "secret"
+
+        with pytest.raises(vip.errors.AuthError):
+            vip.cli.cleanup._cleanup_workbench_sessions(
+                "https://wb.example.com", _make_args(), config
+            )
+
+        assert reached == {"headless": True}
+        assert "falling back to browser sign-in" in capsys.readouterr().out
+
+    def test_survivors_fall_back_to_browser_auth(self, monkeypatch):
+        fake = _FakeTokenWorkbenchClient(remaining=[{"id": "a1", "label": "VIP x - main-1"}])
+        monkeypatch.setattr("vip.cli.cleanup.WorkbenchClient", fake)
+        reached = {}
+
+        def _interactive(**kwargs):
+            reached["interactive"] = True
+            raise RuntimeError("stop here")
+
+        monkeypatch.setattr(vip.cli.cleanup, "start_interactive_auth", _interactive)
+
+        with pytest.raises(vip.errors.AuthError):
+            vip.cli.cleanup._cleanup_workbench_sessions(
+                "https://wb.example.com", _make_args(), self._config()
+            )
+
+        assert reached == {"interactive": True}

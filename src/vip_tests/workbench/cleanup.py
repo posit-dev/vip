@@ -10,6 +10,7 @@ from playwright.sync_api import Page
 
 from vip.clients.workbench import WorkbenchClient
 from vip.config import VIPConfig
+from vip.errors import ProductUnreachableError
 from vip.workbench_ui import (
     quit_vip_sessions_via_ui as _quit_vip_sessions_via_ui,
 )
@@ -104,6 +105,28 @@ def _vip_session_count_via_cookies(
         return -1
 
 
+def _quit_vip_sessions_via_token(
+    workbench_client: WorkbenchClient, vip_config: VIPConfig, *, owner: str
+) -> int:
+    """Quit this worker's VIP sessions for the test user with the Workbench API token.
+
+    The cookie-free sweep for ``--api-auth`` runs, where no browser session
+    exists.  Skips (returns ``0``) unless both a token and a test username are
+    configured.  Best-effort: an unreachable or rejecting API is logged, never
+    raised, so a failed cleanup cannot turn a green run red.
+    """
+    if not vip_config.workbench.api_key:
+        return 0
+    username = vip_config.auth.username
+    if not username:
+        return 0
+    try:
+        return workbench_client.quit_vip_sessions_via_api(username, owner=owner)
+    except ProductUnreachableError as exc:
+        logger.warning("could not sweep VIP Workbench sessions with the API token: %s", exc)
+        return 0
+
+
 class _WbCleanupState(TypedDict):
     """Mutable state ``_cleanup_sessions`` writes and ``_wb_cleanup_state``'s
     teardown reads: the most recent authenticated cookies, the Workbench base
@@ -126,6 +149,16 @@ def _wb_cleanup_state(vip_config: VIPConfig, workbench_client: WorkbenchClient |
     """
     state: _WbCleanupState = {"cookies": None, "base_url": None, "api_reachable": None}
     yield state
+    _sweep_at_end_of_run(state, vip_config, workbench_client)
+
+
+def _sweep_at_end_of_run(
+    state: _WbCleanupState, vip_config: VIPConfig, workbench_client: WorkbenchClient | None
+) -> None:
+    """Quit this worker's leftover VIP sessions once the run is over.
+
+    Factored out of the ``_wb_cleanup_state`` teardown so it can be unit tested.
+    """
     if workbench_client is None:
         return
     # Still worker-scoped: under xdist each worker tears down at the end of its
@@ -152,6 +185,10 @@ def _wb_cleanup_state(vip_config: VIPConfig, workbench_client: WorkbenchClient |
             workbench_client.quit_vip_sessions(owner=owner)
         except Exception:  # noqa: BLE001
             pass
+        # No cookies means no browser session (--api-auth): the cookie sweeps above
+        # could not run, so sweep through the token API instead.
+        if not cookies:
+            _quit_vip_sessions_via_token(workbench_client, vip_config, owner=owner)
 
 
 def _run_session_cleanup(
@@ -282,11 +319,26 @@ def quit_owned_sessions_via_page(
 
 @pytest.fixture(autouse=True)
 def _cleanup_sessions(
-    page: Page,
+    request: pytest.FixtureRequest,
+    browser_name: str,
     workbench_client: WorkbenchClient | None,
     vip_config: VIPConfig,
     _wb_cleanup_state: _WbCleanupState,
 ):
-    """Quit any VIP-named Workbench sessions created during the test."""
+    """Quit any VIP-named Workbench sessions created during the test.
+
+    An ``@api_auth`` scenario drives Workbench through the API token alone, so
+    it gets the token sweep and never requests ``page`` (a browser the
+    ``--api-auth`` host may not have).  Every other scenario gets the cookie and
+    UI sweeps.  *browser_name* is requested only so every item keeps its
+    ``[chromium]`` parametrization (and so its node id) whether or not it uses
+    ``page``.
+    """
+    if request.node.get_closest_marker("api_auth") is not None:
+        yield
+        if workbench_client is not None:
+            _quit_vip_sessions_via_token(workbench_client, vip_config, owner=current_worker_id())
+        return
+    page: Page = request.getfixturevalue("page")
     yield
     _run_session_cleanup(page, workbench_client, vip_config, _wb_cleanup_state)

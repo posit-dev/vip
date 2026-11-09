@@ -28,6 +28,36 @@ from vip.errors import (
 from vip.workbench_ui import quit_vip_sessions_via_ui
 
 
+def _cleanup_workbench_sessions_via_token(workbench_url: str, config: VIPConfig) -> bool:
+    """Quit the test user's VIP-named sessions with the Workbench API token.
+
+    Needs no browser sign-in, which is what makes ``vip cleanup`` usable on a
+    deployment whose login cannot be scripted.  Returns True only when the sweep
+    confirmed no VIP session remains; False (API refused, or sessions survived)
+    tells the caller to fall back to the browser path.
+    """
+    client = WorkbenchClient(
+        workbench_url,
+        api_key=config.workbench.api_key,
+        insecure=config.insecure,
+        ca_bundle=config.ca_bundle,
+        proxy=config.proxy,
+    )
+    username = config.auth.username
+    try:
+        print(f"Cleaning up orphaned Workbench sessions at {workbench_url} with the API token")
+        quit_count = client.quit_vip_sessions_via_api(username)
+        print(f"Quit {quit_count} VIP Workbench session(s) via the API token")
+        return not client.vip_sessions_via_api(username)
+    except ProductUnreachableError as exc:
+        print(
+            f"The API token could not clean up sessions ({exc}); falling back to browser sign-in."
+        )
+        return False
+    finally:
+        client.close()
+
+
 def _cleanup_workbench_sessions(
     workbench_url: str,
     _args: argparse.Namespace,
@@ -35,7 +65,10 @@ def _cleanup_workbench_sessions(
 ) -> None:
     """Authenticate to Workbench and quit orphaned VIP-named sessions.
 
-    API-first: quits via :meth:`~vip.clients.workbench.WorkbenchClient.quit_vip_sessions`
+    When ``VIP_WORKBENCH_API_KEY`` and a test username are configured, the Workbench
+    API token sweeps first (:func:`_cleanup_workbench_sessions_via_token`) and the
+    command ends there if it confirms nothing remains.  Otherwise it is API-first:
+    quits via :meth:`~vip.clients.workbench.WorkbenchClient.quit_vip_sessions`
     when the session API is reachable. Escalates to a browser-driven UI sweep
     (:func:`vip.workbench_ui.quit_vip_sessions_via_ui`) when the API is
     unreachable *or* VIP sessions remain after the API sweep — a reachable API
@@ -49,6 +82,14 @@ def _cleanup_workbench_sessions(
     authentication failure crash with a bare traceback — prints an actionable
     error and exits 1.
     """
+    # A configured API token plus a test username can clean up with no browser at all.
+    if (
+        config.workbench.api_key
+        and config.auth.username
+        and _cleanup_workbench_sessions_via_token(workbench_url, config)
+    ):
+        return
+
     insecure = config.insecure
     ca_bundle = config.ca_bundle
     proxy = config.proxy
