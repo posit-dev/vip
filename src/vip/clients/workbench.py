@@ -2,6 +2,9 @@
 
 Uses plain ``httpx`` for loose coupling.  Workbench exposes fewer public
 APIs than Connect, so many checks are done via the web UI with Playwright.
+The documented Workbench API (``POST /api/<method>``, authenticated with an
+``Authorization: Bearer <token>`` API token) covers launching, inspecting and
+stopping sessions without a browser.
 """
 
 from __future__ import annotations
@@ -9,6 +12,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -39,6 +43,41 @@ _VIP_OWNER_PATTERNS = (
     re.compile(r"^VIP .+ - (?P<owner>main|gw\d+)-\d+$"),
     re.compile(r"^_vip_[a-z0-9]+_(?P<owner>main|gw\d+)_"),
 )
+
+
+# Workbench API ``activity_state`` values. "running" is ready; "failed" and
+# "killed" are exits a just-launched session never recovers from, so a waiter
+# fails fast on them instead of waiting out its whole timeout.
+SESSION_RUNNING_STATE = "running"
+SESSION_FAILED_STATES = ("failed", "killed")
+# Exits after which a session no longer needs stopping.
+_SESSION_GONE_STATES = ("finished", "failed", "killed")
+
+# The exact ``workbench`` kwparam values ``launch_session`` accepts. Case and
+# spacing matter, so these are never normalized.
+WORKBENCH_API_IDES = ("RStudio", "VS Code", "JupyterLab", "Positron")
+
+_FALLBACK_CLUSTER = "Local"
+
+
+class WorkbenchApiError(ProductUnreachableError):
+    """The Workbench API refused or failed a call.
+
+    ``status_code`` is set for an HTTP-level failure (401 is a rejected token);
+    ``code`` is set for a processing error the API reports inside an HTTP 200
+    ``{"error": {"code", "message"}}`` envelope.
+    """
+
+    def __init__(
+        self, message: str, *, status_code: int | None = None, code: int | None = None
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+
+
+class WorkbenchSessionError(ProductUnreachableError):
+    """A launched session failed, or never reached the running state in time."""
 
 
 def is_vip_session(label: str) -> bool:
@@ -79,6 +118,50 @@ def is_vip_session_for_owner(label: str, owner: str | None) -> bool:
     if owner is None:
         return True
     return session_owner(label) == owner
+
+
+def is_ide_offered(compute_envs: dict[str, Any], workbench: str) -> bool:
+    """Return True if a ``get_compute_envs`` result offers *workbench* for launch.
+
+    The IDE must appear in ``result.workbenches`` and not be flagged unavailable
+    (``lang.available`` false means the IDE's runtime is not installed).
+    """
+    entry = (compute_envs.get("workbenches") or {}).get(workbench)
+    if not isinstance(entry, dict):
+        return False
+    lang = entry.get("lang")
+    return not (isinstance(lang, dict) and lang.get("available") is False)
+
+
+def default_launch_parameters(
+    compute_envs: dict[str, Any], workbench: str, name: str
+) -> dict[str, Any]:
+    """Build the ``launch_parameters`` a launch needs when launcher sessions are enabled.
+
+    The cluster is the IDE's ``default_cluster`` when that names a real cluster,
+    else the first cluster that supports interactive sessions for the IDE, else
+    ``"Local"``.  Sending ``name`` and ``cluster`` is what the API documents as
+    the minimum; it is harmless on a deployment that does not use the launcher.
+    """
+    clusters = [c for c in compute_envs.get("clusters") or [] if isinstance(c, dict)]
+    names = [str(c.get("name")) for c in clusters if c.get("name")]
+    entry = (compute_envs.get("workbenches") or {}).get(workbench)
+    default = entry.get("default_cluster") if isinstance(entry, dict) else None
+    if default and (not names or default in names):
+        cluster = str(default)
+    else:
+        cluster = next(
+            (
+                str(c["name"])
+                for c in clusters
+                if c.get("name")
+                and (c.get("workbenches") or {})
+                .get(workbench, {})
+                .get("supports_interactive_sessions")
+            ),
+            str(default or _FALLBACK_CLUSTER),
+        )
+    return {"name": name, "cluster": cluster}
 
 
 def jupyterlab_app_base(page_url: str) -> str:
@@ -147,7 +230,7 @@ class WorkbenchClient(BaseClient):
     ) -> None:
         super().__init__(
             base_url,
-            auth_header_value=f"Key {api_key}" if api_key else "",
+            auth_header_value=f"Bearer {api_key}" if api_key else "",
             timeout=timeout,
             insecure=insecure,
             ca_bundle=ca_bundle,
@@ -167,10 +250,232 @@ class WorkbenchClient(BaseClient):
     # deployed version is read from the authenticated homepage footer instead
     # (see ``vip_tests/workbench/test_version.py`` and
     # ``pages/homepage.parse_workbench_version``). The documented REST API's
-    # ``/api/version`` is tier-gated (Enhanced/Advanced), disabled by default,
-    # and requires an API token this client does not carry — so there is no
-    # ``server_settings()`` method here (the old one hit a nonexistent
-    # ``/api/server/settings`` and always 404'd).
+    # ``/api/version`` is tier-gated (Enhanced/Advanced) and disabled by
+    # default, so :meth:`get_version` is only for runs that carry an API token.
+
+    # -- Workbench API (token-authenticated) ---------------------------------
+
+    def _call(
+        self, method: str, kwparams: dict[str, Any] | None = None, *, get: bool = False
+    ) -> Any:
+        """Call ``/api/<method>`` and return the ``result`` payload.
+
+        POSTs ``{"method", "kwparams"}`` (or GETs, for the parameterless methods
+        the API allows that for).  Raises :class:`WorkbenchApiError` on a non-2xx
+        status, on a body that is not a JSON object, and on the HTTP-200
+        ``{"error": {...}}`` envelope the API uses for processing errors.
+        """
+        body: dict[str, Any] = {"method": method}
+        if kwparams:
+            body["kwparams"] = kwparams
+        try:
+            if get:
+                resp = self._client.get(f"/api/{method}")
+            else:
+                resp = self._client.post(f"/api/{method}", json=body)
+        except httpx.HTTPError as exc:
+            raise WorkbenchApiError(f"Workbench API {method} could not be reached: {exc}") from exc
+        if resp.status_code >= 400:
+            raise WorkbenchApiError(
+                f"Workbench API {method} returned HTTP {resp.status_code}",
+                status_code=resp.status_code,
+            )
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            raise WorkbenchApiError(f"Workbench API {method} returned a non-JSON body") from exc
+        if not isinstance(payload, dict):
+            raise WorkbenchApiError(f"Workbench API {method} returned a non-object body")
+        error = payload.get("error")
+        if isinstance(error, dict):
+            code = error.get("code")
+            raise WorkbenchApiError(
+                f"Workbench API {method} failed (code {code}): {error.get('message')}",
+                code=code if isinstance(code, int) else None,
+            )
+        if "result" not in payload:
+            raise WorkbenchApiError(f"Workbench API {method} returned no result")
+        return payload["result"]
+
+    def get_version(self) -> dict[str, Any]:
+        """Return the ``result`` of ``GET /api/version`` (``version`` and ``features``).
+
+        A cheap call that proves the API is enabled and the token is accepted.
+        """
+        return self._call("version", get=True)
+
+    def get_compute_envs(self, *, user: str | None = None) -> dict[str, Any]:
+        """Return ``result`` of ``get_compute_envs``: ``clusters`` and ``workbenches``.
+
+        *user* (admin or super-admin token) reads the environments that user sees.
+        """
+        return self._call("get_compute_envs", {"user": user} if user else None)
+
+    def launch_session(
+        self,
+        workbench: str,
+        *,
+        username: str | None = None,
+        name: str | None = None,
+        launch_parameters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Launch a session and return ``{"id", "url", "project_id"}``.
+
+        *workbench* is one of :data:`WORKBENCH_API_IDES`.  A super-admin token may
+        pass *username* to launch on that user's behalf.  *launch_parameters* is
+        required when launcher sessions are enabled (see
+        :func:`default_launch_parameters`).
+        """
+        kwparams: dict[str, Any] = {"workbench": workbench}
+        if username:
+            kwparams["username"] = username
+        if name:
+            kwparams["name"] = name
+        if launch_parameters:
+            kwparams["launch_parameters"] = launch_parameters
+        return self._call("launch_session", kwparams)
+
+    def get_session(
+        self,
+        session_id: str | None = None,
+        *,
+        user: str | None = None,
+        fields: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Return ``result`` of ``get_session``: ``{"sessions": [...], "timestamp": ...}``.
+
+        The id kwparam is the singular ``session_id`` here but ``session_ids`` in
+        :meth:`stop_session`; the API is inconsistent.  With no *user* the token
+        owner's sessions are returned.
+        """
+        kwparams: dict[str, Any] = {}
+        if session_id:
+            kwparams["session_id"] = session_id
+        if user:
+            kwparams["user"] = user
+        if fields:
+            kwparams["fields"] = fields
+        return self._call("get_session", kwparams)
+
+    def stop_session(
+        self,
+        session_ids: str | Iterable[str],
+        *,
+        force_quit: bool = False,
+        suspend: bool = False,
+    ) -> bool:
+        """Stop (or suspend) sessions; best effort, never raises.
+
+        Returns True when the API accepted the call.  Teardown must not turn a
+        passing run red, so every failure is reported through the return value.
+        """
+        ids = session_ids if isinstance(session_ids, str) else ",".join(session_ids)
+        kwparams: dict[str, Any] = {"session_ids": ids}
+        if force_quit:
+            kwparams["force_quit"] = True
+        if suspend:
+            kwparams["suspend"] = True
+        try:
+            self._call("stop_session", kwparams)
+        except ProductUnreachableError:
+            return False
+        return True
+
+    def wait_for_session_running(
+        self,
+        session_id: str,
+        *,
+        user: str | None = None,
+        timeout: float,
+        poll_interval: float = 2.0,
+    ) -> None:
+        """Poll ``get_session`` until *session_id* is ``running``.
+
+        Raises :class:`WorkbenchSessionError` as soon as the session reports a
+        failed or killed state, or when *timeout* seconds pass first; both name
+        the last state seen.
+        """
+        deadline = time.monotonic() + timeout
+        last_state = "not listed"
+        while True:
+            result = self.get_session(
+                session_id, user=user, fields=["id", "activity_state", "label"]
+            )
+            sessions = result.get("sessions") if isinstance(result, dict) else None
+            if not isinstance(sessions, list):
+                raise WorkbenchApiError("Workbench API get_session returned no sessions list")
+            for session in sessions:
+                if isinstance(session, dict) and session.get("id") == session_id:
+                    last_state = str(session.get("activity_state") or "unknown")
+                    break
+            if last_state == SESSION_RUNNING_STATE:
+                return
+            if last_state in SESSION_FAILED_STATES:
+                raise WorkbenchSessionError(
+                    f"Workbench session {session_id} ended as {last_state!r} instead of "
+                    f"{SESSION_RUNNING_STATE!r}; check the launcher, session image and "
+                    "available CPU and memory."
+                )
+            if time.monotonic() >= deadline:
+                raise WorkbenchSessionError(
+                    f"Workbench session {session_id} was not {SESSION_RUNNING_STATE!r} after "
+                    f"{timeout:.0f}s (last state: {last_state!r})."
+                )
+            time.sleep(poll_interval)
+
+    def vip_sessions_via_api(self, user: str, *, owner: str | None = None) -> list[dict[str, Any]]:
+        """List *user*'s live VIP-named sessions through the token API.
+
+        *owner* scopes the list to one xdist worker, as in :meth:`quit_vip_sessions`.
+        Sessions that already exited are left out.  Raises
+        :class:`WorkbenchApiError` when the listing fails.
+        """
+        result = self.get_session(user=user, fields=["id", "label", "activity_state"])
+        sessions = result.get("sessions") if isinstance(result, dict) else None
+        if not isinstance(sessions, list):
+            raise WorkbenchApiError("Workbench API get_session returned no sessions list")
+        return [
+            s
+            for s in sessions
+            if self._is_target(s, owner) and s.get("activity_state") not in _SESSION_GONE_STATES
+        ]
+
+    def quit_vip_sessions_via_api(
+        self,
+        user: str,
+        *,
+        owner: str | None = None,
+        retries: int = 2,
+        settle_seconds: float = 0.5,
+    ) -> int:
+        """Force-stop *user*'s VIP-named sessions with the API token; return how many.
+
+        The token counterpart of :meth:`quit_vip_sessions` for runs with no browser
+        cookies (``--api-auth``).  *owner* has the same meaning: pass the worker id
+        from an in-run sweep, ``None`` for ``vip cleanup``.  Re-lists after each
+        stop and logs a WARNING naming any session that survives every retry.
+        Raises :class:`WorkbenchApiError` if the listing fails.
+        """
+        stopped: set[str] = set()
+        remaining: list[dict[str, Any]] = []
+        for attempt in range(retries):
+            remaining = self.vip_sessions_via_api(user, owner=owner)
+            if not remaining:
+                return len(stopped)
+            ids = [str(s["id"]) for s in remaining if s.get("id")]
+            if ids and self.stop_session(ids, force_quit=True):
+                stopped.update(ids)
+            if attempt < retries - 1:
+                time.sleep(settle_seconds)
+        remaining = self.vip_sessions_via_api(user, owner=owner)
+        if remaining:
+            logger.warning(
+                "quit_vip_sessions_via_api: %d VIP-named Workbench session(s) still present "
+                "after cleanup: %s",
+                len(remaining),
+                ", ".join(f"{s.get('label')!r} (id={s.get('id')})" for s in remaining),
+            )
+        return len(stopped)
 
     # -- Sessions -----------------------------------------------------------
 
