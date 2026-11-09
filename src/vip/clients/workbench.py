@@ -256,12 +256,18 @@ class WorkbenchClient(BaseClient):
     # -- Workbench API (token-authenticated) ---------------------------------
 
     def _call(
-        self, method: str, kwparams: dict[str, Any] | None = None, *, get: bool = False
+        self,
+        method: str,
+        kwparams: dict[str, Any] | None = None,
+        *,
+        get: bool = False,
+        bare_ok: bool = False,
     ) -> Any:
         """Call ``/api/<method>`` and return the ``result`` payload.
 
         POSTs ``{"method", "kwparams"}`` (or GETs, for the parameterless methods
-        the API allows that for).  Raises :class:`WorkbenchApiError` on a non-2xx
+        the API allows that for).  With *bare_ok*, a success body that has no
+        ``result`` wrapper is returned as is.  Raises :class:`WorkbenchApiError` on a non-2xx
         status, on a body that is not a JSON object, and on the HTTP-200
         ``{"error": {...}}`` envelope the API uses for processing errors.
         """
@@ -293,16 +299,20 @@ class WorkbenchClient(BaseClient):
                 f"Workbench API {method} failed (code {code}): {error.get('message')}",
                 code=code if isinstance(code, int) else None,
             )
-        if "result" not in payload:
-            raise WorkbenchApiError(f"Workbench API {method} returned no result")
-        return payload["result"]
+        if "result" in payload:
+            return payload["result"]
+        if bare_ok:
+            return payload
+        raise WorkbenchApiError(f"Workbench API {method} returned no result")
 
     def get_version(self) -> dict[str, Any]:
-        """Return the ``result`` of ``GET /api/version`` (``version`` and ``features``).
+        """Return ``GET /api/version``'s ``version`` and ``features``.
 
         A cheap call that proves the API is enabled and the token is accepted.
+        A live server answers with the object itself rather than a ``result``
+        wrapper, so both are accepted.
         """
-        return self._call("version", get=True)
+        return self._call("version", get=True, bare_ok=True)
 
     def get_compute_envs(self, *, user: str | None = None) -> dict[str, Any]:
         """Return ``result`` of ``get_compute_envs``: ``clusters`` and ``workbenches``.

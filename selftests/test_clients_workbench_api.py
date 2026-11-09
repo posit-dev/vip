@@ -104,6 +104,16 @@ class TestRequestEnvelopes:
         assert wc.get_version() == result
         assert (seen[0].method, seen[0].url.path) == ("GET", "/api/version")
 
+    def test_get_version_accepts_a_body_without_the_result_wrapper(self):
+        body = {"version": {"major": "2026"}, "features": ["api"]}
+        wc, _ = _client(lambda r: httpx.Response(200, json=body))
+        assert wc.get_version() == body
+
+    def test_get_version_still_raises_on_an_error_envelope(self):
+        wc, _ = _client(lambda r: httpx.Response(200, json={"error": {"code": 5, "message": "x"}}))
+        with pytest.raises(WorkbenchApiError, match="code 5"):
+            wc.get_version()
+
     def test_launch_session_sends_workbench_username_name_and_launch_parameters(self):
         result = {"url": "/s/0da29cfc78a31acdd5861/", "id": "acdd5861", "project_id": "cfc78a31"}
         wc, seen = _client(lambda r: httpx.Response(200, json={"result": result}))

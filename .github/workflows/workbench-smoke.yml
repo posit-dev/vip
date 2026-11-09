@@ -555,9 +555,10 @@ jobs:
           STATUS=$(curl -s -o /tmp/wb_version.json -w '%{http_code}' \
             -H "Authorization: Bearer ${WB_API_TOKEN}" "${WB_URL}/api/version")
           echo "GET /api/version -> HTTP ${STATUS}"
+          cat /tmp/wb_version.json || true
+          echo
           if [ "${STATUS}" != "200" ]; then
             echo "::error title=Workbench API unavailable::GET /api/version returned HTTP ${STATUS}. Check the license tier (the API needs Enhanced or Advanced) and rserver.conf."
-            cat /tmp/wb_version.json || true
             exit 1
           fi
 

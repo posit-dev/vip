@@ -71,7 +71,7 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._reply(401, {})
         elif self.path == "/api/version":
-            self._reply(200, {"result": {"version": {"major": "2026"}, "features": []}})
+            self._reply(200, {"version": {"major": "2026"}, "features": []})
         else:
             self._reply(404, {})
 
