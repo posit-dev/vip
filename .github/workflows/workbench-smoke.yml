@@ -628,6 +628,27 @@ jobs:
               sys.exit("test_launch_rstudio_api must pass, not skip or fail")
           PY
 
+      # On failure, show what Workbench itself said: the compute environments, the
+      # raw launch replies, and the server log. The token is masked in this output.
+      - name: Diagnose a failed API-auth run
+        if: failure()
+        env:
+          CID: ${{ steps.workbench.outputs.CONTAINER_ID }}
+          WB_URL: ${{ steps.workbench.outputs.WORKBENCH_URL }}
+          WB_USER: ${{ steps.workbench.outputs.WORKBENCH_USER }}
+          WB_API_TOKEN: ${{ steps.token.outputs.value }}
+        run: |
+          call() {
+            curl -s -X POST -H "Authorization: Bearer ${WB_API_TOKEN}" -H 'Content-Type: application/json' -d "$2" "${WB_URL}/api/$1"
+            echo
+          }
+          echo "--- get_compute_envs"; call get_compute_envs '{"method":"get_compute_envs"}'
+          echo "--- launch_session with launch_parameters"
+          call launch_session "{\"method\":\"launch_session\",\"kwparams\":{\"workbench\":\"RStudio\",\"username\":\"${WB_USER}\",\"launch_parameters\":{\"name\":\"vip-diag\",\"cluster\":\"Local\"}}}"
+          echo "--- launch_session without launch_parameters"
+          call launch_session "{\"method\":\"launch_session\",\"kwparams\":{\"workbench\":\"RStudio\",\"username\":\"${WB_USER}\"}}"
+          echo "--- container log"; docker logs --tail 120 "${CID}" 2>&1 || true
+
       - name: Upload test results
         if: always()
         continue-on-error: true
