@@ -203,7 +203,7 @@ jobs:
               run_id: context.runId,
             });
             const currentJob = jobs.find(
-              j => j.status === 'in_progress' && j.name.includes('${{ matrix.workbench-version }}')
+              j => j.status === 'in_progress' && j.name.startsWith('Smoke test against') && j.name.includes('${{ matrix.workbench-version }}')
             );
             if (currentJob) {
               await github.rest.checks.update({

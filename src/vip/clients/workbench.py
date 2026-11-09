@@ -60,6 +60,14 @@ WORKBENCH_API_IDES = ("RStudio", "VS Code", "JupyterLab", "Positron")
 _FALLBACK_CLUSTER = "Local"
 
 
+# Appended to 401/403/404 errors: the usual reasons a configured token can't be used.
+_TOKEN_REFUSED_HINT = (
+    ". Check that VIP_WORKBENCH_API_KEY is a super-admin token from "
+    "`rstudio-server generate-api-token`, that rserver.conf sets workbench-api-enabled=1 "
+    "and workbench-api-super-admin-enabled=1, and that the deployment is Enhanced or Advanced."
+)
+
+
 class WorkbenchApiError(ProductUnreachableError):
     """The Workbench API refused or failed a call.
 
@@ -291,14 +299,19 @@ class WorkbenchClient(BaseClient):
         except httpx.HTTPError as exc:
             raise WorkbenchApiError(f"Workbench API {method} could not be reached: {exc}") from exc
         if resp.status_code >= 400:
+            hint = _TOKEN_REFUSED_HINT if resp.status_code in (401, 403, 404) else ""
             raise WorkbenchApiError(
-                f"Workbench API {method} returned HTTP {resp.status_code}",
+                f"Workbench API {method} returned HTTP {resp.status_code}{hint}",
                 status_code=resp.status_code,
             )
+        if bare_ok and not resp.content.strip():
+            return {}
         try:
             payload = resp.json()
         except ValueError as exc:
-            raise WorkbenchApiError(f"Workbench API {method} returned a non-JSON body") from exc
+            raise WorkbenchApiError(
+                f"Workbench API {method} returned a non-JSON body: {resp.text[:200]!r}"
+            ) from exc
         if not isinstance(payload, dict):
             raise WorkbenchApiError(f"Workbench API {method} returned a non-object body")
         error = payload.get("error")
@@ -470,6 +483,39 @@ class WorkbenchClient(BaseClient):
                 raise WorkbenchSessionError(
                     f"Workbench session {session_id} was not {SESSION_RUNNING_STATE!r} after "
                     f"{timeout:.0f}s (last state: {last_state!r})."
+                )
+            time.sleep(poll_interval)
+
+    def wait_for_session_stopped(
+        self,
+        session_id: str,
+        *,
+        user: str | None = None,
+        timeout: float,
+        poll_interval: float = 2.0,
+    ) -> None:
+        """Poll ``get_session`` until *session_id* has left the active list or ended.
+
+        ``get_session`` lists only active sessions, so a stopped session either
+        disappears or reports an ended state.  Raises :class:`WorkbenchSessionError`
+        naming the last state if it is still active after *timeout* seconds.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            result = self.get_session(session_id, user=user, fields=["id", "activity_state"])
+            sessions = result.get("sessions") if isinstance(result, dict) else None
+            if not isinstance(sessions, list):
+                raise WorkbenchApiError("Workbench API get_session returned no sessions list")
+            match = next(
+                (s for s in sessions if isinstance(s, dict) and s.get("id") == session_id), None
+            )
+            state = str(match.get("activity_state") or "unknown") if match else None
+            if state is None or state in _SESSION_GONE_STATES:
+                return
+            if time.monotonic() >= deadline:
+                raise WorkbenchSessionError(
+                    f"Workbench session {session_id} was still {state!r} {timeout:.0f}s after "
+                    "stop_session was accepted."
                 )
             time.sleep(poll_interval)
 

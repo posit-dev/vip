@@ -57,8 +57,8 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *args) -> None:
         pass
 
-    def _reply(self, status: int, payload: dict) -> None:
-        data = json.dumps(payload).encode()
+    def _reply(self, status: int, payload: dict | None) -> None:
+        data = b"" if payload is None else json.dumps(payload).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
@@ -102,7 +102,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif method == "stop_session":
             for sid in kwparams["session_ids"].split(","):
                 sessions.pop(sid, None)
-            self._reply(200, {})
+            # Real Workbench answers a successful stop with HTTP 200 and an empty body.
+            self._reply(200, None)
         else:
             self._reply(200, {"error": {"code": 1, "message": f"unknown method {method}"}})
 
@@ -169,7 +170,7 @@ def _collect_api_auth_files(tmp_path: Path) -> set[str]:
 
 
 def _run_scenarios(
-    tmp_path: Path, config: Path, token: str | None, *extra: str
+    tmp_path: Path, config: Path, token: str | None, *extra: str, api_auth: bool = True
 ) -> list[ET.Element]:
     junit = tmp_path / "junit.xml"
     result = subprocess.run(
@@ -178,7 +179,7 @@ def _run_scenarios(
             "-m",
             "pytest",
             str(_API_TEST),
-            "--api-auth",
+            *(["--api-auth"] if api_auth else []),
             "-n",
             "0",
             "-p",
@@ -231,18 +232,33 @@ class TestApiLaunchScenarios:
         assert "not offered" in skipped.get("message", "")
         assert not any(c["method"] == "launch_session" for c in fake_workbench.calls)
 
-    def test_no_token_is_a_not_applicable_skip(self, tmp_path, fake_workbench):
+    def test_no_token_under_api_auth_is_unproven(self, tmp_path, fake_workbench):
         config = _write_config(tmp_path, f"http://127.0.0.1:{fake_workbench.server_port}")
         (case,) = _run_scenarios(tmp_path, config, None, "-k", "rstudio")
         skipped = case.find("skipped")
         assert skipped is not None
-        assert "UNPROVEN" not in skipped.get("message", "")
+        assert skipped.get("message", "").startswith("UNPROVEN")
+        assert "VIP_WORKBENCH_API_KEY" in skipped.get("message", "")
         assert fake_workbench.calls == []
 
-    def test_rejected_token_is_unproven(self, tmp_path, fake_workbench):
+    def test_without_api_auth_is_not_applicable_and_launches_nothing(
+        self, tmp_path, fake_workbench
+    ):
         config = _write_config(tmp_path, f"http://127.0.0.1:{fake_workbench.server_port}")
-        (case,) = _run_scenarios(tmp_path, config, "wrong-token", "-k", "rstudio")
+        (case,) = _run_scenarios(tmp_path, config, _TOKEN, "-k", "rstudio", api_auth=False)
         skipped = case.find("skipped")
         assert skipped is not None
-        assert skipped.get("message", "").startswith("UNPROVEN")
-        assert "HTTP 401" in skipped.get("message", "")
+        assert "UNPROVEN" not in skipped.get("message", "")
+        assert "--api-auth" in skipped.get("message", "")
+        assert not any(c["method"] == "launch_session" for c in fake_workbench.calls)
+
+    def test_rejected_token_fails_with_the_cause(self, tmp_path, fake_workbench):
+        config = _write_config(tmp_path, f"http://127.0.0.1:{fake_workbench.server_port}")
+        (case,) = _run_scenarios(tmp_path, config, "wrong-token", "-k", "rstudio")
+        failure = case.find("failure")
+        if failure is None:
+            failure = case.find("error")
+        assert failure is not None, ET.tostring(case, encoding="unicode")
+        text = (failure.get("message") or "") + (failure.text or "")
+        assert "HTTP 401" in text
+        assert "workbench-api-super-admin-enabled=1" in text

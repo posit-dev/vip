@@ -199,6 +199,13 @@ class TestErrors:
         with pytest.raises(WorkbenchApiError) as exc_info:
             wc.get_version()
         assert exc_info.value.status_code == 401
+        assert "workbench-api-super-admin-enabled=1" in str(exc_info.value)
+
+    def test_server_error_has_no_token_hint(self):
+        wc, _ = _client(lambda r: httpx.Response(503))
+        with pytest.raises(WorkbenchApiError) as exc_info:
+            wc.get_version()
+        assert "VIP_WORKBENCH_API_KEY" not in str(exc_info.value)
 
     def test_missing_result_raises(self):
         wc, _ = _client(lambda r: httpx.Response(200, json={}))
@@ -239,11 +246,48 @@ class TestErrors:
         wc, _ = _client(boom)
         assert wc.try_stop_session("a1") is False
 
+    def test_stop_session_accepts_an_empty_200_body(self):
+        wc, _ = _client(lambda r: httpx.Response(200, content=b""))
+        wc.stop_session("a1")
+
+    def test_non_json_body_error_shows_what_came_back(self):
+        wc, _ = _client(lambda r: httpx.Response(200, text="<html>login</html>"))
+        with pytest.raises(WorkbenchApiError, match="<html>login</html>"):
+            wc.stop_session("a1")
+
+    def test_empty_body_is_still_an_error_where_a_result_is_required(self):
+        wc, _ = _client(lambda r: httpx.Response(200, content=b""))
+        with pytest.raises(WorkbenchApiError, match="non-JSON"):
+            wc.get_session()
+
     def test_stop_session_raises_with_workbench_reply(self):
         envelope = {"error": {"code": 7, "message": "session not found"}}
         wc, _ = _client(lambda r: httpx.Response(200, json=envelope))
         with pytest.raises(WorkbenchApiError, match="session not found"):
             wc.stop_session("a1")
+
+
+class TestWaitForSessionStopped:
+    @pytest.fixture(autouse=True)
+    def _no_sleep(self, monkeypatch):
+        monkeypatch.setattr("vip.clients.workbench.time.sleep", lambda s: None)
+
+    def test_returns_once_the_session_leaves_the_active_list(self):
+        replies = iter([_sessions_result(_session("a1", "running")), _sessions_result()])
+        wc, _ = _client(lambda r: httpx.Response(200, json=next(replies)))
+        wc.wait_for_session_stopped("a1", timeout=60)
+
+    @pytest.mark.parametrize("state", ["finished", "killed"])
+    def test_returns_on_an_ended_state(self, state):
+        wc, _ = _client(lambda r: httpx.Response(200, json=_sessions_result(_session("a1", state))))
+        wc.wait_for_session_stopped("a1", timeout=60)
+
+    def test_raises_when_still_running_at_the_deadline(self):
+        wc, _ = _client(
+            lambda r: httpx.Response(200, json=_sessions_result(_session("a1", "running")))
+        )
+        with pytest.raises(WorkbenchSessionError, match="still 'running'"):
+            wc.wait_for_session_stopped("a1", timeout=0)
 
 
 class TestWaitForSessionRunning:

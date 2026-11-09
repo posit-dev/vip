@@ -132,8 +132,9 @@ vip verify --workbench-url https://workbench.example.com --api-auth</code></pre>
             The API needs an Enhanced or Advanced license and is off by default.
             Add <code>workbench-api-enabled=1</code> and
             <code>workbench-api-super-admin-enabled=1</code> to
-            <code>rserver.conf</code> and restart Workbench. If the token is
-            rejected, VIP reports the check as unproven rather than passing it.
+            <code>rserver.conf</code> and restart Workbench. If no token is set,
+            VIP reports the launch checks as unproven rather than passing them; if
+            Workbench rejects the token, the checks fail with its reply.
             <code>vip cleanup</code> uses the same token to remove leftover VIP
             sessions without a browser sign-in.
           </p>
