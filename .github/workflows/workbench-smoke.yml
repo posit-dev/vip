@@ -562,6 +562,20 @@ jobs:
             exit 1
           fi
 
+      # A user token owned by the test user is the other documented way to launch.
+      - name: Mint a user API token for the test user
+        id: user_token
+        env:
+          CID: ${{ steps.workbench.outputs.CONTAINER_ID }}
+          WB_USER: ${{ steps.workbench.outputs.WORKBENCH_USER }}
+        run: |
+          WB_USER_TOKEN=$(openssl rand -hex 16)
+          echo "::add-mask::${WB_USER_TOKEN}"
+          export WB_USER_TOKEN
+          docker exec -e WB_USER_TOKEN "${CID}" \
+            rstudio-server generate-api-token user vip-ci-user "${WB_USER}" --token-env WB_USER_TOKEN
+          echo "value=${WB_USER_TOKEN}" >> "$GITHUB_OUTPUT"
+
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
@@ -609,23 +623,42 @@ jobs:
         env:
           VIP_WORKBENCH_API_KEY: ${{ steps.token.outputs.value }}
 
-      # A skip would leave the job green, so assert the RStudio scenario really ran.
+      - name: Run the RStudio launch with the user token
+        if: ${{ !cancelled() }}
+        run: |
+          uv run vip verify \
+            --config vip.toml \
+            --api-auth \
+            --categories workbench \
+            --report results-user-token.json \
+            -- src/vip_tests/workbench/test_ide_launch_api.py -n 0 -k rstudio \
+            --junitxml=api-auth-user-token-results.xml
+        env:
+          VIP_WORKBENCH_API_KEY: ${{ steps.user_token.outputs.value }}
+
+      # A skip would leave the job green, so assert the RStudio scenario really ran
+      # with both the super-admin token and the user token.
       - name: Require the RStudio launch to pass
+        if: ${{ !cancelled() }}
         run: |
           python3 - << 'PY'
           import sys
           import xml.etree.ElementTree as ET
 
-          cases = list(ET.parse("api-auth-results.xml").getroot().iter("testcase"))
-          for case in cases:
-              outcome = next((c.tag for c in case if c.tag in ("failure", "error", "skipped")), "passed")
-              print(f"{case.get('name')}: {outcome}")
-          rstudio = [c for c in cases if c.get("name", "").startswith("test_launch_rstudio_api")]
-          if len(rstudio) != 1 or any(c.tag in ("failure", "error", "skipped") for c in rstudio[0]):
-              for case in rstudio:
-                  for child in case:
-                      print(f"{child.tag}: {child.get('message')}")
-              sys.exit("test_launch_rstudio_api must pass, not skip or fail")
+          failed = []
+          for report in ("api-auth-results.xml", "api-auth-user-token-results.xml"):
+              cases = list(ET.parse(report).getroot().iter("testcase"))
+              for case in cases:
+                  outcome = next((c.tag for c in case if c.tag in ("failure", "error", "skipped")), "passed")
+                  print(f"{report}: {case.get('name')}: {outcome}")
+              rstudio = [c for c in cases if c.get("name", "").startswith("test_launch_rstudio_api")]
+              if len(rstudio) != 1 or any(c.tag in ("failure", "error", "skipped") for c in rstudio[0]):
+                  for case in rstudio:
+                      for child in case:
+                          print(f"{child.tag}: {child.get('message')}")
+                  failed.append(report)
+          if failed:
+              sys.exit(f"test_launch_rstudio_api must pass, not skip or fail: {failed}")
           PY
 
       # On failure, show what Workbench itself said: the compute environments and the
@@ -652,7 +685,9 @@ jobs:
           name: workbench-api-auth-results-${{ matrix.workbench-version }}
           path: |
             api-auth-results.xml
+            api-auth-user-token-results.xml
             results.json
+            results-user-token.json
 
       - name: Stop Workbench
         if: always()
