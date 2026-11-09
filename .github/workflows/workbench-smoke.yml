@@ -464,10 +464,189 @@ jobs:
         with:
           stop: ${{ steps.workbench.outputs.CONTAINER_ID }}
 
+  # Drives the same container through the Workbench API alone: no browser sign-in,
+  # one super-admin token (see src/vip_tests/workbench/test_ide_launch_api.py).
+  # Kept apart from workbench-smoke because it restarts Workbench to switch the
+  # API on, and because it must prove sessions launch with no browser installed.
+  workbench-api-auth:
+    needs: [changes, set-matrix]
+    if: >-
+      needs.changes.outputs.relevant == 'true'
+      || github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
+    name: API-auth smoke test against Workbench ${{ matrix.workbench-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        workbench-version: ${{ fromJSON(needs.set-matrix.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Start Workbench
+        id: workbench
+        uses: posit-dev/with-workbench@da367f7337b28c6748f7dd43d08706788353be8d # main
+        with:
+          license-key: ${{ secrets.WORKBENCH_LICENSE }}
+          image: ghcr.io/posit-dev/workbench:${{ matrix.workbench-version }}
+
+      - name: Check for license errors
+        if: failure() && steps.workbench.outcome == 'failure'
+        env:
+          WORKBENCH_VERSION: ${{ matrix.workbench-version }}
+        run: |
+          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/workbench:${WORKBENCH_VERSION}" | head -1)
+          if [ -z "${CID}" ]; then
+            echo "::error title=Workbench Startup Failed::Workbench container not found. The with-workbench action failed before creating a container."
+            exit 1
+          fi
+          LICENSE_MSG=$(docker logs "${CID}" 2>&1 | grep -i "license" | grep -iE "expired|invalid|unable|not activated" | head -1 || true)
+          if [ -n "${LICENSE_MSG}" ]; then
+            echo "::error title=License Error::${LICENSE_MSG}"
+          else
+            echo "::error title=Workbench Startup Failed::Workbench failed to start. Check the 'Start Workbench' step logs for details."
+          fi
+          exit 1
+
+      # The API is off by default and the setting is read at startup, so append
+      # the three levels to rserver.conf and restart. `docker restart`, not
+      # `rstudio-server restart`: the image's supervisor shuts the whole container
+      # down when rserver exits. The file and the test user live in the container's
+      # writable layer, so both survive the restart.
+      - name: Enable the Workbench API
+        env:
+          CID: ${{ steps.workbench.outputs.CONTAINER_ID }}
+          WB_URL: ${{ steps.workbench.outputs.WORKBENCH_URL }}
+        run: |
+          docker exec "${CID}" bash -c 'printf "%s\n" "workbench-api-enabled=1" "workbench-api-admin-enabled=1" "workbench-api-super-admin-enabled=1" >> /etc/rstudio/rserver.conf'
+          docker exec "${CID}" tail -n 5 /etc/rstudio/rserver.conf
+          docker restart "${CID}"
+          for i in $(seq 1 90); do
+            if curl -sf --connect-timeout 5 --max-time 10 "${WB_URL}/health-check" > /dev/null; then
+              echo "Workbench healthy after restart (attempt ${i})"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error title=Workbench did not restart::${WB_URL}/health-check never answered after docker restart"
+          docker logs --tail 80 "${CID}" 2>&1 || true
+          exit 1
+
+      # A super-admin token owned by the test user can launch for that user. The
+      # key is generated here (32 hex characters) and handed to Workbench through
+      # --token-env, so nothing has to be parsed out of the command's output. It
+      # reaches VIP as a step env var only: test_secrets would fail on a key in vip.toml.
+      - name: Mint a super-admin API token
+        id: token
+        env:
+          CID: ${{ steps.workbench.outputs.CONTAINER_ID }}
+          WB_URL: ${{ steps.workbench.outputs.WORKBENCH_URL }}
+          WB_USER: ${{ steps.workbench.outputs.WORKBENCH_USER }}
+        run: |
+          WB_API_TOKEN=$(openssl rand -hex 16)
+          echo "::add-mask::${WB_API_TOKEN}"
+          export WB_API_TOKEN
+          docker exec -e WB_API_TOKEN "${CID}" \
+            rstudio-server generate-api-token super-admin vip-ci "${WB_USER}" --token-env WB_API_TOKEN
+          echo "value=${WB_API_TOKEN}" >> "$GITHUB_OUTPUT"
+          STATUS=$(curl -s -o /tmp/wb_version.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${WB_API_TOKEN}" "${WB_URL}/api/version")
+          echo "GET /api/version -> HTTP ${STATUS}"
+          if [ "${STATUS}" != "200" ]; then
+            echo "::error title=Workbench API unavailable::GET /api/version returned HTTP ${STATUS}. Check the license tier (the API needs Enhanced or Advanced) and rserver.conf."
+            cat /tmp/wb_version.json || true
+            exit 1
+          fi
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # No api_key and no password here: the token arrives as VIP_WORKBENCH_API_KEY
+      # in the next step's env. No Playwright browser is installed on purpose.
+      - name: Configure VIP for CI Workbench
+        env:
+          WB_URL: ${{ steps.workbench.outputs.WORKBENCH_URL }}
+          WB_USER: ${{ steps.workbench.outputs.WORKBENCH_USER }}
+          WB_VERSION: ${{ matrix.workbench-version }}
+        run: |
+          cat > vip.toml << EOF
+          [general]
+          deployment_name = "CI Workbench (API-auth)"
+
+          [connect]
+          enabled = false
+
+          [package_manager]
+          enabled = false
+
+          [workbench]
+          enabled = true
+          url = "${WB_URL}"
+          version = "${WB_VERSION}"
+
+          [auth]
+          provider = "password"
+          username = "${WB_USER}"
+          EOF
+          echo "--- generated vip.toml ---"; cat vip.toml
+
+      - name: Run Workbench API-auth tests
+        run: |
+          uv run vip verify \
+            --config vip.toml \
+            --api-auth \
+            --categories workbench \
+            --report results.json \
+            -- src/vip_tests/workbench/test_ide_launch_api.py -n 0 --junitxml=api-auth-results.xml
+        env:
+          VIP_WORKBENCH_API_KEY: ${{ steps.token.outputs.value }}
+
+      # A skip would leave the job green, so assert the RStudio scenario really ran.
+      - name: Require the RStudio launch to pass
+        run: |
+          python3 - << 'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          cases = list(ET.parse("api-auth-results.xml").getroot().iter("testcase"))
+          for case in cases:
+              outcome = next((c.tag for c in case if c.tag in ("failure", "error", "skipped")), "passed")
+              print(f"{case.get('name')}: {outcome}")
+          rstudio = [c for c in cases if c.get("name", "").startswith("test_launch_rstudio_api")]
+          if len(rstudio) != 1 or any(c.tag in ("failure", "error", "skipped") for c in rstudio[0]):
+              for case in rstudio:
+                  for child in case:
+                      print(f"{child.tag}: {child.get('message')}")
+              sys.exit("test_launch_rstudio_api must pass, not skip or fail")
+          PY
+
+      - name: Upload test results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: workbench-api-auth-results-${{ matrix.workbench-version }}
+          path: |
+            api-auth-results.xml
+            results.json
+
+      - name: Stop Workbench
+        if: always()
+        uses: posit-dev/with-workbench@da367f7337b28c6748f7dd43d08706788353be8d # main
+        with:
+          stop: ${{ steps.workbench.outputs.CONTAINER_ID }}
+
   status:
     name: Workbench Smoke Tests Status
     if: always()
-    needs: [changes, set-matrix, workbench-smoke]
+    needs: [changes, set-matrix, workbench-smoke, workbench-api-auth]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -495,6 +674,14 @@ jobs:
           fi
           if [ "${{ needs.workbench-smoke.result }}" = "failure" ] || [ "${{ needs.workbench-smoke.result }}" = "cancelled" ]; then
             echo "Workbench smoke tests failed or were cancelled"
+            exit 1
+          fi
+          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.workbench-api-auth.result }}" != "success" ]; then
+            echo "Workbench API-auth tests were in scope for this PR but did not succeed (result=${{ needs.workbench-api-auth.result }})"
+            exit 1
+          fi
+          if [ "${{ needs.workbench-api-auth.result }}" = "failure" ] || [ "${{ needs.workbench-api-auth.result }}" = "cancelled" ]; then
+            echo "Workbench API-auth tests failed or were cancelled"
             exit 1
           fi
           echo "Workbench smoke tests passed or were legitimately out of scope"
