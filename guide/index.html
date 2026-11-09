@@ -48,13 +48,33 @@ If you only have an API key and no browser credentials, use
 vip verify --connect-url https://connect.example.com --api-auth</code></pre> <p>
 This is useful in CI pipelines or environments where interactive
             login is not possible and no test user credentials are available.
+</p> <p>
+Workbench works the same way with a Workbench API token. Under
+<code>--api-auth</code>, VIP launches RStudio, VS Code, JupyterLab,
+            and Positron through the Workbench API for the test user, waits until
+            each session is running, then stops it. The other Workbench tests
+            need a browser login and are skipped. Create a super-admin token on
+            the Workbench server (an admin token cannot launch sessions, and a
+            user token works only for its owner):
+</p> <pre><code>rstudio-server generate-api-token super-admin vip test-user
+export VIP_WORKBENCH_API_KEY="the-token"
+export VIP_TEST_USERNAME="test-user"
+vip verify --workbench-url https://workbench.example.com --api-auth</code></pre> <p>
+The API needs an Enhanced or Advanced license and is off by default.
+            Add <code>workbench-api-enabled=1</code> and
+<code>workbench-api-super-admin-enabled=1</code> to
+<code>rserver.conf</code> and restart Workbench. If no token is set,
+            VIP reports the launch checks as unproven rather than passing them; if
+            Workbench rejects the token, the checks fail with its reply.
+<code>vip cleanup</code> uses the same token to remove leftover VIP
+            sessions without a browser sign-in.
 </p> <h3 id="credential-auth">Credential-based auth</h3> <p>
 If you have API keys and test user credentials, disable interactive
             auth and set environment variables:
 </p> <pre><code>export VIP_CONNECT_API_KEY="your-api-key"
 export VIP_TEST_USERNAME="test-user"
 export VIP_TEST_PASSWORD="test-password"
-vip verify --connect-url https://connect.example.com --no-interactive-auth</code></pre> <h3 id="auth-env-vars">Environment variables</h3> <div class="table-wrap"> <table> <thead> <tr> <th>Variable</th> <th>Purpose</th> </tr> </thead> <tbody> <tr> <td><code>VIP_CONNECT_API_KEY</code></td> <td>Connect admin API key</td> </tr> <tr> <td><code>VIP_WORKBENCH_API_KEY</code></td> <td>Workbench admin API key</td> </tr> <tr> <td><code>VIP_PACKAGE_MANAGER_TOKEN</code></td> <td>Package Manager token</td> </tr> <tr> <td><code>VIP_TEST_USERNAME</code></td> <td>Test user login name</td> </tr> <tr> <td><code>VIP_TEST_PASSWORD</code></td> <td>Test user login password</td> </tr> <tr> <td><code>VIP_TEST_TOTP_SECRET</code></td> <td>Base32 TOTP seed for the test service account. Optional; only used by <code>--headless-auth</code> when the IdP issues an MFA challenge.</td> </tr> </tbody> </table> </div> </section> <section id="running-tests"> <h2>Running tests</h2> <p>Target specific products or test categories:</p> <pre><code># Run all tests
+vip verify --connect-url https://connect.example.com --no-interactive-auth</code></pre> <h3 id="auth-env-vars">Environment variables</h3> <div class="table-wrap"> <table> <thead> <tr> <th>Variable</th> <th>Purpose</th> </tr> </thead> <tbody> <tr> <td><code>VIP_CONNECT_API_KEY</code></td> <td>Connect admin API key</td> </tr> <tr> <td><code>VIP_WORKBENCH_API_KEY</code></td> <td>Workbench API token (super-admin, for <code>--api-auth</code> session launches)</td> </tr> <tr> <td><code>VIP_PACKAGE_MANAGER_TOKEN</code></td> <td>Package Manager token</td> </tr> <tr> <td><code>VIP_TEST_USERNAME</code></td> <td>Test user login name</td> </tr> <tr> <td><code>VIP_TEST_PASSWORD</code></td> <td>Test user login password</td> </tr> <tr> <td><code>VIP_TEST_TOTP_SECRET</code></td> <td>Base32 TOTP seed for the test service account. Optional; only used by <code>--headless-auth</code> when the IdP issues an MFA challenge.</td> </tr> </tbody> </table> </div> </section> <section id="running-tests"> <h2>Running tests</h2> <p>Target specific products or test categories:</p> <pre><code># Run all tests
 vip verify --connect-url https://connect.example.com
 
 # Run tests for a specific category
