@@ -78,10 +78,18 @@ def _problems(path: Path) -> Iterator[str]:
         tags = inherited | _tags(scenario)
         for text in _given_texts(background + scenario["steps"]):
             for prefix, product in _GIVEN_PREFIXES.items():
-                if text.startswith(prefix) and not _has_tag(product, tags):
+                if text.startswith(prefix) and not _covered(product, tags, scenario):
                     yield f"{where}: step {text!r} needs @requires_{product}"
             if text.startswith("<") and "is configured" in text:
                 yield from _examples_problems(where, scenario, tags)
+
+
+def _covered(product: str, tags: set[str], scenario: dict) -> bool:
+    """True if the scenario tags, or the tags on each of its Examples blocks, cover *product*."""
+    if _has_tag(product, tags):
+        return True
+    examples = scenario.get("examples") or []
+    return bool(examples) and all(_has_tag(product, tags | _tags(ex)) for ex in examples)
 
 
 def _examples_problems(where: str, scenario: dict, tags: set[str]) -> Iterator[str]:
@@ -204,3 +212,42 @@ def test_guard_reports_examples_without_product_column(
     problems = list(_problems(feature))
     assert len(problems) == 1
     assert "Examples table needs a 'product' column" in problems[0]
+
+
+def test_guard_accepts_tags_on_every_examples_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A literal guard in an outline is covered when every Examples block carries the tag."""
+    monkeypatch.setattr(f"{__name__}._VIP_TESTS", tmp_path)
+    feature = tmp_path / "test_outline.feature"
+    feature.write_text(
+        "Feature: Outline\n"
+        "  Scenario Outline: <page> loads\n"
+        "    Given Connect is configured in vip.toml\n"
+        "\n"
+        "    @requires_connect\n"
+        "    Examples:\n"
+        "      | page  |\n"
+        "      | home  |\n"
+        "\n"
+        "    @requires_connect\n"
+        "    Examples:\n"
+        "      | page  |\n"
+        "      | admin |\n"
+        "\n"
+        "  Scenario Outline: <page> partly tagged\n"
+        "    Given Connect is configured in vip.toml\n"
+        "\n"
+        "    @requires_connect\n"
+        "    Examples:\n"
+        "      | page  |\n"
+        "      | home  |\n"
+        "\n"
+        "    Examples:\n"
+        "      | page  |\n"
+        "      | admin |\n",
+        encoding="utf-8",
+    )
+    problems = list(_problems(feature))
+    assert len(problems) == 1
+    assert "'<page> partly tagged': step 'Connect is configured in vip.toml' needs" in problems[0]
