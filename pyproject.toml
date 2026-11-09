@@ -26,7 +26,7 @@ dependencies = [
     "playwright==1.64.0",  # exact-pinned: shapes vip run output; see docs/development.md
     "pyotp~=2.9",
     "pytest==9.1.1",  # exact-pinned; at/above CVE-2025-71176 floor (9.0.3)
-    "pytest-bdd==8.1.0",  # exact-pinned
+    "pytest-bdd==9.0.1",  # exact-pinned
     "pytest-order==1.5.0",  # exact-pinned
     "pytest-playwright==0.10.0",  # exact-pinned
     "pytest-xdist==3.8.0",  # exact-pinned
@@ -195,6 +195,9 @@ markers = [
     "connect: tests for Posit Connect",
     "workbench: tests for Posit Workbench",
     "package_manager: tests for Posit Package Manager",
+    "requires_connect: deselect when Connect is not configured",
+    "requires_workbench: deselect when Workbench is not configured",
+    "requires_package_manager: deselect when Package Manager is not configured",
     "prerequisites: prerequisite checks that run first",
     "cross_product: tests that span multiple products",
     "performance: performance validation tests (opt-in; excluded by default)",

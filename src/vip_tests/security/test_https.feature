@@ -9,10 +9,19 @@ Feature: HTTPS enforcement
     When I make an HTTP request to <product>
     Then the connection is refused or redirected to HTTPS
 
+    @requires_connect
     Examples:
       | product         |
       | Connect         |
+
+    @requires_workbench
+    Examples:
+      | product         |
       | Workbench       |
+
+    @requires_package_manager
+    Examples:
+      | product         |
       | Package Manager |
 
   Scenario Outline: <product> response headers are checked for version disclosure
@@ -20,8 +29,17 @@ Feature: HTTPS enforcement
     When I inspect response headers from <product>
     Then any version information in response headers is reported
 
+    @requires_connect
     Examples:
       | product         |
       | Connect         |
+
+    @requires_workbench
+    Examples:
+      | product         |
       | Workbench       |
+
+    @requires_package_manager
+    Examples:
+      | product         |
       | Package Manager |

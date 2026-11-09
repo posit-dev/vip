@@ -60,6 +60,16 @@ the single most common mistake**: the scenario then runs unconditionally,
 against whatever client fixture happens to be available (or `None`), instead
 of being cleanly excluded when its product isn't configured.
 
+A scenario that needs a product configured but isn't a test *of* that
+product (a TLS probe, a load test) takes a `@requires_connect`,
+`@requires_workbench`, or `@requires_package_manager` tag instead. These
+deselect the same way, but they don't add the scenario to that product's
+`--categories` selection, and `--no-auth` keeps it because they say nothing
+about credentials. Put the tag on the `Scenario:`, or on an `Examples:` block
+when an outline's rows cover different products. A `Given Connect is
+configured in vip.toml` step without one of these tags or markers does not
+deselect anything: the scenario is collected and then skipped by the step.
+
 ## Version gating
 
 Use `@pytest.mark.min_version(product="connect", version="2024.09.0")` on a
@@ -141,6 +151,9 @@ Registered in `src/vip/plugin/configure.py` (`pytest_configure`):
 | `connect` | Test for Posit Connect. Drives auto-skip. |
 | `workbench` | Test for Posit Workbench. Drives auto-skip. |
 | `package_manager` | Test for Posit Package Manager. Drives auto-skip. |
+| `requires_connect` | Deselect when Connect is not configured, without the `connect` category or credentials. |
+| `requires_workbench` | Deselect when Workbench is not configured, without the `workbench` category or credentials. |
+| `requires_package_manager` | Deselect when Package Manager is not configured, without the `package_manager` category. |
 | `prerequisites` | Prerequisite check; VIP runs these before everything else. |
 | `cross_product` | Cross-product / admin test. |
 | `performance` | Performance validation test (opt-in; excluded by default). |

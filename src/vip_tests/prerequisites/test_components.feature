@@ -9,8 +9,17 @@ Feature: Posit Team components are installed and reachable
     When I request the <product> health endpoint
     Then the server responds with a successful status code
 
+    @requires_connect
     Examples:
       | product         |
       | Connect         |
+
+    @requires_workbench
+    Examples:
+      | product         |
       | Workbench       |
+
+    @requires_package_manager
+    Examples:
+      | product         |
       | Package Manager |

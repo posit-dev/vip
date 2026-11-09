@@ -4,6 +4,7 @@ Feature: Product versions match configuration
   I want to verify that the running product versions match the configured expectations
   So that I know the correct software versions are deployed
 
+  @requires_connect
   Scenario: Connect version matches configuration
     Given Connect is configured in vip.toml with a version expectation
     When I fetch the Connect server version
@@ -14,6 +15,7 @@ Feature: Product versions match configuration
   # version endpoint, so the running version is read from the authenticated
   # homepage footer rather than an API call.
 
+  @requires_package_manager
   Scenario: Package Manager version matches configuration
     Given Package Manager is configured in vip.toml with a version expectation
     When I fetch the Package Manager server version

@@ -82,15 +82,16 @@ class TestPluginIntegration:
         expr = _default_marker_expr(_extra_keep_from_args(args))
         assert "not performance" not in expr
 
-    def test_bdd_given_configured_step_deselected(self, selftest_pytester):
-        """A BDD scenario with 'Given Connect is configured in vip.toml'
-        should be deselected (not skipped) when Connect is not configured.
+    def test_bdd_requires_tag_deselected(self, selftest_pytester):
+        """A scenario tagged ``@requires_connect`` is deselected, not skipped,
+        when Connect is not configured.
         """
         selftest_pytester.makefile(
             ".feature",
             test_perf=(
                 "@performance\n"
                 "Feature: Perf test\n"
+                "  @requires_connect\n"
                 "  Scenario: Load test Connect\n"
                 "    Given Connect is configured in vip.toml\n"
                 "    Then something passes\n"
@@ -117,13 +118,38 @@ class TestPluginIntegration:
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
         result.assert_outcomes()
         result.stdout.fnmatch_lines(["*1 deselected*"])
-        # Must NOT appear as SKIPPED
         assert "SKIPPED" not in result.stdout.str()
 
-    def test_bdd_given_configured_product_not_deselected(self, selftest_pytester):
-        """A BDD scenario with 'Given Connect is configured' should run
-        when Connect IS configured.
-        """
+    def test_bdd_feature_level_requires_tag_deselected(self, selftest_pytester):
+        """A ``@requires_*`` tag on the Feature applies to every scenario in it."""
+        selftest_pytester.makefile(
+            ".feature",
+            test_feat=(
+                "@requires_package_manager\n"
+                "Feature: PM checks\n"
+                "  Scenario: First\n"
+                "    Then it passes\n"
+                "  Scenario: Second\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_feat="""
+            from pytest_bdd import scenarios, then
+
+            scenarios("test_feat.feature")
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes()
+        result.stdout.fnmatch_lines(["*2 deselected*"])
+
+    def test_bdd_requires_tag_runs_when_configured(self, selftest_pytester):
+        """A ``@requires_connect`` scenario runs when Connect IS configured."""
         selftest_pytester.makefile(
             ".toml",
             vip=(
@@ -135,6 +161,7 @@ class TestPluginIntegration:
             test_configured=(
                 "@performance\n"
                 "Feature: Perf test\n"
+                "  @requires_connect\n"
                 "  Scenario: Load test Connect\n"
                 "    Given Connect is configured in vip.toml\n"
                 "    Then it passes\n"
@@ -160,45 +187,37 @@ class TestPluginIntegration:
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
         result.assert_outcomes(passed=1)
 
-    def test_bdd_when_step_not_deselected(self, selftest_pytester):
-        """A 'When' step matching a product name should NOT trigger deselection."""
+    def test_bdd_untagged_given_guard_skips_not_deselects(self, selftest_pytester):
+        """Without a ``@requires_*`` tag the Given guard alone does not deselect;
+        the scenario is collected and skipped at runtime by the step itself.
+        """
         selftest_pytester.makefile(
             ".feature",
-            test_when=(
-                "@performance\n"
-                "Feature: When step test\n"
-                "  Scenario: When Connect is configured check\n"
-                "    When Connect is configured in the report\n"
-                "    Then it passes\n"
+            test_untagged=(
+                "Feature: Untagged\n"
+                "  Scenario: Guarded only by a Given step\n"
+                "    Given Connect is configured in vip.toml\n"
             ),
         )
         selftest_pytester.makepyfile(
-            test_when="""
-            from pytest_bdd import scenario, when, then
+            test_untagged="""
+            import pytest
+            from pytest_bdd import scenario, given
 
-            @scenario("test_when.feature", "When Connect is configured check")
-            def test_when_step():
+            @scenario("test_untagged.feature", "Guarded only by a Given step")
+            def test_guarded():
                 pass
 
-            @when("Connect is configured in the report")
-            def connect_in_report():
-                pass
-
-            @then("it passes")
-            def it_passes():
-                pass
+            @given("Connect is configured in vip.toml")
+            def connect_configured():
+                pytest.skip("Connect is not configured")
             """
         )
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
-        result.assert_outcomes(passed=1)
-        # Ensure no tests were deselected (check the summary line, not raw text
-        # which may contain "deselected" in the tmpdir path).
-        assert "deselected" not in result.stdout.lines[-1]
+        result.assert_outcomes(skipped=1)
 
-    def test_bdd_parameterized_unconfigured_deselected(self, selftest_pytester):
-        """A parameterized '<product> is configured' step should deselect
-        when the product is not configured.
-        """
+    def test_bdd_tagged_examples_deselected_per_product(self, selftest_pytester):
+        """Tags on an ``Examples:`` block deselect only that block's rows."""
         selftest_pytester.makefile(
             ".feature",
             test_param=(
@@ -208,9 +227,13 @@ class TestPluginIntegration:
                 "    Given <product> is configured in vip.toml\n"
                 "    Then it passes\n"
                 "\n"
+                "    @requires_connect\n"
+                "    Examples:\n"
+                "      | product |\n"
+                "      | Connect |\n"
+                "\n"
                 "    Examples:\n"
                 "      | product   |\n"
-                "      | Connect   |\n"
                 "      | CustomApp |\n"
             ),
         )
@@ -231,10 +254,43 @@ class TestPluginIntegration:
             """
         )
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
-        # Connect is not configured → deselected.
-        # CustomApp is unrecognized → not deselected, runs and skips at runtime.
+        # Connect rows are tagged and Connect is not configured: deselected.
+        # CustomApp rows carry no tag: collected, then skipped by the step.
         result.stdout.fnmatch_lines(["*1 deselected*"])
-        result.stdout.fnmatch_lines(["*SKIPPED*"])
+        result.assert_outcomes(skipped=1)
+
+    def test_bdd_requires_tag_kept_under_no_auth(self, selftest_pytester):
+        """``--no-auth`` keeps a ``@requires_connect`` scenario: the tag means
+        Connect is configured, not that the scenario needs credentials.
+        """
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n[connect]\nurl = "https://example.com"\n'
+            ),
+        )
+        selftest_pytester.makefile(
+            ".feature",
+            test_auth=(
+                "Feature: Auth\n"
+                "  @requires_connect\n"
+                "  Scenario: Needs Connect\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_auth="""
+            from pytest_bdd import scenarios, then
+
+            scenarios("test_auth.feature")
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "--no-auth", "-v")
+        result.assert_outcomes(passed=1)
 
     def test_version_skip(self, selftest_pytester):
         selftest_pytester.makefile(
@@ -336,6 +392,9 @@ class TestPluginIntegration:
                 "*connect*",
                 "*workbench*",
                 "*package_manager*",
+                "*requires_connect:*",
+                "*requires_workbench:*",
+                "*requires_package_manager:*",
                 "*min_version*",
             ]
         )

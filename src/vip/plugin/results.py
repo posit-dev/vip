@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pytest_bdd.scenario import scenario_wrapper_template_registry
 
 from vip import __version__ as vip_version
 from vip.attest import UNPROVEN_SENTINEL
@@ -38,6 +39,10 @@ _PRODUCT_MARKERS = {
     "package_manager": "package_manager",
 }
 
+# Mapping from feature-file tag (``@requires_connect`` etc.) to product config key.
+# These tags only gate collection; unlike _PRODUCT_MARKERS they don't define a category.
+_REQUIRES_MARKERS = {f"requires_{key}": key for key in _PRODUCT_MARKERS.values()}
+
 #: Exit code for a run in which nothing failed but something went unverified.
 #: Deliberately distinct from pytest's own codes (0 ok, 1 failed, 2 interrupted,
 #: 3 internal, 4 usage, 5 no tests collected) so a CI job can tell "the
@@ -56,14 +61,28 @@ UNPROVEN_DISPLAY_PREFIX = "UNPROVEN: "
 # ---------------------------------------------------------------------------
 
 
+def _scenario_for(item: pytest.Item) -> Any | None:
+    """Return the pytest-bdd scenario template behind *item*, or None for a non-BDD test.
+
+    pytest-bdd has no public way to reach a scenario at collection time, so this reads its
+    internal ``scenario_wrapper_template_registry``. Keep every such lookup in this one function;
+    ``selftests/plugin/test_json_report.py`` fails if the registry moves.
+    """
+    fn = getattr(item, "obj", None)
+    if fn is None:
+        return None
+    try:
+        return scenario_wrapper_template_registry.get(fn)
+    except TypeError:  # obj isn't weak-referenceable, so it can't be a scenario wrapper
+        return None
+
+
 def _stash_scenario_metadata(item: pytest.Item) -> None:
     """Extract pytest-bdd scenario metadata and stash it on the item."""
     scenario_title = None
     feature_description = None
 
-    # pytest-bdd stores scenario info as __scenario__ on the wrapper function.
-    fn = getattr(item, "obj", None)
-    scenario_obj = getattr(fn, "__scenario__", None) if fn else None
+    scenario_obj = _scenario_for(item)
     if scenario_obj is not None:
         scenario_title = getattr(scenario_obj, "name", None)
         feature_obj = getattr(scenario_obj, "feature", None)

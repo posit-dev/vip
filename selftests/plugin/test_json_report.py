@@ -56,6 +56,55 @@ class TestPluginIntegration:
         assert result["scenario_title"] is None
         assert result["feature_description"] is None
 
+    def test_json_report_bdd_scenario_names(self, selftest_pytester):
+        """BDD results carry the scenario title and feature description, both
+        for a scenario that ran and for one skipped before its body started.
+        """
+        selftest_pytester.makefile(
+            ".feature",
+            test_named=(
+                "Feature: Named feature\n"
+                "  Describes the feature.\n"
+                "\n"
+                "  Scenario: Runs to completion\n"
+                "    Then it passes\n"
+                "\n"
+                "  Scenario: Skipped during setup\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_named="""
+            import pytest
+            from pytest_bdd import scenario, then
+
+            @scenario("test_named.feature", "Runs to completion")
+            def test_runs():
+                pass
+
+            @pytest.mark.skip(reason="skipped before the scenario body")
+            @scenario("test_named.feature", "Skipped during setup")
+            def test_skipped():
+                pass
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        result.assert_outcomes(passed=1, skipped=1)
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+        by_outcome = {r["outcome"]: r for r in data["results"]}
+        assert by_outcome["passed"]["scenario_title"] == "Runs to completion"
+        assert by_outcome["skipped"]["scenario_title"] == "Skipped during setup"
+        for r in by_outcome.values():
+            assert r["feature_description"] == "Describes the feature."
+
     def test_json_report_includes_na_version_flag(self, selftest_pytester):
         """Results JSON flags version-unknown skips with na_version: true."""
         selftest_pytester.makefile(

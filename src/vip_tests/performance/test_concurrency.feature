@@ -4,18 +4,21 @@ Feature: Concurrent workload stability
   I want to verify system stability under concurrent usage
   So that the deployment can handle multiple simultaneous users
 
+  @requires_connect
   Scenario: Multiple concurrent API requests to Connect succeed
     Given Connect is configured in vip.toml
     When I send concurrent health-check requests to Connect
     Then all requests succeed
     And the average response time is within the configured threshold
 
+  @requires_package_manager
   Scenario: Multiple concurrent requests to Package Manager succeed
     Given Package Manager is configured in vip.toml
     When I send concurrent status requests to Package Manager
     Then all requests succeed
     And the average response time is within the configured threshold
 
+  @requires_workbench
   Scenario: Workbench handles concurrent health check requests
     Given Workbench is configured in vip.toml
     When I send concurrent health-check requests to Workbench

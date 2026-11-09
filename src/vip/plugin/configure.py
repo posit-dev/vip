@@ -72,6 +72,13 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "connect: tests for Posit Connect")
     config.addinivalue_line("markers", "workbench: tests for Posit Workbench")
     config.addinivalue_line("markers", "package_manager: tests for Posit Package Manager")
+    config.addinivalue_line("markers", "requires_connect: deselect when Connect is not configured")
+    config.addinivalue_line(
+        "markers", "requires_workbench: deselect when Workbench is not configured"
+    )
+    config.addinivalue_line(
+        "markers", "requires_package_manager: deselect when Package Manager is not configured"
+    )
     config.addinivalue_line("markers", "prerequisites: prerequisite checks")
     config.addinivalue_line("markers", "cross_product: cross-product / admin tests")
     config.addinivalue_line(
