@@ -41,9 +41,23 @@ enabled = true
 url = "https://workbench.example.com"
 # version = "2024.09.0"
 
-# API key for a Workbench admin user.
+# Workbench API token, sent as `Authorization: Bearer <token>`.
 # Prefer setting the VIP_WORKBENCH_API_KEY environment variable.
 # api_key = "..."
+#
+# With `vip verify --api-auth`, VIP launches each IDE through the Workbench API,
+# waits until the session is running, and stops it again -- no browser login.
+# Create the token on the Workbench server:
+#   rstudio-server generate-api-token super-admin vip <test-username>
+# A super-admin token can launch for any user; a user token works only when its
+# owner is the test user. Admin tokens cannot launch sessions. The API needs an
+# Enhanced or Advanced license and is off by default; enable it in rserver.conf
+# and restart Workbench:
+#   workbench-api-enabled=1
+#   workbench-api-super-admin-enabled=1
+# The test user comes from [auth] username or VIP_TEST_USERNAME. The same token
+# lets `vip cleanup` and the end-of-run sweep remove leftover VIP sessions with
+# no browser sign-in.
 #
 # Session capacity testing (requires --interactive-auth).
 # If omitted, VIP auto-detects available profiles from the UI and launches one
