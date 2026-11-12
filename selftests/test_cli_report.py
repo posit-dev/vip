@@ -9,6 +9,7 @@ loudly instead of silently producing nothing.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import subprocess
 import sys
@@ -386,6 +387,12 @@ class TestRenderStamp:
         (report_dir / "results.json").write_text(results, encoding="utf-8")
         return report_dir
 
+    @staticmethod
+    def _age_outputs(report_dir):
+        """Give each rendered file an old file time, as files of an earlier render have."""
+        for path in (report_dir / "_output").iterdir():
+            os.utime(path, (1_000_000.0, 1_000_000.0))
+
     def test_stamp_names_every_rendered_file(self, tmp_path, monkeypatch):
         from vip import cli
         from vip.bundle.stamp import read_render_stamp, results_digest
@@ -394,10 +401,14 @@ class TestRenderStamp:
         monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
         cli.run_report(_make_args())
         digest = results_digest((report_dir / "results.json").read_bytes())
-        assert read_render_stamp(report_dir / "_output") == (
-            digest,
-            frozenset({"index.html", "details.html", "vip-report.pdf"}),
-        )
+        stamp = read_render_stamp(report_dir / "_output")
+        assert stamp is not None
+        assert stamp[0] == digest
+        assert stamp[1] == {
+            "index.html": hashlib.sha256(b"<html>report</html>").hexdigest(),
+            "details.html": hashlib.sha256(b"<html>report</html>").hexdigest(),
+            "vip-report.pdf": hashlib.sha256(b"%PDF-fake").hexdigest(),
+        }
 
     def test_failed_pdf_is_not_in_the_new_stamp(self, tmp_path, monkeypatch):
         # The PDF of the earlier run stays on disk, but the stamp leaves it out.
@@ -407,6 +418,7 @@ class TestRenderStamp:
         report_dir = self._report_dir(tmp_path, monkeypatch)
         monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
         cli.run_report(_make_args())
+        self._age_outputs(report_dir)
         self._report_dir(tmp_path, monkeypatch, results='{"results": [{"n": 1}]}')
         monkeypatch.setattr(
             "vip.cli.report.subprocess.run", _fake_quarto(create_output=True, pdf_returncode=1)
@@ -414,8 +426,26 @@ class TestRenderStamp:
         cli.run_report(_make_args())
         stamp = read_render_stamp(report_dir / "_output")
         assert stamp is not None
-        assert stamp[1] == frozenset({"index.html", "details.html"})
+        assert set(stamp[1]) == {"index.html", "details.html"}
         assert (report_dir / "_output" / "vip-report.pdf").is_file()
+
+    def test_file_that_the_render_did_not_write_gets_no_stamp(self, tmp_path, monkeypatch, capsys):
+        # The second render exits with 0 and writes nothing, so each file on
+        # disk is from the first results.json.
+        from vip import cli
+        from vip.bundle.stamp import read_render_stamp
+
+        report_dir = self._report_dir(tmp_path, monkeypatch)
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
+        cli.run_report(_make_args())
+        self._age_outputs(report_dir)
+        self._report_dir(tmp_path, monkeypatch, results='{"results": [{"n": 1}]}')
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=False))
+        cli.run_report(_make_args())
+        stamp = read_render_stamp(report_dir / "_output")
+        assert stamp is not None
+        assert stamp[1] == {}
+        assert "did not write" in capsys.readouterr().err
 
     def test_failed_html_clears_the_stamp(self, tmp_path, monkeypatch):
         from vip import cli

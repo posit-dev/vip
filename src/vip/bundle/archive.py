@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote, quote_plus
 
-from vip.bundle.stamp import read_render_stamp, results_digest
+from vip.bundle.stamp import file_digest, read_render_stamp, results_digest
 from vip.errors import BundleError
 
 # Read from the directory of results.json. results.json must exist.
@@ -20,6 +20,9 @@ REPORT_SIDECAR_FILES = ("results.json", "failures.json", "junit.xml", "results.s
 # Read from <report_dir>/_output/. _quarto.yml sets embed-resources, so each
 # page is one self-contained file and no site_libs/ directory is needed.
 RENDERED_FILES = ("index.html", "details.html", "vip-report.pdf")
+# The secret scan cannot read the compressed text in the PDF. The HTML pages
+# hold the same text, so the PDF is in the bundle only together with them.
+PDF_FILE = "vip-report.pdf"
 # Files that hold credentials. --results must never name one of them.
 FORBIDDEN_NAMES = frozenset(
     {"vip.toml", ".vip-auth-cache.json", ".vip-auth-cache.meta.json", ".vip-install.json"}
@@ -136,10 +139,10 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
     results.json has no value, the sidecar is left out if it is older than
     results.json.
     Rendered files come from ``<report_dir>/_output/``. A rendered file is
-    included only if the render stamp names it and the SHA-256 of this
-    results.json. The secret scan cannot read the text in the PDF, so the PDF
-    is safe only when its source, results.json, is in the bundle and passes
-    the scan.
+    included only if the render stamp holds its SHA-256 and the SHA-256 of
+    this results.json. The secret scan cannot read the text in the PDF, so
+    the PDF is included only if both HTML pages, which hold the same text,
+    are in the bundle and pass the scan.
     """
     out = Collected()
     data = _check_results_file(results_path)
@@ -186,8 +189,19 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
         elif stamp is None or stamp[0] != digest or name not in stamp[1]:
             _leave_out(out, archive_name, path, f"was not made from {results_path}", hint)
         else:
-            out.members[archive_name] = _read(path)
+            content = _read(path)
+            if file_digest(content) != stamp[1][name]:
+                _leave_out(out, archive_name, path, "changed after 'vip report' made it", hint)
+                continue
+            out.members[archive_name] = content
             out.sources[archive_name] = path
+    pdf = f"report/_output/{PDF_FILE}"
+    pages = [f"report/_output/{name}" for name in RENDERED_FILES if name != PDF_FILE]
+    if pdf in out.members and not all(page in out.members for page in pages):
+        del out.members[pdf]
+        path = out.sources.pop(pdf)
+        reason = "cannot be checked without the HTML pages of the same render"
+        _leave_out(out, pdf, path, reason, hint)
     if not any(name.startswith("report/_output/") for name in out.members):
         out.warnings.append("the bundle has no rendered report. Run 'vip report' to include it.")
     return out

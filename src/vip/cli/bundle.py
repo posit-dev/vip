@@ -26,7 +26,7 @@ from vip.bundle.archive import (
 from vip.bundle.summary import (
     auth_cache_secrets,
     build_config_summary,
-    inline_connection_string_secrets,
+    raw_config_secrets,
     secret_values,
     strip_url_userinfo,
 )
@@ -101,12 +101,12 @@ def _load(path: Path) -> VIPConfig:
 
 
 def _inline_secrets(path: Path) -> list[tuple[str, str]]:
-    """Return the connection string secrets in the text of *path*."""
+    """Return the secrets in the text of *path* that the loaded configuration can drop."""
     try:
         raw = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise BundleError(f"could not read {path}: {exc}") from exc
-    return inline_connection_string_secrets(raw)
+    return raw_config_secrets(raw)
 
 
 def _host(url: str) -> tuple[str, int | None]:

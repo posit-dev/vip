@@ -251,9 +251,12 @@ def test_secret_in_failures_json_blocks_bundle(root, capsys):
 )
 def test_secret_in_each_report_file_blocks_bundle(root, member):
     report = root / "report"
+    rendered = ("index.html", "details.html", "vip-report.pdf")
+    for name in rendered:
+        _write(report / "_output" / name, "a clean file", RESULTS_MTIME + 5)
     _write(report / member, "x SECRET-pm-token y", RESULTS_MTIME + 5)
     digest = results_digest((report / "results.json").read_bytes())
-    record_rendered(report / "_output", digest, ("index.html", "details.html", "vip-report.pdf"))
+    record_rendered(report / "_output", digest, rendered)
     with pytest.raises(BundleError, match=r"package_manager\.token") as exc:
         run_bundle(_args(output="b.zip"))
     assert Path(member).name in str(exc.value)
@@ -430,6 +433,18 @@ def test_inline_connection_string_blocks_bundle_when_the_env_variable_replaces_i
     monkeypatch.setenv("PG_CONN", "postgresql://other:OTHER-db-password-9@db:5432/app")
     _write_report(root, results_extra="SECRET-db-password")
     with pytest.raises(BundleError, match=r"data_sources\.pg\.connection_string"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_inline_git_token_blocks_bundle_when_the_clone_is_anonymous(root):
+    # With auth_method "none", the loaded configuration has no token.
+    toml = (root / "vip.toml").read_text(encoding="utf-8")
+    (root / "vip.toml").write_text(
+        toml.replace("[workbench.git_test]", '[workbench.git_test]\nauth_method = "none"'),
+        encoding="utf-8",
+    )
+    _write_report(root, results_extra="SECRET-git-token")
+    with pytest.raises(BundleError, match=r"workbench\.git_test\.token"):
         run_bundle(_args(output="b.zip"))
 
 

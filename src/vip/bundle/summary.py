@@ -263,12 +263,13 @@ def auth_cache_secrets(path: Path) -> list[tuple[str, str]]:
     return pairs
 
 
-def inline_connection_string_secrets(raw: Any) -> list[tuple[str, str]]:
-    """Return the secrets of each ``connection_string`` in the parsed text of vip.toml.
+def raw_config_secrets(raw: Any) -> list[tuple[str, str]]:
+    """Return the secrets in the parsed text of vip.toml that the loaded configuration can drop.
 
     The loaded configuration holds the value of ``connection_string_env``
-    in place of the inline string if that variable is set. The inline string
-    is a credential in both cases.
+    in place of an inline ``connection_string`` if that variable is set. It
+    has no ``workbench.git_test.token`` if ``auth_method`` is ``"none"``. Each
+    inline value is a credential in both cases.
     """
     sources = raw.get("data_sources") if isinstance(raw, dict) else None
     pairs: list[tuple[str, str]] = []
@@ -276,6 +277,11 @@ def inline_connection_string_secrets(raw: Any) -> list[tuple[str, str]]:
         conn = entry.get("connection_string") if isinstance(entry, dict) else None
         if isinstance(conn, str):
             pairs += _connection_string_secrets(f"data_sources.{name}.connection_string", conn)
+    workbench = raw.get("workbench") if isinstance(raw, dict) else None
+    git = workbench.get("git_test") if isinstance(workbench, dict) else None
+    token = git.get("token") if isinstance(git, dict) else None
+    if isinstance(token, str):
+        pairs.append(("workbench.git_test.token", token))
     return pairs
 
 
@@ -285,7 +291,7 @@ def secret_values(
     """Return ``(label, value)`` for every credential that the bundle must not hold.
 
     *cache_secrets* are extra pairs, such as the ones that
-    :func:`auth_cache_secrets` and :func:`inline_connection_string_secrets`
+    :func:`auth_cache_secrets` and :func:`raw_config_secrets`
     read. The label names the source of the value, so an error can name it without
     printing the value. Empty values and repeated values are dropped.
     """

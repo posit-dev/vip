@@ -178,6 +178,31 @@ def test_stale_sidecar_is_left_out(tmp_path):
     assert any(str(report / "failures.json") in w for w in got.warnings)
 
 
+@pytest.mark.parametrize("name", ["index.html", "vip-report.pdf"])
+def test_rendered_file_that_changed_after_the_stamp_is_left_out(tmp_path, name):
+    # A copy of an older file over the stamped file keeps the name.
+    report = tmp_path / "report"
+    _seed(report)
+    _write(report / "_output" / name, "content of an older render", 1_000_002.0)
+    got = collect_members(report / "results.json", report)
+    assert f"report/_output/{name}" not in got.members
+    reason = "changed after 'vip report' made it"
+    assert {"name": f"report/_output/{name}", "reason": reason} in got.left_out
+
+
+@pytest.mark.parametrize("absent", ["index.html", "details.html"])
+def test_pdf_without_both_html_pages_is_left_out(tmp_path, absent):
+    # The scan cannot read the text in the PDF. The HTML pages hold the same text.
+    report = tmp_path / "report"
+    _seed(report)
+    (report / "_output" / absent).unlink()
+    got = collect_members(report / "results.json", report)
+    assert "report/_output/vip-report.pdf" not in got.members
+    assert "report/_output/vip-report.pdf" not in got.sources
+    reason = "cannot be checked without the HTML pages of the same render"
+    assert {"name": "report/_output/vip-report.pdf", "reason": reason} in got.left_out
+
+
 def _seed_run_pair(report: Path, results_run: str, failures_run: str) -> None:
     """Write results.json and failures.json with a ``generated_at`` value each."""
     results = json.dumps({"generated_at": results_run, "results": []})
