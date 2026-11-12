@@ -347,20 +347,17 @@ class TestPluginIntegration:
         assert serial.parseoutcomes()["warnings"] == 2
         assert parallel.parseoutcomes()["warnings"] == 2
 
-    def test_bdd_guard_check_survives_private_api_change(self, selftest_pytester):
+    def test_bdd_guard_check_survives_private_api_change(self, selftest_pytester, monkeypatch):
         """If pytest-bdd's private template API changes shape, collection still succeeds."""
+        from pytest_bdd.parser import ScenarioTemplate
+
+        def _broken(self, context):
+            raise AttributeError("render moved")
+
+        # monkeypatch, not a conftest: the run is in-process, so the patch must be undone after.
+        monkeypatch.setattr(ScenarioTemplate, "render", _broken)
         selftest_pytester.makefile(".feature", test_outline=self._UNTAGGED_OUTLINE)
         selftest_pytester.makepyfile(test_outline=self._UNTAGGED_STEPS)
-        selftest_pytester.makeconftest(
-            """
-            from pytest_bdd.parser import ScenarioTemplate
-
-            def _broken(self, context):
-                raise AttributeError("render moved")
-
-            ScenarioTemplate.render = _broken
-            """
-        )
         result = selftest_pytester.runpytest("--vip-config=vip.toml", "--collect-only", "-q")
         assert result.ret == 0
         result.stdout.fnmatch_lines(["*4 tests collected*"])
