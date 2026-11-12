@@ -221,8 +221,11 @@ The command needs the <code>vip.toml</code> that
 <code>vip.toml</code>, pass <code>--no-config</code>. The scan then
             uses only the environment and the auth cache. A rendered page that
 <code>vip report</code> did not make from the current
-<code>results.json</code> is left out. Run <code>vip report</code>
-again to include it. A <code>failures.json</code>, JUnit, or SARIF
+<code>results.json</code> is left out. A rendered file that changed
+            after <code>vip report</code> made it is left out too. The PDF is
+            included only together with both HTML pages, because the scan
+            cannot read the text in a PDF. Run <code>vip report</code>
+again to include a file that was left out. A <code>failures.json</code>, JUnit, or SARIF
             file from a different run than <code>results.json</code> is left
             out too. If a JUnit or SARIF file from an older VIP has no run
             time and is older than <code>results.json</code>, it is also left
