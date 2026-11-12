@@ -8,7 +8,7 @@ updates:
     python-dependencies:
       patterns:
       - "*"
-  # VIP's plugin reads pytest-bdd's private scenario registry (vip.plugin.results._scenario_for);
+  # VIP's plugin reads pytest-bdd internals (vip.plugin.results._scenario_for and _scenario_given_steps);
   # major bumps need a deliberate migration, not a grouped weekly update.
   ignore:
   - dependency-name: pytest-bdd

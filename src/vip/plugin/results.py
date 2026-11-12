@@ -69,9 +69,10 @@ def _scenario_for(item: pytest.Item) -> Any | None:
     """Return the pytest-bdd scenario template behind *item*, or None for a non-BDD test.
 
     pytest-bdd has no public way to reach a scenario at collection time, so this reads its
-    internal ``scenario_wrapper_template_registry``. Keep every such lookup in this one function.
-    If a pytest-bdd release moves the registry, this returns None instead of breaking the
-    plugin, and ``selftests/plugin/test_json_report.py`` fails.
+    internal ``scenario_wrapper_template_registry``. Keep every read of pytest-bdd internals in
+    this function and ``_scenario_given_steps``. If a pytest-bdd release moves the registry,
+    this returns None instead of breaking the plugin, and ``selftests/plugin/test_json_report.py``
+    fails.
     """
     fn = getattr(item, "obj", None)
     if fn is None or scenario_wrapper_template_registry is None:
@@ -80,6 +81,27 @@ def _scenario_for(item: pytest.Item) -> Any | None:
         return scenario_wrapper_template_registry.get(fn)
     except TypeError:  # obj isn't weak-referenceable, so it can't be a scenario wrapper
         return None
+
+
+def _scenario_given_steps(item: pytest.Item) -> list[str]:
+    """Return the text of every Given step *item* runs, Background steps included.
+
+    For a Scenario Outline the steps are rendered with the item's Examples row, so
+    ``<product> is configured`` comes back as ``Connect is configured``. This reads the private
+    template ``render``/``steps`` API and the ``_pytest_bdd_example`` parameter, so if their shape
+    changes it returns ``[]`` rather than failing collection, and the guard-warning selftests in
+    ``selftests/plugin/test_marker_deselection.py`` fail.
+    """
+    template = _scenario_for(item)
+    if template is None:
+        return []
+    callspec = getattr(item, "callspec", None)
+    example = callspec.params.get("_pytest_bdd_example") if callspec is not None else None
+    try:
+        steps = template.render(example).steps if isinstance(example, dict) else template.steps
+        return [step.name for step in steps if step.type == "given"]
+    except (AttributeError, KeyError, TypeError):  # private API changed shape; see docstring
+        return []
 
 
 def _stash_scenario_metadata(item: pytest.Item) -> None:

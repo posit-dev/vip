@@ -68,7 +68,7 @@ dev = [
     "mypy>=1.10",
     "pytest-cov>=6.0",
     "pip-audit>=2.7",
-    "gherkin-official>=29.0.0,!=31.0.0,!=32.0.0",  # imported by selftests/test_requires_tags.py
+    "gherkin-official",  # imported by selftests/test_requires_tags.py; pytest-bdd sets its range
     "msgpack>=1.2.1",  # GHSA-6v7p-g79w-8964 fix; transitive via pip-audit (cachecontrol)
 ]
 

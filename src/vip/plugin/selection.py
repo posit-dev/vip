@@ -13,7 +13,7 @@ from vip.config import VIPConfig
 from vip.plugin.results import (
     _PRODUCT_MARKERS,
     _REQUIRES_MARKERS,
-    _scenario_for,
+    _scenario_given_steps,
     _stash_scenario_metadata,
 )
 from vip.stash import _version_na_key, _vip_config_key
@@ -38,8 +38,11 @@ def pytest_collection_modifyitems(
     prerequisites: list[pytest.Item] = []
     rest: list[pytest.Item] = []
     deselected: list[pytest.Item] = []
+    warn_guards = _warns_on_this_process(config)
+    warned: set[tuple[str, str]] = set()
     for item in items:
-        _warn_untagged_product_guard(item)
+        if warn_guards:
+            _warn_untagged_product_guard(item, warned)
         if _should_deselect_for_product(item, vip_cfg):
             deselected.append(item)
             continue
@@ -99,60 +102,59 @@ def _required_products(item: pytest.Item) -> set[str]:
 
 def _should_deselect_for_product(item: pytest.Item, cfg: VIPConfig) -> bool:
     """Return True if *item* should be deselected because its product is not configured."""
-    return any(
-        item.get_closest_marker(name) is not None and not cfg.product_config(key).is_configured
-        for name, key in _ALL_PRODUCT_MARKERS.items()
-    )
+    return any(not cfg.product_config(key).is_configured for key in _required_products(item))
 
 
-# Given-step prefix → product config key, and Examples ``product`` value → config key.
+# Given-step prefix → product config key.
 _GIVEN_PRODUCT_PREFIXES = {
     "Connect is configured": "connect",
     "Workbench is configured": "workbench",
     "Package Manager is configured": "package_manager",
 }
-_PRODUCT_DISPLAY_NAMES = {
-    "Connect": "connect",
-    "Workbench": "workbench",
-    "Package Manager": "package_manager",
-}
 
 
 def _given_products(item: pytest.Item) -> set[str]:
-    """Return the config keys named by *item*'s product Given steps, Background steps included.
-
-    For a Scenario Outline, ``<product> is configured`` resolves through the item's Examples row.
-    """
-    template = _scenario_for(item)
-    if template is None:
-        return set()
-    callspec = getattr(item, "callspec", None)
-    example = callspec.params.get("_pytest_bdd_example") if callspec is not None else None
-    steps = template.render(example).steps if isinstance(example, dict) else template.steps
-    products = set()
-    for step in steps:
-        if step.type != "given":
-            continue
-        for prefix, key in _GIVEN_PRODUCT_PREFIXES.items():
-            if step.name.startswith(prefix):
-                products.add(key)
-    return products
+    """Return the config keys named by *item*'s product Given steps, Background steps included."""
+    return {
+        key
+        for text in _scenario_given_steps(item)
+        for prefix, key in _GIVEN_PRODUCT_PREFIXES.items()
+        if text.startswith(prefix)
+    }
 
 
-def _warn_untagged_product_guard(item: pytest.Item) -> None:
-    """Warn when a product Given step has no matching product marker or ``@requires_*`` tag.
+def _warns_on_this_process(config: pytest.Config) -> bool:
+    """Return False on every xdist worker but ``gw0``, since each worker collects every item."""
+    workerinput = getattr(config, "workerinput", None)
+    return workerinput is None or workerinput.get("workerid") == "gw0"
+
+
+def _warn_untagged_product_guard(item: pytest.Item, warned: set[tuple[str, str]]) -> None:
+    """Warn once per scenario when a product Given step has no matching product marker or
+    ``@requires_*`` tag.
 
     Only tags deselect, so such a scenario runs even when the product isn't configured, and a
-    custom guard step that doesn't skip then fails against a ``None`` client.
+    custom guard step that doesn't skip then fails against a ``None`` client. *warned* holds the
+    (scenario, tags) pairs already reported, so an outline's rows share one warning.
     """
     missing = _given_products(item) - _required_products(item)
-    if missing:
-        tags = ", ".join(f"@requires_{key}" for key in sorted(missing))
-        warnings.warn(
-            f"VIP: {item.nodeid} has a product Given step but no {tags} tag, so it is not "
-            "deselected when that product is not configured. Add the tag to the scenario.",
-            stacklevel=1,
-        )
+    if not missing:
+        return
+    scenario_id = item.nodeid.split("[", 1)[0]
+    tags = ", ".join(f"@requires_{key}" for key in sorted(missing))
+    if (scenario_id, tags) in warned:
+        return
+    warned.add((scenario_id, tags))
+    where = (
+        "the scenario, or to the Examples block holding those rows"
+        if getattr(item, "callspec", None) is not None
+        else "the scenario"
+    )
+    warnings.warn(
+        f"VIP: {scenario_id} has a product Given step but no {tags} tag, so it is not "
+        f"deselected when that product is not configured. Add the tag to {where}.",
+        stacklevel=1,
+    )
 
 
 # Products that require username/password credentials.

@@ -1818,7 +1818,7 @@ requires-dist = [
     { name = "anyio", specifier = ">=4.14.2,<5" },
     { name = "click", marker = "extra == 'load'", specifier = ">=8.3.3,<9" },
     { name = "filelock", specifier = ">=4.2.1,<5" },
-    { name = "gherkin-official", marker = "extra == 'dev'", specifier = ">=29.0.0,!=31.0.0,!=32.0.0" },
+    { name = "gherkin-official", marker = "extra == 'dev'" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "idna", specifier = ">=3.15,<4" },
     { name = "ipykernel", specifier = "<8" },

@@ -302,6 +302,69 @@ class TestPluginIntegration:
         assert out.count("has a product Given step") == 1
         assert "no @requires_workbench tag" in out
 
+    _UNTAGGED_OUTLINE = (
+        "Feature: Untagged outline\n"
+        "  Scenario Outline: Page <page>\n"
+        "    Given Connect is configured in vip.toml\n"
+        "\n"
+        "    Examples:\n"
+        "      | page |\n"
+        "      | a    |\n"
+        "      | b    |\n"
+        "      | c    |\n"
+        "\n"
+        "  Scenario: Plain\n"
+        "    Given Connect is configured in vip.toml\n"
+    )
+
+    _UNTAGGED_STEPS = """
+        import pytest
+        from pytest_bdd import scenarios, given
+
+        scenarios("test_outline.feature")
+
+        @given("Connect is configured in vip.toml")
+        def connect_configured():
+            pytest.skip("Connect is not configured")
+        """
+
+    def test_bdd_untagged_outline_warns_once_per_scenario(self, selftest_pytester):
+        """An outline's rows share one warning, which points at the Examples block."""
+        selftest_pytester.makefile(".feature", test_outline=self._UNTAGGED_OUTLINE)
+        selftest_pytester.makepyfile(test_outline=self._UNTAGGED_STEPS)
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "-v")
+        result.assert_outcomes(skipped=4)
+        out = result.stdout.str()
+        assert out.count("has a product Given step") == 2
+        assert "or to the Examples block holding those rows" in out
+
+    def test_bdd_guard_warning_not_repeated_per_xdist_worker(self, selftest_pytester):
+        """Every xdist worker collects every item; only one of them warns."""
+        selftest_pytester.makefile(".feature", test_outline=self._UNTAGGED_OUTLINE)
+        selftest_pytester.makepyfile(test_outline=self._UNTAGGED_STEPS)
+        serial = selftest_pytester.runpytest("--vip-config=vip.toml", "-p", "no:randomly")
+        parallel = selftest_pytester.runpytest("--vip-config=vip.toml", "-n", "2")
+        assert serial.parseoutcomes()["warnings"] == 2
+        assert parallel.parseoutcomes()["warnings"] == 2
+
+    def test_bdd_guard_check_survives_private_api_change(self, selftest_pytester):
+        """If pytest-bdd's private template API changes shape, collection still succeeds."""
+        selftest_pytester.makefile(".feature", test_outline=self._UNTAGGED_OUTLINE)
+        selftest_pytester.makepyfile(test_outline=self._UNTAGGED_STEPS)
+        selftest_pytester.makeconftest(
+            """
+            from pytest_bdd.parser import ScenarioTemplate
+
+            def _broken(self, context):
+                raise AttributeError("render moved")
+
+            ScenarioTemplate.render = _broken
+            """
+        )
+        result = selftest_pytester.runpytest("--vip-config=vip.toml", "--collect-only", "-q")
+        assert result.ret == 0
+        result.stdout.fnmatch_lines(["*4 tests collected*"])
+
     def test_bdd_tagged_examples_deselected_per_product(self, selftest_pytester):
         """Tags on an ``Examples:`` block deselect only that block's rows."""
         selftest_pytester.makefile(

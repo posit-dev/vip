@@ -362,4 +362,6 @@ every scenario in the file — if you tag the whole `Feature:` with both `@conne
 every scenario requires both products, which causes incorrect deselection when only one product is
 configured. The safe, portable pattern is to tag each `Scenario:` with only the product(s) it
 actually uses, or to apply `@pytest.mark.connect`/`@pytest.mark.workbench` directly on the
-`@scenario` decorator function in Python.
+`@scenario` decorator function in Python. The same rules hold for `@requires_connect`,
+`@requires_workbench` and `@requires_package_manager` (see "Tagging rules" above), and for an
+outline whose rows cover different products, tag each `Examples:` block instead.
