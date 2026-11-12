@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import errno
+import os
+import pathlib
 import sys
+import time
 from typing import ClassVar
 
 import pytest
@@ -29,6 +33,42 @@ class TestSaveAuthCache:
             key_name="_vip_interactive_123",
             _connect_url=connect_url,
         )
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+    def test_creates_the_cache_directory_owner_only(self, tmp_path):
+        from vip.auth import _save_auth_cache
+
+        session = self._make_session(tmp_path, connect_url="", api_key=None)
+        cache = tmp_path / "a" / "b" / ".vip-auth-cache.json"
+
+        _save_auth_cache(session, cache)
+
+        assert cache.exists()
+        assert cache.parent.stat().st_mode & 0o777 == 0o700
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+    @pytest.mark.skipif(
+        hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores directory permissions"
+    )
+    def test_unwritable_cache_root_skips_caching_without_raising(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        from vip.auth import _save_auth_cache
+
+        session = self._make_session(tmp_path, connect_url="", api_key=None)
+        locked = tmp_path / "locked"
+        locked.mkdir()
+        locked.chmod(0o500)
+        work = tmp_path / "work"
+        work.mkdir()
+        monkeypatch.chdir(work)
+        try:
+            _save_auth_cache(session, locked / "vip" / ".vip-auth-cache.json")
+        finally:
+            locked.chmod(0o700)
+
+        assert "Skipping auth cache" in capsys.readouterr().out
+        assert not list(work.glob(".vip-auth-cache*"))
 
     def test_skips_cache_when_connect_configured_but_mint_failed(self, tmp_path):
         from vip.auth import _save_auth_cache
@@ -94,6 +134,96 @@ class TestSaveAuthCache:
         meta = json.loads(cache.with_suffix(".meta.json").read_text(encoding="utf-8"))
         assert meta["connect_url"] == "https://c.example.com"
         assert meta["requested_connect_url"] == "https://c.example.com/dashboard"
+
+    def _seed_old_pair(self, cache):
+        cache.write_text('{"cookies": [{"name": "old"}]}', encoding="utf-8")
+        cache.with_suffix(".meta.json").write_text('{"api_key": "OLD"}', encoding="utf-8")
+
+    def test_failed_meta_write_leaves_no_cache(self, tmp_path, monkeypatch):
+        from vip.auth import _save_auth_cache
+
+        session = self._make_session(tmp_path, connect_url="https://c.example.com", api_key="NEW")
+        cache = tmp_path / ".vip-auth-cache.json"
+        self._seed_old_pair(cache)
+        real_write_text = pathlib.Path.write_text
+
+        def fail_meta(self, *args, **kwargs):
+            if self.name.endswith(".meta.json"):
+                raise OSError(errno.ENOSPC, "No space left on device")
+            return real_write_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(pathlib.Path, "write_text", fail_meta)
+
+        _save_auth_cache(session, cache)
+
+        assert not cache.exists()
+        assert not cache.with_suffix(".meta.json").exists()
+
+    def test_failed_state_write_leaves_no_cache(self, tmp_path, monkeypatch):
+        from vip.auth import _save_auth_cache
+        from vip.auth import cache as cache_module
+
+        session = self._make_session(tmp_path, connect_url="https://c.example.com", api_key="NEW")
+        cache = tmp_path / ".vip-auth-cache.json"
+        self._seed_old_pair(cache)
+
+        def fail(_state):
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        monkeypatch.setattr(cache_module, "_cacheable_storage_state", fail)
+
+        _save_auth_cache(session, cache)
+
+        assert not cache.exists()
+        assert not cache.with_suffix(".meta.json").exists()
+
+
+_NO_CHMOD = pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="needs POSIX permission bits that root does not honour",
+)
+
+
+@pytest.fixture
+def inaccessible_cache(tmp_path):
+    """A cache path inside a chmod-000 directory, restored on teardown."""
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        yield locked / ".vip-auth-cache.json"
+    finally:
+        locked.chmod(0o700)
+
+
+@_NO_CHMOD
+class TestInaccessibleCacheDir:
+    """An unreadable cache directory disables caching instead of raising."""
+
+    def test_load_returns_none(self, inaccessible_cache):
+        from vip.auth import _load_cached_auth
+
+        assert _load_cached_auth(inaccessible_cache) is None
+
+    def test_refresh_returns_false(self, inaccessible_cache):
+        from vip.auth import refresh_auth_cache_from_storage_state
+
+        assert refresh_auth_cache_from_storage_state({}, inaccessible_cache) is False
+
+    def test_cache_is_not_referenced(self, tmp_path, inaccessible_cache):
+        from vip.auth import InteractiveAuthSession
+
+        state = tmp_path / "state.json"
+        state.write_text('{"cookies": []}', encoding="utf-8")
+        session = InteractiveAuthSession(
+            storage_state_path=state,
+            api_key="K",
+            key_name="_vip_interactive_1",
+            _connect_url="https://c.example.com",
+            _cache_path=inaccessible_cache,
+        )
+
+        assert session._cache_references_this_key() is False
 
 
 class TestLoadCachedAuth:
@@ -561,11 +691,117 @@ class TestAuthCachePath:
     silently disagreed and ``vip cleanup`` looked in the wrong place.
     """
 
-    def test_resolves_relative_to_the_invocation_directory(self, tmp_path, monkeypatch):
+    def test_lives_under_the_user_cache_root_not_cwd(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        work, cache_home = tmp_path / "work", tmp_path / "xdg"
+        work.mkdir()
+        monkeypatch.chdir(work)
+        monkeypatch.setenv("XDG_CACHE_HOME", str(cache_home))
+
+        p = auth_cache_path()
+
+        assert p.name == ".vip-auth-cache.json"
+        assert p.parent.parent == cache_home / "vip" / "auth"
+        assert len(p.parent.name) == 16
+        assert work.resolve() not in p.parents
+
+    def test_is_keyed_on_the_invocation_directory(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        (tmp_path / "a").mkdir()
+        (tmp_path / "b").mkdir()
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+
+        monkeypatch.chdir(tmp_path / "a")
+        first = auth_cache_path()
+        monkeypatch.chdir(tmp_path / "b")
+        second = auth_cache_path()
+
+        assert first.parent != second.parent
+        assert first.parent.parent == second.parent.parent
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+    def test_symlinked_cwd_resolves_to_the_same_cache(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        real = tmp_path / "real"
+        real.mkdir()
+        link = tmp_path / "link"
+        link.symlink_to(real, target_is_directory=True)
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+
+        monkeypatch.chdir(real)
+        via_real = auth_cache_path()
+        monkeypatch.chdir(link)
+        via_link = auth_cache_path()
+
+        assert via_real == via_link
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows ignores HOME and XDG_CACHE_HOME")
+    def test_relative_xdg_cache_home_is_ignored(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("XDG_CACHE_HOME", "rel")
+        monkeypatch.setenv("HOME", str(home))
+
+        assert auth_cache_path().parent.parent == home / ".cache" / "vip" / "auth"
+
+    def test_windows_uses_localappdata(self, tmp_path, monkeypatch):
         from vip.auth import auth_cache_path
 
         monkeypatch.chdir(tmp_path)
-        assert auth_cache_path() == tmp_path / ".vip-auth-cache.json"
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "lad"))
+
+        assert auth_cache_path().parent.parent == tmp_path / "lad" / "vip" / "auth"
+
+    def test_resolving_creates_nothing_without_a_legacy_cache(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        cache_home = tmp_path / "xdg"
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("XDG_CACHE_HOME", str(cache_home))
+
+        auth_cache_path()
+
+        assert not cache_home.exists()
+
+    def _no_home(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+        monkeypatch.setattr(sys, "platform", "linux")
+
+        def _raise():
+            raise RuntimeError("Could not determine home directory.")
+
+        monkeypatch.setattr(pathlib.Path, "home", _raise)
+
+    def test_no_home_directory_skips_the_cache(self, tmp_path, monkeypatch, capsys):
+        from vip.auth import auth_cache_path
+
+        self._no_home(tmp_path, monkeypatch)
+        before = set(tmp_path.iterdir())
+
+        assert auth_cache_path() is None
+
+        assert "Skipping auth cache" in capsys.readouterr().out
+        assert set(tmp_path.iterdir()) == before
+
+    def test_no_home_directory_leaves_legacy_cache_alone(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        self._no_home(tmp_path, monkeypatch)
+        legacy = tmp_path / ".vip-auth-cache.json"
+        legacy.write_text('{"cookies": []}', encoding="utf-8")
+
+        assert auth_cache_path() is None
+
+        assert legacy.read_text(encoding="utf-8") == '{"cookies": []}'
 
     def test_call_sites_do_not_build_the_path_inline(self):
         """Invariant: the filename literal lives in one place.  A second inline
@@ -585,6 +821,198 @@ class TestAuthCachePath:
             )
 
         assert ".vip-auth-cache.json" in _Path(vip.auth.cache.__file__).read_text(encoding="utf-8")
+
+
+class TestLegacyAuthCacheMigration:
+    """Caches an older VIP wrote into the invocation directory move to the user
+    cache dir exactly once, so a live session and API key stop sitting in cwd (#620).
+    """
+
+    @staticmethod
+    def _legacy(work, state="STATE", meta="META"):
+        work.mkdir(exist_ok=True)
+        (work / ".vip-auth-cache.json").write_text(state, encoding="utf-8")
+        (work / ".vip-auth-cache.meta.json").write_text(meta, encoding="utf-8")
+
+    @staticmethod
+    def _dest(tmp_path):
+        return tmp_path / "xdg" / "vip" / "auth" / "abc" / ".vip-auth-cache.json"
+
+    def test_moves_both_legacy_files_out_of_cwd(self, tmp_path):
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert list(work.glob(".vip-auth-cache*")) == []
+        assert dest.read_text(encoding="utf-8") == "STATE"
+        assert dest.with_suffix(".meta.json").read_text(encoding="utf-8") == "META"
+
+    def test_keeps_mtime_so_the_ttl_still_applies(self, tmp_path):
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+        old = time.time() - 5 * 3600
+        os.utime(work / ".vip-auth-cache.json", (old, old))
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert abs(dest.stat().st_mtime - old) < 1
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes do not apply on Windows")
+    def test_moved_files_are_owner_only(self, tmp_path):
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+        (work / ".vip-auth-cache.json").chmod(0o644)
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert dest.stat().st_mode & 0o777 == 0o600
+        assert dest.with_suffix(".meta.json").stat().st_mode & 0o777 == 0o600
+        assert dest.parent.stat().st_mode & 0o777 == 0o700
+
+    def test_cross_device_move_still_lands(self, tmp_path, monkeypatch):
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+
+        def fail(*args, **kwargs):
+            raise OSError(errno.EXDEV, "x")
+
+        monkeypatch.setattr(os, "rename", fail)
+        old = time.time() - 5 * 3600
+        os.utime(work / ".vip-auth-cache.json", (old, old))
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert abs(dest.stat().st_mtime - old) < 1
+
+        assert list(work.glob(".vip-auth-cache*")) == []
+        assert dest.read_text(encoding="utf-8") == "STATE"
+        assert dest.with_suffix(".meta.json").read_text(encoding="utf-8") == "META"
+
+    def test_existing_dest_wins_and_legacy_is_deleted(self, tmp_path):
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+        dest.parent.mkdir(parents=True)
+        dest.write_text("NEW", encoding="utf-8")
+        dest.with_suffix(".meta.json").write_text("NEWMETA", encoding="utf-8")
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert dest.read_text(encoding="utf-8") == "NEW"
+        assert dest.with_suffix(".meta.json").read_text(encoding="utf-8") == "NEWMETA"
+        assert list(work.glob(".vip-auth-cache*")) == []
+
+    def test_failed_move_deletes_the_legacy_file_quietly(self, tmp_path, monkeypatch, caplog):
+        import shutil
+
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+
+        def fail(*args, **kwargs):
+            raise OSError(errno.EACCES, "denied")
+
+        monkeypatch.setattr(shutil, "move", fail)
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert list(work.glob(".vip-auth-cache*")) == []
+        assert caplog.records == []
+
+    def test_failed_move_and_failed_delete_warns_with_the_path(self, tmp_path, monkeypatch, caplog):
+        import shutil
+        from pathlib import Path
+
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+
+        def fail(*args, **kwargs):
+            raise OSError(errno.EACCES, "denied")
+
+        monkeypatch.setattr(shutil, "move", fail)
+        monkeypatch.setattr(Path, "unlink", fail)
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        warned = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert any(str(work / ".vip-auth-cache.json") in m for m in warned)
+        assert any(str(work / ".vip-auth-cache.meta.json") in m for m in warned)
+
+    def test_legacy_file_vanishing_mid_migration_is_not_an_error(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        import shutil
+
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+
+        def lose_race(src, dst):
+            pathlib.Path(src).unlink()
+            raise FileNotFoundError(errno.ENOENT, "gone")
+
+        monkeypatch.setattr(shutil, "move", lose_race)
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert list(work.glob(".vip-auth-cache*")) == []
+        assert caplog.records == []
+
+    def test_legacy_vanishing_before_delete_when_dest_wins_is_not_an_error(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        from pathlib import Path
+
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        work.mkdir()
+        dest.parent.mkdir(parents=True)
+        dest.write_text("NEW", encoding="utf-8")
+        dest.with_suffix(".meta.json").write_text("NEWMETA", encoding="utf-8")
+        monkeypatch.setattr(Path, "is_file", lambda self: True)
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert dest.read_text(encoding="utf-8") == "NEW"
+        assert caplog.records == []
+
+    def test_is_a_no_op_when_there_is_nothing_to_move(self, tmp_path):
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        work.mkdir()
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert not dest.parent.exists()
+
+    def test_auth_cache_path_migrates_on_resolve(self, tmp_path, monkeypatch):
+        from vip.auth import auth_cache_path
+
+        work = tmp_path / "work"
+        self._legacy(work)
+        monkeypatch.chdir(work)
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+
+        path = auth_cache_path()
+
+        assert list(work.glob(".vip-auth-cache*")) == []
+        assert path.read_text(encoding="utf-8") == "STATE"
 
 
 class TestStaleCacheTriggersReauth:

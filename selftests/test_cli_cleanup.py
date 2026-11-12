@@ -284,6 +284,28 @@ class TestWorkbenchAuthModeSelection:
         assert calls["headless"]["workbench_url"] == "https://wb.example.com"
         assert calls["headless"]["username"] == "admin"
 
+    def test_no_cache_path_is_passed_through_to_auth(self, tmp_path, monkeypatch):
+        from vip.config import VIPConfig
+
+        self._patch_client_and_ui(monkeypatch)
+        monkeypatch.setattr(vip.cli.cleanup, "auth_cache_path", lambda: None)
+
+        calls = {}
+
+        def _fake_headless(**kwargs):
+            calls["headless"] = kwargs
+            return _fake_session(tmp_path)
+
+        monkeypatch.setattr(vip.cli.cleanup, "start_headless_auth", _fake_headless)
+
+        config = VIPConfig()
+        config.auth.username = "admin"
+        config.auth.password = "secret"
+
+        vip.cli._cleanup_workbench_sessions("https://wb.example.com", _make_args(), config)
+
+        assert calls["headless"]["cache_path"] is None
+
     def test_uses_interactive_auth_when_no_credentials(self, tmp_path, monkeypatch):
         from vip.config import VIPConfig
 

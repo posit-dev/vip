@@ -181,12 +181,10 @@ class InteractiveAuthSession:
         """
         if not self._cache_path or not self.api_key:
             return False
-        if not self._cache_path.exists():
-            return False
         meta_path = self._cache_path.with_suffix(".meta.json")
-        if not meta_path.exists():
-            return False
         try:
+            if not self._cache_path.exists() or not meta_path.exists():
+                return False
             # Validate the cache state file is parseable JSON.  A corrupt
             # state file would make Playwright's ``storage_state=`` load
             # fail on the next run; treating it as a live reference would
