@@ -152,6 +152,7 @@ def connect_accessible(connect_client):
 Key rules:
 
 -   The `@connect`, `@workbench`, or `@package_manager` tag in the feature file controls auto-skip when the product is not configured.
+-   A scenario outside that product's directory that still needs it (a TLS probe, a load test) takes `@requires_connect`, `@requires_workbench`, or `@requires_package_manager`. These deselect the same way but don't join the product's `--categories` selection or imply credentials. A `Given Connect is configured in vip.toml` step does not deselect on its own; `selftests/test_requires_tags.py` enforces the matching tag (Background steps included), and the plugin warns at collection when one is missing. A scenario that also needs credentials (one that deploys content) takes the product marker instead.
 -   Step function names should be descriptive. Use `target_fixture` to pass state between steps.
 -   Tests must be non-destructive. Tag created content with `_vip_test` and clean it up in a final `then` step.
 -   Use version gating for version-specific features: `@pytest.mark.min_version(product="connect", version="2024.09.0")`
@@ -243,9 +244,13 @@ fixtures, registered markers, and client entry points. `selftests/test_scaffold_
 parses the real source and fails if that inventory ever drifts -- keep it in sync when fixtures or
 markers change.
 
-When writing a new extension example, follow the same four-layer architecture and add
-`@pytest.mark.connect` / `@pytest.mark.workbench` decorators to every `@scenario` function so
-auto-skip works correctly (feature-level Gherkin tags alone are not sufficient).
+When writing a new extension example, follow the same four-layer architecture and tag every
+scenario with only the products it uses: `@connect` / `@workbench` / `@package_manager` for a test
+of that product, or `@requires_connect` / `@requires_workbench` / `@requires_package_manager` for one
+that only needs it configured. pytest-bdd turns Feature-, Scenario- and Examples-level tags into
+pytest markers, so the tag alone deselects; a Feature-level tag applies to every scenario in the
+file. The shipped examples also put the matching `@pytest.mark.<product>` decorator on each
+`@scenario` function so the requirement shows in the Python file too.
 
 ## Fixtures available in product tests
 
@@ -428,6 +433,7 @@ Register warning filters in `src/vip/plugin/configure.py::pytest_configure` (via
 -   Adding a Workbench scenario that ends the shared auth session (sign-out, session revocation, password change) without ordering it last *and* restoring the session afterwards. Under `--interactive-auth` / `--headless-auth` every Workbench scenario shares one account, so ending that session breaks every scenario still running on other xdist workers, plus the cached auth session on disk. `test_workbench_signout` is the worked example.
 -   Creating `.py` step files without a matching `.feature` file (or vice versa).
 -   Forgetting the `@connect`/`@workbench`/`@package_manager` tag in feature files (breaks auto-skip).
+-   Reading pytest-bdd internals anywhere other than `_scenario_for` and `_scenario_given_steps` in `src/vip/plugin/results.py`. pytest-bdd 9 has no public collection-time scenario API, so those two helpers are the only places allowed to touch its registry, its scenario templates or its `_pytest_bdd_example` parameter.
 -   Adding a bare `pytest.skip()` to a file listed in `selftests/test_skip_triage.py`. Every skip in those files has been deliberately classified, and `test_skip_triage.py` fails the build if a new unclassified one appears — use `attest.unproven()` or `attest.not_applicable()`.
 -   Reaching for a bare `pytest.skip()` when the real situation is "I could not check this". Skipping there lets an unverified deployment report itself as a passing one. If the product was configured and you still could not run the check, use `vip.attest.unproven()`.
 -   Using non-conventional PR titles (must be `type: description`).

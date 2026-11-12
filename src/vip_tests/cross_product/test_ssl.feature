@@ -10,10 +10,19 @@ Feature: SSL certificates and HTTPS
     Then the certificate is valid and not expired
     And the certificate chain is complete
 
+    @requires_connect
     Examples:
       | product         |
       | Connect         |
+
+    @requires_workbench
+    Examples:
+      | product         |
       | Workbench       |
+
+    @requires_package_manager
+    Examples:
+      | product         |
       | Package Manager |
 
   Scenario Outline: HTTP redirects to HTTPS for <product>
@@ -22,10 +31,19 @@ Feature: SSL certificates and HTTPS
     Then the response redirects to HTTPS
     And the HTTP port is closed or serves no content directly
 
+    @requires_connect
     Examples:
       | product         |
       | Connect         |
+
+    @requires_workbench
+    Examples:
+      | product         |
       | Workbench       |
+
+    @requires_package_manager
+    Examples:
+      | product         |
       | Package Manager |
 
   Scenario Outline: TLS 1.2 or higher is enforced for <product>
@@ -34,8 +52,17 @@ Feature: SSL certificates and HTTPS
     Then TLS 1.0 and TLS 1.1 connections are rejected
     And TLS 1.2 or higher succeeds
 
+    @requires_connect
     Examples:
       | product         |
       | Connect         |
+
+    @requires_workbench
+    Examples:
+      | product         |
       | Workbench       |
+
+    @requires_package_manager
+    Examples:
+      | product         |
       | Package Manager |

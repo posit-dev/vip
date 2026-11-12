@@ -16,6 +16,11 @@ from typing import Any
 
 import pytest
 
+try:
+    from pytest_bdd.scenario import scenario_wrapper_template_registry
+except ImportError:  # private API; see _scenario_for
+    scenario_wrapper_template_registry = None  # type: ignore[assignment]
+
 from vip import __version__ as vip_version
 from vip.attest import UNPROVEN_SENTINEL
 from vip.config import VIPConfig
@@ -38,6 +43,10 @@ _PRODUCT_MARKERS = {
     "package_manager": "package_manager",
 }
 
+# Mapping from feature-file tag (``@requires_connect`` etc.) to product config key.
+# These tags only gate collection; unlike _PRODUCT_MARKERS they don't define a category.
+_REQUIRES_MARKERS = {f"requires_{key}": key for key in _PRODUCT_MARKERS.values()}
+
 #: Exit code for a run in which nothing failed but something went unverified.
 #: Deliberately distinct from pytest's own codes (0 ok, 1 failed, 2 interrupted,
 #: 3 internal, 4 usage, 5 no tests collected) so a CI job can tell "the
@@ -56,14 +65,51 @@ UNPROVEN_DISPLAY_PREFIX = "UNPROVEN: "
 # ---------------------------------------------------------------------------
 
 
+def _scenario_for(item: pytest.Item) -> Any | None:
+    """Return the pytest-bdd scenario template behind *item*, or None for a non-BDD test.
+
+    pytest-bdd has no public way to reach a scenario at collection time, so this reads its
+    internal ``scenario_wrapper_template_registry``. Keep every read of pytest-bdd internals in
+    this function and ``_scenario_given_steps``. If a pytest-bdd release moves the registry,
+    this returns None instead of breaking the plugin, and ``selftests/plugin/test_json_report.py``
+    fails.
+    """
+    fn = getattr(item, "obj", None)
+    if fn is None or scenario_wrapper_template_registry is None:
+        return None
+    try:
+        return scenario_wrapper_template_registry.get(fn)
+    except TypeError:  # obj isn't weak-referenceable, so it can't be a scenario wrapper
+        return None
+
+
+def _scenario_given_steps(item: pytest.Item) -> list[str]:
+    """Return the text of every Given step *item* runs, Background steps included.
+
+    For a Scenario Outline the steps are rendered with the item's Examples row, so
+    ``<product> is configured`` comes back as ``Connect is configured``. This reads the private
+    template ``render``/``steps`` API and the ``_pytest_bdd_example`` parameter, so if their shape
+    changes it returns ``[]`` rather than failing collection, and the guard-warning selftests in
+    ``selftests/plugin/test_marker_deselection.py`` fail.
+    """
+    template = _scenario_for(item)
+    if template is None:
+        return []
+    callspec = getattr(item, "callspec", None)
+    example = callspec.params.get("_pytest_bdd_example") if callspec is not None else None
+    try:
+        steps = template.render(example).steps if isinstance(example, dict) else template.steps
+        return [step.name for step in steps if step.type == "given"]
+    except (AttributeError, KeyError, TypeError):  # private API changed shape; see docstring
+        return []
+
+
 def _stash_scenario_metadata(item: pytest.Item) -> None:
     """Extract pytest-bdd scenario metadata and stash it on the item."""
     scenario_title = None
     feature_description = None
 
-    # pytest-bdd stores scenario info as __scenario__ on the wrapper function.
-    fn = getattr(item, "obj", None)
-    scenario_obj = getattr(fn, "__scenario__", None) if fn else None
+    scenario_obj = _scenario_for(item)
     if scenario_obj is not None:
         scenario_title = getattr(scenario_obj, "name", None)
         feature_obj = getattr(scenario_obj, "feature", None)

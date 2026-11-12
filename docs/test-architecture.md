@@ -78,7 +78,13 @@ VIP supports running the same scenario through different channels using product 
 
 ### Tagging rules
 
-Every feature file **must** have a product marker tag (`@connect`, `@workbench`, or `@package_manager`). The tag controls auto-skip: when a product is not configured, all scenarios with its tag are skipped automatically. Forgetting the tag breaks this mechanism and causes confusing failures.
+Every scenario that needs a product **must** carry a tag for it. Only tags deselect: when a product is not configured, every scenario tagged for it is left out of the run and the report. Forgetting the tag breaks this mechanism and causes confusing failures.
+
+A test *of* a product takes its product marker (`@connect`, `@workbench`, or `@package_manager`), usually on the Feature. That marker also adds the scenario to the product's `--categories` selection and marks it as needing credentials, so `--no-auth` drops it and `--api-auth` drops it unless it also has `@api_auth`.
+
+A scenario that needs a product but isn't a test *of* that product (a TLS probe in `security/`, a load test in `performance/`) takes `@requires_connect`, `@requires_workbench`, or `@requires_package_manager` instead. These deselect the same way, but they don't add the scenario to that product's `--categories` selection and they don't mark it as needing credentials, so `--no-auth` and `--api-auth` both keep it. A scenario that needs credentials as well, such as one that deploys content, takes the product marker. When a Scenario Outline's `Examples` rows cover several products, give each product its own tagged `Examples:` block.
+
+A `Given Connect is configured in vip.toml` step does not deselect on its own, including in a `Background:`. `selftests/test_requires_tags.py` fails if a feature file under `src/vip_tests` has one without a matching tag, and the plugin warns at collection time about any scenario, extensions included, whose product Given step has no matching tag.
 
 ### Version gating
 
@@ -356,4 +362,6 @@ every scenario in the file — if you tag the whole `Feature:` with both `@conne
 every scenario requires both products, which causes incorrect deselection when only one product is
 configured. The safe, portable pattern is to tag each `Scenario:` with only the product(s) it
 actually uses, or to apply `@pytest.mark.connect`/`@pytest.mark.workbench` directly on the
-`@scenario` decorator function in Python.
+`@scenario` decorator function in Python. The same rules hold for `@requires_connect`,
+`@requires_workbench` and `@requires_package_manager` (see "Tagging rules" above), and for an
+outline whose rows cover different products, tag each `Examples:` block instead.

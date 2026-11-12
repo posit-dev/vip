@@ -9,8 +9,17 @@ Feature: Login and page load times
     When I measure the <product> login page load time
     Then the page loads within the configured timeout
 
+    @requires_connect
     Examples:
       | product         |
       | Connect         |
+
+    @requires_workbench
+    Examples:
+      | product         |
       | Workbench       |
+
+    @requires_package_manager
+    Examples:
+      | product         |
       | Package Manager |
