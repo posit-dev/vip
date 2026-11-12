@@ -3,6 +3,15 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.11.1 (2026-11-12)
+
+### Features
+
+- **plugin**: Migrate to pytest-bdd 9 with @requires_* tags ([#819](https://github.com/posit-dev/vip/pull/819), [`27a62f8`](https://github.com/posit-dev/vip/commit/27a62f804d9eadc2b69c1dd1fbd43eb81c681dce))
+
+- **workbench**: Launch IDE sessions via the Workbench API under --api-auth ([#818](https://github.com/posit-dev/vip/pull/818), [`73b8d0c`](https://github.com/posit-dev/vip/commit/73b8d0c4a3738394fc82b02ad9b11bebd4d05b68))
+
+
 ## v2026.11.0 (2026-11-05)
 
 ### Bug Fixes
