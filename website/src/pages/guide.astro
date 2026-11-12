@@ -419,9 +419,15 @@ cd report &amp;&amp; quarto publish connect --server https://connect.example.com
             <code>vip report</code> did not make from the current
             <code>results.json</code> is left out. Run <code>vip report</code>
             again to include it. A <code>failures.json</code> from a different
-            run than <code>results.json</code> is left out too, and so is a
-            JUnit or SARIF file that is older than <code>results.json</code>.
-            The manifest lists each file that is left out, with the reason.
+            run than <code>results.json</code> is left out too. A JUnit or
+            SARIF file is included if it holds the run time of
+            <code>results.json</code>. If it does not, it is left out when
+            it is older than <code>results.json</code>. The manifest lists
+            each file that is left out, with the reason. In the configuration
+            summary, each <code>*_set</code> value says if the configuration
+            file or the environment of <code>vip bundle</code> holds that
+            credential. The <code>auth_cache</code> values say if the run
+            saved a browser session or minted a Connect API key.
           </p>
         </section>
 

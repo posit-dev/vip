@@ -196,6 +196,29 @@ def test_failures_json_of_the_same_run_stays_when_results_is_newer(tmp_path):
     assert got.left_out == []
 
 
+@pytest.mark.parametrize("name", ["junit.xml", "results.sarif"])
+def test_sidecar_with_the_run_time_stays_when_results_is_newer(tmp_path, name):
+    # An edit of results.json gives it a newer file time than the sidecar.
+    report = tmp_path / "report"
+    run = "2026-11-12T14:00:00+00:00"
+    results = json.dumps({"generated_at": run, "results": []})
+    _seed(report, sidecars=(), rendered=(), results=results, results_mtime=1_000_500.0)
+    _write(report / name, f'<x generated_at="{run}"/>', 1_000_001.0)
+    got = collect_members(report / "results.json", report)
+    assert f"report/{name}" in got.members
+    assert got.left_out == []
+
+
+@pytest.mark.parametrize("name", ["junit.xml", "results.sarif"])
+def test_older_sidecar_with_another_run_time_is_left_out(tmp_path, name):
+    report = tmp_path / "report"
+    results = json.dumps({"generated_at": "2026-11-12T14:00:00+00:00", "results": []})
+    _seed(report, sidecars=(), rendered=(), results=results, results_mtime=1_000_500.0)
+    _write(report / name, '<x generated_at="2026-11-12T13:00:00+00:00"/>', 1_000_001.0)
+    got = collect_members(report / "results.json", report)
+    assert got.left_out == [{"name": f"report/{name}", "reason": "is older than results.json"}]
+
+
 def test_failures_json_of_another_run_is_left_out_when_it_is_newer(tmp_path):
     report = tmp_path / "report"
     _seed_run_pair(report, "2026-11-12T14:00:00+00:00", "2026-11-12T15:00:00+00:00")

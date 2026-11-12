@@ -115,10 +115,10 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
     """Read the allowlisted report files.
 
     Sidecar files come from the directory of *results_path*. ``vip verify``
-    writes the same ``generated_at`` value to results.json and failures.json,
-    so a failures.json with a different value is from a different run and is
-    left out. A sidecar with no such value to compare is left out if it is
-    older than results.json.
+    writes the ``generated_at`` value of results.json to each sidecar. A
+    failures.json with a different value is from a different run and is left
+    out. A junit.xml or results.sarif that holds the value is from the same
+    run. Any other sidecar is left out if it is older than results.json.
     Rendered files come from ``<report_dir>/_output/``. A rendered file is
     included only if the render stamp names it and the SHA-256 of this
     results.json. The secret scan cannot read the text in the PDF, so the PDF
@@ -147,6 +147,8 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
                     reason = "is from a different run than results.json"
                     _leave_out(out, archive_name, path, reason, "")
                     continue
+            elif results_run is not None and results_run.encode() in content:
+                pass
             elif path.stat().st_mtime < results_mtime:
                 hint = (
                     " If you copied the report directory without file times, "

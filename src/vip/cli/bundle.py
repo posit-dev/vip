@@ -143,6 +143,19 @@ def _cache_secrets(root: Path) -> list[tuple[str, str]]:
     return pairs
 
 
+def _auth_cache_summary(cache_secrets: list[tuple[str, str]]) -> dict[str, bool]:
+    """Say what the auth cache of the run holds, with no values.
+
+    A run with ``--interactive-auth`` or ``--headless-auth`` saves a browser
+    session, and can mint a Connect API key.
+    """
+    labels = [label for label, _ in cache_secrets]
+    return {
+        "session": any(label != "auth cache api_key" for label in labels),
+        "minted_connect_api_key": "auth cache api_key" in labels,
+    }
+
+
 def _default_output(root: Path, results: bytes) -> Path:
     """Return ``<root>/vip-bundle-<deployment>-<UTC time>.zip``."""
     try:
@@ -192,11 +205,13 @@ def run_bundle(args: argparse.Namespace) -> None:
     root = _invocation_root(args.results)
     report_dir = _report_dir(args.results)
     results_path = Path(args.results) if args.results else report_dir / "results.json"
+    # The report files are read first, so that a directory with no run gives
+    # the error for the missing results.json and not for the missing vip.toml.
+    collected = collect_members(results_path, report_dir)
     config_path = _config_path(args, root)
     # VIPConfig() still reads the VIP_* secret variables in its __post_init__ methods.
     config = _load(config_path) if config_path is not None else VIPConfig()
 
-    collected = collect_members(results_path, report_dir)
     results = collected.members["report/results.json"]
     if config_path is not None:
         _check_config_matches(config, config_path, results)
@@ -242,7 +257,14 @@ def run_bundle(args: argparse.Namespace) -> None:
 
     members = dict(collected.members)
     if config_path is not None:
-        members["config-summary.json"] = _json_bytes(build_config_summary(config))
+        summary = build_config_summary(config)
+        summary["credential_flags"] = (
+            "Each *_set value is true if the configuration file or the environment of "
+            "the vip bundle command holds that credential. The auth_cache values come "
+            "from the files that the run saved."
+        )
+        summary["auth_cache"] = _auth_cache_summary(cache_secrets)
+        members["config-summary.json"] = _json_bytes(summary)
     members["version.txt"] = (_format_version_details() + "\n").encode("utf-8")
 
     # Scan every member before anything is written. The manifest is scanned

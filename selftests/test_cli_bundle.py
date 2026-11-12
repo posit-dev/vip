@@ -415,6 +415,30 @@ def test_inside_report_dir_still_scans_config_and_cache(root, monkeypatch):
     assert "auth cache api_key" in str(exc.value)
 
 
+def test_directory_with_no_run_names_the_missing_results_first(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(BundleError, match="no results found") as exc:
+        run_bundle(_args())
+    assert "vip.toml" not in str(exc.value)
+
+
+def test_summary_says_what_the_auth_cache_of_the_run_holds(root):
+    run_bundle(_args(output="b.zip"))
+    with zipfile.ZipFile(root / "b.zip") as zf:
+        summary = json.loads(zf.read("config-summary.json"))
+    assert summary["auth_cache"] == {"session": True, "minted_connect_api_key": True}
+    assert "vip bundle" in summary["credential_flags"]
+
+
+def test_summary_says_when_the_run_left_no_auth_cache(root):
+    (root / ".vip-auth-cache.json").unlink()
+    (root / ".vip-auth-cache.meta.json").unlink()
+    run_bundle(_args(output="b.zip"))
+    with zipfile.ZipFile(root / "b.zip") as zf:
+        summary = json.loads(zf.read("config-summary.json"))
+    assert summary["auth_cache"] == {"session": False, "minted_connect_api_key": False}
+
+
 def test_missing_config_fails_without_flag(root):
     (root / "vip.toml").unlink()
     with pytest.raises(BundleError, match="--no-config"):

@@ -640,6 +640,21 @@ class TestWriteJUnitXml:
         assert failure is not None
         assert failure.get("message") == "test failed"
 
+    def test_generated_at_is_a_suite_property(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        write_junit_xml(self._sample(), out)
+        suite = ET.parse(out).getroot().find("testsuite")
+        prop = suite.find("properties/property[@name='generated_at']")
+        assert prop.get("value") == "2026-07-21T12:00:00+00:00"
+        # The properties element must come before the test cases.
+        assert suite[0].tag == "properties"
+        assert b"2026-07-21T12:00:00+00:00" in out.read_bytes()
+
+    def test_no_generated_at_gives_no_properties(self, tmp_path):
+        out = tmp_path / "junit.xml"
+        write_junit_xml(ReportData(), out)
+        assert ET.parse(out).getroot().find("testsuite/properties") is None
+
     def test_empty_report_data_is_well_formed(self, tmp_path):
         out = tmp_path / "junit.xml"
         write_junit_xml(ReportData(), out)
@@ -703,6 +718,18 @@ class TestWriteJUnitXml:
 
 
 class TestWriteSarif:
+    def test_generated_at_is_a_run_property(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        write_sarif(ReportData(generated_at="2026-07-21T12:00:00+00:00"), out)
+        run = json.loads(out.read_text(encoding="utf-8"))["runs"][0]
+        assert run["properties"] == {"generated_at": "2026-07-21T12:00:00+00:00"}
+        assert b"2026-07-21T12:00:00+00:00" in out.read_bytes()
+
+    def test_no_generated_at_gives_no_run_properties(self, tmp_path):
+        out = tmp_path / "results.sarif"
+        write_sarif(ReportData(), out)
+        assert "properties" not in json.loads(out.read_text(encoding="utf-8"))["runs"][0]
+
     def _sample(self) -> ReportData:
         return ReportData(
             results=[
