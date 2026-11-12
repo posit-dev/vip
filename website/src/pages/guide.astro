@@ -418,11 +418,11 @@ cd report &amp;&amp; quarto publish connect --server https://connect.example.com
             uses only the environment and the auth cache. A rendered page that
             <code>vip report</code> did not make from the current
             <code>results.json</code> is left out. Run <code>vip report</code>
-            again to include it. A <code>failures.json</code> from a different
-            run than <code>results.json</code> is left out too. A JUnit or
-            SARIF file is included if it holds the run time of
-            <code>results.json</code>. If it does not, it is left out when
-            it is older than <code>results.json</code>. The manifest lists
+            again to include it. A <code>failures.json</code>, JUnit, or SARIF
+            file from a different run than <code>results.json</code> is left
+            out too. If a JUnit or SARIF file from an older VIP has no run
+            time and is older than <code>results.json</code>, it is also left
+            out. The manifest lists
             each file that is left out, with the reason. In the configuration
             summary, each <code>*_set</code> value says if the configuration
             file or the environment of <code>vip bundle</code> holds that

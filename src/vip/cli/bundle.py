@@ -8,9 +8,11 @@ import json
 import os
 import re
 import sys
+import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from vip import __version__
 from vip.auth.cache import AUTH_CACHE_FILENAME, auth_cache_path
@@ -24,6 +26,7 @@ from vip.bundle.archive import (
 from vip.bundle.summary import (
     auth_cache_secrets,
     build_config_summary,
+    inline_connection_string_secrets,
     secret_values,
     strip_url_userinfo,
 )
@@ -97,12 +100,36 @@ def _load(path: Path) -> VIPConfig:
         raise BundleError(f"could not read {path}: {exc}") from exc
 
 
+def _inline_secrets(path: Path) -> list[tuple[str, str]]:
+    """Return the connection string secrets in the text of *path*."""
+    try:
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise BundleError(f"could not read {path}: {exc}") from exc
+    return inline_connection_string_secrets(raw)
+
+
+def _host(url: str) -> tuple[str, int | None]:
+    """Return the host name and the explicit port of *url*.
+
+    A login with ``--interactive-auth`` or ``--headless-auth`` can change the
+    scheme and the path of a product URL before the run records it. The host
+    and the port stay the same.
+    """
+    try:
+        parts = urlsplit(url if "//" in url else f"//{url}")
+        return (parts.hostname or "").lower(), parts.port
+    except ValueError:
+        return url, None
+
+
 def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None:
     """Refuse a configuration file that is not the one that ``vip verify`` used.
 
     results.json holds the deployment name and each product URL from the
-    configuration of the run. If they differ, the scan would look for the
-    wrong secrets.
+    configuration of the run. If the name differs, if the host or the port of
+    a URL differs, or if only one of the two has a URL for a product, the scan
+    would look for the wrong secrets.
     """
     data = json.loads(results)
     name = data.get("deployment_name")
@@ -115,13 +142,17 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
     products = data.get("products")
     for product in _PRODUCTS:
         entry = products.get(product) if isinstance(products, dict) else None
-        run_url = entry.get("url") if isinstance(entry, dict) else None
+        if not isinstance(entry, dict) or not isinstance(entry.get("url"), str):
+            continue
+        run_url = entry["url"]
         url = config.product_config(product).url
-        if run_url and url and run_url.rstrip("/") != url.rstrip("/"):
+        if not run_url and not url:
+            continue
+        if not run_url or not url or _host(run_url) != _host(url):
             raise BundleError(
                 f"{path} does not match results.json: the {product} URL is "
-                f"{strip_url_userinfo(url)} in the configuration and "
-                f"{strip_url_userinfo(run_url)} in results.json. "
+                f"{strip_url_userinfo(url) or 'not set'} in the configuration and "
+                f"{strip_url_userinfo(run_url) or 'not set'} in results.json. "
                 "Pass --config with the file that 'vip verify' used."
             )
 
@@ -221,10 +252,11 @@ def run_bundle(args: argparse.Namespace) -> None:
             "--no-config is set, so the secret scan used only the environment "
             "variables and the auth cache. Look at the zip before you send it."
         )
+    inline = _inline_secrets(config_path) if config_path is not None else []
     cache_secrets = _cache_secrets(root)
-    secrets = secret_values(config, cache_secrets)
+    secrets = secret_values(config, [*inline, *cache_secrets])
     # secret_values drops repeated values, so the cache count is the remainder.
-    config_count = len(secret_values(config))
+    config_count = len(secret_values(config, inline))
     scan_sources = {
         "configuration_and_environment": config_count,
         "auth_cache": len(secrets) - config_count,

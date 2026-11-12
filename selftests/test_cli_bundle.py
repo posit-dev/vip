@@ -15,6 +15,7 @@ import pytest
 import vip.cli.bundle as bundle_module
 from vip.bundle.stamp import record_rendered, results_digest
 from vip.cli import main, run_bundle
+from vip.config import VIPConfig
 from vip.errors import BundleError
 
 _VIP_SECRET_ENV = (
@@ -372,6 +373,72 @@ def test_config_with_another_product_url_fails(root):
         encoding="utf-8",
     )
     with pytest.raises(BundleError, match="the connect URL is"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_config_with_another_scheme_and_path_passes(root):
+    # A browser login can change the scheme and the path of the URL that the
+    # run records. The host is the same, so the file is the correct one.
+    toml = (root / "vip.toml").read_text(encoding="utf-8")
+    (root / "vip.toml").write_text(
+        toml.replace("https://connect.example.com", "http://connect.example.com/connect/"),
+        encoding="utf-8",
+    )
+    _write_report(root)
+    run_bundle(_args(output="b.zip"))
+    assert (root / "b.zip").is_file()
+
+
+def test_config_with_another_port_fails(root):
+    toml = (root / "vip.toml").read_text(encoding="utf-8")
+    (root / "vip.toml").write_text(
+        toml.replace("https://connect.example.com", "https://connect.example.com:8443"),
+        encoding="utf-8",
+    )
+    _write_report(root)
+    with pytest.raises(BundleError, match="the connect URL is"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_config_with_no_url_for_a_product_of_the_run_fails(root):
+    toml = (root / "vip.toml").read_text(encoding="utf-8")
+    (root / "vip.toml").write_text(
+        toml.replace("https://connect.example.com", ""), encoding="utf-8"
+    )
+    _write_report(root)
+    with pytest.raises(BundleError, match="the connect URL is not set in the configuration"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_config_with_a_url_for_a_product_that_the_run_did_not_have_fails(tmp_path):
+    config = VIPConfig()
+    config.workbench.url = "https://workbench.example.com"
+    results = json.dumps({"products": {"workbench": {"url": ""}, "connect": {"url": ""}}})
+    with pytest.raises(BundleError, match=r"not set in results\.json"):
+        bundle_module._check_config_matches(config, tmp_path / "vip.toml", results.encode())
+
+
+def test_inline_connection_string_blocks_bundle_when_the_env_variable_replaces_it(
+    root, monkeypatch
+):
+    # load_config gives the value of the variable, not the inline string.
+    toml = (root / "vip.toml").read_text(encoding="utf-8")
+    (root / "vip.toml").write_text(
+        toml.replace("[data_sources.pg]", '[data_sources.pg]\nconnection_string_env = "PG_CONN"'),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PG_CONN", "postgresql://other:OTHER-db-password-9@db:5432/app")
+    _write_report(root, results_extra="SECRET-db-password")
+    with pytest.raises(BundleError, match=r"data_sources\.pg\.connection_string"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_env_credential_blocks_bundle_when_the_config_has_an_inline_value(root, monkeypatch):
+    # The loaded configuration keeps the inline key, so the scan must read
+    # the variable directly.
+    monkeypatch.setenv("VIP_CONNECT_API_KEY", "ENV-ONLY-CONNECT-KEY-77")
+    _write_report(root, results_extra="ENV-ONLY-CONNECT-KEY-77")
+    with pytest.raises(BundleError, match="VIP_CONNECT_API_KEY"):
         run_bundle(_args(output="b.zip"))
 
 

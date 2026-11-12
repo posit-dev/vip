@@ -100,9 +100,19 @@ SUMMARIZED_FIELDS = frozenset(
     }
 )
 
-# Secrets that VIP reads from the environment and that VIPConfig() does not
-# always hold: VIPConfig() has git_test=None, and the TOTP seed is never in it.
-SECRET_ENV_VARS = ("VIP_GIT_TOKEN", "VIP_TEST_TOTP_SECRET")
+# Each credential variable that VIP reads. The scan reads them all directly,
+# because the loaded configuration holds a variable only if the matching field
+# in vip.toml is empty, has git_test=None with no [workbench.git_test] table,
+# and never holds the TOTP seed.
+SECRET_ENV_VARS = (
+    "VIP_CONNECT_API_KEY",
+    "VIP_WORKBENCH_API_KEY",
+    "VIP_PACKAGE_MANAGER_TOKEN",
+    "VIP_PM_TOKEN",
+    "VIP_TEST_PASSWORD",
+    "VIP_GIT_TOKEN",
+    "VIP_TEST_TOTP_SECRET",
+)
 # httpx reads these when proxy.trust_env is true. They can carry user:pass.
 PROXY_ENV_VARS = (
     "HTTP_PROXY",
@@ -253,13 +263,30 @@ def auth_cache_secrets(path: Path) -> list[tuple[str, str]]:
     return pairs
 
 
+def inline_connection_string_secrets(raw: Any) -> list[tuple[str, str]]:
+    """Return the secrets of each ``connection_string`` in the parsed text of vip.toml.
+
+    The loaded configuration holds the value of ``connection_string_env``
+    in place of the inline string if that variable is set. The inline string
+    is a credential in both cases.
+    """
+    sources = raw.get("data_sources") if isinstance(raw, dict) else None
+    pairs: list[tuple[str, str]] = []
+    for name, entry in sources.items() if isinstance(sources, dict) else ():
+        conn = entry.get("connection_string") if isinstance(entry, dict) else None
+        if isinstance(conn, str):
+            pairs += _connection_string_secrets(f"data_sources.{name}.connection_string", conn)
+    return pairs
+
+
 def secret_values(
     config: VIPConfig, cache_secrets: Sequence[tuple[str, str]] = ()
 ) -> list[tuple[str, str]]:
     """Return ``(label, value)`` for every credential that the bundle must not hold.
 
-    *cache_secrets* are the pairs that :func:`auth_cache_secrets` read. The
-    label names the source of the value, so an error can name it without
+    *cache_secrets* are extra pairs, such as the ones that
+    :func:`auth_cache_secrets` and :func:`inline_connection_string_secrets`
+    read. The label names the source of the value, so an error can name it without
     printing the value. Empty values and repeated values are dropped.
     """
     pairs: list[tuple[str, str]] = [

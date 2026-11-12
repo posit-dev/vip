@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 import tempfile
 import zipfile
 from collections.abc import Sequence
@@ -101,12 +102,26 @@ def _check_results_file(results_path: Path) -> bytes:
     return data
 
 
-def _generated_at(data: bytes) -> str | None:
-    """Return the ``generated_at`` value of a results.json or a failures.json."""
+_JUNIT_GENERATED_AT = re.compile(rb'<property name="generated_at" value="([^"]*)"')
+
+
+def _generated_at(name: str, data: bytes) -> str | None:
+    """Return the ``generated_at`` value that ``vip verify`` wrote to the file *name*.
+
+    results.json and failures.json hold it as a top-level key, junit.xml as a
+    suite property, and results.sarif as a property of the first run.
+    """
+    if name == "junit.xml":
+        match = _JUNIT_GENERATED_AT.search(data)
+        return html.unescape(match.group(1).decode("utf-8", "replace")) or None if match else None
     try:
         parsed = json.loads(data)
     except (ValueError, RecursionError):
         return None
+    if name == "results.sarif":
+        runs = parsed.get("runs") if isinstance(parsed, dict) else None
+        first = runs[0] if isinstance(runs, list) and runs else None
+        parsed = first.get("properties") if isinstance(first, dict) else None
     value = parsed.get("generated_at") if isinstance(parsed, dict) else None
     return value if isinstance(value, str) and value else None
 
@@ -116,9 +131,10 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
 
     Sidecar files come from the directory of *results_path*. ``vip verify``
     writes the ``generated_at`` value of results.json to each sidecar. A
-    failures.json with a different value is from a different run and is left
-    out. A junit.xml or results.sarif that holds the value is from the same
-    run. Any other sidecar is left out if it is older than results.json.
+    sidecar with a different value is from a different run and is left out. A
+    sidecar with the same value is from the same run. If the sidecar or
+    results.json has no value, the sidecar is left out if it is older than
+    results.json.
     Rendered files come from ``<report_dir>/_output/``. A rendered file is
     included only if the render stamp names it and the SHA-256 of this
     results.json. The secret scan cannot read the text in the PDF, so the PDF
@@ -130,7 +146,7 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
     out.members["report/results.json"] = data
     out.sources["report/results.json"] = results_path
     results_mtime = results_path.stat().st_mtime
-    results_run = _generated_at(data)
+    results_run = _generated_at("results.json", data)
 
     sidecar_dir = results_path.parent
     for name in REPORT_SIDECAR_FILES[1:]:
@@ -141,14 +157,12 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
             _leave_out(out, archive_name, path, "is a link or is not a regular file", "")
         else:
             content = _read(path)
-            sidecar_run = _generated_at(content) if name == "failures.json" else None
+            sidecar_run = _generated_at(name, content)
             if results_run is not None and sidecar_run is not None:
                 if sidecar_run != results_run:
                     reason = "is from a different run than results.json"
                     _leave_out(out, archive_name, path, reason, "")
                     continue
-            elif results_run is not None and results_run.encode() in content:
-                pass
             elif path.stat().st_mtime < results_mtime:
                 hint = (
                     " If you copied the report directory without file times, "
