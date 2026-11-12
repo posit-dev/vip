@@ -427,10 +427,73 @@ def test_auth_cache_secrets_skip_missing_or_bad_files(tmp_path):
         "TOKEN-0123456789|test.user@example.com",
         'prefix "test.user@example.com" TOKEN-0123456789',
         "a@b@example.com-0123456789",
+        "tok@en-0123456789@example.com",
         "no-at-sign-0123456789.example.com",
+        '{"login":"test.user@example.com","t":"abc"}',
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ2aXAifQ.signature",
     ],
 )
 def test_auth_cache_value_that_is_more_than_an_email_is_a_secret(tmp_path, value):
     state = tmp_path / ".vip-auth-cache.json"
     state.write_text(json.dumps({"cookies": [{"name": "sid", "value": value}]}), encoding="utf-8")
     assert auth_cache_secrets(state) == [("auth cache cookie sid", value)]
+
+
+def test_auth_cache_value_floor_is_exactly_16_characters(tmp_path):
+    at, below = "a1b2c3d4e5f6g7h8", "a1b2c3d4e5f6g7h"
+    state = tmp_path / ".vip-auth-cache.json"
+    cookies = [{"name": "at", "value": at}, {"name": "below", "value": below}]
+    state.write_text(json.dumps({"cookies": cookies}), encoding="utf-8")
+    assert auth_cache_secrets(state) == [("auth cache cookie at", at)]
+
+
+def test_email_shaped_password_and_minted_key_are_secrets(tmp_path):
+    # The login name rule is only for cookies and localStorage values.
+    meta = tmp_path / ".vip-auth-cache.meta.json"
+    meta.write_text(json.dumps({"api_key": "svc.account@example.com"}), encoding="utf-8")
+    config = VIPConfig(auth=AuthConfig(password="svc.user@example.com"))
+    values = {value for _, value in secret_values(config, auth_cache_secrets(meta))}
+    assert {"svc.user@example.com", "svc.account@example.com"} <= values
+
+
+def test_each_product_url_credential_is_a_secret_and_is_not_in_the_summary():
+    config = VIPConfig(
+        connect=ConnectConfig(url="https://u:URL-PASS-connect1@connect.example.com"),
+        workbench=WorkbenchConfig(url="https://u:URL-PASS-workbench1@wb.example.com"),
+        package_manager=PackageManagerConfig(url="https://u:URL-PASS-pm1@pm.example.com"),
+    )
+    values = {value for _, value in secret_values(config)}
+    assert {"URL-PASS-connect1", "URL-PASS-workbench1", "URL-PASS-pm1"} <= values
+    assert "URL-PASS" not in json.dumps(build_config_summary(config))
+
+
+def test_url_credential_is_a_secret_raw_and_percent_decoded():
+    config = VIPConfig(connect=ConnectConfig(url="https://u:p%40ss-0123@connect.example.com"))
+    assert {"p%40ss-0123", "p@ss-0123"} <= {value for _, value in secret_values(config)}
+
+
+_PROXY_VARS = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy")
+
+
+@pytest.mark.parametrize("var", _PROXY_VARS)
+def test_each_proxy_variable_is_read(monkeypatch, var):
+    for other in _PROXY_VARS:
+        monkeypatch.delenv(other, raising=False)
+    monkeypatch.setenv(var, "http://u:ENV-PROXY-PASS@proxy:3128")
+    assert "ENV-PROXY-PASS" in {value for _, value in secret_values(VIPConfig())}
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        # urlsplit raises ValueError for this host.
+        ("http://u:SECRET@[::1/x?token=T", "http://[::1/x"),
+        # A Git remote with no scheme.
+        (
+            "x-access-token:SECRET@github.com/org/repo.git?access_token=T#f",
+            "github.com/org/repo.git",
+        ),
+    ],
+)
+def test_strip_url_userinfo_handles_a_bad_host_and_a_bare_remote(url, expected):
+    assert strip_url_userinfo(url) == expected

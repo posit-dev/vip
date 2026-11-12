@@ -87,7 +87,10 @@ def test_missing_results_raises(tmp_path):
         collect_members(tmp_path / "report/results.json", tmp_path / "report")
 
 
-@pytest.mark.parametrize("name", ["vip.toml", ".vip-auth-cache.json", ".vip-install.json"])
+@pytest.mark.parametrize(
+    "name",
+    ["vip.toml", ".vip-auth-cache.json", ".vip-auth-cache.meta.json", ".vip-install.json"],
+)
 def test_results_cannot_name_a_credential_file(tmp_path, name):
     path = tmp_path / name
     path.write_text('{"results": []}', encoding="utf-8")
@@ -218,6 +221,19 @@ def test_symlinks_are_left_out(tmp_path):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="symlinks need extra rights on Windows")
+def test_links_to_files_in_the_same_directory_are_left_out(tmp_path):
+    report = tmp_path / "report"
+    _seed(report, sidecars=(), rendered=("index.html",))
+    _write(report / "other.json", "x", 1_000_001.0)
+    (report / "failures.json").symlink_to(report / "other.json")
+    stamp = report / "_output" / STAMP_NAME
+    stamp.rename(report / "_output" / "real-stamp.json")
+    stamp.symlink_to(report / "_output" / "real-stamp.json")
+    got = collect_members(report / "results.json", report)
+    assert set(got.members) == {"report/results.json"}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlinks need extra rights on Windows")
 def test_symlinked_output_dir_is_left_out(tmp_path):
     report = tmp_path / "report"
     _seed(report, rendered=())
@@ -274,6 +290,19 @@ PADDED = "QU1DREVGR0hJSktMTU5PUA=="
 def test_find_secret_hits_sees_encoded_forms(secret, stored):
     members = {"report/a": b"x " + stored + b" y", "report/b": b"clean"}
     assert find_secret_hits(members, [("auth.password", secret)]) == [("report/a", "auth.password")]
+
+
+@pytest.mark.parametrize(
+    ("secret", "stored"),
+    [
+        ("pass word-0123", b"pass%20word-0123"),  # quote gives %20, quote_plus gives +
+        ("Pa\\nss-w0rd9", b"Pa\\nss-w0rd9"),  # the value holds a backslash and an n
+    ],
+)
+def test_find_secret_hits_sees_a_space_and_a_backslash(secret, stored):
+    assert find_secret_hits({"report/a": b"x " + stored + b" y"}, [("k", secret)]) == [
+        ("report/a", "k")
+    ]
 
 
 def test_find_secret_hits_finds_nothing_in_clean_members():

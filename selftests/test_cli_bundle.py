@@ -238,6 +238,46 @@ def test_secret_in_failures_json_blocks_bundle(root, capsys):
     assert _leftovers(root) == []
 
 
+@pytest.mark.parametrize(
+    "member",
+    [
+        "junit.xml",
+        "results.sarif",
+        "_output/index.html",
+        "_output/details.html",
+        "_output/vip-report.pdf",
+    ],
+)
+def test_secret_in_each_report_file_blocks_bundle(root, member):
+    report = root / "report"
+    _write(report / member, "x SECRET-pm-token y", RESULTS_MTIME + 5)
+    digest = results_digest((report / "results.json").read_bytes())
+    record_rendered(report / "_output", digest, ("index.html", "details.html", "vip-report.pdf"))
+    with pytest.raises(BundleError, match=r"package_manager\.token") as exc:
+        run_bundle(_args(output="b.zip"))
+    assert Path(member).name in str(exc.value)
+    assert not (root / "b.zip").exists()
+
+
+def test_session_cookie_in_root_cache_blocks_bundle(root):
+    _write_report(root, results_extra=SESSION_COOKIE)
+    with pytest.raises(BundleError, match="auth cache cookie session"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_session_cookie_in_auth_cache_path_blocks_bundle(root, tmp_path, monkeypatch):
+    user_cache = tmp_path / "user-cache" / ".vip-auth-cache.json"
+    user_cache.parent.mkdir()
+    user_cache.write_text(
+        json.dumps({"cookies": [{"name": "sid", "value": "USER-CACHE-COOKIE-0123"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(bundle_module, "auth_cache_path", lambda: user_cache)
+    _write_report(root, results_extra="USER-CACHE-COOKIE-0123")
+    with pytest.raises(BundleError, match="auth cache cookie sid"):
+        run_bundle(_args(output="b.zip"))
+
+
 def test_secret_in_a_made_member_names_it(root):
     # A weak password that is also a setting that is not secret.
     toml = (root / "vip.toml").read_text(encoding="utf-8")
