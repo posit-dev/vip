@@ -8,6 +8,7 @@ from pathlib import Path
 
 from vip import __version__
 from vip.cli.auth import mint_connect_key
+from vip.cli.bundle import run_bundle
 from vip.cli.cleanup import run_cleanup
 from vip.cli.install import run_install, run_uninstall
 from vip.cli.report import run_report
@@ -491,6 +492,58 @@ def main() -> None:
     )
     report_parser.set_defaults(func=run_report)
 
+    # vip bundle
+    bundle_parser = subparsers.add_parser(
+        "bundle",
+        help=(
+            "Write a zip of the report output to share. It leaves out vip.toml and "
+            "the auth cache, and checks each file for known credentials."
+        ),
+    )
+    bundle_parser.add_argument(
+        "--results",
+        default=None,
+        help="Path to results.json (default: report/results.json)",
+    )
+    bundle_config = bundle_parser.add_mutually_exclusive_group()
+    bundle_config.add_argument(
+        "--config",
+        default=None,
+        help="Path to vip.toml (default: VIP_CONFIG env var or vip.toml next to report/)",
+    )
+    bundle_config.add_argument(
+        "--no-config",
+        action="store_true",
+        default=False,
+        help=(
+            "Write the bundle with no vip.toml. The secret scan then uses only "
+            "the environment variables and the auth cache."
+        ),
+    )
+    bundle_parser.add_argument(
+        "--output",
+        default=None,
+        help="Path of the zip (default: vip-bundle-<deployment>-<UTC time>.zip next to report/)",
+    )
+    bundle_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Overwrite the output file if it already exists",
+    )
+    bundle_parser.add_argument(
+        "--allow-match",
+        action="append",
+        default=[],
+        metavar="LABEL",
+        help=(
+            "Write the bundle even though a file holds the value of LABEL, for "
+            "example auth.password. Use it only when the value is not a real "
+            "secret. The manifest records it. Repeat for more labels."
+        ),
+    )
+    bundle_parser.set_defaults(func=run_bundle)
+
     # vip status
     status_parser = subparsers.add_parser(
         "status",
@@ -563,6 +616,7 @@ def main() -> None:
         "uninstall": uninstall_parser,
         "auth": auth_parser,
         "report": report_parser,
+        "bundle": bundle_parser,
         "status": status_parser,
         "scaffold": scaffold_parser,
     }

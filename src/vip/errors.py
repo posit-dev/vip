@@ -42,6 +42,10 @@ class ReportError(VipError):
     """Raised when rendering or reading a VIP report fails."""
 
 
+class BundleError(VipError):
+    """Raised when ``vip bundle`` cannot write a bundle, or refuses to."""
+
+
 class AuthConfigError(AuthError):
     """Raised for user-facing authentication configuration errors."""
 

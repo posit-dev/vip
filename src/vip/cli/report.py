@@ -12,6 +12,8 @@ import sys
 import webbrowser
 from pathlib import Path
 
+from vip.bundle.archive import RENDERED_FILES
+from vip.bundle.stamp import clear_render_stamp, record_rendered, results_digest
 from vip.errors import ReportError
 
 # Quarto report template files copied into the working report/ directory.
@@ -160,6 +162,19 @@ def run_report(args: argparse.Namespace) -> None:
     # is the vip install itself, which always has both. See issue #554.
     env = {**os.environ, "QUARTO_PYTHON": sys.executable}
 
+    # vip bundle includes a rendered file only if the render stamp ties it to
+    # the results.json in the bundle. Clear the stamp first, so that a failed
+    # render leaves the old pages without a stamp.
+    output_dir = report_dir / "_output"
+    try:
+        digest = results_digest(results_dest.read_bytes())
+    except OSError as exc:
+        raise ReportError(f"cannot read {results_dest}: {exc}") from exc
+    try:
+        clear_render_stamp(output_dir)
+    except OSError as exc:
+        raise ReportError(f"cannot delete the render stamp in {output_dir}: {exc}") from exc
+
     # The HTML pages and the PDF render as separate quarto invocations on
     # purpose. One combined `quarto render` ties their fates together: on a
     # Quarto too old to know Typst (pre-1.4), the PDF document fails the
@@ -169,6 +184,7 @@ def run_report(args: argparse.Namespace) -> None:
     # the PDF degrades to a warning. All three documents stay in
     # _quarto.yml's render list because a single-document render only lands
     # in _output/ for listed files.
+    before = {name: _file_time(output_dir / name) for name in RENDERED_FILES}
     for page in ("index.qmd", "details.qmd"):
         returncode = _quarto_render(page, report_dir, env)
         if returncode != 0:
@@ -182,12 +198,14 @@ def run_report(args: argparse.Namespace) -> None:
         )
 
     print(f"Report generated: {output}")
+    _stamp(output_dir, digest, before, ("index.html", "details.html"))
 
     # The PDF is the copy customers archive, so a missing one warns loudly —
     # but never fails the command, and never blocks the HTML hand-off above.
     pdf = report_dir / "_output" / "vip-report.pdf"
     if _quarto_render("vip-report.qmd", report_dir, env) == 0 and pdf.exists():
         print(f"PDF generated: {pdf}")
+        _stamp(output_dir, digest, before, ("vip-report.pdf",))
     else:
         print(
             f"Warning: the HTML report rendered but {pdf} did not. "
@@ -198,6 +216,42 @@ def run_report(args: argparse.Namespace) -> None:
 
     if args.open:
         webbrowser.open(output.resolve().as_uri())
+
+
+def _file_time(path: Path) -> int | None:
+    """Return the modification time of *path* in nanoseconds, or None if it does not exist."""
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+def _stamp(
+    output_dir: Path, digest: str, before: dict[str, int | None], names: tuple[str, ...]
+) -> None:
+    """Record in the render stamp each file in *names* that the render wrote.
+
+    *before* holds the file times from before the render. A file with the
+    same time is from an earlier render, so it gets no stamp. A failed write
+    is a warning, not an error.
+    """
+    fresh = tuple(
+        name for name in names if _file_time(output_dir / name) not in (None, before.get(name))
+    )
+    for name in sorted(set(names) - set(fresh)):
+        print(
+            f"Warning: this render did not write {output_dir / name}, so "
+            "'vip bundle' will not include it.",
+            file=sys.stderr,
+        )
+    try:
+        record_rendered(output_dir, digest, fresh)
+    except OSError as exc:
+        print(
+            f"Warning: could not write the render stamp in {output_dir}: {exc}. "
+            "'vip bundle' will leave out the rendered report.",
+            file=sys.stderr,
+        )
 
 
 def _quarto_render(document: str, report_dir: Path, env: dict[str, str]) -> int:
