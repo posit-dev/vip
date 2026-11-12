@@ -404,7 +404,11 @@ cd report &amp;&amp; quarto publish connect --server https://connect.example.com
             The manifest in the zip records it. The scan cannot find a
             credential that it does not know, for example one that an
             extension test printed or one that was set only in the shell that
-            ran <code>vip verify</code>. Look at the zip before you send it.
+            ran <code>vip verify</code>. The manifest and the last output
+            line give the number of credentials that the scan knew, from the
+            configuration and the environment and from the auth cache. If the
+            number is lower than you expect, the scan did not have a
+            credential of the run. Look at the zip before you send it.
           </p>
           <p>
             The command needs the <code>vip.toml</code> that
@@ -414,10 +418,10 @@ cd report &amp;&amp; quarto publish connect --server https://connect.example.com
             uses only the environment and the auth cache. A rendered page that
             <code>vip report</code> did not make from the current
             <code>results.json</code> is left out. Run <code>vip report</code>
-            again to include it. A failure, JUnit, or SARIF file that is older
-            than <code>results.json</code> is from an earlier run, so it is
-            left out too. The manifest lists each file that is left out, with
-            the reason.
+            again to include it. A <code>failures.json</code> from a different
+            run than <code>results.json</code> is left out too, and so is a
+            JUnit or SARIF file that is older than <code>results.json</code>.
+            The manifest lists each file that is left out, with the reason.
           </p>
         </section>
 

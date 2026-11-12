@@ -119,8 +119,10 @@ SECRET_QUERY_KEYS = frozenset(
 # Short cookie values ("1", "true") match normal report text. Session cookies are long.
 MIN_COOKIE_LENGTH = 16
 # A value that is only an email address is a login name, not a credential. Okta
-# keeps it in the "ln" cookie, and test output often prints it.
-_EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}")
+# keeps it in the "ln" cookie, and test output often prints it. The pattern
+# has no ":", "/", "=", "&", or "|", so a URL with credentials, a query
+# string, or a token next to an address stays a secret.
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 # Connection string keys whose values are credentials. ODBC, JDBC, and Azure use these.
 CONNECTION_SECRET_KEYS = SECRET_QUERY_KEYS | frozenset(
     {"accountkey", "sharedaccesskey", "sharedaccesssignature", "privatekey", "private_key"}

@@ -188,6 +188,41 @@ def test_manifest_lists_members_and_missing_files(root):
     assert manifest["secret_scan"] == "config"
 
 
+def test_manifest_records_how_many_secrets_the_scan_knew(root, capsys):
+    run_bundle(_args(output="b.zip"))
+    with zipfile.ZipFile(root / "b.zip") as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+    # vip.toml holds nine credential values. The cache holds a cookie and a minted key.
+    assert manifest["secret_scan_sources"] == {
+        "configuration_and_environment": 9,
+        "auth_cache": 2,
+    }
+    out = capsys.readouterr().out
+    assert "9 from the configuration and the environment, 2 from the auth cache" in out
+
+
+def test_scan_with_no_known_secret_warns(root, capsys):
+    (root / "vip.toml").unlink()
+    (root / ".vip-auth-cache.json").unlink()
+    (root / ".vip-auth-cache.meta.json").unlink()
+    run_bundle(_args(output="b.zip", no_config=True))
+    with zipfile.ZipFile(root / "b.zip") as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+    assert manifest["secret_scan_sources"] == {
+        "configuration_and_environment": 0,
+        "auth_cache": 0,
+    }
+    assert any("knew no credential" in w for w in manifest["warnings"])
+    assert "Warning: the secret scan knew no credential" in capsys.readouterr().err
+
+
+def test_scan_with_no_auth_cache_does_not_warn_when_the_config_has_secrets(root, capsys):
+    (root / ".vip-auth-cache.json").unlink()
+    (root / ".vip-auth-cache.meta.json").unlink()
+    run_bundle(_args(output="b.zip"))
+    assert "knew no credential" not in capsys.readouterr().err
+
+
 def test_secret_in_failures_json_blocks_bundle(root, capsys):
     _write_report(root, failures_extra=f"key={CONNECT_KEY}")
     with pytest.raises(BundleError) as exc:
@@ -251,8 +286,8 @@ def test_manifest_is_scanned_too(root, monkeypatch):
         run_bundle(_args(output="b.zip", results=str(run_dir / "results.json")))
 
 
-def test_minted_key_in_legacy_cache_blocks_bundle(root, tmp_path, monkeypatch):
-    # auth_cache_path() points elsewhere, so only the legacy file holds the key.
+def test_minted_key_in_root_cache_blocks_bundle(root, tmp_path, monkeypatch):
+    # auth_cache_path() points elsewhere, so only the file in the root holds the key.
     other = tmp_path / "other-cache" / ".vip-auth-cache.json"
     monkeypatch.setattr(bundle_module, "auth_cache_path", lambda: other)
     _write_report(root, results_extra=MINTED_KEY)
@@ -260,8 +295,9 @@ def test_minted_key_in_legacy_cache_blocks_bundle(root, tmp_path, monkeypatch):
         run_bundle(_args(output="b.zip"))
 
 
-def test_legacy_cache_is_read_before_auth_cache_path(root, monkeypatch):
-    # After PR 793, auth_cache_path() can move or delete the legacy files.
+def test_root_cache_is_read_before_auth_cache_path(root, monkeypatch):
+    # The cache files in the root must be read before auth_cache_path() runs,
+    # because an auth_cache_path() with a side effect can remove them.
     def migrating_auth_cache_path():
         (root / ".vip-auth-cache.meta.json").unlink()
         return root / "moved" / ".vip-auth-cache.json"
@@ -273,7 +309,7 @@ def test_legacy_cache_is_read_before_auth_cache_path(root, monkeypatch):
 
 
 def test_results_path_sets_the_root(root, tmp_path, monkeypatch):
-    # Run from another directory: vip.toml and the legacy cache come from the
+    # Run from another directory: vip.toml and the auth cache come from the
     # directory that holds report/.
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
@@ -301,7 +337,7 @@ def test_config_with_another_product_url_fails(root):
 
 def test_key_in_auth_cache_path_blocks_bundle(root, tmp_path, monkeypatch):
     # The auth cache can live outside the invocation directory. The bundle
-    # must read the file at auth_cache_path() too, not only the legacy file.
+    # must read the file at auth_cache_path() too, not only the file in the root.
     user_cache = tmp_path / "user-cache" / ".vip-auth-cache.json"
     user_cache.parent.mkdir()
     user_cache.with_suffix(".meta.json").write_text(

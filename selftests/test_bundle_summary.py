@@ -416,3 +416,21 @@ def test_auth_cache_secrets_skip_missing_or_bad_files(tmp_path):
     listed.write_text("[]", encoding="utf-8")
     for path in (bad, listed, tmp_path / "absent.json"):
         assert auth_cache_secrets(path) == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "user:PASSWORD-0123456789@host.example.com",
+        "https://user:PASSWORD-0123@host.example.com",
+        "token=ABCDEFGH01234567&email=a@example.com",
+        "TOKEN-0123456789|test.user@example.com",
+        'prefix "test.user@example.com" TOKEN-0123456789',
+        "a@b@example.com-0123456789",
+        "no-at-sign-0123456789.example.com",
+    ],
+)
+def test_auth_cache_value_that_is_more_than_an_email_is_a_secret(tmp_path, value):
+    state = tmp_path / ".vip-auth-cache.json"
+    state.write_text(json.dumps({"cookies": [{"name": "sid", "value": value}]}), encoding="utf-8")
+    assert auth_cache_secrets(state) == [("auth cache cookie sid", value)]

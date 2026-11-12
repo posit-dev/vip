@@ -101,11 +101,24 @@ def _check_results_file(results_path: Path) -> bytes:
     return data
 
 
+def _generated_at(data: bytes) -> str | None:
+    """Return the ``generated_at`` value of a results.json or a failures.json."""
+    try:
+        parsed = json.loads(data)
+    except (ValueError, RecursionError):
+        return None
+    value = parsed.get("generated_at") if isinstance(parsed, dict) else None
+    return value if isinstance(value, str) and value else None
+
+
 def collect_members(results_path: Path, report_dir: Path) -> Collected:
     """Read the allowlisted report files.
 
-    Sidecar files come from the directory of *results_path*. A sidecar that is
-    older than results.json is from an earlier run, so it is left out.
+    Sidecar files come from the directory of *results_path*. ``vip verify``
+    writes the same ``generated_at`` value to results.json and failures.json,
+    so a failures.json with a different value is from a different run and is
+    left out. A sidecar with no such value to compare is left out if it is
+    older than results.json.
     Rendered files come from ``<report_dir>/_output/``. A rendered file is
     included only if the render stamp names it and the SHA-256 of this
     results.json. The secret scan cannot read the text in the PDF, so the PDF
@@ -117,6 +130,7 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
     out.members["report/results.json"] = data
     out.sources["report/results.json"] = results_path
     results_mtime = results_path.stat().st_mtime
+    results_run = _generated_at(data)
 
     sidecar_dir = results_path.parent
     for name in REPORT_SIDECAR_FILES[1:]:
@@ -125,11 +139,22 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
             out.missing.append(archive_name)
         elif not _is_regular_file_in(path, sidecar_dir):
             _leave_out(out, archive_name, path, "is a link or is not a regular file", "")
-        elif path.stat().st_mtime < results_mtime:
-            hint = " If you copied the report directory without file times, run 'vip verify' again."
-            _leave_out(out, archive_name, path, "is older than results.json", hint)
         else:
-            out.members[archive_name] = _read(path)
+            content = _read(path)
+            sidecar_run = _generated_at(content) if name == "failures.json" else None
+            if results_run is not None and sidecar_run is not None:
+                if sidecar_run != results_run:
+                    reason = "is from a different run than results.json"
+                    _leave_out(out, archive_name, path, reason, "")
+                    continue
+            elif path.stat().st_mtime < results_mtime:
+                hint = (
+                    " If you copied the report directory without file times, "
+                    "run 'vip verify' again."
+                )
+                _leave_out(out, archive_name, path, "is older than results.json", hint)
+                continue
+            out.members[archive_name] = content
             out.sources[archive_name] = path
 
     output_dir = report_dir / "_output"

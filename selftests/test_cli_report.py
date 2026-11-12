@@ -445,6 +445,16 @@ class TestRenderStamp:
         with pytest.raises(ReportError, match="render stamp"):
             cli.run_report(_make_args())
 
+    def test_results_that_cannot_be_read_is_a_report_error(self, tmp_path, monkeypatch):
+        from vip import cli
+        from vip.errors import ReportError
+
+        report_dir = self._report_dir(tmp_path, monkeypatch)
+        (report_dir / "results.json").unlink()
+        (report_dir / "results.json").mkdir()
+        with pytest.raises(ReportError, match="cannot read"):
+            cli.run_report(_make_args())
+
 
 class TestSupportFileResolution:
     """troubleshooting.toml and feature files resolve from checkout or install."""

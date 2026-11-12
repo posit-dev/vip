@@ -165,7 +165,10 @@ def run_report(args: argparse.Namespace) -> None:
     # the results.json in the bundle. Clear the stamp first, so that a failed
     # render leaves the old pages without a stamp.
     output_dir = report_dir / "_output"
-    digest = results_digest(results_dest.read_bytes())
+    try:
+        digest = results_digest(results_dest.read_bytes())
+    except OSError as exc:
+        raise ReportError(f"cannot read {results_dest}: {exc}") from exc
     try:
         clear_render_stamp(output_dir)
     except OSError as exc:

@@ -175,6 +175,34 @@ def test_stale_sidecar_is_left_out(tmp_path):
     assert any(str(report / "failures.json") in w for w in got.warnings)
 
 
+def _seed_run_pair(report: Path, results_run: str, failures_run: str) -> None:
+    """Write results.json and failures.json with a ``generated_at`` value each."""
+    results = json.dumps({"generated_at": results_run, "results": []})
+    _seed(report, sidecars=(), rendered=(), results=results)
+    failures = json.dumps({"generated_at": failures_run, "failures": []})
+    _write(report / "failures.json", failures, 1_000_001.0)
+
+
+def test_failures_json_of_the_same_run_stays_when_results_is_newer(tmp_path):
+    # An edit of results.json gives it a newer file time than failures.json.
+    report = tmp_path / "report"
+    _seed_run_pair(report, "2026-11-12T14:00:00+00:00", "2026-11-12T14:00:00+00:00")
+    os.utime(report / "results.json", (1_000_500.0, 1_000_500.0))
+    got = collect_members(report / "results.json", report)
+    assert "report/failures.json" in got.members
+    assert got.left_out == []
+
+
+def test_failures_json_of_another_run_is_left_out_when_it_is_newer(tmp_path):
+    report = tmp_path / "report"
+    _seed_run_pair(report, "2026-11-12T14:00:00+00:00", "2026-11-12T15:00:00+00:00")
+    got = collect_members(report / "results.json", report)
+    assert "report/failures.json" not in got.members
+    assert got.left_out == [
+        {"name": "report/failures.json", "reason": "is from a different run than results.json"}
+    ]
+
+
 @pytest.mark.skipif(os.name == "nt", reason="symlinks need extra rights on Windows")
 def test_symlinks_are_left_out(tmp_path):
     report = tmp_path / "report"

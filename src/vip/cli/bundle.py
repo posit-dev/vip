@@ -36,7 +36,7 @@ _PRODUCTS = ("connect", "workbench", "package_manager")
 
 
 def _invocation_root(results: str | None) -> Path:
-    """Return the directory that holds ``vip.toml``, ``report/``, and the legacy auth cache.
+    """Return the directory that holds ``vip.toml``, ``report/``, and the auth cache files.
 
     With ``--results <dir>/report/results.json``, the root is ``<dir>``.
     Otherwise it is the working directory. ``_resolve_report_dir`` treats a
@@ -129,16 +129,16 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
 def _cache_secrets(root: Path) -> list[tuple[str, str]]:
     """Return the secrets in the auth cache files that ``vip verify`` run from *root* can write.
 
-    The legacy files in *root* are read before ``auth_cache_path()`` is
-    called, so that a cache location that moves the legacy files cannot hide
-    them. ``auth_cache_path()`` depends on the working directory, so it is
-    called from *root*.
+    The files in *root* are read first, and then the files at
+    ``auth_cache_path()`` if that is a different place.
+    ``auth_cache_path()`` depends on the working directory, so it is called
+    from *root*.
     """
-    legacy = root / AUTH_CACHE_FILENAME
-    pairs = auth_cache_secrets(legacy) + auth_cache_secrets(legacy.with_suffix(".meta.json"))
+    in_root = root / AUTH_CACHE_FILENAME
+    pairs = auth_cache_secrets(in_root) + auth_cache_secrets(in_root.with_suffix(".meta.json"))
     with contextlib.chdir(root):
         cache = auth_cache_path()
-    if cache is not None and cache != legacy:
+    if cache is not None and cache != in_root:
         pairs += auth_cache_secrets(cache) + auth_cache_secrets(cache.with_suffix(".meta.json"))
     return pairs
 
@@ -206,7 +206,21 @@ def run_bundle(args: argparse.Namespace) -> None:
             "--no-config is set, so the secret scan used only the environment "
             "variables and the auth cache. Look at the zip before you send it."
         )
-    secrets = secret_values(config, _cache_secrets(root))
+    cache_secrets = _cache_secrets(root)
+    secrets = secret_values(config, cache_secrets)
+    # secret_values drops repeated values, so the cache count is the remainder.
+    config_count = len(secret_values(config))
+    scan_sources = {
+        "configuration_and_environment": config_count,
+        "auth_cache": len(secrets) - config_count,
+    }
+    if not secrets:
+        warnings.append(
+            "the secret scan knew no credential: the configuration, the environment "
+            f"variables, and the auth cache for {root} hold none. If 'vip verify' ran "
+            "with a credential, run 'vip bundle' with the same configuration, "
+            "environment variables, and directory. Look at the zip before you send it."
+        )
     warnings += [
         f"the value of {label} is shorter than 4 characters, so the secret scan "
         "cannot look for it. Look at the zip before you send it."
@@ -252,6 +266,7 @@ def run_bundle(args: argparse.Namespace) -> None:
             "left_out": collected.left_out,
             "config_summary": config_path is not None,
             "secret_scan": "config" if config_path is not None else "no-config",
+            "secret_scan_sources": scan_sources,
             "allowed_matches": [{"member": n, "label": label} for n, label in allowed_hits],
             "warnings": warnings,
         }
@@ -273,3 +288,8 @@ def run_bundle(args: argparse.Namespace) -> None:
             f"could not write {output}: {exc}. Pass --output PATH to write it somewhere else."
         ) from exc
     print(f"Bundle written: {output} ({len(members)} files)")
+    print(
+        f"The secret scan looked for {len(secrets)} known values: "
+        f"{scan_sources['configuration_and_environment']} from the configuration and the "
+        f"environment, {scan_sources['auth_cache']} from the auth cache."
+    )
