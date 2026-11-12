@@ -329,6 +329,31 @@ def test_secret_values_cover_every_source(full_config, tmp_path):
     assert not {"cuser", "puser", "dbuser"} & values
 
 
+def test_auth_cache_secrets_skip_login_names(tmp_path):
+    # Okta keeps the login name in the "ln" cookie. Test output often prints
+    # that name, and a login name is not a credential.
+    state = tmp_path / ".vip-auth-cache.json"
+    state.write_text(
+        json.dumps(
+            {
+                "cookies": [
+                    {"name": "ln", "value": "test.user@example.com"},
+                    {"name": "ln2", "value": "test.user%40example.com"},
+                    {"name": "sid", "value": "a1b2c3@example-0123456789"},
+                ],
+                "origins": [
+                    {
+                        "origin": "https://login.example.com",
+                        "localStorage": [{"name": "user", "value": "test.user@example.com"}],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert auth_cache_secrets(state) == [("auth cache cookie sid", "a1b2c3@example-0123456789")]
+
+
 @pytest.mark.parametrize(
     "clone_url",
     [

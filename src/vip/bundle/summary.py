@@ -7,7 +7,7 @@ import os
 import re
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 from urllib.parse import parse_qsl, unquote, urlsplit, urlunsplit
 
 from vip.config import VIPConfig
@@ -118,6 +118,9 @@ SECRET_QUERY_KEYS = frozenset(
 )
 # Short cookie values ("1", "true") match normal report text. Session cookies are long.
 MIN_COOKIE_LENGTH = 16
+# A value that is only an email address is a login name, not a credential. Okta
+# keeps it in the "ln" cookie, and test output often prints it.
+_EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}")
 # Connection string keys whose values are credentials. ODBC, JDBC, and Azure use these.
 CONNECTION_SECRET_KEYS = SECRET_QUERY_KEYS | frozenset(
     {"accountkey", "sharedaccesskey", "sharedaccesssignature", "privatekey", "private_key"}
@@ -211,12 +214,20 @@ def _connection_string_secrets(label: str, conn: str) -> list[tuple[str, str]]:
     return pairs
 
 
+def _is_cache_secret(value: object) -> TypeGuard[str]:
+    """Return True when an auth cache value is long enough and is not a login name."""
+    if not isinstance(value, str) or len(value) < MIN_COOKIE_LENGTH:
+        return False
+    return _EMAIL_RE.fullmatch(unquote(value)) is None
+
+
 def auth_cache_secrets(path: Path) -> list[tuple[str, str]]:
     """Return ``(label, value)`` for each secret in one auth cache file.
 
     ``.vip-auth-cache.meta.json`` holds the minted Connect key.
     ``.vip-auth-cache.json`` is a Playwright storage state with cookies and
-    localStorage values. A file that is missing or does not parse gives no values.
+    localStorage values. A short value or an email address is not a secret. A
+    file that is missing or does not parse gives no values.
     """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -229,13 +240,13 @@ def auth_cache_secrets(path: Path) -> list[tuple[str, str]]:
         pairs.append(("auth cache api_key", data["api_key"]))
     for cookie in data.get("cookies") or []:
         value = cookie.get("value") if isinstance(cookie, dict) else None
-        if isinstance(value, str) and len(value) >= MIN_COOKIE_LENGTH:
+        if _is_cache_secret(value):
             pairs.append((f"auth cache cookie {cookie.get('name', '')}", value))
     for origin in data.get("origins") or []:
         items = origin.get("localStorage") if isinstance(origin, dict) else None
         for item in items or []:
             value = item.get("value") if isinstance(item, dict) else None
-            if isinstance(value, str) and len(value) >= MIN_COOKIE_LENGTH:
+            if _is_cache_secret(value):
                 pairs.append((f"auth cache localStorage {item.get('name', '')}", value))
     return pairs
 
