@@ -1,4 +1,4 @@
-@prerequisites
+@prerequisites @smoke
 Feature: Product versions match configuration
   As a Posit Team administrator
   I want to verify that the running product versions match the configured expectations
