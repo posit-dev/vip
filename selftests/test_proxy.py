@@ -26,6 +26,7 @@ import threading
 import httpx
 import pytest
 
+from vip.errors import ConfigError
 from vip.proxy import (
     ProxyConfig,
     ProxyConfigError,
@@ -386,6 +387,20 @@ def test_proxy_for_url_matches_httpx(url, expected):
 
 def test_proxy_for_url_empty_map_is_direct():
     assert proxy_for_url("https://x/y", {}) is None
+
+
+@pytest.mark.parametrize(
+    "url", ["https://connect.example:notaport", "https://conn\u2028ect.example"]
+)
+def test_proxy_for_url_malformed_url_raises_config_error(url):
+    """A malformed URL is a config error, not "go direct".
+
+    ``httpx.InvalidURL`` derives from ``Exception``, so left alone it escapes
+    every caller that only catches ``httpx.HTTPError``.
+    """
+    with pytest.raises(ConfigError, match="not a valid URL") as excinfo:
+        proxy_for_url(url, {"all://": "http://p:8080"})
+    assert isinstance(excinfo.value.__cause__, httpx.InvalidURL)
 
 
 # ---------------------------------------------------------------------------
