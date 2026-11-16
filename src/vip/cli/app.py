@@ -516,8 +516,9 @@ def main() -> None:
         action="store_true",
         default=False,
         help=(
-            "Write the bundle with no vip.toml. The secret scan then uses only "
-            "the environment variables and the auth cache."
+            "Write the bundle with no vip.toml and no configuration summary. The "
+            "secret scan then uses only the environment variables, the product URLs "
+            "in results.json, and the auth cache."
         ),
     )
     bundle_parser.add_argument(
@@ -538,8 +539,10 @@ def main() -> None:
         metavar="LABEL",
         help=(
             "Write the bundle even though a file holds the value of LABEL, for "
-            "example auth.password. Use it only when the value is not a real "
-            "secret. The manifest records it. Repeat for more labels."
+            "example auth.password. LABEL must be a label from the secret scan "
+            "error. Quote a label that holds spaces. The value then stays in the "
+            "zip, so use it only when the value is not a real secret. The manifest "
+            "records it. Repeat for more labels."
         ),
     )
     bundle_parser.set_defaults(func=run_bundle)

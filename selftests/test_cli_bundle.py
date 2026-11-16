@@ -196,10 +196,14 @@ def test_manifest_records_how_many_secrets_the_scan_knew(root, capsys):
     # vip.toml holds nine credential values. The cache holds a cookie and a minted key.
     assert manifest["secret_scan_sources"] == {
         "configuration_and_environment": 9,
+        "results_product_urls": 0,
         "auth_cache": 2,
     }
     out = capsys.readouterr().out
-    assert "9 from the configuration and the environment, 2 from the auth cache" in out
+    assert (
+        "9 from the configuration and the environment, 0 from the product URLs in "
+        "results.json, 2 from the auth cache"
+    ) in out
 
 
 def test_scan_with_no_known_secret_warns(root, capsys):
@@ -211,6 +215,7 @@ def test_scan_with_no_known_secret_warns(root, capsys):
         manifest = json.loads(zf.read("manifest.json"))
     assert manifest["secret_scan_sources"] == {
         "configuration_and_environment": 0,
+        "results_product_urls": 0,
         "auth_cache": 0,
     }
     assert any("knew no credential" in w for w in manifest["warnings"])
@@ -328,6 +333,48 @@ def test_manifest_is_scanned_too(root, monkeypatch):
     monkeypatch.setenv("VIP_TEST_TOTP_SECRET", "Run-Dir-0123")
     with pytest.raises(BundleError, match=r"manifest\.json \(made by vip bundle\)"):
         run_bundle(_args(output="b.zip", results=str(run_dir / "results.json")))
+    assert _leftovers(root) == []
+
+
+def _refuse_with_a_secret_hit(root, monkeypatch):
+    _write_report(root, results_extra=CONNECT_KEY)
+
+
+def _refuse_with_a_manifest_hit(root, monkeypatch):
+    run_dir = root / "Run-Dir-0123"
+    _write(run_dir / "results.json", '{"deployment_name": "Acme Prod", "results": []}', 5.0)
+    monkeypatch.setenv("VIP_TEST_TOTP_SECRET", "Run-Dir-0123")
+    return {"results": str(run_dir / "results.json")}
+
+
+def _refuse_with_an_unknown_label(root, monkeypatch):
+    return {"allow_match": ["connect.apikey"]}
+
+
+def _refuse_with_a_bad_auth_cache(root, monkeypatch):
+    (root / ".vip-auth-cache.json").write_text('{"cookies": [', encoding="utf-8")
+
+
+def _refuse_with_a_config_mismatch(root, monkeypatch):
+    _write_report(root, deployment="Other")
+
+
+@pytest.mark.parametrize(
+    "refuse",
+    [
+        _refuse_with_a_secret_hit,
+        _refuse_with_a_manifest_hit,
+        _refuse_with_an_unknown_label,
+        _refuse_with_a_bad_auth_cache,
+        _refuse_with_a_config_mismatch,
+    ],
+)
+def test_each_refusal_leaves_no_zip_and_no_temp_file(root, monkeypatch, refuse):
+    overrides = refuse(root, monkeypatch) or {}
+    with pytest.raises(BundleError):
+        run_bundle(_args(output="b.zip", **overrides))
+    assert _leftovers(root) == []
+    assert _leftovers(root / "report") == []
 
 
 def test_minted_key_in_root_cache_blocks_bundle(root, tmp_path, monkeypatch):
@@ -620,3 +667,71 @@ def test_bundle_error_exits_with_code_one(tmp_path, monkeypatch, capsys):
         main()
     assert exc.value.code == 1
     assert "Error: no results found" in capsys.readouterr().err
+
+
+def test_main_writes_a_bundle_from_real_arguments(root, monkeypatch, capsys):
+    # The parser, not a hand-built Namespace, sets each option. A change to an
+    # option's action or dest fails here.
+    _write_report(root, results_extra="SECRET-auth-password")
+    argv = ["vip", "bundle", "--output", "b.zip", "--force", "--allow-match", "auth.password"]
+    (root / "b.zip").write_bytes(b"old")
+    monkeypatch.setattr(sys, "argv", argv)
+    main()
+    with zipfile.ZipFile(root / "b.zip") as zf:
+        manifest = json.loads(zf.read("manifest.json"))
+    assert manifest["allowed_matches"] == [
+        {"member": "report/results.json", "label": "auth.password"}
+    ]
+    assert "Bundle written" in capsys.readouterr().out
+
+
+def test_main_repeats_allow_match(root, monkeypatch):
+    _write_report(root, results_extra="SECRET-auth-password SECRET-pm-token")
+    argv = ["vip", "bundle", "--output", "b.zip"]
+    argv += ["--allow-match", "auth.password", "--allow-match", "package_manager.token"]
+    monkeypatch.setattr(sys, "argv", argv)
+    main()
+    assert (root / "b.zip").is_file()
+
+
+def test_vip_config_selects_the_configuration_file(root, tmp_path, monkeypatch):
+    elsewhere = tmp_path / "conf" / "site.toml"
+    elsewhere.parent.mkdir()
+    (root / "vip.toml").rename(elsewhere)
+    monkeypatch.setenv("VIP_CONFIG", str(elsewhere))
+    _write_report(root, results_extra="SECRET-pm-token")
+    with pytest.raises(BundleError, match=r"package_manager\.token"):
+        run_bundle(_args(output="b.zip"))
+
+
+_RUN_URL = "https://admin:RUN-URL-PASS-0123@connect.example.com"
+
+
+def _write_report_with_run_url(root: Path) -> None:
+    report = root / "report"
+    results = {
+        "deployment_name": "Acme Prod",
+        "products": {"connect": {"url": _RUN_URL}},
+        "results": [],
+    }
+    _write(report / "results.json", json.dumps(results), RESULTS_MTIME)
+
+
+def test_no_config_scan_uses_the_product_url_credentials_in_results(root):
+    (root / "vip.toml").unlink()
+    _write_report_with_run_url(root)
+    with pytest.raises(BundleError, match=r"results\.json connect\.url password"):
+        run_bundle(_args(output="b.zip", no_config=True))
+
+
+def test_config_scan_uses_the_product_url_credentials_in_results(root):
+    # vip.toml has the same host with no userinfo, so it passes the match check.
+    _write_report_with_run_url(root)
+    with pytest.raises(BundleError, match=r"results\.json connect\.url password"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_bad_auth_cache_stops_the_bundle(root):
+    (root / ".vip-auth-cache.meta.json").write_text('{"api_key": "x"', encoding="utf-8")
+    with pytest.raises(BundleError, match="could not read the auth cache file"):
+        run_bundle(_args(output="b.zip"))

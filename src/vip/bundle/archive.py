@@ -42,6 +42,19 @@ MIN_SECRET_LENGTH = 4
 PARTIAL_LENGTH = 8
 PARTIAL_MIN_SECRET_LENGTH = 16
 
+# A rendered page is about 2 MB, most of it fonts and images in data: URIs and
+# the bodies of <script> and <style>. That text matches short values that the
+# report text does not hold, so the scan skips it. A data: URI counts only in
+# an attribute or in url(), with a media type, so report text such as
+# "metadata:" is still scanned. The report pages hold no report text in a
+# <script> or a <style> body.
+_HTML_SKIPPED_RE = re.compile(
+    rb"(<(script|style)\b[^>]*>).*?(</\2\s*>)"
+    rb"|(?<=[\"'(])data:[a-z]+/[a-z0-9.+-]+[;,][^\"')\s]*",
+    re.IGNORECASE | re.DOTALL,
+)
+_PERCENT_ESCAPE_RE = re.compile(r"%[0-9A-F]{2}")
+
 
 @dataclass
 class Collected:
@@ -93,9 +106,10 @@ def _check_results_file(results_path: Path) -> bytes:
             f"no results found at {results_path}. Run 'vip verify' first, or pass --results PATH."
         )
     data = _read(results_path)
+    _check_utf8(results_path, data, "'vip verify'")
     try:
         parsed = json.loads(data)
-    except ValueError:
+    except (ValueError, RecursionError):
         parsed = None
     if not isinstance(parsed, dict) or not isinstance(parsed.get("results"), list):
         raise BundleError(
@@ -103,6 +117,27 @@ def _check_results_file(results_path: Path) -> bytes:
             "'vip verify' wrote."
         )
     return data
+
+
+def _check_utf8(path: Path, data: bytes, writer: str) -> None:
+    """Refuse *data* if it is not strict UTF-8 with no byte order mark.
+
+    json.loads also accepts UTF-16 and UTF-32, but the scan looks for UTF-8
+    bytes only. So it cannot see a value in a file that is in UTF-16, for
+    example after an edit on Windows.
+    """
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError:
+        bad = True
+    else:
+        bad = data.startswith(b"\xef\xbb\xbf")
+    if bad:
+        raise BundleError(
+            f"{path} is not UTF-8 text with no byte order mark, so the secret scan "
+            f"cannot read it. Save it as UTF-8 with no byte order mark, or run {writer} "
+            "again."
+        )
 
 
 _JUNIT_GENERATED_AT = re.compile(rb'<property name="generated_at" value="([^"]*)"')
@@ -133,11 +168,11 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
     """Read the allowlisted report files.
 
     Sidecar files come from the directory of *results_path*. ``vip verify``
-    writes the ``generated_at`` value of results.json to each sidecar. A
-    sidecar with a different value is from a different run and is left out. A
-    sidecar with the same value is from the same run. If the sidecar or
-    results.json has no value, the sidecar is left out if it is older than
-    results.json.
+    writes the ``generated_at`` value of results.json to each sidecar. If
+    results.json has a value, a sidecar with the same value is from the same
+    run. A sidecar with another value, with no value, or that does not parse
+    is left out. If results.json has no value, a sidecar is left out if it is
+    older than results.json.
     Rendered files come from ``<report_dir>/_output/``. A rendered file is
     included only if the render stamp holds its SHA-256 and the SHA-256 of
     this results.json. The secret scan cannot read the text in the PDF, so
@@ -160,8 +195,13 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
             _leave_out(out, archive_name, path, "is a link or is not a regular file", "")
         else:
             content = _read(path)
+            _check_utf8(path, content, "'vip verify'")
             sidecar_run = _generated_at(name, content)
-            if results_run is not None and sidecar_run is not None:
+            if results_run is not None:
+                if sidecar_run is None:
+                    reason = "has no run time, so it is not from the run of results.json"
+                    _leave_out(out, archive_name, path, reason, " Run 'vip verify' again.")
+                    continue
                 if sidecar_run != results_run:
                     reason = "is from a different run than results.json"
                     _leave_out(out, archive_name, path, reason, "")
@@ -190,6 +230,8 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
             _leave_out(out, archive_name, path, f"was not made from {results_path}", hint)
         else:
             content = _read(path)
+            if name != PDF_FILE:
+                _check_utf8(path, content, "'vip report'")
             if file_digest(content) != stamp[1][name]:
                 _leave_out(out, archive_name, path, "changed after 'vip report' made it", hint)
                 continue
@@ -207,22 +249,38 @@ def collect_members(results_path: Path, report_dir: Path) -> Collected:
     return out
 
 
+def _utf8(text: str) -> bytes:
+    """Return *text* as UTF-8 bytes, also when it holds a lone surrogate.
+
+    Python keeps environment bytes that are not UTF-8 as surrogates, and
+    surrogateescape gives back those bytes. A surrogate from a JSON escape,
+    such as ``\\ud800``, cannot go back that way, so surrogatepass encodes it.
+    """
+    try:
+        return text.encode("utf-8", "surrogateescape")
+    except UnicodeEncodeError:
+        return text.encode("utf-8", "surrogatepass")
+
+
 def _encode(value: str) -> set[str]:
     """Return *value* in each form in which a report file can hold it.
 
     results.json and failures.json use json.dumps with ensure_ascii. The HTML
     pages escape markup characters. junit.xml escapes ``&`` and ``<`` in a
-    text node but keeps ``"``. URLs are percent-encoded. Error text formats
-    values with ``!r``, which doubles each backslash.
+    text node but keeps ``"``. URLs are percent-encoded, with uppercase or
+    lowercase hex. Error text formats values with ``!r``, which doubles each
+    backslash.
     """
+    raw = _utf8(value)
+    escaped = {quote(raw, safe=""), quote_plus(raw, safe="")}
+    escaped |= {_PERCENT_ESCAPE_RE.sub(lambda m: m.group().lower(), form) for form in escaped}
     forms = {
         value,
         json.dumps(value)[1:-1],
         json.dumps(value, ensure_ascii=False)[1:-1],
         html.escape(value),
         html.escape(value, quote=False),
-        quote(value, safe=""),
-        quote_plus(value, safe=""),
+        *escaped,
     }
     as_repr = repr(value)[1:-1]
     forms |= {as_repr, json.dumps(as_repr)[1:-1]}
@@ -250,7 +308,18 @@ def _encoded_forms(value: str) -> set[bytes]:
         for part in (value[:PARTIAL_LENGTH], value[-PARTIAL_LENGTH:]):
             if _is_distinct(part):
                 forms |= _encode(part)
-    return {form.encode("utf-8") for form in forms}
+    return {_utf8(form) for form in forms}
+
+
+def _scanned_text(name: str, data: bytes) -> bytes:
+    """Return the part of member *name* that the scan reads.
+
+    For an HTML page, that is the page without data: URI payloads and without
+    the bodies of <script> and <style>. For other members, it is all of *data*.
+    """
+    if not name.endswith(".html"):
+        return data
+    return _HTML_SKIPPED_RE.sub(lambda m: (m.group(1) or b"") + (m.group(3) or b""), data)
 
 
 def _flatten(data: bytes) -> bytes:
@@ -266,7 +335,8 @@ def find_secret_hits(
     """Return sorted ``(member, label)`` pairs for each member that holds a secret.
 
     Each member is also checked with its line breaks removed, because a
-    console log can wrap a long key across lines. Values shorter than
+    console log can wrap a long key across lines. An HTML page is checked
+    without the parts that :func:`_scanned_text` skips. Values shorter than
     MIN_SECRET_LENGTH are not checked. See :func:`short_secret_labels`.
     """
     patterns = [
@@ -275,7 +345,8 @@ def find_secret_hits(
         if len(value) >= MIN_SECRET_LENGTH
     ]
     hits: set[tuple[str, str]] = set()
-    for name, data in members.items():
+    for name, raw in members.items():
+        data = _scanned_text(name, raw)
         flat = _flatten(data)
         for label, forms in patterns:
             if any(form in data or form in flat for form in forms):

@@ -29,6 +29,7 @@ from vip.bundle.summary import (
     raw_config_secrets,
     secret_values,
     strip_url_userinfo,
+    url_secrets,
 )
 from vip.cli.report import _resolve_report_dir
 from vip.cli.version import _format_version_details
@@ -85,7 +86,7 @@ def _config_path(args: argparse.Namespace, root: Path) -> Path | None:
             f"no configuration file found at {path}. The secret scan needs it. "
             "Pass --config PATH. If you ran 'vip verify' with --connect-url and no "
             "vip.toml, pass --no-config: the scan then uses only the environment "
-            "variables and the auth cache."
+            "variables, the product URLs in results.json, and the auth cache."
         )
     return path
 
@@ -157,6 +158,22 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
             )
 
 
+def _run_url_secrets(results: bytes) -> list[tuple[str, str]]:
+    """Return the credentials in the product URLs that results.json holds.
+
+    ``vip verify`` writes each product URL as the run used it, with its
+    userinfo. The configuration file can have the same host with no
+    userinfo, and with --no-config there is no configuration file.
+    """
+    products = json.loads(results).get("products")
+    pairs: list[tuple[str, str]] = []
+    for product, entry in products.items() if isinstance(products, dict) else ():
+        url = entry.get("url") if isinstance(entry, dict) else None
+        if isinstance(url, str):
+            pairs += url_secrets(f"results.json {product}.url", url)
+    return pairs
+
+
 def _cache_secrets(root: Path) -> list[tuple[str, str]]:
     """Return the secrets in the auth cache files that ``vip verify`` run from *root* can write.
 
@@ -226,7 +243,8 @@ def _hit_error(hits: list[tuple[str, str]], collected: Collected) -> BundleError
         )
     lines.append(
         "If the value is not a real secret, pass --allow-match LABEL for each "
-        "label. The manifest records each one."
+        "label, in quotes if it holds spaces. The value then stays in the zip, "
+        "and the manifest records each label."
     )
     return BundleError("\n".join(lines))
 
@@ -250,23 +268,29 @@ def run_bundle(args: argparse.Namespace) -> None:
     if config_path is None:
         warnings.append(
             "--no-config is set, so the secret scan used only the environment "
-            "variables and the auth cache. Look at the zip before you send it."
+            "variables, the product URLs in results.json, and the auth cache. Look "
+            "at the zip before you send it."
         )
     inline = _inline_secrets(config_path) if config_path is not None else []
+    run_urls = _run_url_secrets(results)
     cache_secrets = _cache_secrets(root)
-    secrets = secret_values(config, [*inline, *cache_secrets])
-    # secret_values drops repeated values, so the cache count is the remainder.
+    secrets = secret_values(config, [*inline, *run_urls, *cache_secrets])
+    # secret_values drops repeated values, so each count is the remainder of
+    # the sources before it.
     config_count = len(secret_values(config, inline))
+    run_count = len(secret_values(config, [*inline, *run_urls])) - config_count
     scan_sources = {
         "configuration_and_environment": config_count,
-        "auth_cache": len(secrets) - config_count,
+        "results_product_urls": run_count,
+        "auth_cache": len(secrets) - config_count - run_count,
     }
     if not secrets:
         warnings.append(
             "the secret scan knew no credential: the configuration, the environment "
-            f"variables, and the auth cache for {root} hold none. If 'vip verify' ran "
-            "with a credential, run 'vip bundle' with the same configuration, "
-            "environment variables, and directory. Look at the zip before you send it."
+            f"variables, the product URLs in results.json, and the auth cache for {root} "
+            "hold none. If 'vip verify' ran with a credential, run 'vip bundle' with the "
+            "same configuration, environment variables, and directory. Look at the zip "
+            "before you send it."
         )
     warnings += [
         f"the value of {label} is shorter than 4 characters, so the secret scan "
@@ -345,5 +369,6 @@ def run_bundle(args: argparse.Namespace) -> None:
     print(
         f"The secret scan looked for {len(secrets)} known values: "
         f"{scan_sources['configuration_and_environment']} from the configuration and the "
-        f"environment, {scan_sources['auth_cache']} from the auth cache."
+        f"environment, {scan_sources['results_product_urls']} from the product URLs in "
+        f"results.json, {scan_sources['auth_cache']} from the auth cache."
     )

@@ -228,6 +228,8 @@ def _sidecar_text(name: str, run: str) -> str:
             '<testsuites><testsuite name="vip"><properties>'
             f'<property name="generated_at" value="{run}" /></properties></testsuite></testsuites>'
         )
+    if name == "failures.json":
+        return json.dumps({"generated_at": run, "failures": []})
     return json.dumps({"version": "2.1.0", "runs": [{"properties": {"generated_at": run}}]})
 
 
@@ -257,16 +259,30 @@ def test_sidecar_with_another_run_time_is_left_out(tmp_path, name, sidecar_mtime
     assert got.left_out == [{"name": f"report/{name}", "reason": reason}]
 
 
-@pytest.mark.parametrize("name", ["junit.xml", "results.sarif"])
-@pytest.mark.parametrize(("sidecar_mtime", "included"), [(1_000_001.0, False), (1_000_900.0, True)])
-def test_sidecar_with_no_run_time_uses_the_file_time(tmp_path, name, sidecar_mtime, included):
-    # A file from an older vip has no generated_at value. The text of the
-    # value in some other place of the file does not count.
+@pytest.mark.parametrize("name", _SIDECARS)
+@pytest.mark.parametrize("sidecar_mtime", [1_000_001.0, 1_000_900.0])
+@pytest.mark.parametrize("text", ['{"runs": [{"note": "2026-11-12T14:00:00+00:00"}]}', "{not json"])
+def test_sidecar_with_no_run_time_is_left_out_when_results_has_one(
+    tmp_path, name, sidecar_mtime, text
+):
+    # If results.json has a run time, a sidecar with none is not from this
+    # run, even if it is newer, for example a later pytest --junitxml. The
+    # text of the value in some other place of the file does not count.
     report = tmp_path / "report"
-    run = "2026-11-12T14:00:00+00:00"
-    results = json.dumps({"generated_at": run, "results": []})
+    results = json.dumps({"generated_at": "2026-11-12T14:00:00+00:00", "results": []})
     _seed(report, sidecars=(), rendered=(), results=results, results_mtime=1_000_500.0)
-    _write(report / name, json.dumps({"runs": [{"note": run}]}), sidecar_mtime)
+    _write(report / name, text, sidecar_mtime)
+    got = collect_members(report / "results.json", report)
+    reason = "has no run time, so it is not from the run of results.json"
+    assert got.left_out == [{"name": f"report/{name}", "reason": reason}]
+
+
+@pytest.mark.parametrize("name", _SIDECARS)
+@pytest.mark.parametrize(("sidecar_mtime", "included"), [(1_000_001.0, True), (999_999.0, False)])
+def test_with_no_run_time_in_results_the_file_time_decides(tmp_path, name, sidecar_mtime, included):
+    report = tmp_path / "report"
+    _seed(report, sidecars=(), rendered=())
+    _write(report / name, _sidecar_text(name, "2026-11-12T14:00:00+00:00"), sidecar_mtime)
     got = collect_members(report / "results.json", report)
     assert (f"report/{name}" in got.members) is included
 
@@ -351,6 +367,7 @@ PADDED = "QU1DREVGR0hJSktMTU5PUA=="
         (SHORT, "pa&quot;ss&amp;wörd-01".encode()),  # html.escape
         (SHORT, 'pa"ss&amp;wörd-01'.encode()),  # html.escape with quote=False (XML text)
         (SHORT, b"pa%22ss%26w%C3%B6rd-01"),  # percent-encoded with quote
+        (SHORT, b"pa%22ss%26w%c3%b6rd-01"),  # percent-encoded with lowercase hex
         (SPACED, b"pass+word-0123"),  # percent-encoded with quote_plus
         (BACKSLASH, b"'ab\\\\cd-Secret9'"),  # repr in error text
         (BACKSLASH, json.dumps(repr(BACKSLASH)).encode()),  # repr, then json.dumps
@@ -421,6 +438,78 @@ def test_short_secrets_are_not_scanned_but_are_reported():
     secrets = [("auth.password", "abc"), ("connect.api_key", "ABC123")]
     assert find_secret_hits({"report/a": b"abc"}, secrets) == []
     assert short_secret_labels(secrets) == ["auth.password"]
+
+
+def test_scan_threshold_boundaries():
+    # A value of MIN_SECRET_LENGTH (4) is scanned. A value of
+    # PARTIAL_MIN_SECRET_LENGTH (16) also gets its first and last
+    # PARTIAL_LENGTH (8) characters as forms. A value of 15 does not.
+    assert find_secret_hits({"a": b"x ab1c y"}, [("k", "ab1c")]) == [("a", "k")]
+    at, below = "Abcdefg1-xyz-23Q", "Abcdefg1-xyz-23"
+    assert find_secret_hits({"a": b"x Abcdefg1 y"}, [("k", at)]) == [("a", "k")]
+    assert find_secret_hits({"a": b"x Abcdefg y"}, [("k", at)]) == []
+    assert find_secret_hits({"a": b"x Abcdefg1 y"}, [("k", below)]) == []
+
+
+def test_scan_reads_a_value_with_bytes_that_are_not_utf8():
+    # Python keeps such environment bytes as surrogates.
+    assert find_secret_hits({"a": b"x pw\xff1234 y"}, [("k", "pw\udcff1234")]) == [("a", "k")]
+    assert find_secret_hits({"a": b"x"}, [("k", "pw\ud8001234")]) == []
+
+
+_PAGE = (
+    b"<html><head><style>@font-face{src:url(data:font/woff2;base64,K3yFont1)}</style>"
+    b'<script>var k="K3yScript1";</script></head><body>'
+    b'<img src="data:image/png;base64,K3yImage1"><p>metadata:K3yText01</p></body></html>'
+)
+
+
+@pytest.mark.parametrize("secret", ["K3yFont1", "K3yScript1", "K3yImage1"])
+def test_scan_skips_data_uris_scripts_and_styles_in_html(secret):
+    assert find_secret_hits({"report/_output/index.html": _PAGE}, [("k", secret)]) == []
+    assert find_secret_hits({"report/results.json": _PAGE}, [("k", secret)]) == [
+        ("report/results.json", "k")
+    ]
+
+
+def test_scan_reads_the_text_of_an_html_page():
+    hits = find_secret_hits({"report/_output/index.html": _PAGE}, [("k", "K3yText01")])
+    assert hits == [("report/_output/index.html", "k")]
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        _RESULTS.encode("utf-16"),
+        b"\xef\xbb\xbf" + _RESULTS.encode(),
+        b'{"results": [], "x": "\xff"}',
+    ],
+)
+def test_results_that_is_not_utf8_raises(tmp_path, data):
+    report = tmp_path / "report"
+    report.mkdir()
+    (report / "results.json").write_bytes(data)
+    with pytest.raises(BundleError, match="not UTF-8"):
+        collect_members(report / "results.json", report)
+
+
+@pytest.mark.parametrize("name", [*_SIDECARS, "_output/index.html"])
+def test_sidecar_or_page_that_is_not_utf8_raises(tmp_path, name):
+    report = tmp_path / "report"
+    _seed(report)
+    (report / name).write_bytes(f"content of {name}".encode("utf-16"))
+    os.utime(report / name, (1_000_001.0, 1_000_001.0))
+    if name.startswith("_output/"):
+        record_rendered(report / "_output", results_digest(_RESULTS.encode()), _RENDERED)
+    with pytest.raises(BundleError, match="not UTF-8"):
+        collect_members(report / "results.json", report)
+
+
+def test_deeply_nested_results_raises_bundle_error(tmp_path):
+    report = tmp_path / "report"
+    _seed(report, sidecars=(), rendered=(), results="[" * 100_000 + "]" * 100_000)
+    with pytest.raises(BundleError, match="is not a VIP results file"):
+        collect_members(report / "results.json", report)
 
 
 def test_write_zip_writes_every_member(tmp_path):

@@ -8,9 +8,10 @@ import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TypeGuard
-from urllib.parse import parse_qsl, unquote, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 from vip.config import VIPConfig
+from vip.errors import BundleError
 
 # Dotted paths of every VIPConfig field. selftests/test_bundle_summary.py walks
 # VIPConfig and fails when a field is in neither set, so a new field must be
@@ -100,10 +101,11 @@ SUMMARIZED_FIELDS = frozenset(
     }
 )
 
-# Each credential variable that VIP reads. The scan reads them all directly,
-# because the loaded configuration holds a variable only if the matching field
-# in vip.toml is empty, has git_test=None with no [workbench.git_test] table,
-# and never holds the TOTP seed.
+# Each credential variable that VIP reads. The scan reads each one directly,
+# because the loaded configuration does not always hold it. The configuration
+# holds a variable only if the matching field in vip.toml is empty. It has no
+# VIP_GIT_TOKEN when vip.toml has no [workbench.git_test] table, because
+# git_test is then None. It never holds the TOTP seed.
 SECRET_ENV_VARS = (
     "VIP_CONNECT_API_KEY",
     "VIP_WORKBENCH_API_KEY",
@@ -138,7 +140,10 @@ CONNECTION_SECRET_KEYS = SECRET_QUERY_KEYS | frozenset(
     {"accountkey", "sharedaccesskey", "sharedaccesssignature", "privatekey", "private_key"}
 )
 
-_USERINFO_RE = re.compile(r"://([^/@]*)@")
+# A host, an IPv6 address in brackets, and an optional port. A host that
+# holds other text after a ":" is part of a password.
+_PLAIN_HOST_RE = re.compile(r"(\[[^\]]*\]|[^:\[\]@]*)(:\d*)?")
+_HOST_END_RE = re.compile(r"[/?#]")
 # A Git remote with no scheme, for example x-access-token:TOKEN@github.com/org/repo.git.
 # The userinfo must hold ":", so git@github.com:org/repo.git does not match.
 _BARE_USERINFO_RE = re.compile(r"^([^/@\s:]+:[^/@\s]*)@")
@@ -148,30 +153,70 @@ _KV_PART_RE = re.compile(
 )
 
 
+def _split_at_last_at(url: str) -> tuple[str, str, str, str]:
+    """Return ``(scheme, userinfo, host, rest)`` for *url*, which holds ``://``.
+
+    The userinfo is all text after ``://`` up to the last ``@``. urlsplit ends
+    the netloc at the first ``/``, ``?``, or ``#``, so it loses a password
+    that holds one of them with no percent-encoding. The host ends at the
+    first ``/``, ``?``, or ``#`` after the ``@``. If a path or a query holds an
+    ``@``, this takes too much text as userinfo. The summary then loses the
+    path, and the scan looks for one more value.
+    """
+    scheme, _, rest = url.partition("://")
+    userinfo, _, after = rest.rpartition("@")
+    end = _HOST_END_RE.search(after)
+    cut = end.start() if end else len(after)
+    return scheme, userinfo, after[:cut], after[cut:]
+
+
 def strip_url_userinfo(url: str) -> str:
     """Return *url* without userinfo, query, or fragment. Keep the scheme, host, port, and path.
 
-    The host comes from the raw netloc, not ``hostname``, so the brackets of
-    an IPv6 address stay. A Git remote with no scheme also loses its
-    ``user:token@`` part.
+    The host keeps the brackets of an IPv6 address. A host that is not a
+    plain host and port becomes ``<redacted>``, because it can hold a part of
+    a password. A Git remote with no scheme also loses its ``user:token@``
+    part.
     """
     if not url:
         return url
     if "://" not in url:
         return _BARE_USERINFO_RE.sub("", url).split("?", 1)[0].split("#", 1)[0]
+    scheme, _, host, rest = _split_at_last_at(url)
+    if not _PLAIN_HOST_RE.fullmatch(host):
+        host = "<redacted>"
+    return f"{scheme}://{host}" + rest.split("?", 1)[0].split("#", 1)[0]
+
+
+def _userinfo_and_query(url: str) -> tuple[list[str], list[tuple[str, str]]]:
+    """Return each possible userinfo of *url* and its query pairs.
+
+    Both :func:`_split_at_last_at` and urlsplit are used. They differ when a
+    password holds a raw ``/``, ``?``, or ``#``, and when the URL holds more
+    than one ``@``. The scan looks for the values of both, so it does not
+    depend on which one is right.
+    """
+    if "://" not in url:
+        match = _BARE_USERINFO_RE.match(url)
+        return ([match.group(1)] if match else []), []
+    _, userinfo, _, rest = _split_at_last_at(url)
+    userinfos = [userinfo]
+    query = parse_qsl(rest.split("#", 1)[0].partition("?")[2])
     try:
         parts = urlsplit(url)
     except ValueError:
-        stripped = _USERINFO_RE.sub("://", url)
-        return stripped.split("?", 1)[0].split("#", 1)[0]
-    host = parts.netloc.rpartition("@")[2]
-    return urlunsplit((parts.scheme, host, parts.path, "", ""))
+        return userinfos, query
+    if "@" in parts.netloc:
+        userinfos.append(parts.netloc.rpartition("@")[0])
+    query += parse_qsl(parts.query)
+    return userinfos, query
 
 
 def _url_credentials(url: str, *, both_parts: bool = False) -> list[tuple[str, str]]:
     """Return ``(part, value)`` for each credential in *url*.
 
-    The part is ``user``, ``password``, or ``query`` (a secret query value).
+    The part is ``user``, ``password``, or ``query <key>`` (a secret query
+    value), so that each part can get its own label.
 
     With ``user:password``, only the password is a credential, unless
     *both_parts* is set. A Git remote can hold the token in either part, for
@@ -182,27 +227,21 @@ def _url_credentials(url: str, *, both_parts: bool = False) -> list[tuple[str, s
     """
     if not url:
         return []
-    query: list[tuple[str, str]] = []
-    if "://" not in url:
-        match = _BARE_USERINFO_RE.match(url)
-        if match is None:
-            return []
-        userinfo = match.group(1)
-    else:
-        try:
-            parts = urlsplit(url)
-            query = parse_qsl(parts.query)
-            userinfo = parts.netloc.rpartition("@")[0]
-        except ValueError:
-            match = _USERINFO_RE.search(url)
-            userinfo = match.group(1) if match else ""
-    user, _, password = userinfo.partition(":")
-    if both_parts:
-        values = [("user", user), ("password", password)]
-    else:
-        values = [("password", password) if password else ("user", user)]
-    values += [("query", value) for key, value in query if key.lower() in SECRET_QUERY_KEYS]
+    userinfos, query = _userinfo_and_query(url)
+    values: list[tuple[str, str]] = []
+    for userinfo in userinfos:
+        user, _, password = userinfo.partition(":")
+        if both_parts:
+            values += [("user", user), ("password", password)]
+        else:
+            values.append(("password", password) if password else ("user", user))
+    values += [(f"query {key}", value) for key, value in query if key.lower() in SECRET_QUERY_KEYS]
     return [(part, v) for part, value in values for v in (value, unquote(value)) if v]
+
+
+def url_secrets(label: str, url: str, *, both_parts: bool = False) -> list[tuple[str, str]]:
+    """Return ``("<label> <part>", value)`` for each credential in *url*."""
+    return [(f"{label} {part}", v) for part, v in _url_credentials(url, both_parts=both_parts)]
 
 
 def _connection_string_parts(conn: str) -> list[tuple[str, str]]:
@@ -221,7 +260,7 @@ def _connection_string_parts(conn: str) -> list[tuple[str, str]]:
 def _connection_string_secrets(label: str, conn: str) -> list[tuple[str, str]]:
     """Return the whole connection string and each credential part of it, with labels."""
     pairs = [(label, conn)]
-    pairs += [(f"{label} credentials", v) for _, v in _url_credentials(conn)]
+    pairs += url_secrets(label, conn)
     pairs += [(f"{label} {key}", value) for key, value in _connection_string_parts(conn)]
     return pairs
 
@@ -233,33 +272,78 @@ def _is_cache_secret(value: object) -> TypeGuard[str]:
     return _EMAIL_RE.fullmatch(unquote(value)) is None
 
 
+def _read_auth_cache(path: Path) -> dict[str, Any] | None:
+    """Return the parsed auth cache file *path*, or None if it does not exist.
+
+    Any other read error, a parse error, or a top level that is not an object
+    raises BundleError. A file that the scan cannot read can still hold a
+    session that the report holds too.
+    """
+    try:
+        data = json.loads(path.read_bytes().decode("utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, RecursionError) as exc:
+        raise _cache_error(path, str(exc)) from exc
+    if not isinstance(data, dict):
+        raise _cache_error(path, "the top level is not a JSON object")
+    return data
+
+
+def _cache_error(path: Path, reason: str) -> BundleError:
+    return BundleError(
+        f"could not read the auth cache file {path}: {reason}. Fix the file. If you "
+        "move it away, the secret scan cannot look for its values, so look at the "
+        "zip before you send it."
+    )
+
+
+def _cache_list(path: Path, owner: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    """Return the list of objects at *key* in *owner*. Raise BundleError for another shape."""
+    items = owner.get(key)
+    if items is None:
+        return []
+    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+        raise _cache_error(path, f'"{key}" is not a list of JSON objects')
+    return items
+
+
+def _cache_label(kind: str, place: object, name: object) -> str:
+    """Return a label such as ``auth cache cookie example.com sid``.
+
+    The domain or the origin is in the label, so that --allow-match for one
+    cookie does not also let a cookie with the same name on another domain
+    through.
+    """
+    parts = ["auth cache", kind, str(place or ""), str(name or "")]
+    return " ".join(part for part in parts if part)
+
+
 def auth_cache_secrets(path: Path) -> list[tuple[str, str]]:
     """Return ``(label, value)`` for each secret in one auth cache file.
 
     ``.vip-auth-cache.meta.json`` holds the minted Connect key.
     ``.vip-auth-cache.json`` is a Playwright storage state with cookies and
     localStorage values. A short value or an email address is not a secret. A
-    file that is missing or does not parse gives no values.
+    file that does not exist gives no values. A file that cannot be read or
+    parsed, or that has the wrong shape, raises BundleError.
     """
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    if not isinstance(data, dict):
+    data = _read_auth_cache(path)
+    if data is None:
         return []
     pairs: list[tuple[str, str]] = []
     if isinstance(data.get("api_key"), str):
         pairs.append(("auth cache api_key", data["api_key"]))
-    for cookie in data.get("cookies") or []:
-        value = cookie.get("value") if isinstance(cookie, dict) else None
+    for cookie in _cache_list(path, data, "cookies"):
+        value = cookie.get("value")
         if _is_cache_secret(value):
-            pairs.append((f"auth cache cookie {cookie.get('name', '')}", value))
-    for origin in data.get("origins") or []:
-        items = origin.get("localStorage") if isinstance(origin, dict) else None
-        for item in items or []:
-            value = item.get("value") if isinstance(item, dict) else None
+            pairs.append((_cache_label("cookie", cookie.get("domain"), cookie.get("name")), value))
+    for origin in _cache_list(path, data, "origins"):
+        for item in _cache_list(path, origin, "localStorage"):
+            value = item.get("value")
             if _is_cache_secret(value):
-                pairs.append((f"auth cache localStorage {item.get('name', '')}", value))
+                label = _cache_label("localStorage", origin.get("origin"), item.get("name"))
+                pairs.append((label, value))
     return pairs
 
 
@@ -293,7 +377,9 @@ def secret_values(
     *cache_secrets* are extra pairs, such as the ones that
     :func:`auth_cache_secrets` and :func:`raw_config_secrets`
     read. The label names the source of the value, so an error can name it without
-    printing the value. Empty values and repeated values are dropped.
+    printing the value. Each part of a URL has its own label, so that
+    --allow-match for a public user name does not also let a password
+    through. Empty values and repeated values are dropped.
     """
     pairs: list[tuple[str, str]] = [
         ("connect.api_key", config.connect.api_key),
@@ -304,23 +390,17 @@ def secret_values(
     git = config.workbench.git_test
     if git is not None:
         pairs.append(("workbench.git_test.token", git.token))
-        # Each part has its own label, so that --allow-match for a public user
-        # name does not also let the token through.
-        pairs += [
-            (f"workbench.git_test.clone_url {part}", v)
-            for part, v in _url_credentials(git.clone_url, both_parts=True)
-        ]
+        pairs += url_secrets("workbench.git_test.clone_url", git.clone_url, both_parts=True)
     for ds in config.data_sources:
         pairs += _connection_string_secrets(
             f"data_sources.{ds.name}.connection_string", ds.connection_string
         )
     for product in ("connect", "workbench", "package_manager"):
-        url = config.product_config(product).url
-        pairs += [(f"{product}.url credentials", v) for _, v in _url_credentials(url)]
-    pairs += [("proxy.url credentials", v) for _, v in _url_credentials(config.proxy.url)]
+        pairs += url_secrets(f"{product}.url", config.product_config(product).url)
+    pairs += url_secrets("proxy.url", config.proxy.url)
     pairs += [(var, os.environ.get(var, "")) for var in SECRET_ENV_VARS]
     for var in PROXY_ENV_VARS:
-        pairs += [(f"{var} credentials", v) for _, v in _url_credentials(os.environ.get(var, ""))]
+        pairs += url_secrets(var, os.environ.get(var, ""))
     pairs += list(cache_secrets)
 
     seen: set[str] = set()

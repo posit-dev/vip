@@ -12,6 +12,7 @@ import pytest
 
 from vip.bundle.summary import (
     EXCLUDED_FIELDS,
+    SECRET_ENV_VARS,
     SECRET_FIELDS,
     SUMMARIZED_FIELDS,
     auth_cache_secrets,
@@ -28,6 +29,7 @@ from vip.config import (
     VIPConfig,
     WorkbenchConfig,
 )
+from vip.errors import BundleError
 from vip.proxy import ProxyConfig
 
 # Every VIP_* variable that VIPConfig or the bundle reads. A developer's own
@@ -177,47 +179,82 @@ def _config_classes(cls: Any, prefix: str = "") -> list[tuple[Any, str]]:
 _REQUIRED_VALUES = {GitTestConfig: {"auth_method": "https-token"}}
 
 
-def _sentinel_values(cls: type, prefix: str) -> dict[str, str]:
-    """Return a distinct sentinel for each init field that can hold a str."""
+_STR_TYPES = (str, str | None)
+_LIST_TYPES = (list[str], list[str] | None)
+_DICT_TYPES = (dict[str, str], dict[str, str] | None)
+
+
+def _sentinel_values(cls: type, prefix: str) -> dict[str, tuple[object, str]]:
+    """Return ``{field: (value, sentinel)}`` for each init field that can hold a str.
+
+    A str field gets the sentinel. A list field gets a list that holds it,
+    and a dict field gets a dict with it as the value.
+    """
     hints = typing.get_type_hints(cls)
-    return {
-        f.name: f"SENTINEL-{prefix}{f.name}"
-        for f in dataclasses.fields(cls)
-        if f.init and hints[f.name] in (str, str | None)
-    }
+    found: dict[str, tuple[object, str]] = {}
+    for f in dataclasses.fields(cls):
+        sentinel = f"SENTINEL-{prefix}{f.name}"
+        hint = hints[f.name]
+        if not f.init:
+            continue
+        if hint in _STR_TYPES:
+            found[f.name] = (sentinel, sentinel)
+        elif hint in _LIST_TYPES:
+            found[f.name] = ([sentinel], sentinel)
+        elif hint in _DICT_TYPES:
+            found[f.name] = ({"key": sentinel}, sentinel)
+    return found
 
 
-def test_sentinel_values_cover_optional_str_fields():
+def test_sentinel_values_cover_str_list_and_dict_fields():
     @dataclasses.dataclass
     class Sample:
         name: str = ""
         token: str | None = None
+        hosts: list[str] = dataclasses.field(default_factory=list)
+        keys: list[str] | None = None
+        headers: dict[str, str] = dataclasses.field(default_factory=dict)
         count: int = 0
+        limits: dict[str, float] = dataclasses.field(default_factory=dict)
 
     assert _sentinel_values(Sample, "s.") == {
-        "name": "SENTINEL-s.name",
-        "token": "SENTINEL-s.token",
+        "name": ("SENTINEL-s.name", "SENTINEL-s.name"),
+        "token": ("SENTINEL-s.token", "SENTINEL-s.token"),
+        "hosts": (["SENTINEL-s.hosts"], "SENTINEL-s.hosts"),
+        "keys": (["SENTINEL-s.keys"], "SENTINEL-s.keys"),
+        "headers": ({"key": "SENTINEL-s.headers"}, "SENTINEL-s.headers"),
     }
 
 
 def test_every_repr_masked_field_is_a_secret():
     # A config class that hides a field in __repr__ treats it as a secret.
-    # Every str field, optional or not, gets a distinct sentinel, so a new
-    # hidden field is found.
+    # Every field that can hold a str, in a list, or in a dict gets a distinct
+    # sentinel, so a new hidden field is found.
     classes = _config_classes(VIPConfig)
     known = {ConnectConfig, WorkbenchConfig, GitTestConfig, PackageManagerConfig, AuthConfig}
     assert known | {DataSourceEntry} <= {cls for cls, _ in classes}
     hidden: set[str] = set()
     for cls, prefix in classes:
-        values = _sentinel_values(cls, prefix)
-        values.update(_REQUIRED_VALUES.get(cls, {}))
-        text = repr(cls(**values))
-        hidden |= {
-            prefix + name
-            for name, value in values.items()
-            if value.startswith("SENTINEL-") and value not in text
+        required = _REQUIRED_VALUES.get(cls, {})
+        sentinels = {
+            name: pair
+            for name, pair in _sentinel_values(cls, prefix).items()
+            if name not in required
         }
+        text = repr(cls(**{name: value for name, (value, _) in sentinels.items()}, **required))
+        hidden |= {prefix + name for name, (_, s) in sentinels.items() if s not in text}
     assert hidden == SECRET_FIELDS
+
+
+def test_fields_left_out_of_the_summary_that_are_not_secrets_are_pinned():
+    # The scan looks only for SECRET_FIELDS. A new field here is left out of
+    # the summary but is not scanned, so it must be a reviewed choice.
+    assert {
+        "auth.username",
+        "connect.url_scheme_inferred",
+        "workbench.url_scheme_inferred",
+        "package_manager.url_scheme_inferred",
+    } == EXCLUDED_FIELDS - SECRET_FIELDS
 
 
 _SET_ONE_SECRET = {
@@ -372,7 +409,7 @@ def test_secret_values_labels_name_the_source(full_config):
     labels = {value: label for label, value in secret_values(full_config)}
     assert labels[SECRETS["auth.password"]] == "auth.password"
     assert labels[SECRETS["clone_url user"]] == "workbench.git_test.clone_url user"
-    assert labels[SECRETS["clone_url query"]] == "workbench.git_test.clone_url query"
+    assert labels[SECRETS["clone_url query"]] == "workbench.git_test.clone_url query access_token"
 
 
 def test_clone_url_user_and_password_have_their_own_labels():
@@ -409,13 +446,57 @@ def test_secret_values_split_key_value_connection_string():
     assert "sa" not in labels
 
 
-def test_auth_cache_secrets_skip_missing_or_bad_files(tmp_path):
-    bad = tmp_path / "bad.json"
-    bad.write_text("not json", encoding="utf-8")
-    listed = tmp_path / "list.json"
-    listed.write_text("[]", encoding="utf-8")
-    for path in (bad, listed, tmp_path / "absent.json"):
-        assert auth_cache_secrets(path) == []
+def test_auth_cache_secrets_skip_a_missing_file(tmp_path):
+    assert auth_cache_secrets(tmp_path / "absent.json") == []
+
+
+_GOOD_CACHE = json.dumps({"cookies": [{"name": "sid", "value": "COOKIE-VALUE-0123456789"}]})
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"not json",
+        _GOOD_CACHE[:-3].encode(),  # cut before the closing brackets
+        b"\xef\xbb\xbf" + _GOOD_CACHE.encode(),  # UTF-8 BOM
+        _GOOD_CACHE.encode("utf-16"),
+        b"[]",
+        b'{"cookies": 5}',
+        b'{"cookies": ["sid"]}',
+        b'{"origins": {"localStorage": []}}',
+        b'{"origins": [{"localStorage": 5}]}',
+    ],
+)
+def test_auth_cache_file_that_cannot_be_used_raises(tmp_path, data):
+    path = tmp_path / ".vip-auth-cache.json"
+    path.write_bytes(data)
+    with pytest.raises(BundleError, match="could not read the auth cache file"):
+        auth_cache_secrets(path)
+
+
+def test_auth_cache_directory_raises(tmp_path):
+    with pytest.raises(BundleError, match="could not read the auth cache file"):
+        auth_cache_secrets(tmp_path)
+
+
+def test_auth_cache_labels_name_the_domain_and_the_origin(tmp_path):
+    state = tmp_path / ".vip-auth-cache.json"
+    cookies = [
+        {"name": "sid", "domain": "a.example.com", "value": "COOKIE-A-0123456789"},
+        {"name": "sid", "domain": "b.example.com", "value": "COOKIE-B-0123456789"},
+    ]
+    origins = [
+        {
+            "origin": "https://a.example.com",
+            "localStorage": [{"name": "t", "value": "LOCAL-A-0123456789"}],
+        }
+    ]
+    state.write_text(json.dumps({"cookies": cookies, "origins": origins}), encoding="utf-8")
+    assert auth_cache_secrets(state) == [
+        ("auth cache cookie a.example.com sid", "COOKIE-A-0123456789"),
+        ("auth cache cookie b.example.com sid", "COOKIE-B-0123456789"),
+        ("auth cache localStorage https://a.example.com t", "LOCAL-A-0123456789"),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -486,8 +567,8 @@ def test_each_proxy_variable_is_read(monkeypatch, var):
 @pytest.mark.parametrize(
     ("url", "expected"),
     [
-        # urlsplit raises ValueError for this host.
-        ("http://u:SECRET@[::1/x?token=T", "http://[::1/x"),
+        # urlsplit raises ValueError for this host. It is not a plain host.
+        ("http://u:SECRET@[::1/x?token=T", "http://<redacted>/x"),
         # A Git remote with no scheme.
         (
             "x-access-token:SECRET@github.com/org/repo.git?access_token=T#f",
@@ -497,3 +578,90 @@ def test_each_proxy_variable_is_read(monkeypatch, var):
 )
 def test_strip_url_userinfo_handles_a_bad_host_and_a_bare_remote(url, expected):
     assert strip_url_userinfo(url) == expected
+
+
+@pytest.mark.parametrize(
+    ("url", "secret", "summary"),
+    [
+        (
+            "https://admin:Abc123#Secret9@connect.example.com",
+            "Abc123#Secret9",
+            "https://connect.example.com",
+        ),
+        (
+            "https://admin:Abc?123x@connect.example.com/p",
+            "Abc?123x",
+            "https://connect.example.com/p",
+        ),
+        (
+            "https://admin:Ab/c123x@connect.example.com/p",
+            "Ab/c123x",
+            "https://connect.example.com/p",
+        ),
+        ("https://Tok#en-0123@connect.example.com", "Tok#en-0123", "https://connect.example.com"),
+    ],
+)
+def test_password_with_a_raw_delimiter_is_a_secret_and_is_not_in_the_summary(url, secret, summary):
+    config = VIPConfig(connect=ConnectConfig(url=url))
+    assert secret in {value for _, value in secret_values(config)}
+    assert strip_url_userinfo(url) == summary
+
+
+def test_url_with_an_at_sign_in_the_path_keeps_the_real_password_too():
+    # The two parsers differ when the URL holds two "@". The scan looks for both values.
+    url = "https://u:REAL-PASS-0123@connect.example.com/a@b"
+    values = {value for _, value in secret_values(VIPConfig(connect=ConnectConfig(url=url)))}
+    assert "REAL-PASS-0123" in values
+
+
+@pytest.mark.parametrize(
+    ("url", "summary"),
+    [
+        ("https://admin:Abc123", "https://<redacted>"),
+        ("https://connect.example.com:8443/x", "https://connect.example.com:8443/x"),
+    ],
+)
+def test_summary_redacts_a_host_that_is_not_a_plain_host(url, summary):
+    assert strip_url_userinfo(url) == summary
+
+
+def test_each_part_of_a_url_has_its_own_label():
+    conn = "postgresql://appuser@db.example.com:5432/app?sslmode=require&password=PG-PASS-0123"
+    config = VIPConfig(
+        data_sources=[DataSourceEntry(name="pg", connection_string=conn)],
+        connect=ConnectConfig(url="https://u:URL-PASS-0123@c.example.com/?token=URL-TOKEN-0123"),
+    )
+    labels = {value: label for label, value in secret_values(config)}
+    assert labels["appuser"] == "data_sources.pg.connection_string user"
+    assert labels["PG-PASS-0123"] == "data_sources.pg.connection_string query password"
+    assert labels["URL-PASS-0123"] == "connect.url password"
+    assert labels["URL-TOKEN-0123"] == "connect.url query token"
+
+
+_INLINE_FOR_ENV = {
+    "VIP_CONNECT_API_KEY": lambda: VIPConfig(connect=ConnectConfig(api_key="INLINE-0123")),
+    "VIP_WORKBENCH_API_KEY": lambda: VIPConfig(workbench=WorkbenchConfig(api_key="INLINE-0123")),
+    "VIP_PACKAGE_MANAGER_TOKEN": lambda: VIPConfig(
+        package_manager=PackageManagerConfig(token="INLINE-0123")
+    ),
+    "VIP_PM_TOKEN": lambda: VIPConfig(package_manager=PackageManagerConfig(token="INLINE-0123")),
+    "VIP_TEST_PASSWORD": lambda: VIPConfig(auth=AuthConfig(password="INLINE-0123")),
+    "VIP_GIT_TOKEN": lambda: VIPConfig(
+        workbench=WorkbenchConfig(git_test=GitTestConfig(token="INLINE-0123"))
+    ),
+    "VIP_TEST_TOTP_SECRET": VIPConfig,
+}
+
+
+@pytest.mark.parametrize("var", SECRET_ENV_VARS)
+def test_each_env_variable_is_read_next_to_an_inline_value(monkeypatch, var):
+    # The configuration keeps the inline value, so only SECRET_ENV_VARS
+    # gives the scan the value of the variable.
+    monkeypatch.setenv(var, f"ENV-{var}-0123")
+    config = _INLINE_FOR_ENV[var]()
+    assert f"ENV-{var}-0123" not in repr(dataclasses.asdict(config))
+    assert f"ENV-{var}-0123" in {value for _, value in secret_values(config)}
+
+
+def test_every_env_variable_has_an_inline_builder():
+    assert set(_INLINE_FOR_ENV) == set(SECRET_ENV_VARS)
