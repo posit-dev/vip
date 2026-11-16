@@ -45,6 +45,8 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from vip.errors import ConfigError
+
 try:
     from httpx._utils import (
         URLPattern,
@@ -518,10 +520,21 @@ def proxy_for_url(url: str, proxy_map: ProxyMap) -> str | None:
     ``None`` for a bypass pattern). Callers that are not httpx clients — a raw
     socket probe, Playwright — use this to take the *same* network path the API
     clients will, instead of a divergent one.
+
+    Raises :class:`~vip.errors.ConfigError` for a malformed *url*. Returning
+    ``None`` would silently pick the direct path and push the same failure
+    into the request that follows; ``httpx.InvalidURL`` derives from
+    ``Exception``, so callers that only catch ``httpx.HTTPError`` would miss it.
     """
     if not proxy_map:
         return None
-    target = httpx.URL(url)
+    try:
+        target = httpx.URL(url)
+    except httpx.InvalidURL as exc:
+        raise ConfigError(
+            f"{redact_proxy_url(url)!r} is not a valid URL ({exc}). Check --connect-url, "
+            f"--workbench-url, or the url in vip.toml."
+        ) from exc
     # Match httpx exactly: URLPattern sorts ascending with the *most specific*
     # pattern first (a host pattern like ``all://*foo`` has a smaller priority
     # tuple than the catch-all ``all://``), and the first matching pattern wins.
