@@ -803,7 +803,7 @@ class TestMalformedUrlBecomesCleanUsageError:
         )
         pytester.makepyfile("def test_placeholder(): pass")
 
-        result = pytester.runpytest("--vip-config=vip.toml", auth_flag)
+        result = pytester.runpytest_subprocess("--vip-config=vip.toml", auth_flag)
 
         assert result.ret == pytest.ExitCode.USAGE_ERROR
         result.stderr.fnmatch_lines(["*is not a valid URL*"])
