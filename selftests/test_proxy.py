@@ -403,6 +403,14 @@ def test_proxy_for_url_malformed_url_raises_config_error(url):
     assert isinstance(excinfo.value.__cause__, httpx.InvalidURL)
 
 
+def test_proxy_for_url_malformed_url_error_redacts_userinfo():
+    """The diagnostic must not echo an embedded password."""
+    with pytest.raises(ConfigError) as excinfo:
+        proxy_for_url("https://alice:secret@connect.example:bad", {"all://": "http://p:8080"})
+    assert "secret" not in str(excinfo.value)
+    assert "alice" not in str(excinfo.value)
+
+
 # ---------------------------------------------------------------------------
 # build_mounts — keeps verify, composes with a base transport
 # ---------------------------------------------------------------------------

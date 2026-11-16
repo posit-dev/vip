@@ -772,6 +772,45 @@ class TestAuthTimeoutBecomesCleanUsageError:
         assert "INTERNALERROR" not in full_output
 
 
+class TestMalformedUrlBecomesCleanUsageError:
+    """A malformed product URL (``ConfigError`` from ``proxy_for_url``) must exit as a
+    clean ``pytest.UsageError`` for BOTH auth modes, never an INTERNALERROR.
+    """
+
+    _RAISE_CONFIG_ERROR_CONFTEST = """
+        import vip.plugin.auth
+        from vip.errors import ConfigError
+
+        def _raise_config_error(*args, **kwargs):
+            raise ConfigError("'https://c.example.com:bad' is not a valid URL")
+
+        vip.plugin.auth.start_interactive_auth = _raise_config_error
+        vip.plugin.auth.start_headless_auth = _raise_config_error
+        """
+
+    @pytest.mark.parametrize("auth_flag", ["--interactive-auth", "--headless-auth"])
+    def test_config_error_is_clean_usage_error(self, pytester, monkeypatch, auth_flag):
+        monkeypatch.setenv("VIP_TEST_USERNAME", "testuser")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "testpass")
+        pytester.makeconftest(self._RAISE_CONFIG_ERROR_CONFTEST)
+        pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://c.example.com"\n'
+                '[auth]\nprovider = "password"\n'
+            ),
+        )
+        pytester.makepyfile("def test_placeholder(): pass")
+
+        result = pytester.runpytest("--vip-config=vip.toml", auth_flag)
+
+        assert result.ret == pytest.ExitCode.USAGE_ERROR
+        result.stderr.fnmatch_lines(["*is not a valid URL*"])
+        full_output = "\n".join(result.outlines + result.errlines)
+        assert "INTERNALERROR" not in full_output
+
+
 class TestAuthModeStash:
     """The plugin stashes the active auth mode so tests can distinguish modes."""
 

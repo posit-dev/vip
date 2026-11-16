@@ -15,6 +15,7 @@ from vip.auth import (
     start_interactive_auth,
 )
 from vip.config import VIPConfig
+from vip.errors import ConfigError
 from vip.stash import _auth_mode_key, _auth_session_key
 
 
@@ -64,7 +65,7 @@ def _configure_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
                     workbench_url_scheme_inferred=vip_cfg.workbench.url_scheme_inferred,
                     proxy=vip_cfg.proxy,
                 )
-            except AuthConfigError as exc:
+            except (AuthConfigError, ConfigError) as exc:
                 raise pytest.UsageError(str(exc)) from None
             config.stash[_auth_session_key] = session
             if session.api_key:
@@ -120,7 +121,7 @@ def _configure_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
                     workbench_url_scheme_inferred=vip_cfg.workbench.url_scheme_inferred,
                     proxy=vip_cfg.proxy,
                 )
-            except AuthConfigError as exc:
+            except (AuthConfigError, ConfigError) as exc:
                 raise pytest.UsageError(str(exc)) from None
             config.stash[_auth_session_key] = session
             if session.api_key:

@@ -532,7 +532,7 @@ def proxy_for_url(url: str, proxy_map: ProxyMap) -> str | None:
         target = httpx.URL(url)
     except httpx.InvalidURL as exc:
         raise ConfigError(
-            f"{url!r} is not a valid URL ({exc}). Check --connect-url, "
+            f"{redact_proxy_url(url)!r} is not a valid URL ({exc}). Check --connect-url, "
             f"--workbench-url, or the url in vip.toml."
         ) from exc
     # Match httpx exactly: URLPattern sorts ascending with the *most specific*
