@@ -48,7 +48,7 @@ dependencies = [
     "ipykernel<8",
     "nbformat>=5.7,<6",
     "nbclient>=0.8,<1",
-    "tornado>=6.5.7,<7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f fix; transitive via ipykernel
+    "tornado>=6.6.1,<7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f, CVE-2026-126347 fix; transitive via ipykernel
 ]
 
 [project.optional-dependencies]
@@ -156,7 +156,7 @@ required-version = ">=0.11"
 # urllib3 and certifi are transitive. Floor each at the first release that fixes
 # its advisories (urllib3: CVE-2026-97687/97688/97689; certifi: GHSA-6q48-6c7w-9gw2)
 # so a relock cannot resolve back to a vulnerable version.
-constraint-dependencies = ["urllib3>=2.8.0", "certifi>=2026.10.19"]
+constraint-dependencies = ["urllib3>=2.8.0", "certifi>=2026.10.19", "brotli>=1.2.1", "werkzeug>=3.1.9"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vip", "src/vip_tests"]
