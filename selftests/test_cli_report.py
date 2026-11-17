@@ -9,6 +9,7 @@ loudly instead of silently producing nothing.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import subprocess
 import sys
@@ -373,6 +374,116 @@ class TestRunReportFromArbitraryDir:
 
         assert exc.value.code == 3
         assert rendered == ["index.qmd"], "must stop at the first failed page"
+
+
+class TestRenderStamp:
+    """vip report ties each rendered file to the results.json it was made from."""
+
+    @staticmethod
+    def _report_dir(tmp_path, monkeypatch, results: str = '{"results": []}'):
+        monkeypatch.chdir(tmp_path)
+        report_dir = tmp_path / "report"
+        report_dir.mkdir(exist_ok=True)
+        (report_dir / "results.json").write_text(results, encoding="utf-8")
+        return report_dir
+
+    @staticmethod
+    def _age_outputs(report_dir):
+        """Give each rendered file an old file time, as files of an earlier render have."""
+        for path in (report_dir / "_output").iterdir():
+            os.utime(path, (1_000_000.0, 1_000_000.0))
+
+    def test_stamp_names_every_rendered_file(self, tmp_path, monkeypatch):
+        from vip import cli
+        from vip.bundle.stamp import read_render_stamp, results_digest
+
+        report_dir = self._report_dir(tmp_path, monkeypatch)
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
+        cli.run_report(_make_args())
+        digest = results_digest((report_dir / "results.json").read_bytes())
+        stamp = read_render_stamp(report_dir / "_output")
+        assert stamp is not None
+        assert stamp[0] == digest
+        assert stamp[1] == {
+            "index.html": hashlib.sha256(b"<html>report</html>").hexdigest(),
+            "details.html": hashlib.sha256(b"<html>report</html>").hexdigest(),
+            "vip-report.pdf": hashlib.sha256(b"%PDF-fake").hexdigest(),
+        }
+
+    def test_failed_pdf_is_not_in_the_new_stamp(self, tmp_path, monkeypatch):
+        # The PDF of the earlier run stays on disk, but the stamp leaves it out.
+        from vip import cli
+        from vip.bundle.stamp import read_render_stamp
+
+        report_dir = self._report_dir(tmp_path, monkeypatch)
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
+        cli.run_report(_make_args())
+        self._age_outputs(report_dir)
+        self._report_dir(tmp_path, monkeypatch, results='{"results": [{"n": 1}]}')
+        monkeypatch.setattr(
+            "vip.cli.report.subprocess.run", _fake_quarto(create_output=True, pdf_returncode=1)
+        )
+        cli.run_report(_make_args())
+        stamp = read_render_stamp(report_dir / "_output")
+        assert stamp is not None
+        assert set(stamp[1]) == {"index.html", "details.html"}
+        assert (report_dir / "_output" / "vip-report.pdf").is_file()
+
+    def test_file_that_the_render_did_not_write_gets_no_stamp(self, tmp_path, monkeypatch, capsys):
+        # The second render exits with 0 and writes nothing, so each file on
+        # disk is from the first results.json.
+        from vip import cli
+        from vip.bundle.stamp import read_render_stamp
+
+        report_dir = self._report_dir(tmp_path, monkeypatch)
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
+        cli.run_report(_make_args())
+        self._age_outputs(report_dir)
+        self._report_dir(tmp_path, monkeypatch, results='{"results": [{"n": 1}]}')
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=False))
+        cli.run_report(_make_args())
+        stamp = read_render_stamp(report_dir / "_output")
+        assert stamp is not None
+        assert stamp[1] == {}
+        assert "did not write" in capsys.readouterr().err
+
+    def test_failed_html_clears_the_stamp(self, tmp_path, monkeypatch):
+        from vip import cli
+        from vip.bundle.stamp import read_render_stamp
+
+        report_dir = self._report_dir(tmp_path, monkeypatch)
+        monkeypatch.setattr("vip.cli.report.subprocess.run", _fake_quarto(create_output=True))
+        cli.run_report(_make_args())
+        monkeypatch.setattr(
+            "vip.cli.report.subprocess.run",
+            lambda cmd, cwd=None, **kwargs: types.SimpleNamespace(returncode=3),
+        )
+        with pytest.raises(SystemExit):
+            cli.run_report(_make_args())
+        assert read_render_stamp(report_dir / "_output") is None
+
+    def test_stamp_that_cannot_be_cleared_is_a_report_error(self, tmp_path, monkeypatch):
+        from vip import cli
+        from vip.errors import ReportError
+
+        self._report_dir(tmp_path, monkeypatch)
+
+        def fail(output_dir):
+            raise PermissionError("read-only file system")
+
+        monkeypatch.setattr("vip.cli.report.clear_render_stamp", fail)
+        with pytest.raises(ReportError, match="render stamp"):
+            cli.run_report(_make_args())
+
+    def test_results_that_cannot_be_read_is_a_report_error(self, tmp_path, monkeypatch):
+        from vip import cli
+        from vip.errors import ReportError
+
+        report_dir = self._report_dir(tmp_path, monkeypatch)
+        (report_dir / "results.json").unlink()
+        (report_dir / "results.json").mkdir()
+        with pytest.raises(ReportError, match="cannot read"):
+            cli.run_report(_make_args())
 
 
 class TestSupportFileResolution:

@@ -13,6 +13,7 @@ from vip.errors import (
     AuthConfigError,
     AuthError,
     AuthTimeoutError,
+    BundleError,
     ConfigError,
     InstallError,
     ProductUnreachableError,
@@ -33,7 +34,14 @@ class TestVipErrorExitCodes:
 
     @pytest.mark.parametrize(
         "cls",
-        [ConfigError, AuthError, ProductUnreachableError, InstallError, ReportError],
+        [
+            ConfigError,
+            AuthError,
+            ProductUnreachableError,
+            InstallError,
+            ReportError,
+            BundleError,
+        ],
     )
     def test_subclasses_are_vip_errors(self, cls):
         assert issubclass(cls, VipError)
