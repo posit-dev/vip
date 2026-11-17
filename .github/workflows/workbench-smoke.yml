@@ -137,51 +137,15 @@ jobs:
           fi
           exit 1
 
-      # Resolve the running Workbench version.
-      # Primary: authenticated GET /api/server-info (sign in with -L to follow the
-      #          302 redirect so all session cookies are captured).
-      # Fallback: rstudio-server version command inside the container (queries the
-      #           running binary directly; satisfies "verify the running instance").
-      #
-      # The sign-in and server-info calls are retried together, not just the
-      # second one: the cookie jar server-info reads is only as fresh as the
-      # sign-in that last wrote it, so retrying server-info alone against a
-      # cookie jar from a sign-in that hit a not-yet-ready server would just
-      # keep failing even once the server comes up. -c overwrites the jar
-      # file each sign-in attempt, so redoing the pair is safe to repeat.
+      # Resolve the running Workbench version from the binary inside the
+      # container. Workbench has no version endpoint a plain curl can reach.
       - name: Resolve Workbench version
         id: version
+        env:
+          CONTAINER_ID: ${{ steps.workbench.outputs.CONTAINER_ID }}
         run: |
-          RESOLVED=0
-          RESPONSE=""
-          for i in $(seq 1 60); do
-            # Sign in - follow redirects (-L) so the session cookie jar is fully populated
-            if curl -sf --connect-timeout 5 --max-time 15 -L -c /tmp/wb_cookies.txt \
-              -d "username=${{ steps.workbench.outputs.WORKBENCH_USER }}&password=${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}" \
-              ${{ steps.workbench.outputs.WORKBENCH_URL }}/auth-sign-in > /dev/null 2>&1; then
-              # Fetch server info with the authenticated session
-              RESPONSE=$(curl -sf --connect-timeout 5 --max-time 15 -b /tmp/wb_cookies.txt \
-                ${{ steps.workbench.outputs.WORKBENCH_URL }}/api/server-info) && { RESOLVED=1; break; }
-            fi
-            if [ "${i}" -lt 60 ]; then
-              echo "Attempt ${i}: sign-in or server-info not reachable yet, retrying..."
-              sleep 2
-            fi
-          done
-          if [ "${RESOLVED}" = "1" ]; then
-            echo "sign-in and server-info reachable (attempt ${i})"
-          else
-            echo "INFO: sign-in/server-info did not become reachable after 60 attempts"
-          fi
-          VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty' 2>/dev/null || true)
-
-          # Fallback: query the running binary directly if the API didn't return JSON
-          if [ -z "${VERSION}" ]; then
-            echo "INFO: /api/server-info did not yield a version (response: ${RESPONSE:0:200})"
-            echo "INFO: Falling back to rstudio-server version"
-            VERSION=$(docker exec ${{ steps.workbench.outputs.CONTAINER_ID }} rstudio-server version 2>/dev/null \
-                      | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+\+[^[:space:]]+' | head -1 || true)
-          fi
+          VERSION=$(docker exec "${CONTAINER_ID}" rstudio-server version 2>/dev/null \
+                    | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+\+[^[:space:]]+' | head -1 || true)
 
           if [ -z "${VERSION}" ]; then
             echo "ERROR: Could not resolve version from the running Workbench instance"
