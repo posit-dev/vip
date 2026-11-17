@@ -352,6 +352,7 @@ class TestRunSettingsInResults:
             ".toml",
             vip=(
                 '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://connect.example.com"\n'
                 "[tls]\ninsecure = true\n"
                 '[auth]\nprovider = "saml"\nidp = "okta"\n'
                 '[proxy]\nurl = "http://puser:PROXY-PASS-0123@proxy.example.com:3128"\n'
@@ -380,7 +381,7 @@ class TestRunSettingsInResults:
                 "no_proxy": ["a.example.com"],
                 "enabled": True,
                 "trust_env": True,
-                "credentials": True,
+                "effective": [{"url": "http://proxy.example.com:3128", "credentials": True}],
             },
         }
         assert "PROXY-PASS-0123" not in text
@@ -392,4 +393,26 @@ class TestRunSettingsInResults:
         selftest_pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}")
         data = json.loads(report_path.read_text(encoding="utf-8"))
         assert "base" not in data
-        assert data["settings"]["proxy"]["credentials"] is False
+        assert data["settings"]["proxy"]["effective"] == []
+
+    def test_environment_proxy_credentials_are_flagged_not_recorded(
+        self, selftest_pytester, monkeypatch
+    ):
+        monkeypatch.setenv("HTTPS_PROXY", "http://envuser:ENV-PASS-0123@env-gw:3128")
+        monkeypatch.setenv("HTTP_PROXY", "http://env-gw-plain:3128")
+        selftest_pytester.makefile(
+            ".toml",
+            vip='[general]\ndeployment_name = "Selftest"\n'
+            '[connect]\nurl = "https://connect.example.com"\n',
+        )
+        selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}")
+        text = report_path.read_text(encoding="utf-8")
+        effective = json.loads(text)["settings"]["proxy"]["effective"]
+        assert sorted(effective, key=lambda e: e["url"]) == [
+            {"url": "http://env-gw-plain:3128", "credentials": False},
+            {"url": "http://env-gw:3128", "credentials": True},
+        ]
+        assert "ENV-PASS-0123" not in text
+        assert "envuser" not in text

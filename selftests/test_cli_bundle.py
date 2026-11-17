@@ -759,7 +759,7 @@ def _proxy_settings(url: str, credentials: bool) -> dict:
             "no_proxy": [],
             "enabled": True,
             "trust_env": True,
-            "credentials": credentials,
+            "effective": [{"url": url, "credentials": credentials}],
         },
     }
 
@@ -830,7 +830,7 @@ def test_summary_describes_the_settings_the_run_used(root):
             "no_proxy": ["b.example.com"],
             "enabled": True,
             "trust_env": False,
-            "credentials": False,
+            "effective": [],
         },
     }
     _write_run(
@@ -940,25 +940,75 @@ def test_scan_knows_a_token_only_scheme_less_proxy(root):
         run_bundle(_args(output="b.zip"))
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        "https://connect.example.com/@team",
-        "https://user:pass@connect.example.com/@team",
-        "https://connect.example.com/?q=a@b",
-        "TOKEN-ABC-0123@connect.example.com",
-    ],
-)
-def test_config_matches_the_base_recorded_from_itself(tmp_path, url):
+def _base_check(tmp_path, file_url: str, base_file_url: str | None = None) -> None:
     from vip.cli.verify import _base_identity
     from vip.config import load_config
 
     path = tmp_path / "vip.toml"
-    path.write_text(f'[connect]\nurl = "{url}"\n', encoding="utf-8")
+    path.write_text(f'[connect]\nurl = "{file_url}"\n', encoding="utf-8")
+    base_path = tmp_path / "base.toml"
+    base_path.write_text(f'[connect]\nurl = "{base_file_url or file_url}"\n', encoding="utf-8")
     results = json.dumps(
         {
             "products": {"connect": {"url": "https://connect.override.example.com"}},
-            "base": _base_identity(path),
+            "base": _base_identity(base_path),
         }
     )
     bundle_module._check_config_matches(load_config(path), path, results.encode())
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "TOKEN-ABC-0123@connect.example.com",
+        "https://user:pass@connect.example.com/x",
+        "https://connect.example.com:8443/x",
+    ],
+)
+def test_config_matches_the_base_recorded_from_itself(tmp_path, url):
+    _base_check(tmp_path, url)
+
+
+def test_config_for_another_host_does_not_match_the_base(tmp_path):
+    with pytest.raises(BundleError, match="the connect URL is"):
+        _base_check(tmp_path, "https://staging.example.com", "https://prod.example.com")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://prod.example.com/@team",
+        "https://connect.example.com/?q=a@b",
+        "https://admin:Ab/c123x@connect.example.com/p",
+        "https://Tok#en-0123@connect.example.com",
+    ],
+)
+def test_ambiguous_base_url_stops_the_bundle(tmp_path, url):
+    with pytest.raises(BundleError, match="cannot tell which"):
+        _base_check(tmp_path, url)
+
+
+def test_ambiguous_base_cannot_accept_a_different_config(tmp_path):
+    with pytest.raises(BundleError, match="cannot tell which"):
+        _base_check(tmp_path, "https://staging.example.com/@team", "https://prod.example.com/@team")
+
+
+def test_every_credentialed_effective_proxy_must_be_visible(root, monkeypatch):
+    settings = _proxy_settings("http://gw-a:3128", credentials=True)
+    settings["proxy"]["effective"].append({"url": "http://gw-b:3128", "credentials": True})
+    _write_run(root, {"connect": {"url": "https://connect.example.com"}}, settings=settings)
+    monkeypatch.setenv("HTTPS_PROXY", "http://u:PROXY-PASS-A-0123@gw-a:3128")
+    with pytest.raises(BundleError, match=r"gw-b:3128"):
+        run_bundle(_args(output="b.zip"))
+    monkeypatch.setenv("HTTP_PROXY", "http://u:PROXY-PASS-B-0123@gw-b:3128")
+    run_bundle(_args(output="b.zip"))
+    assert (root / "b.zip").is_file()
+
+
+def test_effective_proxy_without_credentials_needs_nothing(root):
+    settings = _proxy_settings("http://gw-a:3128", credentials=False)
+    settings["proxy"]["effective"].append({"url": "http://gw-b:3128", "credentials": True})
+    settings["proxy"]["effective"][1]["credentials"] = False
+    _write_run(root, {"connect": {"url": "https://connect.example.com"}}, settings=settings)
+    run_bundle(_args(output="b.zip"))
+    assert (root / "b.zip").is_file()

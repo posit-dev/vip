@@ -27,6 +27,7 @@ from vip.bundle.summary import proxy_url_secrets, strip_proxy_userinfo
 from vip.config import VIPConfig
 from vip.plugin import state
 from vip.plugin.terminal import _outcome_color
+from vip.proxy import build_proxy_map
 from vip.reporting import VALID_FORMATS, load_results, write_junit_xml, write_sarif
 from vip.stash import (
     _auth_session_key,
@@ -513,11 +514,19 @@ def _vip_base(raw: str | None) -> Any:
 def _run_settings(cfg: VIPConfig) -> dict[str, Any]:
     """Return the non-secret settings the run used, for ``vip bundle``.
 
-    ``credentials`` says only that the proxy URL carried a user name or password,
-    so the bundle can tell when its secret scan cannot know them; the URL is
-    written without its userinfo.
+    ``effective`` lists the proxies the run really used (explicit or from the
+    environment) without userinfo, each flagged when it carried a user name or
+    password, so the bundle can tell when its secret scan cannot know them.
     """
     proxy = cfg.proxy
+    effective: dict[str, bool] = {}
+    # A run with no product makes no egress, and resolving the map would print the
+    # lone-HTTP_PROXY promotion notice for an unrelated project's pytest run.
+    configured = any(pc.is_configured for pc in (cfg.connect, cfg.workbench, cfg.package_manager))
+    for used in build_proxy_map(proxy).values() if configured else ():
+        if used:
+            url = strip_proxy_userinfo(used)
+            effective[url] = effective.get(url, False) or bool(proxy_url_secrets("proxy", used))
     return {
         "insecure": cfg.insecure,
         "ca_bundle": str(cfg.ca_bundle) if cfg.ca_bundle is not None else None,
@@ -527,7 +536,9 @@ def _run_settings(cfg: VIPConfig) -> dict[str, Any]:
             "no_proxy": list(proxy.no_proxy),
             "enabled": proxy.enabled,
             "trust_env": proxy.trust_env,
-            "credentials": bool(proxy_url_secrets("proxy.url", proxy.url)),
+            "effective": [
+                {"url": url, "credentials": credentials} for url, credentials in effective.items()
+            ],
         },
     }
 

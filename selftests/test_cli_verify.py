@@ -1764,7 +1764,7 @@ class TestFlagsOverrideConfigFile:
         assert json.loads(arg.split("=", 1)[1]) == {
             "deployment_name": "Acme",
             "products": {
-                "connect": {"url": "https://a.example.com/x/"},
+                "connect": {"url": "https://a.example.com"},
                 "workbench": {"url": ""},
                 "package_manager": {"url": ""},
             },
@@ -1779,6 +1779,15 @@ class TestFlagsOverrideConfigFile:
         assert "TOKEN-ABC-0123" not in arg
         assert json.loads(arg.split("=", 1)[1])["products"]["connect"] == {
             "url": "https://connect.example.com"
+        }
+
+    def test_base_identity_marks_an_ambiguous_url_instead_of_recording_it(self):
+        cfg = self._config('[connect]\nurl = "https://prod.example.com/@team"\n')
+        r = _resolve(_make_args(config=cfg, insecure=True))
+        (arg,) = [c for c in r.cmd if c.startswith("--vip-base=")]
+        assert json.loads(arg.split("=", 1)[1])["products"]["connect"] == {
+            "url": "",
+            "ambiguous": True,
         }
 
     def test_url_mode_and_no_override_runs_send_no_base(self):

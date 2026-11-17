@@ -245,6 +245,28 @@ def url_secrets(label: str, url: str, *, both_parts: bool = False) -> list[tuple
     return [(f"{label} {part}", v) for part, v in _url_credentials(url, both_parts=both_parts)]
 
 
+def authority_url(url: str) -> str | None:
+    """Return ``scheme://host[:port]`` of *url*, or None when its host could be part of a secret.
+
+    The host is the one that urlsplit finds in the authority, which is what
+    ``vip bundle`` compares. An ``@`` after the authority could also end a
+    password that holds a raw ``/``, ``?`` or ``#``, and then that "host" is
+    part of the password, so the result is None. So is a host with an invalid port.
+    """
+    if not url:
+        return ""
+    try:
+        parts = urlsplit(url if "//" in url else f"//{url}")
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        return None
+    after_authority = url.partition("//")[2][len(parts.netloc) :]
+    if not host or "@" in after_authority:
+        return None
+    host = f"[{host}]" if ":" in host else host
+    return f"{parts.scheme or 'https'}://{host}" + (f":{port}" if port is not None else "")
+
+
 def strip_proxy_userinfo(url: str) -> str:
     """Strip userinfo from a proxy URL, after the scheme default the proxy code applies.
 

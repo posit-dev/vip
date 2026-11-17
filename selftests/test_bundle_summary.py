@@ -16,6 +16,7 @@ from vip.bundle.summary import (
     SECRET_FIELDS,
     SUMMARIZED_FIELDS,
     auth_cache_secrets,
+    authority_url,
     build_config_summary,
     secret_values,
     strip_url_userinfo,
@@ -706,3 +707,23 @@ def test_a_git_remote_is_not_treated_as_a_proxy_value():
         "github.com/org/repo.git"
     )
     assert url_secrets("git", "TOKEN@github.com/org/repo.git") == []
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://prod.example.com:8443/path", "https://prod.example.com:8443"),
+        ("https://u:p@prod.example.com", "https://prod.example.com"),
+        ("https://TOKEN@connect.example.com", "https://connect.example.com"),
+        ("https://[::1]:8080/x", "https://[::1]:8080"),
+        ("", ""),
+        # An "@" after the authority could be a path or part of a password.
+        ("https://prod.example.com/@team", None),
+        ("https://connect.example.com/?q=a@b", None),
+        ("https://admin:Ab/c123x@connect.example.com/p", None),
+        ("https://Tok#en-0123@connect.example.com", None),
+        ("https://u:REAL-PASS-0123@connect.example.com/a@b", None),
+    ],
+)
+def test_authority_url_keeps_the_host_and_refuses_an_ambiguous_url(url, expected):
+    assert authority_url(url) == expected

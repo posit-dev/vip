@@ -9,7 +9,6 @@ import os
 import re
 import sys
 import tomllib
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -27,6 +26,7 @@ from vip.bundle.archive import (
 from vip.bundle.summary import (
     PROXY_ENV_VARS,
     auth_cache_secrets,
+    authority_url,
     build_config_summary,
     proxy_url_secrets,
     raw_config_secrets,
@@ -140,10 +140,8 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
     """
     data = json.loads(results)
     base = data.get("base")
-    # The recorded base has no userinfo, so the loaded URL is stripped the same way.
-    redact: Callable[[str], str] = str
     if isinstance(base, dict):
-        data, redact = base, strip_url_userinfo
+        data = base
     name = data.get("deployment_name")
     if isinstance(name, str) and name != config.deployment_name:
         raise BundleError(
@@ -157,7 +155,17 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
         if not isinstance(entry, dict) or not isinstance(entry.get("url"), str):
             continue
         run_url = entry["url"]
-        url = redact(config.product_config(product).url)
+        url = config.product_config(product).url
+        if isinstance(base, dict):
+            # The base holds only the host and port, so the loaded URL is reduced the same way.
+            authority = authority_url(url)
+            if entry.get("ambiguous") or authority is None:
+                raise BundleError(
+                    f"{path}: the {product} URL has an @ after the host or a bad port, so "
+                    "vip bundle cannot tell which configuration file the run used. "
+                    "Pass --no-config."
+                )
+            url = authority
         if not run_url and not url:
             continue
         if not run_url or not url or _host(run_url) != _host(url):
@@ -170,28 +178,31 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
 
 
 def _check_proxy_credentials(config: VIPConfig, results: bytes) -> None:
-    """Refuse a run whose proxy URL held a credential that the secret scan cannot know.
+    """Refuse a run whose proxy held a credential that the secret scan cannot know.
 
-    ``vip verify --proxy`` can give a credential that is in no file and no
-    variable of the bundle command. results.json holds the proxy URL of the run
-    without its userinfo, so the scan must know a proxy URL with userinfo and
-    the same host: from the configuration file or from a proxy variable.
+    ``vip verify --proxy``, or a proxy variable of the run, can give a credential
+    that is in no file and no variable of the bundle command. results.json holds
+    each proxy the run used without its userinfo, so the scan must know a proxy
+    URL with userinfo and the same host for each: from the configuration file or
+    from a proxy variable.
     """
     settings = json.loads(results).get("settings")
     proxy = settings.get("proxy") if isinstance(settings, dict) else None
-    if not isinstance(proxy, dict) or proxy.get("credentials") is not True:
-        return
-    url = proxy.get("url") if isinstance(proxy.get("url"), str) else ""
+    effective = proxy.get("effective") if isinstance(proxy, dict) else None
     known = [config.proxy.url, *(os.environ.get(var, "") for var in PROXY_ENV_VARS)]
-    if any(proxy_url_secrets("proxy", u) and strip_proxy_userinfo(u) == url for u in known):
-        return
-    raise BundleError(
-        f"the run used the proxy {url or 'URL'} with a credential in it, and vip bundle "
-        "cannot see that credential, so the secret scan cannot look for it. Set "
-        "HTTPS_PROXY (or ALL_PROXY) to the same proxy URL, credential included, in the "
-        "environment of vip bundle, or put that URL under [proxy] url in the "
-        "configuration file."
-    )
+    for entry in effective if isinstance(effective, list) else ():
+        if not isinstance(entry, dict) or entry.get("credentials") is not True:
+            continue
+        url = entry["url"] if isinstance(entry.get("url"), str) else ""
+        if any(proxy_url_secrets("proxy", u) and strip_proxy_userinfo(u) == url for u in known):
+            continue
+        raise BundleError(
+            f"the run used the proxy {url or 'URL'} with a credential in it, and vip bundle "
+            "cannot see that credential, so the secret scan cannot look for it. Set "
+            "HTTPS_PROXY (or ALL_PROXY) to the same proxy URL, credential included, in the "
+            "environment of vip bundle, or put that URL under [proxy] url in the "
+            "configuration file."
+        )
 
 
 def _overlay_run_settings(summary: dict[str, Any], results: bytes) -> None:

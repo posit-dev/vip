@@ -14,7 +14,7 @@ import tomllib
 from importlib.util import find_spec
 from pathlib import Path
 
-from vip.bundle.summary import strip_url_userinfo
+from vip.bundle.summary import authority_url
 from vip.cli._common import _resolve_effective_ca_bundle
 from vip.config import ProductConfig, VIPConfig, load_config
 from vip.errors import (
@@ -278,8 +278,8 @@ def _has_overrides(args: argparse.Namespace) -> bool:
 def _base_identity(base: Path) -> dict:
     """Return the deployment name and product URLs (no userinfo) that *base* declares.
 
-    Each URL is normalized the way ``load_config`` does, then stripped the way
-    ``vip bundle`` strips the loaded URL, so both sides compare the same text.
+    Each URL is normalized the way ``load_config`` does and reduced to its host
+    and port. A URL whose host could be part of a secret is marked ``ambiguous``.
 
     ``vip bundle`` compares these with the config file it is given, so a flag
     that replaced a product URL does not hide which file the run started from.
@@ -292,7 +292,10 @@ def _base_identity(base: Path) -> dict:
         table = raw.get(product)
         url = table.get("url") if isinstance(table, dict) else None
         url = ProductConfig(url=url).url if isinstance(url, str) else ""
-        products[product] = {"url": strip_url_userinfo(url)}
+        authority = authority_url(url)
+        products[product] = (
+            {"url": authority} if authority is not None else {"url": "", "ambiguous": True}
+        )
     return {
         "deployment_name": name if isinstance(name, str) else "Posit Team",
         "products": products,
