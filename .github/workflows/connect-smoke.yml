@@ -123,32 +123,12 @@ jobs:
       # are immediately visible on the Actions run page.
       - name: Check for license errors
         if: failure() && steps.connect.outcome == 'failure'
-        run: |
-          # Find the Connect container even if with-connect failed partway.
-          # `ancestor` needs the tag: a tagless value normalizes to `:latest`
-          # and never matches a container started from a pinned version.
-          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/connect:${{ matrix.connect-version }}" | head -1)
-          if [ -z "${CID}" ]; then
-            echo "::error title=Connect Startup Failed::Connect container not found. The with-connect action failed before creating a container."
-            exit 1
-          fi
-          LOGS=$(docker logs "${CID}" 2>&1 || true)
-          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable" | head -1 || true)
-          if [ -n "${LICENSE_MSG}" ]; then
-            echo "::error title=License Error::${LICENSE_MSG}"
-            {
-              echo "## License Error"
-              echo ""
-              echo "The Connect license key is expired or invalid. Update the \`CONNECT_LICENSE\` repository secret."
-              echo ""
-              echo '```'
-              echo "${LICENSE_MSG}"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::error title=Connect Startup Failed::Connect failed to start. Check the 'Start Connect' step logs for details."
-          fi
-          exit 1
+        uses: ./.github/actions/check-license-errors
+        with:
+          product: Connect
+          secret-name: CONNECT_LICENSE
+          image: ghcr.io/posit-dev/connect:${{ matrix.connect-version }}
+          error-pattern: expired|invalid|unable
 
       # The posit Connect images ship a deliberately slim system-library set:
       # 9 apt packages on the 24.04 variant and 15 on 22.04, against 80 in the
