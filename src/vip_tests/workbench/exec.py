@@ -927,6 +927,45 @@ def _positron_console_language(page: Page, timeout: int) -> str:
     return "r"
 
 
+def _positron_eval(
+    page: Page, wrapped: str, start: str, end: str, prompt: str, label: str, timeout: int
+) -> str:
+    """Type *wrapped* into the Positron console and return the text between the markers.
+
+    Waits for the interpreter *prompt* before typing to avoid dropped keystrokes
+    during startup, then polls the console spans until *end* appears. *label*
+    names the language in the timeout error.
+    """
+    if not ensure_positron_console(page, timeout=timeout):
+        raise ExecError(
+            "No Positron console could be started (no R/Python interpreter "
+            "resolved); cannot evaluate the expression."
+        )
+    _activate_positron_console(page)
+    active = page.locator(_POSITRON_ACTIVE_CONSOLE)
+    expect(active.first).to_be_visible(timeout=timeout)
+
+    _wait_for_positron_console_prompt(page, prompt, timeout)
+
+    ci = active.locator(_POSITRON_CONSOLE_INPUT).first
+    ci.click()
+    page.keyboard.insert_text(wrapped)
+    page.keyboard.press("Enter")
+
+    deadline = time.monotonic() + timeout / 1000.0
+    while time.monotonic() < deadline:
+        spans = active.locator("div span").all_text_contents()
+        joined = "".join(spans)
+        if end in joined:
+            return _extract_between_markers(joined, start, end)
+        time.sleep(0.5)
+
+    raise ExecError(
+        f"Positron {label} console did not return the expected output within {timeout} ms "
+        f"(end marker {end!r} not found).{_positron_wedged_state_detail(page)}"
+    )
+
+
 def positron_eval_r(page: Page, expr: str, timeout: int = 30_000) -> str:
     """Evaluate *expr* as R in the Positron console and return the captured output.
 
@@ -946,37 +985,7 @@ def positron_eval_r(page: Page, expr: str, timeout: int = 30_000) -> str:
     """
     start, end = _make_sentinels()
     wrapped = _wrap_r_expr(expr, start, end)
-
-    if not ensure_positron_console(page, timeout=timeout):
-        raise ExecError(
-            "No Positron console could be started (no R/Python interpreter "
-            "resolved); cannot evaluate the expression."
-        )
-    _activate_positron_console(page)
-    active = page.locator(_POSITRON_ACTIVE_CONSOLE)
-    expect(active.first).to_be_visible(timeout=timeout)
-
-    # Wait for the interpreter to reach its interactive prompt before typing.
-    _wait_for_positron_console_prompt(page, _POSITRON_PROMPT_R, timeout)
-
-    ci = active.locator(_POSITRON_CONSOLE_INPUT).first
-    ci.click()
-    page.keyboard.insert_text(wrapped)
-    page.keyboard.press("Enter")
-
-    # Poll the joined span text until the end marker appears.
-    deadline = time.monotonic() + timeout / 1000.0
-    while time.monotonic() < deadline:
-        spans = active.locator("div span").all_text_contents()
-        joined = "".join(spans)
-        if end in joined:
-            return _extract_between_markers(joined, start, end)
-        time.sleep(0.5)
-
-    raise ExecError(
-        f"Positron R console did not return the expected output within {timeout} ms "
-        f"(end marker {end!r} not found).{_positron_wedged_state_detail(page)}"
-    )
+    return _positron_eval(page, wrapped, start, end, _POSITRON_PROMPT_R, "R", timeout)
 
 
 def positron_eval_python(page: Page, expr: str, timeout: int = 30_000) -> str:
@@ -998,37 +1007,7 @@ def positron_eval_python(page: Page, expr: str, timeout: int = 30_000) -> str:
     """
     start, end = _make_sentinels()
     wrapped = _wrap_python_expr_inline(expr, start, end)
-
-    if not ensure_positron_console(page, timeout=timeout):
-        raise ExecError(
-            "No Positron console could be started (no R/Python interpreter "
-            "resolved); cannot evaluate the expression."
-        )
-    _activate_positron_console(page)
-    active = page.locator(_POSITRON_ACTIVE_CONSOLE)
-    expect(active.first).to_be_visible(timeout=timeout)
-
-    # Wait for the interpreter to reach its interactive prompt before typing.
-    _wait_for_positron_console_prompt(page, _POSITRON_PROMPT_PYTHON, timeout)
-
-    ci = active.locator(_POSITRON_CONSOLE_INPUT).first
-    ci.click()
-    page.keyboard.insert_text(wrapped)
-    page.keyboard.press("Enter")
-
-    # Poll the joined span text until the end marker appears.
-    deadline = time.monotonic() + timeout / 1000.0
-    while time.monotonic() < deadline:
-        spans = active.locator("div span").all_text_contents()
-        joined = "".join(spans)
-        if end in joined:
-            return _extract_between_markers(joined, start, end)
-        time.sleep(0.5)
-
-    raise ExecError(
-        f"Positron Python console did not return the expected output within {timeout} ms "
-        f"(end marker {end!r} not found).{_positron_wedged_state_detail(page)}"
-    )
+    return _positron_eval(page, wrapped, start, end, _POSITRON_PROMPT_PYTHON, "Python", timeout)
 
 
 # ---------------------------------------------------------------------------
