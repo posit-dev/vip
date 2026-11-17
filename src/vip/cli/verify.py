@@ -270,8 +270,13 @@ _OVERRIDE_FLAGS = (
 )
 
 
+def _toml_string(value: str) -> str:
+    """Quote a TOML basic string: JSON escapes, but raw UTF-8 (no surrogates) and DEL escaped."""
+    return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007F")
+
+
 def _toml_key(key: str) -> str:
-    return key if re.fullmatch(r"[A-Za-z0-9_-]+", key) else json.dumps(key)
+    return key if re.fullmatch(r"[A-Za-z0-9_-]+", key) else _toml_string(key)
 
 
 def _toml_value(value: object) -> str:
@@ -281,7 +286,7 @@ def _toml_value(value: object) -> str:
     if isinstance(value, (int, float)):
         return repr(value)
     if isinstance(value, str):
-        return json.dumps(value)
+        return _toml_string(value)
     if isinstance(value, (datetime.date, datetime.time)):
         return value.isoformat()
     if isinstance(value, list):

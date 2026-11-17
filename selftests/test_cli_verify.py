@@ -1774,6 +1774,40 @@ class TestTomlWriter:
         }
         assert tomllib.loads(_dump_toml(raw)) == raw
 
+    def test_round_trip_tricky_strings_and_shapes(self):
+        import datetime
+        import tomllib
+
+        from vip.cli.verify import _dump_toml
+
+        raw = {
+            "general": {
+                "deployment_name": "emoji \U0001f600 caf\u00e9 \u00f1",
+                "quoted": 'say "hi"',
+                "backslash": "C:\\certs\\ca.pem",
+                "tab": "a\tb",
+                "newline": "line1\nline2",
+                "del": "x\x7fy",
+                "empty": [],
+                "since": datetime.date(2026, 11, 17),
+            },
+            "performance": {"p95_response_time": 2.5, "flag": True, "count": 3},
+            "a": {"b": {"c": {"d": "deep"}}},
+            "data_sources": {"my db.v2": {"type": "postgres"}},
+            "things": {"rows": [{"k": 1}, {"k": 2, "nested": {"x": "y"}}]},
+        }
+        assert tomllib.loads(_dump_toml(raw)) == raw
+
+    def test_vip_toml_example_round_trips(self):
+        import tomllib
+
+        from vip.cli.verify import _dump_toml
+
+        example = Path(__file__).resolve().parent.parent / "vip.toml.example"
+        raw = tomllib.loads(example.read_text(encoding="utf-8"))
+        assert raw, "vip.toml.example parsed to nothing"
+        assert tomllib.loads(_dump_toml(raw)) == raw
+
 
 class TestAllowUnprovenFlag:
     """`vip verify --allow-unproven` opts out of the unproven exit code."""
