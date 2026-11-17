@@ -203,33 +203,9 @@ jobs:
             }
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Set up VIP
         if: steps.license.outputs.available == 'true'
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        if: steps.license.outputs.available == 'true'
-        run: uv sync --frozen
-
-      # The UI smoke tests (test_ui.py) drive a real browser, so the Playwright
-      # browsers must be installed. The API-only tests don't need them; the
-      # browser cache keeps this cheap on repeat runs.
-      - name: Resolve Playwright version
-        if: steps.license.outputs.available == 'true'
-        id: playwright-version
-        run: echo "version=$(uv run playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        if: steps.license.outputs.available == 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
-
-      - name: Install Playwright browsers
-        if: steps.license.outputs.available == 'true'
-        run: uv run vip install --skip-system
+        uses: ./.github/actions/setup-vip
 
       # Generate vip.toml for CI Package Manager
       - name: Configure VIP for CI Package Manager

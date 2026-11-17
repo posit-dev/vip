@@ -195,25 +195,8 @@ jobs:
             }
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Resolve Playwright version
-        id: playwright-version
-        run: echo "version=$(uv run playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
-
-      - name: Install Playwright browsers
-        run: uv run vip install --skip-system
+      - name: Set up VIP
+        uses: ./.github/actions/setup-vip
 
       # Generate vip.toml from with-workbench outputs
       # The password is deliberately NOT written here — it is passed to pytest as
