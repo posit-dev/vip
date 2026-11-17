@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import TypedDict
 
 import pytest
@@ -23,6 +25,24 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+@contextmanager
+def _scratch_client(
+    base_url: str, cookies: dict[str, str], *, insecure: bool, ca_bundle, proxy=None
+) -> Iterator[WorkbenchClient]:
+    """Yield a throwaway cookie-authenticated ``WorkbenchClient``, closed on exit.
+
+    A scratch client keeps the session-scoped ``workbench_client`` fixture's
+    cookie jar from being mutated.  TLS config (``--insecure`` / ``--ca-bundle``)
+    is honoured via *insecure*/*ca_bundle*.
+    """
+    scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
+    try:
+        scratch.set_cookies(cookies)
+        yield scratch
+    finally:
+        scratch.close()
+
+
 def _quit_vip_sessions_via_cookies(
     base_url: str,
     cookies: dict[str, str],
@@ -34,18 +54,13 @@ def _quit_vip_sessions_via_cookies(
 ) -> int:
     """Quit VIP-named sessions using a scratch cookie-authenticated client.
 
-    A scratch ``WorkbenchClient`` is used so the session-scoped
-    ``workbench_client`` fixture's cookie jar is never mutated.  TLS config
-    (``--insecure`` / ``--ca-bundle``) is honoured via *insecure*/*ca_bundle*.
-    *owner* scopes the sweep to one xdist worker's own sessions.
+    Uses a :func:`_scratch_client`.  *owner* scopes the sweep to one xdist worker's own sessions.
     """
     try:
-        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
-        try:
-            scratch.set_cookies(cookies)
+        with _scratch_client(
+            base_url, cookies, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
+        ) as scratch:
             return scratch.quit_vip_sessions(owner=owner)
-        finally:
-            scratch.close()
     except Exception:  # noqa: BLE001
         return 0
 
@@ -65,12 +80,10 @@ def _session_api_reachable_via_cookies(
     Returns ``False`` on any error.
     """
     try:
-        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
-        try:
-            scratch.set_cookies(cookies)
+        with _scratch_client(
+            base_url, cookies, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
+        ) as scratch:
             return scratch.sessions_api_reachable()
-        finally:
-            scratch.close()
     except Exception:  # noqa: BLE001
         return False
 
@@ -95,12 +108,10 @@ def _vip_session_count_via_cookies(
     "unknown" and escalate defensively in the latter case.  Never raises.
     """
     try:
-        scratch = WorkbenchClient(base_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
-        try:
-            scratch.set_cookies(cookies)
+        with _scratch_client(
+            base_url, cookies, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
+        ) as scratch:
             return scratch.count_vip_sessions(owner=owner)
-        finally:
-            scratch.close()
     except Exception:  # noqa: BLE001
         return -1
 
