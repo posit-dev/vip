@@ -9,6 +9,12 @@ on:
       - 'uv.lock'
       - '.github/workflows/packagemanager-smoke.yml'
       - '.github/workflows/recent-production-versions.yml'
+      - '.github/actions/check-license-errors/**'
+      - '.github/actions/setup-vip/**'
+      - '.github/actions/write-smoke-summary/**'
+      - '.github/actions/rename-smoke-job/**'
+      - '.github/actions/check-smoke-status/**'
+      - 'scripts/ci/wait-for-package-manager.sh'
   pull_request:
   # Scheduled/manual runs fan the suite out across the Package Manager support
   # window (see the set-matrix job). PR/push runs stay single-version.
@@ -55,6 +61,12 @@ jobs:
               - 'uv.lock'
               - '.github/workflows/packagemanager-smoke.yml'
               - '.github/workflows/recent-production-versions.yml'
+              - '.github/actions/check-license-errors/**'
+              - '.github/actions/setup-vip/**'
+              - '.github/actions/write-smoke-summary/**'
+              - '.github/actions/rename-smoke-job/**'
+              - '.github/actions/check-smoke-status/**'
+              - 'scripts/ci/wait-for-package-manager.sh'
 
   # Emit the Package Manager tag list for the product job. PR/push runs the
   # current release only (single required check, unchanged); scheduled/manual
