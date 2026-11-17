@@ -345,6 +345,14 @@ def _resolve_base_path(args: argparse.Namespace) -> Path | None:
     return default.resolve()
 
 
+def _table(raw: dict, key: str) -> dict:
+    """Return ``raw[key]``, creating it when absent; a value that is not a table is a config error."""
+    table = raw.setdefault(key, {})
+    if not isinstance(table, dict):
+        raise ConfigError(f"[{key}] must be a table, got {type(table).__name__}")
+    return table
+
+
 def _inherited_auth() -> dict:
     """Return provider/idp from the default config file, best-effort.
 
@@ -360,6 +368,8 @@ def _inherited_auth() -> dict:
         )
     except (OSError, ValueError):
         return {}
+    if not isinstance(auth, dict):
+        return {}
     return {k: auth[k] for k in ("provider", "idp") if k in auth}
 
 
@@ -369,14 +379,14 @@ def _override_products(raw: dict, args: argparse.Namespace, *, url_mode: bool) -
         url = getattr(args, f"{product}_url", None)
         version = getattr(args, f"{product}_version", None)
         if url:
-            table = raw.setdefault(product, {})
+            table = _table(raw, product)
             table["url"] = url
             table.pop("enabled", None)
         elif url_mode:
             raw[product] = {"enabled": False}
             continue
         if version:
-            raw.setdefault(product, {})["version"] = version
+            _table(raw, product)["version"] = version
 
 
 def _override_auth(raw: dict, args: argparse.Namespace) -> None:
@@ -388,7 +398,7 @@ def _override_auth(raw: dict, args: argparse.Namespace) -> None:
       with "oidc": vip.auth's flow selection keys off provider, not idp.
     - Without --provider or an idp, honour whatever the file declared.
     """
-    auth = raw.setdefault("auth", {})
+    auth = _table(raw, "auth")
     idp = getattr(args, "idp", None) or auth.get("idp")
     inherited = auth.get("provider")
     if inherited == "password":
@@ -413,7 +423,7 @@ def _override_tls(raw: dict, args: argparse.Namespace) -> None:
     ca_bundle = getattr(args, "ca_bundle", None)
     if not (insecure or ca_bundle):
         return
-    tls = raw.setdefault("tls", {})
+    tls = _table(raw, "tls")
     insecure = insecure or tls.get("insecure", False)
     ca = ca_bundle or tls.get("ca_bundle")
     ca = _resolve_effective_ca_bundle(insecure, Path(ca) if ca else None)
@@ -427,22 +437,26 @@ def _override_tls(raw: dict, args: argparse.Namespace) -> None:
 def _override_proxy(raw: dict, args: argparse.Namespace) -> None:
     """Apply --proxy/--no-proxy to ``[proxy]``.
 
-    --no-proxy '' with no --proxy turns proxying off (``enabled = false``), forcing
-    every request direct regardless of the ambient environment.
+    --no-proxy replaces the file's bypass list, even with an empty one. With no
+    --proxy, an empty --no-proxy turns proxying off (``enabled = false``) and drops
+    the file's url and bypass list, forcing every request direct regardless of the
+    ambient environment.
     """
     proxy_url = getattr(args, "proxy", None)
     no_proxy = getattr(args, "no_proxy", None)
     if not (proxy_url or no_proxy is not None):
         return
     hosts = [h.strip() for h in no_proxy.split(",") if h.strip()] if no_proxy else []
-    proxy = raw.setdefault("proxy", {})
-    if proxy_url or hosts:
-        proxy.pop("enabled", None)
-    else:
+    proxy = _table(raw, "proxy")
+    if not proxy_url and not hosts:
+        proxy.pop("url", None)
+        proxy.pop("no_proxy", None)
         proxy["enabled"] = False
+        return
+    proxy.pop("enabled", None)
     if proxy_url:
         proxy["url"] = proxy_url
-    if hosts:
+    if no_proxy is not None:
         proxy["no_proxy"] = hosts
 
 
@@ -490,7 +504,8 @@ def run_verify(args: argparse.Namespace) -> None:
             temp_config = _generate_temp_config(args, base) if has_overrides else None
             config_path = temp_config or str(base)
             cfg = load_config(config_path)
-        except ValueError as exc:
+        except (ValueError, AttributeError, TypeError) as exc:
+            # A table of the wrong shape makes load_config raise AttributeError or TypeError.
             raise ConfigError(str(exc)) from exc
         _run_pytest(args, cfg, config_path)
     finally:

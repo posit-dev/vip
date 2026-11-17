@@ -179,8 +179,9 @@ def main() -> None:
             "Comma-separated hosts to reach directly, bypassing --proxy "
             "(e.g. localhost,.internal.example). With no --proxy, passing an "
             "empty value (--no-proxy '') disables proxying entirely, ignoring "
-            "any proxy environment variables. Overrides a [proxy] no_proxy in "
-            "the config file."
+            "any proxy environment variables, and the config file's [proxy] url is "
+            "dropped. Otherwise this replaces the config file's no_proxy list, even "
+            "with an empty value."
         ),
     )
 

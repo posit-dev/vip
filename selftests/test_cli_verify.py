@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 from typing import Any, ClassVar
@@ -1602,6 +1603,34 @@ class TestFlagsOverrideConfigFile:
         assert r.cfg.proxy.enabled is True
         assert r.cfg.proxy.url == "http://corp:8080"
 
+    def test_empty_no_proxy_with_proxy_clears_the_file_bypass_list(self):
+        cfg = self._config(
+            '[connect]\nurl = "https://c.example.com"\n'
+            '[proxy]\nurl = "http://file-proxy:1"\nno_proxy = ["*"]\n'
+        )
+        r = _resolve(_make_args(config=cfg, proxy="http://new-proxy:2", no_proxy=""))
+        assert r.cfg.proxy.url == "http://new-proxy:2"
+        assert r.cfg.proxy.no_proxy == []
+        assert r.cfg.proxy.enabled is True
+
+    def test_proxy_without_no_proxy_keeps_the_file_bypass_list(self):
+        cfg = self._config(
+            '[connect]\nurl = "https://c.example.com"\n'
+            '[proxy]\nurl = "http://file-proxy:1"\nno_proxy = ["keep.example.com"]\n'
+        )
+        r = _resolve(_make_args(config=cfg, proxy="http://new-proxy:2"))
+        assert r.cfg.proxy.no_proxy == ["keep.example.com"]
+
+    def test_empty_no_proxy_alone_drops_the_file_url_and_bypass_list(self):
+        cfg = self._config(
+            '[connect]\nurl = "https://c.example.com"\n'
+            '[proxy]\nurl = "http://file-proxy:1"\nno_proxy = ["a.example.com"]\n'
+        )
+        r = _resolve(_make_args(config=cfg, no_proxy=""))
+        assert r.cfg.proxy.enabled is False
+        assert r.cfg.proxy.url == ""
+        assert r.cfg.proxy.no_proxy == []
+
     def test_insecure_flag_overrides_file(self):
         cfg = self._config('[connect]\nurl = "https://c.example.com"\n')
         r = _resolve(_make_args(config=cfg, insecure=True))
@@ -1752,6 +1781,50 @@ class TestFlagsOverrideConfigFile:
         assert r.cfg.workbench.url == "https://w.example.com"
         assert r.cfg.auth.provider == "saml"
         assert r.cfg.insecure is False
+
+
+class TestMalformedConfigShapes:
+    """A table of the wrong type is a ConfigError, not a traceback."""
+
+    @pytest.fixture(autouse=True)
+    def _env(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        self.tmp = tmp_path
+
+    @pytest.mark.parametrize(
+        ("body", "flags", "table"),
+        [
+            ('connect = "x"\n', {"connect_url": "https://c.example.com"}, "[connect]"),
+            ('connect = "x"\n', {"connect_version": "2026.06.0"}, "[connect]"),
+            ("proxy = 1\n", {"proxy": "http://corp:8080"}, "[proxy]"),
+            ("proxy = 1\n", {"no_proxy": ""}, "[proxy]"),
+            ("tls = []\n", {"insecure": True}, "[tls]"),
+            ("auth = true\n", {"idp": "okta"}, "[auth]"),
+        ],
+    )
+    def test_override_of_a_non_table_raises_config_error(self, body, flags, table):
+        from vip.cli import run_verify
+        from vip.errors import ConfigError
+
+        (self.tmp / "vip.toml").write_text(body, encoding="utf-8")
+        with pytest.raises(ConfigError, match=re.escape(f"{table} must be a table")):
+            run_verify(_make_args(config=str(self.tmp / "vip.toml"), **flags))
+
+    @pytest.mark.parametrize("body", ['connect = "x"\n', "proxy = 1\n", "tls = []\n"])
+    def test_non_table_with_no_override_flags_raises_config_error(self, body):
+        from vip.cli import run_verify
+        from vip.errors import ConfigError
+
+        (self.tmp / "vip.toml").write_text(body, encoding="utf-8")
+        with pytest.raises(ConfigError):
+            run_verify(_make_args(config=str(self.tmp / "vip.toml")))
+
+    def test_non_table_auth_in_the_default_file_does_not_break_url_mode(self):
+        (self.tmp / "vip.toml").write_text("auth = true\n", encoding="utf-8")
+        r = _resolve(_make_args(connect_url="https://c.example.com", idp="okta", no_auth=True))
+        assert r.cfg.auth.idp == "okta"
+        assert r.cfg.auth.provider == "oidc"
 
 
 class TestTomlWriter:
