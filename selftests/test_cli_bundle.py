@@ -735,3 +735,154 @@ def test_bad_auth_cache_stops_the_bundle(root):
     (root / ".vip-auth-cache.meta.json").write_text('{"api_key": "x"', encoding="utf-8")
     with pytest.raises(BundleError, match="could not read the auth cache file"):
         run_bundle(_args(output="b.zip"))
+
+
+def _write_run(root: Path, products: dict, overrides=(), settings=None) -> None:
+    results = {
+        "deployment_name": "Acme Prod",
+        "products": products,
+        "overrides": list(overrides),
+        "results": [],
+    }
+    if settings is not None:
+        results["settings"] = settings
+    _write(root / "report" / "results.json", json.dumps(results), RESULTS_MTIME)
+
+
+def _proxy_settings(url: str, credentials: bool) -> dict:
+    return {
+        "insecure": False,
+        "ca_bundle": None,
+        "auth": {"provider": "password", "idp": ""},
+        "proxy": {
+            "url": url,
+            "no_proxy": [],
+            "enabled": True,
+            "trust_env": True,
+            "credentials": credentials,
+        },
+    }
+
+
+def _summary(zip_path: Path) -> dict:
+    with zipfile.ZipFile(zip_path) as zf:
+        return json.loads(zf.read("config-summary.json"))
+
+
+def test_url_override_to_another_host_passes_when_the_run_recorded_it(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.override.example.com"}},
+        overrides=["connect_url"],
+    )
+    run_bundle(_args(output="b.zip"))
+    assert _summary(root / "b.zip")["connect"]["url"] == "https://connect.override.example.com"
+
+
+def test_url_override_is_only_excused_for_the_product_it_names(root):
+    _write_run(
+        root,
+        {
+            "connect": {"url": "https://connect.override.example.com"},
+            "workbench": {"url": "https://other-workbench.example.com"},
+        },
+        overrides=["connect_url"],
+    )
+    with pytest.raises(BundleError, match="the workbench URL is"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_summary_describes_the_settings_the_run_used(root):
+    settings = {
+        "insecure": True,
+        "ca_bundle": "/etc/ca.pem",
+        "auth": {"provider": "saml", "idp": "keycloak"},
+        "proxy": {
+            "url": "http://override-proxy:3128",
+            "no_proxy": ["b.example.com"],
+            "enabled": True,
+            "trust_env": False,
+            "credentials": False,
+        },
+    }
+    _write_run(
+        root,
+        {
+            "connect": {
+                "url": "https://connect.example.com",
+                "enabled": True,
+                "version": "2026.06.0",
+            }
+        },
+        settings=settings,
+    )
+    run_bundle(_args(output="b.zip"))
+    summary = _summary(root / "b.zip")
+    assert summary["insecure"] is True
+    assert summary["ca_bundle"] == "/etc/ca.pem"
+    assert summary["auth"]["provider"] == "saml"
+    assert summary["auth"]["idp"] == "keycloak"
+    assert summary["proxy"] == {
+        "url": "http://override-proxy:3128",
+        "no_proxy": ["b.example.com"],
+        "enabled": True,
+        "trust_env": False,
+    }
+    assert summary["connect"]["version"] == "2026.06.0"
+
+
+def test_proxy_credentials_the_bundle_cannot_see_stop_the_bundle(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        settings=_proxy_settings("http://override-proxy:3128", credentials=True),
+    )
+    with pytest.raises(BundleError, match=r"http://override-proxy:3128.*HTTPS_PROXY"):
+        run_bundle(_args(output="b.zip"))
+    assert _leftovers(root) == []
+
+
+def test_proxy_credentials_stop_a_no_config_bundle_too(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        settings=_proxy_settings("http://override-proxy:3128", credentials=True),
+    )
+    with pytest.raises(BundleError, match="override-proxy:3128"):
+        run_bundle(_args(output="b.zip", no_config=True))
+
+
+def test_proxy_credentials_known_from_the_environment_are_scanned_for(root, monkeypatch):
+    monkeypatch.setenv("HTTPS_PROXY", "http://user:OVERRIDE-PROXY-PASS@override-proxy:3128")
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        settings=_proxy_settings("http://override-proxy:3128", credentials=True),
+    )
+    run_bundle(_args(output="b.zip"))
+    assert (root / "b.zip").is_file()
+    results = json.loads((root / "report" / "results.json").read_text(encoding="utf-8"))
+    results["note"] = "OVERRIDE-PROXY-PASS"
+    _write(root / "report" / "results.json", json.dumps(results), RESULTS_MTIME)
+    with pytest.raises(BundleError, match="HTTPS_PROXY password"):
+        run_bundle(_args(output="c.zip"))
+
+
+def test_proxy_credentials_known_from_the_config_file_pass(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        settings=_proxy_settings("http://proxy:8080", credentials=True),
+    )
+    run_bundle(_args(output="b.zip"))
+    assert (root / "b.zip").is_file()
+
+
+def test_run_without_proxy_credentials_needs_nothing_extra(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        settings=_proxy_settings("http://override-proxy:3128", credentials=False),
+    )
+    run_bundle(_args(output="b.zip"))
+    assert (root / "b.zip").is_file()

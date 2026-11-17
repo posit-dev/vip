@@ -1752,6 +1752,30 @@ class TestFlagsOverrideConfigFile:
         assert r.cfg.ca_bundle == Path("certs/ca.pem")
         assert r.cfg.ca_bundle.resolve() == (self.tmp / "certs" / "ca.pem").resolve()
 
+    def test_overridden_flags_are_named_to_pytest_without_their_values(self):
+        cfg = self._config('[connect]\nurl = "https://c.example.com"\n')
+        r = _resolve(
+            _make_args(
+                config=cfg,
+                connect_url="https://flag.example.com",
+                proxy="http://user:flag-secret@corp:8080",
+                insecure=True,
+                no_proxy="",
+            )
+        )
+        named = sorted(c for c in r.cmd if c.startswith("--vip-override="))
+        assert named == [
+            "--vip-override=connect_url",
+            "--vip-override=insecure",
+            "--vip-override=no_proxy",
+            "--vip-override=proxy",
+        ]
+
+    def test_no_override_flags_name_nothing_to_pytest(self):
+        cfg = self._config('[connect]\nurl = "https://c.example.com"\n')
+        cmd = _capture_cmd(_make_args(config=cfg))
+        assert not [c for c in cmd if c.startswith("--vip-override")]
+
     def test_no_override_flags_pass_the_original_file_to_pytest(self):
         cfg = self._config('[connect]\nurl = "https://c.example.com"\n')
         cmd = _capture_cmd(_make_args(config=cfg))

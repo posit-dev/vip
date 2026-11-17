@@ -24,6 +24,7 @@ from vip.bundle.archive import (
     write_zip,
 )
 from vip.bundle.summary import (
+    PROXY_ENV_VARS,
     auth_cache_secrets,
     build_config_summary,
     raw_config_secrets,
@@ -130,9 +131,12 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
     results.json holds the deployment name and each product URL from the
     configuration of the run. If the name differs, if the host or the port of
     a URL differs, or if only one of the two has a URL for a product, the scan
-    would look for the wrong secrets.
+    would look for the wrong secrets. A product URL that ``vip verify`` replaced
+    with a flag is recorded in ``overrides`` and is not compared.
     """
     data = json.loads(results)
+    overrides = data.get("overrides")
+    overridden = set(overrides) if isinstance(overrides, list) else set()
     name = data.get("deployment_name")
     if isinstance(name, str) and name != config.deployment_name:
         raise BundleError(
@@ -145,6 +149,8 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
         entry = products.get(product) if isinstance(products, dict) else None
         if not isinstance(entry, dict) or not isinstance(entry.get("url"), str):
             continue
+        if f"{product}_url" in overridden:
+            continue
         run_url = entry["url"]
         url = config.product_config(product).url
         if not run_url and not url:
@@ -156,6 +162,57 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
                 f"{strip_url_userinfo(run_url) or 'not set'} in results.json. "
                 "Pass --config with the file that 'vip verify' used."
             )
+
+
+def _check_proxy_credentials(config: VIPConfig, results: bytes) -> None:
+    """Refuse a run whose proxy URL held a credential that the secret scan cannot know.
+
+    ``vip verify --proxy`` can give a credential that is in no file and no
+    variable of the bundle command. results.json holds the proxy URL of the run
+    without its userinfo, so the scan must know a proxy URL with userinfo and
+    the same host: from the configuration file or from a proxy variable.
+    """
+    settings = json.loads(results).get("settings")
+    proxy = settings.get("proxy") if isinstance(settings, dict) else None
+    if not isinstance(proxy, dict) or proxy.get("credentials") is not True:
+        return
+    url = proxy.get("url") if isinstance(proxy.get("url"), str) else ""
+    known = [config.proxy.url, *(os.environ.get(var, "") for var in PROXY_ENV_VARS)]
+    if any(url_secrets("proxy", u) and strip_url_userinfo(u) == url for u in known):
+        return
+    raise BundleError(
+        f"the run used the proxy {url or 'URL'} with a credential in it, and vip bundle "
+        "cannot see that credential, so the secret scan cannot look for it. Set "
+        "HTTPS_PROXY (or ALL_PROXY) to the same proxy URL, credential included, in the "
+        "environment of vip bundle, or put that URL under [proxy] url in the "
+        "configuration file."
+    )
+
+
+def _overlay_run_settings(summary: dict[str, Any], results: bytes) -> None:
+    """Replace the summary values that the run could have set with the values it recorded.
+
+    ``vip verify`` flags override the configuration file, so the file alone does
+    not say what the run used. results.json holds those values without secrets.
+    """
+    data = json.loads(results)
+    settings = data.get("settings")
+    if isinstance(settings, dict):
+        summary.update({k: settings[k] for k in ("insecure", "ca_bundle") if k in settings})
+        for key, names in (
+            ("auth", ("provider", "idp")),
+            ("proxy", ("url", "no_proxy", "enabled", "trust_env")),
+        ):
+            part = settings.get(key)
+            if isinstance(part, dict):
+                summary[key].update({n: part[n] for n in names if n in part})
+    products = data.get("products")
+    for product in _PRODUCTS:
+        entry = products.get(product) if isinstance(products, dict) else None
+        if isinstance(entry, dict):
+            summary[product].update({k: entry[k] for k in ("enabled", "version") if k in entry})
+            if isinstance(entry.get("url"), str):
+                summary[product]["url"] = strip_url_userinfo(entry["url"])
 
 
 def _run_url_secrets(results: bytes) -> list[tuple[str, str]]:
@@ -264,6 +321,7 @@ def run_bundle(args: argparse.Namespace) -> None:
     results = collected.members["report/results.json"]
     if config_path is not None:
         _check_config_matches(config, config_path, results)
+    _check_proxy_credentials(config, results)
     warnings = list(collected.warnings)
     if config_path is None:
         warnings.append(
@@ -314,6 +372,7 @@ def run_bundle(args: argparse.Namespace) -> None:
     members = dict(collected.members)
     if config_path is not None:
         summary = build_config_summary(config)
+        _overlay_run_settings(summary, results)
         summary["credential_flags"] = (
             "Each *_set value is true if the configuration file or the environment of "
             "the vip bundle command holds that credential. The auth_cache values come "

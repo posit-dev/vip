@@ -270,6 +270,14 @@ _OVERRIDE_FLAGS = (
 )
 
 
+def _overridden_flags(args: argparse.Namespace) -> list[str]:
+    """Return the names of the flags that override the config file (never their values)."""
+    names = [f for f in _OVERRIDE_FLAGS if getattr(args, f, None)]
+    if getattr(args, "no_proxy", None) is not None:
+        names.append("no_proxy")
+    return names
+
+
 def _toml_string(value: str) -> str:
     """Quote a TOML basic string: JSON escapes, but raw UTF-8 (no surrogates) and DEL escaped."""
     return json.dumps(value, ensure_ascii=False).replace("\x7f", "\\u007F")
@@ -346,7 +354,7 @@ def _resolve_base_path(args: argparse.Namespace) -> Path | None:
 
 
 def _table(raw: dict, key: str) -> dict:
-    """Return ``raw[key]``, creating it when absent; a value that is not a table is a config error."""
+    """Return ``raw[key]``, creating it when absent; a non-table value is a config error."""
     table = raw.setdefault(key, {})
     if not isinstance(table, dict):
         raise ConfigError(f"[{key}] must be a table, got {type(table).__name__}")
@@ -495,9 +503,7 @@ def run_verify(args: argparse.Namespace) -> None:
         )
 
     base = _resolve_base_path(args)
-    has_overrides = args.no_proxy is not None or any(
-        getattr(args, f, None) for f in _OVERRIDE_FLAGS
-    )
+    has_overrides = bool(_overridden_flags(args))
     temp_config = None
     try:
         try:
@@ -558,6 +564,7 @@ def _run_pytest(args: argparse.Namespace, cfg: VIPConfig, config_path: str) -> N
             cmd.append(_spec.submodule_search_locations[0])
 
     cmd.append(f"--vip-config={config_path}")
+    cmd.extend(f"--vip-override={name}" for name in _overridden_flags(args))
     if args.report:
         cmd.append(f"--vip-report={args.report}")
 

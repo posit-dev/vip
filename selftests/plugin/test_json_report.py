@@ -340,3 +340,54 @@ class TestPluginIntegration:
         # Validate the concise format is used (not the raw longrepr fallback).
         # No hard character-count limit — multi-line summaries may legitimately exceed 200 chars.
         assert "FAILED" not in error_summary, "error_summary should be concise, not raw longrepr"
+
+
+class TestRunSettingsInResults:
+    """results.json records the non-secret settings the run used."""
+
+    def test_settings_and_overrides_are_recorded_without_the_proxy_password(
+        self, selftest_pytester
+    ):
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                "[tls]\ninsecure = true\n"
+                '[auth]\nprovider = "saml"\nidp = "okta"\n'
+                '[proxy]\nurl = "http://puser:PROXY-PASS-0123@proxy.example.com:3128"\n'
+                'no_proxy = ["a.example.com"]\n'
+            ),
+        )
+        selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+            "--vip-override=proxy",
+            "--vip-override=connect_url",
+        )
+        text = report_path.read_text(encoding="utf-8")
+        data = json.loads(text)
+        assert data["overrides"] == ["connect_url", "proxy"]
+        assert data["settings"] == {
+            "insecure": True,
+            "ca_bundle": None,
+            "auth": {"provider": "saml", "idp": "okta"},
+            "proxy": {
+                "url": "http://proxy.example.com:3128",
+                "no_proxy": ["a.example.com"],
+                "enabled": True,
+                "trust_env": True,
+                "credentials": True,
+            },
+        }
+        assert "PROXY-PASS-0123" not in text
+        assert "puser" not in text
+
+    def test_no_overrides_by_default(self, selftest_pytester):
+        selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}")
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+        assert data["overrides"] == []
+        assert data["settings"]["proxy"]["credentials"] is False

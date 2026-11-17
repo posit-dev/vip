@@ -449,12 +449,22 @@ cd report &amp;&amp; quarto publish connect --server https://connect.example.com
             <code>vip verify</code> used. It stops if it finds none. It also
             stops if the deployment name, or the host or the port of a product
             URL, in <code>vip.toml</code> is different from
-            <code>results.json</code>. If you ran <code>vip verify</code> with
+            <code>results.json</code>. A product URL that you gave to
+            <code>vip verify</code> with a flag is not compared. If you ran <code>vip verify</code> with
             <code>--connect-url</code> and no <code>vip.toml</code>, pass
             <code>--no-config</code>. The scan then uses only the environment,
             the product URLs in <code>results.json</code>, and the auth cache.
             The command also stops if it cannot read an auth cache file, or if
             a report file is not UTF-8 text.
+          </p>
+          <p>
+            If you gave <code>vip verify</code> a <code>--proxy</code> URL with
+            a user name or password, the command stops unless it can see that
+            credential. Set <code>HTTPS_PROXY</code> to the same URL in the
+            environment of <code>vip bundle</code>, or put the URL under
+            <code>[proxy]</code> in <code>vip.toml</code>. The configuration
+            summary shows the TLS, proxy, auth, and version settings that the
+            run used, including the ones that flags changed.
           </p>
           <p>
             A rendered page that <code>vip report</code> did not make from the

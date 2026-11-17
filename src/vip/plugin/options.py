@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
+
 import pytest
 
 
@@ -12,6 +14,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--vip-config",
         default=None,
         help="Path to vip.toml configuration file.",
+    )
+    group.addoption(
+        "--vip-override",
+        action="append",
+        default=[],
+        help=argparse.SUPPRESS,
     )
     group.addoption(
         "--vip-allow-unproven",
