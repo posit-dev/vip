@@ -83,6 +83,28 @@ def _resolve_str_if_inferred(
     return resolve_url_scheme(pc, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
 
 
+def _cached_session(
+    cache_path: Path | None,
+    connect_url: str | None,
+    workbench_url: str | None,
+    *,
+    insecure: bool,
+    ca_bundle: Path | None,
+    proxy: ProxyConfig | None,
+) -> InteractiveAuthSession | None:
+    """Return a valid cached session for the given URLs, or ``None``."""
+    if not cache_path:
+        return None
+    return _load_cached_auth(
+        cache_path,
+        connect_url,
+        workbench_url,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        proxy=proxy,
+    )
+
+
 # A login step drives *page* through the login and returns once the browser is
 # authenticated.  It receives the primary URL, the URL to open first, and whether
 # Connect is configured.
@@ -100,33 +122,17 @@ def _run_login(
     workbench_url_scheme_inferred: bool,
     proxy: ProxyConfig | None,
     headed: bool,
-    prepare: Callable[[], LoginStep],
+    do_login: LoginStep,
     workbench_provider: str = "",
 ) -> InteractiveAuthSession:
     """Run the browser login shared by the interactive and headless entry points.
 
-    Returns a cached session when one is valid.  Otherwise it calls *prepare*
-    (the caller's fail-fast validation, run after the cache check so a warm
-    cache works without credentials) for the login step, launches Chromium
-    (*headed* or headless), runs the step, mints the Connect API key, visits
-    Workbench, and returns the session.  *workbench_provider* only selects the
-    protocol wording in Workbench timeout messages.
+    Callers check the auth cache and validate their inputs first.  This
+    resolves the URLs, launches Chromium (*headed* or headless), runs
+    *do_login*, mints the Connect API key, visits Workbench, and returns the
+    session.  *workbench_provider* only selects the protocol wording in
+    Workbench timeout messages.
     """
-    # Check for a valid cached session.
-    if cache_path:
-        cached = _load_cached_auth(
-            cache_path,
-            connect_url,
-            workbench_url,
-            insecure=insecure,
-            ca_bundle=ca_bundle,
-            proxy=proxy,
-        )
-        if cached is not None:
-            return cached
-
-    do_login = prepare()
-
     # Resolve inferred https:// schemes after every fail-fast validation and
     # right before anything (Playwright or httpx) talks to the URLs, so a config
     # error never pays for a network probe it doesn't need.
@@ -287,53 +293,56 @@ def start_interactive_auth(
             "--interactive-auth requires at least one product URL (Connect or Workbench)"
         )
 
-    def prepare() -> LoginStep:
-        def login(page: Page, primary_url: str, target: str, has_connect: bool) -> None:
-            page.goto(target)
+    cached = _cached_session(
+        cache_path, connect_url, workbench_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
+    )
+    if cached is not None:
+        return cached
 
-            print(f"\n>>> A browser window has opened at {primary_url}")
-            print(">>> Please log in through your identity provider.")
-            print(">>> The browser will close automatically after login.\n")
+    def login(page: Page, primary_url: str, target: str, has_connect: bool) -> None:
+        page.goto(target)
 
-            # Poll until login completes
-            base = primary_url.rstrip("/")
-            deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
-            login_completed = False
+        print(f"\n>>> A browser window has opened at {primary_url}")
+        print(">>> Please log in through your identity provider.")
+        print(">>> The browser will close automatically after login.\n")
 
-            # Login detection: for Connect check we left /__login__,
-            # for Workbench check we're no longer on a login/auth page.
-            while time.monotonic() < deadline:
-                try:
-                    url = page.url
-                except PlaywrightError:
+        # Poll until login completes
+        base = primary_url.rstrip("/")
+        deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
+        login_completed = False
+
+        # Login detection: for Connect check we left /__login__,
+        # for Workbench check we're no longer on a login/auth page.
+        while time.monotonic() < deadline:
+            try:
+                url = page.url
+            except PlaywrightError:
+                break
+            if has_connect:
+                if base in url and "/__login__" not in url:
+                    login_completed = True
                     break
-                if has_connect:
-                    if base in url and "/__login__" not in url:
-                        login_completed = True
-                        break
-                else:
-                    # For Workbench, login is complete when we're on the
-                    # homepage (no login/auth keywords in the URL).
-                    lower = url.lower()
-                    at_login = any(kw in lower for kw in ("sign-in", "login", "auth", "/saml/acs"))
-                    if base.rstrip("/").lower() in lower and not at_login:
-                        login_completed = True
-                        break
-                try:
-                    page.wait_for_timeout(500)
-                except PlaywrightError:
+            else:
+                # For Workbench, login is complete when we're on the
+                # homepage (no login/auth keywords in the URL).
+                lower = url.lower()
+                at_login = any(kw in lower for kw in ("sign-in", "login", "auth", "/saml/acs"))
+                if base.rstrip("/").lower() in lower and not at_login:
+                    login_completed = True
                     break
+            try:
+                page.wait_for_timeout(500)
+            except PlaywrightError:
+                break
 
-            if not login_completed:
-                state = _describe_final_page_state(page, primary_url)
-                raise AuthTimeoutError(
-                    "Login did not complete within "
-                    f"{_timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))}. "
-                    "Please rerun and complete authentication in the browser window. "
-                    f"Browser {state}."
-                )
-
-        return login
+        if not login_completed:
+            state = _describe_final_page_state(page, primary_url)
+            raise AuthTimeoutError(
+                "Login did not complete within "
+                f"{_timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))}. "
+                "Please rerun and complete authentication in the browser window. "
+                f"Browser {state}."
+            )
 
     return _run_login(
         connect_url=connect_url,
@@ -345,7 +354,7 @@ def start_interactive_auth(
         workbench_url_scheme_inferred=workbench_url_scheme_inferred,
         proxy=proxy,
         headed=True,
-        prepare=prepare,
+        do_login=login,
     )
 
 
@@ -394,66 +403,69 @@ def start_headless_auth(
             "--headless-auth requires at least one product URL (Connect or Workbench)"
         )
 
-    def prepare() -> LoginStep:
-        if not username or not password:
+    cached = _cached_session(
+        cache_path, connect_url, workbench_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
+    )
+    if cached is not None:
+        return cached
+
+    if not username or not password:
+        raise AuthConfigError(
+            "--headless-auth requires test credentials. "
+            "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD."
+        )
+
+    # Validate VIP_TEST_TOTP_SECRET (if set) before launching Playwright
+    # so a bad seed fails fast with a clear error.
+    totp_secret = os.environ.get(totp.ENV_VAR, "").strip()
+    if totp_secret:
+        totp.validate_secret(totp_secret)
+
+    # Choose login flow based on auth provider, not idp presence.
+    # OIDC/SAML/OAuth2 → IdP form automation; password/LDAP → native form.
+    uses_idp = provider.strip().lower() in _IDP_PROVIDERS
+    fill_login = None
+    if uses_idp:
+        if not idp:
+            supported = ", ".join(f'"{name}"' for name in sorted(SUPPORTED_IDPS))
             raise AuthConfigError(
-                "--headless-auth requires test credentials. "
-                "Set VIP_TEST_USERNAME and VIP_TEST_PASSWORD."
+                f"--headless-auth with provider={provider!r} requires"
+                f" [auth] idp in vip.toml (supported: {supported})"
             )
 
-        # Validate VIP_TEST_TOTP_SECRET (if set) before launching Playwright
-        # so a bad seed fails fast with a clear error.
-        totp_secret = os.environ.get(totp.ENV_VAR, "").strip()
-        if totp_secret:
-            totp.validate_secret(totp_secret)
+        fill_login = get_idp_strategy(idp)
 
-        # Choose login flow based on auth provider, not idp presence.
-        # OIDC/SAML/OAuth2 → IdP form automation; password/LDAP → native form.
-        uses_idp = provider.strip().lower() in _IDP_PROVIDERS
-        fill_login = None
-        if uses_idp:
-            if not idp:
-                supported = ", ".join(f'"{name}"' for name in sorted(SUPPORTED_IDPS))
-                raise AuthConfigError(
-                    f"--headless-auth with provider={provider!r} requires"
-                    f" [auth] idp in vip.toml (supported: {supported})"
-                )
+    def login(page: Page, primary_url: str, target: str, has_connect: bool) -> None:
+        print(f"\n>>> Headless auth: authenticating to {primary_url} ...", flush=True)
+        try:
+            page.goto(target)
+            page.wait_for_load_state("domcontentloaded")
+            _log_verbose(f">>> Page loaded, URL: {_sanitize_url(page.url)}")
 
-            fill_login = get_idp_strategy(idp)
+            if fill_login:
+                # OIDC/SAML: navigate to IdP and automate its login form.
+                _navigate_to_idp(page, primary_url)
+                _log_verbose(f">>> At IdP login page: {_sanitize_url(page.url)}")
+                fill_login(page, username, password)
+            else:
+                # Password/LDAP: fill the product's native login form directly.
+                _fill_product_login(page, username, password)
 
-        def login(page: Page, primary_url: str, target: str, has_connect: bool) -> None:
-            print(f"\n>>> Headless auth: authenticating to {primary_url} ...", flush=True)
-            try:
-                page.goto(target)
-                page.wait_for_load_state("domcontentloaded")
-                _log_verbose(f">>> Page loaded, URL: {_sanitize_url(page.url)}")
-
-                if fill_login:
-                    # OIDC/SAML: navigate to IdP and automate its login form.
-                    _navigate_to_idp(page, primary_url)
-                    _log_verbose(f">>> At IdP login page: {_sanitize_url(page.url)}")
-                    fill_login(page, username, password)
-                else:
-                    # Password/LDAP: fill the product's native login form directly.
-                    _fill_product_login(page, username, password)
-
-                # Wait for redirect back to the product.
-                _wait_for_product_redirect(
-                    page, primary_url, provider=provider, check_connect_session=has_connect
-                )
-            except PlaywrightTimeoutError as exc:
-                raise AuthConfigError(
-                    "Headless auth timed out during login. "
-                    "Check the product URL and IdP configuration, or rerun with "
-                    "--verbose for details."
-                ) from exc
-            except PlaywrightError as exc:
-                raise AuthConfigError(
-                    f"Headless auth failed during login: {exc}. Rerun with --verbose for details."
-                ) from exc
-            print(">>> Authentication complete.")
-
-        return login
+            # Wait for redirect back to the product.
+            _wait_for_product_redirect(
+                page, primary_url, provider=provider, check_connect_session=has_connect
+            )
+        except PlaywrightTimeoutError as exc:
+            raise AuthConfigError(
+                "Headless auth timed out during login. "
+                "Check the product URL and IdP configuration, or rerun with "
+                "--verbose for details."
+            ) from exc
+        except PlaywrightError as exc:
+            raise AuthConfigError(
+                f"Headless auth failed during login: {exc}. Rerun with --verbose for details."
+            ) from exc
+        print(">>> Authentication complete.")
 
     return _run_login(
         connect_url=connect_url,
@@ -465,6 +477,6 @@ def start_headless_auth(
         workbench_url_scheme_inferred=workbench_url_scheme_inferred,
         proxy=proxy,
         headed=False,
-        prepare=prepare,
+        do_login=login,
         workbench_provider=provider,
     )
