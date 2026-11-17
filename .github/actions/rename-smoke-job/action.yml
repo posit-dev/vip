@@ -1,0 +1,47 @@
+name: Rename smoke job with resolved version
+description: >-
+  Renames the running matrix job's check run to `Smoke test against <product> <resolved version>`
+  so the job list shows the version the product actually reported, not the tag the matrix asked
+  for. The running job is the one whose name starts with `Smoke test against` and contains the
+  requested version. That is unambiguous because recent-production-versions.yml emits one tag per
+  month, so no requested version is a substring of another. Needs `checks: write` on the caller.
+
+inputs:
+  product:
+    description: "Product name used in the new job title, e.g. `Connect`."
+    required: true
+  requested-version:
+    description: "The matrix version the job was named after, used to find the running job."
+    required: true
+  resolved-version:
+    description: "The version the running product reported, used in the new job title."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Rename the check run
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+      env:
+        PRODUCT: ${{ inputs.product }}
+        REQUESTED_VERSION: ${{ inputs.requested-version }}
+        RESOLVED_VERSION: ${{ inputs.resolved-version }}
+      with:
+        script: |
+          const { PRODUCT, REQUESTED_VERSION, RESOLVED_VERSION } = process.env;
+          const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            run_id: context.runId,
+          });
+          const currentJob = jobs.find(
+            j => j.status === 'in_progress' && j.name.startsWith('Smoke test against') && j.name.includes(REQUESTED_VERSION)
+          );
+          if (currentJob) {
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: currentJob.id,
+              name: `Smoke test against ${PRODUCT} ${RESOLVED_VERSION}`,
+            });
+          }

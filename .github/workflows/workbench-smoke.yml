@@ -173,26 +173,11 @@ jobs:
 
       # Rename the check run so the job title shows the resolved version
       - name: Update job title with resolved version
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        uses: ./.github/actions/rename-smoke-job
         with:
-          script: |
-            const resolvedVersion = '${{ steps.version.outputs.resolved }}';
-            const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.runId,
-            });
-            const currentJob = jobs.find(
-              j => j.status === 'in_progress' && j.name.startsWith('Smoke test against') && j.name.includes('${{ matrix.workbench-version }}')
-            );
-            if (currentJob) {
-              await github.rest.checks.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                check_run_id: currentJob.id,
-                name: `Smoke test against Workbench ${resolvedVersion}`,
-              });
-            }
+          product: Workbench
+          requested-version: ${{ matrix.workbench-version }}
+          resolved-version: ${{ steps.version.outputs.resolved }}
 
       # Set up Python and install VIP
       - name: Set up VIP
