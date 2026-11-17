@@ -509,7 +509,11 @@ def run_verify(args: argparse.Namespace) -> None:
     if getattr(args, "allow_unproven", False):
         cmd.append("--vip-allow-unproven")
     cmd.extend(f"--vip-extensions={ext}" for ext in args.extensions or [])
-    if args.categories:
+    if getattr(args, "smoke", False):
+        marker_expr = "smoke"
+        if args.categories:
+            marker_expr = f"({_normalize_categories(args.categories)}) and smoke"
+    elif args.categories:
         marker_expr = _normalize_categories(args.categories)
     else:
         marker_expr = _default_marker_expr(_extra_keep_from_args(args))
