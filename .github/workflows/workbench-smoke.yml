@@ -9,6 +9,11 @@ on:
       - 'uv.lock'
       - '.github/workflows/workbench-smoke.yml'
       - '.github/workflows/recent-production-versions.yml'
+      - '.github/actions/check-license-errors/**'
+      - '.github/actions/setup-vip/**'
+      - '.github/actions/write-smoke-summary/**'
+      - '.github/actions/rename-smoke-job/**'
+      - '.github/actions/check-smoke-status/**'
   pull_request:
   # Scheduled/manual runs fan the suite out across the Workbench support window
   # (see the set-matrix job). PR/push runs stay single-version.
@@ -61,6 +66,11 @@ jobs:
               - 'uv.lock'
               - '.github/workflows/workbench-smoke.yml'
               - '.github/workflows/recent-production-versions.yml'
+              - '.github/actions/check-license-errors/**'
+              - '.github/actions/setup-vip/**'
+              - '.github/actions/write-smoke-summary/**'
+              - '.github/actions/rename-smoke-job/**'
+              - '.github/actions/check-smoke-status/**'
 
   # Emit the Workbench version list for the product job. PR/push runs the
   # current release only (single required check, unchanged); scheduled/manual
@@ -111,77 +121,21 @@ jobs:
       # are immediately visible on the Actions run page.
       - name: Check for license errors
         if: failure() && steps.workbench.outcome == 'failure'
-        run: |
-          # `ancestor` needs the tag: a tagless value normalizes to `:latest`
-          # and never matches a container started from a pinned version.
-          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/workbench:${{ matrix.workbench-version }}" | head -1)
-          if [ -z "${CID}" ]; then
-            echo "::error title=Workbench Startup Failed::Workbench container not found. The with-workbench action failed before creating a container."
-            exit 1
-          fi
-          LOGS=$(docker logs "${CID}" 2>&1 || true)
-          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable|not activated" | head -1 || true)
-          if [ -n "${LICENSE_MSG}" ]; then
-            echo "::error title=License Error::${LICENSE_MSG}"
-            {
-              echo "## License Error"
-              echo ""
-              echo "The Workbench license key is expired or invalid. Update the \`WORKBENCH_LICENSE\` repository secret."
-              echo ""
-              echo '```'
-              echo "${LICENSE_MSG}"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::error title=Workbench Startup Failed::Workbench failed to start. Check the 'Start Workbench' step logs for details."
-          fi
-          exit 1
+        uses: ./.github/actions/check-license-errors
+        with:
+          product: Workbench
+          secret-name: WORKBENCH_LICENSE
+          image: ghcr.io/posit-dev/workbench:${{ matrix.workbench-version }}
 
-      # Resolve the running Workbench version.
-      # Primary: authenticated GET /api/server-info (sign in with -L to follow the
-      #          302 redirect so all session cookies are captured).
-      # Fallback: rstudio-server version command inside the container (queries the
-      #           running binary directly; satisfies "verify the running instance").
-      #
-      # The sign-in and server-info calls are retried together, not just the
-      # second one: the cookie jar server-info reads is only as fresh as the
-      # sign-in that last wrote it, so retrying server-info alone against a
-      # cookie jar from a sign-in that hit a not-yet-ready server would just
-      # keep failing even once the server comes up. -c overwrites the jar
-      # file each sign-in attempt, so redoing the pair is safe to repeat.
+      # Resolve the running Workbench version from the binary inside the
+      # container. Workbench has no version endpoint a plain curl can reach.
       - name: Resolve Workbench version
         id: version
+        env:
+          CONTAINER_ID: ${{ steps.workbench.outputs.CONTAINER_ID }}
         run: |
-          RESOLVED=0
-          RESPONSE=""
-          for i in $(seq 1 60); do
-            # Sign in - follow redirects (-L) so the session cookie jar is fully populated
-            if curl -sf --connect-timeout 5 --max-time 15 -L -c /tmp/wb_cookies.txt \
-              -d "username=${{ steps.workbench.outputs.WORKBENCH_USER }}&password=${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}" \
-              ${{ steps.workbench.outputs.WORKBENCH_URL }}/auth-sign-in > /dev/null 2>&1; then
-              # Fetch server info with the authenticated session
-              RESPONSE=$(curl -sf --connect-timeout 5 --max-time 15 -b /tmp/wb_cookies.txt \
-                ${{ steps.workbench.outputs.WORKBENCH_URL }}/api/server-info) && { RESOLVED=1; break; }
-            fi
-            if [ "${i}" -lt 60 ]; then
-              echo "Attempt ${i}: sign-in or server-info not reachable yet, retrying..."
-              sleep 2
-            fi
-          done
-          if [ "${RESOLVED}" = "1" ]; then
-            echo "sign-in and server-info reachable (attempt ${i})"
-          else
-            echo "INFO: sign-in/server-info did not become reachable after 60 attempts"
-          fi
-          VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty' 2>/dev/null || true)
-
-          # Fallback: query the running binary directly if the API didn't return JSON
-          if [ -z "${VERSION}" ]; then
-            echo "INFO: /api/server-info did not yield a version (response: ${RESPONSE:0:200})"
-            echo "INFO: Falling back to rstudio-server version"
-            VERSION=$(docker exec ${{ steps.workbench.outputs.CONTAINER_ID }} rstudio-server version 2>/dev/null \
-                      | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+\+[^[:space:]]+' | head -1 || true)
-          fi
+          VERSION=$(docker exec "${CONTAINER_ID}" rstudio-server version 2>/dev/null \
+                    | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+\+[^[:space:]]+' | head -1 || true)
 
           if [ -z "${VERSION}" ]; then
             echo "ERROR: Could not resolve version from the running Workbench instance"
@@ -193,47 +147,15 @@ jobs:
 
       # Rename the check run so the job title shows the resolved version
       - name: Update job title with resolved version
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        uses: ./.github/actions/rename-smoke-job
         with:
-          script: |
-            const resolvedVersion = '${{ steps.version.outputs.resolved }}';
-            const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.runId,
-            });
-            const currentJob = jobs.find(
-              j => j.status === 'in_progress' && j.name.startsWith('Smoke test against') && j.name.includes('${{ matrix.workbench-version }}')
-            );
-            if (currentJob) {
-              await github.rest.checks.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                check_run_id: currentJob.id,
-                name: `Smoke test against Workbench ${resolvedVersion}`,
-              });
-            }
+          product: Workbench
+          requested-version: ${{ matrix.workbench-version }}
+          resolved-version: ${{ steps.version.outputs.resolved }}
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Resolve Playwright version
-        id: playwright-version
-        run: echo "version=$(uv run playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
-
-      - name: Install Playwright browsers
-        run: uv run vip install --skip-system
+      - name: Set up VIP
+        uses: ./.github/actions/setup-vip
 
       # Generate vip.toml from with-workbench outputs
       # The password is deliberately NOT written here — it is passed to pytest as
@@ -413,49 +335,12 @@ jobs:
       # Write a rich job summary with test details and emoji
       - name: Write workflow summary
         if: always()
-        run: |
-          RESOLVED="${{ steps.version.outputs.resolved }}"
-          WB_URL="${{ steps.workbench.outputs.WORKBENCH_URL }}"
-          REQUESTED="${{ matrix.workbench-version }}"
-          RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
-          {
-            echo "## 🧪 Workbench Smoke Tests — v${RESOLVED}"
-            echo ""
-            echo "| | |"
-            echo "|---|---|"
-            echo "| 🏷️ **Requested version** | \`${REQUESTED}\` |"
-            echo "| ✅ **Resolved version** | \`${RESOLVED}\` |"
-            echo "| 🌐 **Workbench URL** | \`${WB_URL}\` |"
-            echo "| 📅 **Run date** | ${RUN_DATE} |"
-            echo ""
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [ -f smoke-results.xml ]; then
-            TESTS=$(grep -oP '(?<=tests=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            FAILURES=$(grep -oP '(?<=failures=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            ERRORS=$(grep -oP '(?<=errors=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            SKIPPED=$(grep -oP '(?<=skipped=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            TESTS=${TESTS:-0}; FAILURES=${FAILURES:-0}; ERRORS=${ERRORS:-0}; SKIPPED=${SKIPPED:-0}
-            PASSED=$(( TESTS - FAILURES - ERRORS - SKIPPED ))
-            {
-              echo "### 📊 Test Results"
-              echo ""
-              echo "| Result | Count |"
-              echo "|--------|-------|"
-              echo "| ✅ Passed | ${PASSED} |"
-              echo "| ❌ Failed | ${FAILURES:-0} |"
-              echo "| ⚠️ Errors | ${ERRORS:-0} |"
-              echo "| ⏭️ Skipped | ${SKIPPED:-0} |"
-              echo "| 📝 **Total** | **${TESTS:-0}** |"
-              echo ""
-              if [ "${FAILURES:-0}" = "0" ] && [ "${ERRORS:-0}" = "0" ]; then
-                echo "🎉 **All tests passed!**"
-              else
-                echo "💥 **Some tests failed — check the logs for details.**"
-              fi
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "> ⚠️ Test results file not found — tests may have been skipped." >> "$GITHUB_STEP_SUMMARY"
-          fi
+        uses: ./.github/actions/write-smoke-summary
+        with:
+          product: Workbench
+          requested-version: ${{ matrix.workbench-version }}
+          resolved-version: ${{ steps.version.outputs.resolved }}
+          url: ${{ steps.workbench.outputs.WORKBENCH_URL }}
 
       # Stop and remove the Workbench container
       - name: Stop Workbench
@@ -495,21 +380,11 @@ jobs:
 
       - name: Check for license errors
         if: failure() && steps.workbench.outcome == 'failure'
-        env:
-          WORKBENCH_VERSION: ${{ matrix.workbench-version }}
-        run: |
-          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/workbench:${WORKBENCH_VERSION}" | head -1)
-          if [ -z "${CID}" ]; then
-            echo "::error title=Workbench Startup Failed::Workbench container not found. The with-workbench action failed before creating a container."
-            exit 1
-          fi
-          LICENSE_MSG=$(docker logs "${CID}" 2>&1 | grep -i "license" | grep -iE "expired|invalid|unable|not activated" | head -1 || true)
-          if [ -n "${LICENSE_MSG}" ]; then
-            echo "::error title=License Error::${LICENSE_MSG}"
-          else
-            echo "::error title=Workbench Startup Failed::Workbench failed to start. Check the 'Start Workbench' step logs for details."
-          fi
-          exit 1
+        uses: ./.github/actions/check-license-errors
+        with:
+          product: Workbench
+          secret-name: WORKBENCH_LICENSE
+          image: ghcr.io/posit-dev/workbench:${{ matrix.workbench-version }}
 
       # The API is off by default and the setting is read at startup, so append
       # the three levels to rserver.conf and restart. `docker restart`, not
@@ -709,34 +584,15 @@ jobs:
         with:
           persist-credentials: false
       - name: Check smoke test result
-        run: |
-          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
-            echo "Change-detection job failed; cannot confirm smoke scope"
-            exit 1
-          fi
-          # A failed set-matrix skips (not fails) workbench-smoke, which would
-          # otherwise look identical to a clean no-relevant-paths skip below.
-          if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
-            echo "Version-matrix job failed; cannot confirm smoke scope"
-            exit 1
-          fi
-          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.workbench-smoke.result }}" != "success" ]; then
-            echo "Workbench smoke was in scope for this PR but did not succeed (result=${{ needs.workbench-smoke.result }})"
-            exit 1
-          fi
-          if [ "${{ needs.workbench-smoke.result }}" = "failure" ] || [ "${{ needs.workbench-smoke.result }}" = "cancelled" ]; then
-            echo "Workbench smoke tests failed or were cancelled"
-            exit 1
-          fi
-          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.workbench-api-auth.result }}" != "success" ]; then
-            echo "Workbench API-auth tests were in scope for this PR but did not succeed (result=${{ needs.workbench-api-auth.result }})"
-            exit 1
-          fi
-          if [ "${{ needs.workbench-api-auth.result }}" = "failure" ] || [ "${{ needs.workbench-api-auth.result }}" = "cancelled" ]; then
-            echo "Workbench API-auth tests failed or were cancelled"
-            exit 1
-          fi
-          echo "Workbench smoke tests passed or were legitimately out of scope"
+        uses: ./.github/actions/check-smoke-status
+        with:
+          product: Workbench
+          changes-result: ${{ needs.changes.result }}
+          set-matrix-result: ${{ needs.set-matrix.result }}
+          relevant: ${{ needs.changes.outputs.relevant }}
+          suites: |
+            Workbench smoke tests|${{ needs.workbench-smoke.result }}
+            Workbench API-auth tests|${{ needs.workbench-api-auth.result }}
 
       # Nightly failures have no PR author to notice them; file (or update) a
       # tracking issue instead of failing silently. Never fires on push/pull_request

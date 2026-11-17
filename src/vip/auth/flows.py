@@ -6,16 +6,18 @@ import os
 import shutil
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from playwright.sync_api import (
     Error as PlaywrightError,
 )
 from playwright.sync_api import (
-    TimeoutError as PlaywrightTimeoutError,
+    Page,
+    sync_playwright,
 )
 from playwright.sync_api import (
-    sync_playwright,
+    TimeoutError as PlaywrightTimeoutError,
 )
 
 import vip.idp
@@ -81,62 +83,59 @@ def _resolve_str_if_inferred(
     return resolve_url_scheme(pc, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy)
 
 
-def start_interactive_auth(
-    connect_url: str | None = None,
-    workbench_url: str | None = None,
-    cache_path: Path | None = None,
-    insecure: bool = False,
-    ca_bundle: Path | None = None,
-    connect_url_scheme_inferred: bool = False,
-    workbench_url_scheme_inferred: bool = False,
-    proxy: ProxyConfig | None = None,
+def _cached_session(
+    cache_path: Path | None,
+    connect_url: str | None,
+    workbench_url: str | None,
+    *,
+    insecure: bool,
+    ca_bundle: Path | None,
+    proxy: ProxyConfig | None,
+) -> InteractiveAuthSession | None:
+    """Return a valid cached session for the given URLs, or ``None``."""
+    if not cache_path:
+        return None
+    return _load_cached_auth(
+        cache_path,
+        connect_url,
+        workbench_url,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        proxy=proxy,
+    )
+
+
+# A login step drives *page* through the login and returns once the browser is
+# authenticated.  It receives the primary URL, the URL to open first, and whether
+# Connect is configured.
+LoginStep = Callable[[Page, str, str, bool], None]
+
+
+def _run_login(
+    *,
+    connect_url: str | None,
+    workbench_url: str | None,
+    cache_path: Path | None,
+    insecure: bool,
+    ca_bundle: Path | None,
+    connect_url_scheme_inferred: bool,
+    workbench_url_scheme_inferred: bool,
+    proxy: ProxyConfig | None,
+    headed: bool,
+    do_login: LoginStep,
+    workbench_provider: str = "",
 ) -> InteractiveAuthSession:
-    """Launch a headed browser, authenticate via OIDC, and optionally
-    mint a Connect API key through the UI.
+    """Run the browser login shared by the interactive and headless entry points.
 
-    At least one of *connect_url* or *workbench_url* must be provided.
-
-    When *connect_url* is given, the browser opens Connect's login page
-    and attempts to mint a temporary API key.  If *workbench_url* is
-    also provided, the browser visits Workbench afterward so the saved
-    storage state contains session cookies for both products (SSO handles
-    the second authentication automatically).
-
-    When only *workbench_url* is given, the browser opens Workbench
-    directly.  No Connect API key is minted.
-
-    The browser is closed before this function returns.  pytest-playwright
-    creates its own browser instance using the saved storage state.
-
-    When *insecure* is ``True``, Playwright ignores TLS certificate errors.
-    When *ca_bundle* is set, the path is exported as ``NODE_EXTRA_CA_CERTS``
-    before launching Chromium so it trusts a custom CA (Chromium-level trust
-    only; this does not update the OS certificate store).
-
-    *connect_url_scheme_inferred* / *workbench_url_scheme_inferred* mark a URL
-    whose ``https://`` scheme was inferred by ``vip.config._normalize_url``
-    rather than given explicitly (``ProductConfig.url_scheme_inferred``).
-    When set, :func:`resolve_url_scheme` probes the URL and falls back to
-    ``http://`` if https doesn't answer, before it's used for anything.
+    Callers check the auth cache and validate their inputs first.  This
+    resolves the URLs, launches Chromium (*headed* or headless), runs
+    *do_login*, mints the Connect API key, visits Workbench, and returns the
+    session.  *workbench_provider* only selects the protocol wording in
+    Workbench timeout messages.
     """
-    if not connect_url and not workbench_url:
-        raise ValueError(
-            "--interactive-auth requires at least one product URL (Connect or Workbench)"
-        )
-
-    # Check for a valid cached session.
-    if cache_path:
-        cached = _load_cached_auth(
-            cache_path,
-            connect_url,
-            workbench_url,
-            insecure=insecure,
-            ca_bundle=ca_bundle,
-            proxy=proxy,
-        )
-        if cached is not None:
-            return cached
-
+    # Resolve inferred https:// schemes after every fail-fast validation and
+    # right before anything (Playwright or httpx) talks to the URLs, so a config
+    # error never pays for a network probe it doesn't need.
     connect_url = _resolve_str_if_inferred(
         connect_url,
         connect_url_scheme_inferred,
@@ -165,11 +164,10 @@ def start_interactive_auth(
     key_name = f"{_KEY_NAME_PREFIX}{int(time.time())}"
 
     # Route the browser login through the same proxy as VIP's httpx egress, so
-    # the interactive login does not silently take a different network path than
-    # the API-key mint and the product clients (Chromium's implicit env-proxy
-    # detection is platform-dependent; this makes it explicit and consistent).
-    # Resolved for ``primary_url`` -- the URL this browser is about to navigate --
-    # so an http:// product selects the http proxy rather than the https one.
+    # it does not silently take a different network path than the API-key mint
+    # and the product clients (Chromium's implicit env-proxy detection is
+    # platform-dependent).  Resolved for ``primary_url`` -- the URL this browser
+    # is about to navigate -- so an http:// product selects the http proxy.
     pw_proxy = playwright_proxy(build_proxy_map(proxy), primary_url)
     pw_args = chromium_launch_args(proxy)
 
@@ -180,53 +178,11 @@ def start_interactive_auth(
         os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
     try:
         pw = sync_playwright().start()
-        browser = _launch_chromium(pw, headless=False, proxy=pw_proxy, args=pw_args)
+        browser = _launch_chromium(pw, headless=not headed, proxy=pw_proxy, args=pw_args)
         context = browser.new_context(ignore_https_errors=insecure)
         page = context.new_page()
 
-        page.goto(f"{primary_url}{login_path}")
-
-        print(f"\n>>> A browser window has opened at {primary_url}")
-        print(">>> Please log in through your identity provider.")
-        print(">>> The browser will close automatically after login.\n")
-
-        # Poll until login completes
-        base = primary_url.rstrip("/")
-        deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
-        login_completed = False
-
-        # Login detection: for Connect check we left /__login__,
-        # for Workbench check we're no longer on a login/auth page.
-        while time.monotonic() < deadline:
-            try:
-                url = page.url
-            except PlaywrightError:
-                break
-            if connect_url:
-                if base in url and "/__login__" not in url:
-                    login_completed = True
-                    break
-            else:
-                # For Workbench, login is complete when we're on the
-                # homepage (no login/auth keywords in the URL).
-                lower = url.lower()
-                at_login = any(kw in lower for kw in ("sign-in", "login", "auth", "/saml/acs"))
-                if base.rstrip("/").lower() in lower and not at_login:
-                    login_completed = True
-                    break
-            try:
-                page.wait_for_timeout(500)
-            except PlaywrightError:
-                break
-
-        if not login_completed:
-            state = _describe_final_page_state(page, primary_url)
-            raise AuthTimeoutError(
-                "Login did not complete within "
-                f"{_timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))}. "
-                "Please rerun and complete authentication in the browser window. "
-                f"Browser {state}."
-            )
+        do_login(page, primary_url, f"{primary_url}{login_path}", bool(connect_url))
 
         # Mint Connect API key only if Connect is configured.  Keep the
         # caller's original URL for cache-key matching; the rewritten
@@ -244,7 +200,9 @@ def start_interactive_auth(
         # Visit Workbench so the storage state includes its session cookies.
         workbench_auth_error: str | None = None
         if workbench_url and connect_url:
-            workbench_auth_error = _authenticate_workbench(page, workbench_url)
+            workbench_auth_error = _authenticate_workbench(
+                page, workbench_url, provider=workbench_provider
+            )
 
         context.storage_state(path=str(storage_state_path))
 
@@ -292,6 +250,114 @@ def start_interactive_auth(
                 os.environ["NODE_EXTRA_CA_CERTS"] = _prev_node_ca
 
 
+def start_interactive_auth(
+    connect_url: str | None = None,
+    workbench_url: str | None = None,
+    cache_path: Path | None = None,
+    insecure: bool = False,
+    ca_bundle: Path | None = None,
+    connect_url_scheme_inferred: bool = False,
+    workbench_url_scheme_inferred: bool = False,
+    proxy: ProxyConfig | None = None,
+) -> InteractiveAuthSession:
+    """Launch a headed browser, authenticate via OIDC, and optionally
+    mint a Connect API key through the UI.
+
+    At least one of *connect_url* or *workbench_url* must be provided.
+
+    When *connect_url* is given, the browser opens Connect's login page
+    and attempts to mint a temporary API key.  If *workbench_url* is
+    also provided, the browser visits Workbench afterward so the saved
+    storage state contains session cookies for both products (SSO handles
+    the second authentication automatically).
+
+    When only *workbench_url* is given, the browser opens Workbench
+    directly.  No Connect API key is minted.
+
+    The browser is closed before this function returns.  pytest-playwright
+    creates its own browser instance using the saved storage state.
+
+    When *insecure* is ``True``, Playwright ignores TLS certificate errors.
+    When *ca_bundle* is set, the path is exported as ``NODE_EXTRA_CA_CERTS``
+    before launching Chromium so it trusts a custom CA (Chromium-level trust
+    only; this does not update the OS certificate store).
+
+    *connect_url_scheme_inferred* / *workbench_url_scheme_inferred* mark a URL
+    whose ``https://`` scheme was inferred by ``vip.config._normalize_url``
+    rather than given explicitly (``ProductConfig.url_scheme_inferred``).
+    When set, :func:`resolve_url_scheme` probes the URL and falls back to
+    ``http://`` if https doesn't answer, before it's used for anything.
+    """
+    if not connect_url and not workbench_url:
+        raise ValueError(
+            "--interactive-auth requires at least one product URL (Connect or Workbench)"
+        )
+
+    cached = _cached_session(
+        cache_path, connect_url, workbench_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
+    )
+    if cached is not None:
+        return cached
+
+    def login(page: Page, primary_url: str, target: str, has_connect: bool) -> None:
+        page.goto(target)
+
+        print(f"\n>>> A browser window has opened at {primary_url}")
+        print(">>> Please log in through your identity provider.")
+        print(">>> The browser will close automatically after login.\n")
+
+        # Poll until login completes
+        base = primary_url.rstrip("/")
+        deadline = time.monotonic() + scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS)
+        login_completed = False
+
+        # Login detection: for Connect check we left /__login__,
+        # for Workbench check we're no longer on a login/auth page.
+        while time.monotonic() < deadline:
+            try:
+                url = page.url
+            except PlaywrightError:
+                break
+            if has_connect:
+                if base in url and "/__login__" not in url:
+                    login_completed = True
+                    break
+            else:
+                # For Workbench, login is complete when we're on the
+                # homepage (no login/auth keywords in the URL).
+                lower = url.lower()
+                at_login = any(kw in lower for kw in ("sign-in", "login", "auth", "/saml/acs"))
+                if base.rstrip("/").lower() in lower and not at_login:
+                    login_completed = True
+                    break
+            try:
+                page.wait_for_timeout(500)
+            except PlaywrightError:
+                break
+
+        if not login_completed:
+            state = _describe_final_page_state(page, primary_url)
+            raise AuthTimeoutError(
+                "Login did not complete within "
+                f"{_timeout_label(scaled(_IDP_ROUNDTRIP_TIMEOUT_SECONDS))}. "
+                "Please rerun and complete authentication in the browser window. "
+                f"Browser {state}."
+            )
+
+    return _run_login(
+        connect_url=connect_url,
+        workbench_url=workbench_url,
+        cache_path=cache_path,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        connect_url_scheme_inferred=connect_url_scheme_inferred,
+        workbench_url_scheme_inferred=workbench_url_scheme_inferred,
+        proxy=proxy,
+        headed=True,
+        do_login=login,
+    )
+
+
 _IDP_PROVIDERS = frozenset({"oidc", "saml", "oauth2"})
 
 
@@ -337,19 +403,11 @@ def start_headless_auth(
             "--headless-auth requires at least one product URL (Connect or Workbench)"
         )
 
-    # Check for a valid cached session before validating credentials/idp,
-    # so a warm cache works even when env vars are not set.
-    if cache_path:
-        cached = _load_cached_auth(
-            cache_path,
-            connect_url,
-            workbench_url,
-            insecure=insecure,
-            ca_bundle=ca_bundle,
-            proxy=proxy,
-        )
-        if cached is not None:
-            return cached
+    cached = _cached_session(
+        cache_path, connect_url, workbench_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
+    )
+    if cached is not None:
+        return cached
 
     if not username or not password:
         raise AuthConfigError(
@@ -377,54 +435,7 @@ def start_headless_auth(
 
         fill_login = get_idp_strategy(idp)
 
-    # Resolve inferred https:// schemes now, after every fail-fast validation
-    # above and right before anything (Playwright or httpx) actually talks to
-    # the URLs, so a config error never pays for a network probe it doesn't need.
-    connect_url = _resolve_str_if_inferred(
-        connect_url,
-        connect_url_scheme_inferred,
-        insecure=insecure,
-        ca_bundle=ca_bundle,
-        proxy=proxy,
-    )
-    workbench_url = _resolve_str_if_inferred(
-        workbench_url,
-        workbench_url_scheme_inferred,
-        insecure=insecure,
-        ca_bundle=ca_bundle,
-        proxy=proxy,
-    )
-
-    # Determine the primary login target.
-    primary_url = connect_url or workbench_url
-    if primary_url is None:
-        raise RuntimeError("unreachable: connect_url or workbench_url required, checked above")
-    login_path = "/__login__" if connect_url else ""
-
-    tmpdir = tempfile.mkdtemp(prefix="vip-auth-")
-    storage_state_path = Path(tmpdir) / "vip-auth-state.json"
-    Path(tmpdir).chmod(0o700)
-
-    key_name = f"{_KEY_NAME_PREFIX}{int(time.time())}"
-
-    # Same proxy as VIP's httpx egress, so the headless login shares the network
-    # path of the mint and product clients rather than Chromium's implicit one.
-    # Resolved for the URL this browser will navigate (see start_interactive_auth).
-    pw_proxy = playwright_proxy(build_proxy_map(proxy), primary_url)
-    pw_args = chromium_launch_args(proxy)
-
-    pw = None
-    browser = None
-    _prev_node_ca = os.environ.get("NODE_EXTRA_CA_CERTS")
-    if ca_bundle is not None:
-        os.environ["NODE_EXTRA_CA_CERTS"] = str(ca_bundle)
-    try:
-        pw = sync_playwright().start()
-        browser = _launch_chromium(pw, headless=True, proxy=pw_proxy, args=pw_args)
-        context = browser.new_context(ignore_https_errors=insecure)
-        page = context.new_page()
-
-        target = f"{primary_url}{login_path}"
+    def login(page: Page, primary_url: str, target: str, has_connect: bool) -> None:
         print(f"\n>>> Headless auth: authenticating to {primary_url} ...", flush=True)
         try:
             page.goto(target)
@@ -442,7 +453,7 @@ def start_headless_auth(
 
             # Wait for redirect back to the product.
             _wait_for_product_redirect(
-                page, primary_url, provider=provider, check_connect_session=bool(connect_url)
+                page, primary_url, provider=provider, check_connect_session=has_connect
             )
         except PlaywrightTimeoutError as exc:
             raise AuthConfigError(
@@ -456,64 +467,16 @@ def start_headless_auth(
             ) from exc
         print(">>> Authentication complete.")
 
-        # Mint Connect API key only if Connect is configured.  Keep the
-        # caller's original URL for cache-key matching; the rewritten
-        # form is what we actually mint and clean up against.
-        api_key = None
-        requested_connect_url = connect_url or ""
-        if connect_url:
-            connect_url = _resolve_connect_api_base(
-                connect_url, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
-            )
-            api_key = _create_api_key_via_session(
-                page, connect_url, key_name, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
-            )
-
-        # Visit Workbench so the storage state includes its session cookies.
-        workbench_auth_error: str | None = None
-        if workbench_url and connect_url:
-            workbench_auth_error = _authenticate_workbench(page, workbench_url, provider=provider)
-
-        context.storage_state(path=str(storage_state_path))
-
-        session = InteractiveAuthSession(
-            storage_state_path=storage_state_path,
-            api_key=api_key,
-            key_name=key_name,
-            workbench_auth_error=workbench_auth_error,
-            _connect_url=connect_url or "",
-            _requested_connect_url=requested_connect_url,
-            _workbench_url=workbench_url or "",
-            _tmpdir=tmpdir,
-            _cache_path=cache_path,
-            _insecure=insecure,
-            _ca_bundle=ca_bundle,
-            _proxy=proxy,
-        )
-
-        if cache_path:
-            _save_auth_cache(session, cache_path)
-
-        return session
-    except Exception:
-        if tmpdir and Path(tmpdir).is_dir():
-            shutil.rmtree(tmpdir, ignore_errors=True)
-        raise
-    finally:
-        if browser is not None:
-            try:
-                browser.close()
-            except (PlaywrightError, OSError, RuntimeError):
-                pass
-        if pw is not None:
-            try:
-                pw.stop()
-            except (PlaywrightError, OSError, RuntimeError):
-                pass
-        # Restore NODE_EXTRA_CA_CERTS to its previous value so subsequent
-        # auth calls (or test runs) are not silently affected.
-        if ca_bundle is not None:
-            if _prev_node_ca is None:
-                os.environ.pop("NODE_EXTRA_CA_CERTS", None)
-            else:
-                os.environ["NODE_EXTRA_CA_CERTS"] = _prev_node_ca
+    return _run_login(
+        connect_url=connect_url,
+        workbench_url=workbench_url,
+        cache_path=cache_path,
+        insecure=insecure,
+        ca_bundle=ca_bundle,
+        connect_url_scheme_inferred=connect_url_scheme_inferred,
+        workbench_url_scheme_inferred=workbench_url_scheme_inferred,
+        proxy=proxy,
+        headed=False,
+        do_login=login,
+        workbench_provider=provider,
+    )

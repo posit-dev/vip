@@ -1,0 +1,83 @@
+name: Check for license errors
+description: >-
+  Turns a failed product start into a readable failure: scans the product container's logs for a
+  license problem and, if one is found, surfaces it as a workflow annotation and a job summary so
+  an expired key is visible on the Actions run page instead of buried in the log. Only call this
+  from a step gated on `if: failure() && ...`. It always exits non-zero when it finds the product
+  did not start, so it never turns a failed start into a pass.
+
+inputs:
+  product:
+    description: >-
+      Product name as it appears in messages and annotations, e.g. `Connect`. Also names the
+      `with-<product>` action and the `Start <product>` step the messages point at, lowercased and
+      verbatim respectively.
+    required: true
+  secret-name:
+    description: "Name of the repository secret that holds the license, quoted in the summary. Never the value."
+    required: true
+  image:
+    description: >-
+      Full image reference with tag, used to find a container started from it. Needs the tag: a
+      tagless value normalizes to `:latest` and never matches a container started from a pinned
+      version. When set, a container that is missing, or present but logging no license problem,
+      is reported as a startup failure and the step exits non-zero. Set this or `container`.
+    required: false
+    default: ""
+  container:
+    description: >-
+      Name of the container to read logs from. When set (and `image` is not), the step exits
+      non-zero only if a license problem is found, because the caller's own start step has already
+      reported any other startup failure. Set this or `image`.
+    required: false
+    default: ""
+  error-pattern:
+    description: "Extended regex, matched case-insensitively against log lines that mention a license."
+    required: false
+    default: "expired|invalid|unable|not activated"
+
+runs:
+  using: composite
+  steps:
+    - name: Scan container logs for license errors
+      shell: bash
+      env:
+        PRODUCT: ${{ inputs.product }}
+        SECRET_NAME: ${{ inputs.secret-name }}
+        IMAGE: ${{ inputs.image }}
+        CONTAINER: ${{ inputs.container }}
+        ERROR_PATTERN: ${{ inputs.error-pattern }}
+      run: |
+        set -euo pipefail
+
+        if [ -n "${IMAGE}" ]; then
+          # Find the container even if the start action failed partway.
+          CID=$(docker ps -aq --filter "ancestor=${IMAGE}" | head -1 || true)
+          if [ -z "${CID}" ]; then
+            echo "::error title=${PRODUCT} Startup Failed::${PRODUCT} container not found. The with-${PRODUCT,,} action failed before creating a container."
+            exit 1
+          fi
+        else
+          CID="${CONTAINER}"
+        fi
+
+        LOGS=$(docker logs "${CID}" 2>&1 || true)
+        LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "${ERROR_PATTERN}" | head -1 || true)
+        if [ -n "${LICENSE_MSG}" ]; then
+          echo "::error title=License Error::${LICENSE_MSG}"
+          {
+            echo "## License Error"
+            echo ""
+            echo "The ${PRODUCT} license key is expired or invalid. Update the \`${SECRET_NAME}\` repository secret."
+            echo ""
+            echo '```'
+            echo "${LICENSE_MSG}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+        fi
+
+        if [ -n "${IMAGE}" ]; then
+          echo "::error title=${PRODUCT} Startup Failed::${PRODUCT} failed to start. Check the 'Start ${PRODUCT}' step logs for details."
+          exit 1
+        fi

@@ -630,6 +630,26 @@ class WorkbenchClient(BaseClient):
             return False
         return is_vip_session_for_owner(str(session.get("label") or ""), owner)
 
+    def _list_sessions_strict(self) -> list[Any]:
+        """Return the ``/api/sessions`` list, or raise if it cannot be trusted.
+
+        Raises :class:`ProductUnreachableError` on a transport error, a non-200,
+        or a body that is not a JSON ``list`` (e.g. a ``200`` HTML/SPA fallback
+        or an error object), so callers cannot mistake it for an empty list.
+        """
+        try:
+            resp = self._client.get("/api/sessions")
+            if resp.status_code != 200:
+                raise ProductUnreachableError(f"GET /api/sessions returned {resp.status_code}")
+            sessions = resp.json()
+        except ProductUnreachableError:
+            raise
+        except Exception as exc:
+            raise ProductUnreachableError(f"could not list Workbench sessions: {exc}") from exc
+        if not isinstance(sessions, list):
+            raise ProductUnreachableError("GET /api/sessions did not return a JSON list")
+        return sessions
+
     def count_vip_sessions(self, *, owner: str | None = None) -> int:
         """Count VIP-named sessions currently listed.
 
@@ -645,17 +665,7 @@ class WorkbenchClient(BaseClient):
         cannot mistake an unparseable response for "clean" (which would
         suppress the UI sweep and re-orphan sessions — issue #467).
         """
-        try:
-            resp = self._client.get("/api/sessions")
-            if resp.status_code != 200:
-                raise ProductUnreachableError(f"GET /api/sessions returned {resp.status_code}")
-            sessions = resp.json()
-        except ProductUnreachableError:
-            raise
-        except Exception as exc:
-            raise ProductUnreachableError(f"could not list Workbench sessions: {exc}") from exc
-        if not isinstance(sessions, list):
-            raise ProductUnreachableError("GET /api/sessions did not return a JSON list")
+        sessions = self._list_sessions_strict()
         return sum(1 for s in sessions if self._is_target(s, owner))
 
     def sessions_api_reachable(self) -> bool:
@@ -729,12 +739,9 @@ class WorkbenchClient(BaseClient):
         exhausted_with_targets = False
         for attempt in range(retries):
             try:
-                resp = self._client.get("/api/sessions")
-                sessions = resp.json() if resp.status_code == 200 else []
-            except Exception:  # noqa: BLE001
-                # Connection error, non-JSON body, etc. — give up this run.
-                break
-            if not isinstance(sessions, list):
+                sessions = self._list_sessions_strict()
+            except ProductUnreachableError:
+                # Connection error, non-200, non-JSON body, etc. — give up this run.
                 break
             targets = [s for s in sessions if self._is_target(s, owner)]
             if not targets:
@@ -766,17 +773,7 @@ class WorkbenchClient(BaseClient):
         the listing call itself fails; :meth:`quit_vip_sessions` treats that as
         best-effort and swallows it rather than failing the sweep.
         """
-        try:
-            resp = self._client.get("/api/sessions")
-            if resp.status_code != 200:
-                raise ProductUnreachableError(f"GET /api/sessions returned {resp.status_code}")
-            sessions = resp.json()
-        except ProductUnreachableError:
-            raise
-        except Exception as exc:
-            raise ProductUnreachableError(f"could not list Workbench sessions: {exc}") from exc
-        if not isinstance(sessions, list):
-            raise ProductUnreachableError("GET /api/sessions did not return a JSON list")
+        sessions = self._list_sessions_strict()
         remaining = [s for s in sessions if self._is_target(s, owner)]
         if not remaining:
             return

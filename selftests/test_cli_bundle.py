@@ -914,3 +914,27 @@ def test_run_without_proxy_credentials_needs_nothing_extra(root):
     )
     run_bundle(_args(output="b.zip"))
     assert (root / "b.zip").is_file()
+
+
+def _token_only_proxy(root: Path) -> None:
+    toml = (root / "vip.toml").read_text(encoding="utf-8")
+    (root / "vip.toml").write_text(
+        re.sub(r'url = "http://puser:[^"]*"', 'url = "PROXY-TOKEN-0123@proxy.example:8080"', toml),
+        encoding="utf-8",
+    )
+
+
+def test_summary_redacts_a_token_only_scheme_less_proxy(root):
+    _token_only_proxy(root)
+    run_bundle(_args(output="b.zip"))
+    with zipfile.ZipFile(root / "b.zip") as zf:
+        summary = json.loads(zf.read("config-summary.json"))
+    assert summary["proxy"]["url"] == "http://proxy.example:8080"
+    assert "PROXY-TOKEN-0123" not in json.dumps(summary)
+
+
+def test_scan_knows_a_token_only_scheme_less_proxy(root):
+    _token_only_proxy(root)
+    _write_report(root, results_extra="PROXY-TOKEN-0123")
+    with pytest.raises(BundleError, match=r"proxy\.url user"):
+        run_bundle(_args(output="b.zip"))
