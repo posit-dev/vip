@@ -523,7 +523,10 @@ def _run_settings(cfg: VIPConfig) -> dict[str, Any]:
     # A run with no product makes no egress, and resolving the map would print the
     # lone-HTTP_PROXY promotion notice for an unrelated project's pytest run.
     configured = any(pc.is_configured for pc in (cfg.connect, cfg.workbench, cfg.package_manager))
-    for used in build_proxy_map(proxy).values() if configured else ():
+    # The explicit url is always listed: a bypass or a missing product removes its
+    # route, but its credential can still reach the output.
+    used_proxies = [proxy.url, *(build_proxy_map(proxy).values() if configured else ())]
+    for used in used_proxies:
         if used:
             url = strip_proxy_userinfo(used)
             effective[url] = effective.get(url, False) or bool(proxy_url_secrets("proxy", used))

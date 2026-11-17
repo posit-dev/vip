@@ -163,7 +163,8 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
                 raise BundleError(
                     f"{path}: the {product} URL has an @ after the host or a bad port, so "
                     "vip bundle cannot tell which configuration file the run used. "
-                    "Pass --no-config."
+                    "Percent-encode the @ in that URL (%40), or run 'vip verify' again "
+                    "without a product URL flag."
                 )
             url = authority
         if not run_url and not url:

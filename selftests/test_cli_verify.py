@@ -1774,7 +1774,7 @@ class TestFlagsOverrideConfigFile:
 
     def test_base_identity_redacts_a_scheme_less_token_url(self):
         cfg = self._config('[connect]\nurl = "TOKEN-ABC-0123@connect.example.com"\n')
-        r = _resolve(_make_args(config=cfg, insecure=True))
+        r = _resolve(_make_args(config=cfg, connect_url="https://flag.example.com"))
         (arg,) = [c for c in r.cmd if c.startswith("--vip-base=")]
         assert "TOKEN-ABC-0123" not in arg
         assert json.loads(arg.split("=", 1)[1])["products"]["connect"] == {
@@ -1783,12 +1783,18 @@ class TestFlagsOverrideConfigFile:
 
     def test_base_identity_marks_an_ambiguous_url_instead_of_recording_it(self):
         cfg = self._config('[connect]\nurl = "https://prod.example.com/@team"\n')
-        r = _resolve(_make_args(config=cfg, insecure=True))
+        r = _resolve(_make_args(config=cfg, connect_url="https://flag.example.com"))
         (arg,) = [c for c in r.cmd if c.startswith("--vip-base=")]
         assert json.loads(arg.split("=", 1)[1])["products"]["connect"] == {
             "url": "",
             "ambiguous": True,
         }
+
+    def test_an_override_that_leaves_product_urls_alone_sends_no_base(self):
+        cfg = self._config('[connect]\nurl = "https://prod.example.com/@team"\n')
+        for flags in ({"insecure": True}, {"proxy": "http://corp:8080"}, {"connect_version": "1"}):
+            r = _resolve(_make_args(config=cfg, **flags))
+            assert not [c for c in r.cmd if "--vip-base" in c]
 
     def test_url_mode_and_no_override_runs_send_no_base(self):
         cfg = self._config('[connect]\nurl = "https://c.example.com"\n')

@@ -1012,3 +1012,22 @@ def test_effective_proxy_without_credentials_needs_nothing(root):
     _write_run(root, {"connect": {"url": "https://connect.example.com"}}, settings=settings)
     run_bundle(_args(output="b.zip"))
     assert (root / "b.zip").is_file()
+
+
+def test_run_without_a_url_override_matches_a_config_with_an_at_in_the_path(tmp_path):
+    from vip.config import load_config
+
+    url = "https://prod.example.com/@team"
+    path = tmp_path / "vip.toml"
+    path.write_text(f'[connect]\nurl = "{url}"\n', encoding="utf-8")
+    # A run with only --insecure records no base, so main's comparison applies.
+    results = json.dumps({"products": {"connect": {"url": url}}})
+    bundle_module._check_config_matches(load_config(path), path, results.encode())
+
+
+def test_ambiguous_url_message_never_suggests_no_config(tmp_path):
+    with pytest.raises(BundleError) as excinfo:
+        _base_check(tmp_path, "https://prod.example.com/@team")
+    message = str(excinfo.value)
+    assert "Percent-encode the @" in message
+    assert "--no-config" not in message

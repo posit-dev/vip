@@ -532,7 +532,8 @@ def run_verify(args: argparse.Namespace) -> None:
     try:
         try:
             temp_config = _generate_temp_config(args, base) if has_overrides else None
-            base_identity = _base_identity(base) if base and has_overrides else None
+            url_overridden = any(getattr(args, f"{p}_url", None) for p in _PRODUCTS)
+            base_identity = _base_identity(base) if base and url_overridden else None
             config_path = temp_config or str(base)
             cfg = load_config(config_path)
         except (ValueError, AttributeError, TypeError) as exc:

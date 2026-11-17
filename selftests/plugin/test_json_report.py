@@ -387,6 +387,38 @@ class TestRunSettingsInResults:
         assert "PROXY-PASS-0123" not in text
         assert "puser" not in text
 
+    def test_explicit_proxy_credential_is_recorded_without_a_product(self, selftest_pytester):
+        selftest_pytester.makefile(
+            ".toml",
+            vip='[general]\ndeployment_name = "Selftest"\n'
+            '[proxy]\nurl = "http://u:EXT-PASS-0123@ext-gw:3128"\n',
+        )
+        selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}")
+        text = report_path.read_text(encoding="utf-8")
+        assert json.loads(text)["settings"]["proxy"]["effective"] == [
+            {"url": "http://ext-gw:3128", "credentials": True}
+        ]
+        assert "EXT-PASS-0123" not in text
+
+    def test_explicit_proxy_credential_is_recorded_when_no_proxy_bypasses_everything(
+        self, selftest_pytester
+    ):
+        selftest_pytester.makefile(
+            ".toml",
+            vip='[general]\ndeployment_name = "Selftest"\n'
+            '[connect]\nurl = "https://connect.example.com"\n'
+            '[proxy]\nurl = "http://u:ALL-PASS-0123@all-gw:3128"\nno_proxy = ["*"]\n',
+        )
+        selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}")
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+        assert data["settings"]["proxy"]["effective"] == [
+            {"url": "http://all-gw:3128", "credentials": True}
+        ]
+
     def test_no_base_by_default(self, selftest_pytester):
         selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
         report_path = selftest_pytester.path / "results.json"
