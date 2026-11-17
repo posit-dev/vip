@@ -277,26 +277,15 @@ jobs:
         with:
           persist-credentials: false
       - name: Check smoke test result
-        run: |
-          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
-            echo "Change-detection job failed; cannot confirm smoke scope"
-            exit 1
-          fi
-          # A failed set-matrix skips (not fails) packagemanager-smoke, which
-          # would otherwise look identical to a clean no-relevant-paths skip below.
-          if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
-            echo "Version-matrix job failed; cannot confirm smoke scope"
-            exit 1
-          fi
-          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.packagemanager-smoke.result }}" != "success" ]; then
-            echo "Package Manager smoke was in scope but did not succeed (result=${{ needs.packagemanager-smoke.result }}); is RSPM_LICENSE configured?"
-            exit 1
-          fi
-          if [ "${{ needs.packagemanager-smoke.result }}" = "failure" ] || [ "${{ needs.packagemanager-smoke.result }}" = "cancelled" ]; then
-            echo "Package Manager smoke tests failed or were cancelled"
-            exit 1
-          fi
-          echo "Package Manager smoke tests passed or were legitimately out of scope"
+        uses: ./.github/actions/check-smoke-status
+        with:
+          product: Package Manager
+          changes-result: ${{ needs.changes.result }}
+          set-matrix-result: ${{ needs.set-matrix.result }}
+          relevant: ${{ needs.changes.outputs.relevant }}
+          suites: |
+            Package Manager smoke tests|${{ needs.packagemanager-smoke.result }}
+          in-scope-hint: "; is RSPM_LICENSE configured?"
 
       # Nightly failures have no PR author to notice them; file (or update) a
       # tracking issue instead of failing silently. Never fires on push/pull_request
