@@ -735,3 +735,27 @@ def test_bad_auth_cache_stops_the_bundle(root):
     (root / ".vip-auth-cache.meta.json").write_text('{"api_key": "x"', encoding="utf-8")
     with pytest.raises(BundleError, match="could not read the auth cache file"):
         run_bundle(_args(output="b.zip"))
+
+
+def _token_only_proxy(root: Path) -> None:
+    toml = (root / "vip.toml").read_text(encoding="utf-8")
+    (root / "vip.toml").write_text(
+        re.sub(r'url = "http://puser:[^"]*"', 'url = "PROXY-TOKEN-0123@proxy.example:8080"', toml),
+        encoding="utf-8",
+    )
+
+
+def test_summary_redacts_a_token_only_scheme_less_proxy(root):
+    _token_only_proxy(root)
+    run_bundle(_args(output="b.zip"))
+    with zipfile.ZipFile(root / "b.zip") as zf:
+        summary = json.loads(zf.read("config-summary.json"))
+    assert summary["proxy"]["url"] == "http://proxy.example:8080"
+    assert "PROXY-TOKEN-0123" not in json.dumps(summary)
+
+
+def test_scan_knows_a_token_only_scheme_less_proxy(root):
+    _token_only_proxy(root)
+    _write_report(root, results_extra="PROXY-TOKEN-0123")
+    with pytest.raises(BundleError, match=r"proxy\.url user"):
+        run_bundle(_args(output="b.zip"))
