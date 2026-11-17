@@ -9,16 +9,14 @@ Architecture layers used by this module:
 - Layer 3 (Driver Port): delegates to page-object selectors in pages/
 - Layer 4 (Driver Adapter): Playwright (via the Page parameter)
 
-Pure helpers (_wrap_r_expr, _wrap_python_expr, _extract_between_markers,
-_strip_r_index) are fully unit-testable without Playwright and are covered
+Pure helpers (_wrap_r_expr, _wrap_python_expr_inline,
+_extract_between_markers) are fully unit-testable without Playwright and are covered
 by selftests/test_workbench_exec.py.
 """
 
 from __future__ import annotations
 
-import base64
 import re
-import shlex
 import time
 import uuid
 
@@ -27,7 +25,6 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from vip_tests.workbench.pages import (
     ConsolePaneSelectors,
-    JupyterLabSession,
     PositronSession,
     RStudioSession,
     VSCodeSession,
@@ -99,27 +96,6 @@ def _read_file_r_expr(path: str) -> str:
     return f'cat(paste(readLines("{path}"), collapse="\\n"))'
 
 
-def _wrap_python_expr(expr: str, start: str, end: str) -> str:
-    """Wrap *expr* with Python print() markers.
-
-    Returns a newline-separated block suitable for pasting into a JupyterLab
-    cell or a Positron Python console as a single execution unit.
-
-    The markers use Python implicit string-literal concatenation (``"a" "b"``)
-    so the typed source does not contain the full contiguous marker, only the
-    printed output does (see ``_split_marker``).
-
-    Example output (3 lines)::
-
-        print("<<VIP-STA" "RT-abc>>")
-        <expr>
-        print("<<VIP-E" "ND-abc>>")
-    """
-    s1, s2 = _split_marker(start)
-    e1, e2 = _split_marker(end)
-    return f'print("{s1}" "{s2}")\n{expr}\nprint("{e1}" "{e2}")'
-
-
 def _wrap_python_expr_inline(expr: str, start: str, end: str) -> str:
     """Wrap *expr* as a single-line, semicolon-chained Python statement.
 
@@ -151,21 +127,6 @@ def _extract_between_markers(text: str, start: str, end: str) -> str:
     if e == -1:
         raise ExecError(f"End marker not found in captured output (marker={end!r})")
     return text[s + len(start) : e].strip()
-
-
-def _strip_r_index(text: str) -> str:
-    """Strip R's vector-index prefix (e.g. ``[1]``) from the start of each line.
-
-    Useful when the caller only cares about the value, not R's display format.
-    Returns empty string when *text* is empty.
-
-    For example, ``[1] 1.0.6`` becomes ``1.0.6``.
-    """
-    lines = [
-        re.sub(r"^\[\d+\]\s*", "", line) if re.match(r"^\[\d+\]", line) else line
-        for line in text.splitlines()
-    ]
-    return "\n".join(lines).strip()
 
 
 def _parse_done_marker(content: str, done_marker: str) -> tuple[str, int] | None:
@@ -1070,51 +1031,6 @@ def positron_eval_python(page: Page, expr: str, timeout: int = 30_000) -> str:
     )
 
 
-def jupyterlab_eval(page: Page, expr: str, lang: str = "python", timeout: int = 30_000) -> str:
-    """Evaluate *expr* in a JupyterLab notebook cell and return the captured output.
-
-    Assumes the JupyterLab launcher or notebook panel is already visible.
-    Clicks the first available code cell input, types the wrapped expression,
-    and runs it with Shift+Enter.
-
-    Args:
-        page: Playwright page for an active JupyterLab session.
-        expr: Code expression (Python or R depending on *lang*).
-        lang: ``"python"`` (default) or ``"r"`` — controls marker wrapping.
-        timeout: Max milliseconds to wait for output.
-
-    Returns:
-        Raw text between the VIP markers, stripped of whitespace.
-
-    """
-    start, end = _make_sentinels()
-    if lang.lower() == "r":
-        wrapped = _wrap_r_expr(expr, start, end)
-    else:
-        wrapped = _wrap_python_expr(expr, start, end)
-
-    cell_input = page.locator(JupyterLabSession.CELL_INPUT).first
-    expect(cell_input).to_be_visible(timeout=timeout)
-    cell_input.click()
-
-    # For Python, type each line and press Enter to build a multi-line cell.
-    # For R, the wrapped expression is a single line; type it directly.
-    if lang.lower() == "python":
-        for line in wrapped.splitlines():
-            cell_input.type(line)
-            cell_input.press("Enter")
-    else:
-        cell_input.type(wrapped)
-
-    cell_input.press("Shift+Enter")
-
-    cell_output = page.locator(JupyterLabSession.CELL_OUTPUT).last
-    expect(cell_output).to_contain_text(end, timeout=timeout)
-
-    text = cell_output.text_content() or ""
-    return _extract_between_markers(text, start, end)
-
-
 # ---------------------------------------------------------------------------
 # VS Code editor-open readback helpers
 # ---------------------------------------------------------------------------
@@ -1604,85 +1520,6 @@ def terminal_run(
 
 
 # ---------------------------------------------------------------------------
-# Server-side file materialization
-# ---------------------------------------------------------------------------
-
-
-def _b64_write_cmd(path: str, content: str) -> str:
-    """Build a shell command that writes *content* to *path* on the server.
-
-    The content is base64-encoded on the client and decoded on the server, so
-    arbitrary bytes (newlines, quotes, ``$``, backticks) survive the terminal
-    typing path intact -- a heredoc or ``echo`` would be mangled by the shell's
-    own interpretation of the characters ``terminal_run`` types verbatim.
-
-    ``base64 -d`` is coreutils/BusyBox-portable; the payload is a single token
-    (base64 emits no shell metacharacters) piped into ``base64 -d > path``.
-    """
-    payload = base64.b64encode(content.encode("utf-8")).decode("ascii")
-    return f"printf %s {payload} | base64 -d > {shlex.quote(path)}"
-
-
-def write_bundle(
-    page: Page,
-    bundle_dir: str,
-    files: dict[str, str],
-    *,
-    timeout: int = 30_000,
-    readback_lang: str = "r",
-) -> str:
-    """Materialize *files* under *bundle_dir* on the Workbench server.
-
-    Writes each ``{filename: content}`` entry into *bundle_dir* using the IDE
-    session terminal (via :func:`terminal_run`), so the bundle exists on the
-    machine where subsequent terminal commands run -- not on the host running
-    pytest.  This decouples the test from where VIP is invoked: the bundle is
-    always local to the ``rsconnect`` process that consumes it.
-
-    Filenames may include subdirectories (e.g. ``www/index.html``); the parent
-    directory is created before each file is written.
-
-    Args:
-        page: Playwright page for an active IDE session.
-        bundle_dir: Absolute server-side directory to create and populate.
-        files: Mapping of relative filename to file content.
-        timeout: Max milliseconds for each underlying terminal command.
-        readback_lang: Readback language for :func:`terminal_run` (``"python"``
-            for pure VS Code sessions without an R console).
-
-    Returns:
-        *bundle_dir*, for convenient chaining into a deploy command.
-
-    Raises:
-        ExecError: A directory creation or file write command failed.
-
-    """
-    terminal_run(
-        page,
-        f"mkdir -p {shlex.quote(bundle_dir)}",
-        timeout=timeout,
-        readback_lang=readback_lang,
-    )
-    for filename, content in files.items():
-        dest = f"{bundle_dir}/{filename}"
-        parent = dest.rsplit("/", 1)[0]
-        if parent and parent != bundle_dir:
-            terminal_run(
-                page,
-                f"mkdir -p {shlex.quote(parent)}",
-                timeout=timeout,
-                readback_lang=readback_lang,
-            )
-        terminal_run(
-            page,
-            _b64_write_cmd(dest, content),
-            timeout=timeout,
-            readback_lang=readback_lang,
-        )
-    return bundle_dir
-
-
-# ---------------------------------------------------------------------------
 # Filesystem readback
 # ---------------------------------------------------------------------------
 
@@ -1733,9 +1570,6 @@ def file_exists(page: Page, path: str, timeout: int = 30_000, *, lang: str = "r"
         )
         return "VIP_EXISTS" in output
     # RStudio (and unknown — fall back to RStudio R path)
-    if lang.lower() == "r":
-        result = rstudio_eval(page, f'file.exists("{path}")', timeout=timeout)
-        return "TRUE" in result
     result = rstudio_eval(page, f'file.exists("{path}")', timeout=timeout)
     return "TRUE" in result
 

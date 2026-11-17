@@ -3,9 +3,8 @@
 These tests cover the deterministic, Playwright-free functions extracted from
 ``src/vip_tests/workbench/exec.py``:
 
-- ``_wrap_r_expr`` / ``_wrap_python_expr`` — marker-bracketed expression fencing
+- ``_wrap_r_expr`` / ``_wrap_python_expr_inline`` — marker-bracketed expression fencing
 - ``_extract_between_markers`` — output extraction between UUID sentinels
-- ``_strip_r_index`` — R vector-index prefix stripping
 - ``_make_sentinels`` — UUID sentinel format validation
 - ``_detect_ide`` — IDE detection from page DOM selectors
 - Routing in ``file_exists`` and ``read_file`` per detected IDE
@@ -16,7 +15,6 @@ No live Workbench deployment or Playwright browser is required.
 
 from __future__ import annotations
 
-import base64
 import re
 from unittest.mock import MagicMock
 
@@ -25,7 +23,6 @@ import pytest
 import vip_tests.workbench.exec as exec_mod
 from vip_tests.workbench.exec import (
     ExecError,
-    _b64_write_cmd,
     _console_submit_diagnostics,
     _deliver_console_line,
     _deliver_terminal_line,
@@ -36,15 +33,12 @@ from vip_tests.workbench.exec import (
     _parse_done_marker,
     _read_file_r_expr,
     _split_marker,
-    _strip_r_index,
     _submit_console_line,
-    _wrap_python_expr,
     _wrap_python_expr_inline,
     _wrap_r_expr,
     ensure_positron_console,
     file_exists,
     read_file,
-    write_bundle,
 )
 from vip_tests.workbench.pages import PositronSession, RStudioSession, VSCodeSession
 
@@ -149,55 +143,6 @@ class TestWrapRExpr:
 
 
 # ---------------------------------------------------------------------------
-# _wrap_python_expr
-# ---------------------------------------------------------------------------
-
-
-class TestWrapPythonExpr:
-    def test_full_marker_not_contiguous_in_source(self):
-        """The full marker must NOT appear contiguously in the typed source.
-
-        The Positron Python console echoes typed input; splitting the marker
-        keeps the readiness wait and extraction keyed to the printed output.
-        """
-        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
-        result = _wrap_python_expr("1 + 1", start, end)
-        assert start not in result
-        assert end not in result
-
-    def test_marker_halves_present(self):
-        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
-        result = _wrap_python_expr("1 + 1", start, end)
-        for half in (*_split_marker(start), *_split_marker(end)):
-            assert half in result
-
-    def test_contains_expression(self):
-        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
-        expr = "import sys; print(sys.version)"
-        result = _wrap_python_expr(expr, start, end)
-        assert expr in result
-
-    def test_multiline_block(self):
-        """Python wrapping is newline-separated (suitable for cell/paste input)."""
-        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
-        result = _wrap_python_expr("print('hi')", start, end)
-        lines = result.splitlines()
-        assert len(lines) >= 3, "Expected at least 3 lines: start-print, expr, end-print"
-
-    def test_start_print_is_first_line(self):
-        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
-        result = _wrap_python_expr("x = 1", start, end)
-        first_line = result.splitlines()[0]
-        assert _split_marker(start)[0] in first_line
-
-    def test_end_print_is_last_line(self):
-        start, end = "<<VIP-START-abc>>", "<<VIP-END-abc>>"
-        result = _wrap_python_expr("x = 1", start, end)
-        last_line = result.splitlines()[-1]
-        assert _split_marker(end)[0] in last_line
-
-
-# ---------------------------------------------------------------------------
 # _wrap_python_expr_inline
 # ---------------------------------------------------------------------------
 
@@ -287,49 +232,6 @@ class TestExtractBetweenMarkers:
         simulated_output = f"{start}\n42\n{end}"
         result = _extract_between_markers(simulated_output, start, end)
         assert result == "42"
-
-
-# ---------------------------------------------------------------------------
-# _strip_r_index
-# ---------------------------------------------------------------------------
-
-
-class TestStripRIndex:
-    def test_strips_single_index(self):
-        assert _strip_r_index("[1] 1.0.6") == "1.0.6"
-
-    def test_strips_multi_digit_index(self):
-        assert _strip_r_index("[12] value") == "value"
-
-    def test_strips_multiple_lines(self):
-        text = "[1] alpha\n[2] beta"
-        result = _strip_r_index(text)
-        assert result == "alpha\nbeta"
-
-    def test_preserves_lines_without_index(self):
-        text = "no index here\n[1] has index"
-        result = _strip_r_index(text)
-        assert "no index here" in result
-        assert "has index" in result
-        assert "[1]" not in result
-
-    def test_empty_string(self):
-        assert _strip_r_index("") == ""
-
-    def test_no_indices_returns_unchanged(self):
-        text = "hello world"
-        assert _strip_r_index(text) == "hello world"
-
-    def test_quoted_string_result(self):
-        """R often quotes strings: [1] \"Matrix\" → \"Matrix\"."""
-        text = '[1] "Matrix"'
-        result = _strip_r_index(text)
-        assert result == '"Matrix"'
-
-    def test_strips_whitespace_after_index(self):
-        """There should be no leading space after the index is removed."""
-        result = _strip_r_index("[1] value")
-        assert not result.startswith(" ")
 
 
 # ---------------------------------------------------------------------------
@@ -1308,85 +1210,6 @@ class TestTerminalRun:
         # marker, then one more read fetches the output for the error message.
         # Two reads, not a timeout loop.
         assert mock_read.call_count == 2
-
-
-# ---------------------------------------------------------------------------
-# _b64_write_cmd
-# ---------------------------------------------------------------------------
-
-
-class TestB64WriteCmd:
-    """The server-side file-write command must round-trip arbitrary content."""
-
-    def test_payload_decodes_back_to_content(self):
-        content = 'x = 1\nprint("hi $USER `date`")\n'
-        cmd = _b64_write_cmd("/tmp/app.py", content)
-        # Extract the base64 token between "printf %s " and " | base64 -d".
-        token = cmd.split("printf %s ", 1)[1].split(" | ", 1)[0]
-        assert base64.b64decode(token).decode("utf-8") == content
-
-    def test_path_is_shell_quoted(self):
-        cmd = _b64_write_cmd("/tmp/dir with space/app.py", "data")
-        assert "> '/tmp/dir with space/app.py'" in cmd
-
-    def test_no_raw_content_metacharacters_leak(self):
-        """Shell metacharacters in content must not appear unencoded in the cmd."""
-        cmd = _b64_write_cmd("/tmp/f", "rm -rf /; $(evil) `boom`")
-        assert "rm -rf /" not in cmd
-        assert "$(evil)" not in cmd
-        assert "`boom`" not in cmd
-
-
-# ---------------------------------------------------------------------------
-# write_bundle
-# ---------------------------------------------------------------------------
-
-
-class TestWriteBundle:
-    def test_creates_dir_and_writes_each_file(self, monkeypatch):
-        calls: list[str] = []
-        monkeypatch.setattr(exec_mod, "terminal_run", lambda page, cmd, **kw: calls.append(cmd))
-        page = MagicMock()
-
-        result = write_bundle(
-            page,
-            "/tmp/bundle",
-            {"app.py": "APP", "requirements.txt": "shiny\n"},
-            readback_lang="python",
-        )
-
-        assert result == "/tmp/bundle"
-        # First command must create the bundle dir.
-        assert calls[0] == "mkdir -p /tmp/bundle"
-        # Each file is written via a base64 pipe to its dest path.
-        assert any("base64 -d > /tmp/bundle/app.py" in c for c in calls)
-        assert any("base64 -d > /tmp/bundle/requirements.txt" in c for c in calls)
-        # The app.py payload round-trips.
-        app_cmd = next(c for c in calls if "/tmp/bundle/app.py" in c)
-        token = app_cmd.split("printf %s ", 1)[1].split(" | ", 1)[0]
-        assert base64.b64decode(token).decode("utf-8") == "APP"
-
-    def test_creates_parent_dir_for_nested_file(self, monkeypatch):
-        calls: list[str] = []
-        monkeypatch.setattr(exec_mod, "terminal_run", lambda page, cmd, **kw: calls.append(cmd))
-        page = MagicMock()
-
-        write_bundle(page, "/tmp/bundle", {"www/index.html": "<html>"})
-
-        # The nested file's parent must be created before the write.
-        assert "mkdir -p /tmp/bundle/www" in calls
-        parent_idx = calls.index("mkdir -p /tmp/bundle/www")
-        write_idx = next(i for i, c in enumerate(calls) if "/tmp/bundle/www/index.html" in c)
-        assert parent_idx < write_idx
-
-    def test_propagates_terminal_run_failure(self, monkeypatch):
-        def boom(page, cmd, **kw):
-            raise ExecError("write failed")
-
-        monkeypatch.setattr(exec_mod, "terminal_run", boom)
-
-        with pytest.raises(ExecError, match="write failed"):
-            write_bundle(MagicMock(), "/tmp/bundle", {"app.py": "APP"})
 
 
 # ---------------------------------------------------------------------------
