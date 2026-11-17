@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import tomllib
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -139,8 +140,10 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
     """
     data = json.loads(results)
     base = data.get("base")
+    # The recorded base has no userinfo, so the loaded URL is stripped the same way.
+    redact: Callable[[str], str] = str
     if isinstance(base, dict):
-        data = base
+        data, redact = base, strip_url_userinfo
     name = data.get("deployment_name")
     if isinstance(name, str) and name != config.deployment_name:
         raise BundleError(
@@ -154,7 +157,7 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
         if not isinstance(entry, dict) or not isinstance(entry.get("url"), str):
             continue
         run_url = entry["url"]
-        url = config.product_config(product).url
+        url = redact(config.product_config(product).url)
         if not run_url and not url:
             continue
         if not run_url or not url or _host(run_url) != _host(url):

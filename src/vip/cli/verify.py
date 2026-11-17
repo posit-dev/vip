@@ -16,7 +16,7 @@ from pathlib import Path
 
 from vip.bundle.summary import strip_url_userinfo
 from vip.cli._common import _resolve_effective_ca_bundle
-from vip.config import VIPConfig, load_config
+from vip.config import ProductConfig, VIPConfig, load_config
 from vip.errors import (
     ConfigError,
     VipError,
@@ -278,6 +278,9 @@ def _has_overrides(args: argparse.Namespace) -> bool:
 def _base_identity(base: Path) -> dict:
     """Return the deployment name and product URLs (no userinfo) that *base* declares.
 
+    Each URL is normalized the way ``load_config`` does, then stripped the way
+    ``vip bundle`` strips the loaded URL, so both sides compare the same text.
+
     ``vip bundle`` compares these with the config file it is given, so a flag
     that replaced a product URL does not hide which file the run started from.
     """
@@ -288,7 +291,8 @@ def _base_identity(base: Path) -> dict:
     for product in _PRODUCTS:
         table = raw.get(product)
         url = table.get("url") if isinstance(table, dict) else None
-        products[product] = {"url": strip_url_userinfo(url) if isinstance(url, str) else ""}
+        url = ProductConfig(url=url).url if isinstance(url, str) else ""
+        products[product] = {"url": strip_url_userinfo(url)}
     return {
         "deployment_name": name if isinstance(name, str) else "Posit Team",
         "products": products,

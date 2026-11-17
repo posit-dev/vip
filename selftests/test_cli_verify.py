@@ -1764,13 +1764,22 @@ class TestFlagsOverrideConfigFile:
         assert json.loads(arg.split("=", 1)[1]) == {
             "deployment_name": "Acme",
             "products": {
-                "connect": {"url": "https://a.example.com/x"},
+                "connect": {"url": "https://a.example.com/x/"},
                 "workbench": {"url": ""},
                 "package_manager": {"url": ""},
             },
         }
         assert "url-secret" not in arg
         assert "proxy-secret" not in arg
+
+    def test_base_identity_redacts_a_scheme_less_token_url(self):
+        cfg = self._config('[connect]\nurl = "TOKEN-ABC-0123@connect.example.com"\n')
+        r = _resolve(_make_args(config=cfg, insecure=True))
+        (arg,) = [c for c in r.cmd if c.startswith("--vip-base=")]
+        assert "TOKEN-ABC-0123" not in arg
+        assert json.loads(arg.split("=", 1)[1])["products"]["connect"] == {
+            "url": "https://connect.example.com"
+        }
 
     def test_url_mode_and_no_override_runs_send_no_base(self):
         cfg = self._config('[connect]\nurl = "https://c.example.com"\n')

@@ -938,3 +938,27 @@ def test_scan_knows_a_token_only_scheme_less_proxy(root):
     _write_report(root, results_extra="PROXY-TOKEN-0123")
     with pytest.raises(BundleError, match=r"proxy\.url user"):
         run_bundle(_args(output="b.zip"))
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://connect.example.com/@team",
+        "https://user:pass@connect.example.com/@team",
+        "https://connect.example.com/?q=a@b",
+        "TOKEN-ABC-0123@connect.example.com",
+    ],
+)
+def test_config_matches_the_base_recorded_from_itself(tmp_path, url):
+    from vip.cli.verify import _base_identity
+    from vip.config import load_config
+
+    path = tmp_path / "vip.toml"
+    path.write_text(f'[connect]\nurl = "{url}"\n', encoding="utf-8")
+    results = json.dumps(
+        {
+            "products": {"connect": {"url": "https://connect.override.example.com"}},
+            "base": _base_identity(path),
+        }
+    )
+    bundle_module._check_config_matches(load_config(path), path, results.encode())
