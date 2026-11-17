@@ -14,6 +14,7 @@ import tomllib
 from importlib.util import find_spec
 from pathlib import Path
 
+from vip.bundle.summary import strip_url_userinfo
 from vip.cli._common import _resolve_effective_ca_bundle
 from vip.config import VIPConfig, load_config
 from vip.errors import (
@@ -270,12 +271,28 @@ _OVERRIDE_FLAGS = (
 )
 
 
-def _overridden_flags(args: argparse.Namespace) -> list[str]:
-    """Return the names of the flags that override the config file (never their values)."""
-    names = [f for f in _OVERRIDE_FLAGS if getattr(args, f, None)]
-    if getattr(args, "no_proxy", None) is not None:
-        names.append("no_proxy")
-    return names
+def _has_overrides(args: argparse.Namespace) -> bool:
+    return args.no_proxy is not None or any(getattr(args, f, None) for f in _OVERRIDE_FLAGS)
+
+
+def _base_identity(base: Path) -> dict:
+    """Return the deployment name and product URLs (no userinfo) that *base* declares.
+
+    ``vip bundle`` compares these with the config file it is given, so a flag
+    that replaced a product URL does not hide which file the run started from.
+    """
+    raw = tomllib.loads(base.read_text(encoding="utf-8"))
+    general = raw.get("general")
+    name = general.get("deployment_name") if isinstance(general, dict) else None
+    products = {}
+    for product in _PRODUCTS:
+        table = raw.get(product)
+        url = table.get("url") if isinstance(table, dict) else None
+        products[product] = {"url": strip_url_userinfo(url) if isinstance(url, str) else ""}
+    return {
+        "deployment_name": name if isinstance(name, str) else "Posit Team",
+        "products": products,
+    }
 
 
 def _toml_string(value: str) -> str:
@@ -503,23 +520,26 @@ def run_verify(args: argparse.Namespace) -> None:
         )
 
     base = _resolve_base_path(args)
-    has_overrides = bool(_overridden_flags(args))
+    has_overrides = _has_overrides(args)
     temp_config = None
     try:
         try:
             temp_config = _generate_temp_config(args, base) if has_overrides else None
+            base_identity = _base_identity(base) if base and has_overrides else None
             config_path = temp_config or str(base)
             cfg = load_config(config_path)
         except (ValueError, AttributeError, TypeError) as exc:
             # A table of the wrong shape makes load_config raise AttributeError or TypeError.
             raise ConfigError(str(exc)) from exc
-        _run_pytest(args, cfg, config_path)
+        _run_pytest(args, cfg, config_path, base_identity)
     finally:
         if temp_config:
             Path(temp_config).unlink(missing_ok=True)
 
 
-def _run_pytest(args: argparse.Namespace, cfg: VIPConfig, config_path: str) -> None:
+def _run_pytest(
+    args: argparse.Namespace, cfg: VIPConfig, config_path: str, base_identity: dict | None
+) -> None:
     """Pre-flight checks, then run pytest against *config_path* (the resolved *cfg*)."""
     if args.interactive_auth and args.headless_auth:
         raise ConfigError("--interactive-auth and --headless-auth are mutually exclusive.")
@@ -564,7 +584,8 @@ def _run_pytest(args: argparse.Namespace, cfg: VIPConfig, config_path: str) -> N
             cmd.append(_spec.submodule_search_locations[0])
 
     cmd.append(f"--vip-config={config_path}")
-    cmd.extend(f"--vip-override={name}" for name in _overridden_flags(args))
+    if base_identity is not None:
+        cmd.append(f"--vip-base={json.dumps(base_identity)}")
     if args.report:
         cmd.append(f"--vip-report={args.report}")
 

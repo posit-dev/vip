@@ -16,9 +16,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Path to vip.toml configuration file.",
     )
     group.addoption(
-        "--vip-override",
-        action="append",
-        default=[],
+        "--vip-base",
+        default=None,
         help=argparse.SUPPRESS,
     )
     group.addoption(

@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, unquote, urlsplit
 
 from vip.config import VIPConfig
 from vip.errors import BundleError
+from vip.proxy import _normalize_proxy_url
 
 # Dotted paths of every VIPConfig field. selftests/test_bundle_summary.py walks
 # VIPConfig and fails when a field is in neither set, so a new field must be
@@ -244,6 +245,20 @@ def url_secrets(label: str, url: str, *, both_parts: bool = False) -> list[tuple
     return [(f"{label} {part}", v) for part, v in _url_credentials(url, both_parts=both_parts)]
 
 
+def strip_proxy_userinfo(url: str) -> str:
+    """Strip userinfo from a proxy URL, after the scheme default the proxy code applies.
+
+    ``TOKEN@proxy:8080`` is a valid proxy value, but :func:`strip_url_userinfo`
+    reads a scheme-less value with no ``:`` before the ``@`` as a Git remote.
+    """
+    return strip_url_userinfo(_normalize_proxy_url(url)) if url else url
+
+
+def proxy_url_secrets(label: str, url: str) -> list[tuple[str, str]]:
+    """Return the credentials in a proxy URL, after the scheme default the proxy code applies."""
+    return url_secrets(label, _normalize_proxy_url(url)) if url else []
+
+
 def _connection_string_parts(conn: str) -> list[tuple[str, str]]:
     """Return ``(key, value)`` for each credential part of a key=value connection string."""
     parts: list[tuple[str, str]] = []
@@ -397,10 +412,10 @@ def secret_values(
         )
     for product in ("connect", "workbench", "package_manager"):
         pairs += url_secrets(f"{product}.url", config.product_config(product).url)
-    pairs += url_secrets("proxy.url", config.proxy.url)
+    pairs += proxy_url_secrets("proxy.url", config.proxy.url)
     pairs += [(var, os.environ.get(var, "")) for var in SECRET_ENV_VARS]
     for var in PROXY_ENV_VARS:
-        pairs += url_secrets(var, os.environ.get(var, ""))
+        pairs += proxy_url_secrets(var, os.environ.get(var, ""))
     pairs += list(cache_secrets)
 
     seen: set[str] = set()
@@ -517,7 +532,7 @@ def build_config_summary(config: VIPConfig) -> dict[str, Any]:
         "ca_bundle": str(config.ca_bundle) if config.ca_bundle is not None else None,
         "cert_expiry_warning_days": config.cert_expiry_warning_days,
         "proxy": {
-            "url": strip_url_userinfo(config.proxy.url),
+            "url": strip_proxy_userinfo(config.proxy.url),
             "no_proxy": list(config.proxy.no_proxy),
             "enabled": config.proxy.enabled,
             "trust_env": config.proxy.trust_env,

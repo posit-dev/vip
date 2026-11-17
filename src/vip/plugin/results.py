@@ -23,7 +23,7 @@ except ImportError:  # private API; see _scenario_for
 
 from vip import __version__ as vip_version
 from vip.attest import UNPROVEN_SENTINEL
-from vip.bundle.summary import strip_url_userinfo, url_secrets
+from vip.bundle.summary import proxy_url_secrets, strip_proxy_userinfo
 from vip.config import VIPConfig
 from vip.plugin import state
 from vip.plugin.terminal import _outcome_color
@@ -502,6 +502,14 @@ def _apply_unproven_exit_status(session: pytest.Session, exitstatus: int) -> int
     return EXIT_UNPROVEN
 
 
+def _vip_base(raw: str | None) -> Any:
+    """Parse ``--vip-base``, the identity of the config file ``vip verify`` started from."""
+    try:
+        return json.loads(raw) if raw else None
+    except ValueError:
+        return None
+
+
 def _run_settings(cfg: VIPConfig) -> dict[str, Any]:
     """Return the non-secret settings the run used, for ``vip bundle``.
 
@@ -515,11 +523,11 @@ def _run_settings(cfg: VIPConfig) -> dict[str, Any]:
         "ca_bundle": str(cfg.ca_bundle) if cfg.ca_bundle is not None else None,
         "auth": {"provider": cfg.auth.provider, "idp": cfg.auth.idp},
         "proxy": {
-            "url": strip_url_userinfo(proxy.url),
+            "url": strip_proxy_userinfo(proxy.url),
             "no_proxy": list(proxy.no_proxy),
             "enabled": proxy.enabled,
             "trust_env": proxy.trust_env,
-            "credentials": bool(url_secrets("proxy.url", proxy.url)),
+            "credentials": bool(proxy_url_secrets("proxy.url", proxy.url)),
         },
     }
 
@@ -584,10 +592,12 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         "platform": platform.platform(),
         "basic_mode": basic_mode,
         "products": products,
-        "overrides": sorted(session.config.getoption("--vip-override") or []),
         "settings": _run_settings(cfg),
         "results": results,
     }
+    base = _vip_base(session.config.getoption("--vip-base"))
+    if base is not None:
+        payload["base"] = base
 
     try:
         p = Path(report_path)

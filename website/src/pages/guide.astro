@@ -449,8 +449,9 @@ cd report &amp;&amp; quarto publish connect --server https://connect.example.com
             <code>vip verify</code> used. It stops if it finds none. It also
             stops if the deployment name, or the host or the port of a product
             URL, in <code>vip.toml</code> is different from
-            <code>results.json</code>. A product URL that you gave to
-            <code>vip verify</code> with a flag is not compared. If you ran <code>vip verify</code> with
+            <code>results.json</code>. If a flag replaced a product URL,
+            the command compares <code>vip.toml</code> with the URL that the
+            file declared, which <code>vip verify</code> records. If you ran <code>vip verify</code> with
             <code>--connect-url</code> and no <code>vip.toml</code>, pass
             <code>--no-config</code>. The scan then uses only the environment,
             the product URLs in <code>results.json</code>, and the auth cache.

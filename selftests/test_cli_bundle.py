@@ -737,13 +737,13 @@ def test_bad_auth_cache_stops_the_bundle(root):
         run_bundle(_args(output="b.zip"))
 
 
-def _write_run(root: Path, products: dict, overrides=(), settings=None) -> None:
-    results = {
-        "deployment_name": "Acme Prod",
-        "products": products,
-        "overrides": list(overrides),
-        "results": [],
-    }
+def _write_run(root: Path, products: dict, base_urls=None, settings=None) -> None:
+    results = {"deployment_name": "Acme Prod", "products": products, "results": []}
+    if base_urls is not None:
+        results["base"] = {
+            "deployment_name": "Acme Prod",
+            "products": {name: {"url": url} for name, url in base_urls.items()},
+        }
     if settings is not None:
         results["settings"] = settings
     _write(root / "report" / "results.json", json.dumps(results), RESULTS_MTIME)
@@ -769,27 +769,55 @@ def _summary(zip_path: Path) -> dict:
         return json.loads(zf.read("config-summary.json"))
 
 
-def test_url_override_to_another_host_passes_when_the_run_recorded_it(root):
+def test_url_override_passes_when_the_config_matches_the_recorded_base(root):
     _write_run(
         root,
         {"connect": {"url": "https://connect.override.example.com"}},
-        overrides=["connect_url"],
+        base_urls={"connect": "https://connect.example.com"},
     )
     run_bundle(_args(output="b.zip"))
     assert _summary(root / "b.zip")["connect"]["url"] == "https://connect.override.example.com"
 
 
-def test_url_override_is_only_excused_for_the_product_it_names(root):
+def test_url_override_does_not_excuse_a_config_that_is_not_the_base(root):
+    # vip.toml has connect.example.com, and the flag happened to use that host,
+    # but the run started from a file that declared another one.
     _write_run(
         root,
-        {
-            "connect": {"url": "https://connect.override.example.com"},
-            "workbench": {"url": "https://other-workbench.example.com"},
-        },
-        overrides=["connect_url"],
+        {"connect": {"url": "https://connect.example.com"}},
+        base_urls={"connect": "https://a.example.com"},
     )
-    with pytest.raises(BundleError, match="the workbench URL is"):
+    with pytest.raises(BundleError, match="the connect URL is"):
         run_bundle(_args(output="b.zip"))
+
+
+def test_base_deployment_name_is_compared_too(root):
+    _write_run(root, {"connect": {"url": "https://connect.example.com"}}, base_urls={})
+    results = json.loads((root / "report" / "results.json").read_text(encoding="utf-8"))
+    results["base"]["deployment_name"] = "Acme Staging"
+    _write(root / "report" / "results.json", json.dumps(results), RESULTS_MTIME)
+    with pytest.raises(BundleError, match="the deployment is"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_base_with_no_url_for_a_product_the_config_has_fails(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        base_urls={"connect": ""},
+    )
+    with pytest.raises(BundleError, match="the connect URL is"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_no_config_bundle_ignores_the_recorded_base(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        base_urls={"connect": "https://a.example.com"},
+    )
+    run_bundle(_args(output="b.zip", no_config=True))
+    assert (root / "b.zip").is_file()
 
 
 def test_summary_describes_the_settings_the_run_used(root):

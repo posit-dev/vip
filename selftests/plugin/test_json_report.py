@@ -363,12 +363,14 @@ class TestRunSettingsInResults:
         selftest_pytester.runpytest(
             "--vip-config=vip.toml",
             f"--vip-report={report_path}",
-            "--vip-override=proxy",
-            "--vip-override=connect_url",
+            '--vip-base={"deployment_name": "Base", "products": {"connect": {"url": "https://b"}}}',
         )
         text = report_path.read_text(encoding="utf-8")
         data = json.loads(text)
-        assert data["overrides"] == ["connect_url", "proxy"]
+        assert data["base"] == {
+            "deployment_name": "Base",
+            "products": {"connect": {"url": "https://b"}},
+        }
         assert data["settings"] == {
             "insecure": True,
             "ca_bundle": None,
@@ -384,10 +386,10 @@ class TestRunSettingsInResults:
         assert "PROXY-PASS-0123" not in text
         assert "puser" not in text
 
-    def test_no_overrides_by_default(self, selftest_pytester):
+    def test_no_base_by_default(self, selftest_pytester):
         selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
         report_path = selftest_pytester.path / "results.json"
         selftest_pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}")
         data = json.loads(report_path.read_text(encoding="utf-8"))
-        assert data["overrides"] == []
+        assert "base" not in data
         assert data["settings"]["proxy"]["credentials"] is False

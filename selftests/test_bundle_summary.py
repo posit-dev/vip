@@ -19,6 +19,7 @@ from vip.bundle.summary import (
     build_config_summary,
     secret_values,
     strip_url_userinfo,
+    url_secrets,
 )
 from vip.config import (
     AuthConfig,
@@ -665,3 +666,43 @@ def test_each_env_variable_is_read_next_to_an_inline_value(monkeypatch, var):
 
 def test_every_env_variable_has_an_inline_builder():
     assert set(_INLINE_FOR_ENV) == set(SECRET_ENV_VARS)
+
+
+@pytest.mark.parametrize(
+    ("proxy", "stripped", "secrets"),
+    [
+        ("TOKEN@proxy.example:8080", "http://proxy.example:8080", [("proxy.url user", "TOKEN")]),
+        (
+            "user:pass@proxy.example:8080",
+            "http://proxy.example:8080",
+            [("proxy.url password", "pass")],
+        ),
+        (
+            "http://user:pass@proxy.example:8080",
+            "http://proxy.example:8080",
+            [("proxy.url password", "pass")],
+        ),
+        ("proxy.example:8080", "http://proxy.example:8080", []),
+    ],
+)
+def test_proxy_values_are_normalized_like_the_proxy_code_before_redaction(
+    proxy, stripped, secrets, monkeypatch
+):
+    from vip.bundle.summary import proxy_url_secrets, strip_proxy_userinfo
+
+    assert strip_proxy_userinfo(proxy) == stripped
+    assert list(dict.fromkeys(proxy_url_secrets("proxy.url", proxy))) == secrets
+    config = VIPConfig(proxy=ProxyConfig(url=proxy))
+    assert build_config_summary(config)["proxy"]["url"] == stripped
+    assert [p for p in secret_values(config) if p[0].startswith("proxy.url")] == secrets
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+    env_secrets = [p for p in secret_values(VIPConfig()) if p[0].startswith("HTTPS_PROXY")]
+    assert [v for _, v in env_secrets] == [v for _, v in secrets]
+
+
+def test_a_git_remote_is_not_treated_as_a_proxy_value():
+    assert strip_url_userinfo("git@github.com:org/repo.git") == "git@github.com:org/repo.git"
+    assert strip_url_userinfo("x-access-token:TOKEN@github.com/org/repo.git") == (
+        "github.com/org/repo.git"
+    )
+    assert url_secrets("git", "TOKEN@github.com/org/repo.git") == []

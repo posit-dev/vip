@@ -27,8 +27,10 @@ from vip.bundle.summary import (
     PROXY_ENV_VARS,
     auth_cache_secrets,
     build_config_summary,
+    proxy_url_secrets,
     raw_config_secrets,
     secret_values,
+    strip_proxy_userinfo,
     strip_url_userinfo,
     url_secrets,
 )
@@ -132,11 +134,13 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
     configuration of the run. If the name differs, if the host or the port of
     a URL differs, or if only one of the two has a URL for a product, the scan
     would look for the wrong secrets. A product URL that ``vip verify`` replaced
-    with a flag is recorded in ``overrides`` and is not compared.
+    with a flag is compared as the file declared it: ``base`` in results.json
+    holds the deployment name and URLs of the file the run started from.
     """
     data = json.loads(results)
-    overrides = data.get("overrides")
-    overridden = set(overrides) if isinstance(overrides, list) else set()
+    base = data.get("base")
+    if isinstance(base, dict):
+        data = base
     name = data.get("deployment_name")
     if isinstance(name, str) and name != config.deployment_name:
         raise BundleError(
@@ -148,8 +152,6 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
     for product in _PRODUCTS:
         entry = products.get(product) if isinstance(products, dict) else None
         if not isinstance(entry, dict) or not isinstance(entry.get("url"), str):
-            continue
-        if f"{product}_url" in overridden:
             continue
         run_url = entry["url"]
         url = config.product_config(product).url
@@ -178,7 +180,7 @@ def _check_proxy_credentials(config: VIPConfig, results: bytes) -> None:
         return
     url = proxy.get("url") if isinstance(proxy.get("url"), str) else ""
     known = [config.proxy.url, *(os.environ.get(var, "") for var in PROXY_ENV_VARS)]
-    if any(url_secrets("proxy", u) and strip_url_userinfo(u) == url for u in known):
+    if any(proxy_url_secrets("proxy", u) and strip_proxy_userinfo(u) == url for u in known):
         return
     raise BundleError(
         f"the run used the proxy {url or 'URL'} with a credential in it, and vip bundle "
