@@ -69,32 +69,12 @@ jobs:
       # are immediately visible on the Actions run page.
       - name: Check for license errors
         if: failure() && steps.connect.outcome == 'failure'
-        run: |
-          # Find the Connect container even if with-connect failed partway.
-          # `ancestor` needs the tag: a tagless value normalizes to `:latest`
-          # and never matches a container started from a pinned version.
-          CID=$(docker ps -aq --filter "ancestor=${CONNECT_IMAGE}" | head -1)
-          if [ -z "${CID}" ]; then
-            echo "::error title=Connect Startup Failed::Connect container not found. The with-connect action failed before creating a container."
-            exit 1
-          fi
-          LOGS=$(docker logs "${CID}" 2>&1 || true)
-          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable" | head -1 || true)
-          if [ -n "${LICENSE_MSG}" ]; then
-            echo "::error title=License Error::${LICENSE_MSG}"
-            {
-              echo "## License Error"
-              echo ""
-              echo "The Connect license key is expired or invalid. Update the \`CONNECT_LICENSE\` repository secret."
-              echo ""
-              echo '```'
-              echo "${LICENSE_MSG}"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::error title=Connect Startup Failed::Connect failed to start. Check the 'Start Connect' step logs for details."
-          fi
-          exit 1
+        uses: ./.github/actions/check-license-errors
+        with:
+          product: Connect
+          secret-name: CONNECT_LICENSE
+          image: ${{ env.CONNECT_IMAGE }}
+          error-pattern: expired|invalid|unable
 
       # The posit Connect images ship a slim system-library set and no longer
       # carry libsodium, which plumber Imports via the sodium package. See the
@@ -111,30 +91,8 @@ jobs:
         id: version
         env:
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
-        run: |
-          RESOLVED=0
-          for i in $(seq 1 60); do
-            RESPONSE=$(curl -sf --connect-timeout 5 --max-time 15 \
-              -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
-              "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings") && { RESOLVED=1; break; }
-            if [ "${i}" -lt 60 ]; then
-              echo "Attempt ${i}: server_settings not reachable yet, retrying..."
-              sleep 2
-            fi
-          done
-          if [ "${RESOLVED}" != "1" ]; then
-            echo "ERROR: server_settings did not become reachable after 60 attempts"
-            exit 1
-          fi
-          echo "server_settings reachable (attempt ${i})"
-          VERSION=$(echo "${RESPONSE}" | jq -r '.version')
-          if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
-            echo "ERROR: Could not resolve Connect version from server_settings"
-            echo "Response body: ${RESPONSE}"
-            exit 1
-          fi
-          echo "Resolved Connect version: ${VERSION}"
-          echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
+          CONNECT_SERVER: ${{ steps.connect.outputs.CONNECT_SERVER }}
+        run: bash scripts/ci/resolve-connect-version.sh
 
       # Set up Python and install VIP
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3

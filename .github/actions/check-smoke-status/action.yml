@@ -1,0 +1,71 @@
+name: Check smoke test status
+description: >-
+  The pass/fail rule behind a smoke workflow's required status check. It passes when the suite
+  was legitimately out of scope (the PR's paths did not match) and fails when the suite was in
+  scope but did not succeed, so a path-gated skip, an excluded actor or a missing license secret
+  cannot report a green check without the suite having run. The calling job keeps its own `needs:`
+  and passes the results in, because a composite cannot read the `needs` context itself.
+
+inputs:
+  product:
+    description: "Product name for the final message, e.g. `Connect`."
+    required: true
+  changes-result:
+    description: "`needs.changes.result`."
+    required: true
+  set-matrix-result:
+    description: "`needs.set-matrix.result`."
+    required: true
+  relevant:
+    description: "`needs.changes.outputs.relevant`: `true` when this run's paths put the suite in scope."
+    required: true
+  suites:
+    description: >-
+      One suite per line as `<label>|<needs.JOB.result>`, checked in the order given. The label
+      is a plural noun phrase such as `Connect smoke tests`, because it is followed by `were` in
+      the messages.
+    required: true
+  in-scope-hint:
+    description: "Text appended to the 'in scope but did not succeed' message, e.g. a pointer to the likely cause."
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Check smoke test result
+      shell: bash
+      env:
+        PRODUCT: ${{ inputs.product }}
+        CHANGES_RESULT: ${{ inputs.changes-result }}
+        SET_MATRIX_RESULT: ${{ inputs.set-matrix-result }}
+        RELEVANT: ${{ inputs.relevant }}
+        SUITES: ${{ inputs.suites }}
+        IN_SCOPE_HINT: ${{ inputs.in-scope-hint }}
+      run: |
+        if [ "${CHANGES_RESULT}" = "failure" ] || [ "${CHANGES_RESULT}" = "cancelled" ]; then
+          echo "Change-detection job failed; cannot confirm smoke scope"
+          exit 1
+        fi
+        # A failed set-matrix skips (not fails) the suite jobs, which would
+        # otherwise look identical to a clean no-relevant-paths skip below.
+        if [ "${SET_MATRIX_RESULT}" = "failure" ] || [ "${SET_MATRIX_RESULT}" = "cancelled" ]; then
+          echo "Version-matrix job failed; cannot confirm smoke scope"
+          exit 1
+        fi
+        while IFS='|' read -r LABEL RESULT; do
+          [ -n "${LABEL}" ] || continue
+          # If a suite was in scope for this PR (paths matched) it MUST have
+          # succeeded -- a skip here means it was gated out (missing license,
+          # excluded actor, or self-skip) rather than legitimately not relevant,
+          # so treat "in scope but not success" as a hard gate failure.
+          if [ "${RELEVANT}" = "true" ] && [ "${RESULT}" != "success" ]; then
+            echo "${LABEL} were in scope for this PR but did not succeed (result=${RESULT})${IN_SCOPE_HINT}"
+            exit 1
+          fi
+          if [ "${RESULT}" = "failure" ] || [ "${RESULT}" = "cancelled" ]; then
+            echo "${LABEL} failed or were cancelled"
+            exit 1
+          fi
+        done <<< "${SUITES}"
+        echo "${PRODUCT} smoke tests passed or were legitimately out of scope"
