@@ -184,12 +184,73 @@ vip verify --connect-url https://connect.example.com --report report/results.jso
 # Render the report (requires quarto CLI)
 vip report
 
+# Write a zip of the report to send to someone else
+# (this example has no vip.toml, so it passes --no-config)
+vip bundle --no-config
+
 # Publish to Connect (optional)
 cd report &amp;&amp; quarto publish connect --server https://connect.example.com</code></pre> <p> <code>vip report</code> reads results from
 <code>report/results.json</code> by default, or a custom path via
 <code>--results</code>. The
 <a href="https://quarto.org/docs/download/">Quarto CLI</a> must be
             installed.
+</p> <p> <code>vip bundle</code> writes
+<code>vip-bundle-&lt;deployment&gt;-&lt;time&gt;.zip</code> next to
+<code>report/</code>. The zip holds <code>results.json</code>, the
+            failure, JUnit, and SARIF files, the rendered report, and the vip
+            version. Without <code>--no-config</code>, it also holds a
+            configuration summary with no credentials. It never holds
+<code>vip.toml</code> or the auth cache. Before it writes the zip,
+            the command looks in each file for each credential from
+<code>vip.toml</code>, the environment, the product URLs in
+<code>results.json</code>, and the auth cache. If it finds one, it
+            stops and names the file and the credential. The scan cannot find a
+            credential that it does not know, for example one that an
+            extension test printed or one that was set only in the shell that
+            ran <code>vip verify</code>. The manifest and the last output line
+            give the number of credentials that the scan knew from each source.
+            If the number is lower than you expect, the scan did not have a
+            credential of the run. Look at the zip before you send it.
+</p> <p>
+If a value that the scan found is not a real secret, for example a
+            test password that is also a word in the report, pass
+<code>--allow-match LABEL</code>. The label must be one from the
+            error. Put quotes around a label that holds spaces, for example
+<code>--allow-match "connect.url password"</code>. The value then
+            stays in the zip, and the manifest records the label. Repeat the
+            option for each label.
+</p> <p>
+The command needs the <code>vip.toml</code> that
+<code>vip verify</code> used. It stops if it finds none. It also
+            stops if the deployment name, or the host or the port of a product
+            URL, in <code>vip.toml</code> is different from
+<code>results.json</code>. If you ran <code>vip verify</code> with
+<code>--connect-url</code> and no <code>vip.toml</code>, pass
+<code>--no-config</code>. The scan then uses only the environment,
+            the product URLs in <code>results.json</code>, and the auth cache.
+            The command also stops if it cannot read an auth cache file, or if
+            a report file is not UTF-8 text.
+</p> <p>
+A rendered page that <code>vip report</code> did not make from the
+            current <code>results.json</code> is left out. A rendered file that
+            changed after <code>vip report</code> made it is left out too. The
+            PDF is included only together with both HTML pages, because the
+            scan cannot read the text in a PDF. Run <code>vip report</code>
+again to include a file that was left out. A
+<code>failures.json</code>, JUnit, or SARIF file from a different
+            run than <code>results.json</code> is left out too. If
+<code>results.json</code> has a run time, a file with no run time
+            is also left out, for example a JUnit file that a later
+<code>pytest --junitxml</code> wrote. JUnit and SARIF files from a
+            VIP version with no <code>vip bundle</code> command have no run
+            time. Run <code>vip verify</code> again to include them. The
+            manifest lists each file that is left out, with the reason.
+</p> <p>
+In the configuration summary, each <code>*_set</code> value says if
+            the configuration file or the environment of
+<code>vip bundle</code> holds that credential. The
+<code>auth_cache</code> values say if the run saved a browser
+            session or minted a Connect API key.
 </p> </section> <section id="extending-vip"> <h2>Extending VIP</h2> <p>
 Add site-specific tests without modifying the VIP source tree. The
             quickest start is <code>vip scaffold</code>, which writes a working
