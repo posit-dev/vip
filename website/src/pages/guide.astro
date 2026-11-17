@@ -305,6 +305,14 @@ curl -fsSL https://raw.githubusercontent.com/posit-dev/vip/vX.Y.Z/vip.toml.examp
             Each product section (Connect, Workbench, Package Manager) can be
             enabled or disabled individually. The template lists every setting.
           </p>
+          <p>
+            Flags override the file for that run: product URLs and versions,
+            <code>--idp</code>, <code>--provider</code>, <code>--insecure</code>,
+            <code>--ca-bundle</code>, <code>--proxy</code> and
+            <code>--no-proxy</code>. For example,
+            <code>vip verify --config vip.toml --connect-url https://staging.example.com</code>
+            tests a different Connect URL without editing the file.
+          </p>
         </section>
 
         <section id="outbound-proxy">
@@ -320,15 +328,13 @@ curl -fsSL https://raw.githubusercontent.com/posit-dev/vip/vX.Y.Z/vip.toml.examp
           <pre><code>export HTTPS_PROXY=http://proxy.corp.example:8080
 export NO_PROXY=localhost,.internal.example.com
 vip verify --connect-url https://connect.example.com --headless-auth</code></pre>
-          <p>To set the proxy explicitly instead, pass flags with your product URLs:</p>
+          <p>To set the proxy explicitly instead, pass flags:</p>
           <pre><code>vip verify --connect-url https://connect.example.com \
   --proxy http://proxy.corp.example:8080 \
   --no-proxy localhost,.internal.example.com</code></pre>
           <p>
-            The <code>--proxy</code> and <code>--no-proxy</code> flags only work
-            when you pass product URLs directly. If the run loads a config file
-            (with <code>--config</code>, or a <code>./vip.toml</code> in the
-            working directory), VIP warns that it ignored them. Set the proxy
+            The flags also override a config file (<code>--config</code>, or a
+            <code>./vip.toml</code> in the working directory). To keep the proxy
             in the file instead:
           </p>
           <pre><code>[proxy]
@@ -345,8 +351,7 @@ no_proxy = ["localhost", ".internal.example.com"]</code></pre>
           <p>
             To send every request direct and ignore any proxy environment
             variables, set <code>enabled = false</code> under
-            <code>[proxy]</code>, or pass <code>--no-proxy ''</code> along with
-            product-URL flags.
+            <code>[proxy]</code>, or pass <code>--no-proxy ''</code>.
           </p>
 
           <h3 id="proxy-gotchas">Gotchas</h3>

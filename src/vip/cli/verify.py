@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 from importlib.util import find_spec
 from pathlib import Path
 
 from vip.cli._common import _resolve_effective_ca_bundle
-from vip.config import load_config
+from vip.config import VIPConfig, load_config
 from vip.errors import (
     ConfigError,
     VipError,
@@ -130,16 +132,12 @@ def _normalize_categories(expr: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Config generation from CLI URL args
+# Pre-flight checks on the resolved config
 # ---------------------------------------------------------------------------
 
 
-def _print_skip_notes(config_path: str | None) -> None:
+def _print_skip_notes(cfg: VIPConfig) -> None:
     """Print a note for each product that is not configured."""
-    try:
-        cfg = load_config(config_path)
-    except ValueError as exc:
-        raise ConfigError(str(exc)) from exc
     products = [
         ("Connect", cfg.connect),
         ("Workbench", cfg.workbench),
@@ -152,7 +150,7 @@ def _print_skip_notes(config_path: str | None) -> None:
 
 
 def _check_credentials(
-    config_path: str | None,
+    cfg: VIPConfig,
     *,
     interactive_auth: bool,
     categories: str | None,
@@ -162,10 +160,6 @@ def _check_credentials(
     When *categories* is provided, only check products whose marker appears
     in the expression.  Without categories all configured products are checked.
     """
-    try:
-        cfg = load_config(config_path)
-    except ValueError as exc:
-        raise ConfigError(str(exc)) from exc
     if interactive_auth:
         return
 
@@ -203,21 +197,12 @@ def _check_credentials(
         )
 
 
-def _config_idp(config_path: str | None) -> str:
-    """Return the normalized ``[auth] idp`` from the resolved config.
+def _config_idp(cfg: VIPConfig) -> str:
+    """Return the normalized ``[auth] idp`` of the resolved config.
 
-    This is the IdP the run will actually use: the ``--idp`` flag is folded
-    into the generated config on URL-driven runs and is not otherwise forwarded
-    to pytest, so the config file is the source of truth. Returns "" when there
-    is no config or it can't be read (pytest surfaces config errors later).
     Normalized (stripped, lowercased) to match ``idp.get_idp_strategy``.
     """
-    if not config_path:
-        return ""
-    try:
-        return (load_config(config_path).auth.idp or "").strip().lower()
-    except ValueError:
-        return ""
+    return (cfg.auth.idp or "").strip().lower()
 
 
 # Pytest options that consume the next argument as a directory path.
@@ -267,115 +252,212 @@ def _user_set_xdist(pytest_args: list[str]) -> tuple[bool, bool]:
     return set_n, set_dist
 
 
-def _generate_temp_config(args: argparse.Namespace) -> str:
-    """Write a minimal vip.toml from CLI URL arguments. Returns temp file path."""
-    lines = ["[general]", 'deployment_name = "Posit Team"', ""]
+_PRODUCTS = ("connect", "workbench", "package_manager")
 
-    if args.connect_url:
-        lines.extend(["[connect]", f"url = {json.dumps(args.connect_url)}"])
-        connect_version = getattr(args, "connect_version", None)
-        if connect_version:
-            lines.append(f"version = {json.dumps(connect_version)}")
-        lines.append("")
-    else:
-        lines.extend(["[connect]", "enabled = false", ""])
+# Flags that override the config file; any one of them means a temp config is needed.
+_OVERRIDE_FLAGS = (
+    "connect_url",
+    "workbench_url",
+    "package_manager_url",
+    "connect_version",
+    "workbench_version",
+    "package_manager_version",
+    "idp",
+    "provider",
+    "insecure",
+    "ca_bundle",
+    "proxy",
+)
 
-    if args.workbench_url:
-        lines.extend(["[workbench]", f"url = {json.dumps(args.workbench_url)}"])
-        workbench_version = getattr(args, "workbench_version", None)
-        if workbench_version:
-            lines.append(f"version = {json.dumps(workbench_version)}")
-        lines.append("")
-    else:
-        lines.extend(["[workbench]", "enabled = false", ""])
 
-    if args.package_manager_url:
-        lines.extend(["[package_manager]", f"url = {json.dumps(args.package_manager_url)}"])
-        package_manager_version = getattr(args, "package_manager_version", None)
-        if package_manager_version:
-            lines.append(f"version = {json.dumps(package_manager_version)}")
-        lines.append("")
-    else:
-        lines.extend(["[package_manager]", "enabled = false", ""])
+def _toml_key(key: str) -> str:
+    return key if re.fullmatch(r"[A-Za-z0-9_-]+", key) else json.dumps(key)
 
-    idp = getattr(args, "idp", None)
-    inherited_provider: str | None = None
 
-    # Inherit from an existing vip.toml so ``vip verify --workbench-url ...
-    # --headless-auth`` can pick up the [auth] section the user already
-    # configured.  Done best-effort: a malformed vip.toml should not break a
-    # URL-driven command that doesn't depend on it.
+def _toml_value(value: object) -> str:
+    """Render a value ``tomllib`` can produce as TOML (JSON string escapes are valid TOML)."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return repr(value)
+    if isinstance(value, str):
+        return json.dumps(value)
+    if isinstance(value, (datetime.date, datetime.time)):
+        return value.isoformat()
+    if isinstance(value, list):
+        return "[" + ", ".join(_toml_value(v) for v in value) + "]"
+    if isinstance(value, dict):
+        return (
+            "{ " + ", ".join(f"{_toml_key(k)} = {_toml_value(v)}" for k, v in value.items()) + " }"
+        )
+    raise TypeError(f"cannot write {type(value).__name__} to TOML")
+
+
+def _toml_lines(table: dict, path: tuple[str, ...] = ()) -> list[str]:
+    lines = ["[" + ".".join(_toml_key(k) for k in path) + "]"] if path else []
+    lines += [
+        f"{_toml_key(k)} = {_toml_value(v)}" for k, v in table.items() if not isinstance(v, dict)
+    ]
+    lines.append("")
+    for key, value in table.items():
+        if isinstance(value, dict):
+            lines += _toml_lines(value, (*path, key))
+    return lines
+
+
+def _dump_toml(raw: dict) -> str:
+    """Serialize the nested dict ``tomllib`` returns back to TOML text."""
+    return "\n".join(_toml_lines(raw))
+
+
+def _default_config_path() -> Path:
     env = os.environ.get("VIP_CONFIG")
-    default_path = Path(env) if env else Path("vip.toml")
-    if default_path.is_file():
-        try:
-            existing = load_config(default_path)
-        except Exception:  # noqa: BLE001
-            existing = None
-        if existing is not None:
-            if not idp and existing.auth.idp:
-                idp = existing.auth.idp
-            if existing.auth.provider and existing.auth.provider != "password":
-                inherited_provider = existing.auth.provider
+    return Path(env) if env else Path("vip.toml")
 
-    # Resolve the provider:
-    # - An explicit --provider always wins, overriding both --idp's implied
-    #   "oidc" and anything inherited from vip.toml.
-    # - Otherwise, with --idp set, the user wants IdP-based auth.  Keep an
-    #   inherited IdP-class value (saml/oauth2) so specific declarations
-    #   survive; but ignore inherited non-IdP providers (ldap) that would
-    #   contradict the CLI intent — vip.auth's flow selection keys off
-    #   provider, not idp.
-    # - Without --provider or --idp, just honour whatever vip.toml declared.
-    explicit_provider = getattr(args, "provider", None)
-    if explicit_provider:
-        auth_provider: str | None = explicit_provider
+
+def _resolve_base_path(args: argparse.Namespace) -> Path | None:
+    """Return the config file ``vip verify`` starts from, or None in URL mode.
+
+    URL mode is product-URL flags with no ``--config``: the run starts from
+    defaults instead of a config file.
+    """
+    if args.config:
+        path = Path(args.config)
+        if not path.is_file():
+            raise ConfigError(f"config file not found: {args.config}")
+        return path.resolve()
+    if args.connect_url or args.workbench_url or args.package_manager_url:
+        return None
+    default = _default_config_path()
+    if not default.is_file():
+        raise ConfigError(
+            f"config file not found: {default}\n"
+            "Provide a config file with --config, or pass product URLs directly "
+            "(e.g. --connect-url https://connect.example.com)."
+        )
+    # Pin the resolved default so pytest loads the same file the CLI validated,
+    # regardless of pytest's rootdir or subprocess CWD.
+    return default.resolve()
+
+
+def _inherited_auth() -> dict:
+    """Return provider/idp from the default config file, best-effort.
+
+    Lets ``vip verify --workbench-url ... --headless-auth`` pick up the ``[auth]``
+    section already configured; a malformed vip.toml must not break a URL-driven run.
+    """
+    path = _default_config_path()
+    try:
+        auth = (
+            tomllib.loads(path.read_text(encoding="utf-8")).get("auth", {})
+            if path.is_file()
+            else {}
+        )
+    except (OSError, ValueError):
+        return {}
+    return {k: auth[k] for k in ("provider", "idp") if k in auth}
+
+
+def _override_products(raw: dict, args: argparse.Namespace, *, url_mode: bool) -> None:
+    """Apply product URL and version flags; in URL mode a product without a URL is disabled."""
+    for product in _PRODUCTS:
+        url = getattr(args, f"{product}_url", None)
+        version = getattr(args, f"{product}_version", None)
+        if url:
+            table = raw.setdefault(product, {})
+            table["url"] = url
+            table.pop("enabled", None)
+        elif url_mode:
+            raw[product] = {"enabled": False}
+            continue
+        if version:
+            raw.setdefault(product, {})["version"] = version
+
+
+def _override_auth(raw: dict, args: argparse.Namespace) -> None:
+    """Resolve provider/idp from the flags and the file's ``[auth]``.
+
+    - An explicit --provider always wins, over --idp's implied "oidc" and the file.
+    - Otherwise, with an idp set, keep an inherited IdP-class provider (saml/oauth2)
+      so specific declarations survive, but replace a non-IdP one (ldap, password)
+      with "oidc": vip.auth's flow selection keys off provider, not idp.
+    - Without --provider or an idp, honour whatever the file declared.
+    """
+    auth = raw.setdefault("auth", {})
+    idp = getattr(args, "idp", None) or auth.get("idp")
+    inherited = auth.get("provider")
+    if inherited == "password":
+        inherited = None
+    explicit = getattr(args, "provider", None)
+    if explicit:
+        provider = explicit
     elif idp:
-        auth_provider = inherited_provider if inherited_provider in _IDP_PROVIDERS else "oidc"
+        provider = inherited if inherited in _IDP_PROVIDERS else "oidc"
     else:
-        auth_provider = inherited_provider
+        provider = inherited
+    if provider:
+        auth["provider"] = provider
+    if idp:
+        auth["idp"] = idp
+    if not auth:
+        del raw["auth"]
 
-    if auth_provider or idp:
-        lines.append("[auth]")
-        if auth_provider:
-            lines.append(f'provider = "{auth_provider}"')
-        if idp:
-            lines.append(f'idp = "{idp}"')
-        lines.append("")
 
+def _override_tls(raw: dict, args: argparse.Namespace) -> None:
     insecure = getattr(args, "insecure", False)
     ca_bundle = getattr(args, "ca_bundle", None)
-    effective_ca_bundle = _resolve_effective_ca_bundle(insecure, ca_bundle)
-    if insecure or effective_ca_bundle:
-        lines.append("[tls]")
-        if insecure:
-            lines.append("insecure = true")
-        if effective_ca_bundle:
-            lines.append(f"ca_bundle = {json.dumps(str(effective_ca_bundle))}")
-        lines.append("")
+    if not (insecure or ca_bundle):
+        return
+    tls = raw.setdefault("tls", {})
+    insecure = insecure or tls.get("insecure", False)
+    ca = ca_bundle or tls.get("ca_bundle")
+    ca = _resolve_effective_ca_bundle(insecure, Path(ca) if ca else None)
+    tls.pop("ca_bundle", None)
+    if insecure:
+        tls["insecure"] = True
+    if ca:
+        tls["ca_bundle"] = str(ca)
 
-    # Proxy: --proxy sets an explicit proxy URL; --no-proxy lists bypass hosts.
-    # An empty --no-proxy with no --proxy means "proxying off" (enabled=false),
-    # which forces every request direct regardless of the ambient environment.
+
+def _override_proxy(raw: dict, args: argparse.Namespace) -> None:
+    """Apply --proxy/--no-proxy to ``[proxy]``.
+
+    --no-proxy '' with no --proxy turns proxying off (``enabled = false``), forcing
+    every request direct regardless of the ambient environment.
+    """
     proxy_url = getattr(args, "proxy", None)
     no_proxy = getattr(args, "no_proxy", None)
-    if proxy_url or no_proxy is not None:
-        # Parse the bypass list once, stripping tokens; a value that is empty or
-        # only whitespace/commas yields no hosts.
-        hosts = [h.strip() for h in no_proxy.split(",") if h.strip()] if no_proxy else []
-        lines.append("[proxy]")
-        if proxy_url:
-            lines.append(f"url = {json.dumps(proxy_url)}")
-        elif not hosts:
-            # No proxy URL and no bypass hosts (--no-proxy '' or whitespace-only):
-            # disable proxying entirely, ignoring any ambient proxy env vars.
-            lines.append("enabled = false")
-        if hosts:
-            lines.append(f"no_proxy = {json.dumps(hosts)}")
-        lines.append("")
+    if not (proxy_url or no_proxy is not None):
+        return
+    hosts = [h.strip() for h in no_proxy.split(",") if h.strip()] if no_proxy else []
+    proxy = raw.setdefault("proxy", {})
+    if proxy_url or hosts:
+        proxy.pop("enabled", None)
+    else:
+        proxy["enabled"] = False
+    if proxy_url:
+        proxy["url"] = proxy_url
+    if hosts:
+        proxy["no_proxy"] = hosts
 
+
+def _generate_temp_config(args: argparse.Namespace, base: Path | None = None) -> str:
+    """Write the base config with the CLI flags applied to a temp TOML; return its path.
+
+    The file's raw TOML is merged with the flags, not the loaded config, so values
+    resolved from the environment (API keys, passwords, ``*_env`` indirection) are
+    never written out. Relative paths such as ``ca_bundle`` resolve against the
+    working directory either way, which the pytest subprocess shares.
+    """
+    url_mode = base is None
+    raw = {"auth": _inherited_auth()} if base is None else tomllib.loads(base.read_text("utf-8"))
+    _override_products(raw, args, url_mode=url_mode)
+    if url_mode or getattr(args, "idp", None) or getattr(args, "provider", None):
+        _override_auth(raw, args)
+    _override_tls(raw, args)
+    _override_proxy(raw, args)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False, encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+        f.write(_dump_toml(raw))
         return f.name
 
 
@@ -393,54 +475,26 @@ def run_verify(args: argparse.Namespace) -> None:
             exit_code=2,
         )
 
-    config_path = args.config
+    base = _resolve_base_path(args)
+    has_overrides = args.no_proxy is not None or any(
+        getattr(args, f, None) for f in _OVERRIDE_FLAGS
+    )
     temp_config = None
+    try:
+        try:
+            temp_config = _generate_temp_config(args, base) if has_overrides else None
+            config_path = temp_config or str(base)
+            cfg = load_config(config_path)
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
+        _run_pytest(args, cfg, config_path)
+    finally:
+        if temp_config:
+            Path(temp_config).unlink(missing_ok=True)
 
-    proxy_flag_set = getattr(args, "proxy", None) or getattr(args, "no_proxy", None) is not None
-    if not config_path and (args.connect_url or args.workbench_url or args.package_manager_url):
-        temp_config = _generate_temp_config(args)
-        config_path = temp_config
-    elif proxy_flag_set:
-        # --proxy/--no-proxy are only woven into the generated temp config (via
-        # _generate_temp_config); any run that loads a config file instead has no
-        # consumer for them, so the pytest subprocess would load the file's
-        # [proxy] (or none) and silently ignore the flags. This mirrors
-        # --insecure/--ca-bundle on the same branch. Rather than swallow the
-        # flag, tell the user how to make it take effect. (Ambient
-        # HTTP(S)_PROXY still works on a config run.)
-        #
-        # Keyed on "no temp config was generated", NOT on ``config_path``: the
-        # default-resolution path (a ./vip.toml with no --config and no URL
-        # flags -- the documented normal setup) still has config_path=None here
-        # and would slip through a ``config_path and ...`` test entirely.
-        print(
-            ">>> Warning: --proxy/--no-proxy are ignored when a config file is used. "
-            "Put the proxy under a [proxy] section in your config file "
-            "(url = ..., no_proxy = [...], or enabled = false), or set "
-            "HTTP_PROXY/HTTPS_PROXY/NO_PROXY in the environment.",
-            file=sys.stderr,
-        )
 
-    # Fail fast when a config file is expected but doesn't exist.
-    if config_path and not Path(config_path).is_file():
-        raise ConfigError(f"config file not found: {config_path}")
-    if not config_path:
-        # No explicit config and no URL args — check the default resolution.
-        env = os.environ.get("VIP_CONFIG")
-        default = Path(env) if env else Path("vip.toml")
-        if not default.is_file():
-            raise ConfigError(
-                f"config file not found: {default}\n"
-                "Provide a config file with --config, or pass product URLs directly "
-                "(e.g. --connect-url https://connect.example.com)."
-            )
-        # Pin the resolved default so pytest loads the same file the CLI
-        # validated, regardless of pytest's rootdir or subprocess CWD.
-        config_path = str(default.resolve())
-
-    # Resolve explicit paths too so --vip-config always gets an absolute path.
-    config_path = str(Path(config_path).resolve())
-
+def _run_pytest(args: argparse.Namespace, cfg: VIPConfig, config_path: str) -> None:
+    """Pre-flight checks, then run pytest against *config_path* (the resolved *cfg*)."""
     if args.interactive_auth and args.headless_auth:
         raise ConfigError("--interactive-auth and --headless-auth are mutually exclusive.")
 
@@ -453,7 +507,7 @@ def run_verify(args: argparse.Namespace) -> None:
             "with --interactive-auth/--headless-auth."
         )
 
-    if args.api_auth and _config_idp(config_path) == "snowflake":
+    if args.api_auth and _config_idp(cfg) == "snowflake":
         raise ConfigError(
             "--api-auth is not supported with the Snowflake identity provider.\n"
             "A Posit Team Native App authenticates through the Snowpark Container "
@@ -465,10 +519,10 @@ def run_verify(args: argparse.Namespace) -> None:
 
     # Print notes for products that are not configured so the user knows
     # upfront which categories will be skipped.
-    _print_skip_notes(config_path)
+    _print_skip_notes(cfg)
     if not args.no_auth and not args.api_auth:
         _check_credentials(
-            config_path,
+            cfg,
             interactive_auth=args.interactive_auth or args.headless_auth,
             categories=args.categories,
         )
@@ -483,8 +537,7 @@ def run_verify(args: argparse.Namespace) -> None:
         if _spec and _spec.submodule_search_locations:
             cmd.append(_spec.submodule_search_locations[0])
 
-    if config_path:
-        cmd.append(f"--vip-config={config_path}")
+    cmd.append(f"--vip-config={config_path}")
     if args.report:
         cmd.append(f"--vip-report={args.report}")
 
@@ -551,16 +604,8 @@ def run_verify(args: argparse.Namespace) -> None:
     # Reconcile the child environment with the resolved proxy so the
     # env-honoring egress in the suites (bare httpx.get probes, the load engine,
     # Chromium's own detection) takes the same route as the pooled clients that
-    # read the config directly. Without this an explicit [proxy] url proxies the
-    # clients but not the probes, and enabled=false disables the clients while
-    # the probes stay on the ambient proxy. Best-effort: any config-load error
-    # falls through to the ambient environment unchanged (env=None).
-    subprocess_env: dict[str, str] | None = None
-    if config_path:
-        try:
-            subprocess_env = proxy_env_for_subprocess(load_config(config_path).proxy, os.environ)
-        except Exception:  # noqa: BLE001
-            subprocess_env = None
+    # read the config directly.
+    subprocess_env = proxy_env_for_subprocess(cfg.proxy, os.environ)
 
     try:
         result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env, check=False)
@@ -570,6 +615,3 @@ def run_verify(args: argparse.Namespace) -> None:
             f"tests timed out after {args.test_timeout} seconds. "
             "Increase with --test-timeout or investigate hung tests."
         ) from None
-    finally:
-        if temp_config:
-            Path(temp_config).unlink(missing_ok=True)

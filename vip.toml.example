@@ -294,12 +294,8 @@ enabled = false
 # download honors only the proxy environment variables. Export HTTPS_PROXY
 # before running it -- a proxy configured only here cannot reach that download.
 #
-# Note on the CLI flags: --proxy/--no-proxy only apply when you pass product
-# URLs directly (vip verify --connect-url ...), because they are woven into the
-# config VIP generates for that run. On any run that loads a config file -- this
-# one, whether via --config or found as ./vip.toml -- they have nothing to write
-# into and VIP warns that it ignored them. Configure the proxy here instead, or
-# set HTTP_PROXY/HTTPS_PROXY/NO_PROXY in the environment.
+# Note on the CLI flags: --proxy/--no-proxy override the values below for that
+# run, field by field, so a one-off proxy does not need an edit to this file.
 #
 # Explicit proxy for all traffic. Overrides the environment -- including its
 # NO_PROXY, which is NOT merged in, so repeat any bypass hosts under no_proxy.

@@ -1518,85 +1518,261 @@ class TestFormatFlag:
         assert exc_info.value.exit_code == 1
 
 
-class TestVerifyProxyFlagWithConfig:
-    """--proxy/--no-proxy have no consumer on a config-file run (they only feed the
-    generated temp config), so run_verify must warn rather than silently drop them.
+class _Resolved:
+    """What the pytest subprocess was told to load: the path, its text and the parsed config."""
+
+    def __init__(self, cmd: list[str], kwargs: dict, text: str, cfg: Any) -> None:
+        self.cmd = cmd
+        self.kwargs = kwargs
+        self.text = text
+        self.cfg = cfg
+
+
+def _resolve(args: argparse.Namespace) -> _Resolved:
+    """Run run_verify and capture the config the subprocess would load.
+
+    The temp config is deleted when run_verify returns, so it is read inside the
+    mocked subprocess.run.
     """
+    from vip.config import load_config
 
-    def _write_config(self, tmp_path) -> str:
-        cfg = tmp_path / "vip.toml"
-        cfg.write_text('[connect]\nurl = "https://connect.example.com"\n', encoding="utf-8")
-        return str(cfg)
+    seen: dict[str, Any] = {}
 
-    def test_proxy_flag_with_config_warns(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
-        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
-        cfg = self._write_config(tmp_path)
-        _capture_call(_make_args(config=cfg, proxy="http://corp:8080"))
-        err = capsys.readouterr().err
-        assert "--proxy/--no-proxy are ignored when a config file is used" in err
-
-    def test_no_proxy_flag_with_config_warns(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
-        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
-        cfg = self._write_config(tmp_path)
-        _capture_call(_make_args(config=cfg, no_proxy="localhost"))
-        err = capsys.readouterr().err
-        assert "ignored when a config file is used" in err
-
-    def test_no_warning_without_proxy_flags(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
-        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
-        cfg = self._write_config(tmp_path)
-        _capture_call(_make_args(config=cfg))
-        err = capsys.readouterr().err
-        assert "ignored when a config file is used" not in err
-
-    def test_proxy_flag_with_implicit_vip_toml_warns(self, tmp_path, monkeypatch, capsys):
-        """The default-config path (a ./vip.toml, no --config, no URL flags) is the
-        documented normal setup and drops --proxy just as silently as --config does.
-
-        ``config_path`` is still None when the warning branch is evaluated, so a
-        condition keyed on ``config_path`` never fires here -- the flag has to be
-        detected by "no temp config was generated" instead.
-        """
-        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
-        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
-        self._write_config(tmp_path)
-        monkeypatch.chdir(tmp_path)
-        _capture_call(_make_args(proxy="http://corp:8080"))
-        err = capsys.readouterr().err
-        assert "ignored when a config file is used" in err
-
-    def test_no_proxy_flag_with_implicit_vip_toml_warns(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
-        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
-        self._write_config(tmp_path)
-        monkeypatch.chdir(tmp_path)
-        _capture_call(_make_args(no_proxy="localhost"))
-        err = capsys.readouterr().err
-        assert "ignored when a config file is used" in err
-
-    def test_no_warning_with_implicit_vip_toml_and_no_flags(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
-        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
-        self._write_config(tmp_path)
-        monkeypatch.chdir(tmp_path)
-        _capture_call(_make_args())
-        err = capsys.readouterr().err
-        assert "ignored when a config file is used" not in err
-
-    def test_no_warning_when_flags_reach_the_generated_config(self, monkeypatch, capsys):
-        """--proxy with a URL flag DOES take effect (it feeds _generate_temp_config),
-        so warning there would be wrong.
-        """
-        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
-        monkeypatch.setenv("VIP_TEST_PASSWORD", "secret")
-        _capture_call(
-            _make_args(connect_url="https://connect.example.com", proxy="http://corp:8080")
+    def fake_run(cmd, **kwargs):
+        path = next(c.split("=", 1)[1] for c in cmd if c.startswith("--vip-config="))
+        seen["resolved"] = _Resolved(
+            list(cmd), kwargs, Path(path).read_text(encoding="utf-8"), load_config(path)
         )
-        err = capsys.readouterr().err
-        assert "ignored when a config file is used" not in err
+        result = MagicMock()
+        result.returncode = 0
+        return result
+
+    with (
+        patch("vip.cli.verify.subprocess.run", side_effect=fake_run),
+        patch("vip.cli.verify.sys.exit"),
+    ):
+        from vip.cli import run_verify
+
+        run_verify(args)
+    return seen["resolved"]
+
+
+class TestFlagsOverrideConfigFile:
+    """With --config (or a ./vip.toml) every flag overrides the file's value."""
+
+    @pytest.fixture(autouse=True)
+    def _env(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        monkeypatch.setenv("VIP_TEST_USERNAME", "admin")
+        monkeypatch.setenv("VIP_TEST_PASSWORD", "env-only-password")
+        self.tmp = tmp_path
+
+    def _config(self, body: str) -> str:
+        path = self.tmp / "vip.toml"
+        path.write_text(body, encoding="utf-8")
+        return str(path)
+
+    def test_proxy_flag_overrides_file_proxy(self):
+        cfg = self._config(
+            '[connect]\nurl = "https://c.example.com"\n'
+            '[proxy]\nurl = "http://file-proxy:1"\nno_proxy = ["a.example.com"]\n'
+        )
+        r = _resolve(_make_args(config=cfg, proxy="http://flag-proxy:2", no_proxy="b.example.com"))
+        assert r.cfg.proxy.url == "http://flag-proxy:2"
+        assert r.cfg.proxy.no_proxy == ["b.example.com"]
+        assert r.kwargs["env"]["HTTPS_PROXY"] == "http://flag-proxy:2"
+
+    def test_proxy_flag_applies_to_implicit_vip_toml(self):
+        self._config('[connect]\nurl = "https://c.example.com"\n')
+        r = _resolve(_make_args(proxy="http://corp:8080"))
+        assert r.cfg.proxy.url == "http://corp:8080"
+
+    def test_empty_no_proxy_disables_file_proxy(self):
+        cfg = self._config(
+            '[connect]\nurl = "https://c.example.com"\n[proxy]\nurl = "http://file-proxy:1"\n'
+        )
+        r = _resolve(_make_args(config=cfg, no_proxy=""))
+        assert r.cfg.proxy.enabled is False
+        assert "HTTPS_PROXY" not in r.kwargs["env"]
+
+    def test_proxy_flag_reenables_file_disabled_proxy(self):
+        cfg = self._config('[connect]\nurl = "https://c.example.com"\n[proxy]\nenabled = false\n')
+        r = _resolve(_make_args(config=cfg, proxy="http://corp:8080"))
+        assert r.cfg.proxy.enabled is True
+        assert r.cfg.proxy.url == "http://corp:8080"
+
+    def test_insecure_flag_overrides_file(self):
+        cfg = self._config('[connect]\nurl = "https://c.example.com"\n')
+        r = _resolve(_make_args(config=cfg, insecure=True))
+        assert r.cfg.insecure is True
+
+    def test_ca_bundle_flag_overrides_file_ca_bundle(self):
+        (self.tmp / "file.pem").write_text("x", encoding="utf-8")
+        (self.tmp / "flag.pem").write_text("x", encoding="utf-8")
+        cfg = self._config(
+            '[connect]\nurl = "https://c.example.com"\n[tls]\nca_bundle = "file.pem"\n'
+        )
+        r = _resolve(_make_args(config=cfg, ca_bundle=Path("flag.pem")))
+        assert r.cfg.ca_bundle == Path("flag.pem")
+
+    def test_insecure_flag_wins_over_file_ca_bundle(self):
+        (self.tmp / "file.pem").write_text("x", encoding="utf-8")
+        cfg = self._config(
+            '[connect]\nurl = "https://c.example.com"\n[tls]\nca_bundle = "file.pem"\n'
+        )
+        with pytest.warns(UserWarning, match="--insecure"):
+            r = _resolve(_make_args(config=cfg, insecure=True))
+        assert r.cfg.verify is False
+        assert r.cfg.ca_bundle is None
+
+    def test_idp_flag_overrides_file_idp_and_keeps_idp_provider(self):
+        cfg = self._config(
+            '[connect]\nurl = "https://c.example.com"\n[auth]\nprovider = "saml"\nidp = "okta"\n'
+        )
+        r = _resolve(_make_args(config=cfg, idp="keycloak", headless_auth=True))
+        assert r.cfg.auth.idp == "keycloak"
+        assert r.cfg.auth.provider == "saml"
+
+    def test_idp_flag_replaces_file_password_provider_with_oidc(self):
+        cfg = self._config(
+            '[connect]\nurl = "https://c.example.com"\n[auth]\nprovider = "password"\n'
+        )
+        r = _resolve(_make_args(config=cfg, idp="okta", headless_auth=True))
+        assert r.cfg.auth.provider == "oidc"
+        assert r.cfg.auth.idp == "okta"
+
+    def test_provider_flag_overrides_file_provider(self):
+        cfg = self._config(
+            '[connect]\nurl = "https://c.example.com"\n[auth]\nprovider = "ldap"\nidp = "okta"\n'
+        )
+        r = _resolve(_make_args(config=cfg, provider="saml", headless_auth=True))
+        assert r.cfg.auth.provider == "saml"
+        assert r.cfg.auth.idp == "okta"
+
+    def test_version_flags_override_file_versions(self):
+        cfg = self._config(
+            '[connect]\nurl = "https://c.example.com"\nversion = "2024.01.0"\n'
+            '[workbench]\nurl = "https://w.example.com"\n'
+            '[package_manager]\nurl = "https://p.example.com"\n'
+        )
+        r = _resolve(
+            _make_args(
+                config=cfg,
+                connect_version="2026.06.0",
+                workbench_version="2026.07.0",
+                package_manager_version="2026.08.0",
+            )
+        )
+        assert r.cfg.connect.version == "2026.06.0"
+        assert r.cfg.workbench.version == "2026.07.0"
+        assert r.cfg.package_manager.version == "2026.08.0"
+
+    def test_product_url_flag_overrides_only_that_product(self):
+        cfg = self._config(
+            '[connect]\nurl = "https://file-connect.example.com"\n'
+            '[workbench]\nurl = "https://file-wb.example.com"\n'
+        )
+        r = _resolve(_make_args(config=cfg, connect_url="https://flag-connect.example.com"))
+        assert r.cfg.connect.url == "https://flag-connect.example.com"
+        assert r.cfg.workbench.url == "https://file-wb.example.com"
+        assert r.cfg.workbench.enabled is True
+
+    def test_product_url_flag_enables_a_disabled_product(self):
+        cfg = self._config('[connect]\nenabled = false\nurl = "https://old.example.com"\n')
+        r = _resolve(_make_args(config=cfg, connect_url="https://new.example.com"))
+        assert r.cfg.connect.is_configured
+        assert r.cfg.connect.url == "https://new.example.com"
+
+    def test_untouched_sections_pass_through_and_env_secrets_stay_out_of_the_file(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("DS_CONN", "postgres://user:db-secret@db/x")
+        monkeypatch.setenv("VIP_CONNECT_API_KEY", "env-only-api-key")
+        cfg = self._config(
+            '[general]\ndeployment_name = "Acme"\nextension_dirs = ["ext"]\n'
+            '[connect]\nurl = "https://c.example.com"\n'
+            '[workbench]\nurl = "https://w.example.com"\n'
+            "[workbench.kubernetes]\nenabled = true\n"
+            '[workbench.kubernetes.node_pool_profiles]\n"cpu-pool" = "Small"\n'
+            '[runtimes]\nr_versions = ["4.4"]\n'
+            '[data_sources.warehouse]\ntype = "postgres"\nconnection_string_env = "DS_CONN"\n'
+        )
+        r = _resolve(_make_args(config=cfg, insecure=True))
+        assert r.cfg.deployment_name == "Acme"
+        assert r.cfg.extension_dirs == ["ext"]
+        assert r.cfg.workbench.kubernetes.node_pool_profiles == {"cpu-pool": "Small"}
+        assert r.cfg.runtimes.r_versions == ["4.4"]
+        assert r.cfg.data_sources[0].connection_string == "postgres://user:db-secret@db/x"
+        assert 'connection_string_env = "DS_CONN"' in r.text
+        for secret in ("db-secret", "env-only-api-key", "env-only-password"):
+            assert secret not in r.text
+
+    def test_relative_paths_resolve_against_cwd_not_the_config_location(self):
+        (self.tmp / "certs").mkdir()
+        (self.tmp / "certs" / "ca.pem").write_text("x", encoding="utf-8")
+        (self.tmp / "conf").mkdir()
+        cfg_path = self.tmp / "conf" / "vip.toml"
+        cfg_path.write_text(
+            '[general]\nextension_dirs = ["my-tests"]\n'
+            '[connect]\nurl = "https://c.example.com"\n[tls]\nca_bundle = "certs/ca.pem"\n',
+            encoding="utf-8",
+        )
+        r = _resolve(_make_args(config=str(cfg_path), connect_version="2026.06.0"))
+        assert r.cfg.extension_dirs == ["my-tests"]
+        assert r.cfg.ca_bundle == Path("certs/ca.pem")
+        assert r.cfg.ca_bundle.resolve() == (self.tmp / "certs" / "ca.pem").resolve()
+
+    def test_no_override_flags_pass_the_original_file_to_pytest(self):
+        cfg = self._config('[connect]\nurl = "https://c.example.com"\n')
+        cmd = _capture_cmd(_make_args(config=cfg))
+        assert f"--vip-config={Path(cfg).resolve()}" in cmd
+
+    def test_config_is_loaded_once_per_run(self):
+        from vip.config import load_config
+
+        cfg = self._config('[connect]\nurl = "https://c.example.com"\n')
+        with patch("vip.cli.verify.load_config", wraps=load_config) as spy:
+            _resolve(_make_args(config=cfg, proxy="http://corp:8080", idp="okta"))
+        assert spy.call_count == 1
+
+    def test_url_flag_with_config_overrides_instead_of_being_ignored(self):
+        cfg = self._config('[connect]\nurl = "https://file.example.com"\n')
+        r = _resolve(_make_args(config=cfg, workbench_url="https://w.example.com"))
+        assert r.cfg.connect.url == "https://file.example.com"
+        assert r.cfg.workbench.url == "https://w.example.com"
+
+    def test_url_mode_still_disables_products_without_a_url_flag(self):
+        self._config(
+            '[connect]\nurl = "https://file.example.com"\n[tls]\ninsecure = true\n'
+            '[auth]\nprovider = "saml"\n'
+        )
+        r = _resolve(_make_args(workbench_url="https://w.example.com"))
+        assert r.cfg.connect.enabled is False
+        assert r.cfg.workbench.url == "https://w.example.com"
+        assert r.cfg.auth.provider == "saml"
+        assert r.cfg.insecure is False
+
+
+class TestTomlWriter:
+    """The temp-config writer round-trips what load_config reads."""
+
+    def test_round_trip(self):
+        import tomllib
+
+        from vip.cli.verify import _dump_toml
+
+        raw = {
+            "general": {"deployment_name": 'Q"uote\nline', "extension_dirs": ["a", "b c"]},
+            "performance": {"p95_response_time": 2.5, "load_user_counts": [10, 100]},
+            "workbench": {
+                "enabled": True,
+                "kubernetes": {"node_pool_profiles": {"gpu pool": "Large", "cpu-pool": "S"}},
+            },
+            "data_sources": {"my.db": {"type": "postgres", "connection_string_env": "X"}},
+            "tls": {"cert_expiry_warning_days": 0},
+        }
+        assert tomllib.loads(_dump_toml(raw)) == raw
 
 
 class TestAllowUnprovenFlag:
