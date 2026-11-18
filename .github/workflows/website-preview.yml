@@ -19,7 +19,11 @@ on:
       - '.github/workflows/example-report.yml'
       - '.github/actions/setup-vip/**'
 
-concurrency: website-preview-${{ github.ref }}
+# Pushes to a PR cancel that PR's older preview run, including its example
+# report build; closing the PR cancels it before the cleanup job runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
