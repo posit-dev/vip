@@ -10,7 +10,7 @@ import pytest
 from vip.auth import (
     AuthConfigError,
     InteractiveAuthSession,
-    auth_cache_path,
+    prepare_auth_cache,
     start_headless_auth,
     start_interactive_auth,
 )
@@ -53,7 +53,7 @@ def _configure_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
                 stacklevel=1,
             )
         else:
-            cache_path = auth_cache_path()
+            cache_path = prepare_auth_cache()
             try:
                 session = start_interactive_auth(
                     connect_url=connect_url,
@@ -104,7 +104,7 @@ def _configure_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
                 stacklevel=1,
             )
         else:
-            cache_path = auth_cache_path()
+            cache_path = prepare_auth_cache()
             try:
                 session = start_headless_auth(
                     connect_url=connect_url,

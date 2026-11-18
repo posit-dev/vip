@@ -288,7 +288,7 @@ class TestWorkbenchAuthModeSelection:
         from vip.config import VIPConfig
 
         self._patch_client_and_ui(monkeypatch)
-        monkeypatch.setattr(vip.cli.cleanup, "auth_cache_path", lambda: None)
+        monkeypatch.setattr(vip.cli.cleanup, "prepare_auth_cache", lambda: None)
 
         calls = {}
 
