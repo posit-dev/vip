@@ -17,6 +17,7 @@ on:
       - 'uv.lock'
       - '.github/workflows/website-preview.yml'
       - '.github/workflows/example-report.yml'
+      - '.github/actions/setup-vip/**'
 
 concurrency: website-preview-${{ github.ref }}
 
