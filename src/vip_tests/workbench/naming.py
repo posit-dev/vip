@@ -20,6 +20,29 @@ def current_worker_id() -> str:
     return os.environ.get("PYTEST_XDIST_WORKER", "main")
 
 
+# Opt-in switch for one Workbench account per xdist worker; the deployment must already have them.
+PER_WORKER_USERS_ENV = "VIP_TEST_USERNAME_PER_WORKER"
+
+
+def per_worker_users_enabled() -> bool:
+    """True when this run gives each xdist worker its own Workbench account."""
+    return os.environ.get(PER_WORKER_USERS_ENV) == "1"
+
+
+def worker_username(base: str) -> str:
+    """Return the Workbench test account this worker signs in as.
+
+    Workbench refuses a second sign-in by the same user within
+    ``auth-sign-in-throttle-seconds`` (default 5 s), so parallel workers sharing one
+    account fail with "Temporary server error". With ``VIP_TEST_USERNAME_PER_WORKER=1``
+    each worker uses ``<base>-<worker>`` (``testuser-gw0``); serial runs keep *base*.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if not base or not worker or not per_worker_users_enabled():
+        return base
+    return f"{base}-{worker}"
+
+
 def vip_session_prefix(kind: str) -> str:
     """Build a ``_vip_<kind>_<worker>_<ts>_`` session-name prefix.
 

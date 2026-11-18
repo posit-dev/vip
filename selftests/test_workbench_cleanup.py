@@ -1201,3 +1201,18 @@ def test_token_sweep_logs_instead_of_raising_when_the_api_refuses(caplog):
     with caplog.at_level(logging.WARNING, logger="vip_tests.workbench.cleanup"):
         assert cleanup._quit_vip_sessions_via_token(client, _token_config(), owner="main") == 0
     assert "could not sweep VIP Workbench sessions" in caplog.text
+
+
+def test_token_sweep_targets_this_workers_own_account(monkeypatch):
+    from types import SimpleNamespace
+
+    from vip_tests.workbench import cleanup
+
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw1")
+    monkeypatch.setenv("VIP_TEST_USERNAME_PER_WORKER", "1")
+    users: list[str] = []
+    client = SimpleNamespace(
+        quit_vip_sessions_via_api=lambda user, *, owner: users.append(user) or 0
+    )
+    cleanup._quit_vip_sessions_via_token(client, _token_config(), owner="gw1")
+    assert users == ["alice-gw1"]
