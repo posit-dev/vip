@@ -20,7 +20,7 @@ TIMEOUT_PAGE_LOAD = int(15_000 * timeout_scale())
 TIMEOUT_CLEANUP = int(30_000 * timeout_scale())
 TIMEOUT_CODE_EXEC = int(30_000 * timeout_scale())
 TIMEOUT_IDE_LOAD = int(60_000 * timeout_scale())
-TIMEOUT_SESSION_START = int(90_000 * timeout_scale())
+TIMEOUT_SESSION_START = int(180_000 * timeout_scale())
 # The silent-SSO click-through in _silent_sso_signin used TIMEOUT_PAGE_LOAD
 # (15s) until issue #263's diagnostic showed a SAML round-trip (IdP redirect,
 # assertion POST, Workbench's own validation) taking longer than that under

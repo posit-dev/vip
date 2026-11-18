@@ -1100,3 +1100,104 @@ def test_capacity_page_cleanup_is_worker_scoped(monkeypatch):
     wb.quit_owned_sessions_via_page(page, "https://wb.example.com", insecure=False, ca_bundle=None)
 
     assert seen["owner"] == "gw1"
+
+
+# ---------------------------------------------------------------------------
+# Token-API sweeps for --api-auth runs (no browser cookies)
+# ---------------------------------------------------------------------------
+
+
+def _token_config(*, api_key: str = "tok", username: str = "alice"):
+    from types import SimpleNamespace
+
+    from vip.proxy import ProxyConfig
+
+    return SimpleNamespace(
+        workbench=SimpleNamespace(api_key=api_key),
+        auth=SimpleNamespace(username=username),
+        insecure=False,
+        ca_bundle=None,
+        proxy=ProxyConfig(),
+    )
+
+
+def _token_api_handler(labels: dict[str, str], calls: list[dict]):
+    """Workbench API answering get_session/stop_session from a mutable id -> label map."""
+    import json
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        calls.append(body)
+        if body["method"] == "get_session":
+            sessions = [
+                {"id": sid, "label": label, "activity_state": "running"}
+                for sid, label in labels.items()
+            ]
+            return httpx.Response(200, json={"result": {"sessions": sessions, "timestamp": 1}})
+        for sid in body["kwparams"]["session_ids"].split(","):
+            labels.pop(sid, None)
+        return httpx.Response(200, json={"result": {}})
+
+    return handler
+
+
+def test_end_of_run_sweep_uses_the_token_when_there_are_no_cookies(monkeypatch):
+    from vip_tests.workbench import cleanup
+
+    monkeypatch.setattr(cleanup, "current_worker_id", lambda: "gw1")
+    labels = {
+        "mine1111": "VIP test_ide_launch_api.py - gw1-100",
+        "theirs22": "VIP test_ide_launch_api.py - gw2-100",
+        "real3333": "My analysis",
+    }
+    calls: list[dict] = []
+    client = _client_with_handler(_token_api_handler(labels, calls))
+    state = {"cookies": None, "base_url": None, "api_reachable": None}
+
+    cleanup._sweep_at_end_of_run(state, _token_config(), client)
+
+    assert labels == {
+        "theirs22": "VIP test_ide_launch_api.py - gw2-100",
+        "real3333": "My analysis",
+    }
+    listing = next(c for c in calls if c["method"] == "get_session")
+    assert listing["kwparams"]["user"] == "alice"
+
+
+def test_end_of_run_sweep_skips_the_token_path_when_cookies_were_captured(monkeypatch):
+    from vip_tests.workbench import cleanup
+
+    monkeypatch.setattr(cleanup, "_quit_vip_sessions_via_cookies", lambda *a, **k: 0)
+    calls: list[dict] = []
+    client = _client_with_handler(lambda request: httpx.Response(200, json=[]))
+    monkeypatch.setattr(
+        cleanup,
+        "_quit_vip_sessions_via_token",
+        lambda *a, **k: calls.append(k) or 0,
+    )
+    state = {"cookies": {"c": "v"}, "base_url": "https://wb.example.com", "api_reachable": None}
+
+    cleanup._sweep_at_end_of_run(state, _token_config(), client)
+
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "config",
+    [_token_config(api_key=""), _token_config(username="")],
+    ids=["no-token", "no-username"],
+)
+def test_token_sweep_needs_both_a_token_and_a_username(config):
+    from vip_tests.workbench import cleanup
+
+    client = _client_with_handler(lambda request: pytest.fail("no API call expected"))
+    assert cleanup._quit_vip_sessions_via_token(client, config, owner="main") == 0
+
+
+def test_token_sweep_logs_instead_of_raising_when_the_api_refuses(caplog):
+    from vip_tests.workbench import cleanup
+
+    client = _client_with_handler(lambda request: httpx.Response(401))
+    with caplog.at_level(logging.WARNING, logger="vip_tests.workbench.cleanup"):
+        assert cleanup._quit_vip_sessions_via_token(client, _token_config(), owner="main") == 0
+    assert "could not sweep VIP Workbench sessions" in caplog.text

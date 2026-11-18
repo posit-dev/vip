@@ -49,21 +49,14 @@ _GIT_DIRECTORY = "extensions/quarto-document"
 # and every failure reverts to today's non-retried behavior -- it fails
 # closed, never silently.
 #
-# Filed as insurance, not a fix for chronic pain: as of 2026-07-29, this
-# signature had fired exactly once in connect-smoke.yml history, on
-# workflow_dispatch run 30398775778 (2026-07-28) -- a measurement run that
-# was never on the merge-gating path -- and every non-dispatch run
-# (pull_request, push, schedule) checked at that time was green. Both facts
-# will go stale as more runs accumulate: re-run
-# `gh run list --workflow connect-smoke.yml` and search for this failure
-# signature before repeating either claim, rather than trusting this
-# comment's word for it past the date above.
+# This is insurance, not a fix for a chronic failure. How often the
+# signature actually fires, and how to re-measure it, is tracked in vip#803;
+# check there rather than assuming the retry covers something common.
 #
-# Do not widen this match on the assumption it is covering something that
-# happens often -- as of the above date, it doesn't, and a broader match
-# trades away the "must still fail for other reasons" guarantee for no
-# evidenced benefit. "Widening" specifically means: adding a curl code,
-# adding a host, loosening the AND to an OR, or raising
+# Do not widen this match without that evidence: a broader match trades
+# away the "must still fail for other reasons" guarantee, so it needs a
+# measured benefit to justify it. "Widening" specifically means: adding a
+# curl code, adding a host, loosening the AND to an OR, or raising
 # _MAX_DEPLOY_ATTEMPTS above 2. Any of those needs its own fresh evidence of
 # a real, recurring failure shape -- not a hunch that this one might also
 # cover it.

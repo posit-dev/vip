@@ -1,0 +1,127 @@
+"""Step definitions for Workbench IDE launch through the Workbench API.
+
+Under ``--api-auth`` there is no browser login, so these scenarios drive Workbench
+with an API token alone: launch an IDE for the test user, wait until the session
+is running, then stop it.  The token must be a super-admin token (or a user token
+owned by the test user) on an Enhanced or Advanced deployment with the API enabled
+in ``rserver.conf``.  Nothing here touches Playwright.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import pytest
+from pytest_bdd import given, parsers, scenario, then, when
+
+from vip import attest
+from vip.clients.workbench import (
+    WorkbenchClient,
+    default_launch_parameters,
+    is_ide_offered,
+)
+from vip_tests.workbench.conftest import TIMEOUT_SESSION_START, unique_session_name
+
+pytestmark = pytest.mark.order(20)
+
+_FILENAME = Path(__file__).name
+
+
+# A 401 or 403 from the API is a rejected token; a 404 is an API that is switched off.
+@pytest.mark.rstudio
+@scenario("test_ide_launch_api.feature", "RStudio session can be launched through the API")
+def test_launch_rstudio_api():
+    pass
+
+
+@pytest.mark.vscode
+@scenario("test_ide_launch_api.feature", "VS Code session can be launched through the API")
+def test_launch_vscode_api():
+    pass
+
+
+@pytest.mark.jupyter
+@scenario("test_ide_launch_api.feature", "JupyterLab session can be launched through the API")
+def test_launch_jupyter_api():
+    pass
+
+
+@pytest.mark.positron
+@scenario("test_ide_launch_api.feature", "Positron session can be launched through the API")
+def test_launch_positron_api():
+    pass
+
+
+@pytest.fixture
+def wb_api_session():
+    """Track the launched session so it is stopped even when a step fails."""
+    state: dict[str, Any] = {"client": None, "id": None}
+    yield state
+    if state["client"] is not None and state["id"]:
+        state["client"].try_stop_session(state["id"], force_quit=True)
+
+
+@given("a Workbench API token that can launch sessions", target_fixture="wb_api")
+def wb_api_ready(
+    request: pytest.FixtureRequest,
+    workbench_client: WorkbenchClient | None,
+    vip_config,
+    test_username: str,
+    wb_api_session: dict[str, Any],
+):
+    if workbench_client is None:
+        attest.not_applicable("Workbench is not configured.")
+    if not request.config.getoption("--api-auth", default=False):
+        attest.not_applicable(
+            "API-token IDE launch runs under --api-auth; browser runs check IDE launch "
+            "in test_ide_launch."
+        )
+    if not vip_config.workbench.api_key:
+        attest.unproven(
+            "--api-auth was requested but no Workbench API token is configured "
+            "(VIP_WORKBENCH_API_KEY), so IDE launch could not be checked."
+        )
+    if not test_username:
+        attest.unproven(
+            "--api-auth was requested but no test username is configured, so there is "
+            "no user to launch sessions for."
+        )
+    workbench_client.get_version()
+    compute_envs = workbench_client.get_launch_compute_envs(test_username)
+    wb_api_session["client"] = workbench_client
+    return {
+        "client": workbench_client,
+        "username": test_username,
+        "compute_envs": compute_envs,
+        "session": wb_api_session,
+    }
+
+
+@when(parsers.parse('I launch the "{ide}" IDE for the test user through the API'))
+def launch_ide(wb_api: dict[str, Any], ide: str):
+    if not is_ide_offered(wb_api["compute_envs"], ide):
+        attest.not_applicable(f"{ide} is not offered by this Workbench deployment.")
+    name = unique_session_name(_FILENAME)
+    params = default_launch_parameters(wb_api["compute_envs"], ide, name)
+    launched = wb_api["client"].launch_session(
+        ide, username=wb_api["username"], name=name, launch_parameters=params
+    )
+    wb_api["session_id"] = launched["id"]
+    wb_api["session"]["id"] = launched["id"]
+
+
+@then("the session reaches the running state")
+def session_running(wb_api: dict[str, Any]):
+    wb_api["client"].wait_for_session_running(
+        wb_api["session_id"], user=wb_api["username"], timeout=TIMEOUT_SESSION_START / 1000
+    )
+
+
+@then("the session can be stopped through the API")
+def session_stopped(wb_api: dict[str, Any]):
+    wb_api["client"].stop_session(wb_api["session_id"], force_quit=True)
+    wb_api["client"].wait_for_session_stopped(
+        wb_api["session_id"], user=wb_api["username"], timeout=TIMEOUT_SESSION_START / 1000
+    )
+    wb_api["session"]["id"] = None

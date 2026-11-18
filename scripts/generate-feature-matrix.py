@@ -237,23 +237,12 @@ def generate_matrix(tests_dir: Path, output: Path) -> dict:
         )
         product_totals[product] = total
 
-    # Not-yet-covered areas (from issue #108).
-    not_covered = [
-        {
-            "name": "LDAP/SAML/OAuth2 auth flows in CI",
-            "description": "Requires identity provider setup",
-        },
-        {"name": "Connect scheduled content", "description": "Planned for future release"},
-        {"name": "Workbench HA/multi-node", "description": "Planned for future release"},
-    ]
-
     matrix = {
         "generated_at": datetime.now(UTC).isoformat(),
         "products": [{"id": p, "label": PRODUCT_LABELS[p]} for p in PRODUCTS],
         "product_totals": product_totals,
         "product_specific": product_specific_areas,
         "cross_cutting": cross_cutting_areas,
-        "not_covered": not_covered,
     }
 
     output.parent.mkdir(parents=True, exist_ok=True)

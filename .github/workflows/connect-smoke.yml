@@ -9,6 +9,12 @@ on:
       - 'uv.lock'
       - '.github/workflows/connect-smoke.yml'
       - '.github/workflows/recent-production-versions.yml'
+      - '.github/actions/check-license-errors/**'
+      - '.github/actions/setup-vip/**'
+      - '.github/actions/write-smoke-summary/**'
+      - '.github/actions/rename-smoke-job/**'
+      - '.github/actions/check-smoke-status/**'
+      - 'scripts/ci/resolve-connect-version.sh'
   pull_request:
   # Scheduled/manual runs fan the suite out across the Connect support window
   # (see the set-matrix job). PR/push runs stay single-version.
@@ -25,6 +31,12 @@ on:
 permissions:
   contents: read
   checks: write
+
+# Pushes to a PR branch cancel that PR's older run. Every other event keys on
+# its own run id, so runs on main, schedules and tags are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   changes:
@@ -61,6 +73,12 @@ jobs:
               - 'uv.lock'
               - '.github/workflows/connect-smoke.yml'
               - '.github/workflows/recent-production-versions.yml'
+              - '.github/actions/check-license-errors/**'
+              - '.github/actions/setup-vip/**'
+              - '.github/actions/write-smoke-summary/**'
+              - '.github/actions/rename-smoke-job/**'
+              - '.github/actions/check-smoke-status/**'
+              - 'scripts/ci/resolve-connect-version.sh'
 
   # Emit the Connect version list for the product job. PR/push runs the current
   # release only; scheduled/manual runs fan out across the support window
@@ -123,32 +141,12 @@ jobs:
       # are immediately visible on the Actions run page.
       - name: Check for license errors
         if: failure() && steps.connect.outcome == 'failure'
-        run: |
-          # Find the Connect container even if with-connect failed partway.
-          # `ancestor` needs the tag: a tagless value normalizes to `:latest`
-          # and never matches a container started from a pinned version.
-          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/connect:${{ matrix.connect-version }}" | head -1)
-          if [ -z "${CID}" ]; then
-            echo "::error title=Connect Startup Failed::Connect container not found. The with-connect action failed before creating a container."
-            exit 1
-          fi
-          LOGS=$(docker logs "${CID}" 2>&1 || true)
-          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable" | head -1 || true)
-          if [ -n "${LICENSE_MSG}" ]; then
-            echo "::error title=License Error::${LICENSE_MSG}"
-            {
-              echo "## License Error"
-              echo ""
-              echo "The Connect license key is expired or invalid. Update the \`CONNECT_LICENSE\` repository secret."
-              echo ""
-              echo '```'
-              echo "${LICENSE_MSG}"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::error title=Connect Startup Failed::Connect failed to start. Check the 'Start Connect' step logs for details."
-          fi
-          exit 1
+        uses: ./.github/actions/check-license-errors
+        with:
+          product: Connect
+          secret-name: CONNECT_LICENSE
+          image: ghcr.io/posit-dev/connect:${{ matrix.connect-version }}
+          error-pattern: expired|invalid|unable
 
       # The posit Connect images ship a deliberately slim system-library set:
       # 9 apt packages on the 24.04 variant and 15 on 22.04, against 80 in the
@@ -173,74 +171,20 @@ jobs:
         id: version
         env:
           VIP_CONNECT_API_KEY: ${{ steps.connect.outputs.CONNECT_API_KEY }}
-        run: |
-          RESOLVED=0
-          for i in $(seq 1 60); do
-            RESPONSE=$(curl -sf --connect-timeout 5 --max-time 15 \
-              -H "Authorization: Key ${VIP_CONNECT_API_KEY}" \
-              "${{ steps.connect.outputs.CONNECT_SERVER }}/__api__/server_settings") && { RESOLVED=1; break; }
-            if [ "${i}" -lt 60 ]; then
-              echo "Attempt ${i}: server_settings not reachable yet, retrying..."
-              sleep 2
-            fi
-          done
-          if [ "${RESOLVED}" != "1" ]; then
-            echo "ERROR: server_settings did not become reachable after 60 attempts"
-            exit 1
-          fi
-          echo "server_settings reachable (attempt ${i})"
-          VERSION=$(echo "${RESPONSE}" | jq -r '.version')
-          if [ -z "${VERSION}" ] || [ "${VERSION}" = "null" ]; then
-            echo "ERROR: Could not resolve Connect version from server_settings"
-            echo "Response body: ${RESPONSE}"
-            exit 1
-          fi
-          echo "Resolved Connect version: ${VERSION}"
-          echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
+          CONNECT_SERVER: ${{ steps.connect.outputs.CONNECT_SERVER }}
+        run: bash scripts/ci/resolve-connect-version.sh
 
       # Rename the check run so the job title shows the resolved version
       - name: Update job title with resolved version
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        uses: ./.github/actions/rename-smoke-job
         with:
-          script: |
-            const resolvedVersion = '${{ steps.version.outputs.resolved }}';
-            const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.runId,
-            });
-            const currentJob = jobs.find(
-              j => j.status === 'in_progress' && j.name.includes('${{ matrix.connect-version }}')
-            );
-            if (currentJob) {
-              await github.rest.checks.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                check_run_id: currentJob.id,
-                name: `Smoke test against Connect ${resolvedVersion}`,
-              });
-            }
+          product: Connect
+          requested-version: ${{ matrix.connect-version }}
+          resolved-version: ${{ steps.version.outputs.resolved }}
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --frozen
-
-      - name: Resolve Playwright version
-        id: playwright-version
-        run: echo "version=$(uv run playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
-
-      - name: Install Playwright browsers
-        run: uv run vip install --skip-system
+      - name: Set up VIP
+        uses: ./.github/actions/setup-vip
 
       # Connect sends the test email to the API key owner's address, and the
       # bootstrap admin is created without one, so test_email would skip.
@@ -380,49 +324,12 @@ jobs:
       # Write a rich job summary with test details and emoji
       - name: Write workflow summary
         if: always()
-        run: |
-          RESOLVED="${{ steps.version.outputs.resolved }}"
-          CONNECT_URL="${{ steps.connect.outputs.CONNECT_SERVER }}"
-          REQUESTED="${{ matrix.connect-version }}"
-          RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
-          {
-            echo "## 🧪 Connect Smoke Tests — v${RESOLVED}"
-            echo ""
-            echo "| | |"
-            echo "|---|---|"
-            echo "| 🏷️ **Requested version** | \`${REQUESTED}\` |"
-            echo "| ✅ **Resolved version** | \`${RESOLVED}\` |"
-            echo "| 🌐 **Connect URL** | \`${CONNECT_URL}\` |"
-            echo "| 📅 **Run date** | ${RUN_DATE} |"
-            echo ""
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [ -f smoke-results.xml ]; then
-            TESTS=$(grep -oP '(?<=tests=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            FAILURES=$(grep -oP '(?<=failures=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            ERRORS=$(grep -oP '(?<=errors=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            SKIPPED=$(grep -oP '(?<=skipped=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            TESTS=${TESTS:-0}; FAILURES=${FAILURES:-0}; ERRORS=${ERRORS:-0}; SKIPPED=${SKIPPED:-0}
-            PASSED=$(( TESTS - FAILURES - ERRORS - SKIPPED ))
-            {
-              echo "### 📊 Test Results"
-              echo ""
-              echo "| Result | Count |"
-              echo "|--------|-------|"
-              echo "| ✅ Passed | ${PASSED} |"
-              echo "| ❌ Failed | ${FAILURES:-0} |"
-              echo "| ⚠️ Errors | ${ERRORS:-0} |"
-              echo "| ⏭️ Skipped | ${SKIPPED:-0} |"
-              echo "| 📝 **Total** | **${TESTS:-0}** |"
-              echo ""
-              if [ "${FAILURES:-0}" = "0" ] && [ "${ERRORS:-0}" = "0" ]; then
-                echo "🎉 **All tests passed!**"
-              else
-                echo "💥 **Some tests failed — check the logs for details.**"
-              fi
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "> ⚠️ Test results file not found — tests may have been skipped." >> "$GITHUB_STEP_SUMMARY"
-          fi
+        uses: ./.github/actions/write-smoke-summary
+        with:
+          product: Connect
+          requested-version: ${{ matrix.connect-version }}
+          resolved-version: ${{ steps.version.outputs.resolved }}
+          url: ${{ steps.connect.outputs.CONNECT_SERVER }}
 
       # Stop Connect
       - name: Stop Connect
@@ -445,30 +352,14 @@ jobs:
         with:
           persist-credentials: false
       - name: Check smoke test result
-        run: |
-          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
-            echo "Change-detection job failed; cannot confirm smoke scope"
-            exit 1
-          fi
-          # A failed set-matrix skips (not fails) connect-smoke, which would
-          # otherwise look identical to a clean no-relevant-paths skip below.
-          if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
-            echo "Version-matrix job failed; cannot confirm smoke scope"
-            exit 1
-          fi
-          # If Connect smoke was in scope for this PR (paths matched) it MUST
-          # have succeeded — a skip here means it was gated out (missing license,
-          # excluded actor, or self-skip) rather than legitimately not relevant,
-          # so treat "in scope but not success" as a hard gate failure.
-          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.connect-smoke.result }}" != "success" ]; then
-            echo "Connect smoke was in scope for this PR but did not succeed (result=${{ needs.connect-smoke.result }})"
-            exit 1
-          fi
-          if [ "${{ needs.connect-smoke.result }}" = "failure" ] || [ "${{ needs.connect-smoke.result }}" = "cancelled" ]; then
-            echo "Connect smoke tests failed or were cancelled"
-            exit 1
-          fi
-          echo "Connect smoke tests passed or were legitimately out of scope"
+        uses: ./.github/actions/check-smoke-status
+        with:
+          product: Connect
+          changes-result: ${{ needs.changes.result }}
+          set-matrix-result: ${{ needs.set-matrix.result }}
+          relevant: ${{ needs.changes.outputs.relevant }}
+          suites: |
+            Connect smoke tests|${{ needs.connect-smoke.result }}
 
       # Nightly failures have no PR author to notice them; file (or update) a
       # tracking issue instead of failing silently. Never fires on push/pull_request

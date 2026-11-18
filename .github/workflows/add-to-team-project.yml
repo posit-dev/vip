@@ -46,7 +46,7 @@ jobs:
       - name: Add issue to project
         id: add-to-project
         if: steps.project-url.outputs.PROJECT != 'none'
-        uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd  # v2.0.0
+        uses: actions/add-to-project@f2c1f1fa649a891be84948ea89b5dfba1526ef05  # v2.0.1
         with:
           project-url: ${{ steps.project-url.outputs.PROJECT }}
           github-token: ${{ steps.generate-token.outputs.token }}

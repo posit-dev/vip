@@ -151,7 +151,7 @@ _IDE_DISPLAY_NAMES: dict[str, str] = {
 # so test_ide_extensions.py can skip the extension checks for an IDE whose
 # launch test did not pass, instead of rediscovering "this IDE isn't
 # available" the expensive way -- launching a session and timing out after
-# TIMEOUT_SESSION_START (~90s). See pytest_runtest_makereport below and the
+# TIMEOUT_SESSION_START (~180s). See pytest_runtest_makereport below and the
 # autouse fixture in test_ide_extensions.py (#592).
 _ide_launch_outcome_key = pytest.StashKey[dict[str, str]]()
 

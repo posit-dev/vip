@@ -56,6 +56,55 @@ class TestPluginIntegration:
         assert result["scenario_title"] is None
         assert result["feature_description"] is None
 
+    def test_json_report_bdd_scenario_names(self, selftest_pytester):
+        """BDD results carry the scenario title and feature description, both
+        for a scenario that ran and for one skipped before its body started.
+        """
+        selftest_pytester.makefile(
+            ".feature",
+            test_named=(
+                "Feature: Named feature\n"
+                "  Describes the feature.\n"
+                "\n"
+                "  Scenario: Runs to completion\n"
+                "    Then it passes\n"
+                "\n"
+                "  Scenario: Skipped during setup\n"
+                "    Then it passes\n"
+            ),
+        )
+        selftest_pytester.makepyfile(
+            test_named="""
+            import pytest
+            from pytest_bdd import scenario, then
+
+            @scenario("test_named.feature", "Runs to completion")
+            def test_runs():
+                pass
+
+            @pytest.mark.skip(reason="skipped before the scenario body")
+            @scenario("test_named.feature", "Skipped during setup")
+            def test_skipped():
+                pass
+
+            @then("it passes")
+            def it_passes():
+                pass
+            """
+        )
+        report_path = selftest_pytester.path / "results.json"
+        result = selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+        )
+        result.assert_outcomes(passed=1, skipped=1)
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+        by_outcome = {r["outcome"]: r for r in data["results"]}
+        assert by_outcome["passed"]["scenario_title"] == "Runs to completion"
+        assert by_outcome["skipped"]["scenario_title"] == "Skipped during setup"
+        for r in by_outcome.values():
+            assert r["feature_description"] == "Describes the feature."
+
     def test_json_report_includes_na_version_flag(self, selftest_pytester):
         """Results JSON flags version-unknown skips with na_version: true."""
         selftest_pytester.makefile(
@@ -291,3 +340,111 @@ class TestPluginIntegration:
         # Validate the concise format is used (not the raw longrepr fallback).
         # No hard character-count limit — multi-line summaries may legitimately exceed 200 chars.
         assert "FAILED" not in error_summary, "error_summary should be concise, not raw longrepr"
+
+
+class TestRunSettingsInResults:
+    """results.json records the non-secret settings the run used."""
+
+    def test_settings_and_overrides_are_recorded_without_the_proxy_password(
+        self, selftest_pytester
+    ):
+        selftest_pytester.makefile(
+            ".toml",
+            vip=(
+                '[general]\ndeployment_name = "Selftest"\n'
+                '[connect]\nurl = "https://connect.example.com"\n'
+                "[tls]\ninsecure = true\n"
+                '[auth]\nprovider = "saml"\nidp = "okta"\n'
+                '[proxy]\nurl = "http://puser:PROXY-PASS-0123@proxy.example.com:3128"\n'
+                'no_proxy = ["a.example.com"]\n'
+            ),
+        )
+        selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest(
+            "--vip-config=vip.toml",
+            f"--vip-report={report_path}",
+            '--vip-base={"deployment_name": "Base", "products": {"connect": {"url": "https://b"}}}',
+        )
+        text = report_path.read_text(encoding="utf-8")
+        data = json.loads(text)
+        assert data["base"] == {
+            "deployment_name": "Base",
+            "products": {"connect": {"url": "https://b"}},
+        }
+        assert data["settings"] == {
+            "insecure": True,
+            "ca_bundle": None,
+            "auth": {"provider": "saml", "idp": "okta"},
+            "proxy": {
+                "url": "http://proxy.example.com:3128",
+                "no_proxy": ["a.example.com"],
+                "enabled": True,
+                "trust_env": True,
+                "effective": [{"url": "http://proxy.example.com:3128", "credentials": True}],
+            },
+        }
+        assert "PROXY-PASS-0123" not in text
+        assert "puser" not in text
+
+    def test_explicit_proxy_credential_is_recorded_without_a_product(self, selftest_pytester):
+        selftest_pytester.makefile(
+            ".toml",
+            vip='[general]\ndeployment_name = "Selftest"\n'
+            '[proxy]\nurl = "http://u:EXT-PASS-0123@ext-gw:3128"\n',
+        )
+        selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}")
+        text = report_path.read_text(encoding="utf-8")
+        assert json.loads(text)["settings"]["proxy"]["effective"] == [
+            {"url": "http://ext-gw:3128", "credentials": True}
+        ]
+        assert "EXT-PASS-0123" not in text
+
+    def test_explicit_proxy_credential_is_recorded_when_no_proxy_bypasses_everything(
+        self, selftest_pytester
+    ):
+        selftest_pytester.makefile(
+            ".toml",
+            vip='[general]\ndeployment_name = "Selftest"\n'
+            '[connect]\nurl = "https://connect.example.com"\n'
+            '[proxy]\nurl = "http://u:ALL-PASS-0123@all-gw:3128"\nno_proxy = ["*"]\n',
+        )
+        selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}")
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+        assert data["settings"]["proxy"]["effective"] == [
+            {"url": "http://all-gw:3128", "credentials": True}
+        ]
+
+    def test_no_base_by_default(self, selftest_pytester):
+        selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}")
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+        assert "base" not in data
+        assert data["settings"]["proxy"]["effective"] == []
+
+    def test_environment_proxy_credentials_are_flagged_not_recorded(
+        self, selftest_pytester, monkeypatch
+    ):
+        monkeypatch.setenv("HTTPS_PROXY", "http://envuser:ENV-PASS-0123@env-gw:3128")
+        monkeypatch.setenv("HTTP_PROXY", "http://env-gw-plain:3128")
+        selftest_pytester.makefile(
+            ".toml",
+            vip='[general]\ndeployment_name = "Selftest"\n'
+            '[connect]\nurl = "https://connect.example.com"\n',
+        )
+        selftest_pytester.makepyfile("def test_plain():\n    assert True\n")
+        report_path = selftest_pytester.path / "results.json"
+        selftest_pytester.runpytest("--vip-config=vip.toml", f"--vip-report={report_path}")
+        text = report_path.read_text(encoding="utf-8")
+        effective = json.loads(text)["settings"]["proxy"]["effective"]
+        assert sorted(effective, key=lambda e: e["url"]) == [
+            {"url": "http://env-gw-plain:3128", "credentials": False},
+            {"url": "http://env-gw:3128", "credentials": True},
+        ]
+        assert "ENV-PASS-0123" not in text
+        assert "envuser" not in text

@@ -2,6 +2,7 @@ name: Bug report
 description: Something in VIP isn't working as expected
 title: "[Bug] "
 labels: ["bug"]
+type: Bug
 body:
   - type: markdown
     attributes:

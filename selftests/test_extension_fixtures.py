@@ -59,11 +59,8 @@ class TestExtensionFixtureVisibility:
         so they are subject to the exact same directory-ancestry scoping bug
         as ordinary fixtures.
         """
-        # Package Manager must be configured, or VIP's own deselection logic
-        # (pytest_collection_modifyitems -> _should_deselect_for_product)
-        # drops the scenario before ever touching the "Given" step -- which
-        # would make this test pass regardless of whether the step's fixture
-        # actually resolves. Configuring it forces the step to run.
+        # Package Manager must be configured so the guard step passes instead of
+        # skipping; only then does passed=1 prove the step's fixture resolved.
         ext_pytester.makefile(
             ".toml",
             vip='[general]\ndeployment_name = "Selftest"\n'

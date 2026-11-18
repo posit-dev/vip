@@ -9,6 +9,12 @@ on:
       - 'uv.lock'
       - '.github/workflows/packagemanager-smoke.yml'
       - '.github/workflows/recent-production-versions.yml'
+      - '.github/actions/check-license-errors/**'
+      - '.github/actions/setup-vip/**'
+      - '.github/actions/write-smoke-summary/**'
+      - '.github/actions/rename-smoke-job/**'
+      - '.github/actions/check-smoke-status/**'
+      - 'scripts/ci/wait-for-package-manager.sh'
   pull_request:
   # Scheduled/manual runs fan the suite out across the Package Manager support
   # window (see the set-matrix job). PR/push runs stay single-version.
@@ -19,6 +25,12 @@ on:
 permissions:
   contents: read
   checks: write
+
+# Pushes to a PR branch cancel that PR's older run. Every other event keys on
+# its own run id, so runs on main, schedules and tags are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   changes:
@@ -55,6 +67,12 @@ jobs:
               - 'uv.lock'
               - '.github/workflows/packagemanager-smoke.yml'
               - '.github/workflows/recent-production-versions.yml'
+              - '.github/actions/check-license-errors/**'
+              - '.github/actions/setup-vip/**'
+              - '.github/actions/write-smoke-summary/**'
+              - '.github/actions/rename-smoke-job/**'
+              - '.github/actions/check-smoke-status/**'
+              - 'scripts/ci/wait-for-package-manager.sh'
 
   # Emit the Package Manager tag list for the product job. PR/push runs the
   # current release only (single required check, unchanged); scheduled/manual
@@ -123,39 +141,17 @@ jobs:
       # Wait for health check
       - name: Wait for Package Manager to be ready
         if: steps.license.outputs.available == 'true'
-        run: |
-          echo "Waiting for Package Manager to start..."
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:4242/__api__/status > /dev/null 2>&1; then
-              echo "Package Manager is ready (attempt ${i})"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Package Manager failed to start within 120 seconds"
-          docker logs packagemanager
-          exit 1
+        run: bash scripts/ci/wait-for-package-manager.sh
 
       # Surface license errors as workflow annotations so expired keys
       # are immediately visible on the Actions run page.
       - name: Check for license errors
         if: failure() && steps.license.outputs.available == 'true'
-        run: |
-          LOGS=$(docker logs packagemanager 2>&1 || true)
-          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable|not activated" | head -1 || true)
-          if [ -n "${LICENSE_MSG}" ]; then
-            echo "::error title=License Error::${LICENSE_MSG}"
-            {
-              echo "## License Error"
-              echo ""
-              echo "The Package Manager license key is expired or invalid. Update the \`RSPM_LICENSE\` repository secret."
-              echo ""
-              echo '```'
-              echo "${LICENSE_MSG}"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
+        uses: ./.github/actions/check-license-errors
+        with:
+          product: Package Manager
+          secret-name: RSPM_LICENSE
+          container: packagemanager
 
       # Provision CRAN and PyPI repositories for smoke testing
       - name: Provision smoke test repositories
@@ -192,55 +188,16 @@ jobs:
       # Rename the check run to show the resolved version
       - name: Update job title with resolved version
         if: steps.license.outputs.available == 'true'
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        uses: ./.github/actions/rename-smoke-job
         with:
-          script: |
-            const resolvedVersion = '${{ steps.version.outputs.resolved }}';
-            const { data: { jobs } } = await github.rest.actions.listJobsForWorkflowRun({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: context.runId,
-            });
-            const currentJob = jobs.find(
-              j => j.status === 'in_progress' && j.name.endsWith('${{ matrix.pm-version }}')
-            );
-            if (currentJob) {
-              await github.rest.checks.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                check_run_id: currentJob.id,
-                name: `Smoke test against Package Manager ${resolvedVersion}`,
-              });
-            }
+          product: Package Manager
+          requested-version: ${{ matrix.pm-version }}
+          resolved-version: ${{ steps.version.outputs.resolved }}
 
       # Set up Python and install VIP
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Set up VIP
         if: steps.license.outputs.available == 'true'
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        if: steps.license.outputs.available == 'true'
-        run: uv sync --frozen
-
-      # The UI smoke tests (test_ui.py) drive a real browser, so the Playwright
-      # browsers must be installed. The API-only tests don't need them; the
-      # browser cache keeps this cheap on repeat runs.
-      - name: Resolve Playwright version
-        if: steps.license.outputs.available == 'true'
-        id: playwright-version
-        run: echo "version=$(uv run playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        if: steps.license.outputs.available == 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
-
-      - name: Install Playwright browsers
-        if: steps.license.outputs.available == 'true'
-        run: uv run vip install --skip-system
+        uses: ./.github/actions/setup-vip
 
       # Generate vip.toml for CI Package Manager
       - name: Configure VIP for CI Package Manager
@@ -290,59 +247,23 @@ jobs:
           path: smoke-results.xml
 
       # Write a rich job summary with test details
-      - name: Write workflow summary
-        if: always()
+      - name: Write workflow summary (license missing)
+        if: always() && steps.license.outputs.available != 'true'
         run: |
-          if [ "${{ steps.license.outputs.available }}" != "true" ]; then
-            {
-              echo "## Package Manager Smoke Tests — Skipped"
-              echo ""
-              echo "> RSPM_LICENSE secret is not configured. Add it to run PM smoke tests."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          RESOLVED="${{ steps.version.outputs.resolved }}"
-          PM_URL="${{ steps.pm.outputs.PM_URL }}"
-          REQUESTED="${{ matrix.pm-version }}"
-          RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
           {
-            echo "## 🧪 Package Manager Smoke Tests — v${RESOLVED}"
+            echo "## Package Manager Smoke Tests — Skipped"
             echo ""
-            echo "| | |"
-            echo "|---|---|"
-            echo "| 🏷️ **Requested version** | \`${REQUESTED}\` |"
-            echo "| ✅ **Resolved version** | \`${RESOLVED}\` |"
-            echo "| 🌐 **Package Manager URL** | \`${PM_URL}\` |"
-            echo "| 📅 **Run date** | ${RUN_DATE} |"
-            echo ""
+            echo "> RSPM_LICENSE secret is not configured. Add it to run PM smoke tests."
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ -f smoke-results.xml ]; then
-            TESTS=$(grep -oP '(?<=tests=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            FAILURES=$(grep -oP '(?<=failures=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            ERRORS=$(grep -oP '(?<=errors=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            SKIPPED=$(grep -oP '(?<=skipped=")[^"]+' smoke-results.xml | head -1 || echo 0)
-            TESTS=${TESTS:-0}; FAILURES=${FAILURES:-0}; ERRORS=${ERRORS:-0}; SKIPPED=${SKIPPED:-0}
-            PASSED=$(( TESTS - FAILURES - ERRORS - SKIPPED ))
-            {
-              echo "### 📊 Test Results"
-              echo ""
-              echo "| Result | Count |"
-              echo "|--------|-------|"
-              echo "| ✅ Passed | ${PASSED} |"
-              echo "| ❌ Failed | ${FAILURES:-0} |"
-              echo "| ⚠️ Errors | ${ERRORS:-0} |"
-              echo "| ⏭️ Skipped | ${SKIPPED:-0} |"
-              echo "| 📝 **Total** | **${TESTS:-0}** |"
-              echo ""
-              if [ "${FAILURES:-0}" = "0" ] && [ "${ERRORS:-0}" = "0" ]; then
-                echo "🎉 **All tests passed!**"
-              else
-                echo "💥 **Some tests failed — check the logs for details.**"
-              fi
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "> ⚠️ Test results file not found — tests may have been skipped." >> "$GITHUB_STEP_SUMMARY"
-          fi
+
+      - name: Write workflow summary
+        if: always() && steps.license.outputs.available == 'true'
+        uses: ./.github/actions/write-smoke-summary
+        with:
+          product: Package Manager
+          requested-version: ${{ matrix.pm-version }}
+          resolved-version: ${{ steps.version.outputs.resolved }}
+          url: ${{ steps.pm.outputs.PM_URL }}
 
       # Stop Package Manager
       - name: Stop Package Manager
@@ -363,26 +284,15 @@ jobs:
         with:
           persist-credentials: false
       - name: Check smoke test result
-        run: |
-          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
-            echo "Change-detection job failed; cannot confirm smoke scope"
-            exit 1
-          fi
-          # A failed set-matrix skips (not fails) packagemanager-smoke, which
-          # would otherwise look identical to a clean no-relevant-paths skip below.
-          if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
-            echo "Version-matrix job failed; cannot confirm smoke scope"
-            exit 1
-          fi
-          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.packagemanager-smoke.result }}" != "success" ]; then
-            echo "Package Manager smoke was in scope but did not succeed (result=${{ needs.packagemanager-smoke.result }}); is RSPM_LICENSE configured?"
-            exit 1
-          fi
-          if [ "${{ needs.packagemanager-smoke.result }}" = "failure" ] || [ "${{ needs.packagemanager-smoke.result }}" = "cancelled" ]; then
-            echo "Package Manager smoke tests failed or were cancelled"
-            exit 1
-          fi
-          echo "Package Manager smoke tests passed or were legitimately out of scope"
+        uses: ./.github/actions/check-smoke-status
+        with:
+          product: Package Manager
+          changes-result: ${{ needs.changes.result }}
+          set-matrix-result: ${{ needs.set-matrix.result }}
+          relevant: ${{ needs.changes.outputs.relevant }}
+          suites: |
+            Package Manager smoke tests|${{ needs.packagemanager-smoke.result }}
+          in-scope-hint: "; is RSPM_LICENSE configured?"
 
       # Nightly failures have no PR author to notice them; file (or update) a
       # tracking issue instead of failing silently. Never fires on push/pull_request

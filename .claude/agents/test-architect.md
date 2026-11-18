@@ -79,6 +79,6 @@ When reviewing test code, verify:
 - HTTP calls or Playwright actions directly in feature files
 - Step definitions with >10 lines of logic (should be in client layer)
 - Module-level mutable state instead of `target_fixture`
-- Missing product tags (breaks auto-skip)
+- Missing product tags, or a `Given <Product> is configured` step without its `@requires_*` tag (breaks auto-skip)
 - Product SDK imports (use httpx directly)
 - Tests that modify or delete existing customer content

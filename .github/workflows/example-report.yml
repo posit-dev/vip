@@ -113,48 +113,21 @@ jobs:
       # Surface Workbench license errors
       - name: Check for Workbench license errors
         if: failure() && steps.wb-license.outputs.available == 'true' && steps.workbench.outcome == 'failure'
-        run: |
-          # `ancestor` needs the tag: a tagless value normalizes to `:latest`
-          # and never matches a container started from a pinned version.
-          CID=$(docker ps -aq --filter "ancestor=ghcr.io/posit-dev/workbench:${{ needs.workbench-version.outputs.latest }}" | head -1)
-          if [ -z "${CID}" ]; then
-            echo "::error title=Workbench Startup Failed::Workbench container not found."
-            exit 1
-          fi
-          LOGS=$(docker logs "${CID}" 2>&1 || true)
-          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable|not activated" | head -1 || true)
-          if [ -n "${LICENSE_MSG}" ]; then
-            echo "::error title=Workbench License Error::${LICENSE_MSG}"
-            {
-              echo "## Workbench License Error"
-              echo ""
-              echo "The Workbench license key is expired or invalid. Update the \`WORKBENCH_LICENSE\` repository secret."
-              echo ""
-              echo '```'
-              echo "${LICENSE_MSG}"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::error title=Workbench Startup Failed::Workbench failed to start. Check the 'Start Workbench' step logs."
-          fi
-          exit 1
+        uses: ./.github/actions/check-license-errors
+        with:
+          product: Workbench
+          secret-name: WORKBENCH_LICENSE
+          image: ghcr.io/posit-dev/workbench:${{ needs.workbench-version.outputs.latest }}
 
       # Resolve Workbench version
       - name: Resolve Workbench version
         if: steps.wb-license.outputs.available == 'true'
         id: wb-version
+        env:
+          CONTAINER_ID: ${{ steps.workbench.outputs.CONTAINER_ID }}
         run: |
-          curl -s -L -c /tmp/wb_cookies.txt \
-            -d "username=${{ steps.workbench.outputs.WORKBENCH_USER }}&password=${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}" \
-            ${{ steps.workbench.outputs.WORKBENCH_URL }}/auth-sign-in > /dev/null
-
-          RESPONSE=$(curl -s -b /tmp/wb_cookies.txt ${{ steps.workbench.outputs.WORKBENCH_URL }}/api/server-info)
-          VERSION=$(echo "${RESPONSE}" | jq -r '.version // empty' 2>/dev/null || true)
-
-          if [ -z "${VERSION}" ]; then
-            VERSION=$(docker exec ${{ steps.workbench.outputs.CONTAINER_ID }} rstudio-server version 2>/dev/null \
-                      | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+\+[^[:space:]]+' | head -1 || true)
-          fi
+          VERSION=$(docker exec "${CONTAINER_ID}" rstudio-server version 2>/dev/null \
+                    | grep -oE '[0-9]{4}\.[0-9]+\.[0-9]+\+[^[:space:]]+' | head -1 || true)
 
           if [ -z "${VERSION}" ]; then
             echo "ERROR: Could not resolve Workbench version"
@@ -254,38 +227,16 @@ jobs:
       # Wait for Package Manager health check
       - name: Wait for Package Manager to be ready
         if: steps.pm-license.outputs.available == 'true'
-        run: |
-          echo "Waiting for Package Manager to start..."
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:4242/__api__/status > /dev/null 2>&1; then
-              echo "Package Manager is ready (attempt ${i})"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Package Manager failed to start within 120 seconds"
-          docker logs packagemanager
-          exit 1
+        run: bash scripts/ci/wait-for-package-manager.sh
 
       # Surface license errors as workflow annotations
       - name: Check for license errors
         if: failure() && steps.pm-license.outputs.available == 'true'
-        run: |
-          LOGS=$(docker logs packagemanager 2>&1 || true)
-          LICENSE_MSG=$(echo "${LOGS}" | grep -i "license" | grep -iE "expired|invalid|unable|not activated" | head -1 || true)
-          if [ -n "${LICENSE_MSG}" ]; then
-            echo "::error title=License Error::${LICENSE_MSG}"
-            {
-              echo "## License Error"
-              echo ""
-              echo "The Package Manager license key is expired or invalid. Update the \`RSPM_LICENSE\` repository secret."
-              echo ""
-              echo '```'
-              echo "${LICENSE_MSG}"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
+        uses: ./.github/actions/check-license-errors
+        with:
+          product: Package Manager
+          secret-name: RSPM_LICENSE
+          container: packagemanager
 
       # Provision CRAN and PyPI repositories for smoke testing
       - name: Provision smoke test repositories
@@ -325,15 +276,8 @@ jobs:
           echo "Resolved Package Manager version: ${VERSION}"
           echo "resolved=${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --all-extras
-
-      - name: Install Playwright browsers
-        run: uv run vip install --skip-system
+      - name: Set up VIP
+        uses: ./.github/actions/setup-vip
 
       # Generate vip.toml from with-connect and PM outputs
       - name: Configure VIP for CI

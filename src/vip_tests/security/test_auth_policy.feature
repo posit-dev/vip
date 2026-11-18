@@ -9,6 +9,7 @@ Feature: Authentication policy alignment
     When I check the auth configuration
     Then the configured provider matches expectations
 
+  @requires_connect
   Scenario: Unauthenticated API access is denied
     Given Connect is configured in vip.toml
     When I make an unauthenticated API request to Connect

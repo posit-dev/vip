@@ -15,13 +15,19 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
 
+# Pushes to a PR branch cancel that PR's older run. Every other event keys on
+# its own run id, so runs on main, schedules and tags are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   check-title:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Validate PR title
-        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6
+        uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6 # v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

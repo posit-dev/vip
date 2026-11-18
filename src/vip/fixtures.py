@@ -50,7 +50,7 @@ of its tests fail in setup, because ``_connect_content_cleanup`` requests
 ``connect_client``, which calls ``require_connect_api_key`` and fails loudly
 when Connect is configured but unauthenticated. This was caught empirically:
 ``selftests/plugin/test_marker_deselection.py::TestPluginIntegration::
-test_bdd_given_configured_product_not_deselected`` configures Connect with no
+test_bdd_requires_tag_runs_when_configured`` configures Connect with no
 API key to exercise deselection logic, and broke exactly this way when the
 cleanup fixtures were briefly moved here during development. Extension
 directories therefore do not get automatic Connect-content cleanup -- a real,

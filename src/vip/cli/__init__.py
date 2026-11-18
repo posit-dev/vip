@@ -8,6 +8,7 @@ not change the global the submodule looks up.
 
 from vip.cli.app import _reorder_help_args, main
 from vip.cli.auth import mint_connect_key
+from vip.cli.bundle import run_bundle
 from vip.cli.cleanup import _cleanup_workbench_sessions, run_cleanup
 from vip.cli.install import run_install, run_uninstall
 from vip.cli.report import (
@@ -44,6 +45,7 @@ __all__ = [
     "_reorder_help_args",
     "main",
     "mint_connect_key",
+    "run_bundle",
     "run_cleanup",
     "run_install",
     "run_report",

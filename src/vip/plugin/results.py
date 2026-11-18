@@ -16,11 +16,18 @@ from typing import Any
 
 import pytest
 
+try:
+    from pytest_bdd.scenario import scenario_wrapper_template_registry
+except ImportError:  # private API; see _scenario_for
+    scenario_wrapper_template_registry = None  # type: ignore[assignment]
+
 from vip import __version__ as vip_version
 from vip.attest import UNPROVEN_SENTINEL
+from vip.bundle.summary import proxy_url_secrets, strip_proxy_userinfo
 from vip.config import VIPConfig
 from vip.plugin import state
 from vip.plugin.terminal import _outcome_color
+from vip.proxy import build_proxy_map
 from vip.reporting import VALID_FORMATS, load_results, write_junit_xml, write_sarif
 from vip.stash import (
     _auth_session_key,
@@ -37,6 +44,10 @@ _PRODUCT_MARKERS = {
     "workbench": "workbench",
     "package_manager": "package_manager",
 }
+
+# Mapping from feature-file tag (``@requires_connect`` etc.) to product config key.
+# These tags only gate collection; unlike _PRODUCT_MARKERS they don't define a category.
+_REQUIRES_MARKERS = {f"requires_{key}": key for key in _PRODUCT_MARKERS.values()}
 
 #: Exit code for a run in which nothing failed but something went unverified.
 #: Deliberately distinct from pytest's own codes (0 ok, 1 failed, 2 interrupted,
@@ -56,14 +67,51 @@ UNPROVEN_DISPLAY_PREFIX = "UNPROVEN: "
 # ---------------------------------------------------------------------------
 
 
+def _scenario_for(item: pytest.Item) -> Any | None:
+    """Return the pytest-bdd scenario template behind *item*, or None for a non-BDD test.
+
+    pytest-bdd has no public way to reach a scenario at collection time, so this reads its
+    internal ``scenario_wrapper_template_registry``. Keep every read of pytest-bdd internals in
+    this function and ``_scenario_given_steps``. If a pytest-bdd release moves the registry,
+    this returns None instead of breaking the plugin, and ``selftests/plugin/test_json_report.py``
+    fails.
+    """
+    fn = getattr(item, "obj", None)
+    if fn is None or scenario_wrapper_template_registry is None:
+        return None
+    try:
+        return scenario_wrapper_template_registry.get(fn)
+    except TypeError:  # obj isn't weak-referenceable, so it can't be a scenario wrapper
+        return None
+
+
+def _scenario_given_steps(item: pytest.Item) -> list[str]:
+    """Return the text of every Given step *item* runs, Background steps included.
+
+    For a Scenario Outline the steps are rendered with the item's Examples row, so
+    ``<product> is configured`` comes back as ``Connect is configured``. This reads the private
+    template ``render``/``steps`` API and the ``_pytest_bdd_example`` parameter, so if their shape
+    changes it returns ``[]`` rather than failing collection, and the guard-warning selftests in
+    ``selftests/plugin/test_marker_deselection.py`` fail.
+    """
+    template = _scenario_for(item)
+    if template is None:
+        return []
+    callspec = getattr(item, "callspec", None)
+    example = callspec.params.get("_pytest_bdd_example") if callspec is not None else None
+    try:
+        steps = template.render(example).steps if isinstance(example, dict) else template.steps
+        return [step.name for step in steps if step.type == "given"]
+    except (AttributeError, KeyError, TypeError):  # private API changed shape; see docstring
+        return []
+
+
 def _stash_scenario_metadata(item: pytest.Item) -> None:
     """Extract pytest-bdd scenario metadata and stash it on the item."""
     scenario_title = None
     feature_description = None
 
-    # pytest-bdd stores scenario info as __scenario__ on the wrapper function.
-    fn = getattr(item, "obj", None)
-    scenario_obj = getattr(fn, "__scenario__", None) if fn else None
+    scenario_obj = _scenario_for(item)
     if scenario_obj is not None:
         scenario_title = getattr(scenario_obj, "name", None)
         feature_obj = getattr(scenario_obj, "feature", None)
@@ -455,6 +503,49 @@ def _apply_unproven_exit_status(session: pytest.Session, exitstatus: int) -> int
     return EXIT_UNPROVEN
 
 
+def _vip_base(raw: str | None) -> Any:
+    """Parse ``--vip-base``, the identity of the config file ``vip verify`` started from."""
+    try:
+        return json.loads(raw) if raw else None
+    except ValueError:
+        return None
+
+
+def _run_settings(cfg: VIPConfig) -> dict[str, Any]:
+    """Return the non-secret settings the run used, for ``vip bundle``.
+
+    ``effective`` lists the proxies the run really used (explicit or from the
+    environment) without userinfo, each flagged when it carried a user name or
+    password, so the bundle can tell when its secret scan cannot know them.
+    """
+    proxy = cfg.proxy
+    effective: dict[str, bool] = {}
+    # A run with no product makes no egress, and resolving the map would print the
+    # lone-HTTP_PROXY promotion notice for an unrelated project's pytest run.
+    configured = any(pc.is_configured for pc in (cfg.connect, cfg.workbench, cfg.package_manager))
+    # The explicit url is always listed: a bypass or a missing product removes its
+    # route, but its credential can still reach the output.
+    used_proxies = [proxy.url, *(build_proxy_map(proxy).values() if configured else ())]
+    for used in used_proxies:
+        if used:
+            url = strip_proxy_userinfo(used)
+            effective[url] = effective.get(url, False) or bool(proxy_url_secrets("proxy", used))
+    return {
+        "insecure": cfg.insecure,
+        "ca_bundle": str(cfg.ca_bundle) if cfg.ca_bundle is not None else None,
+        "auth": {"provider": cfg.auth.provider, "idp": cfg.auth.idp},
+        "proxy": {
+            "url": strip_proxy_userinfo(proxy.url),
+            "no_proxy": list(proxy.no_proxy),
+            "enabled": proxy.enabled,
+            "trust_env": proxy.trust_env,
+            "effective": [
+                {"url": url, "credentials": credentials} for url, credentials in effective.items()
+            ],
+        },
+    }
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Clean up the auth session, apply the unproven exit status, and write the report.
 
@@ -515,8 +606,12 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         "platform": platform.platform(),
         "basic_mode": basic_mode,
         "products": products,
+        "settings": _run_settings(cfg),
         "results": results,
     }
+    base = _vip_base(session.config.getoption("--vip-base"))
+    if base is not None:
+        payload["base"] = base
 
     try:
         p = Path(report_path)

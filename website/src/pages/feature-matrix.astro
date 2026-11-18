@@ -8,7 +8,6 @@ const base = import.meta.env.BASE_URL;
 const products = matrix.products;
 const productSpecific = matrix.product_specific;
 const crossCutting = matrix.cross_cutting;
-const notCovered = matrix.not_covered;
 const productTotals = matrix.product_totals;
 
 const totalAreas = productSpecific.length + crossCutting.length;
@@ -154,25 +153,6 @@ const productTotalSum = Object.values(productTotals).reduce((a, b) => a + b, 0);
             <span class="host-platform-icon">&#10003;</span>
             <strong>macOS</strong>
           </div>
-        </div>
-      </div>
-
-      {/* Not yet covered section */}
-      <div class="not-covered-section">
-        <h2>Not Yet Covered</h2>
-        <p class="not-covered-desc">
-          The following areas are planned for future VIP releases:
-        </p>
-        <div class="not-covered-grid">
-          {notCovered.map((item) => (
-            <div class="not-covered-card">
-              <span class="not-covered-icon">&#9711;</span>
-              <div>
-                <strong>{item.name}</strong>
-                <span class="not-covered-reason">{item.description}</span>
-              </div>
-            </div>
-          ))}
         </div>
       </div>
     </div>
@@ -455,60 +435,6 @@ const productTotalSum = Object.values(productTotals).reduce((a, b) => a + b, 0);
     color: var(--posit-gray-900);
   }
 
-  /* Not yet covered */
-  .not-covered-section {
-    margin-top: 2.5rem;
-  }
-
-  .not-covered-section h2 {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--posit-navy);
-    margin-bottom: 0.5rem;
-  }
-
-  .not-covered-desc {
-    color: var(--posit-text-muted);
-    font-size: 0.9375rem;
-    margin-bottom: 1.25rem;
-  }
-
-  .not-covered-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 0.75rem;
-  }
-
-  .not-covered-card {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    background: white;
-    border: 1px solid var(--posit-border);
-    border-radius: var(--radius);
-    padding: 1rem 1.25rem;
-    border-left: 3px solid var(--posit-border);
-  }
-
-  .not-covered-icon {
-    color: var(--posit-text-muted);
-    font-size: 0.875rem;
-    flex-shrink: 0;
-    margin-top: 0.125rem;
-  }
-
-  .not-covered-card strong {
-    display: block;
-    font-size: 0.9375rem;
-    color: var(--posit-gray-900);
-    margin-bottom: 0.125rem;
-  }
-
-  .not-covered-reason {
-    font-size: 0.8125rem;
-    color: var(--posit-text-muted);
-  }
-
   @media (max-width: 768px) {
     .legend {
       flex-wrap: wrap;
@@ -519,10 +445,6 @@ const productTotalSum = Object.values(productTotals).reduce((a, b) => a + b, 0);
     }
 
     .host-platforms-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .not-covered-grid {
       grid-template-columns: 1fr;
     }
   }

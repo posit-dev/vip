@@ -4,6 +4,7 @@ Feature: Concurrent request load testing
   I want to verify that each product handles concurrent authenticated API requests
   So that the deployment performs acceptably under burst traffic
 
+  @requires_connect
   Scenario Outline: Connect handles <users> concurrent requests
     Given Connect is configured in vip.toml
     When I run a load test with <users> concurrent users against Connect
@@ -17,6 +18,7 @@ Feature: Concurrent request load testing
       | 1000  |
       | 10000 |
 
+  @requires_workbench
   Scenario Outline: Workbench handles <users> concurrent requests
     Given Workbench is configured in vip.toml
     When I run a load test with <users> concurrent users against Workbench
@@ -30,6 +32,7 @@ Feature: Concurrent request load testing
       | 1000  |
       | 10000 |
 
+  @requires_package_manager
   Scenario Outline: Package Manager handles <users> concurrent requests
     Given Package Manager is configured in vip.toml
     When I run a load test with <users> concurrent users against Package Manager

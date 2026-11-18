@@ -8,6 +8,7 @@ from pathlib import Path
 
 from vip import __version__
 from vip.cli.auth import mint_connect_key
+from vip.cli.bundle import run_bundle
 from vip.cli.cleanup import run_cleanup
 from vip.cli.install import run_install, run_uninstall
 from vip.cli.report import run_report
@@ -96,8 +97,10 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    # URL args (no config file needed)
-    url_group = verify_parser.add_argument_group("product URLs (no config file needed)")
+    # URL args (no config file needed; with one, they override it)
+    url_group = verify_parser.add_argument_group(
+        "product URLs (no config file needed; override one if given)"
+    )
     url_group.add_argument("--connect-url", default=None, help="Connect server URL")
     url_group.add_argument("--workbench-url", default=None, help="Workbench server URL")
     url_group.add_argument("--package-manager-url", default=None, help="Package Manager server URL")
@@ -163,11 +166,9 @@ def main() -> None:
             "Applies to the product API clients, the auth/probe requests, and the "
             "Playwright browser login. Overrides HTTP_PROXY/HTTPS_PROXY, and also "
             "supersedes any NO_PROXY in the environment (repeat bypass hosts with "
-            "--no-proxy). Only takes effect alongside the product-URL flags; it is "
-            "ignored on a run that loads a config file, whether via --config or a "
-            "./vip.toml (use a [proxy] section there instead). When omitted, VIP "
-            "reads the ambient HTTP_PROXY/HTTPS_PROXY/NO_PROXY environment (same "
-            "as httpx)."
+            "--no-proxy). Overrides a [proxy] url in the config file. When omitted, "
+            "VIP reads the ambient HTTP_PROXY/HTTPS_PROXY/NO_PROXY environment "
+            "(same as httpx)."
         ),
     )
     proxy_group.add_argument(
@@ -178,9 +179,9 @@ def main() -> None:
             "Comma-separated hosts to reach directly, bypassing --proxy "
             "(e.g. localhost,.internal.example). With no --proxy, passing an "
             "empty value (--no-proxy '') disables proxying entirely, ignoring "
-            "any proxy environment variables. Ignored on a run that loads a "
-            "config file, whether via --config or a ./vip.toml (use a [proxy] "
-            "section there instead)."
+            "any proxy environment variables, and the config file's [proxy] url is "
+            "dropped. Otherwise this replaces the config file's no_proxy list, even "
+            "with an empty value."
         ),
     )
 
@@ -491,6 +492,61 @@ def main() -> None:
     )
     report_parser.set_defaults(func=run_report)
 
+    # vip bundle
+    bundle_parser = subparsers.add_parser(
+        "bundle",
+        help=(
+            "Write a zip of the report output to share. It leaves out vip.toml and "
+            "the auth cache, and checks each file for known credentials."
+        ),
+    )
+    bundle_parser.add_argument(
+        "--results",
+        default=None,
+        help="Path to results.json (default: report/results.json)",
+    )
+    bundle_config = bundle_parser.add_mutually_exclusive_group()
+    bundle_config.add_argument(
+        "--config",
+        default=None,
+        help="Path to vip.toml (default: VIP_CONFIG env var or vip.toml next to report/)",
+    )
+    bundle_config.add_argument(
+        "--no-config",
+        action="store_true",
+        default=False,
+        help=(
+            "Write the bundle with no vip.toml and no configuration summary. The "
+            "secret scan then uses only the environment variables, the product URLs "
+            "in results.json, and the auth cache."
+        ),
+    )
+    bundle_parser.add_argument(
+        "--output",
+        default=None,
+        help="Path of the zip (default: vip-bundle-<deployment>-<UTC time>.zip next to report/)",
+    )
+    bundle_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Overwrite the output file if it already exists",
+    )
+    bundle_parser.add_argument(
+        "--allow-match",
+        action="append",
+        default=[],
+        metavar="LABEL",
+        help=(
+            "Write the bundle even though a file holds the value of LABEL, for "
+            "example auth.password. LABEL must be a label from the secret scan "
+            "error. Quote a label that holds spaces. The value then stays in the "
+            "zip, so use it only when the value is not a real secret. The manifest "
+            "records it. Repeat for more labels."
+        ),
+    )
+    bundle_parser.set_defaults(func=run_bundle)
+
     # vip status
     status_parser = subparsers.add_parser(
         "status",
@@ -563,6 +619,7 @@ def main() -> None:
         "uninstall": uninstall_parser,
         "auth": auth_parser,
         "report": report_parser,
+        "bundle": bundle_parser,
         "status": status_parser,
         "scaffold": scaffold_parser,
     }

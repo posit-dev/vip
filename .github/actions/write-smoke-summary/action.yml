@@ -1,0 +1,79 @@
+name: Write smoke test summary
+description: >-
+  Writes the job summary for a smoke test run: a table of the requested and resolved product
+  versions, the product URL and the run date, then pass/fail/error/skip counts read from the
+  JUnit XML file. Call it from a step gated on `if: always()` so a failed run is still summarized.
+
+inputs:
+  product:
+    description: "Product name for the heading and the URL row, e.g. `Connect`."
+    required: true
+  requested-version:
+    description: "The version the matrix asked for."
+    required: true
+  resolved-version:
+    description: "The version the running product reported. May be empty if the run failed before it was resolved."
+    required: false
+    default: ""
+  url:
+    description: "URL of the running product. May be empty if the run failed before it started."
+    required: false
+    default: ""
+  results-file:
+    description: "Path to the JUnit XML file, relative to the working directory."
+    required: false
+    default: smoke-results.xml
+
+runs:
+  using: composite
+  steps:
+    - name: Write job summary
+      shell: bash
+      env:
+        PRODUCT: ${{ inputs.product }}
+        REQUESTED: ${{ inputs.requested-version }}
+        RESOLVED: ${{ inputs.resolved-version }}
+        PRODUCT_URL: ${{ inputs.url }}
+        RESULTS_FILE: ${{ inputs.results-file }}
+      run: |
+        RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+        {
+          echo "## 🧪 ${PRODUCT} Smoke Tests — v${RESOLVED}"
+          echo ""
+          echo "| | |"
+          echo "|---|---|"
+          echo "| 🏷️ **Requested version** | \`${REQUESTED}\` |"
+          echo "| ✅ **Resolved version** | \`${RESOLVED}\` |"
+          echo "| 🌐 **${PRODUCT} URL** | \`${PRODUCT_URL}\` |"
+          echo "| 📅 **Run date** | ${RUN_DATE} |"
+          echo ""
+        } >> "$GITHUB_STEP_SUMMARY"
+        if [ -f "${RESULTS_FILE}" ]; then
+          # A grep that finds nothing exits 1, which `-o pipefail` would turn into a
+          # failed step; the `|| true` keeps a missing attribute meaning zero.
+          TESTS=$(grep -oP '(?<=tests=")[^"]+' "${RESULTS_FILE}" | head -1 || true)
+          FAILURES=$(grep -oP '(?<=failures=")[^"]+' "${RESULTS_FILE}" | head -1 || true)
+          ERRORS=$(grep -oP '(?<=errors=")[^"]+' "${RESULTS_FILE}" | head -1 || true)
+          SKIPPED=$(grep -oP '(?<=skipped=")[^"]+' "${RESULTS_FILE}" | head -1 || true)
+          TESTS=${TESTS:-0}; FAILURES=${FAILURES:-0}; ERRORS=${ERRORS:-0}; SKIPPED=${SKIPPED:-0}
+          PASSED=$(( TESTS - FAILURES - ERRORS - SKIPPED ))
+          {
+            echo "### 📊 Test Results"
+            echo ""
+            echo "| Result | Count |"
+            echo "|--------|-------|"
+            echo "| ✅ Passed | ${PASSED} |"
+            echo "| ❌ Failed | ${FAILURES} |"
+            echo "| ⚠️ Errors | ${ERRORS} |"
+            echo "| ⏭️ Skipped | ${SKIPPED} |"
+            echo "| 📝 **Total** | **${TESTS}** |"
+            echo ""
+            if [ "${FAILURES}" = "0" ] && [ "${ERRORS}" = "0" ]; then
+              echo "🎉 **All tests passed!**"
+            else
+              echo "💥 **Some tests failed — check the logs for details.**"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "> ⚠️ Test results file not found — tests may have been skipped." >> "$GITHUB_STEP_SUMMARY"
+        fi

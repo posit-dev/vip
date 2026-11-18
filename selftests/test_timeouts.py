@@ -67,7 +67,7 @@ class TestWorkbenchConftestConstants:
         importlib.reload(timeouts)
         importlib.reload(conftest)
         try:
-            assert conftest.TIMEOUT_SESSION_START == 180_000
+            assert conftest.TIMEOUT_SESSION_START == 360_000
             assert conftest.TIMEOUT_IDE_LOAD == 120_000
             assert conftest.TIMEOUT_PAGE_LOAD == 30_000
             assert conftest.TIMEOUT_QUICK == 10_000
@@ -84,7 +84,7 @@ class TestWorkbenchConftestConstants:
         importlib.reload(timeouts)
         importlib.reload(conftest)
         try:
-            assert conftest.TIMEOUT_SESSION_START == 90_000
+            assert conftest.TIMEOUT_SESSION_START == 180_000
             assert conftest.TIMEOUT_IDE_LOAD == 60_000
             assert conftest.TIMEOUT_SSO_ROUNDTRIP == 60_000
         finally:

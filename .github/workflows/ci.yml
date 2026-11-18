@@ -11,6 +11,12 @@ on:
   # `changes` job below gates the expensive code jobs.
   pull_request:
 
+# Pushes to a PR branch cancel that PR's older run. Every other event keys on
+# its own run id, so runs on main, schedules and tags are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   # Detect whether this PR/push touches code that the CI jobs actually validate.
   # Expensive jobs gate on `relevant`; the always-run required checks (lint and
@@ -39,6 +45,7 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.github/workflows/**'
+              - '.github/actions/**'
               - '.github/zizmor.yml'
               - '.github/dependabot.yml'
 
@@ -74,7 +81,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
 
@@ -97,14 +104,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Enforce SHA-pinned actions and credential hygiene
         env:
           ENFORCED_AUDITS: "unpinned-uses artipacked"
         run: |
           set +e
-          zizmor_output=$(uvx zizmor==1.24.1 --config .github/zizmor.yml --format=json .github/workflows/)
+          zizmor_output=$(uvx zizmor==1.24.1 --config .github/zizmor.yml --format=json .github/workflows/ .github/actions/)
           zizmor_status=$?
           set -e
 
@@ -119,7 +126,7 @@ jobs:
               | jq --arg a "$audit" '[.[] | select(.ident == $a)] | length')
             if [ "$count" -gt 0 ]; then
               echo "::error::Found $count '$audit' finding(s). See documentation: https://docs.zizmor.sh/audits/#$audit"
-              uvx zizmor==1.24.1 --config .github/zizmor.yml .github/workflows/ 2>&1 | grep -B1 -A6 "$audit" || true
+              uvx zizmor==1.24.1 --config .github/zizmor.yml .github/workflows/ .github/actions/ 2>&1 | grep -B1 -A6 "$audit" || true
               fail=1
             fi
           done
@@ -137,7 +144,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
 
@@ -168,7 +175,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
 
@@ -210,7 +217,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
 

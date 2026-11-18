@@ -4,6 +4,7 @@ Feature: Cross-product integration
   I want to verify that products are integrated with each other
   So that the deployment functions as a cohesive platform
 
+  @connect @api_auth @requires_package_manager
   Scenario: Content deployed on Connect uses packages from Package Manager
     Given Connect is configured in vip.toml
     And Package Manager is configured in vip.toml

@@ -1,6 +1,6 @@
 [project]
 name = "posit-vip"
-version = "2026.10.3"
+version = "2026.11.1"
 description = "Verified Installation of Posit - An extensible test suite for validating Posit Team deployments"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -26,7 +26,7 @@ dependencies = [
     "playwright==1.64.0",  # exact-pinned: shapes vip run output; see docs/development.md
     "pyotp~=2.9",
     "pytest==9.1.1",  # exact-pinned; at/above CVE-2025-71176 floor (9.0.3)
-    "pytest-bdd==8.1.0",  # exact-pinned
+    "pytest-bdd==9.0.1",  # exact-pinned
     "pytest-order==1.5.0",  # exact-pinned
     "pytest-playwright==0.10.0",  # exact-pinned
     "pytest-xdist==3.8.0",  # exact-pinned
@@ -48,7 +48,7 @@ dependencies = [
     "ipykernel<8",
     "nbformat>=5.7,<6",
     "nbclient>=0.8,<1",
-    "tornado>=6.5.7,<7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f fix; transitive via ipykernel
+    "tornado>=6.6.1,<7",  # CVE-2026-31958, GHSA-pw6j-qg29-8w7f, CVE-2026-126347 fix; transitive via ipykernel
 ]
 
 [project.optional-dependencies]
@@ -64,10 +64,11 @@ load = [
     "python-socketio>=5.16.2,<6",  # CVE-2026-48804 fix; transitive via locust
 ]
 dev = [
-    "ruff==0.17.0",
+    "ruff==0.17.1",
     "mypy>=1.10",
     "pytest-cov>=6.0",
     "pip-audit>=2.7",
+    "gherkin-official",  # imported by selftests/test_requires_tags.py; pytest-bdd sets its range
     "msgpack>=1.2.1",  # GHSA-6v7p-g79w-8964 fix; transitive via pip-audit (cachecontrol)
 ]
 
@@ -155,7 +156,7 @@ required-version = ">=0.11"
 # urllib3 and certifi are transitive. Floor each at the first release that fixes
 # its advisories (urllib3: CVE-2026-97687/97688/97689; certifi: GHSA-6q48-6c7w-9gw2)
 # so a relock cannot resolve back to a vulnerable version.
-constraint-dependencies = ["urllib3>=2.8.0", "certifi>=2026.10.19"]
+constraint-dependencies = ["urllib3>=2.8.0", "certifi>=2026.10.19", "brotli>=1.2.1", "werkzeug>=3.1.9"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vip", "src/vip_tests"]
@@ -195,6 +196,9 @@ markers = [
     "connect: tests for Posit Connect",
     "workbench: tests for Posit Workbench",
     "package_manager: tests for Posit Package Manager",
+    "requires_connect: deselect when Connect is not configured",
+    "requires_workbench: deselect when Workbench is not configured",
+    "requires_package_manager: deselect when Package Manager is not configured",
     "prerequisites: prerequisite checks that run first",
     "cross_product: tests that span multiple products",
     "performance: performance validation tests (opt-in; excluded by default)",

@@ -2,6 +2,7 @@ name: Feature request
 description: Suggest an enhancement or new capability for VIP
 title: "[Feature] "
 labels: ["enhancement"]
+type: Enhancement
 body:
   - type: markdown
     attributes:

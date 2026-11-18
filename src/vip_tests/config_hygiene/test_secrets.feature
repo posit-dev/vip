@@ -9,6 +9,7 @@ Feature: Secure storage of VIP's own secrets and tokens
     When I inspect the configuration file contents
     Then no plaintext API keys or passwords are present in the file
 
+  @requires_connect
   Scenario: Connect API key is provided via environment variable
     Given Connect is configured with an API key
     Then the API key was loaded from the VIP_CONNECT_API_KEY environment variable

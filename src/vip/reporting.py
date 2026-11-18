@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import vip_tests
 from vip import __version__
@@ -314,6 +315,11 @@ def write_junit_xml(data: ReportData, path: str | Path) -> None:
         skipped=str(data.skipped),
         time=f"{sum(r.duration for r in data.results):.3f}",
     )
+    # The same value is in results.json, so a reader can tell that the two
+    # files are from one run.
+    if data.generated_at:
+        properties = ET.SubElement(suite, "properties")
+        ET.SubElement(properties, "property", name="generated_at", value=data.generated_at)
     for r in data.results:
         case = ET.SubElement(
             suite,
@@ -384,22 +390,25 @@ def write_sarif(data: ReportData, path: str | Path) -> None:
             }
         )
 
+    run: dict[str, Any] = {
+        "tool": {
+            "driver": {
+                "name": "vip",
+                "version": __version__,
+                "informationUri": "https://github.com/posit-dev/vip",
+                "rules": list(rules.values()),
+            }
+        },
+        "results": results,
+    }
+    # The same value is in results.json, so a reader can tell that the two
+    # files are from one run.
+    if data.generated_at:
+        run["properties"] = {"generated_at": data.generated_at}
     doc = {
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "version": "2.1.0",
-        "runs": [
-            {
-                "tool": {
-                    "driver": {
-                        "name": "vip",
-                        "version": __version__,
-                        "informationUri": "https://github.com/posit-dev/vip",
-                        "rules": list(rules.values()),
-                    }
-                },
-                "results": results,
-            }
-        ],
+        "runs": [run],
     }
 
     p = Path(path)

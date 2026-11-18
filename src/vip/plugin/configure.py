@@ -56,12 +56,6 @@ def pytest_configure(config: pytest.Config) -> None:
         "ignore:ssl.TLSVersion.TLSv1_1:DeprecationWarning",
         # pytest-bdd scenario functions return fixture values; not a real issue.
         "ignore::pytest.PytestReturnNotNoneWarning",
-        # pytest-bdd 8.1.0 injects fixtures via _register_fixture(nodeid=...) and
-        # FixtureDef(baseid=...), which pytest >= 9.1 deprecates in favor of node=.
-        # Framework-level and only fixable when pytest-bdd updates; nothing VIP can
-        # change. A category filter is required because the warning surfaces from two
-        # modules (pytest_bdd and _pytest.fixtures), so module/message scoping misses one.
-        "ignore::pytest.PytestRemovedIn10Warning",
         # gevent monkey-patching happens after ssl is imported by other plugins;
         # unavoidable without patching at process start.
         "ignore:Monkey-patching ssl",
@@ -72,6 +66,13 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "connect: tests for Posit Connect")
     config.addinivalue_line("markers", "workbench: tests for Posit Workbench")
     config.addinivalue_line("markers", "package_manager: tests for Posit Package Manager")
+    config.addinivalue_line("markers", "requires_connect: deselect when Connect is not configured")
+    config.addinivalue_line(
+        "markers", "requires_workbench: deselect when Workbench is not configured"
+    )
+    config.addinivalue_line(
+        "markers", "requires_package_manager: deselect when Package Manager is not configured"
+    )
     config.addinivalue_line("markers", "prerequisites: prerequisite checks")
     config.addinivalue_line("markers", "cross_product: cross-product / admin tests")
     config.addinivalue_line(
