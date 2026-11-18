@@ -15,6 +15,12 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
 
+# Pushes to a PR branch cancel that PR's older run. Every other event keys on
+# its own run id, so runs on main, schedules and tags are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   check-title:
     runs-on: ubuntu-latest
