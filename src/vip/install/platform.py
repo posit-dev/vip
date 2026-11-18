@@ -90,6 +90,7 @@ RHEL_PACKAGES: tuple[str, ...] = (
     "libXtst",
     "libxshmfence",
     "alsa-lib",
+    "libatomic",  # Playwright's bundled Node driver, not Chromium
 )
 
 # Debian/Ubuntu equivalents. Mirrored from Playwright nativeDeps.ts at the version
@@ -116,6 +117,7 @@ DEBIAN_PACKAGES: tuple[str, ...] = (
     "libxext6",
     "libdbus-1-3",
     "libglib2.0-0",
+    "libatomic1",  # Playwright's bundled Node driver, not Chromium
 )
 
 # Ubuntu 24.04+ renamed libasound2 → libasound2t64 as part of the 64-bit time_t
@@ -144,7 +146,7 @@ def debian_packages(platform_info: PlatformInfo) -> tuple[str, ...]:
 # When updating the playwright pin in pyproject.toml, review DEBIAN_PACKAGES against
 # https://github.com/microsoft/playwright/blob/main/packages/playwright-core/src/server/registry/nativeDeps.ts
 # and update this value. The selftest enforces that they match.
-LIST_REVIEWED_AGAINST_PLAYWRIGHT = "1.64.0"
+LIST_REVIEWED_AGAINST_PLAYWRIGHT = "1.65.0"
 
 
 # openSUSE/SLES equivalents. Names from `zypper search --provides` against
@@ -174,7 +176,8 @@ SUSE_PACKAGES: tuple[str, ...] = (
     "libglib-2_0-0",
     "fontconfig",
     "liberation-fonts",
+    "libatomic1",  # Playwright's bundled Node driver, not Chromium
 )
 
 # Mirror of LIST_REVIEWED_AGAINST_PLAYWRIGHT for the SUSE list.
-LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE = "1.64.0"
+LIST_REVIEWED_AGAINST_PLAYWRIGHT_SUSE = "1.65.0"
