@@ -39,6 +39,21 @@ For fully unattended runs against an MFA-protected service account,
 Only use it with a dedicated test service account, never with a
             personal IdP account, and store it in the same secret store as
 <code>VIP_TEST_PASSWORD</code>.
+</p> <h3 id="auth-cache">Where the saved session lives</h3> <p>
+Interactive and headless auth save the browser session and the
+            minted Connect API key for 4 hours, so the next run from the same
+            directory skips the login. VIP keeps one cache for each directory
+            you run it from, outside that directory, so a zipped or shared VIP
+            folder never contains it:
+</p> <ul> <li>Linux and macOS: <code>$XDG_CACHE_HOME/vip/auth/</code>, or <code>~/.cache/vip/auth/</code> when <code>XDG_CACHE_HOME</code> is unset</li> <li>Windows: <code>%LOCALAPPDATA%\vip\auth\</code></li> </ul> <p>
+Only your user can read these folders. Each <code>vip verify</code>
+or <code>vip cleanup</code> deletes caches older than 4 hours, and
+            the next login removes their API keys from Connect. To sign out
+            sooner, delete the <code>vip/auth</code> folder. Older releases
+            saved <code>.vip-auth-cache.json</code> and
+<code>.vip-auth-cache.meta.json</code> in the working directory;
+            the first run of a newer release moves them, or deletes them if it
+            cannot.
 </p> <h3 id="api-auth">API-key-only auth</h3> <p>
 If you only have an API key and no browser credentials, use
 <code>--api-auth</code> to run only the tests that can authenticate
@@ -48,13 +63,33 @@ If you only have an API key and no browser credentials, use
 vip verify --connect-url https://connect.example.com --api-auth</code></pre> <p>
 This is useful in CI pipelines or environments where interactive
             login is not possible and no test user credentials are available.
+</p> <p>
+Workbench works the same way with a Workbench API token. Under
+<code>--api-auth</code>, VIP launches RStudio, VS Code, JupyterLab,
+            and Positron through the Workbench API for the test user, waits until
+            each session is running, then stops it. The other Workbench tests
+            need a browser login and are skipped. Create a super-admin token on
+            the Workbench server (an admin token cannot launch sessions, and a
+            user token works only for its owner):
+</p> <pre><code>rstudio-server generate-api-token super-admin vip test-user
+export VIP_WORKBENCH_API_KEY="the-token"
+export VIP_TEST_USERNAME="test-user"
+vip verify --workbench-url https://workbench.example.com --api-auth</code></pre> <p>
+The API needs an Enhanced or Advanced license and is off by default.
+            Add <code>workbench-api-enabled=1</code> and
+<code>workbench-api-super-admin-enabled=1</code> to
+<code>rserver.conf</code> and restart Workbench. If no token is set,
+            VIP reports the launch checks as unproven rather than passing them; if
+            Workbench rejects the token, the checks fail with its reply.
+<code>vip cleanup</code> uses the same token to remove leftover VIP
+            sessions without a browser sign-in.
 </p> <h3 id="credential-auth">Credential-based auth</h3> <p>
 If you have API keys and test user credentials, disable interactive
             auth and set environment variables:
 </p> <pre><code>export VIP_CONNECT_API_KEY="your-api-key"
 export VIP_TEST_USERNAME="test-user"
 export VIP_TEST_PASSWORD="test-password"
-vip verify --connect-url https://connect.example.com --no-interactive-auth</code></pre> <h3 id="auth-env-vars">Environment variables</h3> <div class="table-wrap"> <table> <thead> <tr> <th>Variable</th> <th>Purpose</th> </tr> </thead> <tbody> <tr> <td><code>VIP_CONNECT_API_KEY</code></td> <td>Connect admin API key</td> </tr> <tr> <td><code>VIP_WORKBENCH_API_KEY</code></td> <td>Workbench admin API key</td> </tr> <tr> <td><code>VIP_PACKAGE_MANAGER_TOKEN</code></td> <td>Package Manager token</td> </tr> <tr> <td><code>VIP_TEST_USERNAME</code></td> <td>Test user login name</td> </tr> <tr> <td><code>VIP_TEST_PASSWORD</code></td> <td>Test user login password</td> </tr> <tr> <td><code>VIP_TEST_TOTP_SECRET</code></td> <td>Base32 TOTP seed for the test service account. Optional; only used by <code>--headless-auth</code> when the IdP issues an MFA challenge.</td> </tr> </tbody> </table> </div> </section> <section id="running-tests"> <h2>Running tests</h2> <p>Target specific products or test categories:</p> <pre><code># Run all tests
+vip verify --connect-url https://connect.example.com --no-interactive-auth</code></pre> <h3 id="auth-env-vars">Environment variables</h3> <div class="table-wrap"> <table> <thead> <tr> <th>Variable</th> <th>Purpose</th> </tr> </thead> <tbody> <tr> <td><code>VIP_CONNECT_API_KEY</code></td> <td>Connect admin API key</td> </tr> <tr> <td><code>VIP_WORKBENCH_API_KEY</code></td> <td>Workbench API token (super-admin, for <code>--api-auth</code> session launches)</td> </tr> <tr> <td><code>VIP_PACKAGE_MANAGER_TOKEN</code></td> <td>Package Manager token</td> </tr> <tr> <td><code>VIP_TEST_USERNAME</code></td> <td>Test user login name</td> </tr> <tr> <td><code>VIP_TEST_PASSWORD</code></td> <td>Test user login password</td> </tr> <tr> <td><code>VIP_TEST_TOTP_SECRET</code></td> <td>Base32 TOTP seed for the test service account. Optional; only used by <code>--headless-auth</code> when the IdP issues an MFA challenge.</td> </tr> </tbody> </table> </div> </section> <section id="running-tests"> <h2>Running tests</h2> <p>Target specific products or test categories:</p> <pre><code># Run all tests
 vip verify --connect-url https://connect.example.com
 
 # Run tests for a specific category
@@ -77,7 +112,12 @@ vip verify --connect-url https://connect.example.com -- -x --tb=long</code></pre
 Add <code>--verbose</code> for detailed output, including full
             tracebacks, authentication progress, and IdP login steps. This is
             especially helpful when diagnosing headless auth or MFA issues.
-</p> <pre><code>vip verify --connect-url https://connect.example.com --headless-auth --verbose</code></pre> </section> <section id="configuration-file"> <h2>Configuration file</h2> <p>
+</p> <pre><code>vip verify --connect-url https://connect.example.com --headless-auth --verbose</code></pre> <p>
+If tests time out on a slow deployment, for example while waiting
+            for a Workbench session to start, set
+<code>VIP_TIMEOUT_SCALE</code> to multiply every timeout. A value of
+<code>3</code> triples them:
+</p> <pre><code>VIP_TIMEOUT_SCALE=3 vip verify --workbench-url https://workbench.example.com</code></pre> </section> <section id="configuration-file"> <h2>Configuration file</h2> <p>
 For repeated testing or advanced configuration, use a
 <code>vip.toml</code> file instead of URL flags. The template
 <code>vip.toml.example</code> is not part of the installed package.
@@ -95,6 +135,13 @@ If no <code>--config</code> is specified and no URL flags are given,
 </p> <p>
 Each product section (Connect, Workbench, Package Manager) can be
             enabled or disabled individually. The template lists every setting.
+</p> <p>
+Flags override the file for that run: product URLs and versions,
+<code>--idp</code>, <code>--provider</code>, <code>--insecure</code>,
+<code>--ca-bundle</code>, <code>--proxy</code> and
+<code>--no-proxy</code>. For example,
+<code>vip verify --config vip.toml --connect-url https://staging.example.com</code>
+tests a different Connect URL without editing the file.
 </p> </section> <section id="outbound-proxy"> <h2>Running behind a proxy</h2> <p>
 On hosts that reach your Posit deployment through a forward proxy,
             VIP reads the standard proxy environment variables:
@@ -104,13 +151,11 @@ On hosts that reach your Posit deployment through a forward proxy,
             the browser login. No configuration is needed:
 </p> <pre><code>export HTTPS_PROXY=http://proxy.corp.example:8080
 export NO_PROXY=localhost,.internal.example.com
-vip verify --connect-url https://connect.example.com --headless-auth</code></pre> <p>To set the proxy explicitly instead, pass flags with your product URLs:</p> <pre><code>vip verify --connect-url https://connect.example.com \
+vip verify --connect-url https://connect.example.com --headless-auth</code></pre> <p>To set the proxy explicitly instead, pass flags:</p> <pre><code>vip verify --connect-url https://connect.example.com \
   --proxy http://proxy.corp.example:8080 \
   --no-proxy localhost,.internal.example.com</code></pre> <p>
-The <code>--proxy</code> and <code>--no-proxy</code> flags only work
-            when you pass product URLs directly. If the run loads a config file
-            (with <code>--config</code>, or a <code>./vip.toml</code> in the
-            working directory), VIP warns that it ignored them. Set the proxy
+The flags also override a config file (<code>--config</code>, or a
+<code>./vip.toml</code> in the working directory). To keep the proxy
             in the file instead:
 </p> <pre><code>[proxy]
 url = "http://proxy.corp.example:8080"
@@ -124,8 +169,7 @@ also honor <code>[proxy]</code>.
 </p> <p>
 To send every request direct and ignore any proxy environment
             variables, set <code>enabled = false</code> under
-<code>[proxy]</code>, or pass <code>--no-proxy ''</code> along with
-            product-URL flags.
+<code>[proxy]</code>, or pass <code>--no-proxy ''</code>.
 </p> <h3 id="proxy-gotchas">Gotchas</h3> <ul> <li> <strong>A lone <code>HTTP_PROXY</code> is used for https too.</strong>
 If only <code>HTTP_PROXY</code> is set, VIP sends https traffic
               through it with a <code>CONNECT</code> tunnel. An explicit
@@ -159,12 +203,83 @@ vip verify --connect-url https://connect.example.com --report report/results.jso
 # Render the report (requires quarto CLI)
 vip report
 
+# Write a zip of the report to send to someone else
+# (this example has no vip.toml, so it passes --no-config)
+vip bundle --no-config
+
 # Publish to Connect (optional)
 cd report &amp;&amp; quarto publish connect --server https://connect.example.com</code></pre> <p> <code>vip report</code> reads results from
 <code>report/results.json</code> by default, or a custom path via
 <code>--results</code>. The
 <a href="https://quarto.org/docs/download/">Quarto CLI</a> must be
             installed.
+</p> <p> <code>vip bundle</code> writes
+<code>vip-bundle-&lt;deployment&gt;-&lt;time&gt;.zip</code> next to
+<code>report/</code>. The zip holds <code>results.json</code>, the
+            failure, JUnit, and SARIF files, the rendered report, and the vip
+            version. Without <code>--no-config</code>, it also holds a
+            configuration summary with no credentials. It never holds
+<code>vip.toml</code> or the auth cache. Before it writes the zip,
+            the command looks in each file for each credential from
+<code>vip.toml</code>, the environment, the product URLs in
+<code>results.json</code>, and the auth cache. If it finds one, it
+            stops and names the file and the credential. The scan cannot find a
+            credential that it does not know, for example one that an
+            extension test printed or one that was set only in the shell that
+            ran <code>vip verify</code>. The manifest and the last output line
+            give the number of credentials that the scan knew from each source.
+            If the number is lower than you expect, the scan did not have a
+            credential of the run. Look at the zip before you send it.
+</p> <p>
+If a value that the scan found is not a real secret, for example a
+            test password that is also a word in the report, pass
+<code>--allow-match LABEL</code>. The label must be one from the
+            error. Put quotes around a label that holds spaces, for example
+<code>--allow-match "connect.url password"</code>. The value then
+            stays in the zip, and the manifest records the label. Repeat the
+            option for each label.
+</p> <p>
+The command needs the <code>vip.toml</code> that
+<code>vip verify</code> used. It stops if it finds none. It also
+            stops if the deployment name, or the host or the port of a product
+            URL, in <code>vip.toml</code> is different from
+<code>results.json</code>. If a flag replaced a product URL,
+            the command compares <code>vip.toml</code> with the URL that the
+            file declared, which <code>vip verify</code> records. If you ran <code>vip verify</code> with
+<code>--connect-url</code> and no <code>vip.toml</code>, pass
+<code>--no-config</code>. The scan then uses only the environment,
+            the product URLs in <code>results.json</code>, and the auth cache.
+            The command also stops if it cannot read an auth cache file, or if
+            a report file is not UTF-8 text.
+</p> <p>
+If you gave <code>vip verify</code> a <code>--proxy</code> URL with
+            a user name or password, the command stops unless it can see that
+            credential. Set <code>HTTPS_PROXY</code> to the same URL in the
+            environment of <code>vip bundle</code>, or put the URL under
+<code>[proxy]</code> in <code>vip.toml</code>. The configuration
+            summary shows the TLS, proxy, auth, and version settings that the
+            run used, including the ones that flags changed.
+</p> <p>
+A rendered page that <code>vip report</code> did not make from the
+            current <code>results.json</code> is left out. A rendered file that
+            changed after <code>vip report</code> made it is left out too. The
+            PDF is included only together with both HTML pages, because the
+            scan cannot read the text in a PDF. Run <code>vip report</code>
+again to include a file that was left out. A
+<code>failures.json</code>, JUnit, or SARIF file from a different
+            run than <code>results.json</code> is left out too. If
+<code>results.json</code> has a run time, a file with no run time
+            is also left out, for example a JUnit file that a later
+<code>pytest --junitxml</code> wrote. JUnit and SARIF files from a
+            VIP version with no <code>vip bundle</code> command have no run
+            time. Run <code>vip verify</code> again to include them. The
+            manifest lists each file that is left out, with the reason.
+</p> <p>
+In the configuration summary, each <code>*_set</code> value says if
+            the configuration file or the environment of
+<code>vip bundle</code> holds that credential. The
+<code>auth_cache</code> values say if the run saved a browser
+            session or minted a Connect API key.
 </p> </section> <section id="extending-vip"> <h2>Extending VIP</h2> <p>
 Add site-specific tests without modifying the VIP source tree. The
             quickest start is <code>vip scaffold</code>, which writes a working
