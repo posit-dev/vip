@@ -20,16 +20,12 @@ from vip.stash import _version_na_key, _vip_config_key
 from vip.version import ProductVersion
 
 
-@pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(
     config: pytest.Config,
     items: list[pytest.Item],
 ) -> None:
     """Deselect tests whose product is not configured, skip tests whose
     version requirement is not met, and ensure prerequisites run first.
-
-    ``tryfirst`` so the ``xdist_group`` markers exist before pytest-xdist's own collection
-    hook reads them on each worker; after it, ``--dist loadgroup`` never sees a group.
     """
     vip_cfg: VIPConfig = config.stash[_vip_config_key]
     no_auth = config.getoption("--no-auth", default=False)
@@ -76,18 +72,17 @@ def _assign_xdist_group(item: pytest.Item) -> None:
     """Assign an ``xdist_group`` marker so each product runs on its own worker.
 
     Respects any existing ``xdist_group`` marker (set via conftest.py
-    ``pytestmark`` or per-test decorators).  Otherwise, tests under a
-    ``connect/``, ``workbench/``, or ``package_manager/`` directory are grouped
-    by directory name.  Everything else (prerequisites, cross_product,
-    security, extensions) stays ungrouped, so ``--dist loadgroup`` spreads it
-    across workers.
+    ``pytestmark`` or per-test decorators).  Otherwise, tests under
+    ``tests/connect/``, ``tests/workbench/``, or ``tests/package_manager/``
+    are grouped by directory name, and everything else (prerequisites,
+    cross_product, performance, security) lands in a shared ``general`` group.
     """
     if item.get_closest_marker("xdist_group") is not None:
         return
     fspath = getattr(item, "path", None) or Path()
     dir_name = fspath.parent.name
-    if dir_name in _PRODUCT_DIRS:
-        item.add_marker(pytest.mark.xdist_group(dir_name))
+    group = dir_name if dir_name in _PRODUCT_DIRS else "general"
+    item.add_marker(pytest.mark.xdist_group(group))
 
 
 # Every marker that names a product *item* needs: ``@connect`` and ``@requires_connect`` alike.

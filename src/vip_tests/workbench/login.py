@@ -224,7 +224,7 @@ def workbench_login(
     auth_mode: str = "none",
     workbench_auth_error: str | None = None,
     max_retries: int = 3,
-    retry_delay: float = 6.0,
+    retry_delay: float = 2.0,
 ) -> None:
     """Navigate to Workbench homepage, logging in only if required.
 
@@ -248,9 +248,7 @@ def workbench_login(
             establish a Workbench session, if known.  Quoted in the skip
             message so users see the real cause instead of a guess.
         max_retries: Max login attempts on transient errors (default 3)
-        retry_delay: Seconds to wait between retries (default 6.0). Longer than
-            Workbench's per-user sign-in throttle (5 s by default), which answers a
-            too-quick repeat sign-in with "Temporary server error".
+        retry_delay: Seconds to wait between retries (default 2.0)
 
     Raises:
         pytest.skip: For non-password auth without a pre-loaded auth session,

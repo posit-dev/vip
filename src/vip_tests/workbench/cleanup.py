@@ -16,7 +16,7 @@ from vip.errors import ProductUnreachableError
 from vip.workbench_ui import (
     quit_vip_sessions_via_ui as _quit_vip_sessions_via_ui,
 )
-from vip_tests.workbench.naming import current_worker_id, worker_username
+from vip_tests.workbench.naming import current_worker_id
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ def _quit_vip_sessions_via_token(
     """
     if not vip_config.workbench.api_key:
         return 0
-    username = worker_username(vip_config.auth.username)
+    username = vip_config.auth.username
     if not username:
         return 0
     try:
