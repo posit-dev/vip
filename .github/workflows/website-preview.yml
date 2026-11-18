@@ -1,12 +1,15 @@
 name: Website Preview
 
+# Builds the example report once and publishes both PR previews from it: the
+# report alone under pr-preview/ and the website (with the report embedded)
+# under pr-preview-site/.
+
 on:
   pull_request:
     types: [opened, reopened, synchronize, closed]
     paths:
       - 'website/**'
-      - 'src/vip/**'
-      - 'src/vip_tests/**'
+      - 'src/**'
       - 'report/**'
       - 'scripts/generate-test-catalog.py'
       - 'scripts/generate-feature-matrix.py'
@@ -23,9 +26,36 @@ permissions:
 
 jobs:
   example-report:
-    if: github.event.action != 'closed'
+    # Dependabot PRs run without access to repository secrets, so the
+    # license-gated product startup inside example-report can never succeed
+    # there. Skip it on Dependabot PRs instead of failing them with a
+    # spurious License Error. (Both preview jobs need this one, so they skip
+    # too.)
+    if: github.event.action != 'closed' && github.actor != 'dependabot[bot]'
     uses: ./.github/workflows/example-report.yml
     secrets: inherit
+
+  report-preview:
+    if: github.event.action != 'closed'
+    needs: example-report
+    name: Deploy report preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download example report
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: example-report
+          path: report/_output/
+
+      - uses: rossjrw/pr-preview-action@873417d2df72380da1f3978378fb58560bcde976 # v1
+        with:
+          source-dir: report/_output/
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
+          comment: false
 
   preview:
     if: github.event.action != 'closed'
@@ -95,13 +125,22 @@ jobs:
 
   cleanup:
     if: github.event.action == 'closed'
-    name: Clean up website preview
+    name: Clean up previews
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: rossjrw/pr-preview-action@873417d2df72380da1f3978378fb58560bcde976 # v1
+      - name: Remove report preview
+        uses: rossjrw/pr-preview-action@873417d2df72380da1f3978378fb58560bcde976 # v1
+        with:
+          source-dir: report/_output/
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
+          action: remove
+
+      - name: Remove website preview
+        uses: rossjrw/pr-preview-action@873417d2df72380da1f3978378fb58560bcde976 # v1
         with:
           source-dir: website/dist/
           preview-branch: gh-pages
