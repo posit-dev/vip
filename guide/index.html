@@ -39,6 +39,22 @@ For fully unattended runs against an MFA-protected service account,
 Only use it with a dedicated test service account, never with a
             personal IdP account, and store it in the same secret store as
 <code>VIP_TEST_PASSWORD</code>.
+</p> <h3 id="auth-cache">Where the saved session lives</h3> <p>
+Interactive and headless auth save the browser session and the
+            minted Connect API key for 4 hours, so the next run from the same
+            directory skips the login. VIP keeps one cache for each directory
+            you run it from, outside that directory, so a zipped or shared VIP
+            folder never contains it:
+</p> <ul> <li>Linux and macOS: <code>$XDG_CACHE_HOME/vip/auth/</code>, or <code>~/.cache/vip/auth/</code> when <code>XDG_CACHE_HOME</code> is unset</li> <li>Windows: <code>%LOCALAPPDATA%\vip\auth\</code></li> </ul> <p>
+Only your user can read these folders. Each <code>vip verify</code>
+or <code>vip cleanup</code> deletes caches that have not been
+            written for a day, and the next login removes their API keys from
+            Connect. To sign out
+            sooner, delete the <code>vip/auth</code> folder. Older releases
+            saved <code>.vip-auth-cache.json</code> and
+<code>.vip-auth-cache.meta.json</code> in the working directory;
+            the first run of a newer release moves them, or deletes them if it
+            cannot.
 </p> <h3 id="api-auth">API-key-only auth</h3> <p>
 If you only have an API key and no browser credentials, use
 <code>--api-auth</code> to run only the tests that can authenticate
