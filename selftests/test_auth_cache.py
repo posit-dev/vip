@@ -813,6 +813,14 @@ class TestAuthCachePath:
 
         assert _cwd_key(tmp_path / "Proj") == _cwd_key(tmp_path / "proj")
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX paths can hold non-UTF-8 bytes")
+    def test_non_utf8_directory_name_still_gets_a_key(self, tmp_path):
+        from vip.auth.cache import _cwd_key
+
+        key = _cwd_key(tmp_path / os.fsdecode(b"caf\xe9"))
+
+        assert len(key) == 16
+
     def test_deleted_cwd_returns_none(self, tmp_path, monkeypatch):
         from vip.auth import auth_cache_path
 
