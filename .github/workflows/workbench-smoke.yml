@@ -317,7 +317,7 @@ jobs:
           fi
           # shellcheck disable=SC2086 # word splitting is how the file list is passed
           uv run pytest $files \
-            -v -rs -n 0 \
+            -v -rs \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
         env:
