@@ -8,8 +8,9 @@ pytest-bdd runs them as part of every scenario.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 from gherkin.parser import Parser
@@ -36,7 +37,7 @@ def _has_tag(product: str, tags: set[str]) -> bool:
     return f"requires_{product}" in tags or product in tags
 
 
-def _tags(node: dict) -> set[str]:
+def _tags(node: Mapping[str, Any]) -> set[str]:
     return {t["name"].lstrip("@") for t in node.get("tags", [])}
 
 
@@ -44,7 +45,7 @@ def _background_steps(children: list[dict]) -> list[dict]:
     return [step for c in children if "background" in c for step in c["background"]["steps"]]
 
 
-def _scenarios(feature: dict) -> Iterator[tuple[dict, set[str], list[dict]]]:
+def _scenarios(feature: Mapping[str, Any]) -> Iterator[tuple[dict, set[str], list[dict]]]:
     """Yield each scenario with the tags it inherits and the Background steps that run before it."""
     feature_bg = _background_steps(feature["children"])
     for child in feature["children"]:
