@@ -40,18 +40,39 @@ def test_do_clone_removes_existing_dir_before_cloning(monkeypatch):
         return ""
 
     monkeypatch.setattr(git_ops, "terminal_run", fake_terminal_run)
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw3")
 
     git_cfg = _FakeGitCfg("https://github.com/example/jumpstart_examples.git")
     git_session_ctx: dict = {}
 
     clone_dir = git_ops._do_clone(object(), git_session_ctx, git_cfg, readback_lang="r")
 
-    assert clone_dir == "/tmp/jumpstart_examples"
+    assert clone_dir == "/tmp/vip_git_gw3/jumpstart_examples"
     assert git_session_ctx["clone_dir"] == clone_dir
-    rm_index = captured["cmd"].find("rm -rf /tmp/jumpstart_examples")
+    rm_index = captured["cmd"].find("rm -rf /tmp/vip_git_gw3/jumpstart_examples")
     clone_index = captured["cmd"].find("git clone")
     assert rm_index != -1, f"expected rm -rf of clone dir in command: {captured['cmd']!r}"
     assert rm_index < clone_index, "rm -rf must run before git clone"
+
+
+def test_do_clone_gives_each_worker_its_own_directory(monkeypatch):
+    # Parallel workers (often different users) must not delete or clone over each other's checkout.
+    cmds: list[str] = []
+    monkeypatch.setattr(
+        git_ops,
+        "terminal_run",
+        lambda page, cmd, timeout=30_000, *, readback_lang="r": cmds.append(cmd),
+    )
+    git_cfg = _FakeGitCfg("https://github.com/example/repo.git")
+
+    dirs = []
+    for worker in ("gw0", "gw1"):
+        monkeypatch.setenv("PYTEST_XDIST_WORKER", worker)
+        dirs.append(git_ops._do_clone(object(), {}, git_cfg, readback_lang="r"))
+
+    assert dirs == ["/tmp/vip_git_gw0/repo", "/tmp/vip_git_gw1/repo"]
+    # The per-worker parent does not exist on a fresh server, so it is created before cd.
+    assert cmds[0].index("mkdir -p /tmp/vip_git_gw0") < cmds[0].index("cd /tmp/vip_git_gw0")
 
 
 def test_do_clone_uses_custom_workdir(monkeypatch):
