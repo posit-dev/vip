@@ -33,8 +33,12 @@ logger = logging.getLogger(__name__)
 
 AUTH_CACHE_FILENAME = ".vip-auth-cache.json"
 
-# A cached session older than this is never reused, and its directory is pruned.
+# A cached session older than this is never reused.
 AUTH_CACHE_TTL_SECONDS = 4 * 3600
+
+# Another directory's cache is pruned only after this long.  A run that reused a cache
+# just inside the TTL keeps reading its storage state for as long as its tests run.
+AUTH_CACHE_PRUNE_AFTER_SECONDS = 24 * 3600
 
 # Per-directory cache folders are the first 16 hex digits of a SHA-256.
 _CACHE_DIR_NAME = re.compile(r"[0-9a-f]{16}")
@@ -136,10 +140,11 @@ def _make_private_dir(directory: Path) -> None:
 
 
 def _prune_expired_auth_caches(base: Path, keep: Path) -> None:
-    """Delete cache directories under *base* whose newest file is past the TTL, never raising.
+    """Delete cache directories under *base* not written for a day, never raising.
 
-    An expired cache is never reused, so it only keeps cookies and an API key on disk.
-    The key itself is removed by the stale-key sweep the next login runs on Connect.
+    Such a cache is past the TTL, so it is never reused and only keeps cookies and an API
+    key on disk.  The key itself is removed by the stale-key sweep the next login runs on
+    Connect.  The margin over the TTL keeps a long run in another directory working.
     """
     now = time.time()
     try:
@@ -151,7 +156,7 @@ def _prune_expired_auth_caches(base: Path, keep: Path) -> None:
             continue
         try:
             newest = max((f.stat().st_mtime for f in directory.iterdir()), default=0.0)
-            if now - newest > AUTH_CACHE_TTL_SECONDS:
+            if now - newest > AUTH_CACHE_PRUNE_AFTER_SECONDS:
                 shutil.rmtree(directory)
         except OSError as exc:
             logger.debug("Could not prune expired auth cache %s: %s", directory, exc)

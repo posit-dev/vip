@@ -1225,14 +1225,17 @@ class TestPrepareAuthCache:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
         base = tmp_path / "xdg" / "vip" / "auth"
-        expired = self._cache_dir(base, "0123456789abcdef", 5 * 3600)
+        expired = self._cache_dir(base, "0123456789abcdef", 25 * 3600)
         fresh = self._cache_dir(base, "fedcba9876543210", 60)
-        not_ours = self._cache_dir(base, "notes", 5 * 3600)
+        not_ours = self._cache_dir(base, "notes", 25 * 3600)
+        # Past the reuse TTL but maybe still read by a long run in that directory.
+        in_use = self._cache_dir(base, "00112233445566ff", 5 * 3600)
 
         path = prepare_auth_cache()
 
         assert not expired.exists()
         assert fresh.exists()
+        assert in_use.exists()
         assert not_ours.exists()
         assert path.parent.parent == base
 

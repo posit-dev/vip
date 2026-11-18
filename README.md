@@ -89,8 +89,9 @@ from, in a folder named after a hash of that directory:
 | Windows | `%LOCALAPPDATA%\vip\auth\<hash>\` |
 
 Only your user can read these folders. Each `vip verify` or `vip cleanup`
-deletes caches older than 4 hours. VIP never reuses an expired cache, and the
-next login deletes the API keys of expired caches from Connect. To sign out now,
+deletes caches that have not been written for a day. VIP never reuses a cache
+older than 4 hours, and the next login deletes the API keys of expired caches
+from Connect. To sign out now,
 delete the `vip/auth` folder. With no home directory and no `XDG_CACHE_HOME`,
 VIP skips the cache.
 
