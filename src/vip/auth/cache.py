@@ -69,7 +69,7 @@ def _cwd_key(cwd: Path) -> str:
     text = os.path.normcase(str(cwd.resolve()))
     if sys.platform == "darwin":
         text = text.casefold()
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(os.fsencode(text)).hexdigest()[:16]
 
 
 def auth_cache_path() -> Path | None:
