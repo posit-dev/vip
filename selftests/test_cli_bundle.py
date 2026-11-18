@@ -737,6 +737,209 @@ def test_bad_auth_cache_stops_the_bundle(root):
         run_bundle(_args(output="b.zip"))
 
 
+def _write_run(root: Path, products: dict, base_urls=None, settings=None) -> None:
+    results = {"deployment_name": "Acme Prod", "products": products, "results": []}
+    if base_urls is not None:
+        results["base"] = {
+            "deployment_name": "Acme Prod",
+            "products": {name: {"url": url} for name, url in base_urls.items()},
+        }
+    if settings is not None:
+        results["settings"] = settings
+    _write(root / "report" / "results.json", json.dumps(results), RESULTS_MTIME)
+
+
+def _proxy_settings(url: str, credentials: bool) -> dict:
+    return {
+        "insecure": False,
+        "ca_bundle": None,
+        "auth": {"provider": "password", "idp": ""},
+        "proxy": {
+            "url": url,
+            "no_proxy": [],
+            "enabled": True,
+            "trust_env": True,
+            "effective": [{"url": url, "credentials": credentials}],
+        },
+    }
+
+
+def _summary(zip_path: Path) -> dict:
+    with zipfile.ZipFile(zip_path) as zf:
+        return json.loads(zf.read("config-summary.json"))
+
+
+def test_url_override_passes_when_the_config_matches_the_recorded_base(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.override.example.com"}},
+        base_urls={"connect": "https://connect.example.com"},
+    )
+    run_bundle(_args(output="b.zip"))
+    assert _summary(root / "b.zip")["connect"]["url"] == "https://connect.override.example.com"
+
+
+def test_url_override_does_not_excuse_a_config_that_is_not_the_base(root):
+    # vip.toml has connect.example.com, and the flag happened to use that host,
+    # but the run started from a file that declared another one.
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        base_urls={"connect": "https://a.example.com"},
+    )
+    with pytest.raises(BundleError, match="the connect URL is"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_base_deployment_name_is_compared_too(root):
+    _write_run(root, {"connect": {"url": "https://connect.example.com"}}, base_urls={})
+    results = json.loads((root / "report" / "results.json").read_text(encoding="utf-8"))
+    results["base"]["deployment_name"] = "Acme Staging"
+    _write(root / "report" / "results.json", json.dumps(results), RESULTS_MTIME)
+    with pytest.raises(BundleError, match="the deployment is"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_base_with_no_url_for_a_product_the_config_has_fails(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        base_urls={"connect": ""},
+    )
+    with pytest.raises(BundleError, match="the connect URL is"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_no_config_bundle_ignores_the_recorded_base(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        base_urls={"connect": "https://a.example.com"},
+    )
+    run_bundle(_args(output="b.zip", no_config=True))
+    assert (root / "b.zip").is_file()
+
+
+def test_summary_describes_the_settings_the_run_used(root):
+    settings = {
+        "insecure": True,
+        "ca_bundle": "/etc/ca.pem",
+        "auth": {"provider": "saml", "idp": "keycloak"},
+        "proxy": {
+            "url": "http://override-proxy:3128",
+            "no_proxy": ["b.example.com"],
+            "enabled": True,
+            "trust_env": False,
+            "effective": [],
+        },
+    }
+    _write_run(
+        root,
+        {
+            "connect": {
+                "url": "https://connect.example.com",
+                "enabled": True,
+                "version": "2026.06.0",
+            }
+        },
+        settings=settings,
+    )
+    run_bundle(_args(output="b.zip"))
+    summary = _summary(root / "b.zip")
+    assert summary["insecure"] is True
+    assert summary["ca_bundle"] == "/etc/ca.pem"
+    assert summary["auth"]["provider"] == "saml"
+    assert summary["auth"]["idp"] == "keycloak"
+    assert summary["proxy"] == {
+        "url": "http://override-proxy:3128",
+        "no_proxy": ["b.example.com"],
+        "enabled": True,
+        "trust_env": False,
+    }
+    assert summary["connect"]["version"] == "2026.06.0"
+
+
+@pytest.mark.parametrize(
+    ("insecure", "ca_bundle"), [(False, "new-ca.pem"), (True, None)], ids=["ca-bundle", "insecure"]
+)
+def test_tls_override_excuses_a_missing_ca_bundle_in_the_config(root, insecure, ca_bundle):
+    # vip verify --ca-bundle or --insecure replaces the file's ca_bundle, so the
+    # run passed although the path in vip.toml does not exist.
+    toml = (root / "vip.toml").read_text(encoding="utf-8")
+    (root / "vip.toml").write_text(f'{toml}\n[tls]\nca_bundle = "gone.pem"\n', encoding="utf-8")
+    settings = {**_proxy_settings("", credentials=False), "insecure": insecure}
+    settings["ca_bundle"] = ca_bundle
+    _write_run(root, {"connect": {"url": "https://connect.example.com"}}, settings=settings)
+    run_bundle(_args(output="b.zip"))
+    summary = _summary(root / "b.zip")
+    assert summary["insecure"] is insecure
+    assert summary["ca_bundle"] == ca_bundle
+
+
+def test_missing_ca_bundle_fails_when_the_run_recorded_no_settings(root):
+    toml = (root / "vip.toml").read_text(encoding="utf-8")
+    (root / "vip.toml").write_text(f'{toml}\n[tls]\nca_bundle = "gone.pem"\n', encoding="utf-8")
+    with pytest.raises(BundleError, match="ca_bundle path does not exist"):
+        run_bundle(_args(output="b.zip"))
+
+
+def test_proxy_credentials_the_bundle_cannot_see_stop_the_bundle(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        settings=_proxy_settings("http://override-proxy:3128", credentials=True),
+    )
+    with pytest.raises(BundleError, match=r"http://override-proxy:3128.*HTTPS_PROXY"):
+        run_bundle(_args(output="b.zip"))
+    assert _leftovers(root) == []
+
+
+def test_proxy_credentials_stop_a_no_config_bundle_too(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        settings=_proxy_settings("http://override-proxy:3128", credentials=True),
+    )
+    with pytest.raises(BundleError, match="override-proxy:3128"):
+        run_bundle(_args(output="b.zip", no_config=True))
+
+
+def test_proxy_credentials_known_from_the_environment_are_scanned_for(root, monkeypatch):
+    monkeypatch.setenv("HTTPS_PROXY", "http://user:OVERRIDE-PROXY-PASS@override-proxy:3128")
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        settings=_proxy_settings("http://override-proxy:3128", credentials=True),
+    )
+    run_bundle(_args(output="b.zip"))
+    assert (root / "b.zip").is_file()
+    results = json.loads((root / "report" / "results.json").read_text(encoding="utf-8"))
+    results["note"] = "OVERRIDE-PROXY-PASS"
+    _write(root / "report" / "results.json", json.dumps(results), RESULTS_MTIME)
+    with pytest.raises(BundleError, match="HTTPS_PROXY password"):
+        run_bundle(_args(output="c.zip"))
+
+
+def test_proxy_credentials_known_from_the_config_file_pass(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        settings=_proxy_settings("http://proxy:8080", credentials=True),
+    )
+    run_bundle(_args(output="b.zip"))
+    assert (root / "b.zip").is_file()
+
+
+def test_run_without_proxy_credentials_needs_nothing_extra(root):
+    _write_run(
+        root,
+        {"connect": {"url": "https://connect.example.com"}},
+        settings=_proxy_settings("http://override-proxy:3128", credentials=False),
+    )
+    run_bundle(_args(output="b.zip"))
+    assert (root / "b.zip").is_file()
+
+
 def _token_only_proxy(root: Path) -> None:
     toml = (root / "vip.toml").read_text(encoding="utf-8")
     (root / "vip.toml").write_text(
@@ -759,3 +962,96 @@ def test_scan_knows_a_token_only_scheme_less_proxy(root):
     _write_report(root, results_extra="PROXY-TOKEN-0123")
     with pytest.raises(BundleError, match=r"proxy\.url user"):
         run_bundle(_args(output="b.zip"))
+
+
+def _base_check(tmp_path, file_url: str, base_file_url: str | None = None) -> None:
+    from vip.cli.verify import _base_identity
+    from vip.config import load_config
+
+    path = tmp_path / "vip.toml"
+    path.write_text(f'[connect]\nurl = "{file_url}"\n', encoding="utf-8")
+    base_path = tmp_path / "base.toml"
+    base_path.write_text(f'[connect]\nurl = "{base_file_url or file_url}"\n', encoding="utf-8")
+    results = json.dumps(
+        {
+            "products": {"connect": {"url": "https://connect.override.example.com"}},
+            "base": _base_identity(base_path),
+        }
+    )
+    bundle_module._check_config_matches(load_config(path), path, results.encode())
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "TOKEN-ABC-0123@connect.example.com",
+        "https://user:pass@connect.example.com/x",
+        "https://connect.example.com:8443/x",
+    ],
+)
+def test_config_matches_the_base_recorded_from_itself(tmp_path, url):
+    _base_check(tmp_path, url)
+
+
+def test_config_for_another_host_does_not_match_the_base(tmp_path):
+    with pytest.raises(BundleError, match="the connect URL is"):
+        _base_check(tmp_path, "https://staging.example.com", "https://prod.example.com")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://prod.example.com/@team",
+        "https://connect.example.com/?q=a@b",
+        "https://admin:Ab/c123x@connect.example.com/p",
+        "https://Tok#en-0123@connect.example.com",
+    ],
+)
+def test_ambiguous_base_url_stops_the_bundle(tmp_path, url):
+    with pytest.raises(BundleError, match="cannot tell which"):
+        _base_check(tmp_path, url)
+
+
+def test_ambiguous_base_cannot_accept_a_different_config(tmp_path):
+    with pytest.raises(BundleError, match="cannot tell which"):
+        _base_check(tmp_path, "https://staging.example.com/@team", "https://prod.example.com/@team")
+
+
+def test_every_credentialed_effective_proxy_must_be_visible(root, monkeypatch):
+    settings = _proxy_settings("http://gw-a:3128", credentials=True)
+    settings["proxy"]["effective"].append({"url": "http://gw-b:3128", "credentials": True})
+    _write_run(root, {"connect": {"url": "https://connect.example.com"}}, settings=settings)
+    monkeypatch.setenv("HTTPS_PROXY", "http://u:PROXY-PASS-A-0123@gw-a:3128")
+    with pytest.raises(BundleError, match=r"gw-b:3128"):
+        run_bundle(_args(output="b.zip"))
+    monkeypatch.setenv("HTTP_PROXY", "http://u:PROXY-PASS-B-0123@gw-b:3128")
+    run_bundle(_args(output="b.zip"))
+    assert (root / "b.zip").is_file()
+
+
+def test_effective_proxy_without_credentials_needs_nothing(root):
+    settings = _proxy_settings("http://gw-a:3128", credentials=False)
+    settings["proxy"]["effective"].append({"url": "http://gw-b:3128", "credentials": True})
+    settings["proxy"]["effective"][1]["credentials"] = False
+    _write_run(root, {"connect": {"url": "https://connect.example.com"}}, settings=settings)
+    run_bundle(_args(output="b.zip"))
+    assert (root / "b.zip").is_file()
+
+
+def test_run_without_a_url_override_matches_a_config_with_an_at_in_the_path(tmp_path):
+    from vip.config import load_config
+
+    url = "https://prod.example.com/@team"
+    path = tmp_path / "vip.toml"
+    path.write_text(f'[connect]\nurl = "{url}"\n', encoding="utf-8")
+    # A run with only --insecure records no base, so main's comparison applies.
+    results = json.dumps({"products": {"connect": {"url": url}}})
+    bundle_module._check_config_matches(load_config(path), path, results.encode())
+
+
+def test_ambiguous_url_message_never_suggests_no_config(tmp_path):
+    with pytest.raises(BundleError) as excinfo:
+        _base_check(tmp_path, "https://prod.example.com/@team")
+    message = str(excinfo.value)
+    assert "Percent-encode the @" in message
+    assert "--no-config" not in message

@@ -97,8 +97,10 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    # URL args (no config file needed)
-    url_group = verify_parser.add_argument_group("product URLs (no config file needed)")
+    # URL args (no config file needed; with one, they override it)
+    url_group = verify_parser.add_argument_group(
+        "product URLs (no config file needed; override one if given)"
+    )
     url_group.add_argument("--connect-url", default=None, help="Connect server URL")
     url_group.add_argument("--workbench-url", default=None, help="Workbench server URL")
     url_group.add_argument("--package-manager-url", default=None, help="Package Manager server URL")
@@ -164,11 +166,9 @@ def main() -> None:
             "Applies to the product API clients, the auth/probe requests, and the "
             "Playwright browser login. Overrides HTTP_PROXY/HTTPS_PROXY, and also "
             "supersedes any NO_PROXY in the environment (repeat bypass hosts with "
-            "--no-proxy). Only takes effect alongside the product-URL flags; it is "
-            "ignored on a run that loads a config file, whether via --config or a "
-            "./vip.toml (use a [proxy] section there instead). When omitted, VIP "
-            "reads the ambient HTTP_PROXY/HTTPS_PROXY/NO_PROXY environment (same "
-            "as httpx)."
+            "--no-proxy). Overrides a [proxy] url in the config file. When omitted, "
+            "VIP reads the ambient HTTP_PROXY/HTTPS_PROXY/NO_PROXY environment "
+            "(same as httpx)."
         ),
     )
     proxy_group.add_argument(
@@ -179,9 +179,9 @@ def main() -> None:
             "Comma-separated hosts to reach directly, bypassing --proxy "
             "(e.g. localhost,.internal.example). With no --proxy, passing an "
             "empty value (--no-proxy '') disables proxying entirely, ignoring "
-            "any proxy environment variables. Ignored on a run that loads a "
-            "config file, whether via --config or a ./vip.toml (use a [proxy] "
-            "section there instead)."
+            "any proxy environment variables, and the config file's [proxy] url is "
+            "dropped. Otherwise this replaces the config file's no_proxy list, even "
+            "with an empty value."
         ),
     )
 

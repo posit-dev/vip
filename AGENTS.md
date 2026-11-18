@@ -269,7 +269,7 @@ including extension directories loaded via `--vip-extensions`, not just tests un
 -   `data_sources` -- list of `DataSourceEntry` objects
 -   `email_enabled` / `monitoring_enabled` -- feature flags
 
-**Note:** `vip verify --connect-url URL` generates configuration on the fly from CLI flags -- no `vip.toml` is needed.
+**Note:** `vip verify` flags (product URLs and versions, `--idp`/`--provider`, `--insecure`/`--ca-bundle`, `--proxy`/`--no-proxy`) override the config file, whether it comes from `--config` or `./vip.toml`. With a product URL flag and no `--config`, no `vip.toml` is needed: the run starts from defaults and a product without a URL flag is disabled. Either way the config is loaded once, and the pytest subprocess gets the file's raw TOML with the overrides merged in (a temp file; env-resolved secrets are never written to it).
 
 ## API clients
 

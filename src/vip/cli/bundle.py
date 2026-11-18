@@ -24,16 +24,20 @@ from vip.bundle.archive import (
     write_zip,
 )
 from vip.bundle.summary import (
+    PROXY_ENV_VARS,
     auth_cache_secrets,
+    authority_url,
     build_config_summary,
+    proxy_url_secrets,
     raw_config_secrets,
     secret_values,
+    strip_proxy_userinfo,
     strip_url_userinfo,
     url_secrets,
 )
 from vip.cli.report import _resolve_report_dir
 from vip.cli.version import _format_version_details
-from vip.config import VIPConfig, load_config
+from vip.config import VIPConfig, config_from_raw
 from vip.errors import BundleError
 
 _PRODUCTS = ("connect", "workbench", "package_manager")
@@ -91,12 +95,23 @@ def _config_path(args: argparse.Namespace, root: Path) -> Path | None:
     return path
 
 
-def _load(path: Path) -> VIPConfig:
-    """Load *path*. Turn a read error or a parse error into BundleError."""
+def _load(path: Path, results: bytes) -> VIPConfig:
+    """Load *path*. Turn a read error or a parse error into BundleError.
+
+    The bundle never opens the CA file, so a run that recorded its TLS settings
+    skips the check that ``ca_bundle`` exists. ``vip verify --ca-bundle`` or
+    ``--insecure`` can replace a path that is missing, and the summary takes
+    the recorded values from results.json.
+    """
     try:
-        return load_config(path)
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+        settings = json.loads(results).get("settings")
+        tls = raw.get("tls")
+        if isinstance(settings, dict) and "ca_bundle" in settings and isinstance(tls, dict):
+            tls.pop("ca_bundle", None)
+        return config_from_raw(raw)
     # tomllib.TOMLDecodeError is a ValueError. A table of the wrong shape gives
-    # AttributeError or TypeError in load_config.
+    # AttributeError or TypeError in config_from_raw.
     except (OSError, ValueError, AttributeError, TypeError) as exc:
         raise BundleError(f"could not read {path}: {exc}") from exc
 
@@ -130,9 +145,14 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
     results.json holds the deployment name and each product URL from the
     configuration of the run. If the name differs, if the host or the port of
     a URL differs, or if only one of the two has a URL for a product, the scan
-    would look for the wrong secrets.
+    would look for the wrong secrets. A product URL that ``vip verify`` replaced
+    with a flag is compared as the file declared it: ``base`` in results.json
+    holds the deployment name and URLs of the file the run started from.
     """
     data = json.loads(results)
+    base = data.get("base")
+    if isinstance(base, dict):
+        data = base
     name = data.get("deployment_name")
     if isinstance(name, str) and name != config.deployment_name:
         raise BundleError(
@@ -147,6 +167,17 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
             continue
         run_url = entry["url"]
         url = config.product_config(product).url
+        if isinstance(base, dict):
+            # The base holds only the host and port, so the loaded URL is reduced the same way.
+            authority = authority_url(url)
+            if entry.get("ambiguous") or authority is None:
+                raise BundleError(
+                    f"{path}: the {product} URL has an @ after the host or a bad port, so "
+                    "vip bundle cannot tell which configuration file the run used. "
+                    "Percent-encode the @ in that URL (%40), or run 'vip verify' again "
+                    "without a product URL flag."
+                )
+            url = authority
         if not run_url and not url:
             continue
         if not run_url or not url or _host(run_url) != _host(url):
@@ -156,6 +187,60 @@ def _check_config_matches(config: VIPConfig, path: Path, results: bytes) -> None
                 f"{strip_url_userinfo(run_url) or 'not set'} in results.json. "
                 "Pass --config with the file that 'vip verify' used."
             )
+
+
+def _check_proxy_credentials(config: VIPConfig, results: bytes) -> None:
+    """Refuse a run whose proxy held a credential that the secret scan cannot know.
+
+    ``vip verify --proxy``, or a proxy variable of the run, can give a credential
+    that is in no file and no variable of the bundle command. results.json holds
+    each proxy the run used without its userinfo, so the scan must know a proxy
+    URL with userinfo and the same host for each: from the configuration file or
+    from a proxy variable.
+    """
+    settings = json.loads(results).get("settings")
+    proxy = settings.get("proxy") if isinstance(settings, dict) else None
+    effective = proxy.get("effective") if isinstance(proxy, dict) else None
+    known = [config.proxy.url, *(os.environ.get(var, "") for var in PROXY_ENV_VARS)]
+    for entry in effective if isinstance(effective, list) else ():
+        if not isinstance(entry, dict) or entry.get("credentials") is not True:
+            continue
+        url = entry["url"] if isinstance(entry.get("url"), str) else ""
+        if any(proxy_url_secrets("proxy", u) and strip_proxy_userinfo(u) == url for u in known):
+            continue
+        raise BundleError(
+            f"the run used the proxy {url or 'URL'} with a credential in it, and vip bundle "
+            "cannot see that credential, so the secret scan cannot look for it. Set "
+            "HTTPS_PROXY (or ALL_PROXY) to the same proxy URL, credential included, in the "
+            "environment of vip bundle, or put that URL under [proxy] url in the "
+            "configuration file."
+        )
+
+
+def _overlay_run_settings(summary: dict[str, Any], results: bytes) -> None:
+    """Replace the summary values that the run could have set with the values it recorded.
+
+    ``vip verify`` flags override the configuration file, so the file alone does
+    not say what the run used. results.json holds those values without secrets.
+    """
+    data = json.loads(results)
+    settings = data.get("settings")
+    if isinstance(settings, dict):
+        summary.update({k: settings[k] for k in ("insecure", "ca_bundle") if k in settings})
+        for key, names in (
+            ("auth", ("provider", "idp")),
+            ("proxy", ("url", "no_proxy", "enabled", "trust_env")),
+        ):
+            part = settings.get(key)
+            if isinstance(part, dict):
+                summary[key].update({n: part[n] for n in names if n in part})
+    products = data.get("products")
+    for product in _PRODUCTS:
+        entry = products.get(product) if isinstance(products, dict) else None
+        if isinstance(entry, dict):
+            summary[product].update({k: entry[k] for k in ("enabled", "version") if k in entry})
+            if isinstance(entry.get("url"), str):
+                summary[product]["url"] = strip_url_userinfo(entry["url"])
 
 
 def _run_url_secrets(results: bytes) -> list[tuple[str, str]]:
@@ -258,12 +343,12 @@ def run_bundle(args: argparse.Namespace) -> None:
     # the error for the missing results.json and not for the missing vip.toml.
     collected = collect_members(results_path, report_dir)
     config_path = _config_path(args, root)
-    # VIPConfig() still reads the VIP_* secret variables in its __post_init__ methods.
-    config = _load(config_path) if config_path is not None else VIPConfig()
-
     results = collected.members["report/results.json"]
+    # VIPConfig() still reads the VIP_* secret variables in its __post_init__ methods.
+    config = _load(config_path, results) if config_path is not None else VIPConfig()
     if config_path is not None:
         _check_config_matches(config, config_path, results)
+    _check_proxy_credentials(config, results)
     warnings = list(collected.warnings)
     if config_path is None:
         warnings.append(
@@ -314,6 +399,7 @@ def run_bundle(args: argparse.Namespace) -> None:
     members = dict(collected.members)
     if config_path is not None:
         summary = build_config_summary(config)
+        _overlay_run_settings(summary, results)
         summary["credential_flags"] = (
             "Each *_set value is true if the configuration file or the environment of "
             "the vip bundle command holds that credential. The auth_cache values come "
