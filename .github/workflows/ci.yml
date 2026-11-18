@@ -11,6 +11,12 @@ on:
   # `changes` job below gates the expensive code jobs.
   pull_request:
 
+# Pushes to a PR branch cancel that PR's older run. Every other event keys on
+# its own run id, so runs on main, schedules and tags are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   # Detect whether this PR/push touches code that the CI jobs actually validate.
   # Expensive jobs gate on `relevant`; the always-run required checks (lint and
