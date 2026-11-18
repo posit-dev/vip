@@ -37,7 +37,7 @@ from vip.bundle.summary import (
 )
 from vip.cli.report import _resolve_report_dir
 from vip.cli.version import _format_version_details
-from vip.config import VIPConfig, load_config
+from vip.config import VIPConfig, config_from_raw
 from vip.errors import BundleError
 
 _PRODUCTS = ("connect", "workbench", "package_manager")
@@ -95,12 +95,23 @@ def _config_path(args: argparse.Namespace, root: Path) -> Path | None:
     return path
 
 
-def _load(path: Path) -> VIPConfig:
-    """Load *path*. Turn a read error or a parse error into BundleError."""
+def _load(path: Path, results: bytes) -> VIPConfig:
+    """Load *path*. Turn a read error or a parse error into BundleError.
+
+    The bundle never opens the CA file, so a run that recorded its TLS settings
+    skips the check that ``ca_bundle`` exists. ``vip verify --ca-bundle`` or
+    ``--insecure`` can replace a path that is missing, and the summary takes
+    the recorded values from results.json.
+    """
     try:
-        return load_config(path)
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+        settings = json.loads(results).get("settings")
+        tls = raw.get("tls")
+        if isinstance(settings, dict) and "ca_bundle" in settings and isinstance(tls, dict):
+            tls.pop("ca_bundle", None)
+        return config_from_raw(raw)
     # tomllib.TOMLDecodeError is a ValueError. A table of the wrong shape gives
-    # AttributeError or TypeError in load_config.
+    # AttributeError or TypeError in config_from_raw.
     except (OSError, ValueError, AttributeError, TypeError) as exc:
         raise BundleError(f"could not read {path}: {exc}") from exc
 
@@ -332,10 +343,9 @@ def run_bundle(args: argparse.Namespace) -> None:
     # the error for the missing results.json and not for the missing vip.toml.
     collected = collect_members(results_path, report_dir)
     config_path = _config_path(args, root)
-    # VIPConfig() still reads the VIP_* secret variables in its __post_init__ methods.
-    config = _load(config_path) if config_path is not None else VIPConfig()
-
     results = collected.members["report/results.json"]
+    # VIPConfig() still reads the VIP_* secret variables in its __post_init__ methods.
+    config = _load(config_path, results) if config_path is not None else VIPConfig()
     if config_path is not None:
         _check_config_matches(config, config_path, results)
     _check_proxy_credentials(config, results)

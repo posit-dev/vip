@@ -859,6 +859,30 @@ def test_summary_describes_the_settings_the_run_used(root):
     assert summary["connect"]["version"] == "2026.06.0"
 
 
+@pytest.mark.parametrize(
+    ("insecure", "ca_bundle"), [(False, "new-ca.pem"), (True, None)], ids=["ca-bundle", "insecure"]
+)
+def test_tls_override_excuses_a_missing_ca_bundle_in_the_config(root, insecure, ca_bundle):
+    # vip verify --ca-bundle or --insecure replaces the file's ca_bundle, so the
+    # run passed although the path in vip.toml does not exist.
+    toml = (root / "vip.toml").read_text(encoding="utf-8")
+    (root / "vip.toml").write_text(f'{toml}\n[tls]\nca_bundle = "gone.pem"\n', encoding="utf-8")
+    settings = {**_proxy_settings("", credentials=False), "insecure": insecure}
+    settings["ca_bundle"] = ca_bundle
+    _write_run(root, {"connect": {"url": "https://connect.example.com"}}, settings=settings)
+    run_bundle(_args(output="b.zip"))
+    summary = _summary(root / "b.zip")
+    assert summary["insecure"] is insecure
+    assert summary["ca_bundle"] == ca_bundle
+
+
+def test_missing_ca_bundle_fails_when_the_run_recorded_no_settings(root):
+    toml = (root / "vip.toml").read_text(encoding="utf-8")
+    (root / "vip.toml").write_text(f'{toml}\n[tls]\nca_bundle = "gone.pem"\n', encoding="utf-8")
+    with pytest.raises(BundleError, match="ca_bundle path does not exist"):
+        run_bundle(_args(output="b.zip"))
+
+
 def test_proxy_credentials_the_bundle_cannot_see_stop_the_bundle(root):
     _write_run(
         root,

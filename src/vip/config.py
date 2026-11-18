@@ -617,7 +617,11 @@ def load_config(path: str | Path | None = None) -> VIPConfig:
 
     with path.open("rb") as f:
         raw = tomllib.load(f)
+    return config_from_raw(raw)
 
+
+def config_from_raw(raw: dict) -> VIPConfig:
+    """Build a ``VIPConfig`` from parsed TOML. Secrets still come from the environment."""
     general = raw.get("general", {})
     data_sources_raw = raw.get("data_sources", {})
     email_raw = raw.get("email", {})
