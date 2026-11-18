@@ -430,7 +430,7 @@ refactor(connect)!: rename client constructor parameters
 
 ## xdist groups
 
-`--dist loadgroup` (the default in `pyproject.toml`) keeps every test with the same `xdist_group` on one worker. `plugin/selection.py` groups tests in a `connect/`, `workbench/` or `package_manager/` directory by that name and leaves everything else ungrouped; the Workbench conftest refines its group by IDE and module when concurrent logins are safe. pytest-xdist reads the groups in its own `pytest_collection_modifyitems` on each worker, so every hook that adds a group must be `@pytest.hookimpl(tryfirst=True)` -- a group added after xdist's hook is silently ignored. `selftests/test_workbench_parallel.py::TestXdistSeesVipGroups` runs real workers to guard this.
+`--dist loadgroup` (the default in `pyproject.toml`) keeps every test with the same `xdist_group` on one worker. `plugin/selection.py` groups tests in a `connect/`, `workbench/` or `package_manager/` directory by that name and leaves everything else ungrouped; the Workbench conftest refines its group by IDE and module when concurrent logins are safe. pytest-xdist reads the groups in its own `pytest_collection_modifyitems` on each worker, so every hook that adds a group must be `@pytest.hookimpl(tryfirst=True)` -- a group added after xdist's hook is silently ignored. `selftests/test_workbench_parallel.py::TestXdistSeesVipGroups` runs real workers to guard this. pytest stays below 9.2 (pin in `pyproject.toml`, ignore in `.github/dependabot.yml`) until a pytest-xdist release after 3.8.0: pytest 9.2 moved node ids where xdist 3.8.0 writes the group, so every group is ignored (pytest-dev/pytest-xdist#1407).
 
 ## Pytest warning filters
 
