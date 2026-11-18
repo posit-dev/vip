@@ -548,3 +548,44 @@ class TestRealMarkerMechanics:
         # And no leftover duplicate, or xdist would glue both names into one composite group.
         groups = [m.args[0] for m in item.iter_markers("xdist_group")]
         assert groups == ["workbench_packages"]
+
+
+class TestPerWorkerUsername:
+    """Workbench throttles repeat sign-ins by one user, so parallel CI gives each worker its own."""
+
+    def test_opt_in_suffixes_the_worker_id(self, monkeypatch):
+        from vip_tests.workbench.naming import worker_username
+
+        monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw2")
+        monkeypatch.setenv("VIP_TEST_USERNAME_PER_WORKER", "1")
+        assert worker_username("testuser") == "testuser-gw2"
+
+    @pytest.mark.parametrize(
+        ("worker", "flag", "base"),
+        [
+            ("gw2", None, "testuser"),  # not opted in: customers keep their one account
+            ("gw2", "0", "testuser"),
+            (None, "1", "testuser"),  # serial run: no worker to suffix
+            ("gw2", "1", ""),  # no configured user: nothing to derive from
+        ],
+        ids=["no-flag", "flag-off", "serial", "no-base"],
+    )
+    def test_base_username_is_kept_otherwise(self, monkeypatch, worker, flag, base):
+        from vip_tests.workbench.naming import worker_username
+
+        for name, value in (
+            ("PYTEST_XDIST_WORKER", worker),
+            ("VIP_TEST_USERNAME_PER_WORKER", flag),
+        ):
+            if value is None:
+                monkeypatch.delenv(name, raising=False)
+            else:
+                monkeypatch.setenv(name, value)
+        assert worker_username(base) == base
+
+    def test_login_retry_waits_out_the_sign_in_throttle(self):
+        import inspect
+
+        # Workbench's auth-sign-in-throttle-seconds defaults to 5; a shorter wait retries into it.
+        default = inspect.signature(login.workbench_login).parameters["retry_delay"].default
+        assert default > 5

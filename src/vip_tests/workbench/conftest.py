@@ -21,6 +21,7 @@ import pytest
 from playwright.sync_api import Page
 from pytest_bdd import given
 
+from vip.config import VIPConfig
 from vip.plugin import _auth_session_key
 
 # Re-exported for selftests/test_workbench_cleanup.py, which imports it from
@@ -59,6 +60,7 @@ from vip_tests.workbench.naming import (
     k8s_session_prefix,
     unique_session_name,
     vip_session_prefix,
+    worker_username,
 )
 from vip_tests.workbench.sessions import (
     _navigated_into_session,
@@ -288,6 +290,12 @@ def extract_repo_urls(output: str) -> list[str]:
     that comparison unreachable for exactly the input it exists to handle.
     """
     return re.findall(r"https?://[^\s<>\"']+", output, re.IGNORECASE)
+
+
+@pytest.fixture(scope="session")
+def test_username(vip_config: VIPConfig) -> str:
+    """The Workbench test account, one per xdist worker under ``VIP_TEST_USERNAME_PER_WORKER``."""
+    return worker_username(vip_config.auth.username)
 
 
 @pytest.fixture

@@ -247,11 +247,31 @@ jobs:
         env:
           SUITE: ${{ inputs.suite || (github.event_name == 'schedule' && 'full' || 'gate') }}
 
+      # Workbench refuses a second sign-in by the same user within
+      # auth-sign-in-throttle-seconds (5 s by default) and answers it with
+      # "Temporary server error", so xdist workers sharing one account trip it.
+      # Give each worker its own account, named the way VIP derives it under
+      # VIP_TEST_USERNAME_PER_WORKER (<user>-gw<N>), with the same password. The
+      # password goes in on stdin so it never appears in a process list.
+      - name: Create per-worker test users
+        id: workers
+        env:
+          CID: ${{ steps.workbench.outputs.CONTAINER_ID }}
+          WB_USER: ${{ steps.workbench.outputs.WORKBENCH_USER }}
+          WB_PASSWORD: ${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}
+        run: |
+          WORKERS=$(nproc)
+          for i in $(seq 0 $((WORKERS - 1))); do
+            docker exec "${CID}" useradd -m -s /bin/bash "${WB_USER}-gw${i}"
+            printf '%s:%s\n' "${WB_USER}-gw${i}" "${WB_PASSWORD}" | docker exec -i "${CID}" chpasswd
+          done
+          echo "Created ${WORKERS} per-worker users (${WB_USER}-gw0..$((WORKERS - 1)))"
+          echo "count=${WORKERS}" >> "$GITHUB_OUTPUT"
+
       # Run the subset of tests that work against Docker Workbench
       - name: Run Workbench smoke tests
-        # -n 0 disables xdist (overriding -n auto from pyproject.toml) because
-        # the Docker Workbench returns "Temporary server error" when multiple
-        # workers attempt concurrent logins.
+        # -n matches the per-worker users created above, so every worker has an
+        # account to sign in as.
         #
         # No `-k` filter: the plugin already deselects scenarios for products
         # that are not enabled in vip.toml, so the previous `-k "workbench"`
@@ -317,7 +337,7 @@ jobs:
           fi
           # shellcheck disable=SC2086 # word splitting is how the file list is passed
           uv run pytest $files \
-            -v -rs \
+            -v -rs -n "${WORKERS}" \
             --vip-config=vip.toml \
             --junitxml=smoke-results.xml
         env:
@@ -325,6 +345,8 @@ jobs:
           # slow suites are still exercised daily without taxing the merge path.
           SUITE: ${{ inputs.suite || (github.event_name == 'schedule' && 'full' || 'gate') }}
           VIP_TEST_PASSWORD: ${{ steps.workbench.outputs.WORKBENCH_PASSWORD }}
+          VIP_TEST_USERNAME_PER_WORKER: "1"
+          WORKERS: ${{ steps.workers.outputs.count }}
 
       # Tolerant, unretried upload -- see connect-smoke.yml's "Upload test
       # results" step for the full rationale, including why no safe retry
