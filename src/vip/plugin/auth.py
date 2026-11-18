@@ -10,7 +10,7 @@ import pytest
 from vip.auth import (
     AuthConfigError,
     InteractiveAuthSession,
-    auth_cache_path,
+    prepare_auth_cache,
     start_headless_auth,
     start_interactive_auth,
 )
@@ -39,7 +39,14 @@ def _configure_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
             # still mirror the controller's auth mode so the auth_mode fixture
             # matches a non-xdist run.
             config.stash[_auth_mode_key] = config.workerinput["vip_auth_mode"]
-    elif config.getoption("--interactive-auth"):
+        return
+
+    # Tidy the auth cache on every controller run, not only browser logins, so an
+    # upgrade moves a legacy cache out of cwd even under --api-auth.
+    browser_auth = config.getoption("--interactive-auth") or config.getoption("--headless-auth")
+    cache_path = prepare_auth_cache(announce_skip=bool(browser_auth))
+
+    if config.getoption("--interactive-auth"):
         config.stash[_auth_mode_key] = "interactive"
         connect_url = vip_cfg.connect.url if vip_cfg.connect.is_configured else None
         wb_url = vip_cfg.workbench.url if vip_cfg.workbench.is_configured else None
@@ -53,7 +60,6 @@ def _configure_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
                 stacklevel=1,
             )
         else:
-            cache_path = auth_cache_path()
             try:
                 session = start_interactive_auth(
                     connect_url=connect_url,
@@ -104,7 +110,6 @@ def _configure_auth(config: pytest.Config, vip_cfg: VIPConfig) -> None:
                 stacklevel=1,
             )
         else:
-            cache_path = auth_cache_path()
             try:
                 session = start_headless_auth(
                     connect_url=connect_url,

@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import logging
 import os
+import re
+import shutil
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -29,18 +33,55 @@ logger = logging.getLogger(__name__)
 
 AUTH_CACHE_FILENAME = ".vip-auth-cache.json"
 
+# A cached session older than this is never reused.
+AUTH_CACHE_TTL_SECONDS = 4 * 3600
+
+# Another directory's cache is pruned only after this long.  A run that reused a cache
+# just inside the TTL keeps reading its storage state for as long as its tests run.
+AUTH_CACHE_PRUNE_AFTER_SECONDS = 24 * 3600
+
+# Per-directory cache folders are the first 16 hex digits of a SHA-256.
+_CACHE_DIR_NAME = re.compile(r"[0-9a-f]{16}")
+
 # Cookies dropped before a storage state is written to the on-disk cache.
 # Entra sets ESTSAUTHPERSISTENT even when "Stay signed in?" is answered No;
 # the session ESTSAUTH cookie covers silent SSO for the cache's four-hour TTL.
 _CACHE_DROPPED_COOKIES = frozenset({"ESTSAUTHPERSISTENT"})
 
 
-def auth_cache_path() -> Path:
+def _user_cache_root() -> Path:
+    """Per-user cache root: ``%LOCALAPPDATA%`` on Windows, else ``$XDG_CACHE_HOME`` or ``~/.cache``.
+
+    A relative ``XDG_CACHE_HOME`` is ignored, as the XDG spec requires.  Creates nothing.
+    """
+    if sys.platform == "win32":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            return Path(local_app_data)
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    if xdg and Path(xdg).is_absolute():
+        return Path(xdg)
+    return Path.home() / ".cache"
+
+
+def _cwd_key(cwd: Path) -> str:
+    """Name of the cache directory for *cwd*.
+
+    The resolved path is case-folded on Windows and macOS, whose default filesystems
+    ignore case, so ``~/Proj`` and ``~/proj`` share one cache.
+    """
+    text = os.path.normcase(str(cwd.resolve()))
+    if sys.platform == "darwin":
+        text = text.casefold()
+    return hashlib.sha256(os.fsencode(text)).hexdigest()[:16]
+
+
+def auth_cache_path() -> Path | None:
     """Path to the auth-session cache for the current invocation directory.
 
-    Single source of truth for both call sites: ``plugin/auth.py`` (``vip verify``)
-    and ``cli/cleanup.py`` (``vip cleanup --workbench-url``).  They must agree, or
-    ``cleanup`` cannot find the session ``verify`` just cached.
+    Single source of truth for the cache location.  ``vip verify`` and ``vip cleanup``
+    reach it through :func:`prepare_auth_cache`; they must agree, or ``cleanup`` cannot
+    find the session ``verify`` just cached.
 
     Keyed on the *invocation* directory rather than pytest's ``config.rootpath``.
     For a repo checkout the two are the same, but for an installed VIP (``uv tool
@@ -48,8 +89,156 @@ def auth_cache_path() -> Path:
     invocation directory and the ``site-packages`` test paths — which lands in
     ``$HOME``.  That put the cache nowhere near the user's ``vip.toml`` and made
     the two call sites read different files.
+
+    The cache lives under the user cache directory, not in the invocation directory:
+    cwd is what users zip and share, and the cache holds a live session and API key
+    (#620).  This only computes the path; it touches no files and prints nothing.
+
+    Returns ``None`` when there is no home directory (and ``XDG_CACHE_HOME`` is unset)
+    or the invocation directory no longer exists.
     """
-    return Path.cwd() / AUTH_CACHE_FILENAME
+    try:
+        return _user_cache_root() / "vip" / "auth" / _cwd_key(Path.cwd()) / AUTH_CACHE_FILENAME
+    except (RuntimeError, OSError):
+        return None
+
+
+def prepare_auth_cache(*, announce_skip: bool = True) -> Path | None:
+    """Resolve the auth cache and tidy it, once per command.
+
+    Besides :func:`auth_cache_path`, this tightens ``vip/`` and ``vip/auth/`` to
+    owner-only, moves a cache an older VIP left in cwd, and deletes expired caches
+    that other directories left behind.  ``vip verify`` (the pytest controller only,
+    not each xdist worker) and ``vip cleanup`` call it on every run, logging in or not,
+    so an upgrade never leaves a legacy cache in cwd.  *announce_skip* prints why there
+    is no cache; pass False on runs that would not use one.  Never raises.
+    """
+    path = auth_cache_path()
+    if path is None:
+        if not announce_skip:
+            return None
+        print(
+            ">>> Skipping auth cache: cannot determine a home directory or the working "
+            "directory; set XDG_CACHE_HOME to enable it."
+        )
+        return None
+    base = path.parent.parent
+    with contextlib.suppress(OSError):
+        for directory in (base.parent, base):
+            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            directory.chmod(0o700)
+    with contextlib.suppress(OSError):
+        _migrate_legacy_auth_cache(Path.cwd(), path)
+    _prune_expired_auth_caches(base, keep=path.parent)
+    return path
+
+
+def _make_private_dir(directory: Path) -> None:
+    """Create *directory* owner-only, tightening it if it already exists."""
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    directory.chmod(0o700)
+
+
+def _prune_expired_auth_caches(base: Path, keep: Path) -> None:
+    """Delete cache directories under *base* not written for a day, never raising.
+
+    Such a cache is past the TTL, so it is never reused and only keeps cookies and an API
+    key on disk.  The key itself is removed by the stale-key sweep the next login runs on
+    Connect.  The margin over the TTL keeps a long run in another directory working.
+    """
+    now = time.time()
+    try:
+        entries = list(base.iterdir())
+    except OSError:
+        return
+    for directory in entries:
+        if directory == keep or not _CACHE_DIR_NAME.fullmatch(directory.name):
+            continue
+        try:
+            newest = max((f.stat().st_mtime for f in directory.iterdir()), default=0.0)
+            if now - newest > AUTH_CACHE_PRUNE_AFTER_SECONDS:
+                shutil.rmtree(directory)
+        except OSError as exc:
+            logger.debug("Could not prune expired auth cache %s: %s", directory, exc)
+
+
+def _migrate_legacy_auth_cache(legacy_dir: Path, dest: Path) -> None:
+    """Move the cache pair an older VIP wrote into ``legacy_dir`` to ``dest``, never raising.
+
+    The state and meta files move together or not at all: a meta next to another
+    session's state would hand out the wrong API key.  When ``dest`` already holds a
+    cache, or the move fails, the legacy files are deleted instead, because a live session
+    must not stay in a directory users zip and share (#620).  The orphaned Connect key is
+    removed by the next login's stale-key sweep.
+    """
+    meta_dest = dest.with_suffix(".meta.json")
+    legacy_state = legacy_dir / dest.name
+    legacy_meta = legacy_dir / meta_dest.name
+    try:
+        if legacy_state == dest or not (legacy_state.is_file() or legacy_meta.is_file()):
+            return
+        has_state = legacy_state.is_file()
+    except OSError:
+        return
+    try:
+        move = has_state and not dest.exists()
+    except OSError as exc:
+        move = False
+        logger.warning(
+            "Cannot reach the auth cache at %s (%s); deleting the auth cache in %s instead. "
+            "The next run signs in again.",
+            dest.parent,
+            exc,
+            legacy_dir,
+        )
+    if move:
+        try:
+            _make_private_dir(dest.parent)
+            # A meta with no state belongs to no session; it must not pair with the moved one.
+            meta_dest.unlink(missing_ok=True)
+            shutil.move(str(legacy_state), str(dest))
+            dest.chmod(0o600)
+            if legacy_meta.is_file():
+                shutil.move(str(legacy_meta), str(meta_dest))
+                meta_dest.chmod(0o600)
+            return
+        except FileNotFoundError:
+            # Another VIP run in this directory moved the state first; its copy stands.
+            pass
+        except OSError as exc:
+            for moved in (dest, meta_dest):
+                with contextlib.suppress(OSError):
+                    moved.unlink(missing_ok=True)
+            logger.warning(
+                "Could not move the auth cache out of %s (%s); deleting it instead. "
+                "The next run signs in again.",
+                legacy_dir,
+                exc,
+            )
+    for legacy in (legacy_state, legacy_meta):
+        try:
+            legacy.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not remove legacy auth cache %s; delete it by hand.", legacy)
+
+
+def _write_private_atomic(path: Path, payload: str) -> None:
+    """Write *payload* to *path* owner-only, via a temp file and rename.
+
+    The temp file sits in the same directory so the rename is atomic, and a concurrent
+    reader never sees a half-written file.
+    """
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".vip-auth-cache-")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+        tmp.chmod(0o600)
+        tmp.replace(path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        raise
 
 
 def _cookies_from_storage_state(storage_state_path: Path) -> httpx.Cookies:
@@ -185,37 +374,33 @@ def _load_cached_auth(
     ``None`` and every Workbench test skipped with a message that named no cause.
     So when Workbench is requested we probe it before trusting the cache.
     """
-    if not cache_path.exists():
-        return None
-
-    # Check if the cache is less than 4 hours old.
-    age = time.time() - cache_path.stat().st_mtime
-    if age > 4 * 3600:
-        return None
-
-    # Read the companion metadata file if it exists.
     meta_path = cache_path.with_suffix(".meta.json")
-    api_key = None
-    key_name = ""
-    resolved_connect_url = ""
-    cached_request_connect_url = ""
-    cached_request_workbench_url = ""
-    if meta_path.exists():
-        try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            api_key = meta.get("api_key")
-            key_name = meta.get("key_name", "")
-            resolved_connect_url = meta.get("connect_url", "")
-            # Older caches (pre-fix) only stored the resolved URL.  Fall
-            # back to it so a stale cache still matches when the
-            # resolved and requested forms are identical (no sub-path
-            # rewrite happened).
-            cached_request_connect_url = (
-                meta.get("requested_connect_url", "") or resolved_connect_url
-            )
-            cached_request_workbench_url = meta.get("workbench_url", "")
-        except (OSError, ValueError, AttributeError):
-            pass
+    try:
+        if not cache_path.exists():
+            return None
+        # Check if the cache is less than 4 hours old.
+        age = time.time() - cache_path.stat().st_mtime
+        meta_exists = meta_path.exists()
+    except OSError:
+        # An inaccessible cache directory disables caching rather than aborting auth.
+        return None
+    if age > AUTH_CACHE_TTL_SECONDS:
+        return None
+    # A state with no meta is a save in progress or a half-finished one; its key is unknown.
+    if not meta_exists:
+        return None
+
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        api_key = meta.get("api_key")
+        key_name = meta.get("key_name", "")
+        resolved_connect_url = meta.get("connect_url", "")
+        # Older caches only stored the resolved URL.  Fall back to it so a stale cache
+        # still matches when the resolved and requested forms are identical.
+        cached_request_connect_url = meta.get("requested_connect_url", "") or resolved_connect_url
+        cached_request_workbench_url = meta.get("workbench_url", "")
+    except (OSError, ValueError, AttributeError):
+        return None
 
     # Match against the *requested* Connect URL so that
     # ``_resolve_connect_api_base`` rewriting the dashboard URL to a
@@ -351,26 +536,19 @@ def refresh_auth_cache_from_storage_state(
     cleanup path, where failing loudly would mask the test's own result.
     """
     path = cache_path if cache_path is not None else auth_cache_path()
-    if not path.exists():
+    if path is None:
+        return False
+    try:
+        if not path.exists():
+            return False
+    except OSError:
         return False
 
-    tmp: Path | None = None
     try:
-        payload = json.dumps(_cacheable_storage_state(storage_state))
-        # Same directory so the rename stays on one filesystem (and therefore
-        # atomic); mkstemp creates it 0600 already.
-        fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".vip-auth-cache-")
-        tmp = Path(tmp_name)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(payload)
-        tmp.chmod(0o600)
-        tmp.replace(path)
+        _write_private_atomic(path, json.dumps(_cacheable_storage_state(storage_state)))
         return True
     except Exception as exc:  # noqa: BLE001 -- cleanup path; never raises, see docstring
         logger.debug("Could not refresh the auth cache at %s: %s", path, exc)
-        if tmp is not None and tmp.exists():
-            with contextlib.suppress(OSError):
-                tmp.unlink()
         return False
 
 
@@ -392,11 +570,6 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
 
     # Write the storage state to the cache location, minus long-lived IdP cookies.
     state = json.loads(session.storage_state_path.read_text(encoding="utf-8"))
-    fd = os.open(cache_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        json.dump(_cacheable_storage_state(state), handle)
-    cache_path.chmod(0o600)
-
     # Write companion metadata.  ``connect_url`` keeps the resolved
     # form (used for API key cleanup); ``requested_connect_url`` keeps
     # the pre-resolve form for cache-key matching.  Older releases only
@@ -411,5 +584,19 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         "requested_connect_url": session._requested_connect_url or session._connect_url,
         "workbench_url": session._workbench_url,
     }
-    meta_path.write_text(json.dumps(meta), encoding="utf-8")
-    meta_path.chmod(0o600)
+    try:
+        _make_private_dir(cache_path.parent)
+        # Drop the old meta first so it never pairs with the new state.  Until the new
+        # meta lands, a concurrent _load_cached_auth sees no meta and treats it as a miss.
+        meta_path.unlink(missing_ok=True)
+        _write_private_atomic(cache_path, json.dumps(_cacheable_storage_state(state)))
+        _write_private_atomic(meta_path, json.dumps(meta))
+    except (OSError, TypeError, ValueError) as exc:
+        # A failed save must leave no cache: a partial pair could be reused.
+        for leftover in (cache_path, meta_path):
+            with contextlib.suppress(OSError):
+                leftover.unlink(missing_ok=True)
+        print(
+            f">>> Skipping auth cache: cannot write {cache_path.parent} ({exc}); "
+            "next run will re-authenticate."
+        )

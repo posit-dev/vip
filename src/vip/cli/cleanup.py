@@ -10,8 +10,8 @@ from pathlib import Path
 
 from vip.auth import (
     AuthConfigError,
-    auth_cache_path,
     authenticated_page,
+    prepare_auth_cache,
     resolve_url_scheme,
     start_headless_auth,
     start_interactive_auth,
@@ -95,7 +95,7 @@ def _cleanup_workbench_sessions(
     proxy = config.proxy
     # Same helper plugin/auth.py uses, so this finds the session a prior `vip verify`
     # from this directory cached.
-    cache_path = auth_cache_path()
+    cache_path = prepare_auth_cache()
 
     username = config.auth.username
     password = config.auth.password
@@ -244,6 +244,9 @@ def run_cleanup(args: argparse.Namespace) -> None:
     # explicit `vip cleanup --connect-url ...` with no vip.toml must not emit a
     # "Config file not found" warning (env-based credentials still apply).
     config = _load_cleanup_config(args)
+    # Tidy the auth cache on every run, so an upgrade moves a legacy cache out of cwd
+    # even when no browser login follows (Connect only, or a Workbench API token).
+    prepare_auth_cache(announce_skip=False)
 
     # A CLI flag wins over vip.toml. Wrapping the CLI arg in ProductConfig
     # routes it through the same _normalize_url a bare hostname gets from

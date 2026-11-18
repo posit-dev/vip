@@ -541,6 +541,26 @@ class TestHeadlessAuthOption:
 
 
 class TestHeadlessAuthFixture:
+    def test_run_without_browser_auth_moves_a_legacy_auth_cache(self, pytester):
+        """Every controller run tidies the auth cache, so a legacy cwd cache moves even
+        when no browser login happens.
+        """
+        pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
+        (pytester.path / ".vip-auth-cache.json").write_text("{}", encoding="utf-8")
+        (pytester.path / ".vip-auth-cache.meta.json").write_text("{}", encoding="utf-8")
+        pytester.makepyfile(
+            """
+            def test_placeholder():
+                assert True
+            """
+        )
+
+        result = pytester.runpytest_subprocess("--vip-config=vip.toml")
+
+        result.assert_outcomes(passed=1)
+        assert list(pytester.path.glob(".vip-auth-cache*")) == []
+        assert "Skipping auth cache" not in result.stdout.str()
+
     def test_headless_auth_skipped_when_no_auth_products(self, pytester):
         """--headless-auth skips the browser flow when no auth-requiring products are enabled.
 

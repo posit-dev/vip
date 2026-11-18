@@ -76,6 +76,35 @@ Fast confidence check — skip the detailed/long-running checks:
 vip verify --config vip.toml --basic
 ```
 
+### Credentials on disk
+
+`--interactive-auth` and `--headless-auth` cache a live session for 4 hours:
+the identity provider (IdP), Connect, and Workbench cookies, plus a Connect
+API key that VIP creates. VIP keeps one cache for each directory you run it
+from, in a folder named after a hash of that directory:
+
+| Platform | Location |
+|---|---|
+| Linux, macOS | `$XDG_CACHE_HOME/vip/auth/<hash>/`, or `~/.cache/vip/auth/<hash>/` when `XDG_CACHE_HOME` is unset |
+| Windows | `%LOCALAPPDATA%\vip\auth\<hash>\` |
+
+Only your user can read these folders. Each `vip verify` or `vip cleanup`
+deletes caches that have not been written for a day. VIP never reuses a cache
+older than 4 hours, and the next login deletes the API keys of expired caches
+from Connect. To sign out now,
+delete the `vip/auth` folder. With no home directory and no `XDG_CACHE_HOME`,
+VIP skips the cache.
+
+Earlier releases wrote `.vip-auth-cache.json` and `.vip-auth-cache.meta.json`
+into the working directory. The first `vip verify` or `vip cleanup` of this
+release moves them to the cache folder, or deletes them if it cannot. Never
+share those files.
+
+`vip.toml` can hold `api_key` and `password` values. Remove or redact them
+before you share a VIP directory. Prefer the `VIP_CONNECT_API_KEY`,
+`VIP_WORKBENCH_API_KEY`, and `VIP_TEST_PASSWORD` environment variables over
+inline secrets.
+
 ## Uninstalling
 
 To reverse what `vip install` (or `just setup`) did:

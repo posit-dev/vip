@@ -52,6 +52,37 @@ def _restore_auth_entrypoints():
         setattr(_auth, name, func)
 
 
+_auth_cache_setup_patch_key = pytest.StashKey[pytest.MonkeyPatch]()
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config):
+    """Keep outer-session configuration away from the user's credential files."""
+    patch = pytest.MonkeyPatch()
+    config.stash[_auth_cache_setup_patch_key] = patch
+    config.add_cleanup(patch.undo)
+    patch.setattr("vip.plugin.auth.prepare_auth_cache", lambda **_: None)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session):
+    """Restore cache preparation before selftests and nested pytest runs."""
+    session.config.stash[_auth_cache_setup_patch_key].undo()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_auth_cache_root(monkeypatch, tmp_path_factory):
+    """Point the auth cache root at a temp directory for every selftest.
+
+    ``vip verify`` and ``vip cleanup`` tidy the real cache (migrate, prune, chmod) on
+    every run, so a selftest must never resolve the user's own ``~/.cache``.  On Windows
+    ``LOCALAPPDATA`` comes before ``XDG_CACHE_HOME``, so it is cleared too.  Tests about
+    the cache root set their own values with ``monkeypatch``.
+    """
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path_factory.mktemp("xdg-cache")))
+
+
 @pytest.fixture(autouse=True)
 def _no_ambient_proxy(monkeypatch):
     """Clear proxy environment variables for every selftest.

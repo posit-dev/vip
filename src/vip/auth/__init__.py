@@ -19,6 +19,7 @@ from vip.auth.cache import (
     _ProbeResult,
     _save_auth_cache,
     auth_cache_path,
+    prepare_auth_cache,
     refresh_auth_cache_from_storage_state,
 )
 from vip.auth.flows import start_headless_auth, start_interactive_auth
@@ -48,6 +49,7 @@ __all__ = [
     "_scheme_resolution_cache",
     "_wait_for_product_redirect",
     "auth_cache_path",
+    "prepare_auth_cache",
     "authenticated_page",
     "refresh_auth_cache_from_storage_state",
     "resolve_url_scheme",
