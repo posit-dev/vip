@@ -99,16 +99,20 @@ def auth_cache_path() -> Path | None:
         return None
 
 
-def prepare_auth_cache() -> Path | None:
-    """Resolve the auth cache for a login, once per command.
+def prepare_auth_cache(*, announce_skip: bool = True) -> Path | None:
+    """Resolve the auth cache and tidy it, once per command.
 
     Besides :func:`auth_cache_path`, this tightens ``vip/`` and ``vip/auth/`` to
     owner-only, moves a cache an older VIP left in cwd, and deletes expired caches
-    that other directories left behind.  Called by ``vip verify`` (the pytest
-    controller only, not each xdist worker) and ``vip cleanup``.  Never raises.
+    that other directories left behind.  ``vip verify`` (the pytest controller only,
+    not each xdist worker) and ``vip cleanup`` call it on every run, logging in or not,
+    so an upgrade never leaves a legacy cache in cwd.  *announce_skip* prints why there
+    is no cache; pass False on runs that would not use one.  Never raises.
     """
     path = auth_cache_path()
     if path is None:
+        if not announce_skip:
+            return None
         print(
             ">>> Skipping auth cache: cannot determine a home directory or the working "
             "directory; set XDG_CACHE_HOME to enable it."
@@ -168,9 +172,20 @@ def _migrate_legacy_auth_cache(legacy_dir: Path, dest: Path) -> None:
     try:
         if legacy_state == dest or not (legacy_state.is_file() or legacy_meta.is_file()):
             return
-        move = legacy_state.is_file() and not dest.exists()
+        has_state = legacy_state.is_file()
     except OSError:
         return
+    try:
+        move = has_state and not dest.exists()
+    except OSError as exc:
+        move = False
+        logger.warning(
+            "Cannot reach the auth cache at %s (%s); deleting the auth cache in %s instead. "
+            "The next run signs in again.",
+            dest.parent,
+            exc,
+            legacy_dir,
+        )
     if move:
         try:
             _make_private_dir(dest.parent)

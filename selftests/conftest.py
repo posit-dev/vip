@@ -53,14 +53,16 @@ def _restore_auth_entrypoints():
 
 
 @pytest.fixture(autouse=True)
-def _no_ambient_localappdata(monkeypatch):
-    """Clear ``LOCALAPPDATA`` so the auth cache root follows ``XDG_CACHE_HOME`` in every selftest.
+def _isolated_auth_cache_root(monkeypatch, tmp_path_factory):
+    """Point the auth cache root at a temp directory for every selftest.
 
-    On Windows ``LOCALAPPDATA`` comes first, so a test that points ``XDG_CACHE_HOME`` at
-    ``tmp_path`` would otherwise read, write and prune the runner's real cache.  Tests
-    about the Windows root set it themselves.
+    ``vip verify`` and ``vip cleanup`` tidy the real cache (migrate, prune, chmod) on
+    every run, so a selftest must never resolve the user's own ``~/.cache``.  On Windows
+    ``LOCALAPPDATA`` comes before ``XDG_CACHE_HOME``, so it is cleared too.  Tests about
+    the cache root set their own values with ``monkeypatch``.
     """
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path_factory.mktemp("xdg-cache")))
 
 
 @pytest.fixture(autouse=True)

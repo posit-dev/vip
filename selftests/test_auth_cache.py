@@ -1071,6 +1071,29 @@ class TestLegacyAuthCacheMigration:
         assert list(work.glob(".vip-auth-cache*")) == []
         assert not dest.with_suffix(".meta.json").exists()
 
+    def test_unreachable_dest_still_deletes_the_legacy_pair(self, tmp_path, monkeypatch, caplog):
+        from pathlib import Path
+
+        from vip.auth.cache import _migrate_legacy_auth_cache
+
+        work, dest = tmp_path / "work", self._dest(tmp_path)
+        self._legacy(work)
+        real_exists = Path.exists
+
+        def denied(self, *args, **kwargs):
+            if self == dest:
+                raise PermissionError(errno.EACCES, "denied")
+            return real_exists(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "exists", denied)
+
+        _migrate_legacy_auth_cache(work, dest)
+
+        assert list(work.glob(".vip-auth-cache*")) == []
+        warned = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warned) == 1
+        assert str(work) in warned[0]
+
     def test_unreadable_legacy_dir_never_raises(self, tmp_path, monkeypatch):
         from pathlib import Path
 

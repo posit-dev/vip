@@ -134,6 +134,31 @@ class TestConnectWorkbenchRouting:
         assert "Deleted 3 VIP test content item(s)" in out
         assert "Cleanup completed successfully" in out
 
+    def test_connect_only_still_moves_a_legacy_auth_cache(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("VIP_CONFIG", raising=False)
+        (tmp_path / ".vip-auth-cache.json").write_text("{}", encoding="utf-8")
+        (tmp_path / ".vip-auth-cache.meta.json").write_text("{}", encoding="utf-8")
+
+        class _FakeConnectClient:
+            def __init__(self, *a, **k):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def cleanup_vip_content(self):
+                return 0
+
+        monkeypatch.setattr("vip.cli.cleanup.ConnectClient", _FakeConnectClient)
+
+        vip.cli.run_cleanup(_make_args(connect_url="https://c.example.com"))
+
+        assert list(tmp_path.glob(".vip-auth-cache*")) == []
+
     def test_workbench_only_does_not_touch_connect(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
@@ -288,7 +313,7 @@ class TestWorkbenchAuthModeSelection:
         from vip.config import VIPConfig
 
         self._patch_client_and_ui(monkeypatch)
-        monkeypatch.setattr(vip.cli.cleanup, "prepare_auth_cache", lambda: None)
+        monkeypatch.setattr(vip.cli.cleanup, "prepare_auth_cache", lambda **_: None)
 
         calls = {}
 

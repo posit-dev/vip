@@ -244,6 +244,9 @@ def run_cleanup(args: argparse.Namespace) -> None:
     # explicit `vip cleanup --connect-url ...` with no vip.toml must not emit a
     # "Config file not found" warning (env-based credentials still apply).
     config = _load_cleanup_config(args)
+    # Tidy the auth cache on every run, so an upgrade moves a legacy cache out of cwd
+    # even when no browser login follows (Connect only, or a Workbench API token).
+    prepare_auth_cache(announce_skip=False)
 
     # A CLI flag wins over vip.toml. Wrapping the CLI arg in ProductConfig
     # routes it through the same _normalize_url a bare hostname gets from
