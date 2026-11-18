@@ -183,6 +183,12 @@ def _workbench_group_name(ide_markers: set[str], module_stem: str) -> str:
     return f"workbench_{stem}"
 
 
+# Scenarios that end the session other workers share run in a group of their own. xdist queues
+# groups by their first test in collection order, so sharing a group with an early scenario would
+# hand them out at the start of the run; alone, sign-out's order(95) queues it last.
+_OWN_GROUP_SCENARIOS = {"test_workbench_signout": "workbench_signout"}
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(
     config: pytest.Config,
@@ -208,8 +214,9 @@ def pytest_collection_modifyitems(
         item_path = getattr(item, "path", None)
         if item_path is None or not item_path.is_relative_to(workbench_dir):
             continue
+        own_group = _OWN_GROUP_SCENARIOS.get(getattr(item, "originalname", ""))
         ide_markers = {m.name for m in item.iter_markers()} & set(_IDE_MARKERS)
-        group = _workbench_group_name(ide_markers, item_path.stem)
+        group = own_group or _workbench_group_name(ide_markers, item_path.stem)
         # Strip any pre-existing xdist_group marker before adding the hybrid group. No
         # per-test xdist_group marker exists today, so this is a defensive guard: xdist
         # concatenates *all* xdist_group marks on an item (via iter_markers), it does not
