@@ -8,6 +8,10 @@ inputs:
   product:
     description: "Product name for the heading and the URL row, e.g. `Connect`."
     required: true
+  title:
+    description: "Heading text before the version. Defaults to `🧪 <product> Smoke Tests`."
+    required: false
+    default: ""
   requested-version:
     description: "The version the matrix asked for."
     required: true
@@ -31,14 +35,16 @@ runs:
       shell: bash
       env:
         PRODUCT: ${{ inputs.product }}
+        TITLE: ${{ inputs.title }}
         REQUESTED: ${{ inputs.requested-version }}
         RESOLVED: ${{ inputs.resolved-version }}
         PRODUCT_URL: ${{ inputs.url }}
         RESULTS_FILE: ${{ inputs.results-file }}
       run: |
         RUN_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+        TITLE=${TITLE:-"🧪 ${PRODUCT} Smoke Tests"}
         {
-          echo "## 🧪 ${PRODUCT} Smoke Tests — v${RESOLVED}"
+          echo "## ${TITLE} — v${RESOLVED}"
           echo ""
           echo "| | |"
           echo "|---|---|"

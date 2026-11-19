@@ -16,6 +16,13 @@ inputs:
   set-matrix-result:
     description: "`needs.set-matrix.result`."
     required: true
+  resolvers:
+    description: >-
+      Extra version-resolver jobs the suites depend on, one per line as
+      `<label>|<needs.JOB.result>`, checked like `set-matrix-result`, e.g. a
+      `Connect version resolver` label with `needs.connect-version.result`.
+    required: false
+    default: ""
   relevant:
     description: "`needs.changes.outputs.relevant`: `true` when this run's paths put the suite in scope."
     required: true
@@ -39,6 +46,7 @@ runs:
         PRODUCT: ${{ inputs.product }}
         CHANGES_RESULT: ${{ inputs.changes-result }}
         SET_MATRIX_RESULT: ${{ inputs.set-matrix-result }}
+        RESOLVERS: ${{ inputs.resolvers }}
         RELEVANT: ${{ inputs.relevant }}
         SUITES: ${{ inputs.suites }}
         IN_SCOPE_HINT: ${{ inputs.in-scope-hint }}
@@ -53,6 +61,13 @@ runs:
           echo "Version-matrix job failed; cannot confirm smoke scope"
           exit 1
         fi
+        while IFS='|' read -r LABEL RESULT; do
+          [ -n "${LABEL}" ] || continue
+          if [ "${RESULT}" = "failure" ] || [ "${RESULT}" = "cancelled" ]; then
+            echo "${LABEL} failed; cannot confirm smoke scope"
+            exit 1
+          fi
+        done <<< "${RESOLVERS}"
         while IFS='|' read -r LABEL RESULT; do
           [ -n "${LABEL}" ] || continue
           # If a suite was in scope for this PR (paths matched) it MUST have

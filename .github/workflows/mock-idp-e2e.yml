@@ -30,6 +30,7 @@ on:
       - 'Dockerfile'
       - '.github/workflows/mock-idp-e2e.yml'
       - '.github/workflows/recent-production-versions.yml'
+      - '.github/actions/check-smoke-status/**'
   pull_request:
   schedule:
     - cron: "30 5 * * *" # daily at 5:30am UTC
@@ -77,6 +78,7 @@ jobs:
               - 'Dockerfile'
               - '.github/workflows/mock-idp-e2e.yml'
               - '.github/workflows/recent-production-versions.yml'
+              - '.github/actions/check-smoke-status/**'
 
   # Emit the Workbench version list for the E2E job. PR/push runs the current
   # release only; scheduled/manual runs fan out across the Workbench support
@@ -524,35 +526,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The E2E job needs both resolvers: the Workbench matrix and the pinned
+      # Connect tag. A failed resolver skips (not fails) it, so both are checked.
       - name: Check result
-        run: |
-          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.changes.result }}" = "cancelled" ]; then
-            echo "Change-detection job failed; cannot confirm E2E scope"
-            exit 1
-          fi
-          # A failed version resolver skips (not fails) mock-idp-e2e, which the
-          # check below would otherwise read as a clean skip. Both resolvers
-          # count: the E2E job needs the Workbench matrix and the pinned
-          # Connect tag.
-          if [ "${{ needs.set-matrix.result }}" = "failure" ] || [ "${{ needs.set-matrix.result }}" = "cancelled" ]; then
-            echo "Version-matrix job failed; cannot confirm E2E scope"
-            exit 1
-          fi
-          if [ "${{ needs.connect-version.result }}" = "failure" ] || [ "${{ needs.connect-version.result }}" = "cancelled" ]; then
-            echo "Connect version resolver failed; cannot confirm E2E scope"
-            exit 1
-          fi
-          # If auth paths changed, the E2E suite was in scope and MUST have
-          # succeeded — a skip means it was gated out, not legitimately absent.
-          if [ "${{ needs.changes.outputs.relevant }}" = "true" ] && [ "${{ needs.mock-idp-e2e.result }}" != "success" ]; then
-            echo "Mock-IdP E2E was in scope but did not succeed (result=${{ needs.mock-idp-e2e.result }})"
-            exit 1
-          fi
-          if [ "${{ needs.mock-idp-e2e.result }}" = "failure" ] || [ "${{ needs.mock-idp-e2e.result }}" = "cancelled" ]; then
-            echo "Mock-IdP E2E tests failed or were cancelled"
-            exit 1
-          fi
-          echo "Mock-IdP E2E tests passed or were legitimately out of scope"
+        uses: ./.github/actions/check-smoke-status
+        with:
+          product: Mock-IdP E2E
+          changes-result: ${{ needs.changes.result }}
+          set-matrix-result: ${{ needs.set-matrix.result }}
+          resolvers: |
+            Connect version resolver|${{ needs.connect-version.result }}
+          relevant: ${{ needs.changes.outputs.relevant }}
+          suites: |
+            Mock-IdP E2E tests|${{ needs.mock-idp-e2e.result }}
 
       # Nightly failures have no PR author to notice them; file (or update) a
       # tracking issue instead of failing silently. Never fires on push/pull_request
