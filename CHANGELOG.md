@@ -3,6 +3,55 @@
 > Starting with `2026.7.0`, VIP moves from semantic versioning to calendar versioning (`YYYY.M.PATCH`, e.g. `2026.7.3`), cut on a weekly Thursday train rather than on every merge -- see `docs/development.md` ("Versioning and the release cadence") for the rule and the rationale. If you pin `posit-vip~=0.58` or `posit-vip<1.0`, that pin will stop matching new releases: `2026.7.0` satisfies neither constraint, so resolvers will silently stop selecting updates rather than erroring. Widen the pin (e.g. `posit-vip>=0.58`) to keep receiving releases.
 
 
+## v2026.11.2 (2026-11-19)
+
+### Bug Fixes
+
+- **auth**: Keep the auth cache out of the invocation directory ([#793](https://github.com/posit-dev/vip/pull/793), [`e4900a3`](https://github.com/posit-dev/vip/commit/e4900a3126b6eb0ca79952dd8b14ea7c8fe83101))
+
+- **bundle**: Redact and scan scheme-less proxy credentials ([#837](https://github.com/posit-dev/vip/pull/837), [`301c52b`](https://github.com/posit-dev/vip/commit/301c52bd3f4d0f652f120ffa32ee26eebb6c17ef))
+
+- **deps**: Bump tornado, brotli, werkzeug for audit findings ([#826](https://github.com/posit-dev/vip/pull/826), [`8b1c5c4`](https://github.com/posit-dev/vip/commit/8b1c5c419e0eb254a8b6dbc031f8171e49ef5ea3))
+
+- **proxy**: Raise ConfigError for a malformed URL in proxy_for_url ([#828](https://github.com/posit-dev/vip/pull/828), [`2bd0236`](https://github.com/posit-dev/vip/commit/2bd0236cdccc14d49c326cf98d5db2d5b19c9882))
+
+### Chores
+
+- **deps**: Bump anthropics/claude-code-action from 1.0.271 to 1.0.272 in the actions-dependencies group ([#845](https://github.com/posit-dev/vip/pull/845), [`00ec37f`](https://github.com/posit-dev/vip/commit/00ec37fa1a56da1ce0997a6388b1f942fd0449ee))
+
+- **deps**: Bump the actions-dependencies group across 1 directory with 4 updates ([#839](https://github.com/posit-dev/vip/pull/839), [`7ea0a71`](https://github.com/posit-dev/vip/commit/7ea0a71100dfa730ca5b4cd3124e6d7936cfb257))
+
+- **deps**: Bump the python-dependencies group across 1 directory with 13 updates ([#827](https://github.com/posit-dev/vip/pull/827), [`311713e`](https://github.com/posit-dev/vip/commit/311713e89e1b67d9e3e0ac2bb93c08b717c9ed78))
+
+### Continuous Integration
+
+- Build the example report once and cancel superseded PR runs ([#838](https://github.com/posit-dev/vip/pull/838), [`aaa78df`](https://github.com/posit-dev/vip/commit/aaa78df2eeb43a60245aa0b7d17545cb4c63a732))
+
+- Resolve Workbench version from the container directly ([#836](https://github.com/posit-dev/vip/pull/836), [`5824c5b`](https://github.com/posit-dev/vip/commit/5824c5b564323df75dcd30b7cef23b45253ac88c))
+
+- Route the last two copied CI blocks through the composites ([#846](https://github.com/posit-dev/vip/pull/846), [`ab9fbab`](https://github.com/posit-dev/vip/commit/ab9fbaba8a4bdb4e126b26776aed6d7841608352))
+
+- Share repeated smoke workflow steps as composite actions ([#834](https://github.com/posit-dev/vip/pull/834), [`489abbc`](https://github.com/posit-dev/vip/commit/489abbc454046422e1d04e225af95d96ba7fbbf5))
+
+- **workbench**: Reland parallel smoke with one user per worker ([#842](https://github.com/posit-dev/vip/pull/842), [`1a05f96`](https://github.com/posit-dev/vip/commit/1a05f96c5a0abd5b598f36318d4e46d53218947c))
+
+- **workbench**: Run the smoke suite in parallel, one user per worker ([#840](https://github.com/posit-dev/vip/pull/840), [`0c7e44d`](https://github.com/posit-dev/vip/commit/0c7e44d2458b0718785bd50d3ce73688e2848927))
+
+### Features
+
+- **cli**: Add vip bundle to build a shareable report archive ([#824](https://github.com/posit-dev/vip/pull/824), [`54db20c`](https://github.com/posit-dev/vip/commit/54db20cc3fae7f9c12f747c457b5f69f9d3f41be))
+
+- **cli**: Let verify flags override the config file ([#835](https://github.com/posit-dev/vip/pull/835), [`2e08639`](https://github.com/posit-dev/vip/commit/2e08639339fd46ce45834cc556f5bb65b459e4c9))
+
+- **cli**: Route output through vip.output and enable ruff T201 ([#847](https://github.com/posit-dev/vip/pull/847), [`ecbb391`](https://github.com/posit-dev/vip/commit/ecbb39195dc475fcfa2860b11fe4ffbad82c5601))
+
+### Refactoring
+
+- **auth**: Share one login shell across auth flows ([#833](https://github.com/posit-dev/vip/pull/833), [`d51abad`](https://github.com/posit-dev/vip/commit/d51abadb876c3fd00aae95aab0eebfe30142b010))
+
+- **workbench**: Drop dead exec helpers and copy-paste ([#832](https://github.com/posit-dev/vip/pull/832), [`c97e82c`](https://github.com/posit-dev/vip/commit/c97e82c47a38e930926cbdc8bf72d5f84d7c8f08))
+
+
 ## v2026.11.1 (2026-11-12)
 
 ### Features

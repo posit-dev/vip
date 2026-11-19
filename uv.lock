@@ -1810,7 +1810,7 @@ wheels = [
 
 [[package]]
 name = "posit-vip"
-version = "2026.11.1"
+version = "2026.11.2"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
