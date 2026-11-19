@@ -113,6 +113,9 @@ vip verify --connect-url https://connect.example.com -- -x --tb=long</code></pre
 Add <code>--verbose</code> for detailed output, including full
             tracebacks, authentication progress, and IdP login steps. This is
             especially helpful when diagnosing headless auth or MFA issues.
+            To hide progress messages instead, put <code>-q</code> before the
+            subcommand (<code>vip -q verify</code>); <code>-q</code> wins if you
+            also pass <code>--verbose</code>.
 </p> <pre><code>vip verify --connect-url https://connect.example.com --headless-auth --verbose</code></pre> <p>
 If tests time out on a slow deployment, for example while waiting
             for a Workbench session to start, set
