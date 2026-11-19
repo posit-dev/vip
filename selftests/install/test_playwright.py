@@ -194,7 +194,7 @@ def test_install_chromium_filters_beware_preamble_and_replaces(monkeypatch, caps
     assert "officially supported" not in out.out + out.err
     assert "downloading fallback build" not in out.out + out.err
     assert "Downloading Chromium 120" in out.out
-    assert "Installed Playwright Chromium" in out.out
+    assert "Installed Playwright Chromium" in out.err
 
 
 def test_install_chromium_forwards_normal_output_unchanged(monkeypatch, capsys):
@@ -208,4 +208,4 @@ def test_install_chromium_forwards_normal_output_unchanged(monkeypatch, capsys):
     assert "Downloading Chromium 120" in out.out
     assert "Chromium downloaded." in out.out
     # No BEWARE means no vip summary line either.
-    assert "Installed Playwright Chromium" not in out.out
+    assert "Installed Playwright Chromium" not in out.out + out.err

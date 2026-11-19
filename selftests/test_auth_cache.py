@@ -67,7 +67,7 @@ class TestSaveAuthCache:
         finally:
             locked.chmod(0o700)
 
-        assert "Skipping auth cache" in capsys.readouterr().out
+        assert "Skipping auth cache" in capsys.readouterr().err
         assert not list(work.glob(".vip-auth-cache*"))
 
     def test_skips_cache_when_connect_configured_but_mint_failed(self, tmp_path):
@@ -172,7 +172,7 @@ class TestSaveAuthCache:
 
         assert not cache.exists()
         assert not cache.with_suffix(".meta.json").exists()
-        assert "Skipping auth cache" in capsys.readouterr().out
+        assert "Skipping auth cache" in capsys.readouterr().err
 
     @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
     def test_tightens_an_existing_cache_directory(self, tmp_path):
@@ -317,7 +317,7 @@ class TestLoadCachedAuth:
         )
 
         assert session is None
-        assert "Ignoring cached auth session" in capsys.readouterr().out
+        assert "Ignoring cached auth session" in capsys.readouterr().err
 
     def test_rejects_cache_when_workbench_was_not_recorded(self, tmp_path):
         """A cache minted with only Connect lacks Workbench cookies; a
@@ -632,7 +632,7 @@ class TestLoadCachedAuthProbesWorkbench:
         )
 
         assert session is None
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Ignoring cached auth session" in out
         assert "no longer authenticates Workbench" in out
 
@@ -843,7 +843,8 @@ class TestAuthCachePath:
         auth_cache_path()
 
         assert len(list(tmp_path.glob(".vip-auth-cache*"))) == 2
-        assert capsys.readouterr().out == ""
+        captured = capsys.readouterr()
+        assert (captured.out, captured.err) == ("", "")
 
     def test_resolving_creates_nothing_without_a_legacy_cache(self, tmp_path, monkeypatch):
         from vip.auth import auth_cache_path
@@ -874,7 +875,7 @@ class TestAuthCachePath:
 
         assert prepare_auth_cache() is None
 
-        assert "Skipping auth cache" in capsys.readouterr().out
+        assert "Skipping auth cache" in capsys.readouterr().err
         assert set(tmp_path.iterdir()) == before
 
     def test_no_home_directory_leaves_legacy_cache_alone(self, tmp_path, monkeypatch):
@@ -1499,7 +1500,7 @@ class TestProbeDetailNamesTheEvidence:
             cache, requested_connect_url=None, requested_workbench_url="https://w.example.com"
         )
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Workbench answered 401 Unauthorized" in out
         assert "sent back to the sign-in page" not in out
 

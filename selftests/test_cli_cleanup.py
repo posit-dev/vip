@@ -130,7 +130,7 @@ class TestConnectWorkbenchRouting:
 
         vip.cli.run_cleanup(_make_args(connect_url="https://c.example.com"))
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Deleted 3 VIP test content item(s)" in out
         assert "Cleanup completed successfully" in out
 
@@ -211,7 +211,7 @@ class TestConnectWorkbenchRouting:
             _make_args(connect_url="https://c.example.com", workbench_url="https://wb.example.com")
         )
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Deleted 1 VIP test content item(s)" in out
         assert called["url"] == "https://wb.example.com"
 
@@ -687,7 +687,7 @@ class TestWorkbenchTokenCleanup:
         assert fake.swept_users == ["alice"]
         assert fake.init_kwargs["api_key"] == "tok"
         assert fake.closed
-        assert "Quit 2 VIP Workbench session(s) via the API token" in capsys.readouterr().out
+        assert "Quit 2 VIP Workbench session(s) via the API token" in capsys.readouterr().err
 
     def test_token_without_a_username_does_not_use_the_token_path(self, monkeypatch):
         monkeypatch.setattr(
@@ -727,7 +727,7 @@ class TestWorkbenchTokenCleanup:
             )
 
         assert reached == {"headless": True}
-        assert "falling back to browser sign-in" in capsys.readouterr().out
+        assert "falling back to browser sign-in" in capsys.readouterr().err
 
     def test_survivors_fall_back_to_browser_auth(self, monkeypatch):
         fake = _FakeTokenWorkbenchClient(remaining=[{"id": "a1", "label": "VIP x - main-1"}])

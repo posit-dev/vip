@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 import platform
 import re
-import sys
 import time
 import warnings
 from datetime import UTC, datetime
@@ -15,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+from vip.output import warn
 
 try:
     from pytest_bdd.scenario import scenario_wrapper_template_registry
@@ -493,12 +494,11 @@ def _apply_unproven_exit_status(session: pytest.Session, exitstatus: int) -> int
     reasons = "\n".join(
         f"  - {r['nodeid']}: {r.get('skip_reason') or 'no reason recorded'}" for r in unproven
     )
-    print(
+    warn(
         f"\nVIP: {len(unproven)} check(s) could not be verified. Nothing failed, "
         f"but nothing was proven either:\n{reasons}\n"
         "Pass --vip-allow-unproven (or --allow-unproven via `vip verify`) "
         "to treat these as an ordinary skip.",
-        file=sys.stderr,
     )
     return EXIT_UNPROVEN
 

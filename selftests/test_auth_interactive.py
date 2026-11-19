@@ -471,7 +471,7 @@ class TestAuthenticateWorkbench:
 
         result = _authenticate_workbench(page, "https://wb.example.com/pwb")
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Could not reach Workbench" in out
         assert "https://wb.example.com/pwb" in out
         assert result is not None

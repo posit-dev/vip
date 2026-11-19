@@ -168,7 +168,7 @@ class TestVerifyLocalSkipNotes:
             encoding="utf-8",
         )
         _capture_cmd(_make_args(config=str(cfg)))
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Connect disabled" in out
         assert "Workbench disabled" in out
         assert "Package Manager" not in out
@@ -177,7 +177,7 @@ class TestVerifyLocalSkipNotes:
         cfg = tmp_path / "vip.toml"
         cfg.write_text("[general]\n", encoding="utf-8")
         _capture_cmd(_make_args(config=str(cfg)))
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Connect no URL given" in out
         assert "Workbench no URL given" in out
         assert "Package Manager no URL given" in out
@@ -194,15 +194,15 @@ class TestVerifyLocalSkipNotes:
             encoding="utf-8",
         )
         _capture_cmd(_make_args(config=str(cfg)))
-        out = capsys.readouterr().out
-        assert "will not be collected" not in out
+        captured = capsys.readouterr()
+        assert "will not be collected" not in captured.out + captured.err
 
     def test_notes_from_url_args(self, tmp_path, monkeypatch, capsys):
         """URL-argument flow generates a temp config; notes should reflect it."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         _capture_cmd(_make_args(package_manager_url="http://localhost:4242/"))
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Connect disabled" in out
         assert "will not be collected" in out
         assert "Workbench disabled" in out

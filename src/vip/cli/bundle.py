@@ -7,7 +7,6 @@ import contextlib
 import json
 import os
 import re
-import sys
 import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,6 +38,7 @@ from vip.cli.report import _resolve_report_dir
 from vip.cli.version import _format_version_details
 from vip.config import VIPConfig, config_from_raw
 from vip.errors import BundleError
+from vip.output import out, warn
 
 _PRODUCTS = ("connect", "workbench", "package_manager")
 
@@ -444,15 +444,15 @@ def run_bundle(args: argparse.Namespace) -> None:
         raise _hit_error(manifest_hits, collected)
 
     for warning in warnings:
-        print(f"Warning: {warning}", file=sys.stderr)
+        warn(f"Warning: {warning}")
     try:
         write_zip(output, members)
     except OSError as exc:
         raise BundleError(
             f"could not write {output}: {exc}. Pass --output PATH to write it somewhere else."
         ) from exc
-    print(f"Bundle written: {output} ({len(members)} files)")
-    print(
+    out(f"Bundle written: {output} ({len(members)} files)")
+    out(
         f"The secret scan looked for {len(secrets)} known values: "
         f"{scan_sources['configuration_and_environment']} from the configuration and the "
         f"environment, {scan_sources['results_product_urls']} from the product URLs in "

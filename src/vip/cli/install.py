@@ -28,6 +28,7 @@ from vip.install.packages import PackageQueryError, installed_dpkg, installed_rp
 from vip.install.plan import build_install_plan, build_uninstall_plan
 from vip.install.playwright import PlaywrightInstallError, chromium_installed, default_cache_dir
 from vip.install.runner import execute_install_plan, execute_uninstall_plan, format_install_plan
+from vip.output import out, warn
 
 
 def run_install(args: argparse.Namespace) -> None:
@@ -50,7 +51,7 @@ def run_install(args: argparse.Namespace) -> None:
         )
 
         if getattr(args, "dry_run", False):
-            print(format_install_plan(plan), end="")
+            out(format_install_plan(plan), end="")
             return
 
         if manifest is None:
@@ -118,10 +119,9 @@ def run_uninstall(args: argparse.Namespace) -> None:
         try:
             cfg = load_config()
         except (tomllib.TOMLDecodeError, ValueError) as exc:
-            print(
+            warn(
                 f"warning: failed to load vip.toml for chained cleanup: {exc}; "
                 "continuing without vip.toml-derived settings",
-                file=sys.stderr,
             )
 
     # A CLI --connect-url wins over vip.toml's [connect] url; wrapping it in

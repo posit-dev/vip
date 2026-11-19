@@ -39,13 +39,13 @@ from __future__ import annotations
 
 import re
 import ssl
-import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 import httpx
 
 from vip.errors import ConfigError
+from vip.output import info
 
 try:
     from httpx._utils import (
@@ -314,13 +314,12 @@ def _promote_http_proxy_to_https(proxy_map: ProxyMap) -> None:
         proxy_map["https://"] = http_proxy
         if not _promotion_notice_emitted:
             _promotion_notice_emitted = True
-            print(
+            info(
                 f">>> Notice: HTTP_PROXY is set ({redact_proxy_url(http_proxy)}) with no "
                 f"HTTPS_PROXY/ALL_PROXY, so VIP is routing https through it via CONNECT "
                 f"(curl and httpx would send https direct). Set HTTPS_PROXY/ALL_PROXY to "
                 f"choose a different gateway, or NO_PROXY for hosts that should be "
                 f"reached directly.",
-                file=sys.stderr,
             )
 
 

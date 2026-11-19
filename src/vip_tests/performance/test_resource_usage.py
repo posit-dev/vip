@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import statistics
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -12,6 +11,7 @@ import pytest
 from pytest_bdd import given, scenario, then, when
 
 from vip.client_auth import build_client_auth
+from vip.output import info
 
 
 @scenario(
@@ -71,19 +71,15 @@ def generate_traffic_and_measure_response_times(vip_config, vip_verbose):
                 elapsed = time.monotonic() - start
                 results.append({"elapsed": elapsed, "status": resp.status_code, "error": None})
                 if verbose:
-                    print(
+                    info(
                         f"[load] GET {url} {resp.status_code} {elapsed:.2f}s",
-                        file=sys.stderr,
-                        flush=True,
                     )
             except (httpx.HTTPError, httpx.InvalidURL) as exc:
                 elapsed = time.monotonic() - start
                 results.append({"elapsed": elapsed, "status": None, "error": str(exc)})
                 if verbose:
-                    print(
+                    info(
                         f"[load] GET {url} FAIL {elapsed:.2f}s {exc}",
-                        file=sys.stderr,
-                        flush=True,
                     )
             time.sleep(0.1)
 

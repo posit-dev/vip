@@ -7,6 +7,7 @@ import json
 import sys
 
 from vip.auth import start_interactive_auth
+from vip.output import error, out
 
 
 def mint_connect_key(args: argparse.Namespace) -> None:
@@ -18,7 +19,7 @@ def mint_connect_key(args: argparse.Namespace) -> None:
         # success output is JSON on stdout, so its failure output stays JSON on
         # stderr too instead of the central handler's plain-text "Error: ..." --
         # a script parsing this command's failures expects {"error": "..."}.
-        print(json.dumps({"error": "Failed to mint API key"}), file=sys.stderr)
+        error(json.dumps({"error": "Failed to mint API key"}))
         sys.exit(1)
 
     result = {
@@ -26,4 +27,4 @@ def mint_connect_key(args: argparse.Namespace) -> None:
         "key_name": session.key_name,
     }
 
-    print(json.dumps(result))
+    out(json.dumps(result))

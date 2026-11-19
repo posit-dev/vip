@@ -26,6 +26,7 @@ from pytest_bdd import given, scenario, then, when
 
 from vip import attest
 from vip.clients.connect import _VIP_CONTENT_TAG
+from vip.output import info
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_IDE_LOAD,
@@ -69,7 +70,7 @@ def _log(message: str) -> None:
     """Emit a timestamped progress line so a long deploy step is not mistaken
     for a hang. Visible under ``pytest -s`` / ``--verbose``.
     """
-    print(f"    [{time.strftime('%H:%M:%S')}] vip-publish: {message}", flush=True)
+    info(f"    [{time.strftime('%H:%M:%S')}] vip-publish: {message}")
 
 
 def _build_deploy_script(

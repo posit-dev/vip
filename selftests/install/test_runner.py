@@ -127,7 +127,7 @@ def test_execute_install_plan_not_root_message_names_skip_system(monkeypatch, tm
     rc = rn.execute_install_plan(plan, manifest=manifest, manifest_path=manifest_path)
 
     assert rc == 2
-    assert "--skip-system" in capsys.readouterr().out
+    assert "--skip-system" in capsys.readouterr().err
 
 
 def test_execute_install_plan_claims_pending(monkeypatch, tmp_path: Path):

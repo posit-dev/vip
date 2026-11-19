@@ -21,6 +21,7 @@ import httpx
 from vip.auth.browser import InteractiveAuthSession
 from vip.auth.scheme import _httpx_verify_env_aware
 from vip.auth.workbench import _on_login_page
+from vip.output import info
 from vip.proxy import (
     ProxyConfig,
     build_proxy_map,
@@ -117,7 +118,7 @@ def prepare_auth_cache(*, announce_skip: bool = True) -> Path | None:
     if path is None:
         if not announce_skip:
             return None
-        print(
+        info(
             ">>> Skipping auth cache: cannot determine a home directory or the working "
             "directory; set XDG_CACHE_HOME to enable it."
         )
@@ -411,7 +412,7 @@ def _load_cached_auth(
         requested_connect_url,
         requested_workbench_url,
     ):
-        print(
+        info(
             ">>> Ignoring cached auth session: requested URLs differ from cached "
             f"(cached connect={cached_request_connect_url or '∅'}, "
             f"workbench={cached_request_workbench_url or '∅'}; "
@@ -431,14 +432,14 @@ def _load_cached_auth(
             proxy=proxy,
         )
         if probe.is_live is False:
-            print(
+            info(
                 ">>> Ignoring cached auth session: the saved browser session no longer "
                 f"authenticates Workbench at {requested_workbench_url} "
                 f"({probe.detail}). Re-authenticating."
             )
             return None
 
-    print(f">>> Reusing cached auth session from {cache_path}")
+    info(f">>> Reusing cached auth session from {cache_path}")
     return InteractiveAuthSession(
         storage_state_path=cache_path,
         api_key=api_key,
@@ -563,9 +564,7 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
     explains *why* minting failed.
     """
     if session._connect_url and not session.api_key:
-        print(
-            ">>> Skipping auth cache: API key minting failed; next run will retry authentication."
-        )
+        info(">>> Skipping auth cache: API key minting failed; next run will retry authentication.")
         return
 
     # Write the storage state to the cache location, minus long-lived IdP cookies.
@@ -596,7 +595,7 @@ def _save_auth_cache(session: InteractiveAuthSession, cache_path: Path) -> None:
         for leftover in (cache_path, meta_path):
             with contextlib.suppress(OSError):
                 leftover.unlink(missing_ok=True)
-        print(
+        info(
             f">>> Skipping auth cache: cannot write {cache_path.parent} ({exc}); "
             "next run will re-authenticate."
         )

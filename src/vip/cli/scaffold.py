@@ -6,13 +6,13 @@ import argparse
 import contextlib
 import importlib.resources
 import shutil
-import sys
 from pathlib import Path
 
 from vip.errors import (
     ConfigError,
     VipError,
 )
+from vip.output import out, warn
 
 # Registry of scaffold templates: name -> (examples/ source directory, one-line
 # description). "cross-product" is the default so existing `vip scaffold
@@ -91,9 +91,9 @@ def _scaffold_next_steps(template: str, dest: Path) -> str:
 def run_scaffold(args: argparse.Namespace) -> None:
     """Copy a scaffold template to a user-specified directory, or list templates."""
     if getattr(args, "list", False):
-        print("Available templates:\n")
+        out("Available templates:\n")
         for name, (_dirname, description) in _SCAFFOLD_TEMPLATES.items():
-            print(f"  {name} - {description}")
+            out(f"  {name} - {description}")
         return
 
     template = getattr(args, "template", None) or _DEFAULT_SCAFFOLD_TEMPLATE
@@ -134,11 +134,10 @@ def run_scaffold(args: argparse.Namespace) -> None:
             # Don't fail the scaffold over it -- the tests themselves are still
             # usable -- but say so, because a silently missing AGENTS.md means a
             # packaging regression that is otherwise invisible to the user.
-            print(
+            warn(
                 "Warning: could not locate examples/_shared/AGENTS.md; "
                 "the scaffolded directory has no extension-authoring guide.",
-                file=sys.stderr,
             )
 
-    print(f"Scaffolded extension to: {dest}")
-    print(_scaffold_next_steps(template, dest))
+    out(f"Scaffolded extension to: {dest}")
+    out(_scaffold_next_steps(template, dest))

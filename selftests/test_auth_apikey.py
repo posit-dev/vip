@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from vip.output import Verbosity, set_verbosity
+
 
 class TestResolveConnectApiBase:
     """_resolve_connect_api_base handles split layouts where the Connect
@@ -567,12 +569,13 @@ class TestCreateApiKeyViaSession:
         with patcher:
             assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
 
-        assert "boom" in capsys.readouterr().out
+        assert "boom" in capsys.readouterr().err
 
     def test_user_endpoint_403_warning_includes_body(self, capsys):
         """When cookie auth is rejected at /v1/user, the response body must
         appear in the warning so users can diagnose the actual failure.
         """
+        set_verbosity(Verbosity.VERBOSE)  # mint diagnostics are debug output
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -588,7 +591,7 @@ class TestCreateApiKeyViaSession:
         with patcher:
             assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "HTTP 403" in out
         assert "CSRF token is required" in out
 
@@ -596,6 +599,7 @@ class TestCreateApiKeyViaSession:
         """The warning must print the full mint URL and Content-Type so the
         user can distinguish Connect's 404 page from an upstream proxy 404.
         """
+        set_verbosity(Verbosity.VERBOSE)  # mint diagnostics are debug output
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -622,7 +626,7 @@ class TestCreateApiKeyViaSession:
             result = _create_api_key_via_session(page, "https://c.example.com/connect", "k")
         assert result is None
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         # Full URL is reported, not just the relative path.
         assert "https://c.example.com/connect/__api__/v1/user" in out
         # Content-Type appears so users can spot Go-default vs Connect 404s.
@@ -633,6 +637,7 @@ class TestCreateApiKeyViaSession:
         must suggest the connect_url path prefix is wrong — that's the only
         plausible cause (the server settings endpoint is unauthenticated).
         """
+        set_verbosity(Verbosity.VERBOSE)  # mint diagnostics are debug output
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -658,7 +663,7 @@ class TestCreateApiKeyViaSession:
         assert "/v1/user" in calls
         assert "/server_settings" in calls
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "/server_settings returned HTTP 404" in out
         assert "wrong path prefix" in out
         assert "https://c.example.com/connect" in out
@@ -667,6 +672,7 @@ class TestCreateApiKeyViaSession:
         """A 403 on /v1/user is auth rejection, not a routing problem — the
         'wrong path prefix' hint must only fire when both endpoints 404.
         """
+        set_verbosity(Verbosity.VERBOSE)  # mint diagnostics are debug output
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -690,7 +696,7 @@ class TestCreateApiKeyViaSession:
         with patcher:
             _create_api_key_via_session(page, "https://c.example.com", "k")
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "/server_settings returned HTTP 200" in out
         assert "wrong path prefix" not in out
 
@@ -698,6 +704,7 @@ class TestCreateApiKeyViaSession:
         """If the /server_settings probe itself raises, that must not mask the
         original /v1/user warning — log the probe failure and move on.
         """
+        set_verbosity(Verbosity.VERBOSE)  # mint diagnostics are debug output
         import httpx
 
         from vip.auth import _create_api_key_via_session
@@ -722,7 +729,7 @@ class TestCreateApiKeyViaSession:
             result = _create_api_key_via_session(page, "https://c.example.com", "k")
         assert result is None
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "/server_settings probe failed" in out
         assert "probe timed out" in out
 
@@ -747,7 +754,7 @@ class TestCreateApiKeyViaSession:
         with patcher:
             assert _create_api_key_via_session(page, "https://c.example.com", "k") is None
 
-        assert "simulated TLS rejection" in capsys.readouterr().out
+        assert "simulated TLS rejection" in capsys.readouterr().err
 
     def test_missing_xsrf_cookie_still_runs(self):
         """With no RSC-XSRF cookie the call still runs; no X-Rsc-Xsrf header sent."""

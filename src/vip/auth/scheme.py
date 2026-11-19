@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from vip.output import warn
 from vip.proxy import (
     ProxyConfig,
     build_proxy_map,
@@ -213,7 +214,7 @@ def resolve_url_scheme(
             # A proxy failure is not evidence about the origin's TLS. Never
             # downgrade; the raw-socket tiebreak would bypass the proxy and
             # mislead. Keep https:// and point at the proxy as the culprit.
-            print(
+            warn(
                 f">>> Warning: {url} could not be reached through the configured "
                 f"proxy ({safe_proxy}): {exc}. NOT falling back to plaintext "
                 f"HTTP -- the proxy, not the server's TLS, is the likely problem. "
@@ -227,7 +228,7 @@ def resolve_url_scheme(
                 # (e.g. a read timeout mid-tunnel). The raw-socket tiebreak
                 # bypasses the proxy, so its verdict is about a path we will
                 # never take -- refuse to downgrade rather than trust it.
-                print(
+                warn(
                     f">>> Warning: {url} did not answer through the configured "
                     f"proxy ({safe_proxy}): {exc}. NOT falling back to "
                     f"plaintext HTTP while a proxy is in effect. Verify the proxy "
@@ -235,7 +236,7 @@ def resolve_url_scheme(
                     f"is genuinely plaintext."
                 )
             elif _tls_listener_present(url, timeout=scaled(5.0)):
-                print(
+                warn(
                     f">>> Warning: {url} answers on the network but its TLS "
                     f"certificate was not accepted ({exc}). NOT falling back to "
                     f"plaintext HTTP -- that would send credentials to this server "
@@ -246,7 +247,7 @@ def resolve_url_scheme(
                 )
             else:
                 resolved = "http://" + url.removeprefix("https://")
-                print(
+                warn(
                     f">>> Warning: {url} did not answer ({exc}); falling back to plaintext "
                     f"HTTP at {resolved}. Pass an explicit http:// or https:// scheme on the "
                     f"URL to silence this."

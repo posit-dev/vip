@@ -17,7 +17,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from vip import totp
 from vip.errors import AuthConfigError
-from vip.output import debug
+from vip.output import debug, warn
 from vip.timeouts import scaled, timeout_scale
 
 # Keycloak selectors — validated by PPM's e2e test suite.
@@ -311,7 +311,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     else:
         # No TOTP input after selection — fall back to push/wait.
         debug(">>> Okta: no TOTP input found — assuming push/other MFA factor.")
-        print(">>> Approve the notification on your device, then press Enter.", flush=True)
+        warn(">>> Approve the notification on your device, then press Enter.")
         input()
         debug(">>> Okta: waiting for MFA approval redirect ...")
         page.wait_for_url(
@@ -577,14 +577,12 @@ def _entra_handle_push(page: Page) -> None:
     display = page.locator(_ENTRA_DISPLAY_SIGN)
     if display.count() > 0 and display.first.is_visible():
         number = (display.first.text_content() or "").strip()
-        print(
+        warn(
             f">>> Enter {number} in Microsoft Authenticator to approve sign-in.",
-            flush=True,
         )
     else:
-        print(
+        warn(
             ">>> Approve the sign-in request in Microsoft Authenticator, then wait.",
-            flush=True,
         )
     debug(">>> Entra: waiting for push approval ...")
     before = page.url

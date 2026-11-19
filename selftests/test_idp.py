@@ -345,7 +345,7 @@ class TestEntraLogin:
 
         _fill_entra_login(page, "user", "pass")
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "42" in out
 
     @pytest.mark.parametrize(
@@ -615,7 +615,7 @@ class TestEntraLogin:
 
         _fill_entra_login(page, "user", "pass")
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "88" in out
         page.wait_for_url.assert_called_once()
         locators[_ENTRA_SIGN_IN_ANOTHER_WAY].first.click.assert_not_called()

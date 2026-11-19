@@ -21,7 +21,7 @@ from vip.errors import (
     ConfigError,
     VipError,
 )
-from vip.output import VERBOSITY_ENV_VAR, get_verbosity
+from vip.output import VERBOSITY_ENV_VAR, get_verbosity, info
 from vip.proxy import proxy_env_for_subprocess
 from vip.reporting import VALID_FORMATS
 from vip.timeouts import scaled
@@ -148,7 +148,7 @@ def _print_skip_notes(cfg: VIPConfig) -> None:
     for name, pc in products:
         if not pc.is_configured:
             reason = "disabled" if not pc.enabled else "no URL given"
-            print(f"Note: {name} {reason} — {name} tests will not be collected.", flush=True)
+            info(f"Note: {name} {reason} — {name} tests will not be collected.")
 
 
 def _check_credentials(

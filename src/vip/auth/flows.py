@@ -36,7 +36,7 @@ from vip.auth.workbench import _authenticate_workbench, _wait_for_product_redire
 from vip.config import ProductConfig
 from vip.errors import AuthConfigError, AuthTimeoutError
 from vip.idp import SUPPORTED_IDPS, _sanitize_url, get_idp_strategy
-from vip.output import Verbosity, debug, set_verbosity
+from vip.output import Verbosity, debug, info, set_verbosity, warn
 from vip.proxy import (
     ProxyConfig,
     build_proxy_map,
@@ -302,9 +302,9 @@ def start_interactive_auth(
     def login(page: Page, primary_url: str, target: str, has_connect: bool) -> None:
         page.goto(target)
 
-        print(f"\n>>> A browser window has opened at {primary_url}")
-        print(">>> Please log in through your identity provider.")
-        print(">>> The browser will close automatically after login.\n")
+        warn(f"\n>>> A browser window has opened at {primary_url}")
+        warn(">>> Please log in through your identity provider.")
+        warn(">>> The browser will close automatically after login.\n")
 
         # Poll until login completes
         base = primary_url.rstrip("/")
@@ -437,7 +437,7 @@ def start_headless_auth(
         fill_login = get_idp_strategy(idp)
 
     def login(page: Page, primary_url: str, target: str, has_connect: bool) -> None:
-        print(f"\n>>> Headless auth: authenticating to {primary_url} ...", flush=True)
+        info(f"\n>>> Headless auth: authenticating to {primary_url} ...")
         try:
             page.goto(target)
             page.wait_for_load_state("domcontentloaded")
@@ -466,7 +466,7 @@ def start_headless_auth(
             raise AuthConfigError(
                 f"Headless auth failed during login: {exc}. Rerun with --verbose for details."
             ) from exc
-        print(">>> Authentication complete.")
+        info(">>> Authentication complete.")
 
     return _run_login(
         connect_url=connect_url,

@@ -1,9 +1,11 @@
 """Terminal output for the VIP CLI and the code it drives.
 
-This is the only module that writes to stdout or stderr. Command results (data a
-caller might pipe) go through :func:`out`; progress, warnings, errors and
-diagnostics go to stderr through :func:`info`, :func:`warn`, :func:`error` and
-:func:`debug`. Messages are written exactly as given, with no added prefix.
+Every print goes through here, except the verbatim relay of a child process's
+streams (``install/playwright.py``) and the fd-level Locust writer
+(``load_engine.py``). Command results (data a caller might pipe) go through
+:func:`out`; progress, warnings, errors and diagnostics go to stderr through
+:func:`info`, :func:`warn`, :func:`error` and :func:`debug`. Messages are
+written exactly as given, with no added prefix.
 """
 
 from __future__ import annotations

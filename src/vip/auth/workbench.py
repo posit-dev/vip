@@ -19,7 +19,7 @@ from vip.auth.sso import (
     _timeout_label,
 )
 from vip.errors import AuthConfigError, AuthTimeoutError
-from vip.output import debug
+from vip.output import debug, info, warn
 from vip.timeouts import scaled
 
 # Connect's SPA can take a moment after the OAuth callback before /__api__/me
@@ -211,14 +211,14 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
     the underlying cause instead of guessing.
     """
     wb_base = workbench_url.rstrip("/").lower()
-    print(f"\n>>> Authenticating to Workbench at {workbench_url} ...")
+    info(f"\n>>> Authenticating to Workbench at {workbench_url} ...")
 
     try:
         page.goto(workbench_url)
         page.wait_for_load_state("networkidle")
     except PlaywrightError as exc:
         reason = f"could not reach Workbench at {workbench_url}: {exc}"
-        print(
+        warn(
             f">>> Warning: Could not reach Workbench at {workbench_url}: {exc}\n"
             ">>> Verify the URL is correct and accessible. "
             "Workbench tests may be skipped.\n"
@@ -228,7 +228,7 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
     # Quick check — already on the Workbench dashboard?
     url = page.url
     if url.lower().startswith(wb_base) and not _on_login_page(url):
-        print(f">>> Workbench authenticated via SSO. Landed at: {url}\n")
+        info(f">>> Workbench authenticated via SSO. Landed at: {url}\n")
         return None
 
     # We're likely on /auth-sign-in.  Try clicking a sign-in button to
@@ -247,8 +247,8 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
             continue
 
     # Wait for the OIDC redirect chain to complete.
-    print(">>> Waiting for Workbench SSO redirect chain ...")
-    print(">>> If prompted, please complete authentication in the browser.\n")
+    warn(">>> Waiting for Workbench SSO redirect chain ...")
+    warn(">>> If prompted, please complete authentication in the browser.\n")
 
     # Share the single round-trip timeout (see _IDP_ROUNDTRIP_TIMEOUT_SECONDS)
     # rather than this function's own, shorter one.
@@ -264,7 +264,7 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
         except PlaywrightError:
             break
         if last_url.lower().startswith(wb_base) and not _on_login_page(last_url):
-            print(f">>> Workbench authenticated. Landed at: {last_url}\n")
+            info(f">>> Workbench authenticated. Landed at: {last_url}\n")
             return None
         try:
             page.wait_for_timeout(500)
@@ -278,7 +278,7 @@ def _authenticate_workbench(page: Page, workbench_url: str, *, provider: str = "
         last_title = "<unknown>"
     label = _protocol_label(provider)
     session_desc = f"{label} session" if label else "The login session"
-    print(
+    warn(
         f">>> Warning: Workbench authentication did not complete within {timeout_label}.\n"
         ">>> Workbench browser tests may skip.\n"
     )
