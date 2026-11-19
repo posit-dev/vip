@@ -14,6 +14,12 @@ updates:
   - dependency-name: pytest-bdd
     update-types:
     - version-update:semver-major
+  # pytest 9.2 stores node ids where pytest-xdist 3.8.0 does not write the loadgroup suffix, so
+  # --dist loadgroup silently ignores every group (pytest-dev/pytest-xdist#1407). Drop this once a
+  # pytest-xdist release after 3.8.0 is pinned; TestXdistSeesVipGroups fails if it comes off early.
+  - dependency-name: pytest
+    versions:
+    - ">=9.2"
   package-ecosystem: uv
   schedule:
     interval: weekly

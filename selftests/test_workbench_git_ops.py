@@ -16,6 +16,9 @@ masked by a login bounce.
 
 from __future__ import annotations
 
+import stat
+import subprocess
+import sys
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -40,18 +43,39 @@ def test_do_clone_removes_existing_dir_before_cloning(monkeypatch):
         return ""
 
     monkeypatch.setattr(git_ops, "terminal_run", fake_terminal_run)
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw3")
 
     git_cfg = _FakeGitCfg("https://github.com/example/jumpstart_examples.git")
     git_session_ctx: dict = {}
 
     clone_dir = git_ops._do_clone(object(), git_session_ctx, git_cfg, readback_lang="r")
 
-    assert clone_dir == "/tmp/jumpstart_examples"
+    assert clone_dir == "/tmp/vip_git_gw3/jumpstart_examples"
     assert git_session_ctx["clone_dir"] == clone_dir
-    rm_index = captured["cmd"].find("rm -rf /tmp/jumpstart_examples")
+    rm_index = captured["cmd"].find("rm -rf /tmp/vip_git_gw3/jumpstart_examples")
     clone_index = captured["cmd"].find("git clone")
     assert rm_index != -1, f"expected rm -rf of clone dir in command: {captured['cmd']!r}"
     assert rm_index < clone_index, "rm -rf must run before git clone"
+
+
+def test_do_clone_gives_each_worker_its_own_directory(monkeypatch):
+    # Parallel workers (often different users) must not delete or clone over each other's checkout.
+    cmds: list[str] = []
+    monkeypatch.setattr(
+        git_ops,
+        "terminal_run",
+        lambda page, cmd, timeout=30_000, *, readback_lang="r": cmds.append(cmd),
+    )
+    git_cfg = _FakeGitCfg("https://github.com/example/repo.git")
+
+    dirs = []
+    for worker in ("gw0", "gw1"):
+        monkeypatch.setenv("PYTEST_XDIST_WORKER", worker)
+        dirs.append(git_ops._do_clone(object(), {}, git_cfg, readback_lang="r"))
+
+    assert dirs == ["/tmp/vip_git_gw0/repo", "/tmp/vip_git_gw1/repo"]
+    # The per-worker parent does not exist on a fresh server, so it is created before cd.
+    assert cmds[0].index("mkdir -p /tmp/vip_git_gw0") < cmds[0].index("cd /tmp/vip_git_gw0")
 
 
 def test_do_clone_uses_custom_workdir(monkeypatch):
@@ -70,6 +94,47 @@ def test_do_clone_uses_custom_workdir(monkeypatch):
 
     assert clone_dir == "/home/vip/other-repo"
     assert "rm -rf /home/vip/other-repo" in captured["cmd"]
+
+
+def _clone_prefix(monkeypatch, workdir: Path) -> str:
+    """The clone command up to the clone itself, so a real shell can run its directory guard."""
+    captured: dict = {}
+
+    def fake_terminal_run(page, cmd, timeout=30_000, *, readback_lang="r"):
+        captured["cmd"] = cmd
+        return ""
+
+    monkeypatch.setattr(git_ops, "terminal_run", fake_terminal_run)
+    git_cfg = _FakeGitCfg("https://github.com/example/repo.git")
+    git_ops._do_clone(object(), {}, git_cfg, "r", workdir=str(workdir))  # type: ignore[arg-type]
+    return captured["cmd"].split(" && cd ", 1)[0]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="runs the clone command in a POSIX shell")
+class TestCloneDirGuard:
+    """Another user can pre-create the predictable per-worker path; rm -rf must not follow it."""
+
+    def test_refuses_a_symlinked_workdir(self, monkeypatch, tmp_path):
+        victim = tmp_path / "home"
+        (victim / "repo").mkdir(parents=True)
+        (victim / "repo" / "keep.txt").write_text("user data", encoding="utf-8")
+        workdir = tmp_path / "vip_git_gw0"
+        workdir.symlink_to(victim)
+
+        result = subprocess.run(["sh", "-c", _clone_prefix(monkeypatch, workdir)], check=False)
+
+        assert result.returncode != 0
+        assert (victim / "repo" / "keep.txt").read_text(encoding="utf-8") == "user data"
+
+    def test_clears_the_previous_clone_in_its_own_workdir(self, monkeypatch, tmp_path):
+        workdir = tmp_path / "vip_git_gw0"
+        (workdir / "repo").mkdir(parents=True)
+
+        result = subprocess.run(["sh", "-c", _clone_prefix(monkeypatch, workdir)], check=False)
+
+        assert result.returncode == 0
+        assert not (workdir / "repo").exists()
+        assert stat.S_IMODE(workdir.stat().st_mode) == 0o700
 
 
 # ---------------------------------------------------------------------------

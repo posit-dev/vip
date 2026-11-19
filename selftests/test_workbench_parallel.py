@@ -9,8 +9,8 @@ import pytest
 from filelock import FileLock
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from vip_tests.workbench import barrier, login
 from vip_tests.workbench import conftest as wb
-from vip_tests.workbench import login
 
 
 class TestOidcLoginLock:
@@ -221,10 +221,24 @@ class TestCollectionHook:
     def _wb_dir(self):
         return Path(wb.__file__).parent
 
-    def test_no_auth_session_is_a_noop(self):
+    def test_no_auth_session_is_a_noop(self, monkeypatch):
+        monkeypatch.delenv("VIP_TEST_USERNAME_PER_WORKER", raising=False)
         item = _FakeItem(self._wb_dir() / "test_packages.py", [])
         wb.pytest_collection_modifyitems(_FakeConfig(None), [item])
         assert item.added == []  # untouched under password / no-auth
+
+    def test_per_worker_users_group_without_an_auth_session(self, monkeypatch):
+        # Password auth with one account per worker can log in concurrently, so it spreads too.
+        monkeypatch.setenv("VIP_TEST_USERNAME_PER_WORKER", "1")
+        launch = _FakeItem(self._wb_dir() / "test_ide_launch.py", ["workbench", "vscode"])
+        extensions = _FakeItem(self._wb_dir() / "test_ide_extensions.py", ["workbench", "vscode"])
+        packages = _FakeItem(self._wb_dir() / "test_packages.py", ["workbench"])
+        wb.pytest_collection_modifyitems(_FakeConfig(None), [launch, extensions, packages])
+        assert launch.added == [("xdist_group", ("workbench_ide_vscode",))]
+        assert (
+            extensions.added == launch.added
+        )  # an IDE's launch and extension tests share a worker
+        assert packages.added == [("xdist_group", ("workbench_packages",))]
 
     def test_ide_item_grouped_by_ide(self):
         item = _FakeItem(self._wb_dir() / "test_ide_launch.py", ["workbench", "rstudio"])
@@ -532,8 +546,8 @@ class TestRealMarkerMechanics:
     """
 
     def test_regroup_wins_via_get_closest_marker_and_leaves_no_duplicate(self, pytester):
-        # Disable the vip plugin for the nested collection: its own _assign_xdist_group
-        # would inject a "general" group and obscure the mechanic under test.
+        # Disable the vip plugin for the nested collection so its own _assign_xdist_group
+        # cannot add a group and obscure the mechanic under test.
         modcol = pytester.getmodulecol("def test_x(): pass", configargs=["-p", "no:vip"])
         (item,) = pytester.genitems([modcol])
         # Simulate a pre-existing group, then apply exactly the hook's two operations.
@@ -548,3 +562,129 @@ class TestRealMarkerMechanics:
         # And no leftover duplicate, or xdist would glue both names into one composite group.
         groups = [m.args[0] for m in item.iter_markers("xdist_group")]
         assert groups == ["workbench_packages"]
+
+
+class TestPerWorkerUsername:
+    """Workbench throttles repeat sign-ins by one user, so parallel CI gives each worker its own."""
+
+    def test_opt_in_suffixes_the_worker_id(self, monkeypatch):
+        from vip_tests.workbench.naming import worker_username
+
+        monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw2")
+        monkeypatch.setenv("VIP_TEST_USERNAME_PER_WORKER", "1")
+        assert worker_username("testuser") == "testuser-gw2"
+
+    @pytest.mark.parametrize(
+        ("worker", "flag", "base"),
+        [
+            ("gw2", None, "testuser"),  # not opted in: customers keep their one account
+            ("gw2", "0", "testuser"),
+            (None, "1", "testuser"),  # serial run: no worker to suffix
+            ("gw2", "1", ""),  # no configured user: nothing to derive from
+        ],
+        ids=["no-flag", "flag-off", "serial", "no-base"],
+    )
+    def test_base_username_is_kept_otherwise(self, monkeypatch, worker, flag, base):
+        from vip_tests.workbench.naming import worker_username
+
+        for name, value in (
+            ("PYTEST_XDIST_WORKER", worker),
+            ("VIP_TEST_USERNAME_PER_WORKER", flag),
+        ):
+            if value is None:
+                monkeypatch.delenv(name, raising=False)
+            else:
+                monkeypatch.setenv(name, value)
+        assert worker_username(base) == base
+
+    def test_login_retry_waits_out_the_sign_in_throttle(self):
+        import inspect
+
+        # Workbench's auth-sign-in-throttle-seconds defaults to 5; a shorter wait retries into it.
+        default = inspect.signature(login.workbench_login).parameters["retry_delay"].default
+        assert default > 5
+
+
+class TestXdistSeesVipGroups:
+    """xdist reads ``xdist_group`` in its own collection hook, so VIP's must run first."""
+
+    def test_directory_group_keeps_its_tests_on_one_worker(self, pytester):
+        pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
+        out = pytester.path / "workers.txt"
+        pytester.mkdir("workbench")
+        pytester.path.joinpath("workbench", "test_grouped.py").write_text(
+            "import os, pytest\n"
+            "@pytest.mark.parametrize('i', range(6))\n"
+            "def test_where(i, request):\n"
+            f"    with open({str(out)!r}, 'a', encoding='utf-8') as f:\n"
+            "        worker = os.environ['PYTEST_XDIST_WORKER']\n"
+            "        f.write(worker + ' ' + request.node.nodeid + '\\n')\n",
+            encoding="utf-8",
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "-n", "3", "--dist", "loadgroup")
+        result.assert_outcomes(passed=6)
+
+        rows = [line.split(" ", 1) for line in out.read_text(encoding="utf-8").splitlines()]
+        assert all(nodeid.endswith("@workbench") for _, nodeid in rows), rows
+        assert len({worker for worker, _ in rows}) == 1, rows
+
+
+_BARRIER_CONFTEST = """
+import pytest
+from vip_tests.workbench.barrier import mark_worker_done
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session):
+    mark_worker_done(session.config)
+"""
+
+
+class TestSignoutBarrier:
+    """Sign-out must start only after every other worker is done, not merely be queued last."""
+
+    def test_last_group_waits_for_the_other_worker(self, pytester):
+        pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
+        pytester.makeconftest(_BARRIER_CONFTEST)
+        busy_end = pytester.path / "busy_end.txt"
+        signout_start = pytester.path / "signout_start.txt"
+        pytester.makepyfile(
+            test_barrier=(
+                "import time, pytest\n"
+                "from vip_tests.workbench.barrier import wait_for_other_workers\n"
+                "@pytest.mark.xdist_group('busy')\n"
+                "def test_busy():\n"
+                "    time.sleep(3)\n"
+                f"    open({str(busy_end)!r}, 'w', encoding='utf-8').write(str(time.time()))\n"
+                "@pytest.mark.xdist_group('signout')\n"
+                "def test_signout(request):\n"
+                "    assert wait_for_other_workers(request.config, 60, poll_interval=0.1) == []\n"
+                f"    open({str(signout_start)!r}, 'w', encoding='utf-8').write(str(time.time()))\n"
+            )
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "-n", "2", "--dist", "loadgroup")
+        result.assert_outcomes(passed=2)
+
+        # loadgroup hands each worker one group at the start, so without the barrier sign-out
+        # would begin while the busy group is still sleeping.
+        started = float(signout_start.read_text(encoding="utf-8"))
+        assert started >= float(busy_end.read_text(encoding="utf-8"))
+
+    @pytest.fixture
+    def worker_gw0(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
+        monkeypatch.setenv("PYTEST_XDIST_WORKER_COUNT", "2")
+        option = type("Option", (), {"basetemp": str(tmp_path / "popen-gw0")})()
+        return type("Config", (), {"option": option})()
+
+    def test_returns_workers_still_running_at_timeout(self, worker_gw0):
+        assert barrier.wait_for_other_workers(worker_gw0, 0, poll_interval=0) == ["gw1"]
+
+    def test_returns_empty_once_the_others_report_done(self, worker_gw0, monkeypatch):
+        monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw1")
+        barrier.mark_worker_done(worker_gw0)
+        monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
+        assert barrier.wait_for_other_workers(worker_gw0, 0, poll_interval=0) == []
+
+    def test_serial_run_never_waits(self, worker_gw0, monkeypatch):
+        monkeypatch.delenv("PYTEST_XDIST_WORKER")
+        assert barrier.wait_for_other_workers(worker_gw0, 0, poll_interval=0) == []

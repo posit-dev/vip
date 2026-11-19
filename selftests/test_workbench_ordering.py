@@ -20,6 +20,7 @@ insertions between the documented rank gaps don't churn this test.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -186,6 +187,74 @@ def test_login_collects_before_signout(tmp_path: Path) -> None:
         i for i, n in enumerate(nodeids) if n.endswith("test_workbench_signout[chromium]")
     )
     assert login_idx < signout_idx, f"login must collect before sign-out: {nodeids}"
+
+
+_GROUP_DUMP_PLUGIN = """
+def pytest_collection_finish(session):
+    for item in session.items:
+        groups = [m.args[0] for m in item.iter_markers("xdist_group")]
+        print("VIPGROUP", item.nodeid, "_".join(sorted(groups)))
+"""
+
+
+def _xdist_group_queue(tmp_path: Path) -> list[tuple[str, list[str]]]:
+    """Return Workbench groups in the order ``--dist loadgroup`` queues them, with their tests.
+
+    xdist keys each group on its first test in collection order and hands groups out in that
+    order, so this is the dispatch order. Per-worker users switch the IDE/module grouping on.
+    """
+    (tmp_path / "vip_group_dump.py").write_text(_GROUP_DUMP_PLUGIN, encoding="utf-8")
+    config_path = tmp_path / "vip.toml"
+    config_path.write_text(
+        '[workbench]\nurl = "https://workbench.example.com"\n\n'
+        '[connect]\nurl = "https://connect.example.com"\n',
+        encoding="utf-8",
+    )
+    env = {
+        **os.environ,
+        "VIP_TEST_USERNAME_PER_WORKER": "1",
+        "PYTHONPATH": os.pathsep.join(filter(None, [str(tmp_path), os.environ.get("PYTHONPATH")])),
+    }
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            str(_WORKBENCH_DIR),
+            "--collect-only",
+            "-q",
+            "-p",
+            "vip_group_dump",
+            f"--vip-config={config_path}",
+        ],
+        cwd=_REPO_ROOT,
+        env=env,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    assert result.returncode == 0, f"collection failed:\n{result.stdout}\n{result.stderr}"
+    queue: dict[str, list[str]] = {}
+    for line in result.stdout.splitlines():
+        if line.startswith("VIPGROUP "):
+            _, nodeid, group = line.split(" ", 2)
+            queue.setdefault(group, []).append(_function_of(nodeid))
+    assert queue, f"no groups parsed from collection output:\n{result.stdout}"
+    return list(queue.items())
+
+
+def test_signout_is_the_last_xdist_group_and_runs_alone(tmp_path: Path) -> None:
+    """Sign-out must not ride in an earlier group, or xdist hands it out at the start of the run.
+
+    Under --interactive-auth / --headless-auth it would then end the shared session while
+    other workers are mid-test, which ``order(95)`` alone cannot prevent. Queued last still
+    overlaps other workers' final groups; ``TestSignoutBarrier`` covers that part.
+    """
+    queue = _xdist_group_queue(tmp_path)
+    _, last_tests = queue[-1]
+    assert last_tests == ["test_workbench_signout"], f"sign-out must be queued last, alone: {queue}"
+    assert all("test_workbench_signout" not in tests for _, tests in queue[:-1]), queue
 
 
 def test_ide_marker_selects_matching_launch_and_extensions_scenarios(tmp_path: Path) -> None:

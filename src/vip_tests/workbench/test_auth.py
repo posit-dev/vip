@@ -8,6 +8,9 @@ import pytest
 from playwright.sync_api import Browser, Page, expect
 from pytest_bdd import given, scenario, then, when
 
+from vip import attest
+from vip.plugin import _auth_session_key
+from vip_tests.workbench.barrier import SIGNOUT_BARRIER_TIMEOUT, wait_for_other_workers
 from vip_tests.workbench.conftest import (
     TIMEOUT_DIALOG,
     TIMEOUT_PAGE_LOAD,
@@ -43,6 +46,23 @@ def test_workbench_login():
 @scenario("test_auth.feature", "User can sign out of Workbench")
 def test_workbench_signout():
     pass
+
+
+@pytest.fixture
+def _other_workers_finished(request: pytest.FixtureRequest) -> None:
+    """Under a shared auth session, wait until no other xdist worker can still be using it.
+
+    Workbench sign-out revokes every cookie the account holds, not just this browser's.
+    """
+    if request.config.stash.get(_auth_session_key, None) is None:
+        return
+    waiting = wait_for_other_workers(request.config, SIGNOUT_BARRIER_TIMEOUT)
+    if waiting:
+        attest.unproven(
+            f"Workers {', '.join(waiting)} were still running after "
+            f"{SIGNOUT_BARRIER_TIMEOUT:.0f}s; signing out would end the session they share. "
+            "Raise VIP_SIGNOUT_BARRIER_TIMEOUT or rerun this scenario with -n 0."
+        )
 
 
 @pytest.fixture
@@ -141,7 +161,7 @@ def current_user_displayed(page: Page):
 
 
 @when("I sign out of Workbench")
-def sign_out(page: Page, _restore_session_after_signout):
+def sign_out(page: Page, _other_workers_finished, _restore_session_after_signout):
     """Click the sign-out button on the Workbench homepage.
 
     Tries the legacy ``#signOutBtn`` first; on newer Workbench versions the

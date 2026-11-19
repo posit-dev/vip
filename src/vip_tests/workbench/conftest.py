@@ -21,6 +21,7 @@ import pytest
 from playwright.sync_api import Page
 from pytest_bdd import given
 
+from vip.config import VIPConfig
 from vip.plugin import _auth_session_key
 
 # Re-exported for selftests/test_workbench_cleanup.py, which imports it from
@@ -29,6 +30,7 @@ from vip.workbench_ui import (
     vip_names_from_select_labels as _vip_names_from_select_labels,
 )
 from vip_tests.connect.bundles import _SHINY_APP_R, _latest_version, manifest_raw_url
+from vip_tests.workbench.barrier import mark_worker_done
 from vip_tests.workbench.capacity import (
     MAX_AUTO_DETECTED_PROFILES,
     ResourceProfileDisabledError,
@@ -57,8 +59,10 @@ from vip_tests.workbench.naming import (
     capacity_session_prefix,
     current_worker_id,
     k8s_session_prefix,
+    per_worker_users_enabled,
     unique_session_name,
     vip_session_prefix,
+    worker_username,
 )
 from vip_tests.workbench.sessions import (
     _navigated_into_session,
@@ -180,27 +184,37 @@ def _workbench_group_name(ide_markers: set[str], module_stem: str) -> str:
     return f"workbench_{stem}"
 
 
+# Scenarios that end the session other workers share run in a group of their own. xdist queues
+# groups by their first test in collection order, so sharing a group with an early scenario would
+# hand them out at the start of the run; alone, sign-out's order(95) queues it last. Queued last
+# still overlaps the other workers' final groups, so the scenario also waits on barrier.py.
+_OWN_GROUP_SCENARIOS = {"test_workbench_signout": "workbench_signout"}
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    """Tell the sign-out barrier this worker is done; trylast so fixtures are torn down first."""
+    mark_worker_done(session.config)
+
+
+@pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(
     config: pytest.Config,
     items: list[pytest.Item],
 ) -> None:
-    """Group Workbench tests for parallel execution when a shared auth session is active.
+    """Group Workbench tests for parallel execution when the run can log in concurrently.
 
-    Under --interactive-auth / --headless-auth all Workbench tests authenticate as the same
-    shared account. Rather than pin them all to one worker (the old serial workaround), we
-    group them so LoadGroupScheduling spreads them across workers: IDE-launch scenarios by
+    That is a shared auth session (--interactive-auth / --headless-auth, whose concurrent SSO
+    round-trips :func:`oidc_login_lock` serializes) or one account per worker
+    (``VIP_TEST_USERNAME_PER_WORKER``, which sidesteps Workbench's per-user sign-in
+    throttle). LoadGroupScheduling then spreads the groups across workers: IDE scenarios by
     IDE (``workbench_ide_<ide>``), everything else by feature module (``workbench_<module>``).
-    The simultaneous-login storm this used to cause is prevented by the cross-worker login
-    lock in :func:`workbench_login` (see :func:`oidc_login_lock`), not by serialization.
 
-    Password / no-auth runs are left untouched: they hit the early return below, so their
-    Workbench items keep the default ``workbench`` group that ``plugin/selection.py``'s
-    :func:`_assign_xdist_group` directory fallback assigns (the module-level ``pytestmark``
-    at the top of this file does not propagate to sibling test modules, so it assigns
-    nothing here).
+    Any other password / no-auth run keeps the single ``workbench`` group that
+    ``plugin/selection.py``'s :func:`_assign_xdist_group` assigns, so one worker signs in as
+    the one account. ``tryfirst`` because xdist reads the groups in its own collection hook.
     """
-    if config.stash.get(_auth_session_key, None) is None:
-        # No shared auth session — password auth or no auth. Keep default parallel behavior.
+    if config.stash.get(_auth_session_key, None) is None and not per_worker_users_enabled():
         return
 
     workbench_dir = Path(__file__).parent
@@ -208,8 +222,9 @@ def pytest_collection_modifyitems(
         item_path = getattr(item, "path", None)
         if item_path is None or not item_path.is_relative_to(workbench_dir):
             continue
+        own_group = _OWN_GROUP_SCENARIOS.get(getattr(item, "originalname", ""))
         ide_markers = {m.name for m in item.iter_markers()} & set(_IDE_MARKERS)
-        group = _workbench_group_name(ide_markers, item_path.stem)
+        group = own_group or _workbench_group_name(ide_markers, item_path.stem)
         # Strip any pre-existing xdist_group marker before adding the hybrid group. No
         # per-test xdist_group marker exists today, so this is a defensive guard: xdist
         # concatenates *all* xdist_group marks on an item (via iter_markers), it does not
@@ -288,6 +303,12 @@ def extract_repo_urls(output: str) -> list[str]:
     that comparison unreachable for exactly the input it exists to handle.
     """
     return re.findall(r"https?://[^\s<>\"']+", output, re.IGNORECASE)
+
+
+@pytest.fixture(scope="session")
+def test_username(vip_config: VIPConfig) -> str:
+    """The Workbench test account, one per xdist worker under ``VIP_TEST_USERNAME_PER_WORKER``."""
+    return worker_username(vip_config.auth.username)
 
 
 @pytest.fixture
