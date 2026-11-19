@@ -89,15 +89,16 @@ def _log_level() -> int:
     return logging.INFO
 
 
-def configure_logging() -> None:
+def configure_logging(*, propagate: bool = False) -> None:
     """Send ``vip.*`` log records to stderr at a level that follows the verbosity.
 
     Idempotent: attaches one handler to the ``vip`` logger however often it is called.
+    Pass ``propagate=True`` inside pytest so its log capture still records ``vip.*``.
     """
     logger = logging.getLogger(_LOGGER_NAME)
     if not any(isinstance(h, _StderrHandler) for h in logger.handlers):
         logger.addHandler(_StderrHandler())
-        logger.propagate = False
+    logger.propagate = propagate
     logger.setLevel(_log_level())
 
 

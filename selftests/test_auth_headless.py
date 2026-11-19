@@ -10,6 +10,7 @@ from vip.auth import (
     AuthConfigError,
     start_headless_auth,
 )
+from vip.output import Verbosity, get_verbosity, set_verbosity
 
 
 class TestStartHeadlessAuthValidation:
@@ -33,6 +34,19 @@ class TestStartHeadlessAuthValidation:
     def test_no_urls_raises_without_cache(self):
         with pytest.raises(AuthConfigError, match="at least one product URL"):
             start_headless_auth()
+
+    def test_verbose_flag_does_not_override_quiet(self):
+        """``vip -q verify --headless-auth --verbose`` must stay quiet."""
+        set_verbosity(Verbosity.QUIET)
+        with pytest.raises(AuthConfigError):
+            start_headless_auth(verbose=True)
+        assert get_verbosity() is Verbosity.QUIET
+
+    def test_verbose_flag_raises_normal_to_verbose(self):
+        set_verbosity(Verbosity.NORMAL)
+        with pytest.raises(AuthConfigError):
+            start_headless_auth(verbose=True)
+        assert get_verbosity() is Verbosity.VERBOSE
 
     def test_invalid_totp_seed_raises_before_playwright(self, monkeypatch):
         """Bad VIP_TEST_TOTP_SECRET fails fast with a clear error."""

@@ -93,6 +93,30 @@ def test_configure_logging_is_idempotent():
     assert logging.getLogger("vip").propagate is False
 
 
+def test_configure_logging_can_keep_propagation():
+    output.configure_logging(propagate=True)
+    assert len(_vip_handlers()) == 1
+    assert logging.getLogger("vip").propagate is True
+
+
+def test_pytest_subprocess_bridges_logging_at_env_level(pytester, monkeypatch):
+    """The pytest run behind ``vip -v verify`` shows vip.* debug logs on stderr."""
+    monkeypatch.setenv(output.VERBOSITY_ENV_VAR, "verbose")
+    pytester.makepyfile(
+        """
+        import logging
+
+        def test_logger_is_bridged():
+            logger = logging.getLogger("vip")
+            assert logger.level == logging.DEBUG
+            assert logger.propagate is True
+            assert any(type(h).__name__ == "_StderrHandler" for h in logger.handlers)
+        """
+    )
+    result = pytester.runpytest_subprocess("-p", "no:cacheprovider")
+    result.assert_outcomes(passed=1)
+
+
 def test_logging_writes_to_stderr_with_format(capsys):
     output.configure_logging()
     logging.getLogger("vip.sub").info("hello")

@@ -36,7 +36,7 @@ from vip.auth.workbench import _authenticate_workbench, _wait_for_product_redire
 from vip.config import ProductConfig
 from vip.errors import AuthConfigError, AuthTimeoutError
 from vip.idp import SUPPORTED_IDPS, _sanitize_url, get_idp_strategy
-from vip.output import Verbosity, debug, info, set_verbosity, warn
+from vip.output import Verbosity, debug, get_verbosity, info, set_verbosity, warn
 from vip.proxy import (
     ProxyConfig,
     build_proxy_map,
@@ -396,7 +396,8 @@ def start_headless_auth(
     *connect_url_scheme_inferred* / *workbench_url_scheme_inferred*: see
     ``start_interactive_auth``.
     """
-    if verbose:
+    # ``-q`` wins over the legacy ``--vip-verbose`` flag, matching the CLI's precedence.
+    if verbose and get_verbosity() is not Verbosity.QUIET:
         set_verbosity(Verbosity.VERBOSE)
 
     if not connect_url and not workbench_url:
