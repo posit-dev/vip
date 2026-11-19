@@ -43,7 +43,7 @@ def parse_verbosity(value: str | None) -> Verbosity:
 _verbosity = parse_verbosity(os.environ.get(VERBOSITY_ENV_VAR))
 
 
-class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
+class _StderrHandler(logging.StreamHandler):
     """Stream handler that resolves ``sys.stderr`` per record, not at creation."""
 
     def __init__(self) -> None:
@@ -52,7 +52,7 @@ class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
         self.setFormatter(logging.Formatter(_LOG_FORMAT))
 
     @property
-    def stream(self) -> TextIO:  # type: ignore[override]
+    def stream(self) -> TextIO:
         """Return the current ``sys.stderr``."""
         return sys.stderr
 
