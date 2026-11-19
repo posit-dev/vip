@@ -67,7 +67,7 @@ def main() -> None:
         default=False,
         dest="output_quiet",
         help="Hide progress messages; show only results, warnings and errors."
-        " Give it before the subcommand (vip -q verify).",
+        " Give it before the subcommand (vip -q verify). Wins over --verbose.",
     )
     verbosity_group.add_argument(
         "-v",
