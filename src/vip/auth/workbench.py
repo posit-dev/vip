@@ -19,7 +19,7 @@ from vip.auth.sso import (
     _timeout_label,
 )
 from vip.errors import AuthConfigError, AuthTimeoutError
-from vip.idp import _log_verbose
+from vip.output import debug
 from vip.timeouts import scaled
 
 # Connect's SPA can take a moment after the OAuth callback before /__api__/me
@@ -133,7 +133,7 @@ def _click_workbench_oidc_confirm(page: Page) -> bool:
         btn = page.locator(selector)
         if btn.count() == 0 or not btn.first.is_visible():
             return False
-        _log_verbose(">>> Workbench: clicking 'Sign in with OpenID' to complete OIDC flow ...")
+        debug(">>> Workbench: clicking 'Sign in with OpenID' to complete OIDC flow ...")
         btn.first.click()
         return True
     except PlaywrightError:

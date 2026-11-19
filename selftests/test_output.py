@@ -10,18 +10,6 @@ from vip import output
 from vip.output import Verbosity
 
 
-@pytest.fixture(autouse=True)
-def _restore_state():
-    level = output.get_verbosity()
-    logger = logging.getLogger("vip")
-    handlers, propagate, log_level = list(logger.handlers), logger.propagate, logger.level
-    yield
-    output.set_verbosity(level)
-    logger.handlers[:] = handlers
-    logger.propagate = propagate
-    logger.setLevel(log_level)
-
-
 def test_out_goes_to_stdout_verbatim(capsys):
     output.out(">>> result")
     captured = capsys.readouterr()

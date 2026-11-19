@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from vip.cli import DEFAULT_TEST_TIMEOUT_SECONDS
+from vip.output import VERBOSITY_ENV_VAR, Verbosity, set_verbosity
 
 
 def _make_args(**overrides) -> argparse.Namespace:
@@ -469,6 +470,25 @@ class TestVerifyLocalVerboseFlag:
         cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), verbose=False))
         assert "--vip-verbose" not in cmd
+
+
+class TestVerifyPropagatesVerbosity:
+    """The pytest subprocess inherits the CLI verbosity through VIP_VERBOSITY."""
+
+    @pytest.mark.parametrize(
+        ("level", "expected"),
+        [
+            (Verbosity.QUIET, "quiet"),
+            (Verbosity.NORMAL, "normal"),
+            (Verbosity.VERBOSE, "verbose"),
+        ],
+    )
+    def test_env_carries_level(self, tmp_path, level, expected):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n", encoding="utf-8")
+        set_verbosity(level)
+        _cmd, kwargs = _capture_call(_make_args(config=str(cfg)))
+        assert kwargs["env"][VERBOSITY_ENV_VAR] == expected
 
 
 class TestNormalizeCategories:

@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import os
-import sys
 from pathlib import Path
 
 from vip.auth import (
@@ -173,24 +171,6 @@ def _cleanup_workbench_sessions(
         session.cleanup()
 
 
-def _ensure_cli_logging() -> None:
-    """Route ``vip.*`` INFO/WARNING logs to stderr for the cleanup command.
-
-    The session-cleanup path (WorkbenchClient + workbench_ui) emits progress
-    and "sessions still present" warnings via ``logging``; without a handler
-    those are invisible (or only WARNING via the lastResort handler). Attach a
-    single stderr handler to the ``vip`` logger so ``vip cleanup`` surfaces
-    what it did. Idempotent: only configures once.
-    """
-    vip_logger = logging.getLogger("vip")
-    if not vip_logger.handlers:
-        handler = logging.StreamHandler(sys.stderr)
-        handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-        vip_logger.addHandler(handler)
-        vip_logger.setLevel(logging.INFO)
-        vip_logger.propagate = False
-
-
 def _load_cleanup_config(args: argparse.Namespace) -> VIPConfig:
     """Load ``vip.toml`` if present, else a default ``VIPConfig``.
 
@@ -233,8 +213,6 @@ def run_cleanup(args: argparse.Namespace) -> None:
     falls back to ``http://`` if https doesn't answer (see
     ``vip.config._normalize_url`` / ``vip.auth.resolve_url_scheme``).
     """
-    _ensure_cli_logging()
-
     connect_arg = getattr(args, "connect_url", None)
     api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
     workbench_arg = getattr(args, "workbench_url", None)

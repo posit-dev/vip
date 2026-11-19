@@ -21,6 +21,7 @@ from vip.errors import (
     ConfigError,
     VipError,
 )
+from vip.output import VERBOSITY_ENV_VAR, get_verbosity
 from vip.proxy import proxy_env_for_subprocess
 from vip.reporting import VALID_FORMATS
 from vip.timeouts import scaled
@@ -662,6 +663,8 @@ def _run_pytest(
     # Chromium's own detection) takes the same route as the pooled clients that
     # read the config directly.
     subprocess_env = proxy_env_for_subprocess(cfg.proxy, os.environ)
+    # The pytest plugin's auth code reads the level from the environment.
+    subprocess_env[VERBOSITY_ENV_VAR] = get_verbosity().name.lower()
 
     try:
         result = subprocess.run(cmd, timeout=args.test_timeout, env=subprocess_env, check=False)
