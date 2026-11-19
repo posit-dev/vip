@@ -152,3 +152,17 @@ def test_quiet_hides_info_log_but_keeps_warning(capsys):
     log.info("hidden")
     log.warning("shown")
     assert capsys.readouterr().err == "WARNING: shown\n"
+
+
+@pytest.mark.parametrize(("level", "expected"), [("quiet", False), ("normal", True)])
+def test_vip_verbose_fixture_yields_to_quiet(pytester, monkeypatch, level, expected):
+    """``vip -q verify --verbose`` keeps --vip-verbose diagnostics (Locust log) off."""
+    monkeypatch.setenv(output.VERBOSITY_ENV_VAR, level)
+    pytester.makepyfile(
+        f"""
+        def test_fixture(vip_verbose):
+            assert vip_verbose is {expected}
+        """
+    )
+    result = pytester.runpytest_subprocess("-p", "no:cacheprovider", "--vip-verbose")
+    result.assert_outcomes(passed=1)
