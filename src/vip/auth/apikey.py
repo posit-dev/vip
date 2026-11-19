@@ -17,7 +17,7 @@ from playwright.sync_api import (
 )
 
 from vip.auth.scheme import _httpx_verify_env_aware
-from vip.output import debug, info, warn
+from vip.output import info, warn
 from vip.proxy import (
     ProxyConfig,
     build_proxy_map,
@@ -143,27 +143,27 @@ def _log_mint_cookie_diagnostic(page: Page, request_url: str) -> None:
         current_url = page.url
     except PlaywrightError:
         current_url = "<unknown>"
-    debug(f">>> Mint diagnostic: browser is on {current_url}")
+    info(f">>> Mint diagnostic: browser is on {current_url}")
     try:
         jar = page.context.cookies() or []
-        debug(f">>> Mint diagnostic: full cookie jar ({len(jar)} entries):")
+        info(f">>> Mint diagnostic: full cookie jar ({len(jar)} entries):")
         for entry in _summarize_cookies(jar):
-            debug(f"    {entry}")
+            info(f"    {entry}")
     except PlaywrightError as exc:
-        debug(f">>> Mint diagnostic: could not read cookie jar: {exc}")
+        info(f">>> Mint diagnostic: could not read cookie jar: {exc}")
     try:
         scoped = page.context.cookies(request_url) or []
-        debug(f">>> Mint diagnostic: cookies sent to {request_url} ({len(scoped)} entries):")
+        info(f">>> Mint diagnostic: cookies sent to {request_url} ({len(scoped)} entries):")
         for entry in _summarize_cookies(scoped):
-            debug(f"    {entry}")
+            info(f"    {entry}")
     except PlaywrightError as exc:
-        debug(f">>> Mint diagnostic: could not read scoped cookies: {exc}")
+        info(f">>> Mint diagnostic: could not read scoped cookies: {exc}")
     try:
         doc_cookie = page.evaluate("() => document.cookie") or ""
         doc_names = [p.strip().partition("=")[0] for p in doc_cookie.split(";") if p.strip()]
-        debug(f">>> Mint diagnostic: document.cookie names: {doc_names}")
+        info(f">>> Mint diagnostic: document.cookie names: {doc_names}")
     except PlaywrightError as exc:
-        debug(f">>> Mint diagnostic: could not read document.cookie: {exc}")
+        info(f">>> Mint diagnostic: could not read document.cookie: {exc}")
 
 
 def _response_text(resp) -> str:
@@ -259,16 +259,16 @@ def _probe_server_settings(client, base: str, me_status: int, connect_url: str) 
     try:
         probe = client.get("/server_settings")
     except httpx.HTTPError as exc:
-        debug(f">>> Mint diagnostic: /server_settings probe failed: {exc}")
+        info(f">>> Mint diagnostic: /server_settings probe failed: {exc}")
         return
     probe_ct = _content_type(probe)
     probe_url = f"{base}/server_settings"
-    debug(
+    info(
         f">>> Mint diagnostic: GET {probe_url} returned HTTP "
         f"{probe.status_code} (content-type: {probe_ct})"
     )
     if me_status == 404 and probe.status_code == 404:
-        debug(
+        info(
             f">>> Mint diagnostic: both /__api__ endpoints returned 404 — "
             f"the configured connect_url ({connect_url}) likely has the "
             f"wrong path prefix. Try removing any sub-path (e.g. '/connect') "
@@ -477,7 +477,7 @@ def _create_api_key_via_session(
                     f"{_body_snippet(me_resp)}"
                 )
                 xsrf_preview = f"{xsrf[:4]}…(len={len(xsrf)})" if xsrf else "<none>"
-                debug(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
+                info(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
                 _log_mint_cookie_diagnostic(page, me_url)
                 _probe_server_settings(client, base, me_resp.status_code, connect_url)
                 return None

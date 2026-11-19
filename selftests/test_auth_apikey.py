@@ -6,8 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vip.output import Verbosity, set_verbosity
-
 
 class TestResolveConnectApiBase:
     """_resolve_connect_api_base handles split layouts where the Connect
@@ -575,7 +573,6 @@ class TestCreateApiKeyViaSession:
         """When cookie auth is rejected at /v1/user, the response body must
         appear in the warning so users can diagnose the actual failure.
         """
-        set_verbosity(Verbosity.VERBOSE)  # mint diagnostics are debug output
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -599,7 +596,6 @@ class TestCreateApiKeyViaSession:
         """The warning must print the full mint URL and Content-Type so the
         user can distinguish Connect's 404 page from an upstream proxy 404.
         """
-        set_verbosity(Verbosity.VERBOSE)  # mint diagnostics are debug output
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -637,7 +633,6 @@ class TestCreateApiKeyViaSession:
         must suggest the connect_url path prefix is wrong — that's the only
         plausible cause (the server settings endpoint is unauthenticated).
         """
-        set_verbosity(Verbosity.VERBOSE)  # mint diagnostics are debug output
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -672,7 +667,6 @@ class TestCreateApiKeyViaSession:
         """A 403 on /v1/user is auth rejection, not a routing problem — the
         'wrong path prefix' hint must only fire when both endpoints 404.
         """
-        set_verbosity(Verbosity.VERBOSE)  # mint diagnostics are debug output
         from vip.auth import _create_api_key_via_session
 
         page = self._page()
@@ -704,7 +698,6 @@ class TestCreateApiKeyViaSession:
         """If the /server_settings probe itself raises, that must not mask the
         original /v1/user warning — log the probe failure and move on.
         """
-        set_verbosity(Verbosity.VERBOSE)  # mint diagnostics are debug output
         import httpx
 
         from vip.auth import _create_api_key_via_session
