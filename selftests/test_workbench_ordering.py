@@ -248,7 +248,8 @@ def test_signout_is_the_last_xdist_group_and_runs_alone(tmp_path: Path) -> None:
     """Sign-out must not ride in an earlier group, or xdist hands it out at the start of the run.
 
     Under --interactive-auth / --headless-auth it would then end the shared session while
-    other workers are mid-test, which ``order(95)`` alone cannot prevent.
+    other workers are mid-test, which ``order(95)`` alone cannot prevent. Queued last still
+    overlaps other workers' final groups; ``TestSignoutBarrier`` covers that part.
     """
     queue = _xdist_group_queue(tmp_path)
     _, last_tests = queue[-1]

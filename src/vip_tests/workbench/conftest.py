@@ -30,6 +30,7 @@ from vip.workbench_ui import (
     vip_names_from_select_labels as _vip_names_from_select_labels,
 )
 from vip_tests.connect.bundles import _SHINY_APP_R, _latest_version, manifest_raw_url
+from vip_tests.workbench.barrier import mark_worker_done
 from vip_tests.workbench.capacity import (
     MAX_AUTO_DETECTED_PROFILES,
     ResourceProfileDisabledError,
@@ -185,8 +186,15 @@ def _workbench_group_name(ide_markers: set[str], module_stem: str) -> str:
 
 # Scenarios that end the session other workers share run in a group of their own. xdist queues
 # groups by their first test in collection order, so sharing a group with an early scenario would
-# hand them out at the start of the run; alone, sign-out's order(95) queues it last.
+# hand them out at the start of the run; alone, sign-out's order(95) queues it last. Queued last
+# still overlaps the other workers' final groups, so the scenario also waits on barrier.py.
 _OWN_GROUP_SCENARIOS = {"test_workbench_signout": "workbench_signout"}
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    """Tell the sign-out barrier this worker is done; trylast so fixtures are torn down first."""
+    mark_worker_done(session.config)
 
 
 @pytest.hookimpl(tryfirst=True)

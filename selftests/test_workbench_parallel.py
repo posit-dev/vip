@@ -9,8 +9,8 @@ import pytest
 from filelock import FileLock
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from vip_tests.workbench import barrier, login
 from vip_tests.workbench import conftest as wb
-from vip_tests.workbench import login
 
 
 class TestOidcLoginLock:
@@ -627,3 +627,64 @@ class TestXdistSeesVipGroups:
         rows = [line.split(" ", 1) for line in out.read_text(encoding="utf-8").splitlines()]
         assert all(nodeid.endswith("@workbench") for _, nodeid in rows), rows
         assert len({worker for worker, _ in rows}) == 1, rows
+
+
+_BARRIER_CONFTEST = """
+import pytest
+from vip_tests.workbench.barrier import mark_worker_done
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session):
+    mark_worker_done(session.config)
+"""
+
+
+class TestSignoutBarrier:
+    """Sign-out must start only after every other worker is done, not merely be queued last."""
+
+    def test_last_group_waits_for_the_other_worker(self, pytester):
+        pytester.makefile(".toml", vip='[general]\ndeployment_name = "Selftest"')
+        pytester.makeconftest(_BARRIER_CONFTEST)
+        busy_end = pytester.path / "busy_end.txt"
+        signout_start = pytester.path / "signout_start.txt"
+        pytester.makepyfile(
+            test_barrier=(
+                "import time, pytest\n"
+                "from vip_tests.workbench.barrier import wait_for_other_workers\n"
+                "@pytest.mark.xdist_group('busy')\n"
+                "def test_busy():\n"
+                "    time.sleep(3)\n"
+                f"    open({str(busy_end)!r}, 'w', encoding='utf-8').write(str(time.time()))\n"
+                "@pytest.mark.xdist_group('signout')\n"
+                "def test_signout(request):\n"
+                "    assert wait_for_other_workers(request.config, 60, poll_interval=0.1) == []\n"
+                f"    open({str(signout_start)!r}, 'w', encoding='utf-8').write(str(time.time()))\n"
+            )
+        )
+        result = pytester.runpytest("--vip-config=vip.toml", "-n", "2", "--dist", "loadgroup")
+        result.assert_outcomes(passed=2)
+
+        # loadgroup hands each worker one group at the start, so without the barrier sign-out
+        # would begin while the busy group is still sleeping.
+        started = float(signout_start.read_text(encoding="utf-8"))
+        assert started >= float(busy_end.read_text(encoding="utf-8"))
+
+    @pytest.fixture
+    def worker_gw0(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
+        monkeypatch.setenv("PYTEST_XDIST_WORKER_COUNT", "2")
+        option = type("Option", (), {"basetemp": str(tmp_path / "popen-gw0")})()
+        return type("Config", (), {"option": option})()
+
+    def test_returns_workers_still_running_at_timeout(self, worker_gw0):
+        assert barrier.wait_for_other_workers(worker_gw0, 0, poll_interval=0) == ["gw1"]
+
+    def test_returns_empty_once_the_others_report_done(self, worker_gw0, monkeypatch):
+        monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw1")
+        barrier.mark_worker_done(worker_gw0)
+        monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
+        assert barrier.wait_for_other_workers(worker_gw0, 0, poll_interval=0) == []
+
+    def test_serial_run_never_waits(self, worker_gw0, monkeypatch):
+        monkeypatch.delenv("PYTEST_XDIST_WORKER")
+        assert barrier.wait_for_other_workers(worker_gw0, 0, poll_interval=0) == []
