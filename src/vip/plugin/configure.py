@@ -12,6 +12,7 @@ import pytest
 
 from vip.config import load_config
 from vip.fixtures import register as _register_fixtures
+from vip.output import configure_logging
 from vip.plugin import state
 from vip.plugin.auth import _configure_auth
 from vip.plugin.terminal import _install_location_shortener, _install_progress_recolor
@@ -35,6 +36,10 @@ def pytest_configure(config: pytest.Config) -> None:
     session for ``pytest_sessionfinish`` to clean up.
     """
     state._active_config = config
+
+    # Route vip.* logs to stderr at the VIP_VERBOSITY level in this process and every
+    # xdist worker, before auth runs; propagation keeps pytest's log capture working.
+    configure_logging(propagate=True)
 
     # Register VIP's core fixtures and shared BDD steps as their own pytest
     # plugin (see vip.fixtures' module docstring for why: directory-scoped

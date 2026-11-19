@@ -17,6 +17,7 @@ from playwright.sync_api import (
 )
 
 from vip.auth.scheme import _httpx_verify_env_aware
+from vip.output import info, warn
 from vip.proxy import (
     ProxyConfig,
     build_proxy_map,
@@ -62,21 +63,21 @@ def _delete_api_key(
             if resp.status_code == 404:
                 continue
             if not resp.is_success:
-                print(f">>> Warning: {keys_path} returned HTTP {resp.status_code}")
+                warn(f">>> Warning: {keys_path} returned HTTP {resp.status_code}")
                 continue
             for k in resp.json():
                 if k.get("name") == key_name:
                     del_resp = client.delete(f"{keys_path}/{k['id']}")
                     if del_resp.is_success:
-                        print(">>> API key deleted.\n")
+                        info(">>> API key deleted.\n")
                     else:
-                        print(
+                        warn(
                             f">>> Warning: DELETE {keys_path}/{k['id']}"
                             f" returned {del_resp.status_code}"
                         )
                     return
             break
-        print(">>> Warning: Could not find API key to delete.\n")
+        warn(">>> Warning: Could not find API key to delete.\n")
 
 
 _XSRF_COOKIE_NAMES = ("RSC-XSRF", "RSC-XSRF-legacy")
@@ -142,27 +143,27 @@ def _log_mint_cookie_diagnostic(page: Page, request_url: str) -> None:
         current_url = page.url
     except PlaywrightError:
         current_url = "<unknown>"
-    print(f">>> Mint diagnostic: browser is on {current_url}")
+    info(f">>> Mint diagnostic: browser is on {current_url}")
     try:
         jar = page.context.cookies() or []
-        print(f">>> Mint diagnostic: full cookie jar ({len(jar)} entries):")
+        info(f">>> Mint diagnostic: full cookie jar ({len(jar)} entries):")
         for entry in _summarize_cookies(jar):
-            print(f"    {entry}")
+            info(f"    {entry}")
     except PlaywrightError as exc:
-        print(f">>> Mint diagnostic: could not read cookie jar: {exc}")
+        info(f">>> Mint diagnostic: could not read cookie jar: {exc}")
     try:
         scoped = page.context.cookies(request_url) or []
-        print(f">>> Mint diagnostic: cookies sent to {request_url} ({len(scoped)} entries):")
+        info(f">>> Mint diagnostic: cookies sent to {request_url} ({len(scoped)} entries):")
         for entry in _summarize_cookies(scoped):
-            print(f"    {entry}")
+            info(f"    {entry}")
     except PlaywrightError as exc:
-        print(f">>> Mint diagnostic: could not read scoped cookies: {exc}")
+        info(f">>> Mint diagnostic: could not read scoped cookies: {exc}")
     try:
         doc_cookie = page.evaluate("() => document.cookie") or ""
         doc_names = [p.strip().partition("=")[0] for p in doc_cookie.split(";") if p.strip()]
-        print(f">>> Mint diagnostic: document.cookie names: {doc_names}")
+        info(f">>> Mint diagnostic: document.cookie names: {doc_names}")
     except PlaywrightError as exc:
-        print(f">>> Mint diagnostic: could not read document.cookie: {exc}")
+        info(f">>> Mint diagnostic: could not read document.cookie: {exc}")
 
 
 def _response_text(resp) -> str:
@@ -193,7 +194,7 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
     try:
         list_resp = client.get(f"/v1/users/{guid}/keys")
     except (httpx.HTTPError, httpx.InvalidURL) as exc:
-        print(f">>> Warning: listing stale keys failed: {exc}")
+        warn(f">>> Warning: listing stale keys failed: {exc}")
         return
     if not list_resp.is_success:
         return
@@ -204,7 +205,7 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
     except ValueError:
         return
     if not isinstance(entries, list):
-        print(f">>> Warning: key list response was {type(entries).__name__}, not list.")
+        warn(f">>> Warning: key list response was {type(entries).__name__}, not list.")
         return
 
     for k in entries:
@@ -225,7 +226,7 @@ def _delete_stale_vip_keys(client, guid: str) -> None:
         try:
             client.delete(f"/v1/users/{guid}/keys/{key_id}")
         except (httpx.HTTPError, httpx.InvalidURL) as exc:
-            print(f">>> Warning: could not delete stale key {key_id}: {exc}")
+            warn(f">>> Warning: could not delete stale key {key_id}: {exc}")
 
 
 def _content_type(resp) -> str:
@@ -258,16 +259,16 @@ def _probe_server_settings(client, base: str, me_status: int, connect_url: str) 
     try:
         probe = client.get("/server_settings")
     except httpx.HTTPError as exc:
-        print(f">>> Mint diagnostic: /server_settings probe failed: {exc}")
+        info(f">>> Mint diagnostic: /server_settings probe failed: {exc}")
         return
     probe_ct = _content_type(probe)
     probe_url = f"{base}/server_settings"
-    print(
+    info(
         f">>> Mint diagnostic: GET {probe_url} returned HTTP "
         f"{probe.status_code} (content-type: {probe_ct})"
     )
     if me_status == 404 and probe.status_code == 404:
-        print(
+        info(
             f">>> Mint diagnostic: both /__api__ endpoints returned 404 — "
             f"the configured connect_url ({connect_url}) likely has the "
             f"wrong path prefix. Try removing any sub-path (e.g. '/connect') "
@@ -380,7 +381,7 @@ def _resolve_connect_api_base(
     if dashboard_path != sub_path:
         return connect_url
 
-    print(
+    info(
         f">>> Connect dashboard at {connect_url} but API at {root}/__api__/; "
         f"using {root} for API calls."
     )
@@ -470,19 +471,19 @@ def _create_api_key_via_session(
             me_resp = client.get("/v1/user")
             if not me_resp.is_success:
                 me_ct = _content_type(me_resp)
-                print(
+                warn(
                     f">>> Warning: GET {me_url} returned HTTP "
                     f"{me_resp.status_code} (content-type: {me_ct}): "
                     f"{_body_snippet(me_resp)}"
                 )
                 xsrf_preview = f"{xsrf[:4]}…(len={len(xsrf)})" if xsrf else "<none>"
-                print(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
+                info(f">>> Mint diagnostic: X-Rsc-Xsrf header was {xsrf_preview}")
                 _log_mint_cookie_diagnostic(page, me_url)
                 _probe_server_settings(client, base, me_resp.status_code, connect_url)
                 return None
             guid = me_resp.json().get("guid")
             if not guid:
-                print(">>> Warning: Connect did not return a user guid.")
+                warn(">>> Warning: Connect did not return a user guid.")
                 return None
 
             _delete_stale_vip_keys(client, guid)
@@ -492,7 +493,7 @@ def _create_api_key_via_session(
                 json={"name": key_name},
             )
             if not create_resp.is_success:
-                print(
+                warn(
                     f">>> Warning: POST /v1/users/{guid}/keys returned HTTP "
                     f"{create_resp.status_code}: {_body_snippet(create_resp)}"
                 )
@@ -507,7 +508,7 @@ def _create_api_key_via_session(
                 # comes back instead of the created key.  Without this guard
                 # ``.get("key")`` raises ``AttributeError``, which is not in
                 # the caught tuple below and so crashes auth outright (#561).
-                print(
+                warn(
                     f">>> Warning: POST /v1/users/{guid}/keys returned a "
                     f"{type(created).__name__}, not an object. A proxy most "
                     "likely redirected the request with 301/302, which turns "
@@ -519,10 +520,10 @@ def _create_api_key_via_session(
 
             api_key = created.get("key")
             if not api_key:
-                print(">>> Warning: Connect response did not include a key string.")
+                warn(">>> Warning: Connect response did not include a key string.")
                 return None
 
-            print(">>> Connect API key created.\n")
+            info(">>> Connect API key created.\n")
             return api_key
     except (httpx.HTTPError, ValueError, KeyError) as exc:
         # httpx.HTTPError catches both transport-level failures (DNS, TCP,
@@ -531,5 +532,5 @@ def _create_api_key_via_session(
         # handling: the function is documented to return None on failure
         # rather than raising, so vip verify can emit a warning instead of
         # crashing during auth setup.
-        print(f">>> Warning: Could not create API key: {exc}")
+        warn(f">>> Warning: Could not create API key: {exc}")
         return None

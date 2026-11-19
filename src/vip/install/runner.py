@@ -20,6 +20,7 @@ from vip.install.plan import (
     UninstallPlan,
 )
 from vip.install.playwright import install_chromium
+from vip.output import error, out, warn
 
 
 def is_root() -> bool:
@@ -85,7 +86,7 @@ def execute_install_plan(
     I/O, matching ``build_install_plan``. When omitted, requested names are
     recorded unchanged.
     """
-    print(format_install_plan(plan), end="")
+    out(format_install_plan(plan), end="")
 
     system_step = plan.system_step
     needs_root = bool(system_step and system_step.packages)
@@ -107,8 +108,8 @@ def execute_install_plan(
             cmd = "sudo zypper -n install"
         else:
             cmd = "sudo apt install -y"
-        print(f"\nNot running as root. Please run:\n  {cmd} {' '.join(system_step.packages)}")
-        print("Then re-run `vip install`, or pass `--skip-system` to skip this check.")
+        error(f"\nNot running as root. Please run:\n  {cmd} {' '.join(system_step.packages)}")
+        error("Then re-run `vip install`, or pass `--skip-system` to skip this check.")
         return 2
 
     # Run system step ourselves if root.
@@ -206,9 +207,9 @@ def execute_uninstall_plan(
     printed "(content cleanup: failed)" summary line, not the return code, to
     detect that case.
     """
-    print(format_uninstall_plan(plan), end="")
+    out(format_uninstall_plan(plan), end="")
     if not yes:
-        print("\nDry run only. Pass --yes to execute.")
+        out("\nDry run only. Pass --yes to execute.")
         return 0
 
     cleanup_status = "skipped"
@@ -217,7 +218,7 @@ def execute_uninstall_plan(
             cleanup_callable(plan.chained_cleanup)
             cleanup_status = "ok"
         except Exception as exc:  # noqa: BLE001
-            print(f"warning: chained vip cleanup failed: {exc}")
+            warn(f"warning: chained vip cleanup failed: {exc}")
             cleanup_status = "failed"
 
     for cache_dir in plan.playwright_cache_dirs:
@@ -229,16 +230,16 @@ def execute_uninstall_plan(
         manifest_path.unlink()
 
     if plan.system_remove_commands:
-        print("\nRun the following yourself to remove system packages:")
+        out("\nRun the following yourself to remove system packages:")
         for cmd in plan.system_remove_commands:
-            print(f"  {cmd}")
+            out(f"  {cmd}")
 
     if cleanup_status == "skipped":
-        print("\nvip uninstall: complete")
+        out("\nvip uninstall: complete")
     else:
-        print(f"\nvip uninstall: complete (content cleanup: {cleanup_status})")
+        out(f"\nvip uninstall: complete (content cleanup: {cleanup_status})")
 
-    print(
+    out(
         "\nTo also remove vip itself, run one of:\n"
         "  uv tool uninstall posit-vip   # if installed via `uv tool install`\n"
         "  uv pip uninstall posit-vip    # if installed via `uv pip install`"

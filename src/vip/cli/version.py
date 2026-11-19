@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from vip import __version__
+from vip.output import out
 from vip.version import MINIMUM_SUPPORTED_POSIT_TEAM
 
 
@@ -23,4 +24,4 @@ def _format_version_details() -> str:
 
 def run_version(_args: argparse.Namespace) -> None:
     """Print the vip version and the minimum supported Posit Team version."""
-    print(_format_version_details())
+    out(_format_version_details())

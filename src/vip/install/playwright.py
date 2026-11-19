@@ -13,6 +13,8 @@ from typing import IO
 
 import playwright
 
+from vip.output import info
+
 
 class PlaywrightInstallError(Exception):
     """Raised when `playwright install chromium` exits nonzero."""
@@ -148,4 +150,4 @@ def install_chromium() -> None:
         raise PlaywrightInstallError(f"playwright install chromium exited with exit {rc}")
 
     if filtered:
-        print("Installed Playwright Chromium (Playwright fallback build for unsupported-OS hosts).")
+        info("Installed Playwright Chromium (Playwright fallback build for unsupported-OS hosts).")

@@ -11,7 +11,7 @@ from playwright.sync_api import (
     Page,
 )
 
-from vip.idp import _log_verbose
+from vip.output import debug
 from vip.timeouts import scaled
 
 # Single timeout for an IdP login round-trip (browser leaves the product,
@@ -75,12 +75,12 @@ def _fill_product_login(page: Page, username: str, password: str) -> None:
         "button:has-text('Sign in'), button:has-text('Log in')"
     )
 
-    _log_verbose(">>> Filling product login form ...")
+    debug(">>> Filling product login form ...")
     page.locator(username_selectors).first.wait_for(timeout=int(scaled(15_000)))
     page.locator(username_selectors).first.fill(username)
     page.locator(password_selectors).first.fill(password)
     page.locator(submit_selectors).first.click()
-    _log_verbose(">>> Product login form submitted.")
+    debug(">>> Product login form submitted.")
 
 
 def _strip_url_query(url: str) -> str:

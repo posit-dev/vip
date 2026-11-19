@@ -17,6 +17,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from vip import totp
 from vip.errors import AuthConfigError
+from vip.output import debug, warn
 from vip.timeouts import scaled, timeout_scale
 
 # Keycloak selectors — validated by PPM's e2e test suite.
@@ -55,21 +56,6 @@ _MFA_DETECT_TIMEOUT = int(10_000 * timeout_scale())
 _MFA_TIMEOUT = 300_000  # 5 minutes
 
 
-def _print_flush(msg: str) -> None:
-    """Print a message and flush immediately so it appears in subprocess output."""
-    print(msg, flush=True)
-
-
-# Module-level verbose flag, set by start_headless_auth before calling strategies.
-_verbose = False
-
-
-def _log_verbose(msg: str) -> None:
-    """Print only when verbose mode is active."""
-    if _verbose:
-        _print_flush(msg)
-
-
 def _sanitize_url(url: str) -> str:
     """Return origin + path, stripping query params that may contain secrets."""
     parsed = urlparse(url)
@@ -78,27 +64,27 @@ def _sanitize_url(url: str) -> str:
 
 def _fill_keycloak_login(page: Page, username: str, password: str) -> None:
     """Fill Keycloak's single-page login form and handle optional TOTP."""
-    _log_verbose(">>> Keycloak: waiting for login form ...")
+    debug(">>> Keycloak: waiting for login form ...")
     page.locator(_KC_SUBMIT).wait_for(timeout=_FORM_TIMEOUT)
 
     page.locator(_KC_USERNAME).fill(username)
     page.locator(_KC_PASSWORD).fill(password)
     page.locator(_KC_SUBMIT).click()
-    _log_verbose(">>> Keycloak: credentials submitted.")
+    debug(">>> Keycloak: credentials submitted.")
 
-    _log_verbose(">>> Keycloak: checking for MFA challenge ...")
+    debug(">>> Keycloak: checking for MFA challenge ...")
     otp_field = page.locator(_KC_OTP)
     try:
         otp_field.wait_for(state="visible", timeout=_MFA_DETECT_TIMEOUT)
     except PlaywrightTimeout:
-        _log_verbose(">>> Keycloak: no MFA challenge detected, proceeding.")
+        debug(">>> Keycloak: no MFA challenge detected, proceeding.")
         return
 
-    _log_verbose(">>> Keycloak: obtaining TOTP code ...")
+    debug(">>> Keycloak: obtaining TOTP code ...")
     code = totp.get_code(">>> Enter your verification code: ")
     otp_field.fill(code)
     page.locator(_KC_SUBMIT).click()
-    _log_verbose(">>> Keycloak: TOTP code submitted.")
+    debug(">>> Keycloak: TOTP code submitted.")
 
 
 def _select_totp_authenticator(page: Page) -> None:
@@ -130,7 +116,7 @@ def _select_totp_authenticator(page: Page) -> None:
         if select_btn.count() == 0:
             select_btn = code_option.get_by_role("button", name="Select")
         if select_btn.count() > 0 and select_btn.first.is_visible():
-            _log_verbose(">>> Okta: selecting 'Enter a code' authenticator (data-se) ...")
+            debug(">>> Okta: selecting 'Enter a code' authenticator (data-se) ...")
             select_btn.first.click()
             page.wait_for_load_state("domcontentloaded")
             return
@@ -158,25 +144,25 @@ def _select_totp_authenticator(page: Page) -> None:
         if select_link.count() == 0:
             select_link = container.get_by_role("button", name="Select")
         if select_link.count() > 0 and select_link.first.is_visible():
-            _log_verbose(">>> Okta: selecting 'Enter a code' authenticator (text) ...")
+            debug(">>> Okta: selecting 'Enter a code' authenticator (text) ...")
             select_link.first.click()
             page.wait_for_load_state("domcontentloaded")
             return
 
-    _log_verbose(">>> Okta: no authenticator selection page detected.")
+    debug(">>> Okta: no authenticator selection page detected.")
 
 
 def _fill_okta_login(page: Page, username: str, password: str) -> None:
     """Fill Okta's multi-step login form and handle optional MFA."""
     # Step 1: identifier page.
-    _log_verbose(">>> Okta: waiting for identifier field ...")
+    debug(">>> Okta: waiting for identifier field ...")
     page.locator(_OKTA_IDENTIFIER).wait_for(timeout=_FORM_TIMEOUT)
     page.locator(_OKTA_IDENTIFIER).fill(username)
     page.locator(_OKTA_SUBMIT).first.click()
-    _log_verbose(">>> Okta: identifier submitted.")
+    debug(">>> Okta: identifier submitted.")
 
     # Step 2: password page.
-    _log_verbose(">>> Okta: waiting for password field ...")
+    debug(">>> Okta: waiting for password field ...")
     page.locator(_OKTA_PASSCODE).wait_for(timeout=_FORM_TIMEOUT)
     page.locator(_OKTA_PASSCODE).fill(password)
 
@@ -190,7 +176,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         heading_before = (heading_el.text_content() or "").lower().strip()
 
     page.locator(_OKTA_SUBMIT).first.click()
-    _log_verbose(">>> Okta: password submitted, waiting for response ...")
+    debug(">>> Okta: password submitted, waiting for response ...")
 
     # Step 3: detect what happened after password submission.
     #
@@ -216,7 +202,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         try:
             # Check: URL changed (redirect to product).
             if page.url != pre_submit_url:
-                _log_verbose(f">>> Okta: URL changed to: {_sanitize_url(page.url)}")
+                debug(f">>> Okta: URL changed to: {_sanitize_url(page.url)}")
                 break
 
             # Check: error banner visible.
@@ -224,14 +210,14 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
                 loc = page.locator(sel.strip())
                 if loc.count() > 0 and loc.first.is_visible():
                     error_msg = (loc.first.text_content() or "").strip()
-                    _log_verbose(f">>> Okta: login error: {error_msg}")
+                    debug(f">>> Okta: login error: {error_msg}")
                     raise AuthConfigError(f"Okta login failed: {error_msg}")
 
             # Check: MFA-specific elements appeared.
             for sel in mfa_selectors.split(","):
                 loc = page.locator(sel.strip())
                 if loc.count() > 0 and loc.first.is_visible():
-                    _log_verbose(">>> Okta: MFA authenticator elements detected.")
+                    debug(">>> Okta: MFA authenticator elements detected.")
                     break
             else:
                 # Check: submit button text changed (form transitioned).
@@ -240,7 +226,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
                 if submit_loc.count() > 0:
                     submit_text_now = submit_loc.text_content() or ""
                 if submit_text_now and submit_text_now != submit_text_before:
-                    _log_verbose(f">>> Okta: form transitioned (button: {submit_text_now!r})")
+                    debug(f">>> Okta: form transitioned (button: {submit_text_now!r})")
                     break
 
                 # Check: heading changed (form transitioned to a new step).
@@ -248,7 +234,7 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
                 if heading_el.count() > 0 and heading_el.is_visible():
                     heading_now = (heading_el.text_content() or "").lower().strip()
                 if heading_now and heading_now != heading_before:
-                    _log_verbose(f">>> Okta: heading changed to: {heading_now!r}")
+                    debug(f">>> Okta: heading changed to: {heading_now!r}")
                     break
 
                 page.wait_for_timeout(500)
@@ -260,13 +246,13 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
             # Transient Playwright error during widget transition — retry.
             page.wait_for_timeout(500)
     else:
-        _log_verbose(f">>> Okta: no state change after 30s: {_sanitize_url(page.url)}")
+        debug(f">>> Okta: no state change after 30s: {_sanitize_url(page.url)}")
         raise AuthConfigError(
             "Okta login did not respond after password submission. "
             "Check credentials and IdP configuration."
         )
 
-    _log_verbose(f">>> Okta: password accepted. URL: {_sanitize_url(page.url)}")
+    debug(f">>> Okta: password accepted. URL: {_sanitize_url(page.url)}")
 
     # Determine whether we're in an MFA flow or already redirecting.
     current_url = page.url.lower()
@@ -277,10 +263,10 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
     has_mfa_content = mfa_content.first.is_visible()
 
     if not url_has_mfa and not has_mfa_content:
-        _log_verbose(">>> Okta: no MFA challenge detected, proceeding.")
+        debug(">>> Okta: no MFA challenge detected, proceeding.")
         return
 
-    _log_verbose(f">>> Okta: MFA challenge detected at {_sanitize_url(page.url)}")
+    debug(f">>> Okta: MFA challenge detected at {_sanitize_url(page.url)}")
 
     # Handle authenticator selection page — Okta may present a list of
     # MFA options (TOTP, push, security key).  Click "Select" next to
@@ -314,20 +300,20 @@ def _fill_okta_login(page: Page, username: str, password: str) -> None:
         page.wait_for_timeout(500)
 
     if totp_field:
-        _log_verbose(">>> Okta: TOTP input detected.")
+        debug(">>> Okta: TOTP input detected.")
         totp_field.clear()
         code = totp.get_code(">>> Enter your verification code: ")
-        _log_verbose(">>> Okta: filling TOTP code ...")
+        debug(">>> Okta: filling TOTP code ...")
         totp_field.fill(code)
-        _log_verbose(">>> Okta: clicking verify ...")
+        debug(">>> Okta: clicking verify ...")
         page.locator(_OKTA_SUBMIT).first.click()
-        _log_verbose(">>> Okta: TOTP code submitted.")
+        debug(">>> Okta: TOTP code submitted.")
     else:
         # No TOTP input after selection — fall back to push/wait.
-        _log_verbose(">>> Okta: no TOTP input found — assuming push/other MFA factor.")
-        print(">>> Approve the notification on your device, then press Enter.", flush=True)
+        debug(">>> Okta: no TOTP input found — assuming push/other MFA factor.")
+        warn(">>> Approve the notification on your device, then press Enter.")
         input()
-        _log_verbose(">>> Okta: waiting for MFA approval redirect ...")
+        debug(">>> Okta: waiting for MFA approval redirect ...")
         page.wait_for_url(
             lambda url: "/challenge" not in url.lower(),
             timeout=_MFA_TIMEOUT,
@@ -359,7 +345,7 @@ def _fill_snowflake_login(page: Page, username: str, password: str) -> None:
             page.locator(_SF_USERNAME).wait_for(state="visible", timeout=timeout)
         except PlaywrightTimeout:
             # No (further) sign-in form — the chain has moved past Snowflake login.
-            _log_verbose(f">>> Snowflake: no sign-in form after {attempt} fill(s); done.")
+            debug(f">>> Snowflake: no sign-in form after {attempt} fill(s); done.")
             break
 
         before = page.url
@@ -367,14 +353,14 @@ def _fill_snowflake_login(page: Page, username: str, password: str) -> None:
         page.locator(_SF_PASSWORD).fill(password)
         # The username/password "Sign in" button is the second one on the page.
         page.locator(_SF_SUBMIT).nth(1).click()
-        _log_verbose(f">>> Snowflake: submitted sign-in form #{attempt + 1}.")
+        debug(f">>> Snowflake: submitted sign-in form #{attempt + 1}.")
 
         # The first authorization of an OAuth client shows an "Allow" consent.
         try:
             allow_button = page.get_by_role("button", name=_SF_ALLOW)
             allow_button.wait_for(state="visible", timeout=_SF_CONSENT_TIMEOUT)
             allow_button.click()
-            _log_verbose(">>> Snowflake: clicked 'Allow' consent.")
+            debug(">>> Snowflake: clicked 'Allow' consent.")
         except (PlaywrightTimeout, Error):
             pass
 
@@ -516,7 +502,7 @@ def _select_entra_totp_method(page: Page) -> bool:
     """
     option = page.locator(_ENTRA_VERIFY_CODE_OPTION)
     if option.count() > 0 and option.first.is_visible():
-        _log_verbose(">>> Entra: selecting 'Use a verification code' option ...")
+        debug(">>> Entra: selecting 'Use a verification code' option ...")
         option.first.click()
         return True
 
@@ -524,7 +510,7 @@ def _select_entra_totp_method(page: Page) -> bool:
     for i in range(text_option.count()):
         candidate = text_option.nth(i)
         if candidate.is_visible():
-            _log_verbose(">>> Entra: selecting 'Use a verification code' option (text) ...")
+            debug(">>> Entra: selecting 'Use a verification code' option (text) ...")
             candidate.click()
             return True
     return False
@@ -532,7 +518,7 @@ def _select_entra_totp_method(page: Page) -> bool:
 
 def _entra_handle_otc(page: Page) -> None:
     """Fill and submit a verification-code (TOTP) prompt."""
-    _log_verbose(">>> Entra: verification-code prompt detected.")
+    debug(">>> Entra: verification-code prompt detected.")
     code = totp.get_code(">>> Enter your verification code: ")
     page.locator(_ENTRA_OTC_INPUT).first.fill(code)
     submit = page.locator(_ENTRA_OTC_SUBMIT)
@@ -540,7 +526,7 @@ def _entra_handle_otc(page: Page) -> None:
         submit.first.click()
     else:
         page.locator(_ENTRA_SUBMIT).click()
-    _log_verbose(">>> Entra: verification code submitted.")
+    debug(">>> Entra: verification code submitted.")
 
 
 def _entra_is_push(page: Page) -> bool:
@@ -570,7 +556,7 @@ def _entra_try_switch_from_push(page: Page) -> bool:
 
     link = page.locator(_ENTRA_SIGN_IN_ANOTHER_WAY)
     if link.count() > 0 and link.first.is_visible():
-        _log_verbose(">>> Entra: switching away from auto-sent push to pick a code ...")
+        debug(">>> Entra: switching away from auto-sent push to pick a code ...")
         link.first.click()
         return True
 
@@ -578,7 +564,7 @@ def _entra_try_switch_from_push(page: Page) -> bool:
     for i in range(text_link.count()):
         candidate = text_link.nth(i)
         if candidate.is_visible():
-            _log_verbose(">>> Entra: switching away from auto-sent push (text) ...")
+            debug(">>> Entra: switching away from auto-sent push (text) ...")
             candidate.click()
             return True
     return False
@@ -591,16 +577,14 @@ def _entra_handle_push(page: Page) -> None:
     display = page.locator(_ENTRA_DISPLAY_SIGN)
     if display.count() > 0 and display.first.is_visible():
         number = (display.first.text_content() or "").strip()
-        print(
+        warn(
             f">>> Enter {number} in Microsoft Authenticator to approve sign-in.",
-            flush=True,
         )
     else:
-        print(
+        warn(
             ">>> Approve the sign-in request in Microsoft Authenticator, then wait.",
-            flush=True,
         )
-    _log_verbose(">>> Entra: waiting for push approval ...")
+    debug(">>> Entra: waiting for push approval ...")
     before = page.url
 
     def _advanced(url: str, _before: str = before) -> bool:
@@ -627,7 +611,7 @@ def _entra_dismiss_kmsi(page: Page) -> None:
     """
     no_button = page.locator(_ENTRA_KMSI_NO)
     if no_button.count() > 0 and no_button.first.is_visible():
-        _log_verbose(">>> Entra: dismissing 'Stay signed in?' with No ...")
+        debug(">>> Entra: dismissing 'Stay signed in?' with No ...")
         no_button.first.click()
 
 
@@ -643,7 +627,7 @@ def _entra_resolve_post_password(page: Page) -> None:
     mfa_handled = False
     while time.monotonic() < deadline:
         if _entra_left_login_host(page):
-            _log_verbose(f">>> Entra: left login host: {_sanitize_url(page.url)}")
+            debug(f">>> Entra: left login host: {_sanitize_url(page.url)}")
             return
 
         _raise_if_entra_error(page)
@@ -693,7 +677,7 @@ def _entra_resolve_post_password(page: Page) -> None:
     # Re-check once so a redirect that landed just as the deadline passed isn't
     # mistaken for a stuck screen.
     if _entra_left_login_host(page):
-        _log_verbose(">>> Entra: no further challenge detected within timeout; proceeding.")
+        debug(">>> Entra: no further challenge detected within timeout; proceeding.")
         return
 
     raise AuthConfigError(
@@ -730,13 +714,13 @@ def _fill_entra_login(page: Page, username: str, password: str) -> None:
     raises ``AuthConfigError`` pointing at configuring the federated IdP
     directly, rather than hanging until timeout.
     """
-    _log_verbose(">>> Entra: waiting for email field ...")
+    debug(">>> Entra: waiting for email field ...")
     page.locator(_ENTRA_USERNAME).wait_for(timeout=_FORM_TIMEOUT)
     page.locator(_ENTRA_USERNAME).fill(username)
     page.locator(_ENTRA_SUBMIT).click()
-    _log_verbose(">>> Entra: email submitted.")
+    debug(">>> Entra: email submitted.")
 
-    _log_verbose(">>> Entra: waiting for password field ...")
+    debug(">>> Entra: waiting for password field ...")
     password_field = page.locator(_ENTRA_PASSWORD)
     deadline = time.monotonic() + _FORM_TIMEOUT / 1000
     while time.monotonic() < deadline:
@@ -760,7 +744,7 @@ def _fill_entra_login(page: Page, username: str, password: str) -> None:
 
     password_field.first.fill(password)
     page.locator(_ENTRA_SUBMIT).click()
-    _log_verbose(">>> Entra: password submitted.")
+    debug(">>> Entra: password submitted.")
 
     _entra_resolve_post_password(page)
 

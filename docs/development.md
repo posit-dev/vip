@@ -43,7 +43,9 @@ uv run --extra dev ruff format .         # reformat
 ```
 
 Ruff's rule set is the `select` list in `pyproject.toml` under
-`[tool.ruff.lint]`; line length is 100.
+`[tool.ruff.lint]`; line length is 100. The set includes `T201`, so `print()` is a
+lint error: write through `vip.output` instead (`out()` for stdout results,
+`info()`/`warn()`/`error()`/`debug()` for stderr; see "Output" in `AGENTS.md`).
 
 ### Pre-commit hooks (optional)
 

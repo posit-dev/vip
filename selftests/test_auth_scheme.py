@@ -267,7 +267,7 @@ class TestResolveUrlScheme:
         with patch("httpx.get", side_effect=httpx.ConnectError("nope")):
             resolve_url_scheme(pc)
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "connect.example.com" in out
         assert "http://connect.example.com" in out
 
@@ -280,7 +280,8 @@ class TestResolveUrlScheme:
         with patch("httpx.get", return_value=MagicMock(status_code=200)):
             resolve_url_scheme(pc)
 
-        assert capsys.readouterr().out == ""
+        captured = capsys.readouterr()
+        assert (captured.out, captured.err) == ("", "")
 
     def test_mutates_pc_in_place_and_resets_inferred_flag(self):
         """After resolving, pc.url holds the final value and
@@ -386,7 +387,7 @@ class TestResolveUrlScheme:
         ):
             resolve_url_scheme(pc)
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "NOT falling back to plaintext" in out
         assert "insecure" in out
         assert "ca_bundle" in out

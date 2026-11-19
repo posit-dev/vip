@@ -137,7 +137,7 @@ class TestRunCleanupSchemeResolution:
             vip.cli.run_cleanup(self._args(connect_url="connect.example.com"))
 
         assert constructed == ["http://connect.example.com"]
-        assert "http://connect.example.com" in capsys.readouterr().out
+        assert "http://connect.example.com" in capsys.readouterr().err
 
     def test_explicit_scheme_connect_url_never_probes(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)

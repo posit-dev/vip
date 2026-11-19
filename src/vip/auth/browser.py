@@ -21,6 +21,7 @@ from playwright.sync_api import (
 
 from vip.auth.apikey import _delete_api_key
 from vip.errors import AuthConfigError
+from vip.output import warn
 from vip.proxy import (
     ProxyConfig,
     build_proxy_map,
@@ -208,7 +209,7 @@ class InteractiveAuthSession:
                     proxy=self._proxy,
                 )
             except (httpx.HTTPError, httpx.InvalidURL, ValueError, KeyError, AttributeError) as exc:
-                print(f">>> Warning: Could not delete API key: {exc}")
+                warn(f">>> Warning: Could not delete API key: {exc}")
 
         if self._tmpdir and Path(self._tmpdir).is_dir():
             shutil.rmtree(self._tmpdir, ignore_errors=True)

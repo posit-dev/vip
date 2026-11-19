@@ -20,7 +20,6 @@ from playwright.sync_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
 
-import vip.idp
 from vip import totp
 from vip.auth.apikey import _KEY_NAME_PREFIX, _create_api_key_via_session, _resolve_connect_api_base
 from vip.auth.browser import InteractiveAuthSession, _launch_chromium
@@ -36,7 +35,8 @@ from vip.auth.sso import (
 from vip.auth.workbench import _authenticate_workbench, _wait_for_product_redirect
 from vip.config import ProductConfig
 from vip.errors import AuthConfigError, AuthTimeoutError
-from vip.idp import SUPPORTED_IDPS, _log_verbose, _sanitize_url, get_idp_strategy
+from vip.idp import SUPPORTED_IDPS, _sanitize_url, get_idp_strategy
+from vip.output import Verbosity, debug, get_verbosity, info, set_verbosity, warn
 from vip.proxy import (
     ProxyConfig,
     build_proxy_map,
@@ -302,9 +302,9 @@ def start_interactive_auth(
     def login(page: Page, primary_url: str, target: str, has_connect: bool) -> None:
         page.goto(target)
 
-        print(f"\n>>> A browser window has opened at {primary_url}")
-        print(">>> Please log in through your identity provider.")
-        print(">>> The browser will close automatically after login.\n")
+        warn(f"\n>>> A browser window has opened at {primary_url}")
+        warn(">>> Please log in through your identity provider.")
+        warn(">>> The browser will close automatically after login.\n")
 
         # Poll until login completes
         base = primary_url.rstrip("/")
@@ -396,7 +396,9 @@ def start_headless_auth(
     *connect_url_scheme_inferred* / *workbench_url_scheme_inferred*: see
     ``start_interactive_auth``.
     """
-    vip.idp._verbose = verbose
+    # ``-q`` wins over the legacy ``--vip-verbose`` flag, matching the CLI's precedence.
+    if verbose and get_verbosity() is not Verbosity.QUIET:
+        set_verbosity(Verbosity.VERBOSE)
 
     if not connect_url and not workbench_url:
         raise AuthConfigError(
@@ -436,16 +438,16 @@ def start_headless_auth(
         fill_login = get_idp_strategy(idp)
 
     def login(page: Page, primary_url: str, target: str, has_connect: bool) -> None:
-        print(f"\n>>> Headless auth: authenticating to {primary_url} ...", flush=True)
+        info(f"\n>>> Headless auth: authenticating to {primary_url} ...")
         try:
             page.goto(target)
             page.wait_for_load_state("domcontentloaded")
-            _log_verbose(f">>> Page loaded, URL: {_sanitize_url(page.url)}")
+            debug(f">>> Page loaded, URL: {_sanitize_url(page.url)}")
 
             if fill_login:
                 # OIDC/SAML: navigate to IdP and automate its login form.
                 _navigate_to_idp(page, primary_url)
-                _log_verbose(f">>> At IdP login page: {_sanitize_url(page.url)}")
+                debug(f">>> At IdP login page: {_sanitize_url(page.url)}")
                 fill_login(page, username, password)
             else:
                 # Password/LDAP: fill the product's native login form directly.
@@ -465,7 +467,7 @@ def start_headless_auth(
             raise AuthConfigError(
                 f"Headless auth failed during login: {exc}. Rerun with --verbose for details."
             ) from exc
-        print(">>> Authentication complete.")
+        info(">>> Authentication complete.")
 
     return _run_login(
         connect_url=connect_url,

@@ -16,6 +16,7 @@ import pytest
 from pytest_bdd import scenario, then, when
 
 from vip import attest
+from vip.output import info
 from vip_tests.connect.bundles import _latest_version, build_shiny_bundle_files
 from vip_tests.connect.conftest import _make_tar_gz
 
@@ -537,7 +538,7 @@ def wait_for_deploy(connect_client, deploy_state, vip_config, record_property):
             f"content={deploy_state.get('name', 'unknown')} "
             f"code={matched_code} host={matched_host}",
         )
-        print(
+        info(
             f">>> {deploy_state.get('name', 'deploy')}: packrat restore hit a transient "
             f"connection failure ({matched_code} against {matched_host}); retrying the "
             "deploy once before failing the suite (vip#553)."

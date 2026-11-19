@@ -7,9 +7,12 @@ the actual verification suite.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
+
+from vip import output
 
 # Enable the pytester fixture for plugin integration tests.
 pytest_plugins = ["pytester"]
@@ -24,6 +27,19 @@ _PROXY_ENV_VARS = (
     "all_proxy",
     "no_proxy",
 )
+
+
+@pytest.fixture(autouse=True)
+def _restore_output_state():
+    """Undo verbosity and ``vip`` logger changes a selftest (or ``main()``) made."""
+    level = output.get_verbosity()
+    logger = logging.getLogger("vip")
+    handlers, propagate, log_level = list(logger.handlers), logger.propagate, logger.level
+    yield
+    output.set_verbosity(level)
+    logger.handlers[:] = handlers
+    logger.propagate = propagate
+    logger.setLevel(log_level)
 
 
 @pytest.fixture(autouse=True)

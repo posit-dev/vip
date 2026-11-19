@@ -17,6 +17,7 @@ from vip.cli.status import run_status
 from vip.cli.verify import _IDP_PROVIDERS, DEFAULT_TEST_TIMEOUT_SECONDS, run_verify
 from vip.cli.version import run_version
 from vip.errors import VipError
+from vip.output import Verbosity, configure_logging, error, set_verbosity
 
 
 def _reorder_help_args(argv: list[str], commands: set[str]) -> list[str]:
@@ -55,6 +56,27 @@ def main() -> None:
         action="version",
         version=f"%(prog)s {__version__}",
         help="Print the vip version and exit",
+    )
+    # Distinct dests: a subparser default with the same dest would overwrite these
+    # (``vip verify --verbose`` has its own ``verbose`` dest).
+    verbosity_group = parser.add_mutually_exclusive_group()
+    verbosity_group.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        default=False,
+        dest="output_quiet",
+        help="Hide progress messages; show only results, warnings and errors."
+        " Give it before the subcommand (vip -q verify). Wins over --verbose.",
+    )
+    verbosity_group.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=False,
+        dest="output_verbose",
+        help="Also show diagnostic output (auth steps, cache details)."
+        " Give it before the subcommand (vip -v verify).",
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -293,7 +315,8 @@ def main() -> None:
         "--verbose",
         action="store_true",
         default=False,
-        help="Show full pytest tracebacks instead of concise error messages",
+        help="Show full pytest tracebacks instead of concise error messages and enable"
+        " diagnostic output (same as vip -v verify, plus tracebacks)",
     )
     verify_parser.add_argument(
         "--extensions",
@@ -633,8 +656,13 @@ def main() -> None:
         else:
             parser.print_help()
         sys.exit(1)
+    if args.output_quiet:
+        set_verbosity(Verbosity.QUIET)
+    elif args.output_verbose or getattr(args, "verbose", False):
+        set_verbosity(Verbosity.VERBOSE)
+    configure_logging()
     try:
         args.func(args)
     except VipError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        error(f"Error: {exc}")
         sys.exit(exc.exit_code)

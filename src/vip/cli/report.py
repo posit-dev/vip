@@ -15,6 +15,7 @@ from pathlib import Path
 from vip.bundle.archive import RENDERED_FILES
 from vip.bundle.stamp import clear_render_stamp, record_rendered, results_digest
 from vip.errors import ReportError
+from vip.output import info, out, warn
 
 # Quarto report template files copied into the working report/ directory.
 # Keep in sync with the force-include block in pyproject.toml. The fonts are
@@ -102,9 +103,8 @@ def _ensure_report_templates(report_dir: Path) -> bool:
             replaced += _copy_report_templates(repo_report, report_dir)
 
     if replaced:
-        print(
+        info(
             f"Refreshed report templates in {report_dir}: {', '.join(replaced)}",
-            file=sys.stderr,
         )
 
     # True only if the working directory now has the complete set (from a
@@ -197,21 +197,20 @@ def run_report(args: argparse.Namespace) -> None:
             "(https://quarto.org/docs/get-started/) and re-run."
         )
 
-    print(f"Report generated: {output}")
+    out(f"Report generated: {output}")
     _stamp(output_dir, digest, before, ("index.html", "details.html"))
 
     # The PDF is the copy customers archive, so a missing one warns loudly —
     # but never fails the command, and never blocks the HTML hand-off above.
     pdf = report_dir / "_output" / "vip-report.pdf"
     if _quarto_render("vip-report.qmd", report_dir, env) == 0 and pdf.exists():
-        print(f"PDF generated: {pdf}")
+        out(f"PDF generated: {pdf}")
         _stamp(output_dir, digest, before, ("vip-report.pdf",))
     else:
-        print(
+        warn(
             f"Warning: the HTML report rendered but {pdf} did not. "
             "Quarto compiles it with Typst, which ships with Quarto 1.4 and "
             "later — check `quarto --version` and upgrade if it is older.",
-            file=sys.stderr,
         )
 
     if args.open:
@@ -239,18 +238,16 @@ def _stamp(
         name for name in names if _file_time(output_dir / name) not in (None, before.get(name))
     )
     for name in sorted(set(names) - set(fresh)):
-        print(
+        warn(
             f"Warning: this render did not write {output_dir / name}, so "
             "'vip bundle' will not include it.",
-            file=sys.stderr,
         )
     try:
         record_rendered(output_dir, digest, fresh)
     except OSError as exc:
-        print(
+        warn(
             f"Warning: could not write the render stamp in {output_dir}: {exc}. "
             "'vip bundle' will leave out the rendered report.",
-            file=sys.stderr,
         )
 
 

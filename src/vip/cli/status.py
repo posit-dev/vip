@@ -11,6 +11,7 @@ from vip.clients.connect import ConnectClient
 from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
 from vip.config import VIPConfig, load_config
+from vip.output import out
 
 
 def _collect_status(config: VIPConfig) -> dict:
@@ -91,7 +92,7 @@ def run_status(args: argparse.Namespace) -> None:
     data = _collect_status(config)
 
     if getattr(args, "json", False):
-        print(json.dumps(data))
+        out(json.dumps(data))
     else:
         for name, product in data["products"].items():
             state = product["state"]
@@ -101,6 +102,6 @@ def run_status(args: argparse.Namespace) -> None:
                 detail = f"HTTP {product['http_status']}"
             else:
                 detail = product.get("detail", "")
-            print(f"  {state.upper():4s}  {name:20s}  {detail}")
+            out(f"  {state.upper():4s}  {name:20s}  {detail}")
 
     sys.exit(data["exit_status"])

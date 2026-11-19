@@ -77,6 +77,7 @@ from vip.clients.packagemanager import PackageManagerClient
 from vip.clients.workbench import WorkbenchClient
 from vip.config import PerformanceConfig, VIPConfig
 from vip.errors import ConfigError
+from vip.output import Verbosity, get_verbosity
 from vip.proxy import build_proxy_map, chromium_launch_args, playwright_proxy
 from vip.stash import (
     _auth_mode_key,
@@ -97,8 +98,12 @@ def vip_config(request: pytest.FixtureRequest) -> VIPConfig:
 
 @pytest.fixture(scope="session")
 def vip_verbose(request: pytest.FixtureRequest) -> bool:
-    """Whether --vip-verbose was passed on the command line."""
-    return request.config.getoption("--vip-verbose", default=False)
+    """Whether --vip-verbose was passed and ``-q`` (``VIP_VERBOSITY=quiet``) was not.
+
+    Gates test-side diagnostics such as the Locust request log, so quiet mode wins.
+    """
+    verbose = bool(request.config.getoption("--vip-verbose", default=False))
+    return verbose and get_verbosity() is not Verbosity.QUIET
 
 
 # ---------------------------------------------------------------------------

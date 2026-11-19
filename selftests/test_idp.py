@@ -8,6 +8,7 @@ import pytest
 
 from vip.auth import AuthConfigError
 from vip.idp import SUPPORTED_IDPS, _fill_snowflake_login, get_idp_strategy
+from vip.output import Verbosity, set_verbosity
 
 
 class TestGetIdpStrategy:
@@ -344,8 +345,31 @@ class TestEntraLogin:
 
         _fill_entra_login(page, "user", "pass")
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "42" in out
+
+    @pytest.mark.parametrize(
+        ("level", "shown"),
+        [(Verbosity.NORMAL, False), (Verbosity.VERBOSE, True)],
+    )
+    def test_step_logging_only_when_verbose(self, capsys, level, shown):
+        from vip.idp import _fill_entra_login
+
+        set_verbosity(level)
+        page, _locators = self._make_page(
+            display_sign=self._make_locator(count=1, visible=True, text="42")
+        )
+
+        def _wait_for_url(_predicate, timeout):
+            page.url = self._PRODUCT_URL
+
+        page.wait_for_url.side_effect = _wait_for_url
+
+        _fill_entra_login(page, "user", "pass")
+
+        captured = capsys.readouterr()
+        assert (">>> Entra: waiting for email field" in captured.err) is shown
+        assert ">>> Entra: waiting for email field" not in captured.out
 
     def test_proof_up_raises_authconfigerror(self):
         from vip.idp import _ENTRA_PROOF_UP_TEXT, _fill_entra_login
@@ -591,7 +615,7 @@ class TestEntraLogin:
 
         _fill_entra_login(page, "user", "pass")
 
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "88" in out
         page.wait_for_url.assert_called_once()
         locators[_ENTRA_SIGN_IN_ANOTHER_WAY].first.click.assert_not_called()

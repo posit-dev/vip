@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import os
-import sys
 from pathlib import Path
 
 from vip.auth import (
@@ -25,6 +23,7 @@ from vip.errors import (
     ConfigError,
     ProductUnreachableError,
 )
+from vip.output import info, warn
 from vip.workbench_ui import quit_vip_sessions_via_ui
 
 
@@ -45,14 +44,12 @@ def _cleanup_workbench_sessions_via_token(workbench_url: str, config: VIPConfig)
     )
     username = config.auth.username
     try:
-        print(f"Cleaning up orphaned Workbench sessions at {workbench_url} with the API token")
+        info(f"Cleaning up orphaned Workbench sessions at {workbench_url} with the API token")
         quit_count = client.quit_vip_sessions_via_api(username)
-        print(f"Quit {quit_count} VIP Workbench session(s) via the API token")
+        info(f"Quit {quit_count} VIP Workbench session(s) via the API token")
         return not client.vip_sessions_via_api(username)
     except ProductUnreachableError as exc:
-        print(
-            f"The API token could not clean up sessions ({exc}); falling back to browser sign-in."
-        )
+        warn(f"The API token could not clean up sessions ({exc}); falling back to browser sign-in.")
         return False
     finally:
         client.close()
@@ -131,7 +128,7 @@ def _cleanup_workbench_sessions(
         ) from exc
 
     try:
-        print(f"Cleaning up orphaned Workbench sessions at {workbench_url}")
+        info(f"Cleaning up orphaned Workbench sessions at {workbench_url}")
         cookies = session.load_cookies()
         client = WorkbenchClient(
             workbench_url, cookies=cookies, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
@@ -148,7 +145,7 @@ def _cleanup_workbench_sessions(
                 api_reachable = False
             if api_reachable:
                 quit_count = client.quit_vip_sessions()
-                print(f"Quit {quit_count} VIP Workbench session(s) via the API")
+                info(f"Quit {quit_count} VIP Workbench session(s) via the API")
                 try:
                     remaining = client.count_vip_sessions()
                 except ProductUnreachableError:
@@ -161,34 +158,16 @@ def _cleanup_workbench_sessions(
             # UI sweep, so an unparseable API response can never silently orphan
             # sessions (issue #467).
             if not api_reachable or remaining != 0:
-                print("Escalating to browser-driven session cleanup ...")
+                info("Escalating to browser-driven session cleanup ...")
                 with authenticated_page(
                     session, insecure=insecure, ca_bundle=ca_bundle, proxy=proxy
                 ) as page:
                     ui_count = quit_vip_sessions_via_ui(page, workbench_url)
-                print(f"Quit {ui_count} VIP Workbench session(s) via the UI")
+                info(f"Quit {ui_count} VIP Workbench session(s) via the UI")
         finally:
             client.close()
     finally:
         session.cleanup()
-
-
-def _ensure_cli_logging() -> None:
-    """Route ``vip.*`` INFO/WARNING logs to stderr for the cleanup command.
-
-    The session-cleanup path (WorkbenchClient + workbench_ui) emits progress
-    and "sessions still present" warnings via ``logging``; without a handler
-    those are invisible (or only WARNING via the lastResort handler). Attach a
-    single stderr handler to the ``vip`` logger so ``vip cleanup`` surfaces
-    what it did. Idempotent: only configures once.
-    """
-    vip_logger = logging.getLogger("vip")
-    if not vip_logger.handlers:
-        handler = logging.StreamHandler(sys.stderr)
-        handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-        vip_logger.addHandler(handler)
-        vip_logger.setLevel(logging.INFO)
-        vip_logger.propagate = False
 
 
 def _load_cleanup_config(args: argparse.Namespace) -> VIPConfig:
@@ -233,8 +212,6 @@ def run_cleanup(args: argparse.Namespace) -> None:
     falls back to ``http://`` if https doesn't answer (see
     ``vip.config._normalize_url`` / ``vip.auth.resolve_url_scheme``).
     """
-    _ensure_cli_logging()
-
     connect_arg = getattr(args, "connect_url", None)
     api_key = getattr(args, "api_key", None) or os.environ.get("VIP_CONNECT_API_KEY", "")
     workbench_arg = getattr(args, "workbench_url", None)
@@ -273,7 +250,7 @@ def run_cleanup(args: argparse.Namespace) -> None:
         connect_url = resolve_url_scheme(
             connect_pc, insecure=config.insecure, ca_bundle=config.ca_bundle, proxy=config.proxy
         )
-        print(f"Cleaning up VIP test content on Connect at {connect_url}")
+        info(f"Cleaning up VIP test content on Connect at {connect_url}")
         with ConnectClient(
             connect_url,
             api_key,
@@ -282,7 +259,7 @@ def run_cleanup(args: argparse.Namespace) -> None:
             proxy=config.proxy,
         ) as client:
             deleted = client.cleanup_vip_content()
-        print(f"Deleted {deleted} VIP test content item(s)")
+        info(f"Deleted {deleted} VIP test content item(s)")
 
     if workbench_pc.url:
         workbench_url = resolve_url_scheme(
@@ -290,4 +267,4 @@ def run_cleanup(args: argparse.Namespace) -> None:
         )
         _cleanup_workbench_sessions(workbench_url, args, config)
 
-    print("Cleanup completed successfully")
+    info("Cleanup completed successfully")

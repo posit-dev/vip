@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from vip.cli import DEFAULT_TEST_TIMEOUT_SECONDS
+from vip.output import VERBOSITY_ENV_VAR, Verbosity, set_verbosity
 
 
 def _make_args(**overrides) -> argparse.Namespace:
@@ -167,7 +168,7 @@ class TestVerifyLocalSkipNotes:
             encoding="utf-8",
         )
         _capture_cmd(_make_args(config=str(cfg)))
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Connect disabled" in out
         assert "Workbench disabled" in out
         assert "Package Manager" not in out
@@ -176,7 +177,7 @@ class TestVerifyLocalSkipNotes:
         cfg = tmp_path / "vip.toml"
         cfg.write_text("[general]\n", encoding="utf-8")
         _capture_cmd(_make_args(config=str(cfg)))
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Connect no URL given" in out
         assert "Workbench no URL given" in out
         assert "Package Manager no URL given" in out
@@ -193,15 +194,15 @@ class TestVerifyLocalSkipNotes:
             encoding="utf-8",
         )
         _capture_cmd(_make_args(config=str(cfg)))
-        out = capsys.readouterr().out
-        assert "will not be collected" not in out
+        captured = capsys.readouterr()
+        assert "will not be collected" not in captured.out + captured.err
 
     def test_notes_from_url_args(self, tmp_path, monkeypatch, capsys):
         """URL-argument flow generates a temp config; notes should reflect it."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("VIP_CONFIG", raising=False)
         _capture_cmd(_make_args(package_manager_url="http://localhost:4242/"))
-        out = capsys.readouterr().out
+        out = capsys.readouterr().err
         assert "Connect disabled" in out
         assert "will not be collected" in out
         assert "Workbench disabled" in out
@@ -469,6 +470,25 @@ class TestVerifyLocalVerboseFlag:
         cfg.write_text("[general]\n", encoding="utf-8")
         cmd = _capture_cmd(_make_args(config=str(cfg), verbose=False))
         assert "--vip-verbose" not in cmd
+
+
+class TestVerifyPropagatesVerbosity:
+    """The pytest subprocess inherits the CLI verbosity through VIP_VERBOSITY."""
+
+    @pytest.mark.parametrize(
+        ("level", "expected"),
+        [
+            (Verbosity.QUIET, "quiet"),
+            (Verbosity.NORMAL, "normal"),
+            (Verbosity.VERBOSE, "verbose"),
+        ],
+    )
+    def test_env_carries_level(self, tmp_path, level, expected):
+        cfg = tmp_path / "vip.toml"
+        cfg.write_text("[general]\n", encoding="utf-8")
+        set_verbosity(level)
+        _cmd, kwargs = _capture_call(_make_args(config=str(cfg)))
+        assert kwargs["env"][VERBOSITY_ENV_VAR] == expected
 
 
 class TestNormalizeCategories:

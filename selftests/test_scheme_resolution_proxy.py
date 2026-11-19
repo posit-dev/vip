@@ -96,7 +96,7 @@ def test_proxy_error_warning_redacts_credentials(monkeypatch, capsys):
     pc = _inferred_pc()
     resolve_url_scheme(pc, proxy=ProxyConfig(url="http://alice:s3cret@proxy.corp:8080"))
 
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert "s3cret" not in out
     assert "alice" not in out
     # ...but the sanitized proxy host is still named for debugging.
@@ -114,7 +114,7 @@ def test_transport_error_warning_redacts_credentials(monkeypatch, capsys):
     pc = _inferred_pc()
     resolve_url_scheme(pc, proxy=ProxyConfig(url="http://alice:s3cret@proxy.corp:8080"))
 
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert "s3cret" not in out
     assert "proxy.corp:8080" in out
 
