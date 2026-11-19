@@ -16,6 +16,9 @@ masked by a login bounce.
 
 from __future__ import annotations
 
+import stat
+import subprocess
+import sys
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -91,6 +94,47 @@ def test_do_clone_uses_custom_workdir(monkeypatch):
 
     assert clone_dir == "/home/vip/other-repo"
     assert "rm -rf /home/vip/other-repo" in captured["cmd"]
+
+
+def _clone_prefix(monkeypatch, workdir: Path) -> str:
+    """The clone command up to the clone itself, so a real shell can run its directory guard."""
+    captured: dict = {}
+
+    def fake_terminal_run(page, cmd, timeout=30_000, *, readback_lang="r"):
+        captured["cmd"] = cmd
+        return ""
+
+    monkeypatch.setattr(git_ops, "terminal_run", fake_terminal_run)
+    git_cfg = _FakeGitCfg("https://github.com/example/repo.git")
+    git_ops._do_clone(object(), {}, git_cfg, "r", workdir=str(workdir))  # type: ignore[arg-type]
+    return captured["cmd"].split(" && cd ", 1)[0]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="runs the clone command in a POSIX shell")
+class TestCloneDirGuard:
+    """Another user can pre-create the predictable per-worker path; rm -rf must not follow it."""
+
+    def test_refuses_a_symlinked_workdir(self, monkeypatch, tmp_path):
+        victim = tmp_path / "home"
+        (victim / "repo").mkdir(parents=True)
+        (victim / "repo" / "keep.txt").write_text("user data", encoding="utf-8")
+        workdir = tmp_path / "vip_git_gw0"
+        workdir.symlink_to(victim)
+
+        result = subprocess.run(["sh", "-c", _clone_prefix(monkeypatch, workdir)], check=False)
+
+        assert result.returncode != 0
+        assert (victim / "repo" / "keep.txt").read_text(encoding="utf-8") == "user data"
+
+    def test_clears_the_previous_clone_in_its_own_workdir(self, monkeypatch, tmp_path):
+        workdir = tmp_path / "vip_git_gw0"
+        (workdir / "repo").mkdir(parents=True)
+
+        result = subprocess.run(["sh", "-c", _clone_prefix(monkeypatch, workdir)], check=False)
+
+        assert result.returncode == 0
+        assert not (workdir / "repo").exists()
+        assert stat.S_IMODE(workdir.stat().st_mode) == 0o700
 
 
 # ---------------------------------------------------------------------------

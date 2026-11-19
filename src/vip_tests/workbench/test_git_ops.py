@@ -383,7 +383,10 @@ def _do_clone(
     """Run ``git clone`` in the IDE terminal and return the cloned directory path.
 
     Defaults to ``/tmp/vip_git_<worker>`` so parallel workers, which may be different
-    users, never remove or clone over each other's checkout.
+    users, never remove or clone over each other's checkout. The command stops unless
+    *workdir* is a real directory this user owns, so another user who pre-creates that
+    predictable path (say, as a symlink into the test account's home) can't aim ``rm -rf``
+    at it; /tmp's sticky bit then keeps anyone else from swapping it out.
     """
     if workdir is None:
         workdir = f"/tmp/vip_git_{current_worker_id()}"
@@ -394,7 +397,8 @@ def _do_clone(
 
     terminal_run(
         page,
-        f"rm -rf {shlex.quote(clone_dir)} && mkdir -p {q_workdir} && cd {q_workdir} && "
+        f"mkdir -p {q_workdir} && test ! -L {q_workdir} && test -O {q_workdir} && "
+        f"chmod 700 {q_workdir} && rm -rf {shlex.quote(clone_dir)} && cd {q_workdir} && "
         f"GIT_TERMINAL_PROMPT=0 git clone {shlex.quote(auth_url)}",
         timeout=_TIMEOUT_GIT_NETWORK,
         readback_lang=readback_lang,
