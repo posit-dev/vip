@@ -12,6 +12,8 @@ _PRODUCT_TESTS = Path(__file__).resolve().parents[1] / "src" / "vip_tests"
 @pytest.fixture
 def cleanup_suite(pytester, monkeypatch):
     monkeypatch.delenv("VIP_CONNECT_API_KEY", raising=False)
+    # pytester decodes subprocess output as UTF-8; Windows would otherwise write cp1252.
+    monkeypatch.setenv("PYTHONUTF8", "1")
     pytester.makeconftest((_PRODUCT_TESTS / "conftest.py").read_text(encoding="utf-8"))
     pytester.makefile(
         ".toml",
